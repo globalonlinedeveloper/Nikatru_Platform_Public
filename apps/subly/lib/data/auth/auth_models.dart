@@ -1,15 +1,6 @@
-/// Provider-agnostic user identity. Concrete repositories map their SDK's user
-/// (Supabase today, Firebase if ever swapped) onto this.
-class AuthUser {
-  const AuthUser({required this.id, required this.email, this.displayName});
-
-  final String id;
-  final String email;
-  final String? displayName;
-
-  String get initial {
-    final String source =
-        (displayName != null && displayName!.isNotEmpty) ? displayName! : email;
-    return source.isEmpty ? '?' : source.substring(0, 1).toUpperCase();
-  }
-}
+/// Re-export shim (the F0-4 pattern). `AuthUser` / `AuthSession` /
+/// `AuthFailure` now live in `packages/core` so the brick and every stamped app
+/// share one auth contract; Subly's feature files keep importing this path and
+/// did not change.
+export 'package:nikatru_core/nikatru_core.dart'
+    show AuthUser, AuthSession, AuthFailure;

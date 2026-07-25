@@ -1,0 +1,56 @@
+import 'auth_models.dart';
+
+/// The auth seam. Swapping identity providers = writing one more implementation
+/// of this interface; nothing above the data layer changes.
+///
+/// Pure Dart and provider-free ON PURPOSE — this is the keystone the money rail
+/// stands on. Account deletion, the entitlements fetch and the paywall gate all
+/// need an authenticated call, so every one of them was blocked until this
+/// contract lived somewhere the brick and every app could depend on.
+///
+/// Concrete implementations live in `packages/auth_supabase` (Supabase + an
+/// in-memory mock). `core` must never gain an SDK dependency for this.
+abstract class AuthRepository {
+  /// Synchronous snapshot (used by a router's redirect guard, which cannot
+  /// await). Null when signed out.
+  AuthUser? get currentUser;
+
+  /// Emits on sign-in / sign-out / token refresh.
+  Stream<AuthUser?> authStateChanges();
+
+  Future<AuthUser> signInWithEmail({
+    required String email,
+    required String password,
+  });
+
+  Future<AuthUser> signUpWithEmail({
+    required String email,
+    required String password,
+  });
+
+  /// OAuth (Apple/Google). Completes via redirect/deep link — the resulting
+  /// session arrives on [authStateChanges], NOT as a return value.
+  ///
+  /// On the web this MUST be a full-page redirect rather than a popup: popups
+  /// are blocked by default in several browsers unless the call is inside a
+  /// direct user-gesture handler, and they break entirely in embedded webviews
+  /// and PWAs launched standalone (G-43).
+  Future<void> signInWithApple();
+
+  Future<void> sendPasswordReset(String email);
+
+  Future<void> signOut();
+
+  /// The bearer token attached to every API call (the JWT the Worker verifies).
+  /// Null when signed out.
+  ///
+  /// This is the shape the brick's `RestClient` takes as its `tokenProvider`,
+  /// which is why it returns a token rather than a session: the HTTP layer has
+  /// no business knowing about refresh.
+  Future<String?> currentAccessToken();
+
+  /// The full current session, or null when signed out. Used where expiry
+  /// matters (entitlement refresh, an offline-validity decision) — prefer
+  /// [currentAccessToken] for plain request authorization.
+  Future<AuthSession?> currentSession();
+}

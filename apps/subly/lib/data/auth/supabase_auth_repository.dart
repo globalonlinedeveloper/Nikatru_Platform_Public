@@ -28,8 +28,10 @@ class SupabaseAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
-    final sb.AuthResponse res =
-        await _auth.signInWithPassword(email: email, password: password);
+    final sb.AuthResponse res = await _auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
     final AuthUser? u = _map(res.user);
     if (u == null) throw AuthFailure('Sign-in failed');
     return u;
@@ -40,8 +42,10 @@ class SupabaseAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
-    final sb.AuthResponse res =
-        await _auth.signUp(email: email, password: password);
+    final sb.AuthResponse res = await _auth.signUp(
+      email: email,
+      password: password,
+    );
     final AuthUser? u = _map(res.user);
     if (u == null) throw AuthFailure('Sign-up failed');
     return u;
@@ -65,4 +69,21 @@ class SupabaseAuthRepository implements AuthRepository {
   @override
   Future<String?> currentAccessToken() async =>
       _auth.currentSession?.accessToken;
+
+  @override
+  Future<AuthSession?> currentSession() async {
+    final sb.Session? s = _auth.currentSession;
+    if (s == null) return null;
+    return AuthSession(
+      accessToken: s.accessToken,
+      refreshToken: s.refreshToken,
+      // GoTrue reports expiry as UNIX seconds; null when it does not know.
+      expiresAt: s.expiresAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              s.expiresAt! * 1000,
+              isUtc: true,
+            ),
+    );
+  }
 }
