@@ -63,6 +63,24 @@ jobs:
           node-version: 24
       - run: npm install
         working-directory: services/subly-api
+      # MIGRATIONS BEFORE DEPLOY — the order is the whole point.
+      #
+      # This step did not exist until 2026-07-25, and the gap was silent: a
+      # migration could be committed, pass CI, and be "deployed" green while
+      # never touching the database. Proved live — 0002_schema_debt.sql sat
+      # unapplied while subly_db still had no budget_categories.id.
+      #
+      # Migrations run FIRST because the schema standard is additive-only
+      # (company/requirements/schema-evolution.md): new columns are harmless to
+      # code that predates them, whereas deploying code that reads a column the
+      # database does not have yet is an outage. Expand, then deploy.
+      - name: Apply APP_DB migrations (before deploy)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/subly-api
+          command: d1 migrations apply APP_DB --remote
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -82,6 +100,16 @@ jobs:
           node-version: 24
       - run: npm install
         working-directory: services/platform
+      # MIGRATIONS BEFORE DEPLOY — see the note in the subly-api job.
+      # platform is the SOLE applier of platform_db migrations, so this is the
+      # only place the shared entitlements/events/consent schema advances.
+      - name: Apply PLATFORM_DB migrations (before deploy)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/platform
+          command: d1 migrations apply PLATFORM_DB --remote
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
