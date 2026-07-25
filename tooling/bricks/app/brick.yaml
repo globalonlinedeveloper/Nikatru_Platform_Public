@@ -13,6 +13,17 @@ vars:
     type: string
     description: Lowercase snake_case app id (also the Dart package name), e.g. lingo
     prompt: App id (lowercase)
+  needs_backend:
+    type: boolean
+    description: >-
+      Does this app store USER ROWS server-side? Default NO. A "no" app is
+      client-only and talks to the ONE shared platform Worker for config,
+      analytics, entitlements and account deletion — it stamps no Worker, no D1
+      and no R2 bucket of its own. Say yes ONLY when the app genuinely needs a
+      private database, and remember the ceiling: D1 Free allows 10 databases
+      per account TOTAL (verified 2026-07-25), one of which is platform_db.
+    prompt: Does this app store user rows server-side? (per-app D1 — say no unless sure)
+    default: false
   display_name:
     type: string
     description: Human display name, e.g. "Lingo — Offline Phrasebook"

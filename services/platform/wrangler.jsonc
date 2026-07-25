@@ -48,8 +48,21 @@
     "crons": ["0 6 * * *"]
   },
   "routes": [
-    // Serve CFG-1 on the portfolio config host. custom_domain auto-provisions
-    // the DNS record + edge cert (nikatru.com is a zone in this account).
-    { "pattern": "config.nikatru.com", "custom_domain": true }
+    // CFG-1 bootstrap host. Already-released Subly builds have this compiled
+    // in, so it is permanent regardless of what else moves.
+    { "pattern": "config.nikatru.com", "custom_domain": true },
+    // The portfolio API host. A CLIENT-ONLY stamped app (the brick default,
+    // needs_backend=false) has no Worker of its own and talks to this for
+    // everything shared: analytics, entitlements, account deletion, MoR
+    // webhooks. custom_domain auto-provisions the DNS record + edge cert
+    // (nikatru.com is a zone in this account).
+    { "pattern": "platform.nikatru.com", "custom_domain": true }
   ]
+
+  // NO "r2_buckets" YET — nothing reads or writes object storage today, and an
+  // unresolvable bucket binding would fail this Worker's deploy. WHEN one is
+  // needed: create ONE portfolio bucket and bind it HERE, addressed with an
+  // `<app_id>/` key prefix. Per-app buckets (`<app>-exports`) were removed from
+  // the brick on 2026-07-25 — they multiplied buckets, lifecycle rules and CORS
+  // policies by the number of apps to store the same kind of blob.
 }

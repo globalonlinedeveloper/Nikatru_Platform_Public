@@ -87,7 +87,7 @@ jobs:
       - run: npm run build
 
   app_brick:
-    name: App brick (stamp probe + analyze app + validate service)
+    name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,9 +100,10 @@ jobs:
           node-version: 24
       - name: Install mason_cli
         run: dart pub global activate mason_cli
-      # Root-oriented stamp: emits apps/probe/ + services/probe-api/ and appends
-      # probe to sites/_shared/_data/apps.json (post_gen / SHOW-1).
-      - name: Stamp a throwaway app + service from the brick
+
+      # ── Variant 1: the DEFAULT stamp — client-only (needs_backend=false).
+      # This is what almost every app gets, so it is the one that must not rot.
+      - name: Stamp the default (client-only) app
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           mason get
@@ -111,14 +112,50 @@ jobs:
         run: |
           grep -q '"slug": "probe"' sites/_shared/_data/apps.json
           git checkout -- sites/_shared/_data/apps.json
+      # THE CLONE CONTRACT, asserted rather than documented. A default stamp
+      # that quietly regains a Worker/D1/R2 is how the portfolio walks back
+      # into the 10-database free-tier ceiling.
+      - name: Default stamp claims NO Worker, NO D1 and NO R2
+        run: |
+          if [ -e services/probe-api ]; then
+            echo "::error::default stamp created services/probe-api — the backend must be OPT-IN"; exit 1
+          fi
+          if grep -rn -e 'probe_db' -e 'probe-exports' apps/probe; then
+            echo "::error::default stamp referenced a per-app D1 or R2 bucket"; exit 1
+          fi
+          grep -q "platform.nikatru.com" apps/probe/lib/core/app_config.dart \
+            || { echo "::error::client-only app is not pointed at the shared platform Worker"; exit 1; }
       - name: Analyze + test the stamped app
         working-directory: apps/probe
         run: |
           flutter pub get
           flutter analyze --no-fatal-infos
           flutter test
+
+      # ── Variant 2: the OPT-IN backend stamp (needs_backend=true). Rarer, but
+      # it still has to typecheck and deploy-dry-run.
+      - name: Stamp the opt-in backend app
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
+          git checkout -- sites/_shared/_data/apps.json
+      - name: Backend stamp has a Worker + APP_DB but still no per-app R2
+        run: |
+          test -f services/probeapi-api/wrangler.jsonc \
+            || { echo "::error::needs_backend=true did not stamp the Worker"; exit 1; }
+          grep -q '"database_name": "probeapi_db"' services/probeapi-api/wrangler.jsonc \
+            || { echo "::error::backend stamp is missing its per-app D1"; exit 1; }
+          if grep -q '"r2_buckets"' services/probeapi-api/wrangler.jsonc; then
+            echo "::error::backend stamp declared a per-app R2 bucket — object storage is ONE shared bucket with an <app_id>/ prefix"; exit 1
+          fi
+      - name: Analyze the stamped backend app
+        working-directory: apps/probeapi
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
       - name: Typecheck + dry-run the stamped service
-        working-directory: services/probe-api
+        working-directory: services/probeapi-api
         run: |
           npm install
           npx tsc --noEmit
