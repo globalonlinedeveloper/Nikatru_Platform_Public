@@ -8,6 +8,15 @@ version: 0.1.0
 environment:
   mason: ">=0.1.0 <0.2.0"
 
+# ⚠️ DO NOT "TIDY" THE ODD DIRECTORY NAMES UNDER __brick__/.
+# `__brick__/{{#needs_backend}}services{{/needs_backend}}/` is ONE Mustache
+# section that mason evaluates on the joined path. Because `/` cannot appear in
+# a directory name, it necessarily lands on disk as two nested directories
+# (`{{#needs_backend}}services{{` and `needs_backend}}`). That is correct and
+# load-bearing: renaming them to a plain `services/` silently makes every
+# stamped app claim a Worker + D1 again, reinstating the 10-database ceiling
+# problem [ADR 020] exists to fix. CI asserts the contract either way.
+
 vars:
   app_id:
     type: string
@@ -35,8 +44,11 @@ vars:
     default: ""
   api_domain:
     type: string
-    description: API host (single-label standard), e.g. api-lingo.nikatru.com
-    prompt: API domain
+    description: >-
+      API host (single-label standard), e.g. api-lingo.nikatru.com. ONLY used
+      when needs_backend=true — a client-only app calls the shared platform
+      Worker and never has a host of its own, so this value is ignored.
+    prompt: API domain (ignored unless needs_backend=true)
     default: ""
   seed_hex:
     type: string

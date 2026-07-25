@@ -12,6 +12,7 @@ void run(HookContext context) {
   final subdomain = (v['subdomain'] ?? '').toString();
   final apiDomain = (v['api_domain'] ?? '').toString();
   final tagline = (v['description'] ?? '').toString();
+  final needsBackend = v['needs_backend'] == true;
 
   _appendToAppsJson(
     context,
@@ -19,12 +20,14 @@ void run(HookContext context) {
     name: _shortName(displayName),
     tagline: tagline,
     url: subdomain.isEmpty ? '' : 'https://$subdomain',
-    api: apiDomain.isEmpty ? '' : 'https://$apiDomain',
+    // A client-only app has NO API host of its own — it calls the shared
+    // platform Worker. Writing `api-<app>.nikatru.com` here would publish a
+    // hostname that will never resolve into a PUBLIC catalog ([ADR 020]).
+    api: (!needsBackend || apiDomain.isEmpty) ? '' : 'https://$apiDomain',
   );
 
   final apiHost = apiDomain.isEmpty ? 'api-$id.nikatru.com' : apiDomain;
   final webHost = subdomain.isEmpty ? '$id.nikatru.com' : subdomain;
-  final needsBackend = v['needs_backend'] == true;
 
   context.logger.info('');
   if (needsBackend) {

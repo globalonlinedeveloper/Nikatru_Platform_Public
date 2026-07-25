@@ -16,9 +16,21 @@ class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
 
   static const List<AppDestination> _destinations = <AppDestination>[
-    AppDestination(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
-    AppDestination(icon: Icons.explore_outlined, selectedIcon: Icons.explore, label: 'Explore'),
-    AppDestination(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: 'Settings'),
+    AppDestination(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home,
+      label: 'Home',
+    ),
+    AppDestination(
+      icon: Icons.explore_outlined,
+      selectedIcon: Icons.explore,
+      label: 'Explore',
+    ),
+    AppDestination(
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings,
+      label: 'Settings',
+    ),
   ];
 
   @override
@@ -44,7 +56,10 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: AppSpacing.lg),
             Text('Welcome to ${AppConfig.appName}', style: AppText.title),
             const SizedBox(height: AppSpacing.xs),
-            const Text('Stamped from the NIKATRU app brick.', style: AppText.muted),
+            const Text(
+              'Stamped from the NIKATRU app brick.',
+              style: AppText.muted,
+            ),
           ],
         ),
       ),

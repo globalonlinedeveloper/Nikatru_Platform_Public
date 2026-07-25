@@ -46,7 +46,9 @@ final Provider<core.ConfigLoader> configLoaderProvider =
 final FutureProvider<core.AppConfig> appConfigProvider =
     FutureProvider<core.AppConfig>((ref) async {
       final core.ConfigLoader loader = ref.watch(configLoaderProvider);
-      if (!AppConfig.isBackendLive) {
+      // NOT isBackendLive — the config service is not the identity service.
+      // See AppConfig.remoteConfigEnabled for why they are separate flags.
+      if (!AppConfig.remoteConfigEnabled) {
         return loader.peek(AppConfig.appId) ?? kAppDefaultConfig;
       }
       final core.Result<core.AppConfig> r = await loader.load(AppConfig.appId);

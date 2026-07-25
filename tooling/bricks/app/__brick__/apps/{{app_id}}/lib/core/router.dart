@@ -12,11 +12,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     routes: <RouteBase>[
       GoRoute(
         path: '/',
-        builder: (BuildContext context, GoRouterState state) => const HomeScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const HomeScreen(),
       ),
       GoRoute(
         path: '/settings',
-        builder: (BuildContext context, GoRouterState state) => const SettingsScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const SettingsScreen(),
       ),
     ],
   );

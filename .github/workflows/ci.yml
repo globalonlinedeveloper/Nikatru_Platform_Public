@@ -118,6 +118,12 @@ jobs:
       # config is parsed, not grepped) — see the script header for why.
       - name: Default stamp claims NO Worker, NO D1 and NO R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe
+      # A stamped app must be born `dart format`-clean. Every app in the
+      # portfolio starts as a copy of this output, so template dirt is dirt in
+      # all of them at once — and it makes adding a repo-wide format gate
+      # impossible for as long as it lasts. Cheap to hold, expensive to reclaim.
+      - name: Stamped app is dart format-clean
+        run: dart format --output=none --set-exit-if-changed apps/probe
       - name: Analyze + test the stamped app
         working-directory: apps/probe
         run: |
@@ -134,6 +140,8 @@ jobs:
           git checkout -- sites/_shared/_data/apps.json
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
+      - name: Stamped backend app is dart format-clean
+        run: dart format --output=none --set-exit-if-changed apps/probeapi
       - name: Analyze the stamped backend app
         working-directory: apps/probeapi
         run: |

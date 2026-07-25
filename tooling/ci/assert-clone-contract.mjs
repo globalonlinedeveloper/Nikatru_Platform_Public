@@ -20,8 +20,8 @@
 //   node tooling/ci/assert-clone-contract.mjs --client probe          # phase 1
 // Exit 0 = contract holds, 1 = violated.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, lstatSync } from 'node:fs';
+import { extname, join } from 'node:path';
 
 const args = process.argv.slice(2);
 const argOf = (flag) => {
@@ -35,9 +35,11 @@ const failures = [];
 const fail = (msg) => failures.push(msg);
 const ok = (msg) => console.log(`  ok  ${msg}`);
 
-/** Strip // and /* *​/ comments from JSONC, then parse. Throws on malformed
- *  input — which is itself worth catching: a stamped wrangler.jsonc that does
- *  not parse would only surface later, inside a deploy. */
+/** Strip // and block comments from JSONC, drop trailing commas, then parse.
+ *  Trailing commas are legal in wrangler's JSONC and hard-failing on one would
+ *  teach people to distrust this guard. Throws on genuinely malformed input —
+ *  itself worth catching, since an unparseable stamped wrangler.jsonc would
+ *  otherwise only surface inside a deploy. */
 function parseJsonc(path) {
   const raw = readFileSync(path, 'utf8');
   let out = '';
@@ -60,18 +62,42 @@ function parseJsonc(path) {
       out += raw[i++];
     }
   }
-  return JSON.parse(out);
+  // A comma followed only by whitespace before a closing } or ] — safe now that
+  // string literals above were copied through verbatim and are not re-scanned.
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
 }
 
+/** Source files only. `lstat` (not `stat`) so a dangling symlink cannot throw,
+ *  and an extension filter so this stays cheap and text-safe after
+ *  `flutter pub get` has populated the app directory. */
+const kReadableExt = new Set(['.dart', '.yaml', '.yml', '.json', '.arb']);
 function walk(dir) {
   const found = [];
   for (const entry of readdirSync(dir)) {
     if (entry === '.dart_tool' || entry === 'build' || entry === 'node_modules') continue;
     const p = join(dir, entry);
-    if (statSync(p).isDirectory()) found.push(...walk(p));
-    else found.push(p);
+    let st;
+    try {
+      st = lstatSync(p);
+    } catch {
+      continue; // vanished or unreadable — not this guard's business
+    }
+    if (st.isSymbolicLink()) continue;
+    if (st.isDirectory()) found.push(...walk(p));
+    else if (kReadableExt.has(extname(p))) found.push(p);
   }
   return found;
+}
+
+/** The `_phApiBase = ...` line of a stamped app_config.dart, or null. */
+function apiBaseLine(appId) {
+  const cfg = join('apps', appId, 'lib', 'core', 'app_config.dart');
+  if (!existsSync(cfg)) return null;
+  return (
+    readFileSync(cfg, 'utf8')
+      .split('\n')
+      .find((l) => l.includes('_phApiBase') && l.includes('=')) ?? null
+  );
 }
 
 // ── The DEFAULT stamp: client-only ──────────────────────────────────────────
@@ -89,8 +115,9 @@ if (clientApp) {
   if (!existsSync(appDir)) {
     fail(`${appDir} was not stamped at all`);
   } else {
-    // A per-app D1 or bucket name appearing in CLIENT code means the template
-    // regained a per-app resource somewhere the wrangler check cannot see.
+    // Tripwire, not a proof: if a per-app D1 or bucket name ever appears in
+    // CLIENT source, the template regained a per-app resource somewhere the
+    // wrangler check cannot see.
     const banned = [`${clientApp}_db`, `${clientApp}-exports`];
     const hits = [];
     for (const file of walk(appDir)) {
@@ -100,15 +127,20 @@ if (clientApp) {
       }
     }
     if (hits.length) hits.forEach(fail);
-    else ok('no per-app D1 or R2 bucket referenced');
+    else ok('no per-app D1/bucket name appears in client source');
 
-    const cfg = join(appDir, 'lib', 'core', 'app_config.dart');
-    if (!existsSync(cfg)) {
-      fail(`${cfg} missing`);
-    } else if (!readFileSync(cfg, 'utf8').includes('platform.nikatru.com')) {
-      fail('client-only app is not pointed at the shared platform Worker');
+    // Assert the ACTUAL assignment, not "the string appears in the file" — a
+    // doc-comment mentioning the host must not satisfy this while _phApiBase
+    // silently reverted to the per-app default.
+    const line = apiBaseLine(clientApp);
+    if (line === null) {
+      fail(`apps/${clientApp}/lib/core/app_config.dart missing or has no _phApiBase`);
+    } else if (!line.includes('platform.nikatru.com')) {
+      fail(`_phApiBase is not the shared platform Worker: ${line.trim()}`);
+    } else if (line.includes(`api-${clientApp}`)) {
+      fail(`_phApiBase still carries a per-app API host: ${line.trim()}`);
     } else {
-      ok('points at the shared platform Worker');
+      ok('_phApiBase points at the shared platform Worker');
     }
   }
 }
@@ -151,6 +183,19 @@ if (backendApp) {
         ok('no per-app R2 bucket');
       }
     }
+  }
+
+  // The mirror of the client-only assertion. Without this, a bug that made the
+  // {{#needs_backend}} section render the WRONG branch would pass clean.
+  const line = apiBaseLine(backendApp);
+  if (line === null) {
+    fail(`apps/${backendApp}/lib/core/app_config.dart missing or has no _phApiBase`);
+  } else if (!line.includes(`api-${backendApp}`)) {
+    fail(`_phApiBase is not this app's own API host: ${line.trim()}`);
+  } else if (line.includes('platform.nikatru.com')) {
+    fail(`_phApiBase rendered the client-only branch: ${line.trim()}`);
+  } else {
+    ok('_phApiBase points at its own API host');
   }
 }
 
