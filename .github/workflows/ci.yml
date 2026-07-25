@@ -2,7 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/**']
+    # ALL THREE documented branch prefixes, not just feat/. architecture.md §24
+    # defines the convention as `feat|fix|chore/<slug>`, but this list watched
+    # only `feat/**` — so every fix/ and chore/ branch got NO CI at all and
+    # would reach the `--no-ff` merge unverified. The failure was silent in the
+    # worst way: `gh run list` simply returns nothing, which is indistinguishable
+    # from "queued" until you notice no run ever appears.
+    branches: [main, 'feat/**', 'fix/**', 'chore/**']
   pull_request:
 
 concurrency:
@@ -51,6 +57,12 @@ jobs:
       - name: Schema evolution is additive-only
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/check-migrations.mjs
+      # The CORS allowlist is EXACT, so it fails closed and silently — dropping
+      # an origin breaks that surface in the browser with nothing logged server
+      # side. This guards the deployed config; cors.test.ts guards the behaviour.
+      - name: CORS allowlist still covers every origin in use
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-cors-allowlist.mjs
       - run: npm install
       - run: npx tsc --noEmit
       - run: npm test

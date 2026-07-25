@@ -19,9 +19,22 @@
     "APP_ID": "platform",
     "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
     "API_VERSION": "v1",
-    // Config reads are public, non-secret DATA served to every app → '*'
-    // (leave empty to fall back to '*'; tighten if a private key ever ships).
-    "ALLOWED_ORIGINS": ""
+    // ⚠️ EXACT allowlist — no pattern matching, and an EMPTY value now DENIES
+    // every browser origin rather than falling back to '*'. This Worker is no
+    // longer config-read-only: it serves /v1/events and /v1/consent, and will
+    // serve entitlements and account deletion ([ADR 020]).
+    //
+    // EVERY NEW APP'S WEB ORIGIN MUST BE ADDED HERE AND THIS WORKER REDEPLOYED,
+    // or that app silently loses config resolution and analytics in the browser.
+    // The brick's post_gen checklist prints this as a required step.
+    //
+    //   subly.nikatru.com  — the live Subly web app
+    //   subly-9cp.pages.dev — its Cloudflare Pages preview domain (mirrors the
+    //                         same pair in services/subly-api)
+    //   localhost:3000      — the local Subly web dev server (.claude/launch.json).
+    //                         It fetches config.nikatru.com cross-origin from the
+    //                         browser, so omitting it breaks local web dev.
+    "ALLOWED_ORIGINS": "https://subly.nikatru.com,https://subly-9cp.pages.dev,http://localhost:3000"
   },
   "d1_databases": [
     {
