@@ -39,7 +39,11 @@ void run(HookContext context) {
       ..info('     (--location is CREATE-TIME ONLY and can never be changed.)')
       ..info('  3. cd services/$id-api && npm install && npm run db:migrate.')
       ..info('  4. Add DNS for $apiHost and the web subdomain $webHost.')
-      ..info('  5. cd apps/$id && flutter pub get && flutter analyze.')
+      ..info('  5. REQUIRED for the web build: add "https://$webHost" to '
+          'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
+          'The allowlist is EXACT — omit this and the app silently loses '
+          'config + analytics in the browser, with no server-side error.')
+      ..info('  6. cd apps/$id && flutter pub get && flutter analyze.')
       ..warn('This app claimed one of the TEN D1 databases the free tier '
           'allows per ACCOUNT (platform_db is another). If it does not really '
           'store user rows, re-stamp with needs_backend=false.');
@@ -49,7 +53,11 @@ void run(HookContext context) {
       ..info('  1. Fill apps/$id/app.yaml store metadata + brand assets.')
       ..info('  2. Add DNS for the web subdomain $webHost. No API host and no '
           'D1 database are needed — this app uses the shared platform Worker.')
-      ..info('  3. cd apps/$id && flutter pub get && flutter analyze.')
+      ..info('  3. REQUIRED for the web build: add "https://$webHost" to '
+          'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
+          'The allowlist is EXACT — omit this and the app silently loses '
+          'config + analytics in the browser, with no server-side error.')
+      ..info('  4. cd apps/$id && flutter pub get && flutter analyze.')
       ..info('No Worker, no database, no R2 bucket was stamped. If this app '
           'later needs to store user rows server-side, add them deliberately '
           'rather than re-stamping over local changes.');

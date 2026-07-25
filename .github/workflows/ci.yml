@@ -51,6 +51,12 @@ jobs:
       - name: Schema evolution is additive-only
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/check-migrations.mjs
+      # The CORS allowlist is EXACT, so it fails closed and silently — dropping
+      # an origin breaks that surface in the browser with nothing logged server
+      # side. This guards the deployed config; cors.test.ts guards the behaviour.
+      - name: CORS allowlist still covers every origin in use
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-cors-allowlist.mjs
       - run: npm install
       - run: npx tsc --noEmit
       - run: npm test
