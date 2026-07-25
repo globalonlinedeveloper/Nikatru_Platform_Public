@@ -1,0 +1,69 @@
+{
+  // ───────────────────────────────────────────────────────────────────────────
+  // Cloudflare Worker — {{app_id}}-api. Wrangler v4 / jsonc.
+  //
+  // THIS FILE ONLY EXISTS BECAUSE THE APP WAS STAMPED WITH needs_backend=true.
+  // The DEFAULT stamp is client-only: no Worker, no D1 and no R2 of its own —
+  // it talks to the ONE shared `platform` Worker for config, analytics,
+  // entitlements and account deletion.
+  //
+  // ── THE CLONE CONTRACT (what may and may not be per-app) ──────────────────
+  //   PER-APP   : APP_DB (this D1 only), ALLOWED_ORIGINS, APP_ID
+  //   SHARED    : PLATFORM_DB (one entitlements table for the whole portfolio),
+  //               JWKS_CACHE, SUPABASE_URL (one identity project),
+  //               R2 (ONE portfolio bucket keyed by an `<app_id>/` prefix — a
+  //               per-app bucket is never stamped)
+  //   NEVER HERE: MoR/payment webhooks. They terminate in `platform`, which
+  //               already owns `platform_db.entitlements` keyed by
+  //               (user_id, app_id, entitlement). N webhook endpoints would
+  //               mean N provider notification destinations and N copies of one
+  //               signing secret, for zero benefit.
+  //
+  // ⚠️ D1 FREE TIER = 10 DATABASES PER ACCOUNT, 5 GB TOTAL (verified against
+  //    developers.cloudflare.com/d1/platform/limits, 2026-07-25). platform_db is
+  //    one of them, so per-app databases are affordable for at most NINE apps
+  //    and the tenth stamp cannot create one at all. That is why a backend is
+  //    opt-in: the ceiling gets spent on apps that genuinely store user rows.
+  //
+  // After stamping:
+  //   wrangler d1 create {{app_id}}_db --location apac
+  //     → paste the id into APP_DB.database_id below.
+  //   `--location apac` matters: location_hint is CREATE-TIME ONLY and can
+  //   never be changed afterwards (company/requirements/architecture.md §18).
+  // Secrets are NOT set here (never committed): set with `wrangler secret put`.
+  // ───────────────────────────────────────────────────────────────────────────
+  "name": "{{app_id}}-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_ID": "{{app_id}}",
+    "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
+    "API_VERSION": "v1",
+    "ALLOWED_ORIGINS": "https://{{subdomain}}"
+  },
+  "d1_databases": [
+    {
+      // PER-APP. The only resource this Worker owns outright.
+      "binding": "APP_DB",
+      "database_name": "{{app_id}}_db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    },
+    {
+      // SHARED across the portfolio. `platform` is the sole migrations applier,
+      // so there is deliberately NO migrations_dir here.
+      "binding": "PLATFORM_DB",
+      "database_name": "platform_db",
+      "database_id": "9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351"
+    }
+  ],
+  "kv_namespaces": [
+    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
+  ]
+  // NO "r2_buckets" HERE ON PURPOSE. Object storage is ONE portfolio-wide
+  // bucket bound in `services/platform`, addressed with an `<app_id>/` key
+  // prefix. Stamping `{{app_id}}-exports` per app multiplied buckets, lifecycle
+  // rules and CORS policies by the number of apps in order to store the same
+  // kind of blob under a different name.
+}

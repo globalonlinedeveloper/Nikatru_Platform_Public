@@ -45,6 +45,11 @@ apps/subly/config/*.json
 
 # ── Node / Cloudflare / web (GLOBAL) ──
 **/node_modules/
+# Worker lockfiles are NOT tracked: the services/* CI lanes run `npm install`,
+# not `npm ci`, so a committed lock buys nothing and a loose one gets swept into
+# the next `git add -A`. (packages/tokens + sites/_shared DO track theirs and
+# use `npm ci` — those stay tracked; this rule is scoped to services/.)
+services/*/package-lock.json
 **/.wrangler/
 **/dist/
 **/_site/

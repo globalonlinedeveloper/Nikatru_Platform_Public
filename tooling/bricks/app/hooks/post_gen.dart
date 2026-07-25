@@ -12,6 +12,7 @@ void run(HookContext context) {
   final subdomain = (v['subdomain'] ?? '').toString();
   final apiDomain = (v['api_domain'] ?? '').toString();
   final tagline = (v['description'] ?? '').toString();
+  final needsBackend = v['needs_backend'] == true;
 
   _appendToAppsJson(
     context,
@@ -19,20 +20,40 @@ void run(HookContext context) {
     name: _shortName(displayName),
     tagline: tagline,
     url: subdomain.isEmpty ? '' : 'https://$subdomain',
-    api: apiDomain.isEmpty ? '' : 'https://$apiDomain',
+    // A client-only app has NO API host of its own — it calls the shared
+    // platform Worker. Writing `api-<app>.nikatru.com` here would publish a
+    // hostname that will never resolve into a PUBLIC catalog ([ADR 020]).
+    api: (!needsBackend || apiDomain.isEmpty) ? '' : 'https://$apiDomain',
   );
 
   final apiHost = apiDomain.isEmpty ? 'api-$id.nikatru.com' : apiDomain;
   final webHost = subdomain.isEmpty ? '$id.nikatru.com' : subdomain;
-  context.logger
-    ..info('')
-    ..success('Stamped $id (apps/$id + services/$id-api). Owner checklist:')
-    ..info('  1. Fill apps/$id/app.yaml store metadata + brand assets.')
-    ..info('  2. wrangler d1 create ${id}_db, then paste the id into '
-        'services/$id-api/wrangler.jsonc (APP_DB.database_id).')
-    ..info('  3. cd services/$id-api && npm install && npm run db:migrate.')
-    ..info('  4. Add DNS for $apiHost and the web subdomain $webHost.')
-    ..info('  5. cd apps/$id && flutter pub get && flutter analyze.');
+
+  context.logger.info('');
+  if (needsBackend) {
+    context.logger
+      ..success('Stamped $id (apps/$id + services/$id-api). Owner checklist:')
+      ..info('  1. Fill apps/$id/app.yaml store metadata + brand assets.')
+      ..info('  2. wrangler d1 create ${id}_db --location apac, then paste the '
+          'id into services/$id-api/wrangler.jsonc (APP_DB.database_id).')
+      ..info('     (--location is CREATE-TIME ONLY and can never be changed.)')
+      ..info('  3. cd services/$id-api && npm install && npm run db:migrate.')
+      ..info('  4. Add DNS for $apiHost and the web subdomain $webHost.')
+      ..info('  5. cd apps/$id && flutter pub get && flutter analyze.')
+      ..warn('This app claimed one of the TEN D1 databases the free tier '
+          'allows per ACCOUNT (platform_db is another). If it does not really '
+          'store user rows, re-stamp with needs_backend=false.');
+  } else {
+    context.logger
+      ..success('Stamped $id (apps/$id — CLIENT-ONLY). Owner checklist:')
+      ..info('  1. Fill apps/$id/app.yaml store metadata + brand assets.')
+      ..info('  2. Add DNS for the web subdomain $webHost. No API host and no '
+          'D1 database are needed — this app uses the shared platform Worker.')
+      ..info('  3. cd apps/$id && flutter pub get && flutter analyze.')
+      ..info('No Worker, no database, no R2 bucket was stamped. If this app '
+          'later needs to store user rows server-side, add them deliberately '
+          'rather than re-stamping over local changes.');
+  }
 }
 
 /// "Lingo — Offline Phrasebook" -> "Lingo".

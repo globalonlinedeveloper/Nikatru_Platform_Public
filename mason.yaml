@@ -1,6 +1,10 @@
 # Mason brick registry. Root-oriented: run from the repo root with `-o .` so a
-# stamp emits BOTH apps/<id>/ and services/<id>-api/ and appends to apps.json:
+# stamp lands in place and appends to sites/_shared/_data/apps.json:
 #   mason get && mason make app -c <vars>.json -o . --on-conflict overwrite
+#
+# The DEFAULT stamp emits only apps/<id>/ — client-only, no Worker, no D1, no R2
+# ([ADR 020]). It emits services/<id>-api/ as well ONLY when the vars file sets
+# "needs_backend": true, i.e. the app genuinely stores user rows server-side.
 bricks:
   app:
     path: tooling/bricks/app

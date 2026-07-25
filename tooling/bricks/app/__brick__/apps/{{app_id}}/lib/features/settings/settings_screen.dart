@@ -5,8 +5,13 @@ import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
 
 /// Settings — carries the chassis-mandated support contact (E1) and the
-/// in-app account-deletion entry (G2). The Worker-side delete route is wired
-/// by the services template (see services/{{app_id.snakeCase()}}-api).
+/// in-app account-deletion entry (G2).
+{{#needs_backend}}/// The Worker-side delete route lives in this app's own service
+/// (`services/{{app_id.snakeCase()}}-api`), which purges its APP_DB tables and
+/// delegates the shared rows to `platform`.
+{{/needs_backend}}{{^needs_backend}}/// This app is client-only, so deletion terminates in the SHARED `platform`
+/// Worker keyed by `app_id` — there is no per-app service to wire ([ADR 020]).
+{{/needs_backend}}
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 

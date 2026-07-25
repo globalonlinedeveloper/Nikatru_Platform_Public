@@ -23,10 +23,20 @@ import { readFileSync } from 'node:fs';
 import { glob } from 'node:fs/promises';
 
 /** Migration sets under guard. The brick's is included: it is the schema every
- *  future stamped app starts from, so a violation there scales to 50 apps. */
+ *  future stamped app starts from, so a violation there scales to 50 apps.
+ *  The brick pattern is deliberately loose (`**`) because the service subtree
+ *  sits under a Mustache conditional directory whose on-disk spelling is not
+ *  stable — a tighter glob silently stopped matching it once. */
 const PATTERNS = [
   'services/*/migrations/*.sql',
-  'tooling/bricks/app/__brick__/services/*/migrations/*.sql',
+  'tooling/bricks/**/migrations/*.sql',
+];
+
+/** Path fragments that MUST appear among the matched files. A guard whose
+ *  coverage quietly shrinks is worse than no guard: it still reports "clean". */
+const REQUIRED_COVERAGE = [
+  { fragment: 'services/platform', label: 'the shared platform_db migrations' },
+  { fragment: 'tooling/bricks', label: "the brick's starter schema" },
 ];
 
 /**
@@ -102,6 +112,21 @@ if (files.length === 0) {
   console.error('check-migrations: no migration files matched — is the guard pointed at the right paths?');
   process.exit(1);
 }
+
+// Coverage check BEFORE the content scan, so a moved directory fails loudly
+// instead of reporting "clean" over a set that no longer includes it.
+const normalised = files.map((f) => f.replaceAll('\\', '/'));
+let coverageMissing = 0;
+for (const { fragment, label } of REQUIRED_COVERAGE) {
+  if (!normalised.some((f) => f.includes(fragment))) {
+    console.error(
+      `check-migrations: COVERAGE LOST — no migration matched under "${fragment}" (${label}).\n` +
+        '    The files did not become safe; the guard stopped looking at them. Fix PATTERNS.',
+    );
+    coverageMissing++;
+  }
+}
+if (coverageMissing > 0) process.exit(1);
 
 for (const file of files) {
   const raw = readFileSync(file, 'utf8');

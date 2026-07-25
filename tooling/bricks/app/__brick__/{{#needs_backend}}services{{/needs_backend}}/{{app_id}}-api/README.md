@@ -8,11 +8,15 @@ Per-app backend for **{{display_name}}**, stamped from the NIKATRU app brick.
   entitlements. Extend `src/routes/account.ts` as you add user-owned tables.
 
 ## Bindings (wrangler.jsonc)
-- `APP_DB` — this app's D1 (`{{app_id}}_db`). Set `database_id` after
-  `wrangler d1 create {{app_id}}_db`.
+- `APP_DB` — this app's D1 (`{{app_id}}_db`). The ONLY per-app resource. Set
+  `database_id` after `wrangler d1 create {{app_id}}_db --location apac`
+  (`--location` is create-time-only and can never be changed afterwards).
 - `PLATFORM_DB` — shared entitlements DB (same id in every app).
 - `JWKS_CACHE` — shared KV caching the Supabase JWKS.
-- `EXPORTS` — R2 bucket for exports/receipts.
+
+There is deliberately **no R2 binding**. Object storage is ONE portfolio bucket
+bound in `services/platform`, addressed with an `<app_id>/` key prefix — see
+[ADR 020]. Payment/MoR webhooks also terminate in `platform`, never here.
 
 ## Develop
     npm install
