@@ -40,14 +40,27 @@ jobs:
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
-      # GTK + ninja are the Linux desktop toolchain. libmpv/libasound are NOT
-      # needed today (ADR 013 keeps media_kit off Linux for now) — add them here
-      # the moment a Linux media build is attempted, or CMake fails on
-      # PkgConfig::mpv with a misleading message.
+      # GTK + ninja are the Linux desktop toolchain.
+      #
+      # libsecret-1-dev + libjsoncpp-dev are NOT optional: flutter_secure_storage
+      # (our SecureStore impl, ADR 005) binds a NATIVE secure-storage library on
+      # every desktop platform, and the runner image ships none of them. Without
+      # it CMake fails with `libsecret-1>=0.18.4 not found` from
+      # flutter_secure_storage_linux/linux/CMakeLists.txt:15.
+      #
+      # Same root cause as the Windows failure on the owner's box, where the
+      # equivalent dependency is the VS ATL component (atlstr.h). One package
+      # choice, two platform-native prerequisites.
+      #
+      # libmpv/libasound are NOT needed today (ADR 013 keeps media_kit off
+      # Linux) — add them the moment a Linux media build is attempted, or CMake
+      # fails on PkgConfig::mpv with an equally misleading message.
       - name: Linux build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev
       # apps/subly is a pub WORKSPACE member: resolution happens at the repo
       # root, not in the app directory.
       - name: Resolve the workspace
