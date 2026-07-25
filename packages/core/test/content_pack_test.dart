@@ -11,26 +11,49 @@ class _FakeVerifier implements PackVerifier {
   final bool result;
   @override
   Future<bool> verify({
+    required String keyId,
     required List<int> message,
     required List<int> signature,
   }) async =>
       result;
 }
 
+/// A verifier that records the `key_id` it was asked to verify under, proving
+/// the loader routes key selection to the impl (ADR 016).
+class _KeyCapturingVerifier implements PackVerifier {
+  String? seenKeyId;
+  @override
+  Future<bool> verify({
+    required String keyId,
+    required List<int> message,
+    required List<int> signature,
+  }) async {
+    seenKeyId = keyId;
+    return true;
+  }
+}
+
 List<int> _b(String s) => utf8.encode(s);
 String _sha(List<int> bytes) => sha256.convert(bytes).toString();
 
+/// The throwaway pinned-key map used by the remote-path tests. Production pins
+/// the real keys in `kContentPackPublicKeys`, which is empty until S-3.
+const Map<String, String> _testKeys = <String, String>{'k1': 'dGVzdC1rZXk='};
+
 /// A well-formed pack source with a matching content hash. [tamperContent]
 /// corrupts content.json AFTER the manifest hash is computed (hash mismatch);
-/// omit [sig] to drop the signature entry.
+/// omit [includeSig] to drop the signature entry; [keyId] sets/clears the
+/// manifest's ADR-016 signing-key id.
 InMemoryContentPackSource _pack({
   bool tamperContent = false,
   bool includeSig = true,
+  String? keyId = 'k1',
 }) {
   final List<int> content = _b('{"en":{"hello":"Hi"},"fr":{"hello":"Salut"}}');
   final List<int> manifest = _b(jsonEncode(<String, Object?>{
     'pack_id': 'lingo',
     'version': '1.2.0',
+    if (keyId != null) 'key_id': keyId,
     'content_hash': _sha(content),
     'locales': <String>['en', 'fr'],
     'generators': <String>['gemini-x'],
@@ -49,6 +72,7 @@ InMemoryContentPackSource _hashlessPack() {
   final List<int> manifest = _b(jsonEncode(<String, Object?>{
     'pack_id': 'lingo',
     'version': '1.0.0', // no content_hash
+    'key_id': 'k1',
   }));
   return InMemoryContentPackSource(<String, List<int>>{
     'manifest.json': manifest,
@@ -114,8 +138,8 @@ void main() {
         () async {
       // A validly-signed but hash-less manifest must NOT leave content.json
       // unverified on the untrusted remote path (ADR 007: sig AND hash).
-      const ContentPackLoader loader =
-          ContentPackLoader(verifier: _FakeVerifier(true));
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
       final Result<ContentPack> r =
           await loader.loadFrom(_hashlessPack(), requireSignature: true);
       expect(r.isOk, isFalse);
@@ -129,24 +153,24 @@ void main() {
     });
 
     test('remote pack requires a signature — missing sig rejected', () async {
-      const ContentPackLoader loader =
-          ContentPackLoader(verifier: _FakeVerifier(true));
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
       final Result<ContentPack> r = await loader
           .loadFrom(_pack(includeSig: false), requireSignature: true);
       expect(r.isOk, isFalse);
     });
 
     test('remote pack with an invalid signature is rejected', () async {
-      const ContentPackLoader loader =
-          ContentPackLoader(verifier: _FakeVerifier(false));
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(false), pinnedKeys: _testKeys);
       final Result<ContentPack> r =
           await loader.loadFrom(_pack(), requireSignature: true);
       expect(r.isOk, isFalse);
     });
 
     test('remote pack with a valid signature + matching hash loads', () async {
-      const ContentPackLoader loader =
-          ContentPackLoader(verifier: _FakeVerifier(true));
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
       final Result<ContentPack> r =
           await loader.loadFrom(_pack(), requireSignature: true);
       expect(r.isOk, isTrue);
@@ -174,8 +198,8 @@ void main() {
 
   group('ContentPackLoader.load (two-tier policy)', () {
     test('returns the verified remote pack when valid', () async {
-      const ContentPackLoader loader =
-          ContentPackLoader(verifier: _FakeVerifier(true));
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
       final Result<ContentPack> r =
           await loader.load(remote: _pack(), bundled: _pack());
       expect(r.isOk, isTrue);
@@ -183,8 +207,8 @@ void main() {
 
     test('falls back to the bundled base when the remote fails verification',
         () async {
-      // Default RejectingPackVerifier => the remote signature never validates,
-      // so the trusted bundled base must load instead.
+      // Default loader: no pinned keys AND a RejectingPackVerifier => the
+      // remote pack never validates, so the trusted bundled base loads instead.
       const ContentPackLoader loader = ContentPackLoader();
       final Result<ContentPack> r =
           await loader.load(remote: _pack(), bundled: _pack());
@@ -202,15 +226,86 @@ void main() {
     });
   });
 
-  group('pinned key + rejecting verifier', () {
-    test('key is unconfigured until S-3 lands', () {
+  // ── ADR 016: key_id rotation. These lock the format BEFORE the first pack
+  //    ships — after that, released binaries can't be taught the field. ──
+  group('ADR 016 key_id', () {
+    test('a remote manifest with NO key_id is rejected', () async {
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
+      final Result<ContentPack> r =
+          await loader.loadFrom(_pack(keyId: null), requireSignature: true);
+      expect(r.isOk, isFalse);
+    });
+
+    test('a remote manifest naming an UNPINNED key_id is rejected', () async {
+      // Fail-closed even with a permissive verifier: the loader refuses before
+      // verification, so a rotated-out (or attacker-chosen) key can't be used.
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
+      final Result<ContentPack> r =
+          await loader.loadFrom(_pack(keyId: 'k99'), requireSignature: true);
+      expect(r.isOk, isFalse);
+    });
+
+    test('the manifest key_id is handed to the verifier for key selection',
+        () async {
+      final _KeyCapturingVerifier v = _KeyCapturingVerifier();
+      final ContentPackLoader loader =
+          ContentPackLoader(verifier: v, pinnedKeys: _testKeys);
+      final Result<ContentPack> r =
+          await loader.loadFrom(_pack(), requireSignature: true);
+      expect(r.isOk, isTrue);
+      expect(v.seenKeyId, 'k1');
+    });
+
+    test('a trusted BUNDLED pack may omit key_id (never signature-checked)',
+        () async {
+      const ContentPackLoader loader = ContentPackLoader();
+      final Result<ContentPack> r =
+          await loader.loadFrom(_pack(keyId: null), requireSignature: false);
+      expect(r.isOk, isTrue);
+    });
+
+    test('key_id survives the manifest JSON round-trip', () {
+      const ContentPackManifest m = ContentPackManifest(
+          packId: 'lingo', version: '1.0.0', contentHash: 'abc', keyId: 'k2');
+      expect(m.toJson()['key_id'], 'k2');
+      expect(ContentPackManifest.fromJson(m.toJson()).keyId, 'k2');
+      // Absent / wrong-typed key_id parses to '' rather than throwing — the
+      // LOADER decides whether that is fatal (remote) or fine (bundled).
+      expect(
+          ContentPackManifest.fromJson(<String, Object?>{
+            'pack_id': 'x',
+            'version': '1.0.0',
+            'key_id': 7,
+          }).keyId,
+          isEmpty);
+    });
+  });
+
+  group('pinned keys + rejecting verifier', () {
+    test('no key is pinned until S-3 lands', () {
       expect(isContentPackKeyConfigured, isFalse);
-      expect(kContentPackPublicKeyBase64, isEmpty);
+      expect(kContentPackPublicKeys, isEmpty);
+      expect(contentPackPublicKeyFor('k1'), isNull);
+    });
+
+    test('an unpinned key_id fails closed against the REAL pinned map',
+        () async {
+      // Guards the production default: with kContentPackPublicKeys empty, no
+      // remote pack can load no matter what verifier an app layer injects.
+      const ContentPackLoader loader =
+          ContentPackLoader(verifier: _FakeVerifier(true));
+      final Result<ContentPack> r =
+          await loader.loadFrom(_pack(), requireSignature: true);
+      expect(r.isOk, isFalse);
     });
 
     test('RejectingPackVerifier refuses everything', () async {
       const PackVerifier v = RejectingPackVerifier();
-      expect(await v.verify(message: <int>[1], signature: <int>[2]), isFalse);
+      expect(
+          await v.verify(keyId: 'k1', message: <int>[1], signature: <int>[2]),
+          isFalse);
     });
   });
 }

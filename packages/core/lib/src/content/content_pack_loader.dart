@@ -9,15 +9,24 @@ import 'pack_verifier.dart';
 
 /// Loads a verified content pack (ADR 007): a remote pack is Ed25519-signature-
 /// AND content-hash-verified before use; on any failure the loader falls back to
-/// the trusted bundled base pack, then to offline ([Err]). The public key is
-/// pinned in `core`; Ed25519 verification is injected via a [PackVerifier], so
-/// `core` needs no crypto-signing dependency (only sha256 for the hash check).
+/// the trusted bundled base pack, then to offline ([Err]). The public keys are
+/// pinned in `core` by `key_id` (ADR 016); Ed25519 verification is injected via
+/// a [PackVerifier], so `core` needs no crypto-signing dependency (only sha256
+/// for the hash check).
 class ContentPackLoader {
   const ContentPackLoader({
     PackVerifier verifier = const RejectingPackVerifier(),
-  }) : _verifier = verifier;
+    Map<String, String> pinnedKeys = kContentPackPublicKeys,
+  })  : _verifier = verifier,
+        _pinnedKeys = pinnedKeys;
 
   final PackVerifier _verifier;
+
+  /// The `key_id → public key` map this loader trusts (ADR 016). Defaults to
+  /// the pinned [kContentPackPublicKeys]; overridable ONLY so tests can pin a
+  /// throwaway key. Same trust model as the injected [PackVerifier] — an app
+  /// layer must never narrow or widen it.
+  final Map<String, String> _pinnedKeys;
 
   /// Two-tier load: the verified [remote] pack if available and valid, otherwise
   /// the trusted [bundled] base pack, otherwise [Err] (offline, no bundled base).
@@ -65,13 +74,28 @@ class ContentPackLoader {
     }
 
     if (requireSignature) {
+      // ADR 016: an untrusted pack must name the key that signed it, and that
+      // key must be pinned in THIS build. Both checks happen here, before the
+      // injected verifier runs, so the fail-closed posture holds even if an app
+      // layer ever supplies a lax PackVerifier.
+      if (manifest.keyId.isEmpty) {
+        return const Result<ContentPack>.err(
+            Failure('content pack: remote manifest missing key_id'));
+      }
+      if (_pinnedKeys[manifest.keyId] == null) {
+        return Result<ContentPack>.err(
+            Failure('content pack: unknown key_id "${manifest.keyId}"'));
+      }
       final List<int>? sig = await source.read('manifest.sig');
       if (sig == null) {
         return const Result<ContentPack>.err(
             Failure('content pack: missing manifest.sig'));
       }
-      final bool ok =
-          await _verifier.verify(message: manifestBytes, signature: sig);
+      final bool ok = await _verifier.verify(
+        keyId: manifest.keyId,
+        message: manifestBytes,
+        signature: sig,
+      );
       if (!ok) {
         return const Result<ContentPack>.err(
             Failure('content pack: signature verification failed'));
