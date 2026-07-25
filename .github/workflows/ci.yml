@@ -44,6 +44,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # Additive-only schema guard. Lives in this lane (no new lane) but scans
+      # EVERY migration set in the repo — one shared platform_db means one
+      # destructive migration is a portfolio-wide outage. Runs before the build
+      # so a banned statement fails fast.
+      - name: Schema evolution is additive-only
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/check-migrations.mjs
       - run: npm install
       - run: npx tsc --noEmit
       - run: npm test

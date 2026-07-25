@@ -147,6 +147,10 @@ void main() {
       expect(d.contentPack, isNull);
       expect(d.copy, isEmpty);
       expect(d.minSupportedVersion, '1.0.0');
+      // `flags` is now TYPED on the server too (services/platform/src/types.ts
+      // + config.ts `flags: {}`). The mirror lives in that Worker's
+      // config.test.ts, so adding a config field on either side fails the other.
+      expect(d.flags, isEmpty);
     });
 
     test('unregistered app has no default', () {

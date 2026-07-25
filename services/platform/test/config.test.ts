@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baseConfig, mergeConfig, resolveConfig } from '../src/config';
+import { DEFAULT_CONFIGS, baseConfig, mergeConfig, resolveConfig } from '../src/config';
 
 describe('CFG-1 config resolution', () => {
   it('returns compiled defaults for a known app', () => {
@@ -57,5 +57,45 @@ describe('CFG-1 config resolution', () => {
     const base = baseConfig('subly')!;
     expect(mergeConfig(base, null)).toEqual(base);
     expect(mergeConfig(base, undefined)).toEqual(base);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contract drift. `packages/core` pins the Dart side against these values; this
+// is the mirror, so adding a field on EITHER side fails the other's lane. The
+// `flags` asymmetry (parsed by the Dart client, untyped on the server, reaching
+// clients only through an unvalidated KV override) is exactly what this catches.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('AppConfig contract (mirrors packages/core AppConfig)', () => {
+  const REQUIRED_KEYS = [
+    'app_id',
+    'api_base_url',
+    'features',
+    'flags',
+    'paywall',
+    'content_pack',
+    'copy',
+    'min_supported_version',
+  ] as const;
+
+  it('every compiled-in default carries the full key set', () => {
+    for (const [appId, cfg] of Object.entries(DEFAULT_CONFIGS)) {
+      const keys = Object.keys(cfg);
+      for (const k of REQUIRED_KEYS) {
+        expect(keys, `${appId} is missing "${k}"`).toContain(k);
+      }
+      // No stray keys: an untyped extra here would ship to every client.
+      for (const k of keys) {
+        expect([...REQUIRED_KEYS, 'theme'], `${appId} has unexpected "${k}"`).toContain(k);
+      }
+    }
+  });
+
+  it('flags is a typed percentage map that a KV override can set', () => {
+    expect(baseConfig('subly')!.flags).toEqual({});
+    const merged = resolveConfig('subly', JSON.stringify({ flags: { new_home: 25 } }))!;
+    expect(merged.flags.new_home).toBe(25);
+    // and the default stays pristine for the next resolve
+    expect(baseConfig('subly')!.flags).toEqual({});
   });
 });

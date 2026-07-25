@@ -19,14 +19,16 @@ class ContentAsset {
       <String, Object?>{'path': path, 'sha256': sha256};
 }
 
-/// The signed manifest of a content pack: identity + semver, the content
-/// integrity hash, per-asset hashes, generator provenance and locales. The
-/// Ed25519 signature (`manifest.sig`) is computed over the manifest bytes.
+/// The signed manifest of a content pack: identity + semver, the signing
+/// `key_id`, the content integrity hash, per-asset hashes, generator provenance
+/// and locales. The Ed25519 signature (`manifest.sig`) is computed over the
+/// manifest bytes.
 class ContentPackManifest {
   const ContentPackManifest({
     required this.packId,
     required this.version,
     required this.contentHash,
+    this.keyId = '',
     this.assets = const <ContentAsset>[],
     this.generators = const <String>[],
     this.locales = const <String>[],
@@ -37,6 +39,13 @@ class ContentPackManifest {
 
   /// Semantic version of this immutable pack.
   final String version;
+
+  /// Which pinned Ed25519 key signed this manifest (ADR 016) — the client looks
+  /// it up in `kContentPackPublicKeys`. Empty on a trusted BUNDLED pack (never
+  /// signature-checked); MANDATORY on any remote pack, where an empty or
+  /// unpinned `key_id` is rejected. Present from day one so a compromised key
+  /// can be rotated without stranding already-released binaries.
+  final String keyId;
 
   /// sha256 (lower-case hex) of `content.json` — the Merkle root also covers the
   /// per-asset hashes once asset loading is wired.
@@ -67,6 +76,9 @@ class ContentPackManifest {
       version: ver,
       contentHash:
           j['content_hash'] is String ? j['content_hash']! as String : '',
+      // Lenient parse: an absent/wrong-typed key_id becomes '' and the LOADER
+      // decides — '' is legal for a bundled pack and fatal for a remote one.
+      keyId: j['key_id'] is String ? j['key_id']! as String : '',
       assets: _list(j['assets'])
           .whereType<Map<Object?, Object?>>()
           .map((Map<Object?, Object?> m) =>
@@ -80,6 +92,7 @@ class ContentPackManifest {
   Map<String, Object?> toJson() => <String, Object?>{
         'pack_id': packId,
         'version': version,
+        'key_id': keyId,
         'content_hash': contentHash,
         'assets': assets.map((ContentAsset a) => a.toJson()).toList(),
         'generators': generators,

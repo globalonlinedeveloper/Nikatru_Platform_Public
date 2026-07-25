@@ -37,11 +37,83 @@ export interface AppConfig {
   app_id: string;
   api_base_url: string;
   features: Record<string, boolean>;
+  /**
+   * Percentage-rollout flags, `name → 0..100`. Distinct from `features`, which
+   * is a hard on/off toggle: the client resolves these per-install with
+   * `resolveFlag`/`FeatureFlags` (core, G-14) against its stable install id.
+   *
+   * TYPED HERE ON PURPOSE. Flags previously reached clients only through the
+   * untyped KV override, which `deepMerge` passes through unvalidated — so the
+   * server had no idea this key existed while the Dart `AppConfig` already
+   * parsed it. Typing it now is free; doing it once apps depend on live
+   * overrides is a coordinated client+server change.
+   */
+  flags: Record<string, number>;
   paywall: { enabled: boolean; [k: string]: unknown };
   content_pack: string | null;
   copy: Record<string, string>;
   min_supported_version: string;
   theme?: Record<string, unknown>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Analytics (ADR 011 / G-12). The wire envelope + row shapes are LOCKED here and
+// in migrations/0002_analytics.sql; the /v1/events route lands with G-12.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One client-sent analytics event. Mirrors `company/requirements/analytics-events.md`. */
+export interface AnalyticsEvent {
+  /** Client UUIDv4 — the exactly-once key. Batches retry, so ingest dedups. */
+  event_id: string;
+  /**
+   * Pseudonymous per-install id. MUST be the same value the client buckets
+   * feature flags with (the brick's `installIdProvider`) — two ids make every
+   * %-rollout permanently unmeasurable. Never a device advertising id.
+   */
+  anon_id: string;
+  /** Rotates after ~30 min idle. */
+  session_id?: string;
+  platform?: string;
+  app_version?: string;
+  /** Event name from the locked taxonomy. */
+  event: string;
+  /** Client clock — untrusted; the edge stamps the authoritative `server_ts`. */
+  ts?: string;
+  /** Enumerable values ONLY: no free text, no user content, no exact location. */
+  params?: Record<string, string | number | boolean>;
+  /** The consent artifact in force when this event was collected. */
+  consent_id?: string;
+}
+
+/** POST /v1/events body: `app_id` once, events batched. */
+export interface AnalyticsBatch {
+  app_id: string;
+  events: AnalyticsEvent[];
+}
+
+/** A DPDP consent grant/withdrawal. Append-only: withdrawal is a NEW row. */
+export interface ConsentArtifact {
+  consent_id: string;
+  anon_id: string;
+  /** 'analytics' | 'sync_backup' | … */
+  purpose: string;
+  granted: boolean;
+  /** Which privacy-policy version the user was shown. */
+  policy_version: string;
+  app_version?: string;
+  platform?: string;
+  ts?: string;
+}
+
+/**
+ * Coarse geo derived from the `request.cf` object. NEVER from an IP header —
+ * `CF-Connecting-IP` is dropped at the edge and never stored, which makes rows
+ * pseudonymous rather than anonymous (say so in the privacy policy).
+ */
+export interface EdgeGeo {
+  country?: string;
+  region?: string;
+  city?: string;
 }
 
 /** A subscription row (subset used by the renewals fan-out). */

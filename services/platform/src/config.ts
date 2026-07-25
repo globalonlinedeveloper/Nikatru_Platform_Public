@@ -16,6 +16,7 @@ export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = {
     app_id: 'subly',
     api_base_url: 'https://api.nikatru.com/v1',
     features: { renewals: true, budgets: true, exports: true },
+    flags: {},
     paywall: { enabled: false },
     content_pack: null,
     copy: {},
