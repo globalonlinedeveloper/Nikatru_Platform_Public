@@ -92,7 +92,7 @@ events.post('/events', async (c) => {
   const appId = str(body?.app_id, MAX_ID_LEN);
   const list = Array.isArray(body?.events) ? body.events : [];
   if (!appId) return c.json({ error: 'missing_app_id' }, 400);
-  if (list.length === 0) return c.json({ ok: true, accepted: 0 });
+  if (list.length === 0) return c.json({ ok: true, received: 0 });
   if (list.length > MAX_EVENTS_PER_BATCH) {
     return c.json({ error: 'batch_too_large' }, 413);
   }
@@ -100,10 +100,9 @@ events.post('/events', async (c) => {
   // Bucket by app + install so one noisy client cannot starve the portfolio.
   const firstAnon = str(list[0]?.anon_id, MAX_ID_LEN) ?? 'unknown';
   if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `${appId}:${firstAnon}`))) {
-    // 202, not 429: the client already holds these events and retrying a
-    // rejected batch forever is worse than shedding it. Telling it "accepted"
-    // while dropping would be a lie, so we say so explicitly.
-    return c.json({ ok: false, error: 'rate_limited', accepted: 0 }, 429);
+    // 429 with ok:false and received:0 — an honest rejection. The client keeps
+    // its queue and retries later; pretending we took the batch would lose it.
+    return c.json({ ok: false, error: 'rate_limited', received: 0 }, 429);
   }
 
   const geo = edgeGeo(c);
@@ -145,7 +144,7 @@ events.post('/events', async (c) => {
       ),
     );
   }
-  if (rows.length === 0) return c.json({ ok: true, accepted: 0 });
+  if (rows.length === 0) return c.json({ ok: true, received: 0 });
 
   try {
     await c.env.PLATFORM_DB.batch(rows);
@@ -154,7 +153,12 @@ events.post('/events', async (c) => {
     // 503 so the client KEEPS the batch and retries — dedup makes that safe.
     return c.json({ error: 'ingest_failed' }, 503);
   }
-  return c.json({ ok: true, accepted: rows.length });
+  // `received`, NOT `accepted`: this is the count of well-formed events taken
+  // in, which is not the number of rows inserted — duplicates are dropped by
+  // ON CONFLICT and D1's batch does not report per-statement row counts. Live
+  // verification sent 2 events sharing one event_id and correctly stored 1, so
+  // a field named "accepted" would have overstated what happened.
+  return c.json({ ok: true, received: rows.length });
 });
 
 events.post('/consent', async (c) => {

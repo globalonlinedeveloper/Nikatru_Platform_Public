@@ -123,7 +123,7 @@ describe('POST /v1/events — ingest', () => {
       app_id: 'subly',
       events: [ev(), { anon_id: 'x' }, ev({ event_id: 'b'.repeat(9), event: '' })],
     });
-    expect(await res.json()).toEqual({ ok: true, accepted: 1 });
+    expect(await res.json()).toEqual({ ok: true, received: 1 });
     expect(db.batched).toBe(1);
   });
 
