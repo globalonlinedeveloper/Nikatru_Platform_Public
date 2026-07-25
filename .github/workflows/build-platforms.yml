@@ -1,0 +1,135 @@
+name: Build all 6 platforms
+
+# Proves the portfolio's core claim — ONE codebase, SIX platforms — on real
+# runners. Deliberately NOT on every push: six builds is minutes of runner time
+# and the per-push signal is already covered by `ci.yml`. Run it on demand, and
+# before any release.
+#
+# WHY THIS EXISTS AT ALL: three of the six cannot be built on the owner's
+# Windows box.
+#   • macOS + iOS  — impossible on Windows, full stop. Needs Apple toolchain.
+#   • Android      — BROKEN locally: `java.io.IOException: Unable to establish
+#                    loopback connection`, fails at Gradle startup in ~4s and
+#                    persists with the daemon disabled. Environmental.
+#   • Windows      — blocked locally until the VS ATL component is installed
+#                    (`atlstr.h` missing → flutter_secure_storage_windows won't
+#                    compile). Green here because GitHub's runner ships ATL.
+# Web and Linux do build locally; they run here too so one green run answers
+# "does it build everywhere" without caveats.
+
+on:
+  workflow_dispatch:
+  # Also gate release tags, where "it built on my machine" is not good enough.
+  push:
+    tags: ['subly-v*']
+
+env:
+  FLUTTER_VERSION: '3.44.7'
+
+jobs:
+  linux_web_android:
+    name: Linux + Web + Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      # GTK + ninja are the Linux desktop toolchain. libmpv/libasound are NOT
+      # needed today (ADR 013 keeps media_kit off Linux for now) — add them here
+      # the moment a Linux media build is attempted, or CMake fails on
+      # PkgConfig::mpv with a misleading message.
+      - name: Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+      # apps/subly is a pub WORKSPACE member: resolution happens at the repo
+      # root, not in the app directory.
+      - name: Resolve the workspace
+        run: flutter pub get
+      - name: Build web
+        working-directory: apps/subly
+        run: flutter build web --release
+      - name: Build linux
+        working-directory: apps/subly
+        run: flutter build linux --release
+      # Release APK with no key.properties falls back to debug signing — fine
+      # for a BUILD check. Real signing arrives with the release keystore.
+      - name: Build android (apk)
+        working-directory: apps/subly
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subly-linux-web-android
+          path: |
+            apps/subly/build/app/outputs/flutter-apk/*.apk
+            apps/subly/build/linux/x64/release/bundle
+          retention-days: 7
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Resolve the workspace
+        run: flutter pub get
+      - name: Build windows
+        working-directory: apps/subly
+        run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subly-windows
+          path: apps/subly/build/windows/x64/runner/Release
+          retention-days: 7
+          if-no-files-found: error
+
+  apple:
+    name: macOS + iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Resolve the workspace
+        run: flutter pub get
+      - name: Build macos
+        working-directory: apps/subly
+        run: flutter build macos --release
+      # --no-codesign: this proves the code COMPILES for iOS without needing an
+      # Apple Developer account or provisioning profile. Signing is a separate,
+      # owner-gated step and must not block build verification.
+      - name: Build ios (no codesign)
+        working-directory: apps/subly
+        run: flutter build ios --release --no-codesign
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subly-macos
+          path: apps/subly/build/macos/Build/Products/Release
+          retention-days: 7
+          if-no-files-found: error
+
+  all_platforms:
+    name: all-platforms
+    runs-on: ubuntu-latest
+    needs: [linux_web_android, windows, apple]
+    if: always()
+    steps:
+      - name: Require every platform green
+        run: |
+          echo "linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }}"
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "::error::One or more platform builds failed"; exit 1
+          fi
+          echo "All 6 platforms built"

@@ -91,3 +91,8 @@ services/probe-api/
 # Mason local brick cache
 .mason/
 mason-lock.json
+
+# Flutter platform build outputs (scaffolded 2026-07-25)
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/macos/Flutter/ephemeral/
