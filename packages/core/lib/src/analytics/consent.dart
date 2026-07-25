@@ -1,0 +1,189 @@
+import 'dart:convert';
+
+import '../storage/key_value_store.dart';
+import 'ids.dart';
+
+/// What a consent decision covers. Consent is **per purpose**, never a single
+/// blanket flag — a user who accepts analytics has not thereby accepted cloud
+/// backup of their data.
+class ConsentPurpose {
+  const ConsentPurpose(this.value);
+  final String value;
+
+  static const ConsentPurpose analytics = ConsentPurpose('analytics');
+  static const ConsentPurpose syncBackup = ConsentPurpose('sync_backup');
+
+  @override
+  String toString() => value;
+}
+
+/// Where a purpose currently stands. [unknown] is the launch state and is
+/// **not** consent: nothing may be collected until it becomes [granted].
+enum ConsentStatus { unknown, granted, denied }
+
+/// One consent decision, as stored. APPEND-ONLY: a withdrawal is a NEW artifact
+/// with [granted] false, never a mutation of the old one — the audit trail is
+/// the artifact, and it is what a DPDP §6(3) withdrawal has to reference.
+///
+/// Deliberately carries NO IP and NO device fingerprint. A record that proves
+/// compliance must not itself be a tracking record.
+class ConsentArtifact {
+  const ConsentArtifact({
+    required this.consentId,
+    required this.purpose,
+    required this.granted,
+    required this.policyVersion,
+    required this.anonId,
+    required this.ts,
+    this.appVersion,
+    this.platform,
+  });
+
+  /// Client-generated UUIDv4 — the idempotency key, and what each event's
+  /// `consent_id` points at.
+  final String consentId;
+  final String purpose;
+  final bool granted;
+
+  /// Which privacy policy the user was actually shown. Without this the record
+  /// proves someone tapped a button, not what they agreed to.
+  final String policyVersion;
+
+  /// The same pseudonymous per-install id events carry.
+  final String anonId;
+  final DateTime ts;
+  final String? appVersion;
+  final String? platform;
+
+  factory ConsentArtifact.create({
+    required ConsentPurpose purpose,
+    required bool granted,
+    required String policyVersion,
+    required String anonId,
+    required DateTime now,
+    String? appVersion,
+    String? platform,
+  }) =>
+      ConsentArtifact(
+        consentId: uuidV4(),
+        purpose: purpose.value,
+        granted: granted,
+        policyVersion: policyVersion,
+        anonId: anonId,
+        ts: now,
+        appVersion: appVersion,
+        platform: platform,
+      );
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'consent_id': consentId,
+        'purpose': purpose,
+        'granted': granted,
+        'policy_version': policyVersion,
+        'anon_id': anonId,
+        'ts': ts.toUtc().toIso8601String(),
+        if (appVersion != null) 'app_version': appVersion,
+        if (platform != null) 'platform': platform,
+      };
+
+  static ConsentArtifact? tryFromJson(Map<String, Object?> j) {
+    final Object? id = j['consent_id'];
+    final Object? purpose = j['purpose'];
+    final Object? ts = j['ts'];
+    if (id is! String || purpose is! String || ts is! String) return null;
+    final DateTime? parsed = DateTime.tryParse(ts);
+    if (parsed == null) return null;
+    return ConsentArtifact(
+      consentId: id,
+      purpose: purpose,
+      granted: j['granted'] == true,
+      policyVersion:
+          j['policy_version'] is String ? j['policy_version']! as String : '',
+      anonId: j['anon_id'] is String ? j['anon_id']! as String : '',
+      ts: parsed,
+      appVersion:
+          j['app_version'] is String ? j['app_version'] as String : null,
+      platform: j['platform'] is String ? j['platform'] as String : null,
+    );
+  }
+}
+
+/// The consent seam. Holds the CURRENT decision per purpose, durably, and hands
+/// out the artifact that collection must reference.
+///
+/// FAIL-CLOSED: an unreadable or absent store resolves to [ConsentStatus.unknown],
+/// which blocks collection. A storage failure must never be readable as consent.
+class ConsentController {
+  ConsentController({
+    required KeyValueStore store,
+    String keyPrefix = 'nikatru.consent.',
+  })  : _store = store,
+        _keyPrefix = keyPrefix;
+
+  final KeyValueStore _store;
+  final String _keyPrefix;
+  final Map<String, ConsentArtifact> _cache = <String, ConsentArtifact>{};
+
+  String _key(ConsentPurpose p) => '$_keyPrefix${p.value}';
+
+  /// Load the persisted decision for [purpose] into memory. Call once at start
+  /// up before consulting [statusOf].
+  Future<ConsentStatus> hydrate(ConsentPurpose purpose) async {
+    try {
+      final String? raw = await _store.read(_key(purpose));
+      if (raw == null || raw.isEmpty) return ConsentStatus.unknown;
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is! Map) return ConsentStatus.unknown;
+      final ConsentArtifact? a =
+          ConsentArtifact.tryFromJson(decoded.cast<String, Object?>());
+      if (a == null) return ConsentStatus.unknown;
+      _cache[purpose.value] = a;
+      return a.granted ? ConsentStatus.granted : ConsentStatus.denied;
+    } catch (_) {
+      // Corrupt or unreadable ⇒ unknown ⇒ nothing is collected.
+      return ConsentStatus.unknown;
+    }
+  }
+
+  /// The in-memory decision. [ConsentStatus.unknown] until [hydrate] or
+  /// [record] has run — and unknown never permits collection.
+  ConsentStatus statusOf(ConsentPurpose purpose) {
+    final ConsentArtifact? a = _cache[purpose.value];
+    if (a == null) return ConsentStatus.unknown;
+    return a.granted ? ConsentStatus.granted : ConsentStatus.denied;
+  }
+
+  /// The artifact currently in force for [purpose], or null.
+  ConsentArtifact? artifactOf(ConsentPurpose purpose) => _cache[purpose.value];
+
+  /// Record a NEW decision. Returns the artifact so the caller can ship it to
+  /// the server. Persisting is best-effort: an in-memory grant still applies to
+  /// this session, and a failed write only means the prompt reappears next
+  /// launch — the safe direction.
+  Future<ConsentArtifact> record(
+    ConsentPurpose purpose, {
+    required bool granted,
+    required String policyVersion,
+    required String anonId,
+    required DateTime now,
+    String? appVersion,
+    String? platform,
+  }) async {
+    final ConsentArtifact a = ConsentArtifact.create(
+      purpose: purpose,
+      granted: granted,
+      policyVersion: policyVersion,
+      anonId: anonId,
+      now: now,
+      appVersion: appVersion,
+      platform: platform,
+    );
+    _cache[purpose.value] = a;
+    try {
+      await _store.write(_key(purpose), jsonEncode(a.toJson()));
+    } catch (_) {
+      // best-effort
+    }
+    return a;
+  }
+}

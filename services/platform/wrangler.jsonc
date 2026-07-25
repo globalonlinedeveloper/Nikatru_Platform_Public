@@ -43,6 +43,19 @@
     // Edge-cached per-app config overrides (key: `config:<app>`).
     { "binding": "CONFIG_KV", "id": "33e4e58abb644d0e917a159227c6c134" }
   ],
+  "ratelimits": [
+    {
+      // Cost circuit breaker for /v1/events (G-12). NOT a KV counter: KV is
+      // eventually consistent with a ~60s edge cache, so under the exact burst
+      // a breaker exists to stop, a KV counter reads stale and lets it through.
+      // 120 requests/min per (app_id, anon_id) is far above any honest client
+      // (the SDK batches 20 events per request) and far below what could burn
+      // the free-tier D1 write allowance.
+      "name": "EVENTS_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 120, "period": 60 }
+    }
+  ],
   "triggers": {
     // ONE nightly cron for the whole portfolio (06:00 UTC).
     "crons": ["0 6 * * *"]

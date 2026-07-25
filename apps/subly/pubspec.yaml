@@ -22,6 +22,12 @@ dependencies:
   nikatru_design_system:
     path: ../../packages/design_system
 
+  # Plugin-backed impls of core's storage seams. Needed by the G-12 analytics
+  # funnel: the pseudonymous `anon_id` and the consent decision must BOTH
+  # survive a restart, and the queue must survive being offline.
+  nikatru_platform_storage:
+    path: ../../packages/platform_storage
+
   # State management
   flutter_riverpod: ^2.5.0
 

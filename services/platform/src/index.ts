@@ -9,6 +9,7 @@ import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
 import { corsMiddleware } from './middleware/cors';
 import config from './routes/config';
+import events from './routes/events';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -35,6 +36,11 @@ app.get('/v1/health', (c) =>
 
 // Public: CFG-1 runtime config.
 app.route('/config', config);
+
+// Public: first-party analytics ingest + the DPDP consent artifact (G-12).
+// Unauthenticated by design — the events are pseudonymous and the most valuable
+// ones (first_launch, paywall_viewed) happen before any login exists.
+app.route('/v1', events);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
