@@ -12,10 +12,10 @@ class MockAuthRepository implements AuthRepository {
   AuthUser? _user;
 
   AuthUser _demoUser(String email) => AuthUser(
-        id: 'demo-user',
-        email: email.isEmpty ? 'alex@example.com' : email,
-        displayName: 'Alex Rivera',
-      );
+    id: 'demo-user',
+    email: email.isEmpty ? 'alex@example.com' : email,
+    displayName: 'Alex Rivera',
+  );
 
   @override
   AuthUser? get currentUser => _user;
@@ -38,8 +38,7 @@ class MockAuthRepository implements AuthRepository {
   Future<AuthUser> signUpWithEmail({
     required String email,
     required String password,
-  }) =>
-      signInWithEmail(email: email, password: password);
+  }) => signInWithEmail(email: email, password: password);
 
   @override
   Future<void> signInWithApple() async {
@@ -60,4 +59,11 @@ class MockAuthRepository implements AuthRepository {
   @override
   Future<String?> currentAccessToken() async =>
       _user == null ? null : 'demo-token';
+
+  @override
+  Future<AuthSession?> currentSession() async => _user == null
+      ? null
+      // No expiry: the demo token never lapses, and `isValidAt` treats an
+      // unknown expiry as still-valid rather than guessing on the client.
+      : const AuthSession(accessToken: 'demo-token');
 }
