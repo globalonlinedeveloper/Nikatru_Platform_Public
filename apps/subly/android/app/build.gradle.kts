@@ -12,6 +12,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // REQUIRED by flutter_local_notifications (via packages/notifications).
+        // It calls java.time APIs that do not exist below API 26, so the build
+        // fails at :app:checkReleaseAarMetadata with "requires core library
+        // desugaring to be enabled" — an error that names the mechanism, not
+        // the plugin, and so reads as a Gradle config problem rather than a
+        // dependency requirement. Every stamped app that wires notifications
+        // will hit this.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -38,6 +46,13 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    // The desugaring runtime that `isCoreLibraryDesugaringEnabled` above needs.
+    // Both halves are required — enabling the flag without this dependency
+    // fails the build just as surely as omitting the flag.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {
