@@ -2,6 +2,10 @@
 /// packs. Pure Dart — safe to depend on from any app or package.
 library;
 
+export 'src/analytics/analytics.dart';
+export 'src/analytics/analytics_recorder.dart';
+export 'src/analytics/consent.dart';
+export 'src/analytics/ids.dart';
 export 'src/content/content_pack.dart';
 export 'src/content/content_pack_loader.dart';
 export 'src/content/content_pack_source.dart';

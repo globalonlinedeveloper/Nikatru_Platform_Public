@@ -12,6 +12,15 @@ export interface Env {
   // Edge-cached per-app config overrides (key: `config:<app>`).
   CONFIG_KV: KVNamespace;
 
+  /**
+   * Cost circuit breaker for /v1/events (G-12). The Rate Limiting binding, NOT
+   * a KV counter: KV is eventually consistent with a ~60s edge cache, so under
+   * the exact burst a breaker exists to stop, a KV counter reads stale and lets
+   * it through. Optional so a local/dev deploy without it still runs — absence
+   * fails OPEN.
+   */
+  EVENTS_LIMITER?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
+
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
   SUPABASE_URL: string;

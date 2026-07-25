@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/subscription.dart';
+import 'analytics_funnel.dart';
 import 'providers.dart';
 import 'settings_controller.dart';
 
@@ -8,21 +9,30 @@ import 'settings_controller.dart';
 class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   @override
   Future<List<Subscription>> build() async {
-    final List<Subscription> subs =
-        await ref.watch(subscriptionRepositoryProvider).fetchAll();
+    final List<Subscription> subs = await ref
+        .watch(subscriptionRepositoryProvider)
+        .fetchAll();
     _syncReminders(subs);
     return subs;
   }
 
   Future<void> addSubscription(Subscription draft) async {
-    final Subscription created =
-        await ref.read(subscriptionRepositoryProvider).add(draft);
-    final List<Subscription> list = <Subscription>[
-      ...state.valueOrNull ?? const <Subscription>[],
-      created,
-    ];
+    final List<Subscription> before =
+        state.valueOrNull ?? const <Subscription>[];
+    final Subscription created = await ref
+        .read(subscriptionRepositoryProvider)
+        .add(draft);
+    final List<Subscription> list = <Subscription>[...before, created];
     state = AsyncData<List<Subscription>>(list);
     _syncReminders(list);
+
+    // G-12 ACTIVATION. Subly's "aha" is the FIRST subscription added — the
+    // single strongest predictor of retention and of paying. Fired only when
+    // the list was empty, so it stays a once-per-install signal rather than a
+    // per-add counter, and only after the write succeeded.
+    if (before.isEmpty) {
+      ref.read(analyticsFunnelProvider).valueOrNull?.onActivation();
+    }
   }
 
   Future<void> cancelSubscription(String id) async {
@@ -45,6 +55,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
 }
 
 final AsyncNotifierProvider<SubscriptionsController, List<Subscription>>
-    subscriptionsControllerProvider =
+subscriptionsControllerProvider =
     AsyncNotifierProvider<SubscriptionsController, List<Subscription>>(
-        SubscriptionsController.new);
+      SubscriptionsController.new,
+    );
