@@ -176,6 +176,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Runs BEFORE melos: the gate below can only report on packages it is told
+      # about, so an ungated package must fail here rather than pass silently.
+      # [pipeline F-1]
+      - name: Assert workspace coverage
+        run: node tooling/ci/assert-workspace-coverage.mjs
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
