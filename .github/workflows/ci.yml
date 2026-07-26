@@ -235,6 +235,15 @@ jobs:
       # impossible for as long as it lasts. Cheap to hold, expensive to reclaim.
       - name: Stamped app is dart format-clean
         run: dart format --output=none --set-exit-if-changed apps/probe
+      # The stamp lane used to assert only that the app COMPILES and its tests
+      # pass, so anything merely ABSENT sailed through: themeMode appeared zero
+      # times repo-wide, Semantics( zero times, and the account-delete button
+      # called Navigator.pop and nothing else. All three were green. The
+      # assertions now live in the brick template so every stamped app inherits
+      # them for life; this guard stops that file quietly vanishing, because
+      # vanishing looks exactly like passing. [pipeline C-16]
+      - name: Stamped app asserts its own chassis properties
+        run: node tooling/ci/assert-stamp-properties.mjs
       - name: Analyze + test the stamped app
         working-directory: apps/probe
         run: |

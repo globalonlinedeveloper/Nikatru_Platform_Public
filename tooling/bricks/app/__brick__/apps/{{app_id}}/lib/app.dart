@@ -29,6 +29,12 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
         seed: const Color(0xFF{{{seed_hex}}}),
         brightness: Brightness.dark,
       ),
+      // [pipeline C-16] The persisted user override. Without this MaterialApp
+      // silently defaults to ThemeMode.system, which follows the OS but gives the
+      // user no say — and `test/chassis_properties_test.dart` asserts all THREE
+      // of theme/darkTheme/themeMode are supplied, so deleting this line fails
+      // the build of every stamped app, not just this one.
+      themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
       builder: (BuildContext context, Widget? child) => ForceUpdateGate(
         mustUpdate: mustUpdate,
