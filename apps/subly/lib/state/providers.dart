@@ -5,7 +5,7 @@ import '../core/config/app_config.dart';
 import '../data/api/api_client.dart';
 import '../data/api/dio_api_client.dart';
 import '../data/api/seed_api_client.dart';
-import '../data/config/dio_config_transport.dart';
+import 'package:nikatru_api_client/nikatru_api_client.dart';
 import '../data/auth/auth_models.dart';
 import '../data/auth/auth_repository.dart';
 import '../data/auth/mock_auth_repository.dart';

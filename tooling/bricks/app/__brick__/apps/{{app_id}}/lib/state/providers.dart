@@ -7,11 +7,12 @@ import 'dart:math';
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/app_config.dart';
-import '../data/config/dio_config_transport.dart';
+import 'package:nikatru_api_client/nikatru_api_client.dart';
 
 /// Compiled-in default runtime config for THIS app. core's `kDefaultConfigs`
 /// only knows the reference apps, so a freshly-stamped app seeds its own default
@@ -122,6 +123,23 @@ final FutureProvider<core.FeatureFlags> featureFlagsProvider =
       final String id = await ref.watch(installIdProvider.future);
       return core.FeatureFlags(rollouts: cfg.flags, stableId: id);
     });
+
+/// Local notifications (G-25): the plugin-backed impl of core's
+/// [core.NotificationService] seam, or a no-op where no plugin exists.
+///
+/// [pipeline C-2/C-7] Platform reality is DECLARED, not assumed — see
+/// [NotificationCapabilities]: Android/iOS/macOS show and schedule; Linux shows
+/// but cannot schedule; Windows does neither on the pinned 17.x; Web has no
+/// plugin at all. Unsupported calls degrade to a safe no-op, so a caller never
+/// crashes on a platform that cannot do the thing — but it also never silently
+/// believes a reminder was set. Check `capabilities` before promising the user.
+///
+/// ⚠️ Any stamped app that ships Android MUST enable core-library desugaring
+/// (two lines in its Gradle config) — flutter_local_notifications requires it.
+final Provider<core.NotificationService> notificationServiceProvider =
+    Provider<core.NotificationService>(
+      (ref) => createLocalNotificationService(),
+    );
 
 const String _themeModeKey = 'nikatru.theme_mode';
 

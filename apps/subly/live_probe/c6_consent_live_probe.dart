@@ -19,8 +19,7 @@
 // wiring in consent_prompt.dart.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:subly/data/analytics/dio_consent_transport.dart';
-import 'package:subly/data/analytics/dio_event_transport.dart';
+import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:subly/state/analytics_funnel.dart';
 import 'package:subly/state/analytics_providers.dart';
 

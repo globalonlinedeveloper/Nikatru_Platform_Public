@@ -22,6 +22,14 @@ dependencies:
     path: ../../packages/telemetry
   nikatru_platform_storage:
     path: ../../packages/platform_storage
+  # [pipeline C-2] Had ZERO consumers despite 21 passing tests. Wired into the
+  # template so every stamped app inherits the seam rather than growing a fork —
+  # which is exactly how three NotificationService implementations came to exist.
+  # NOTE apps/subly deliberately does NOT get this: it is a frozen legacy
+  # rail-prover (cut list item 1) and keeps its own fork, which is also why
+  # flutter_local_notifications stays pinned at 17.x for now.
+  nikatru_notifications:
+    path: ../../packages/notifications
 
   # State (Riverpod 2.x-LTS, non-codegen — locked chassis choice) + routing.
   flutter_riverpod: ^2.5.0

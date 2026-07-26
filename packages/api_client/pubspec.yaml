@@ -13,6 +13,11 @@ environment:
 
 dependencies:
   dio: ^5.4.0
+  # [pipeline C-3/C-9] api_client hosts the dio implementations of core's
+  # transport seams, so it depends on core for the interfaces. This is the
+  # expected direction: core declares seams, adapters implement them.
+  nikatru_core:
+    path: ../core
 
 dev_dependencies:
   lints: ^6.0.0
