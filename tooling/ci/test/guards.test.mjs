@@ -562,6 +562,80 @@ describe('assert-version-consistency', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// The behaviour that matters most is "the wrapper FAILS when the scanner stops
+// detecting" — which cannot be exercised with the real binary, because a working
+// gitleaks always detects. These substitute stub scanners with known behaviour.
+describe('scan-secrets', () => {
+  const PEM = 'BEGIN RSA PRIVATE KEY';
+
+  /** A faithful stub: exits 1 (finding) iff the scanned dir holds a PEM header. */
+  const HONEST = `
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+const a = process.argv.slice(2);
+if (a[0] === 'version') { console.log('8.30.1-stub'); process.exit(0); }
+const src = a[a.indexOf('--source') + 1];
+const walk = (d) => readdirSync(d).flatMap((e) => {
+  const p = join(d, e);
+  return statSync(p).isDirectory() ? walk(p) : [p];
+});
+let hit = false;
+for (const f of walk(src)) { try { if (readFileSync(f, 'utf8').includes('${PEM}')) hit = true; } catch {} }
+if (hit) { console.log('finding: private-key'); process.exit(1); }
+process.exit(0);
+`;
+
+  /** A scanner that has silently stopped detecting — always reports clean. */
+  const BLIND = `
+const a = process.argv.slice(2);
+if (a[0] === 'version') { console.log('8.30.1-blind'); process.exit(0); }
+process.exit(0);
+`;
+
+  /** The stub lives OUTSIDE the scanned tree — both because a real scanner binary
+   *  is not in the repo, and because the stub's own source contains the PEM
+   *  literal it looks for, which would otherwise be found as a "leak" in itself. */
+  const build = (name, stub, files = {}) => {
+    const root = fixture(name, {
+      'bin/stub.mjs': stub,
+      'repo/README.md': 'nothing secret here\n',
+      ...Object.fromEntries(Object.entries(files).map(([k, v]) => [`repo/${k}`, v])),
+    });
+    return { repo: join(root, 'repo'), stub: join(root, 'bin', 'stub.mjs'), root };
+  };
+
+  test('PASSES on a clean tree, after proving the scanner still detects', () => {
+    const { repo, stub } = build('ss-clean', HONEST);
+    const { code, out } = run('scan-secrets.mjs', { args: [repo, '--gitleaks', stub] });
+    assert.equal(code, 0, out);
+    assert.match(out, /self-test — a planted secret is still detected/);
+    assert.match(out, /no findings/);
+  });
+
+  test('FAILS when the scanner has silently stopped detecting — the whole point', () => {
+    const { repo, stub } = build('ss-blind', BLIND);
+    const { code, out } = run('scan-secrets.mjs', { args: [repo, '--gitleaks', stub] });
+    assert.equal(code, 1);
+    assert.match(out, /SELF-TEST FAILED/);
+    assert.match(out, /would have reported this repository "clean"/);
+  });
+
+  test('FAILS when the tree actually contains a secret', () => {
+    const { repo, stub } = build('ss-leak', HONEST, { 'config/leaked.key': `-----${PEM}-----\nAAAA\n` });
+    const { code, out } = run('scan-secrets.mjs', { args: [repo, '--gitleaks', stub] });
+    assert.equal(code, 1);
+    assert.match(out, /secret scan found something/);
+  });
+
+  test('FAILS with a named cause when the scanner is not installed', () => {
+    const { repo, root } = build('ss-missing', HONEST);
+    const { code, out } = run('scan-secrets.mjs', { args: [repo, '--gitleaks', join(root, 'nope.mjs')] });
+    assert.equal(code, 1);
+    assert.match(out, /not runnable/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('record-deployment (offline paths)', () => {
   test('FAILS when no environment is given', () => {
     const { code, out } = run('record-deployment.mjs', { args: [], env: { ...process.env } });
