@@ -38,12 +38,22 @@ const repoRoot = positional[0] ?? process.cwd();
 
 /** A PEM header trips gitleaks' `private-key` rule. Chosen over a fake cloud key
  *  because provider rules get allowlisted and revised between releases, whereas
- *  this one is structural and stable. It is not a real key. */
+ *  this one is structural and stable. It is not a real key.
+ *
+ *  ASSEMBLED AT RUNTIME, deliberately. Written as a literal, this file itself
+ *  was the only finding in the repo's first real scan — the scanner correctly
+ *  flagged its own canary. The obvious fix was an allowlist entry, but every
+ *  allowlist entry is a permanent hole in the net, so the better fix is to leave
+ *  nothing to match: split across concatenation, the full marker never appears in
+ *  any file on disk. If this splitting is ever "tidied" back into one string, the
+ *  scan will flag this file again — which is the correct signal, not a bug. */
+const DASHES = '-'.repeat(5);
+const KEY_TAIL = `RSA ${'PRIVATE'} ${'KEY'}${DASHES}`;
 const CANARY = [
-  '-----BEGIN RSA PRIVATE KEY-----',
+  `${DASHES}BEGIN ${KEY_TAIL}`,
   'MIIEowIBAAKCAQEAxGZlNotARealKeyJustAStructuralCanaryForTheSelfTest0000',
   'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-  '-----END RSA PRIVATE KEY-----',
+  `${DASHES}END ${KEY_TAIL}`,
 ].join('\n');
 
 /** TESTABILITY SEAM, and the only reason it exists: the behaviour that matters
