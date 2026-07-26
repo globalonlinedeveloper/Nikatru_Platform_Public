@@ -1,0 +1,40 @@
+{
+  "$comment": [
+    "THE SINGLE DECLARATION of every version the build depends on. [pipeline F-2]",
+    "",
+    "GitHub Actions has no native shared constant across workflows, so these values",
+    "are still WRITTEN in each workflow — what this file buys is that they can no",
+    "longer DRIFT: tooling/ci/assert-version-consistency.mjs fails the build naming",
+    "the file and line of any literal that disagrees with the values here.",
+    "",
+    "So: declared once, enforced everywhere — not written literally once. Changing a",
+    "version means editing this file and the call sites; the guard tells you exactly",
+    "which one you forgot, instead of one lane silently building on a different SDK.",
+    "",
+    "Before this existed, '3.44.7' appeared in SIX places and 'node-version: 24' in",
+    "EIGHT, and tooling/wsl-setup.sh carried the comment 'keep in lockstep with",
+    "*.yml' — a maintenance instruction addressed to a human, which is exactly the",
+    "mechanism this repo keeps finding does not hold.",
+    "",
+    "mason_cli was pinned NOWHERE: `dart pub global activate mason_cli` took the",
+    "newest release on every run. Mason is what STAMPS APPS, so an unpinned mason",
+    "means the factory's actual product could differ between runs with nothing in",
+    "the repo to explain it. That was the sharpest item on the list."
+  ],
+
+  "flutter": "3.44.7",
+  "node": "24",
+  "java": "17",
+  "melos": "8.2.2",
+  "mason_cli": "0.1.3",
+
+  "$runners": [
+    "runs-on: values are deliberately NOT declared here yet. All 17 are '-latest',",
+    "which carries the same hazard as a floating action tag — macos-latest rolling",
+    "to a new Xcode changes what an identical commit builds, with no diff in the",
+    "repo. Pinning them (ubuntu-24.04 etc.) closes that, at the cost of images being",
+    "retired and CI then breaking hard rather than drifting quietly.",
+    "OPEN SUB-DECISION, owner (2026-07-26): recommendation is to pin, on the grounds",
+    "that predictable breakage beats silent change. Left unpinned pending that call."
+  ]
+}

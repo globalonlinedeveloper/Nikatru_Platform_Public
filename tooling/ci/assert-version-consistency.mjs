@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// assert-version-consistency.mjs — one declaration, and nothing may disagree.
+//
+// The Flutter version was written in SIX places and `node-version: 24` in EIGHT,
+// across five workflows and a shell script whose comment read "keep in lockstep
+// with *.yml" — a maintenance instruction addressed to a human. Bump one, miss
+// another, and that lane silently builds on a different SDK while the code looks
+// identical.
+//
+// `mason_cli` was pinned NOWHERE. Mason is what stamps apps, so an unpinned
+// mason means the factory's product could differ run to run with nothing in the
+// repo to explain it.
+//
+// GitHub Actions cannot interpolate a file into `with:`, so the values are still
+// written at each call site. What this guard removes is the SILENT miss.
+//
+// Pipeline requirement: company/pipeline/01-foundation.md → F-2.
+//
+// Usage:  node tooling/ci/assert-version-consistency.mjs [repoRoot]
+// Exit 0 = every literal matches tooling/versions.json, 1 = drift.
+// ─────────────────────────────────────────────────────────────────────────────
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+const repoRoot = process.argv[2] ?? process.cwd();
+const declPath = join(repoRoot, 'tooling', 'versions.json');
+
+if (!existsSync(declPath)) {
+  console.error(`✗ no tooling/versions.json under ${repoRoot} — nothing to check against`);
+  process.exit(1);
+}
+const decl = JSON.parse(readFileSync(declPath, 'utf8'));
+
+/** Each rule finds every occurrence of a versioned thing and reports the value
+ *  it names, so the guard compares PARSED values rather than grepping for the
+ *  expected string. Grepping for the right answer can only ever find sites that
+ *  are already correct — it can never see the one that drifted. */
+const RULES = [
+  { key: 'flutter', label: 'Flutter', re: /flutter-version:\s*'?([0-9][^\s'"#]*)'?/g },
+  { key: 'flutter', label: 'Flutter', re: /FLUTTER_VERSION[:=]\s*'?"?([0-9][^\s'"#]*)'?"?/g },
+  { key: 'node', label: 'Node', re: /node-version:\s*'?([0-9][^\s'"#]*)'?/g },
+  { key: 'java', label: 'Java', re: /java-version:\s*'?([0-9][^\s'"#]*)'?/g },
+  { key: 'melos', label: 'Melos', re: /dart pub global activate melos\s+([0-9][^\s'"#]*)/g },
+  { key: 'mason_cli', label: 'mason_cli', re: /dart pub global activate mason_cli\s*([^\s'"#]*)/g },
+];
+
+/** Files that may name a build version. */
+const TARGETS = [];
+const wfDir = join(repoRoot, '.github', 'workflows');
+if (existsSync(wfDir)) {
+  for (const f of readdirSync(wfDir).filter((x) => x.endsWith('.yml') || x.endsWith('.yaml'))) {
+    TARGETS.push(join('.github', 'workflows', f));
+  }
+}
+for (const f of ['tooling/wsl-setup.sh']) {
+  if (existsSync(join(repoRoot, f))) TARGETS.push(f);
+}
+
+/** A scan that quietly matches nothing reports "clean" forever. */
+const MIN_OCCURRENCES = 10;
+
+const problems = [];
+let found = 0;
+
+for (const rel of TARGETS) {
+  const text = readFileSync(join(repoRoot, rel), 'utf8');
+  text.split('\n').forEach((line, i) => {
+    const code = line.replace(/#.*$/, '');
+    for (const rule of RULES) {
+      rule.re.lastIndex = 0;
+      let m;
+      while ((m = rule.re.exec(code)) !== null) {
+        found++;
+        const actual = (m[1] ?? '').trim();
+        const expected = String(decl[rule.key] ?? '');
+        if (actual === '') {
+          problems.push(
+            `${rel}:${i + 1} ${rule.label} is UNPINNED — it takes whatever is newest on every run` +
+              ` (declare ${expected})`,
+          );
+        } else if (actual !== expected) {
+          problems.push(`${rel}:${i + 1} ${rule.label} is "${actual}" but versions.json declares "${expected}"`);
+        }
+      }
+    }
+  });
+}
+
+// ── coverage self-check, BEFORE reporting clean ──────────────────────────────
+if (found < MIN_OCCURRENCES) {
+  console.error(
+    `✗ COVERAGE LOST — matched ${found} version reference(s), expected at least ${MIN_OCCURRENCES}.`,
+  );
+  console.error('  The scan is broken, not the tree.');
+  process.exit(1);
+}
+
+if (problems.length) {
+  console.error(`✗ ${problems.length} version drift problem(s):`);
+  for (const p of problems) console.error(`    ${p}`);
+  console.error('  Fix the call site, or change tooling/versions.json if the new value is intended.');
+  process.exit(1);
+}
+
+console.log(`ok  version consistency — ${found} reference(s) across ${TARGETS.length} file(s), all match versions.json`);
