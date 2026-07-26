@@ -33,7 +33,7 @@ permissions:
 jobs:
   detect:
     name: Detect changed services
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       subly_api: ${{ steps.decide.outputs.subly_api }}
       platform: ${{ steps.decide.outputs.platform }}
@@ -77,7 +77,7 @@ jobs:
     name: Deploy subly-api
     needs: detect
     if: needs.detect.outputs.subly_api == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -118,7 +118,7 @@ jobs:
     name: Deploy platform
     needs: detect
     if: needs.detect.outputs.platform == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

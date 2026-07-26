@@ -32,7 +32,7 @@ permissions:
 jobs:
   subly_api:
     name: subly-api Worker (typecheck + dry-run)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: services/subly-api
@@ -47,7 +47,7 @@ jobs:
 
   platform:
     name: platform Worker (typecheck + test + dry-run)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: services/platform
@@ -122,7 +122,7 @@ jobs:
 
   tokens:
     name: Site design tokens (build + drift)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: packages/tokens
@@ -142,7 +142,7 @@ jobs:
 
   site_shared:
     name: Shared site build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: sites/_shared
@@ -156,7 +156,7 @@ jobs:
 
   app_brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -240,7 +240,7 @@ jobs:
 
   sites:
     name: Static sites (functions parse + required files)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # sites/nikatru and sites/rajasekarselvam are deployed by CLOUDFLARE's own
@@ -257,7 +257,7 @@ jobs:
 
   workspace_gate:
     name: Workspace gate (melos analyze + test)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Runs BEFORE melos: the gate below can only report on packages it is told
@@ -286,7 +286,7 @@ jobs:
 
   ci-gate:
     name: ci-gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [subly_api, platform, tokens, site_shared, app_brick, sites, workspace_gate]
     if: always()
     steps:

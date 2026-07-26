@@ -27,7 +27,7 @@ permissions:
 jobs:
   deploy-web:
     name: Build & deploy Subly web to Cloudflare Pages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/subly

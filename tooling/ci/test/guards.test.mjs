@@ -471,7 +471,16 @@ describe('assert-workflow-hardening', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-version-consistency', () => {
-  const DECL = { flutter: '3.44.7', node: '24', java: '17', melos: '8.2.2', mason_cli: '0.1.3' };
+  const DECL = {
+    flutter: '3.44.7',
+    node: '24',
+    java: '17',
+    melos: '8.2.2',
+    mason_cli: '0.1.3',
+    runner_ubuntu: 'ubuntu-24.04',
+    runner_windows: 'windows-2025',
+    runner_macos: 'macos-26',
+  };
 
   /** 12 references clears the scan's own MIN_OCCURRENCES floor. */
   const wf = ({ flutter = DECL.flutter, node = DECL.node, mason = DECL.mason_cli, extra = '' } = {}) =>
@@ -515,6 +524,21 @@ describe('assert-version-consistency', () => {
 
   test('compares PARSED values, so a commented-out version cannot mask a drift', () => {
     const dir = build('vc-comment', { extra: '      # flutter-version: 9.9.9\n' });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS on a `-latest` runner label, which is a moving target', () => {
+    const dir = build('vc-runner', { extra: '  k:\n    runs-on: macos-latest\n    steps: []\n' });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /macOS runner is "macos-latest"/);
+  });
+
+  test('PASSES on pinned runner labels', () => {
+    const dir = build('vc-runner-ok', {
+      extra: '  k:\n    runs-on: ubuntu-24.04\n    steps: []\n  l:\n    runs-on: windows-2025\n    steps: []\n',
+    });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 0, out);
   });

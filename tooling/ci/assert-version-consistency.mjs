@@ -43,6 +43,13 @@ const RULES = [
   { key: 'java', label: 'Java', re: /java-version:\s*'?([0-9][^\s'"#]*)'?/g },
   { key: 'melos', label: 'Melos', re: /dart pub global activate melos\s+([0-9][^\s'"#]*)/g },
   { key: 'mason_cli', label: 'mason_cli', re: /dart pub global activate mason_cli\s*([^\s'"#]*)/g },
+  // Runner images. A `-latest` label is a moving target in exactly the way a
+  // floating action tag is: macos-latest rolling to a new Xcode changes what an
+  // identical commit builds, with no diff in the repo. Matched per-OS so the
+  // error can name the expected label rather than just "not pinned".
+  { key: 'runner_ubuntu', label: 'Ubuntu runner', re: /runs-on:\s*(ubuntu-[^\s'"#]+)/g },
+  { key: 'runner_windows', label: 'Windows runner', re: /runs-on:\s*(windows-[^\s'"#]+)/g },
+  { key: 'runner_macos', label: 'macOS runner', re: /runs-on:\s*(macos-[^\s'"#]+)/g },
 ];
 
 /** Files that may name a build version. */
