@@ -24,6 +24,13 @@ export interface Env {
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
   SUPABASE_URL: string;
+  /**
+   * OPTIONAL comma-separated list of Supabase project URLs the nightly cron keeps
+   * awake. Absent ⇒ falls back to the single [SUPABASE_URL], so an existing
+   * deploy is unaffected. Set this to keep more than one project from idling into
+   * Supabase's ~7-day auto-pause.
+   */
+  SUPABASE_KEEPALIVE_URLS?: string;
   API_VERSION: string;
   /** Comma-separated browser origins for CORS. Absent/empty ⇒ '*'. */
   ALLOWED_ORIGINS?: string;
