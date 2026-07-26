@@ -80,6 +80,14 @@ jobs:
       - name: CORS allowlist still covers every origin in use
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-cors-allowlist.mjs
+      # Every deployable unit must be claimed by some lane. The lane list is
+      # hand-written and nothing checked it was complete, so a new Worker, site
+      # or package was checked by nothing while CI still went green. Coverage is
+      # asserted PER TYPE — dart packages via melos membership, everything else
+      # by being named in a workflow. [pipeline F-9]
+      - name: Every deployable unit is claimed by a lane
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-lane-coverage.mjs
       - run: npm install
       - run: npx tsc --noEmit
       - run: npm test
@@ -188,6 +196,23 @@ jobs:
           npx tsc --noEmit
           npx wrangler deploy --dry-run
 
+  sites:
+    name: Static sites (functions parse + required files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # sites/nikatru and sites/rajasekarselvam are deployed by CLOUDFLARE's own
+      # Git integration on every push to main — no workflow involved, and
+      # Cloudflare cannot read a GitHub check. Until this lane existed nothing in
+      # the repo so much as parsed them, including a Pages Function holding a live
+      # KV binding that stores email signups.
+      #
+      # Cloudflare still cannot be gated. The protection is indirect: with `main`
+      # protected (F-5a), code that cannot pass this lane cannot reach `main`, and
+      # therefore cannot reach Cloudflare. [pipeline F-9]
+      - name: Site integrity
+        run: node tooling/ci/check-site-integrity.mjs
+
   workspace_gate:
     name: Workspace gate (melos analyze + test)
     runs-on: ubuntu-latest
@@ -220,7 +245,7 @@ jobs:
   ci-gate:
     name: ci-gate
     runs-on: ubuntu-latest
-    needs: [subly_api, platform, tokens, site_shared, app_brick, workspace_gate]
+    needs: [subly_api, platform, tokens, site_shared, app_brick, sites, workspace_gate]
     if: always()
     steps:
       - name: Require all lanes green

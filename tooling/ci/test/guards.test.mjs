@@ -232,6 +232,122 @@ describe('assert-gate-passed (offline paths)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('assert-lane-coverage', () => {
+  const EIGHT_DART = Array.from({ length: 8 }, (_, i) => `packages/p${i}`);
+  const workflow = (paths) =>
+    `name: CI\njobs:\n  a:\n    steps:\n${paths.map((p) => `      - run: build ${p}\n`).join('')}`;
+
+  /** `dart` members go in the workspace list; everything else must be named in a workflow. */
+  const build = (name, { dart = EIGHT_DART, declared = EIGHT_DART, workers = [], sites = [], named = [] } = {}) => {
+    const files = {
+      'pubspec.yaml': rootPubspec(declared),
+      '.github/workflows/ci.yml': workflow(named),
+    };
+    for (const d of dart) files[`${d}/pubspec.yaml`] = pubspec(d.split('/').pop());
+    for (const w of workers) files[`${w}/wrangler.jsonc`] = '{}\n';
+    for (const s of sites) files[`${s}/index.html`] = '<html></html>\n';
+    return fixture(name, files);
+  };
+
+  test('PASSES when every unit is claimed by the right mechanism', () => {
+    const dir = build('lc-ok', { workers: ['services/w'], sites: ['sites/s'], named: ['services/w', 'sites/s'] });
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /all claimed/);
+  });
+
+  test('FAILS when a Worker is named in no workflow', () => {
+    const dir = build('lc-worker', { workers: ['services/w'], named: [] });
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /services\/w/);
+  });
+
+  test('FAILS when a site is named in no workflow — the real F-9 gap', () => {
+    const dir = build('lc-site', { sites: ['sites/nikatru'], named: [] });
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /sites\/nikatru/);
+  });
+
+  test('FAILS when a dart package is outside the workspace', () => {
+    const dir = build('lc-dart', { declared: EIGHT_DART.slice(0, 7) });
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /packages\/p7/);
+  });
+
+  test('does NOT demand that dart packages be named in a workflow', () => {
+    // The false-alarm case. melos covers members collectively and never names
+    // them, so a naive path grep would report all eight as uncovered — and a
+    // guard that cries wolf on eight packages is a guard someone switches off.
+    const dir = build('lc-dart-ok', { named: [] });
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS its own coverage check when the scan finds almost nothing', () => {
+    const dir = build('lc-cov', { dart: ['packages/only'], declared: ['packages/only'] });
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('check-site-integrity', () => {
+  const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
+  const ESM_FN = 'export async function onRequestPost({ request, env }) {\n  return new Response("ok");\n}\n';
+
+  const build = (name, { sites = ['a', 'b'], omit = null, fnBody = ESM_FN, fnCount = 1 } = {}) => {
+    const files = {};
+    for (const s of sites) {
+      for (const f of REQUIRED) {
+        if (omit && omit.site === s && omit.file === f) continue;
+        files[`sites/${s}/${f}`] = f.endsWith('.html') ? '<html></html>\n' : 'x\n';
+      }
+    }
+    if (fnCount > 0) files[`sites/${sites[0]}/functions/api/handler.js`] = fnBody;
+    return fixture(name, files);
+  };
+
+  test('PASSES on healthy sites — and accepts ESM syntax in a .js Function', () => {
+    // `node --check` treats .js as CommonJS and would reject `export`. If the
+    // .mjs probe ever regresses, this test fails and every real Function would
+    // otherwise be reported broken.
+    const { code, out } = run('check-site-integrity.mjs', { args: [build('si-ok')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /2 deploy root\(s\)/);
+  });
+
+  test('FAILS when a required file is missing, and names it', () => {
+    const dir = build('si-missing', { omit: { site: 'b', file: '404.html' } });
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /404\.html/);
+  });
+
+  test('FAILS when a Pages Function does not parse', () => {
+    const dir = build('si-syntax', { fnBody: 'export async function onRequestPost( {\n' });
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /does not parse/);
+  });
+
+  test('FAILS its own coverage check when a deploy root disappears', () => {
+    const { code, out } = run('check-site-integrity.mjs', { args: [build('si-onesite', { sites: ['a'] })] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('FAILS its own coverage check when server-side code stops being found', () => {
+    const { code, out } = run('check-site-integrity.mjs', { args: [build('si-nofn', { fnCount: 0 })] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('record-deployment (offline paths)', () => {
   test('FAILS when no environment is given', () => {
     const { code, out } = run('record-deployment.mjs', { args: [], env: { ...process.env } });
