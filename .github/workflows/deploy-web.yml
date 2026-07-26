@@ -52,12 +52,19 @@ jobs:
 
       - run: flutter pub get --enforce-lockfile
 
+      # APP_VERSION is not decoration: it is the `app_version` field on every
+      # analytics row and every consent artifact. Without it the build defaults
+      # to 'dev', so production data would be indistinguishable from a developer
+      # laptop and no regression could ever be attributed to a release. Uses the
+      # short SHA because Subly has no release tag yet — a real version string
+      # replaces it when stage 9 owns versioning.
       - name: Build web (release, no service worker)
         run: >
           flutter build web --release --pwa-strategy=none
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=1.0.0+${GITHUB_SHA::7}
 
       - name: Deploy to Cloudflare Pages (project subly)
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3

@@ -7,7 +7,16 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 
 import '../core/config/app_config.dart';
+import '../data/analytics/dio_consent_transport.dart';
 import '../data/analytics/dio_event_transport.dart';
+
+/// 🔒 The version of the privacy policy the consent prompt shows the user.
+///
+/// MUST equal `data-policy-version` on `sites/nikatru/privacy.html`. Without
+/// that equality a consent artifact proves someone tapped a button but not what
+/// they were shown, which is the one thing the record exists to establish —
+/// so `tooling/ci/assert-seams-wired.mjs` fails the build if the two drift.
+const String kPrivacyPolicyVersion = '2026-07-26';
 
 /// G-12 first-party analytics wiring ([ADR 011]).
 ///
@@ -68,6 +77,96 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
       return c?.statusOf(core.ConsentPurpose.analytics) ??
           core.ConsentStatus.unknown;
     });
+
+/// Whether the consent question has been ANSWERED yet — distinct from whether
+/// it was answered yes.
+///
+/// `unknown` means two different things to two different callers: to the
+/// recorder it means "collect nothing" (correct), but to the UI it must mean
+/// "still ask" — and while [consentControllerProvider] is resolving from disk
+/// the status also reads `unknown`. Prompting on that would flash the dialog at
+/// every launch for a user who already decided. So the UI keys off the resolved
+/// controller, not the status alone.
+final Provider<bool> consentDecidedProvider = Provider<bool>((ref) {
+  final AsyncValue<core.ConsentController> c = ref.watch(
+    consentControllerProvider,
+  );
+  if (!c.hasValue) return true; // still loading — do NOT prompt yet
+  return c.requireValue.statusOf(core.ConsentPurpose.analytics) !=
+      core.ConsentStatus.unknown;
+});
+
+/// Ships the consent artifact to the append-only server record.
+///
+/// Discards in demo/test builds, so a widget test never reaches the network and
+/// an app with no backend configured is not broken by having a consent UI.
+final Provider<core.ConsentTransport> consentTransportProvider =
+    Provider<core.ConsentTransport>((ref) {
+      if (!AppConfig.isBackendLive) {
+        return const core.DiscardingConsentTransport();
+      }
+      return DioConsentTransport(platformBaseUrl: AppConfig.platformBaseUrl);
+    });
+
+/// The decision path, with no Riverpod and no Flutter in it.
+///
+/// Split out from [recordAnalyticsConsent] so it can be tested directly against
+/// fakes. That is the point of this requirement rather than a nicety: the bug
+/// being fixed was that nothing ever called [core.ConsentController.record], and
+/// a path only reachable through a widget tree and three async providers is one
+/// nobody writes a test for.
+Future<core.ConsentArtifact> applyConsentDecision({
+  required core.ConsentController controller,
+  required core.ConsentTransport transport,
+  required String appId,
+  required String anonId,
+  required bool granted,
+  String appVersion = AppConfig.appVersion,
+  String? platform,
+  DateTime? now,
+}) async {
+  final core.ConsentArtifact artifact = await controller.record(
+    core.ConsentPurpose.analytics,
+    granted: granted,
+    policyVersion: kPrivacyPolicyVersion,
+    anonId: anonId,
+    now: now ?? DateTime.now(),
+    appVersion: appVersion,
+    platform: platform ?? _platformName(),
+  );
+  // Best-effort by contract. The decision already applies on-device, so an
+  // upload failure must never make the user's choice look rejected.
+  await transport.send(appId: appId, artifact: artifact);
+  return artifact;
+}
+
+/// Record the user's analytics decision, upload the artifact, and make the new
+/// decision visible to everything watching.
+///
+/// The invalidate at the end is load-bearing, not tidiness: [core.ConsentController.record]
+/// mutates the controller's own cache, so Riverpod sees no new object and would
+/// never rebuild [analyticsProvider] — the recorder would keep its stale
+/// fail-closed view and go on discarding events for the rest of the session,
+/// which is indistinguishable from the bug this whole requirement exists to fix.
+/// Invalidating re-reads the persisted decision from disk, which also proves the
+/// write actually landed.
+Future<void> recordAnalyticsConsent(
+  WidgetRef ref, {
+  required bool granted,
+}) async {
+  final core.ConsentController controller = await ref.read(
+    consentControllerProvider.future,
+  );
+  final String anonId = await ref.read(installIdProvider.future);
+  await applyConsentDecision(
+    controller: controller,
+    transport: ref.read(consentTransportProvider),
+    appId: AppConfig.appId,
+    anonId: anonId,
+    granted: granted,
+  );
+  ref.invalidate(consentControllerProvider);
+}
 
 String _platformName() {
   if (kIsWeb) return 'web';

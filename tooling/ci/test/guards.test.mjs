@@ -659,3 +659,120 @@ describe('record-deployment (offline paths)', () => {
     assert.match(out, /GITHUB_SHA/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline C-6] assert-seams-wired — the guard that makes a fail-closed seam
+// prove it has an on-switch. Every check below has a recorded failing case,
+// because a guard nobody has watched fail is a guard nobody should trust (F-10).
+describe('assert-seams-wired', () => {
+  const RECORD_CALL = `
+final x = () async {
+  await controller.record(
+    core.ConsentPurpose.analytics,
+    granted: granted,
+    policyVersion: kPrivacyPolicyVersion,
+  );
+};
+const String kPrivacyPolicyVersion = '2026-07-26';
+`;
+  const UI_CALLER = `onPressed: () => recordAnalyticsConsent(ref, granted: true),`;
+  const POLICY = (v) => `<p class="updated" data-policy-version="${v}">x</p>`;
+
+  // 12 files minimum, else the guard reports COVERAGE LOST rather than passing.
+  const filler = (n) => {
+    const out = {};
+    for (let i = 0; i < n; i++) out[`apps/subly/lib/filler_${i}.dart`] = '// filler\n';
+    return out;
+  };
+
+  // The DECLARATION must be present in the fixture's provider file, exactly as
+  // it is in the real repo. Without it these tests pass against a guard whose
+  // caller check is satisfied by the declaration itself — which is the bug that
+  // was live here, invisible to a fixture that omitted the declaration and
+  // caught only by mutating the real tree.
+  const DECLARATION = `
+Future<void> recordAnalyticsConsent(
+  WidgetRef ref, {
+  required bool granted,
+}) async {}
+`;
+
+  const build = (name, { record = RECORD_CALL, ui = UI_CALLER, decl = DECLARATION, htmlVersion = '2026-07-26', dartVersion = '2026-07-26', fillerCount = 14 } = {}) =>
+    fixture(name, {
+      ...filler(fillerCount),
+      'apps/subly/lib/state/analytics_providers.dart':
+        `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
+      'apps/subly/lib/features/consent/consent_prompt.dart': ui,
+      'sites/nikatru/privacy.html': POLICY(htmlVersion),
+    });
+
+  test('passes when the seam has a real call site and the policy matches', () => {
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: build('seams-ok') });
+    assert.equal(code, 0);
+    assert.match(out, /a real record\(\) call/);
+    assert.match(out, /policy version pinned/);
+  });
+
+  test('FAILS when the record() call is deleted — the original defect', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-record', { record: '// nothing calls record any more\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real record\(\) call NOT FOUND/);
+  });
+
+  test('FAILS when the UI caller is deleted but the logic remains', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-ui', { ui: '// prompt removed\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a UI caller NOT FOUND/);
+  });
+
+  // The regression test for the guard's own defect. A declaration is not a
+  // caller; if this ever passes with no UI file, the caller check has stopped
+  // discriminating and the rail can go dark with CI green.
+  test('a DECLARATION alone does not count as a caller', () => {
+    const dir = fixture('seams-decl-only', {
+      ...filler(14),
+      'apps/subly/lib/state/analytics_providers.dart':
+        `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
+      // no consent_prompt.dart, no settings caller — nothing calls it at all
+      'sites/nikatru/privacy.html': POLICY('2026-07-26'),
+    });
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /a UI caller NOT FOUND/);
+  });
+
+  test('FAILS on policy-version drift between app and published policy', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-drift', { htmlVersion: '2026-08-01', dartVersion: '2026-07-26' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /policy version DRIFT/);
+  });
+
+  test('FAILS when privacy.html carries no version at all', () => {
+    const dir = fixture('seams-noversion', {
+      ...filler(14),
+      'apps/subly/lib/state/analytics_providers.dart': `${RECORD_CALL}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
+      'apps/subly/lib/features/consent/consent_prompt.dart': UI_CALLER,
+      'sites/nikatru/privacy.html': '<p class="updated">Last updated: whenever</p>',
+    });
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /no data-policy-version/);
+  });
+
+  // The self-check. A guard whose scan silently stops reaching the tree would
+  // pass every seam by finding nothing to contradict — the exact failure mode
+  // that let check-migrations.mjs report clean over an incomplete set.
+  test('FAILS LOUDLY when its own scan stops reaching the app tree', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-coverage', { fillerCount: 0 }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+});

@@ -115,6 +115,15 @@ jobs:
       - name: Build versions all match versions.json
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-version-consistency.mjs
+      # A fail-closed seam with no on-switch is a dead feature that reports
+      # healthy. Four shipped that way — the analytics rail discarded every event
+      # because nothing ever recorded consent, and no test went red because
+      # refusing was what they all asserted. Also pins the app's claimed privacy
+      # policy version to the published one, so a consent artifact can never name
+      # a policy the user was not shown. [pipeline C-6]
+      - name: Fail-closed seams have a real on-switch
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-seams-wired.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any

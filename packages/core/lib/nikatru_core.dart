@@ -7,6 +7,7 @@ export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
 export 'src/analytics/analytics_recorder.dart';
 export 'src/analytics/consent.dart';
+export 'src/analytics/consent_transport.dart';
 export 'src/analytics/ids.dart';
 export 'src/content/content_pack.dart';
 export 'src/content/content_pack_loader.dart';

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/consent/consent_prompt.dart';
 import 'state/analytics_funnel.dart';
+import 'state/analytics_providers.dart';
 import 'state/providers.dart';
 
 class SublyApp extends ConsumerStatefulWidget {
@@ -28,7 +31,16 @@ class _SublyAppState extends ConsumerState<SublyApp> {
     // per process, off the build phase, and never awaited — the funnel resolves
     // asynchronously and first paint must not wait on storage. In demo/test
     // builds analytics is a no-op, so this costs nothing there.
-    if (!_launchLogged) {
+    //
+    // 🔴 GATED ON GRANTED CONSENT, and that is a correctness fix, not caution.
+    // `onLaunch()` writes a "first launch already done" flag to storage after
+    // logging. Firing it before the user has answered meant `first_launch` was
+    // discarded by the fail-closed recorder AND the flag was burned — so the
+    // event could never fire again on that install, even after consent was
+    // granted. The single most important denominator in the funnel was being
+    // permanently destroyed on every install. Only observe once permitted.
+    if (!_launchLogged &&
+        ref.watch(analyticsConsentProvider) == core.ConsentStatus.granted) {
       final AnalyticsFunnel? funnel = ref
           .watch(analyticsFunnelProvider)
           .valueOrNull;
@@ -44,6 +56,9 @@ class _SublyAppState extends ConsumerState<SublyApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: router,
+      // Below the router's Navigator, so the prompt can be a real dialog.
+      builder: (BuildContext context, Widget? child) =>
+          ConsentGate(child: child ?? const SizedBox.shrink()),
     );
   }
 }
