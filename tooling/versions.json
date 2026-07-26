@@ -28,13 +28,26 @@
   "melos": "8.2.2",
   "mason_cli": "0.1.3",
 
-  "$runners": [
-    "runs-on: values are deliberately NOT declared here yet. All 17 are '-latest',",
-    "which carries the same hazard as a floating action tag — macos-latest rolling",
-    "to a new Xcode changes what an identical commit builds, with no diff in the",
-    "repo. Pinning them (ubuntu-24.04 etc.) closes that, at the cost of images being",
-    "retired and CI then breaking hard rather than drifting quietly.",
-    "OPEN SUB-DECISION, owner (2026-07-26): recommendation is to pin, on the grounds",
-    "that predictable breakage beats silent change. Left unpinned pending that call."
-  ]
+  "$runners_comment": [
+    "PINNED — owner decision 2026-07-26. Previously all 17 `runs-on:` values were",
+    "'-latest', which carries the same hazard as a floating action tag: macos-latest",
+    "rolling to a new Xcode changes what an identical commit builds, with no diff in",
+    "the repo at all.",
+    "",
+    "Why pinning wins here: '-latest' fails SILENTLY and UNSCHEDULED, a pinned image",
+    "fails LOUDLY and ON A SCHEDULE (deprecation warnings, then a clear error). That",
+    "is the same principle every other guard in tooling/ci exists to serve.",
+    "",
+    "Cost, stated plainly: images are eventually retired and CI then breaks hard",
+    "rather than drifting. These land in the SAME maintenance bucket as the F-11",
+    "action pins, so one mechanism — Renovate, stage 14 — covers both.",
+    "",
+    "Labels verified against actions/runner-images README before pinning, not",
+    "guessed: a wrong label yields 'no runner matching the labels' and the job never",
+    "starts. Current aliases: ubuntu-latest→24.04, windows-latest→2025, macos-latest",
+    "→macOS 26 Arm64."
+  ],
+  "runner_ubuntu": "ubuntu-24.04",
+  "runner_windows": "windows-2025",
+  "runner_macos": "macos-26"
 }
