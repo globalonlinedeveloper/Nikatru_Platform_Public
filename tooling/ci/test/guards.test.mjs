@@ -470,6 +470,74 @@ describe('assert-workflow-hardening', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('assert-version-consistency', () => {
+  const DECL = { flutter: '3.44.7', node: '24', java: '17', melos: '8.2.2', mason_cli: '0.1.3' };
+
+  /** 12 references clears the scan's own MIN_OCCURRENCES floor. */
+  const wf = ({ flutter = DECL.flutter, node = DECL.node, mason = DECL.mason_cli, extra = '' } = {}) =>
+    `name: X\njobs:\n  j:\n    steps:\n` +
+    Array.from({ length: 5 }, () => `      - uses: x\n        with:\n          flutter-version: ${flutter}\n`).join('') +
+    Array.from({ length: 5 }, () => `      - uses: y\n        with:\n          node-version: ${node}\n`).join('') +
+    `      - run: dart pub global activate melos ${DECL.melos}\n` +
+    `      - run: dart pub global activate mason_cli ${mason}\n` +
+    extra;
+
+  const build = (name, opts) =>
+    fixture(name, { 'tooling/versions.json': JSON.stringify(DECL), '.github/workflows/ci.yml': wf(opts) });
+
+  test('PASSES when every literal matches the declaration', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-ok')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /all match versions\.json/);
+  });
+
+  test('FAILS on a drifted Flutter version, naming file, line and both values', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-flutter', { flutter: '3.40.0' })] });
+    assert.equal(code, 1);
+    assert.match(out, /ci\.yml:\d+/);
+    assert.match(out, /"3\.40\.0".*"3\.44\.7"/);
+  });
+
+  test('FAILS on a drifted Node version', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-node', { node: '22' })] });
+    assert.equal(code, 1);
+    assert.match(out, /Node is "22"/);
+  });
+
+  test('FAILS when mason_cli is UNPINNED — the real defect this found', () => {
+    // `dart pub global activate mason_cli` with no version takes whatever is
+    // newest. Mason stamps apps, so an unpinned mason means the factory's own
+    // product can differ between runs.
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-mason', { mason: '' })] });
+    assert.equal(code, 1);
+    assert.match(out, /mason_cli is UNPINNED/);
+  });
+
+  test('compares PARSED values, so a commented-out version cannot mask a drift', () => {
+    const dir = build('vc-comment', { extra: '      # flutter-version: 9.9.9\n' });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS its own coverage check when the scan finds almost nothing', () => {
+    const dir = fixture('vc-cov', {
+      'tooling/versions.json': JSON.stringify(DECL),
+      '.github/workflows/ci.yml': `name: X\njobs:\n  j:\n    steps:\n      - run: echo hi\n`,
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('FAILS when there is no declaration to check against', () => {
+    const dir = fixture('vc-nodecl', { '.github/workflows/ci.yml': wf() });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /no tooling\/versions\.json/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('record-deployment (offline paths)', () => {
   test('FAILS when no environment is given', () => {
     const { code, out } = run('record-deployment.mjs', { args: [], env: { ...process.env } });
