@@ -14,7 +14,7 @@ will migrate onto this layer later (see plan §29.5).
 | `_includes/partials/seo.njk` | Canonical + OG/Twitter meta and JSON-LD (`Organization`, or `SoftwareApplication` when a page sets `app` in front matter). |
 | `_data/apps.json` | **Single source of truth** for the NIKATRU app registry (SHOW-1). Append new apps here; both sites will read this list. |
 | `_data/site.json` | Site-wide defaults (name, tagline, canonical URL, nav). |
-| `assets/tokens.css` | Design tokens mirroring the live nikatru.com `:root` (light + dark). **Generated artifact placeholder:** this file will be replaced by the output of `packages/tokens` — do not hand-edit values. |
+| `assets/tokens.css` | Design tokens mirroring the live nikatru.com `:root` (light + dark). **GENERATED — do not hand-edit.** It is written directly by `packages/tokens` (`npm run build` there); CI fails if it drifts from a fresh build. Edit `packages/tokens/tokens/*.json` instead. *(Was a hand-maintained snapshot until 2026-07-26, which meant editing the token JSON changed nothing.)* |
 | `assets/base.css` | Small shared reset + component styles built on the tokens. |
 | `demo/index.njk` | Smoke-test page: loops `apps` through the layout + card partial so `npm run build` exercises the whole layer. |
 
