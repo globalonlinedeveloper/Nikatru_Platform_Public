@@ -4,4 +4,7 @@
 /// build on top of [RestClient].
 library;
 
+export 'src/dio_config_transport.dart';
+export 'src/dio_consent_transport.dart';
+export 'src/dio_event_transport.dart';
 export 'src/rest_client.dart';

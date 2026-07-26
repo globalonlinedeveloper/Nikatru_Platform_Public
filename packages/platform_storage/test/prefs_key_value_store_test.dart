@@ -34,15 +34,26 @@ void main() {
   test('backs a persisted ConfigCache (hydrate round-trip)', () async {
     // Proves the adapter satisfies the core ConfigCache persistence contract.
     final KeyValueStore kv = await PrefsKeyValueStore.create();
-    final AppConfig canary = defaultConfigFor(
-      'subly',
-    )!.copyWith(apiBaseUrl: 'https://persisted.example/v1');
+    // [pipeline C-10] a neutral fixture, not a real app's name: core carries no
+    // app-specific default any more, and neither should its adapters' tests.
+    const AppConfig fixture = AppConfig(
+      appId: 'fixture',
+      apiBaseUrl: 'https://api.example/v1',
+      features: <String, bool>{},
+      paywall: PaywallConfig(enabled: false),
+      contentPack: null,
+      copy: <String, String>{},
+      minSupportedVersion: '1.0.0',
+    );
+    final AppConfig canary = fixture.copyWith(
+      apiBaseUrl: 'https://persisted.example/v1',
+    );
     ConfigCache(store: kv).put(canary);
     // put()'s write-through is fire-and-forget; let it settle before reading.
     await Future<void>.delayed(Duration.zero);
 
     final ConfigCache fresh = ConfigCache(store: kv);
-    await fresh.hydrate(<String>['subly']);
-    expect(fresh.get('subly')!.apiBaseUrl, 'https://persisted.example/v1');
+    await fresh.hydrate(<String>['fixture']);
+    expect(fresh.get('fixture')!.apiBaseUrl, 'https://persisted.example/v1');
   });
 }

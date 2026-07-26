@@ -27,6 +27,13 @@ dependencies:
   # survive a restart, and the queue must survive being offline.
   nikatru_platform_storage:
     path: ../../packages/platform_storage
+  # [pipeline C-2] Until this line existed, the ONLY app in production had no
+  # crash reporting at all — the package was declared by the brick template and by
+  # nothing that ships. Subly is a frozen legacy rail-prover (cut list item 1) and
+  # telemetry is one of exactly three things it is allowed to receive, precisely
+  # because a live app is the one place a crash report is worth anything.
+  nikatru_telemetry:
+    path: ../../packages/telemetry
 
   # State management
   flutter_riverpod: ^2.5.0
