@@ -115,6 +115,36 @@ jobs:
       - name: Build versions all match versions.json
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-version-consistency.mjs
+      # Repo-side secret scanning. GitHub's push protection only matches KNOWN
+      # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
+      # this project actually holds (the rclone crypt password, a pasted PEM, any
+      # bespoke token) are exactly the class it cannot see.
+      #
+      # Version PINNED and the tarball CHECKSUM-VERIFIED before it is unpacked,
+      # for the same reason every action is SHA-pinned (F-11) — except here we can
+      # check the actual bytes rather than trust a ref.
+      #
+      # scan-secrets.mjs then SELF-TESTS before it scans: it plants a known secret
+      # and asserts the scanner still flags it. A scanner that quietly stopped
+      # detecting would otherwise report "clean" forever. [pipeline F-6]
+      - name: Install gitleaks (pinned + checksum-verified)
+        working-directory: ${{ github.workspace }}
+        env:
+          GITLEAKS_VERSION: '8.30.1'
+          GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+        run: |
+          set -euo pipefail
+          # Into RUNNER_TEMP, never the workspace: a binary sitting in the repo
+          # would then be scanned by the very step that follows.
+          tarball="${RUNNER_TEMP}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          wget -q -O "$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball" -C "${RUNNER_TEMP}" gitleaks
+          "${RUNNER_TEMP}/gitleaks" version
+      - name: Secret scan (self-tests, then scans)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks"
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
