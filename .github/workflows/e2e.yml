@@ -18,13 +18,19 @@ on:
   schedule:
     - cron: '17 3 * * *' # 03:17 UTC nightly
 
+# Least privilege. These jobs only read the repo — they publish nothing through
+# GITHUB_TOKEN. Without this every job ran at the repository-default scope, which
+# on a public repo is a standing hand-out to any compromised action. [pipeline F-11]
+permissions:
+  contents: read
+
 jobs:
   e2e:
     name: Flutter integration_test (live Supabase + D1)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Preflight — is the service-role secret present?
         id: pre
@@ -38,12 +44,12 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.pre.outputs.run == 'true'
         with:
           node-version: 24
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         if: steps.pre.outputs.run == 'true'
         with:
           channel: stable
@@ -51,7 +57,7 @@ jobs:
 
       - name: Set up ChromeDriver
         if: steps.pre.outputs.run == 'true'
-        uses: nanasess/setup-chromedriver@v2
+        uses: nanasess/setup-chromedriver@ef5c64a93512d266b23b80bae95e46a67f30e703 # v2
 
       - name: flutter pub get
         if: steps.pre.outputs.run == 'true'
@@ -109,7 +115,7 @@ jobs:
 
       - name: Upload per-page screenshots
         if: always() && steps.pre.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-screenshots
           path: apps/subly/screenshots/

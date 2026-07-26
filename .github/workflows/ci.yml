@@ -23,6 +23,12 @@ concurrency:
 # workspace_gate does NOT cover: the TS Workers, the Node token/site builds, and the
 # brick-stamp validation.
 
+# Least privilege. These jobs only read the repo — they publish nothing through
+# GITHUB_TOKEN. Without this every job ran at the repository-default scope, which
+# on a public repo is a standing hand-out to any compromised action. [pipeline F-11]
+permissions:
+  contents: read
+
 jobs:
   subly_api:
     name: subly-api Worker (typecheck + dry-run)
@@ -31,8 +37,8 @@ jobs:
       run:
         working-directory: services/subly-api
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: npm ci
@@ -46,8 +52,8 @@ jobs:
       run:
         working-directory: services/platform
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       # FIRST: prove the guards can still FAIL, before trusting anything they say.
@@ -95,6 +101,13 @@ jobs:
       - name: Dependency resolution is reproducible
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-lockfile-discipline.mjs
+      # CI's own inputs. A tag is a movable label the action's owner can re-point;
+      # a 40-char SHA cannot move. tj-actions/changed-files reached ~23k repos in
+      # March 2025 by exactly that route, and e2e.yml runs nightly holding the
+      # Supabase service-role key. [pipeline F-11]
+      - name: Workflows are SHA-pinned and least-privilege
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-workflow-hardening.mjs
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
@@ -107,8 +120,8 @@ jobs:
       run:
         working-directory: packages/tokens
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: npm ci
@@ -127,8 +140,8 @@ jobs:
       run:
         working-directory: sites/_shared
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - run: npm ci
@@ -138,12 +151,12 @@ jobs:
     name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.44.7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - name: Install mason_cli
@@ -218,7 +231,7 @@ jobs:
     name: Static sites (functions parse + required files)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # sites/nikatru and sites/rajasekarselvam are deployed by CLOUDFLARE's own
       # Git integration on every push to main — no workflow involved, and
       # Cloudflare cannot read a GitHub check. Until this lane existed nothing in
@@ -235,13 +248,13 @@ jobs:
     name: Workspace gate (melos analyze + test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Runs BEFORE melos: the gate below can only report on packages it is told
       # about, so an ungated package must fail here rather than pass silently.
       # [pipeline F-1]
       - name: Assert workspace coverage
         run: node tooling/ci/assert-workspace-coverage.mjs
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.44.7

@@ -405,6 +405,71 @@ describe('assert-lockfile-discipline', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('assert-workflow-hardening', () => {
+  const SHA = 'a'.repeat(40);
+  const wf = (uses, { withPermissions = true } = {}) =>
+    `name: X\non: push\n${withPermissions ? 'permissions:\n  contents: read\n' : ''}jobs:\n  j:\n    steps:\n` +
+    uses.map((u) => `      - uses: ${u}\n`).join('');
+
+  /** 12 refs across 3 files clears the scan's own MIN_USES / MIN_WORKFLOWS floor. */
+  const build = (name, { bad = null, noPermsIn = null } = {}) => {
+    const files = {};
+    for (const f of ['a', 'b', 'c']) {
+      const refs = Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`);
+      if (bad && bad.file === f) refs[bad.index] = bad.ref;
+      files[`.github/workflows/${f}.yml`] = wf(refs, { withPermissions: noPermsIn !== f });
+    }
+    return fixture(name, files);
+  };
+
+  test('PASSES when every action is SHA-pinned and every workflow declares permissions', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [build('wh-ok')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /all SHA-pinned/);
+  });
+
+  test('FAILS on a movable tag reference, naming file and line', () => {
+    const dir = build('wh-tag', { bad: { file: 'b', index: 2, ref: 'actions/checkout@v4' } });
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /b\.yml:\d+/);
+    assert.match(out, /movable reference/);
+  });
+
+  test('FAILS on a branch reference, not only on version tags', () => {
+    const dir = build('wh-branch', { bad: { file: 'a', index: 0, ref: 'some/action@main' } });
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /@main/);
+  });
+
+  test('FAILS when a workflow declares no permissions block', () => {
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [build('wh-perms', { noPermsIn: 'c' })] });
+    assert.equal(code, 1);
+    assert.match(out, /c\.yml declares no/);
+  });
+
+  test('does NOT trip on a tag reference inside a comment', () => {
+    const dir = fixture('wh-comment', {
+      '.github/workflows/a.yml':
+        `name: X\npermissions:\n  contents: read\njobs:\n  j:\n    steps:\n      # was uses: actions/checkout@v4\n` +
+        Array.from({ length: 12 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
+      '.github/workflows/b.yml': wf([`actions/x@${SHA}`]),
+      '.github/workflows/c.yml': wf([`actions/y@${SHA}`]),
+    });
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS its own coverage check when the scan finds almost nothing', () => {
+    const dir = fixture('wh-cov', { '.github/workflows/a.yml': wf([`actions/x@${SHA}`]) });
+    const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('record-deployment (offline paths)', () => {
   test('FAILS when no environment is given', () => {
     const { code, out } = run('record-deployment.mjs', { args: [], env: { ...process.env } });

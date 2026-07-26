@@ -32,7 +32,7 @@ jobs:
       run:
         working-directory: apps/subly
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # MUST be first. This workflow triggers on push to main with no dependency
       # on CI, so without this the deploy and the tests race — and the deploy
@@ -45,7 +45,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.44.7
@@ -60,7 +60,7 @@ jobs:
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
 
       - name: Deploy to Cloudflare Pages (project subly)
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
