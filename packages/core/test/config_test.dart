@@ -48,6 +48,22 @@ class FakeTransport implements ConfigTransport {
   }
 }
 
+/// [pipeline C-10] The "bundled default" now arrives as a SEED rather than from a
+/// hardcoded entry inside core, because core must not know any app's name. These
+/// tests seed it the same way every real app does (the brick's `kAppDefaultConfig`,
+/// Subly's `kSublyDefaultConfig`) — so they still exercise the real
+/// network -> last-good -> bundled-default ladder, just wired honestly.
+AppConfig seededDefault(String appId) =>
+    AppConfig.fromJson(sublyServerJson()).copyWith(appId: appId);
+
+ConfigLoader seededLoader(ConfigTransport t, {String appId = 'subly'}) =>
+    ConfigLoader(
+      transport: t,
+      cache: ConfigCache(
+        seed: <String, AppConfig>{appId: seededDefault(appId)},
+      ),
+    );
+
 void main() {
   group('AppConfig.fromJson (CFG-1 contract shape)', () {
     test('parses the server config into typed fields', () {
@@ -132,28 +148,22 @@ void main() {
     });
   });
 
-  group('bundled defaults mirror the server DEFAULT_CONFIGS', () {
-    test('defaultConfigFor(subly) equals the server contract values', () {
-      final AppConfig? d = defaultConfigFor('subly');
-      expect(d, isNotNull);
-      expect(d!.appId, 'subly');
-      expect(d.apiBaseUrl, 'https://api.nikatru.com/v1');
-      expect(d.features, <String, bool>{
-        'renewals': true,
-        'budgets': true,
-        'exports': true,
-      });
-      expect(d.paywall.enabled, isFalse);
-      expect(d.contentPack, isNull);
-      expect(d.copy, isEmpty);
-      expect(d.minSupportedVersion, '1.0.0');
-      // `flags` is now TYPED on the server too (services/platform/src/types.ts
-      // + config.ts `flags: {}`). The mirror lives in that Worker's
-      // config.test.ts, so adding a config field on either side fails the other.
-      expect(d.flags, isEmpty);
+  group('bundled defaults carry NO app-specific values', () {
+    // [pipeline C-10] This group used to pin the hardcoded `'subly'` entry that
+    // lived in core's kDefaultConfigs — an app name in shared code, exported from
+    // the barrel every stamped app imports. The values AND the contract test that
+    // pins them against the server moved to `apps/subly/test/config_default_test.dart`;
+    // what is asserted here now is that core stayed generic.
+    test('core knows the name of NO app', () {
+      expect(
+        kDefaultConfigs,
+        isEmpty,
+        reason: 'an app id here is inherited by every stamped app',
+      );
     });
 
-    test('unregistered app has no default', () {
+    test('any app id returns null — each app seeds its own default', () {
+      expect(defaultConfigFor('subly'), isNull);
       expect(defaultConfigFor('ghost'), isNull);
     });
   });
@@ -172,7 +182,7 @@ void main() {
     test('falls back to the bundled default when offline (offline-safe)',
         () async {
       final FakeTransport t = FakeTransport.offline();
-      final ConfigLoader loader = ConfigLoader(transport: t);
+      final ConfigLoader loader = seededLoader(t);
       final Result<AppConfig> r = await loader.load('subly');
       expect(r.isOk, isTrue);
       expect(r.fold((AppConfig c) => c.apiBaseUrl, (_) => 'err'),
@@ -202,7 +212,7 @@ void main() {
     test('falls back to the default when the body is malformed', () async {
       final FakeTransport t =
           FakeTransport.ok(<String, Object?>{'nonsense': 1});
-      final ConfigLoader loader = ConfigLoader(transport: t);
+      final ConfigLoader loader = seededLoader(t);
       final Result<AppConfig> r = await loader.load('subly');
       expect(r.isOk, isTrue);
       expect(r.fold((AppConfig c) => c.apiBaseUrl, (_) => 'err'),
@@ -218,7 +228,7 @@ void main() {
 
     test('peek returns the bundled default without any network call', () async {
       final FakeTransport t = FakeTransport.offline();
-      final ConfigLoader loader = ConfigLoader(transport: t);
+      final ConfigLoader loader = seededLoader(t);
       expect(loader.peek('subly')?.apiBaseUrl, 'https://api.nikatru.com/v1');
       expect(loader.peek('ghost'), isNull);
       expect(t.calls, 0);
