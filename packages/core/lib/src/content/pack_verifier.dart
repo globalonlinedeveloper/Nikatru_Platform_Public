@@ -31,9 +31,14 @@ String? contentPackPublicKeyFor(String keyId) => kContentPackPublicKeys[keyId];
 /// lands, and while false every remote pack fails closed.
 bool get isContentPackKeyConfigured => kContentPackPublicKeys.isNotEmpty;
 
-/// Seam for Ed25519 signature verification of a content pack manifest. The
-/// concrete impl (e.g. `package:cryptography` or `package:ed25519_edwards`) is
-/// injected from the app layer so `core` stays pure Dart (ADR 007).
+/// Seam for Ed25519 signature verification of a content pack manifest.
+///
+/// The real implementation is [Ed25519PackVerifier], **in this package**
+/// (ADR 007 amended 2026-07-26 by owner decision — `pipeline C-6`). The seam is
+/// kept because it earns its keep for test fakes and for [RejectingPackVerifier];
+/// it is no longer a promise that an app layer will supply the implementation.
+/// For eight months nothing did, and the only impl in the repo rejected every
+/// pack unconditionally.
 abstract interface class PackVerifier {
   /// Whether [signature] is a valid Ed25519 signature over [message] for the
   /// key pinned under [keyId] in [kContentPackPublicKeys]. MUST return false

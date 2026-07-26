@@ -12,6 +12,7 @@ export 'src/analytics/ids.dart';
 export 'src/content/content_pack.dart';
 export 'src/content/content_pack_loader.dart';
 export 'src/content/content_pack_source.dart';
+export 'src/content/ed25519_pack_verifier.dart';
 export 'src/content/pack_verifier.dart';
 export 'src/entitlement_cache.dart';
 export 'src/result.dart';

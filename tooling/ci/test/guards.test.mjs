@@ -697,9 +697,22 @@ Future<void> recordAnalyticsConsent(
 }) async {}
 `;
 
+  // The guard checks several seams in one run, so a fixture that omits the
+  // pack-verifier files fails for a reason unrelated to what the test is about.
+  // Kept realistic rather than minimal — the same correction the caller-vs-
+  // declaration bug forced.
+  const PACK_FILES = {
+    'packages/core/lib/src/content/ed25519_pack_verifier.dart':
+      'class Ed25519PackVerifier implements PackVerifier {\n  verify() async { if (x == null) return false; return await _ed.verify(m); }\n}\n',
+    'packages/core/lib/nikatru_core.dart': "export 'src/content/ed25519_pack_verifier.dart';\n",
+    'packages/core/lib/src/content/pack_verifier.dart':
+      'const Map<String, String> kContentPackPublicKeys = <String, String>{};\n',
+  };
+
   const build = (name, { record = RECORD_CALL, ui = UI_CALLER, decl = DECLARATION, htmlVersion = '2026-07-26', dartVersion = '2026-07-26', fillerCount = 14 } = {}) =>
     fixture(name, {
       ...filler(fillerCount),
+      ...PACK_FILES,
       'apps/subly/lib/state/analytics_providers.dart':
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
@@ -735,6 +748,7 @@ Future<void> recordAnalyticsConsent(
   test('a DECLARATION alone does not count as a caller', () => {
     const dir = fixture('seams-decl-only', {
       ...filler(14),
+      ...PACK_FILES,
       'apps/subly/lib/state/analytics_providers.dart':
         `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       // no consent_prompt.dart, no settings caller — nothing calls it at all
@@ -756,6 +770,7 @@ Future<void> recordAnalyticsConsent(
   test('FAILS when privacy.html carries no version at all', () => {
     const dir = fixture('seams-noversion', {
       ...filler(14),
+      ...PACK_FILES,
       'apps/subly/lib/state/analytics_providers.dart': `${RECORD_CALL}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': UI_CALLER,
       'sites/nikatru/privacy.html': '<p class="updated">Last updated: whenever</p>',
@@ -774,5 +789,92 @@ Future<void> recordAnalyticsConsent(
     });
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline C-6 instance 2] The pack-verifier half of assert-seams-wired. Split
+// from the consent suite because its two halves have DIFFERENT OWNERS: a missing
+// implementation is a build failure, while unpinned production keys are owner
+// work (OWNER_QUEUE S-3) that must be reported and must NOT block CI.
+describe('assert-seams-wired — pack verifier', () => {
+  const REAL_IMPL = `
+class Ed25519PackVerifier implements PackVerifier {
+  Future<bool> verify({required String keyId, required List<int> message, required List<int> signature}) async {
+    final String? encoded = _keys[keyId];
+    if (encoded == null) return false;
+    return await _ed.verify(message, signature: Signature(signature));
+  }
+}
+`;
+  const BARREL = "export 'src/content/ed25519_pack_verifier.dart';\n";
+  const keysFile = (entries) =>
+    `/// Long doc comment mentioning 'k1' and keys and base64 at length.\nconst Map<String, String> kContentPackPublicKeys = <String, String>{${entries}};\n`;
+
+  const filler = (n) => {
+    const out = {};
+    for (let i = 0; i < n; i++) out[`apps/subly/lib/f_${i}.dart`] = '// filler\n';
+    return out;
+  };
+  // The consent half must stay satisfied so these tests isolate the verifier.
+  const consentOk = {
+    'apps/subly/lib/state/analytics_providers.dart':
+      "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
+    'apps/subly/lib/features/consent/consent_prompt.dart': 'recordAnalyticsConsent(ref, granted: true);',
+    'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
+  };
+
+  const build = (name, { impl = REAL_IMPL, barrel = BARREL, keys = keysFile('') } = {}) =>
+    fixture(name, {
+      ...filler(14),
+      ...consentOk,
+      'packages/core/lib/src/content/ed25519_pack_verifier.dart': impl,
+      'packages/core/lib/nikatru_core.dart': barrel,
+      'packages/core/lib/src/content/pack_verifier.dart': keys,
+    });
+
+  test('passes with a real impl exported, and REPORTS 0 pinned keys', () => {
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: build('pv-ok') });
+    assert.equal(code, 0, 'unpinned production keys must NOT fail the build');
+    assert.match(out, /a real PackVerifier implementation exists/);
+    assert.match(out, /exported from the core barrel/);
+    assert.match(out, /0 production keys pinned/);
+    assert.match(out, /OWNER-GATED/);
+  });
+
+  test('FAILS when no PackVerifier implementation exists', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-noimpl', { impl: '// the impl was deleted\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /declares no PackVerifier implementation/);
+  });
+
+  test('FAILS when the verifier is not exported — no app can reach it', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-noexport', { barrel: "export 'src/result.dart';\n" }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /does not export the verifier/);
+  });
+
+  // Proves the key count is PARSED out of the map, not grepped from the prose
+  // around it. The fixture's doc comment deliberately mentions 'k1' and "keys";
+  // a text search would report keys that the map does not contain — the exact
+  // bug that made a CORS guard match a comment explaining the absence.
+  test('counts pinned keys from the MAP, not the surrounding comment', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-prose', { keys: keysFile('') }),
+    });
+    assert.equal(code, 0);
+    assert.match(out, /0 production keys pinned/);
+  });
+
+  test('reports the real count once keys ARE pinned', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-pinned', { keys: keysFile("'k1': 'AAAA', 'k2': 'BBBB'") }),
+    });
+    assert.equal(code, 0);
+    assert.match(out, /2 production key\(s\) pinned/);
   });
 });

@@ -92,11 +92,14 @@ const REQUIRED_COVERAGE = [
       },
     ],
   },
+  // Checked by `checkPackVerifier()` below rather than by the caller scan: the
+  // implementation lives in packages/core, which is not an app tree, and its
+  // "on-switch" has two halves with different owners.
   {
     id: 'pack_verifier',
     what: 'PackVerifier — content packs cannot load without a real impl',
     wired: false,
-    deferred: 'stage 2 C-6 increment 2 (this branch)',
+    deferred: 'checked separately — see the pack_verifier section below',
   },
   {
     id: 'entitlements',
@@ -125,6 +128,50 @@ for (const seam of REQUIRED_COVERAGE) {
 
 if (liveSeams === 0) {
   fail('COVERAGE LOST — no seam in REQUIRED_COVERAGE is marked wired, so this guard asserted nothing.');
+}
+
+// ── the pack verifier ───────────────────────────────────────────────────────
+// TWO HALVES, DIFFERENT OWNERS, and conflating them is how this seam stayed dead
+// for months while looking designed:
+//   (a) a real non-rejecting implementation exists  → agent's job, asserted here
+//   (b) production signing keys are pinned          → OWNER'S job (OWNER_QUEUE S-3)
+// Half (b) cannot be a build failure — it would block every CI run on work only
+// the owner can do — but it is REPORTED on every run, so "packs still cannot load
+// in production" can never quietly become invisible.
+const VERIFIER_IMPL = 'packages/core/lib/src/content/ed25519_pack_verifier.dart';
+const CORE_BARREL = 'packages/core/lib/nikatru_core.dart';
+const KEYS_FILE = 'packages/core/lib/src/content/pack_verifier.dart';
+try {
+  const impl = readFileSync(join(repo, VERIFIER_IMPL), 'utf8');
+  const barrel = readFileSync(join(repo, CORE_BARREL), 'utf8');
+  const keys = readFileSync(join(repo, KEYS_FILE), 'utf8');
+
+  if (!/class\s+\w+\s+implements\s+PackVerifier/.test(impl)) {
+    fail(`${VERIFIER_IMPL} declares no PackVerifier implementation. Without one the only impl is RejectingPackVerifier and NO pack can ever load.`);
+  } else if (/return\s+false\s*;?\s*\}?\s*$/.test(impl.trim())) {
+    fail(`${VERIFIER_IMPL} looks like it unconditionally rejects — that is RejectingPackVerifier with extra steps.`);
+  } else {
+    ok('pack_verifier — a real PackVerifier implementation exists');
+  }
+
+  if (!barrel.includes('ed25519_pack_verifier.dart')) {
+    fail(`${CORE_BARREL} does not export the verifier, so no app can reach it.`);
+  } else {
+    ok('pack_verifier — exported from the core barrel');
+  }
+
+  // Half (b). Parsed, not grepped for prose: the surrounding doc comment talks
+  // about keys at length, so a naive text search would "find" keys that the map
+  // does not contain.
+  const mapBody = keys.match(/kContentPackPublicKeys\s*=\s*<String,\s*String>\{([\s\S]*?)\}/)?.[1] ?? '';
+  const pinnedCount = (mapBody.match(/['"][^'"]+['"]\s*:/g) ?? []).length;
+  if (pinnedCount === 0) {
+    console.log('--   pack_verifier — 0 production keys pinned: packs CANNOT load in production yet. OWNER-GATED (OWNER_QUEUE S-3, generate the signing keypair). The implementation is proven against a test keypair.');
+  } else {
+    ok(`pack_verifier — ${pinnedCount} production key(s) pinned`);
+  }
+} catch (e) {
+  fail(`pack_verifier check could not run: ${e.message}`);
 }
 
 // ── the policy-version pin ──────────────────────────────────────────────────
