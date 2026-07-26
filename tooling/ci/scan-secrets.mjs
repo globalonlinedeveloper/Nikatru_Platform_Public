@@ -25,7 +25,7 @@
 // Usage:  node tooling/ci/scan-secrets.mjs [repoRoot] [--gitleaks <path>]
 // Exit 0 = clean, 1 = a finding, a broken scanner, or a failed self-test.
 // ─────────────────────────────────────────────────────────────────────────────
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -95,15 +95,37 @@ if (!existsSync(repoRoot)) {
 }
 
 const cfg = join(repoRoot, '.gitleaks.toml');
-const real = runGitleaks(repoRoot, existsSync(cfg) ? ['--config', cfg] : []);
+const reportDir = mkdtempSync(join(tmpdir(), 'nikatru-scan-'));
+const reportPath = join(reportDir, 'findings.json');
+
+const real = runGitleaks(repoRoot, [
+  '--report-format',
+  'json',
+  '--report-path',
+  reportPath,
+  ...(existsSync(cfg) ? ['--config', cfg] : []),
+]);
 
 if (real.status !== 0) {
   console.error('✗ secret scan found something:');
-  console.error(real.stdout ?? '');
-  console.error(real.stderr ?? '');
+  // Report WHERE, never WHAT. `--redact` hides the value; without a parsed
+  // report gitleaks' console output says only "leaks found: N", which is not
+  // actionable — you cannot judge a false positive you cannot locate.
+  try {
+    const findings = JSON.parse(readFileSync(reportPath, 'utf8'));
+    for (const f of findings) {
+      console.error(`    ${f.File}:${f.StartLine}  rule=${f.RuleID}  ${f.Description ?? ''}`);
+    }
+  } catch {
+    console.error(real.stdout ?? '');
+    console.error(real.stderr ?? '');
+  } finally {
+    rmSync(reportDir, { recursive: true, force: true });
+  }
   console.error('  If this is a false positive, allowlist it in .gitleaks.toml — but note that');
   console.error('  every allowlist entry is a hole in the net, so make it as narrow as possible.');
   process.exit(1);
 }
+rmSync(reportDir, { recursive: true, force: true });
 
 console.log('ok  secret scan — no findings in the working tree');
