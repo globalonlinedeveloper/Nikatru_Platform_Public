@@ -348,6 +348,63 @@ describe('check-site-integrity', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fixtures deliberately contain no .git, so the tracked-ness check self-disables
+// and these exercise the lockfile-presence and install-command rules.
+describe('assert-lockfile-discipline', () => {
+  const UNITS = ['services/w1', 'services/w2', 'packages/n1'];
+  const build = (name, { units = UNITS, omitLockFor = null, workflow = null } = {}) => {
+    const files = {
+      '.github/workflows/ci.yml': workflow ?? 'jobs:\n  a:\n    steps:\n      - run: npm ci\n',
+    };
+    for (const u of units) {
+      files[`${u}/package.json`] = '{"name":"x"}\n';
+      if (u !== omitLockFor) files[`${u}/package-lock.json`] = '{"lockfileVersion":3}\n';
+    }
+    return fixture(name, files);
+  };
+
+  test('PASSES when every node unit is locked and installs are reproducible', () => {
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-ok')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /every workflow install is reproducible/);
+  });
+
+  test('FAILS when a node unit has no lockfile, and names it', () => {
+    const dir = build('ld-nolock', { omitLockFor: 'services/w2' });
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /services\/w2/);
+  });
+
+  test('FAILS on a bare npm install in a workflow, with file and line', () => {
+    const wf = 'jobs:\n  a:\n    steps:\n      - run: npm ci\n  b:\n    steps:\n      - run: npm install\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-install', { workflow: wf })] });
+    assert.equal(code, 1);
+    assert.match(out, /ci\.yml:7/);
+    assert.match(out, /npm ci/);
+  });
+
+  test('ALLOWS npm install for a mason-stamped app — the one deliberate exception', () => {
+    const wf =
+      'jobs:\n  a:\n    steps:\n      - name: stamped service\n        working-directory: services/probeapi-api\n        run: |\n          npm install\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-excused', { workflow: wf })] });
+    assert.equal(code, 0, out);
+  });
+
+  test('does NOT trip on npm install mentioned in a comment', () => {
+    const wf = 'jobs:\n  a:\n    steps:\n      # we used to run npm install here\n      - run: npm ci\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-comment', { workflow: wf })] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS its own coverage check when the scan finds almost nothing', () => {
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-cov', { units: ['services/only'] })] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('record-deployment (offline paths)', () => {
   test('FAILS when no environment is given', () => {
     const { code, out } = run('record-deployment.mjs', { args: [], env: { ...process.env } });

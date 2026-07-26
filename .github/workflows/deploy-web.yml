@@ -50,7 +50,7 @@ jobs:
           channel: stable
           flutter-version: 3.44.7
 
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
 
       - name: Build web (release, no service worker)
         run: >

@@ -83,7 +83,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install
+      - run: npm ci
         working-directory: services/subly-api
       # MIGRATIONS BEFORE DEPLOY — the order is the whole point.
       #
@@ -124,7 +124,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install
+      - run: npm ci
         working-directory: services/platform
       # MIGRATIONS BEFORE DEPLOY — see the note in the subly-api job.
       # platform is the SOLE applier of platform_db migrations, so this is the
