@@ -22,6 +22,14 @@ concurrency:
   group: deploy-workers
   cancel-in-progress: false
 
+# Least privilege. Deploys use the Cloudflare token, not GITHUB_TOKEN; this only
+# needs to read the repo, read ci-gate's verdict, and record what went live.
+# [pipeline F-5b]
+permissions:
+  contents: read
+  checks: read
+  deployments: write
+
 jobs:
   detect:
     name: Detect changed services
@@ -31,6 +39,20 @@ jobs:
       platform: ${{ steps.decide.outputs.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      # The gate check lives HERE, not in the deploy jobs, for two reasons:
+      # both deploy jobs already `needs: detect`, so one insertion blocks both;
+      # and it therefore runs BEFORE `d1 migrations apply --remote`, which is
+      # irreversible. It also covers workflow_dispatch — the "manual redeploy /
+      # rollback button" that previously consulted nothing at all, and which is
+      # by definition pressed when something is already wrong. Fails closed.
+      # [pipeline F-5b]
+      - name: Require ci-gate to have passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+
       - uses: dorny/paths-filter@v3
         id: filter
         if: github.event_name == 'push'
@@ -87,6 +109,10 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/subly-api
           command: deploy
+      - name: Record the deployed SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/record-deployment.mjs subly-api https://api.nikatru.com
 
   platform:
     name: Deploy platform
@@ -116,3 +142,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
           command: deploy
+      - name: Record the deployed SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/record-deployment.mjs platform https://platform.nikatru.com

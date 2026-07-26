@@ -17,6 +17,13 @@ concurrency:
   group: deploy-web
   cancel-in-progress: true
 
+# Least privilege: this job only needs to read the repo and read ci-gate's
+# verdict. It deploys via a Cloudflare token, not GITHUB_TOKEN. [pipeline F-5b]
+permissions:
+  contents: read
+  checks: read
+  deployments: write
+
 jobs:
   deploy-web:
     name: Build & deploy Subly web to Cloudflare Pages
@@ -26,6 +33,17 @@ jobs:
         working-directory: apps/subly
     steps:
       - uses: actions/checkout@v4
+
+      # MUST be first. This workflow triggers on push to main with no dependency
+      # on CI, so without this the deploy and the tests race — and the deploy
+      # (~3 min) finishes first (~6 min). Also gates the manual redeploy button,
+      # which previously consulted nothing at all. Fails closed. [pipeline F-5b]
+      - name: Require ci-gate to have passed for this commit
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -48,3 +66,11 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/subly
           command: pages deploy build/web --project-name=subly --branch=main
+
+      # "What is live right now?" must be answerable without inference.
+      # CLAUDE.md: never assert done/live/working from memory. [pipeline F-5b]
+      - name: Record the deployed SHA
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/record-deployment.mjs subly-web https://subly.nikatru.com
