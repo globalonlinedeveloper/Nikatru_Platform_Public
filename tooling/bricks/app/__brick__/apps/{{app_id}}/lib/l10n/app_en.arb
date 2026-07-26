@@ -15,5 +15,21 @@
   "deleteAccount": "Delete account",
   "@deleteAccount": {
     "description": "Settings entry to delete the account and its data."
+  },
+  "appearance": "Appearance",
+  "@appearance": {
+    "description": "Settings section for the light/dark theme choice."
+  },
+  "themeSystem": "System",
+  "@themeSystem": {
+    "description": "Theme option that follows the operating system setting."
+  },
+  "themeLight": "Light",
+  "@themeLight": {
+    "description": "Theme option forcing the light colour scheme."
+  },
+  "themeDark": "Dark",
+  "@themeDark": {
+    "description": "Theme option forcing the dark colour scheme."
   }
 }

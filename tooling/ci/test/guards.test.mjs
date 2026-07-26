@@ -878,3 +878,79 @@ class Ed25519PackVerifier implements PackVerifier {
     assert.match(out, /2 production key\(s\) pinned/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline C-16] assert-stamp-properties — the rule that no chassis requirement
+// lands without an assertion the STAMPED APP carries itself. The assertions live
+// in the brick template (owner decision) so every app inherits them; this guard
+// stops that file quietly vanishing, because vanishing looks exactly like passing.
+describe('assert-stamp-properties', () => {
+  const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+  const PROP = `${BRICK}/test/chassis_properties_test.dart`;
+  const APP = `${BRICK}/lib/app.dart`;
+
+  const goodTest = `
+group('property: theme-mode-persisted', () {
+  test('a', () {});
+  test('b', () {});
+  test('c', () {});
+});
+group('property: theme-triplet-supplied', () {
+  testWidgets('d', (t) async {});
+});
+`;
+  const goodApp = `
+return MaterialApp.router(
+  theme: buildAppTheme(),
+  darkTheme: buildAppTheme(brightness: Brightness.dark),
+  themeMode: ref.watch(themeModeProvider),
+);
+`;
+
+  const build = (name, { propTest = goodTest, app = goodApp, omitProp = false } = {}) => {
+    const files = { [APP]: app };
+    if (!omitProp) files[PROP] = propTest;
+    return fixture(name, files);
+  };
+
+  test('passes when both properties are asserted and implemented', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-ok') });
+    assert.equal(code, 0);
+    assert.match(out, /theme-mode-persisted' asserted/);
+    assert.match(out, /theme-triplet-supplied' asserted and implemented/);
+  });
+
+  test('FAILS when the inherited property test is deleted', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-missing', { omitProp: true }) });
+    assert.equal(code, 1);
+    assert.match(out, /is MISSING/);
+  });
+
+  // A file that still exists but has been emptied of assertions is the sneaky
+  // case: "the file is there" would pass while it asserts nothing.
+  test('FAILS its own coverage check when the file is gutted', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-gutted', { propTest: `test('only one', () {});` }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('FAILS when a declared property stops being asserted', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-renamed', { propTest: goodTest.replace('theme-mode-persisted', 'something-else') }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /'theme-mode-persisted' is NOT asserted/);
+  });
+
+  // The hollow-test case: the assertion is still there but the thing it asserts
+  // has been deleted from the app. A test-name check alone would pass.
+  test('FAILS when the assertion survives but the IMPLEMENTATION is gone', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-hollow', { app: 'return MaterialApp.router(theme: buildAppTheme());' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /IMPLEMENTATION is gone/);
+  });
+});

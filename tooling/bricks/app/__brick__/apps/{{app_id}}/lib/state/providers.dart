@@ -1,5 +1,10 @@
 import 'dart:math';
 
+// ThemeMode only — this file is state wiring, not UI, and a narrow `show` keeps
+// it that way. Without the import the stamped app fails to compile, which no
+// amount of analyzing the TEMPLATE would reveal: the template is mustache, not
+// valid Dart, so only a real stamp can catch it. [pipeline C-16]
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
@@ -117,6 +122,80 @@ final FutureProvider<core.FeatureFlags> featureFlagsProvider =
       final String id = await ref.watch(installIdProvider.future);
       return core.FeatureFlags(rollouts: cfg.flags, stableId: id);
     });
+
+const String _themeModeKey = 'nikatru.theme_mode';
+
+/// The user's light/dark/system choice, persisted ([pipeline C-14] via C-16).
+///
+/// WHY A PERSISTED OVERRIDE AT ALL: `MaterialApp` already defaults to
+/// `ThemeMode.system`, so a stamped app follows the OS setting with no code. What
+/// was missing is a user who wants dark while their phone is light — and the DoD
+/// requires `theme` + `darkTheme` + a **persisted** themeMode.
+///
+/// Starts at [ThemeMode.system] and hydrates from storage in the background
+/// rather than awaiting it, so first paint never blocks on disk. The stored value
+/// arrives a frame or two later, which is invisible and is the same fail-open
+/// posture the force-update gate uses.
+class ThemeModeController extends Notifier<ThemeMode> {
+  /// Whether the user has made an explicit choice this session.
+  ///
+  /// 🔴 LOAD-BEARING, and found by the property test on its very first run.
+  /// Hydration is async, so a user tapping Dark during launch could be overtaken
+  /// by the disk read completing afterwards and resetting them to the stored
+  /// value — the setting visibly snapping back. Hydration must never overwrite a
+  /// live choice.
+  bool _userChose = false;
+
+  @override
+  ThemeMode build() {
+    // Deliberately not awaited: see the class doc.
+    _hydrate();
+    return ThemeMode.system;
+  }
+
+  Future<void> _hydrate() async {
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final ThemeMode stored = _decode(await kv.read(_themeModeKey));
+      if (_userChose) return; // the user got there first — never clobber
+      state = stored;
+    } catch (_) {
+      // Unreadable store ⇒ keep following the OS. Never throw at launch.
+    }
+  }
+
+  /// Persist and apply a new choice. Applied in memory first so the UI responds
+  /// immediately even if the write is slow or fails.
+  Future<void> set(ThemeMode mode) async {
+    _userChose = true;
+    state = mode;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(_themeModeKey, _encode(mode));
+    } catch (_) {
+      // Best-effort: a failed write only means the choice resets next launch.
+    }
+  }
+
+  static String _encode(ThemeMode m) => switch (m) {
+    ThemeMode.light => 'light',
+    ThemeMode.dark => 'dark',
+    ThemeMode.system => 'system',
+  };
+
+  static ThemeMode _decode(String? raw) => switch (raw) {
+    'light' => ThemeMode.light,
+    'dark' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
+}
+
+final NotifierProvider<ThemeModeController, ThemeMode> themeModeProvider =
+    NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
 /// The offline entitlement cache (SecureStore-backed): a paid user stays
 /// unlocked across restarts; honours expires_at + a grace window (ADR 005).
