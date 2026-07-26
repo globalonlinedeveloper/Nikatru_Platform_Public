@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install
+      - run: npm ci
       - run: npx tsc --noEmit
       - run: npx wrangler deploy --dry-run
 
@@ -88,7 +88,14 @@ jobs:
       - name: Every deployable unit is claimed by a lane
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-lane-coverage.mjs
-      - run: npm install
+      # A commit must resolve the same dependencies twice. `npm install` takes
+      # whatever is newest inside a caret range, so the dry-run that "proved" a
+      # Worker deploy and the deploy itself resolved independently, minutes apart
+      # — and the winner of that race is what reached production. [pipeline F-8]
+      - name: Dependency resolution is reproducible
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-lockfile-discipline.mjs
+      - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
       - run: npx wrangler deploy --dry-run
@@ -124,7 +131,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install
+      - run: npm ci
       - run: npm run build
 
   app_brick:
@@ -189,6 +196,17 @@ jobs:
           flutter pub get
           flutter analyze --no-fatal-infos
           flutter test
+      # ⚠️ THE ONE DELIBERATE EXCEPTION to F-8's `npm ci` / `--enforce-lockfile`
+      # rule, and it is stated here rather than left to look like an oversight.
+      #
+      # apps/probe, apps/probeapi and services/probeapi-api are stamped fresh by
+      # mason seconds earlier. A freshly stamped app HAS no lockfile, so `npm ci`
+      # and `--enforce-lockfile` would both fail by definition. These three
+      # installs are a bootstrap, not a reproducible build, and they ship nothing.
+      #
+      # assert-lockfile-discipline.mjs allows exactly these paths and fails on any
+      # other non-reproducible install. If the brick ever ships lockfiles in its
+      # template, delete the exception rather than widening it. [pipeline F-8]
       - name: Typecheck + dry-run the stamped service
         working-directory: services/probeapi-api
         run: |
@@ -232,7 +250,7 @@ jobs:
       # Flutter members require the Flutter tool for root workspace resolution
       # (plain `dart pub get` cannot resolve `sdk: flutter` dependencies).
       - name: Resolve the workspace
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - name: melos run analyze
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"

@@ -64,7 +64,7 @@ jobs:
       # apps/subly is a pub WORKSPACE member: resolution happens at the repo
       # root, not in the app directory.
       - name: Resolve the workspace
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - name: Build web
         working-directory: apps/subly
         run: flutter build web --release
@@ -95,7 +95,7 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - name: Build windows
         working-directory: apps/subly
         run: flutter build windows --release
@@ -116,7 +116,7 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - name: Build macos
         working-directory: apps/subly
         run: flutter build macos --release

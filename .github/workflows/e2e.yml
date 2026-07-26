@@ -56,7 +56,7 @@ jobs:
       - name: flutter pub get
         if: steps.pre.outputs.run == 'true'
         working-directory: apps/subly
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Provision throwaway confirmed user
         id: user

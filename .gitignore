@@ -63,11 +63,19 @@ apps/subly/config/*.json
 
 # ── Node / Cloudflare / web (GLOBAL) ──
 **/node_modules/
-# Worker lockfiles are NOT tracked: the services/* CI lanes run `npm install`,
-# not `npm ci`, so a committed lock buys nothing and a loose one gets swept into
-# the next `git add -A`. (packages/tokens + sites/_shared DO track theirs and
-# use `npm ci` — those stay tracked; this rule is scoped to services/.)
-services/*/package-lock.json
+# Worker lockfiles ARE tracked (reversed 2026-07-26, [pipeline F-8]).
+#
+# The previous rule ignored them, reasoning that "the services/* lanes run
+# `npm install`, not `npm ci`, so a committed lock buys nothing". That is
+# circular — the lock bought nothing *because* nothing used it — and it was
+# written before `deploy-workers.yml` existed. The consequence was live: the CI
+# dry-run that "proved" a Worker deploy and the deploy itself each ran their own
+# `npm install`, minutes apart, against caret ranges. Whichever version won that
+# race is what reached production, holding the credential that applies D1
+# migrations. `git checkout <sha> && npm install` could never reproduce a
+# shipped build.
+#
+# Both service lockfiles are now committed and every lane uses `npm ci`.
 **/.wrangler/
 **/dist/
 **/_site/
