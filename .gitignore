@@ -1,5 +1,23 @@
 # ─────────────────────────────────────────────────────────────
-# SECRETS — never commit. All credentials live in .cowork-private/
+# PRIVATE TREES — this repo is PUBLIC. These must never enter it.
+#
+# These were previously excluded ONLY by `.git/info/exclude`, which is
+# per-clone, untracked, and NOT recreated by `git clone`. A fresh clone
+# followed by `git add -A` would therefore have staged the entire private
+# business SSoT and the local secrets vault into a public repository.
+# Verified 2026-07-26: nothing has ever leaked — every path below is clean
+# across the whole history. This is preventive, and it travels with the repo.
+# `.git/info/exclude` is intentionally left in place as a second layer.
+# [pipeline F-6]
+# ─────────────────────────────────────────────────────────────
+.claude/
+knowledge/
+company/
+scripts/
+CLAUDE.md
+
+# ─────────────────────────────────────────────────────────────
+# SECRETS — never commit. All credentials live in .claude/ (above)
 # ─────────────────────────────────────────────────────────────
 .cowork-private/
 *.env
