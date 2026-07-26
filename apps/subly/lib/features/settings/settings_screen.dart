@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/auth/auth_models.dart';
+import '../../state/analytics_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../shared/widgets.dart';
@@ -15,7 +17,11 @@ class SettingsScreen extends ConsumerWidget {
 
   static const List<List<String>> _toggles = <List<String>>[
     <String>['alerts', 'Renewal alerts', 'Notify 2 days before charge'],
-    <String>['priceHike', 'Price-hike alerts', 'When a plan gets more expensive'],
+    <String>[
+      'priceHike',
+      'Price-hike alerts',
+      'When a plan gets more expensive',
+    ],
     <String>['unused', 'Unused detection', 'Flag subscriptions you don’t use'],
     <String>['weekly', 'Weekly digest', 'Sunday spending summary'],
   ];
@@ -32,8 +38,9 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final SettingsState settings = ref.watch(settingsControllerProvider);
-    final SettingsController controller =
-        ref.read(settingsControllerProvider.notifier);
+    final SettingsController controller = ref.read(
+      settingsControllerProvider.notifier,
+    );
     final AuthUser? user = ref.watch(authRepositoryProvider).currentUser;
 
     return ListView(
@@ -51,25 +58,35 @@ class SettingsScreen extends ConsumerWidget {
                 height: 52,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                    gradient: AppColors.brandGradient,
-                    borderRadius: BorderRadius.circular(16)),
-                child: Text(user?.initial ?? 'A',
-                    style: const TextStyle(
-                        fontFamily: 'Manrope',
-                        fontWeight: FontWeight.w800,
-                        fontSize: 20,
-                        color: Colors.white)),
+                  gradient: AppColors.brandGradient,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  user?.initial ?? 'A',
+                  style: const TextStyle(
+                    fontFamily: 'Manrope',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    color: Colors.white,
+                  ),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(user?.displayName ?? 'Account',
-                        style: AppText.body
-                            .copyWith(fontWeight: FontWeight.w800, fontSize: 16)),
-                    Text('${user?.email ?? ''} · Pro plan',
-                        style: AppText.muted.copyWith(fontSize: 13)),
+                    Text(
+                      user?.displayName ?? 'Account',
+                      style: AppText.body.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      '${user?.email ?? ''} · Pro plan',
+                      style: AppText.muted.copyWith(fontSize: 13),
+                    ),
                   ],
                 ),
               ),
@@ -96,11 +113,17 @@ class SettingsScreen extends ConsumerWidget {
                       gradient: sel ? AppColors.brandGradient : null,
                       color: sel ? null : AppColors.surface,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: sel ? Colors.transparent : AppColors.line),
+                      border: Border.all(
+                        color: sel ? Colors.transparent : AppColors.line,
+                      ),
                     ),
-                    child: Text(sym,
-                        style: AppText.fig.copyWith(
-                            fontSize: 16, color: sel ? Colors.white : AppColors.ink)),
+                    child: Text(
+                      sym,
+                      style: AppText.fig.copyWith(
+                        fontSize: 16,
+                        color: sel ? Colors.white : AppColors.ink,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -137,6 +160,32 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(2, 22, 2, 8),
+          child: Text('PRIVACY', style: AppText.label),
+        ),
+        // The DPDP §6(3) withdrawal path. `privacy.html` promises the user can
+        // turn this off in Settings without contacting us, so this row is what
+        // makes that promise true — and it is the same `record()` call the
+        // first-run prompt makes, with granted flipped. Withdrawal is a NEW
+        // append-only artifact, never an edit of the old one.
+        Container(
+          decoration: cardDecoration(),
+          clipBehavior: Clip.antiAlias,
+          child: _prefRow(
+            'Usage statistics',
+            ref.watch(analyticsConsentProvider) == core.ConsentStatus.granted
+                ? 'On — helping us improve the app'
+                : 'Off — nothing is being collected',
+            ref.watch(analyticsConsentProvider) == core.ConsentStatus.granted,
+            () => recordAnalyticsConsent(
+              ref,
+              granted:
+                  ref.read(analyticsConsentProvider) !=
+                  core.ConsentStatus.granted,
+            ),
+          ),
+        ),
         const SizedBox(height: 12),
         Container(
           decoration: cardDecoration(),
@@ -166,8 +215,10 @@ class SettingsScreen extends ConsumerWidget {
         const Center(child: PoweredByNikatru()),
         const SizedBox(height: 12),
         Center(
-          child: Text('${AppConfig.appName} v1.0 · © 2026 ${AppConfig.companyName}',
-              style: AppText.muted.copyWith(fontSize: 11)),
+          child: Text(
+            '${AppConfig.appName} v1.0 · © 2026 ${AppConfig.companyName}',
+            style: AppText.muted.copyWith(fontSize: 11),
+          ),
         ),
       ],
     );
@@ -182,8 +233,13 @@ class SettingsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(label,
-                    style: AppText.body.copyWith(fontWeight: FontWeight.w700, fontSize: 14)),
+                Text(
+                  label,
+                  style: AppText.body.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
                 Text(desc, style: AppText.muted.copyWith(fontSize: 12)),
               ],
             ),
@@ -223,7 +279,11 @@ class _Toggle extends StatelessWidget {
               color: Colors.white,
               shape: BoxShape.circle,
               boxShadow: <BoxShadow>[
-                BoxShadow(color: Color(0x40000000), blurRadius: 3, offset: Offset(0, 1)),
+                BoxShadow(
+                  color: Color(0x40000000),
+                  blurRadius: 3,
+                  offset: Offset(0, 1),
+                ),
               ],
             ),
           ),
@@ -250,7 +310,8 @@ class _LinkRow extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         border: Border(
-            bottom: BorderSide(color: last ? Colors.transparent : AppColors.line)),
+          bottom: BorderSide(color: last ? Colors.transparent : AppColors.line),
+        ),
       ),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -272,14 +333,20 @@ class _LinkRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                child: Text(icon,
-                    style: const TextStyle(color: AppColors.accent, fontSize: 15)),
+                child: Text(
+                  icon,
+                  style: const TextStyle(color: AppColors.accent, fontSize: 15),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(label,
-                    style:
-                        AppText.body.copyWith(fontWeight: FontWeight.w700, fontSize: 14)),
+                child: Text(
+                  label,
+                  style: AppText.body.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
               ),
               const Icon(Icons.chevron_right, color: AppColors.muted, size: 18),
             ],
