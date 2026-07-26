@@ -70,7 +70,12 @@ async function main() {
   const timeoutSeconds = timeoutIdx >= 0 ? Number(args[timeoutIdx + 1]) : 1200;
   // Skip the flag AND its value, else `--timeout-seconds 10` with no SHA parses
   // "10" as the commit and reports a confusing timeout instead of "no SHA given".
-  const positional = args.filter((a, i) => !a.startsWith('--') && i !== timeoutIdx + 1);
+  // ⚠️ Guard the -1: `indexOf` returns -1 when the flag is ABSENT, and -1 + 1 = 0
+  // would then discard argv[0] — the SHA — on the exact invocation CI uses.
+  // That shipped once and failed both deploys; it was not caught locally because
+  // every local test passed the flag. Always test the no-flag form too.
+  const skipIdx = timeoutIdx >= 0 ? timeoutIdx + 1 : -1;
+  const positional = args.filter((a, i) => !a.startsWith('--') && i !== skipIdx);
   const sha = positional[0];
 
   const repo = process.env.GITHUB_REPOSITORY;
