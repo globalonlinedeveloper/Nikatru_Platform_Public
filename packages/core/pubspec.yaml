@@ -12,9 +12,16 @@ environment:
 
 dependencies:
   # Pure-Dart, portable (all 6 platforms incl. web), Dart-team maintained — used
-  # only for sha256 content-pack integrity. Ed25519 signature verification stays
-  # an injected seam (PackVerifier), keeping core free of signing deps (ADR 007).
+  # for sha256 content-pack integrity.
   crypto: ^3.0.0
+  # [pipeline C-6 · ADR 007 AMENDED 2026-07-26, owner] The Ed25519 verifier now
+  # lives IN core. The purity constraint is "no Flutter, no plugins" — this is
+  # pure Dart (Apache-2.0, verified publisher dint.dev) and works on web incl.
+  # WASM. The old note said signing stayed out of core to keep it pure; the
+  # result was that the ONLY PackVerifier impl was RejectingPackVerifier, so no
+  # pack could ever load. A seam kept clean by having no implementation is not
+  # portability, it is a dead capability.
+  cryptography: ^2.9.0
 
 dev_dependencies:
   lints: ^6.0.0
