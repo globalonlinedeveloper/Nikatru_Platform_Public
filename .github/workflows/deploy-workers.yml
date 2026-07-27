@@ -42,6 +42,15 @@ jobs:
       platform: ${{ steps.decide.outputs.platform }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
+        # into .git/config and LEAVES it there for the whole job. Any later step that
+        # packages the workspace (or anything containing .git/) ships the token inside
+        # the artifact, and on a PUBLIC repo artifacts are downloadable. Nothing here
+        # does git push/tag/commit, so none of these checkouts need the credential.
+        # [zizmor artipacked] Verified 2026-07-27: no current artifact path includes
+        # .git/ — so this closes a FUTURE mistake, not a live leak.
+        with:
+          persist-credentials: false
 
       # The gate check lives HERE, not in the deploy jobs, for two reasons:
       # both deploy jobs already `needs: detect`, so one insertion blocks both;
@@ -88,6 +97,8 @@ jobs:
       deployments: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -134,6 +145,8 @@ jobs:
       deployments: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24

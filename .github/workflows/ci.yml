@@ -38,6 +38,15 @@ jobs:
         working-directory: services/subly-api
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
+        # into .git/config and LEAVES it there for the whole job. Any later step that
+        # packages the workspace (or anything containing .git/) ships the token inside
+        # the artifact, and on a PUBLIC repo artifacts are downloadable. Nothing here
+        # does git push/tag/commit, so none of these checkouts need the credential.
+        # [zizmor artipacked] Verified 2026-07-27: no current artifact path includes
+        # .git/ — so this closes a FUTURE mistake, not a live leak.
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -60,6 +69,8 @@ jobs:
         working-directory: services/platform
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -237,6 +248,8 @@ jobs:
         working-directory: packages/tokens
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -257,6 +270,8 @@ jobs:
         working-directory: sites/_shared
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -268,6 +283,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
@@ -361,6 +378,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       # sites/nikatru and sites/rajasekarselvam are deployed by CLOUDFLARE's own
       # Git integration on every push to main — no workflow involved, and
       # Cloudflare cannot read a GitHub check. Until this lane existed nothing in
@@ -378,6 +397,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       # Runs BEFORE melos: the gate below can only report on packages it is told
       # about, so an ungated package must fail here rather than pass silently.
       # [pipeline F-1]
