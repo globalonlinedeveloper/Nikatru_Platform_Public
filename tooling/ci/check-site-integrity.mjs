@@ -16,6 +16,12 @@
 // What this checks — deliberately shallow, and honest about it:
 //   · every Pages Function parses (catches a typo, NOT wrong logic or a bad key)
 //   · every deploy root still ships the files that break the site if missing
+//   · every APP-FACING deploy root still ships real privacy/terms/refund pages
+//
+// That last one is not cosmetic. Both app stores require a reachable privacy
+// policy; `sites/nikatru` is the policy host for every app we publish. Deleting
+// `privacy.html` used to pass this lane, pass ci-gate, and deploy — the first
+// signal would have been a store takedown. Nothing in the repo noticed.
 //
 // Pipeline requirement: company/pipeline/01-foundation.md → F-9.
 //
@@ -23,8 +29,9 @@
 // Exit 0 = clean, 1 = a site is broken or the scan lost its coverage.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readdirSync, existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve, dirname, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const repoRoot = process.argv[2] ?? process.cwd();
@@ -34,6 +41,28 @@ const SITES = join(repoRoot, 'sites');
  *  `sites/_shared` is an Eleventy source layer, not a deploy root, and is
  *  correctly excluded by that test rather than by a hardcoded name. */
 const REQUIRED_FILES = ['index.html', '404.html', 'robots.txt', '_headers'];
+
+/** The pages a store reviewer (and Indian e-commerce rules, for refunds) expects
+ *  to resolve on the site that fronts a published app. */
+const LEGAL_PAGES = ['privacy.html', 'terms.html', 'refund.html'];
+
+/** "Still a real page" without matching prose the owner alone may edit:
+ *  a size floor measured on VISIBLE TEXT (so a fat <script> or a base64 image
+ *  cannot pad a stub past it) plus a rendered-heading marker. The smallest real
+ *  page today is refund.html at 2,329 visible characters, so this floor is a
+ *  stub detector, not an editorial constraint on how long a policy may be. */
+const MIN_LEGAL_TEXT_CHARS = 1000;
+
+/** Deploy roots that MUST be treated as app-facing, named rather than sniffed.
+ *  The heuristics below (an apps/ directory, a relative link to a legal page)
+ *  exist to catch a NEW site nobody added here — they are not trusted to keep
+ *  covering the one we already know about, because a heuristic that stops
+ *  matching reports "clean". Enforced only when scanning the repository this
+ *  script lives in; guard fixtures are synthetic trees with no nikatru. */
+const REQUIRED_LEGAL_ROOTS = ['nikatru'];
+
+const selfDir = dirname(fileURLToPath(import.meta.url));
+const SCANNING_OWN_REPO = (selfDir + sep).startsWith(resolve(repoRoot) + sep);
 
 /** A scan that quietly matches nothing reports "clean" forever. */
 const MIN_SITES = 2;
@@ -71,6 +100,106 @@ for (const root of siteRoots) {
   for (const f of REQUIRED_FILES) {
     if (!existsSync(join(root, f))) {
       problems.push(`missing ${relative(repoRoot, join(root, f))}`);
+    }
+  }
+}
+
+// ── legally-required pages on app-facing deploy roots ────────────────────────
+/** Blank out comments, <script> and <style> so a commented-out link cannot bind
+ *  a site to a policy it never promised, and script source cannot be counted as
+ *  page text. Replaced with a space rather than deleted — nothing here needs
+ *  byte offsets, but keeping words apart keeps the text measure honest. */
+function stripInert(html) {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ');
+}
+
+function visibleText(html) {
+  return stripInert(html)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Legal pages this document links to with a SAME-SITE relative href
+ *  (`privacy.html`, `./privacy.html`, `/privacy.html`). An absolute URL is
+ *  deliberately ignored: it may point at another property, and resolving it
+ *  would need a host map this guard has no business owning. */
+function linkedLegalPages(html) {
+  const found = new Set();
+  const stripped = stripInert(html);
+  for (const m of stripped.matchAll(/\b(?:href|src)\s*=\s*["']([^"']+)["']/gi)) {
+    const url = m[1].trim();
+    if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//') || url.startsWith('#')) continue;
+    const file = url.split(/[?#]/)[0].split('/').pop()?.toLowerCase();
+    if (file && LEGAL_PAGES.includes(file)) found.add(file);
+  }
+  return found;
+}
+
+const htmlIn = (root) => walk(root).filter((f) => f.toLowerCase().endsWith('.html'));
+
+/** Which legal pages this deploy root owes, and why. Two independent tiers,
+ *  because they answer different questions:
+ *
+ *  · APP-FACING — the site fronts a published app, so a store reviewer will look
+ *    for the whole set whether or not the site links to it. Signalled by the
+ *    name list (authoritative) or by shipping an apps/ directory (catches a new
+ *    site nobody added to the list).
+ *  · LINKED — any site, app-facing or not, that points a same-site link at a
+ *    legal page owes THAT page. A dangling /privacy.html is a 404 where a policy
+ *    was promised. Scoped to the linked page only: a brochure site that adds a
+ *    privacy policy has not thereby taken on a refund policy.
+ *
+ *  A root matching neither (sites/rajasekarselvam today) is exempt by
+ *  construction rather than by an exclusion list that would quietly rot. */
+function legalDuties(root) {
+  const name = root.slice(SITES.length + 1);
+  const duties = new Map(); // page → why it is owed
+  const reasons = [];
+
+  const appFacing = [];
+  if (SCANNING_OWN_REPO && REQUIRED_LEGAL_ROOTS.includes(name)) appFacing.push('named in REQUIRED_LEGAL_ROOTS');
+  if (existsSync(join(root, 'apps'))) appFacing.push('ships an apps/ directory');
+  if (appFacing.length) {
+    reasons.push(`app-facing (${appFacing.join('; ')})`);
+    for (const p of LEGAL_PAGES) duties.set(p, `app-facing site (${appFacing.join('; ')})`);
+  }
+
+  const linked = new Set();
+  for (const f of htmlIn(root)) for (const p of linkedLegalPages(readFileSync(f, 'utf8'))) linked.add(p);
+  if (linked.size) {
+    reasons.push(`links to ${[...linked].sort().join(', ')}`);
+    for (const p of linked) if (!duties.has(p)) duties.set(p, 'a same-site link points at it');
+  }
+
+  return { name, duties, reasons };
+}
+
+const boundRoots = [];
+for (const root of siteRoots) {
+  const { name, duties, reasons } = legalDuties(root);
+  if (!duties.size) continue;
+  boundRoots.push({ name, count: duties.size, reasons });
+
+  for (const [page, why] of duties) {
+    const abs = join(root, page);
+    const rel = relative(repoRoot, abs);
+    if (!existsSync(abs)) {
+      problems.push(`missing ${rel} — ${why}`);
+      continue;
+    }
+    const raw = readFileSync(abs, 'utf8');
+    const text = visibleText(raw);
+    if (text.length < MIN_LEGAL_TEXT_CHARS) {
+      problems.push(
+        `${rel} is a stub — ${text.length} visible characters, floor is ${MIN_LEGAL_TEXT_CHARS}`,
+      );
+    }
+    const h1 = stripInert(raw).match(/<h1\b[^>]*>([\s\S]*?)<\/h1\s*>/i);
+    if (!h1 || !h1[1].replace(/<[^>]*>/g, '').trim()) {
+      problems.push(`${rel} has no rendered <h1> — it is not a readable policy page`);
     }
   }
 }
@@ -114,6 +243,20 @@ if (functionFiles.length < MIN_FUNCTIONS) {
   console.error('  Server-side site code exists and is no longer being parsed.');
   process.exit(1);
 }
+// A named root that stops being scanned is the failure this whole file exists to
+// prevent: "0 app-facing sites, all legal pages present" is what a deleted
+// sites/nikatru would print without this.
+if (SCANNING_OWN_REPO) {
+  const bound = new Set(boundRoots.map((b) => b.name));
+  const lost = REQUIRED_LEGAL_ROOTS.filter((n) => !bound.has(n));
+  if (lost.length) {
+    console.error(
+      `✗ COVERAGE LOST — ${lost.map((n) => `sites/${n}`).join(', ')} is no longer scanned for legal pages.`,
+    );
+    console.error('  The store requirement did not go away; the guard stopped looking.');
+    process.exit(1);
+  }
+}
 
 if (problems.length) {
   console.error(`✗ ${problems.length} site problem(s):`);
@@ -124,3 +267,9 @@ if (problems.length) {
 console.log(
   `ok  site integrity — ${siteRoots.length} deploy root(s), ${functionFiles.length} function(s) parse, required files present`,
 );
+// Print the classification on every run: if a site silently drops off this list
+// the diff shows it, which is the only warning a heuristic can honestly give.
+console.log(
+  `    legal pages enforced on ${boundRoots.length} deploy root(s)` + (boundRoots.length ? ':' : ''),
+);
+for (const b of boundRoots) console.log(`      sites/${b.name} — ${b.count} page(s): ${b.reasons.join('; ')}`);
