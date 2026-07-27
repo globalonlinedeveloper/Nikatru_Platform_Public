@@ -91,6 +91,22 @@ if (listed.length === 0) {
   process.exit(1);
 }
 
+// COVERAGE ASSERTION [pipeline F-10]. The loop below is only as strong as
+// REQUIRED: empty it and the guard prints "all 0 required present" and exits 0
+// forever — an assertion that cannot fail, which this repo treats as worse than
+// no assertion at all. The floor makes deleting entries a build failure rather
+// than a silent reduction in what is guarded.
+const MIN_REQUIRED_ORIGINS = 3;
+if (REQUIRED.length < MIN_REQUIRED_ORIGINS) {
+  console.error(
+    `assert-cors-allowlist: COVERAGE LOST — REQUIRED holds ${REQUIRED.length} origin(s), ` +
+      `expected at least ${MIN_REQUIRED_ORIGINS}.\n` +
+      '    The guard is broken, not the config: with an empty REQUIRED this check\n' +
+      '    passes over any allowlist, including one that dropped a live origin.',
+  );
+  process.exit(1);
+}
+
 let missing = 0;
 for (const { origin, why } of REQUIRED) {
   if (!listed.includes(origin)) {
