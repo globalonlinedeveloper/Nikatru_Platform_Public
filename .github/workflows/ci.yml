@@ -48,6 +48,13 @@ jobs:
   platform:
     name: platform Worker (typecheck + test + dry-run)
     runs-on: ubuntu-24.04
+    # Job-level override of the workflow's `contents: read`. assert-platform-proof-
+    # fresh.mjs reads build-platforms.yml's run history, which needs `actions: read`
+    # — granted HERE rather than workflow-wide so the other lanes keep the smaller
+    # scope. [pipeline F-11] is the principle; F-4 is the reason.
+    permissions:
+      contents: read
+      actions: read
     defaults:
       run:
         working-directory: services/platform
@@ -108,6 +115,21 @@ jobs:
       - name: Workflows are SHA-pinned and least-privilege
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-workflow-hardening.mjs
+      # The 6-platform claim must be proven AND RECENT. build-platforms.yml ran
+      # only on dispatch or a release tag, so the green tick was undated — found
+      # eight commits stale, and fresh again only because someone clicked it by
+      # hand. A weekly cron is half the fix; this age check is the half that makes
+      # it honest, because a cron that quietly stopped looks exactly like a
+      # healthy one. Fails closed: no token, an API error or zero green runs are
+      # all failures, since "I could not tell" must never read as "it is fine".
+      # Cost accepted: ci-gate now depends on one API call, so a GitHub hiccup can
+      # fail a build. A re-run fixes that; an undated platform claim does not.
+      # [pipeline F-4]
+      - name: The 6-platform proof is fresh
+        working-directory: ${{ github.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node tooling/ci/assert-platform-proof-fresh.mjs
       # One declaration for every build version. Before this, "3.44.7" appeared in
       # six places and node 24 in eight; wsl-setup.sh carried the comment "keep in
       # lockstep with *.yml", i.e. maintained by hope. The guard compares PARSED
