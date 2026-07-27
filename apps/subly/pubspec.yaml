@@ -2,6 +2,18 @@ name: subly
 description: "Subly — a cross-platform subscription tracker. App #1 and the reusable template for the Cross Platform Apps portfolio."
 publish_to: "none"
 resolution: workspace
+
+# THE RELEASE LINE (`major.minor`) IS THE ONLY PART A HUMAN OWNS HERE.
+# The patch and the build number below are the LOCAL-DEV placeholder; every
+# deployed build overrides both with `github.run_number` via
+# `flutter build --build-name=<major.minor>.<run_number> --build-number=<run_number>`
+# (.github/workflows/deploy-web.yml), which is monotonic and reproducible from
+# the run. Bump `major.minor` to declare a new release line; nothing needs to
+# touch the patch, and nothing should — a hand-maintained counter is exactly
+# what froze this file at 1.0.0+1 from the first deploy onward, leaving the
+# CFG-1 force-update kill-switch with no floor it could usefully sit on
+# (packages/core/lib/src/config/version_gate.dart drops everything after `+`).
+# Enforced by tooling/ci/assert-app-versioning.mjs.
 version: 1.0.0+1
 
 environment:

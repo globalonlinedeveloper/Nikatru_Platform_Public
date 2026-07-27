@@ -52,19 +52,45 @@ jobs:
 
       - run: flutter pub get --enforce-lockfile
 
+      # The version is DERIVED, never typed. apps/subly/pubspec.yaml declares the
+      # release line (`major.minor`) — the part a human owns — and this step reads
+      # it with the SAME parser the guard uses, so the number that gets built and
+      # the number that gets asserted cannot disagree. Before this existed the
+      # workflow carried its own copy of "1.0.0", free to drift from pubspec.
+      - name: Derive the release line from pubspec
+        id: ver
+        working-directory: .
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subly >> "$GITHUB_OUTPUT"
+
+      # VERSIONING. `github.run_number` supplies BOTH the patch and the build
+      # number, because it is the only monotonic value the lane has. Re-running a
+      # run does not bump it, so the same commit rebuilds to the same version.
+      #
+      # Why the PATCH and not just the build number: version_gate.dart:32 splits
+      # the running version on `+` and compares only `major.minor.patch` against
+      # `min_supported_version`. While the patch was frozen at 0 there was no
+      # floor the owner could set that separated an old client from a new one —
+      # the CFG-1 force-update kill-switch was inert on the only live channel.
+      # --build-number is the same value, and is what Play reads as versionCode;
+      # it must strictly increase or a second upload is rejected outright.
+      #
       # APP_VERSION is not decoration: it is the `app_version` field on every
       # analytics row and every consent artifact. Without it the build defaults
       # to 'dev', so production data would be indistinguishable from a developer
-      # laptop and no regression could ever be attributed to a release. Uses the
-      # short SHA because Subly has no release tag yet — a real version string
-      # replaces it when stage 9 owns versioning.
+      # laptop and no regression could ever be attributed to a release. It keeps
+      # the short SHA in the build metadata after `+` — a SHA is traceable but
+      # NOT ORDERED, so it can identify a build and never rank two of them. Its
+      # version core is the same string as --build-name on purpose: the number the
+      # store shows and the number the kill-switch compares must be one number.
       - name: Build web (release, no service worker)
         run: >
           flutter build web --release --pwa-strategy=none
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
-          --dart-define=APP_VERSION=1.0.0+${GITHUB_SHA::7}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
 
       - name: Deploy to Cloudflare Pages (project subly)
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
