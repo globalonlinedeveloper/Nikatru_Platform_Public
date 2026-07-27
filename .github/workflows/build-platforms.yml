@@ -51,6 +51,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
+        # into .git/config and LEAVES it there for the whole job. Any later step that
+        # packages the workspace (or anything containing .git/) ships the token inside
+        # the artifact, and on a PUBLIC repo artifacts are downloadable. Nothing here
+        # does git push/tag/commit, so none of these checkouts need the credential.
+        # [zizmor artipacked] Verified 2026-07-27: no current artifact path includes
+        # .git/ — so this closes a FUTURE mistake, not a live leak.
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
@@ -109,6 +118,8 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
@@ -130,6 +141,8 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable

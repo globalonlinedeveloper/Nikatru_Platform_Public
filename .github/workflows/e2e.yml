@@ -38,6 +38,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
+        # into .git/config and LEAVES it there for the whole job. Any later step that
+        # packages the workspace (or anything containing .git/) ships the token inside
+        # the artifact, and on a PUBLIC repo artifacts are downloadable. Nothing here
+        # does git push/tag/commit, so none of these checkouts need the credential.
+        # [zizmor artipacked] Verified 2026-07-27: no current artifact path includes
+        # .git/ — so this closes a FUTURE mistake, not a live leak.
+        with:
+          persist-credentials: false
 
       - name: Preflight — is the service-role secret present?
         id: pre

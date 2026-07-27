@@ -15,14 +15,26 @@
 // binary, a renamed flag, or a threshold that silently stopped matching would
 // report "clean" forever — this repo's single most repeated failure mode.
 //
-// THRESHOLD: high severity AND high confidence, and that is a deliberate choice
-// rather than laziness. The unfiltered run on this repo returns 76 findings, most
-// of them low-confidence `cache-poisoning` notes about setup-node's default cache.
-// A guard that cries wolf 76 times is a guard somebody switches off — the same
-// reasoning recorded in assert-lane-coverage.mjs about the eight Dart packages.
-// Everything BELOW the gate is still printed on every run, so nothing is hidden;
-// it just does not block. Raise the gate deliberately when the mediums are dealt
-// with, and delete this paragraph when you do.
+// THRESHOLD: MEDIUM severity AND high confidence — raised from `high` on
+// 2026-07-27, which is the whole point of having started lower.
+//
+// It began at high/high because the unfiltered run returned 77 findings and a
+// guard that cries wolf 77 times is one somebody switches off. All 15 mediums
+// were the SAME rule, `artipacked`: every actions/checkout left GITHUB_TOKEN in
+// .git/config for the rest of the job, so any step that later packaged the
+// workspace would ship the token inside a publicly downloadable artifact. None
+// did — verified, every artifact path is a build-output subdirectory — so what
+// protected us was that nobody had yet written a broad enough path. A convention,
+// not a mechanism.
+//
+// Fixing all 15 (`persist-credentials: false`; nothing here does git push/tag/
+// commit, so none needed the credential) cleared medium to ZERO, which is what
+// made raising the gate free. The next one now FAILS THE BUILD instead of joining
+// a printed list nobody reads.
+//
+// Everything below the gate is still printed on every run. What remains is 4
+// informational and 2 LOW-confidence cache-poisoning notes about setup-node's
+// default cache — deliberately not blocking.
 //
 // The canary is MULTI-JOB on purpose: zizmor suppresses `excessive-permissions`
 // on a single-job workflow, because there workflow-level and job-level scope are
@@ -37,11 +49,28 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
-const MIN_SEVERITY = 'high';
+const MIN_SEVERITY = 'medium';
 const MIN_CONFIDENCE = 'high';
 // The real tree carries five workflows. A scan pointed at the wrong directory
 // finds nothing and exits 0, which is indistinguishable from a clean repo — so
 // the count is asserted before any result is believed. [pipeline F-10]
+/** RULES BLOCKED REGARDLESS OF CONFIDENCE.
+ *
+ *  The severity/confidence gate above is a blunt instrument, and relying on it
+ *  alone produced a guard that did not guard. `artipacked` is medium severity but
+ *  LOW confidence, so `--min-confidence high` excluded the whole rule: after
+ *  fixing all 15 occurrences, REINTRODUCING one still exited 0. The gate would
+ *  have looked stricter while catching nothing new — caught by mutating the real
+ *  tree rather than trusting the threshold change.
+ *
+ *  Dropping the confidence floor instead would sweep in `cache-poisoning`, which
+ *  there are no honest grounds to dismiss just to make this list tidy. So a rule
+ *  that has been cleaned up gets named here and blocks on its own terms.
+ *
+ *  ADD A RULE HERE ONLY AFTER THE TREE IS CLEAN OF IT — otherwise the build is
+ *  red on arrival and the entry gets deleted rather than fixed. */
+const BLOCKING_RULES = ['artipacked'];
+
 const MIN_WORKFLOWS = 5;
 // zizmor's documented exit code for "audit completed, findings present".
 const FINDINGS_EXIT = 14;
@@ -161,7 +190,29 @@ if (summary) {
 // ── 4. THE GATE ──────────────────────────────────────────────────────────────
 const gated = runZizmor(wfDir);
 if (gated.status === 0) {
-  console.log(`ok  workflow static analysis — ${workflows.length} workflow(s), no ${MIN_SEVERITY}-severity/${MIN_CONFIDENCE}-confidence findings`);
+  // The threshold gate passed. Now the rules we have explicitly cleaned up, which
+  // may sit below it — `full` is the UNGATED pass already run above.
+  const fullText = `${full.stdout ?? ''}
+${full.stderr ?? ''}`.replace(ANSI, '');
+  const reintroduced = BLOCKING_RULES.filter((rule) =>
+    new RegExp(`\\[${rule}\\]`).test(fullText),
+  );
+  if (reintroduced.length) {
+    console.error(`✗ a rule this repo has already cleaned up is back: ${reintroduced.join(', ')}`);
+    console.error('');
+    for (const line of fullText.split('\n')) {
+      if (reintroduced.some((r) => line.includes(`[${r}]`)) || /^\s*-->/.test(line)) {
+        console.error(`    ${line.trim()}`);
+      }
+    }
+    console.error('');
+    console.error('  These are BLOCKING_RULES in this script: below the severity/confidence');
+    console.error('  gate, but blocked by name because the tree was made clean of them and');
+    console.error('  regressing is a choice, not an accident. Fix it, or remove the rule from');
+    console.error('  BLOCKING_RULES with a reason — never widen the threshold to hide it.');
+    process.exit(1);
+  }
+  console.log(`ok  workflow static analysis — ${workflows.length} workflow(s), no ${MIN_SEVERITY}-severity/${MIN_CONFIDENCE}-confidence findings, and none of: ${BLOCKING_RULES.join(', ')}`);
   process.exit(0);
 }
 if (gated.status !== FINDINGS_EXIT) {

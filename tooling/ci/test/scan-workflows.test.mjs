@@ -72,7 +72,9 @@ describe('scan-workflows wrapper', () => {
     const r = run(fakeRepo('ok', 5), stub('ok.mjs'));
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /self-test — a deliberately vulnerable workflow is still detected/);
-    assert.match(r.stdout, /no high-severity\/high-confidence findings/);
+    // Matches whatever MIN_SEVERITY is set to, so raising the gate does not
+    // silently turn this assertion into one that cannot fail.
+    assert.match(r.stdout, /no \w+-severity\/\w+-confidence findings/);
   });
 
   test('THE ONE THAT MATTERS: a scanner that stopped detecting fails the SELF-TEST', () => {
