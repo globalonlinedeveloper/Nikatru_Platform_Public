@@ -1,0 +1,64 @@
+# gitleaks configuration — the credential shapes THIS repo actually uses.
+#
+# WHY THIS EXISTS. Until 2026-07-28 the scan ran on gitleaks' DEFAULT rules only.
+# Those cover GitHub tokens (`ghp_`, `github_pat_`) and generic private keys, and
+# the wrapper's self-test plants a PEM private key — so everything reported green.
+#
+# But the vault holds three vendors, and the defaults knew one of them:
+#
+#   ghp_…              GitHub PAT              -> caught by the default rules
+#   cfut_…             Cloudflare API token    -> NO default rule
+#   sbp_…              Supabase PAT            -> NO default rule
+#   sb_publishable_…   Supabase publishable    -> NO default rule
+#
+# The one the scanner could catch is the least dangerous of the three. A leaked
+# Cloudflare token can delete the D1 databases, the Workers and the DNS records,
+# including the *.nikatru.com wildcard. F-6 ("nothing private can enter the
+# public repository, and that is asserted") read VERIFIED while two of three
+# vendors were unasserted.
+#
+# ⚠️ PREFIX-ANCHORED ON PURPOSE. A rule like "40 chars of base62" matches commit
+# SHAs, base64 blobs and lockfile integrity hashes, and a scanner that cries wolf
+# gets muted or allowlisted — and every allowlist entry is a permanent hole. Each
+# rule below requires a vendor-specific prefix, so a hit is almost certainly real.
+#
+# ⚠️ THE SELF-TEST MUST PLANT ONE OF EACH. tooling/ci/scan-secrets.mjs plants a
+# canary per rule below and fails if any goes undetected. Adding a rule here
+# without a canary there means the rule is never proven to fire — which is the
+# same "assertion that cannot fail" this repo keeps finding.
+
+title = "NIKATRU secret scanning"
+
+[extend]
+# Keep every default rule; these are additions, never replacements. Dropping
+# useDefault would silently un-cover GitHub tokens and private keys.
+useDefault = true
+
+[[rules]]
+id = "nikatru-cloudflare-api-token"
+description = "Cloudflare API token (cfut_/cfat_/cfk_ prefix)"
+regex = '''\b(cfut|cfat|cfk)_[A-Za-z0-9_-]{30,}'''
+keywords = ["cfut_", "cfat_", "cfk_"]
+
+[[rules]]
+id = "nikatru-supabase-pat"
+description = "Supabase personal access token (sbp_ prefix)"
+regex = '''\bsbp_[A-Za-z0-9]{36,}'''
+keywords = ["sbp_"]
+
+# ⚠️ NO RULE FOR `sb_publishable_`, DELIBERATELY — and this is the interesting one.
+# A first draft included it. Running the real scanner immediately flagged the live
+# publishable key in company/PROJECT_STATE.md, which is CORRECT USAGE: a Supabase
+# publishable key is public by design and ships compiled into the web bundle as
+# SUPABASE_ANON_KEY. Vendor naming says so out loud.
+#
+# So the rule would fire on every legitimate mention, someone would allowlist it,
+# and the allowlist entry would be a permanent hole. A scanner that cries wolf
+# gets muted — which is worse than one rule fewer. Written down so the "missing"
+# prefix reads as a decision rather than an oversight.
+
+[[rules]]
+id = "nikatru-supabase-secret-key"
+description = "Supabase secret key (sb_secret_ prefix)"
+regex = '''\bsb_secret_[A-Za-z0-9_-]{20,}'''
+keywords = ["sb_secret_"]

@@ -569,7 +569,16 @@ describe('assert-version-consistency', () => {
 describe('scan-secrets', () => {
   const PEM = 'BEGIN RSA PRIVATE KEY';
 
-  /** A faithful stub: exits 1 (finding) iff the scanned dir holds a PEM header. */
+  /** A faithful stub: exits 1 (finding) iff the scanned dir holds one of the
+   *  shapes the REAL rule set detects. It must know all of them — the wrapper now
+   *  plants one canary per rule, so a stub that only understands PEM would report
+   *  "clean" for the Cloudflare and Supabase canaries and the self-test would fail
+   *  for a reason that has nothing to do with the code under test.
+   *
+   *  Matched by REGEX WITH A LENGTH FLOOR, not by substring, for the same reason
+   *  the real rules are prefix-anchored: the fixture's own .gitleaks.toml contains
+   *  the bare prefixes inside its regex strings, and a substring stub would find
+   *  those and report a "leak" in a clean tree. */
   const HONEST = `
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -580,9 +589,17 @@ const walk = (d) => readdirSync(d).flatMap((e) => {
   const p = join(d, e);
   return statSync(p).isDirectory() ? walk(p) : [p];
 });
+const SHAPES = [
+  /${PEM}/,
+  /\\b(cfut|cfat|cfk)_[A-Za-z0-9_-]{30,}/,
+  /\\bsbp_[A-Za-z0-9]{36,}/,
+  /\\bsb_secret_[A-Za-z0-9_-]{20,}/,
+];
 let hit = false;
-for (const f of walk(src)) { try { if (readFileSync(f, 'utf8').includes('${PEM}')) hit = true; } catch {} }
-if (hit) { console.log('finding: private-key'); process.exit(1); }
+for (const f of walk(src)) {
+  try { const t = readFileSync(f, 'utf8'); if (SHAPES.some((r) => r.test(t))) hit = true; } catch {}
+}
+if (hit) { console.log('finding: a known secret shape'); process.exit(1); }
 process.exit(0);
 `;
 
@@ -608,6 +625,25 @@ process.exit(0);
       'repo/tooling/ci/placeholder.mjs': '// guard\n',
       'repo/packages/.keep': '',
       'repo/apps/.keep': '',
+      // The real tree carries .gitleaks.toml, and scan-secrets refuses to run
+      // without it — default rules are blind to Cloudflare and Supabase tokens,
+      // which is two of this repo's three vendors. It also asserts one canary per
+      // rule, so the rule COUNT here must match the wrapper's custom canaries.
+      'repo/.gitleaks.toml': [
+        'title = "fixture"',
+        '[extend]',
+        'useDefault = true',
+        '[[rules]]',
+        'id = "nikatru-cloudflare-api-token"',
+        "regex = '''\\b(cfut|cfat|cfk)_[A-Za-z0-9_-]{30,}'''",
+        '[[rules]]',
+        'id = "nikatru-supabase-pat"',
+        "regex = '''\\bsbp_[A-Za-z0-9]{36,}'''",
+        '[[rules]]',
+        'id = "nikatru-supabase-secret-key"',
+        "regex = '''\\bsb_secret_[A-Za-z0-9_-]{20,}'''",
+        '',
+      ].join('\n'),
       ...Object.fromEntries(Object.entries(files).map(([k, v]) => [`repo/${k}`, v])),
     });
     return { repo: join(root, 'repo'), stub: join(root, 'bin', 'stub.mjs'), root };
