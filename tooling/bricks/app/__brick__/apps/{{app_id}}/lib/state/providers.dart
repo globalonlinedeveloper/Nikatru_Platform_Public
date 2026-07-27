@@ -1,5 +1,10 @@
 import 'dart:math';
 
+// kIsWeb + defaultTargetPlatform name the running platform for the analytics
+// envelope. NOT `dart:io`'s `Platform`: merely IMPORTING `dart:io` makes the web
+// build fail to compile, and web is one of the six targets every app here ships.
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 // ThemeMode only — this file is state wiring, not UI, and a narrow `show` keeps
 // it that way. Without the import the stamped app fails to compile, which no
 // amount of analyzing the TEMPLATE would reveal: the template is mustache, not
@@ -221,6 +226,262 @@ final Provider<core.EntitlementCache> entitlementCacheProvider =
     Provider<core.EntitlementCache>(
       (ref) => core.EntitlementCache(store: ref.watch(secureStoreProvider)),
     );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G-12 FIRST-PARTY ANALYTICS + DPDP CONSENT ([ADR 011], stage 11).
+//
+// WHY THIS IS IN THE BRICK. Stage 11's charter is to answer is-it-working /
+// is-it-converting / is-it-broken with NO per-app instrumentation work. That
+// only holds if a stamped app is born with the rail. It was not: the whole rail
+// existed only in apps/subly, so app #2 onwards measured nothing until somebody
+// hand-rebuilt it — which is precisely the copy-per-app failure the chassis is
+// for.
+//
+// 🔴 THE C-6 TRAP, AND HOW THIS AVOIDS IT. The last bug here was a fail-closed
+// seam with no on-switch: `ConsentController.record` had zero call sites, so
+// every event was silently discarded and NO TEST WENT RED, because refusing is
+// the correct behaviour when consent is absent. So two things are true here and
+// both are load-bearing:
+//   1. `lib/app.dart` mounts `AnalyticsGate`, a REAL on-switch that asks the
+//      question and calls [recordAnalyticsConsent].
+//   2. [analyticsEnabledProvider] and [eventTransportProvider] are providers,
+//      not inlined constants, SO THAT the open path can be exercised —
+//      `test/chassis_properties_test.dart` flips the switch on and asserts an
+//      event actually reaches a transport. A seam nobody has watched carry a
+//      payload is a dead feature that reports healthy.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 🔒 The privacy-policy version the consent prompt claims the user was shown.
+///
+/// MUST equal `data-policy-version` on `sites/nikatru/privacy.html`. Without
+/// that equality a consent artifact proves someone tapped a button but not what
+/// they were shown, which is the one thing the record exists to establish.
+const String kPrivacyPolicyVersion = '2026-07-26';
+
+/// The SHARED platform Worker: analytics ingest + the consent artifact ([ADR 020]).
+///
+/// Deliberately NOT [AppConfig.apiBaseUrl] and deliberately NOT per-app — every
+/// app in the portfolio posts to the same host, which is what makes one query
+/// answer "is the portfolio working" instead of six.
+const String kPlatformBaseUrl = String.fromEnvironment(
+  'PLATFORM_BASE_URL',
+  defaultValue: 'https://platform.nikatru.com',
+);
+
+/// The marketing version stamped on BOTH events and consent artifacts.
+///
+/// Injected at BUILD time rather than read from `package_info_plus`, and that is
+/// not a shortcut — it was measured. The plugin needs a platform round trip that
+/// does NOT resolve inside a widget test's fake clock, so routing the consent
+/// write through it made `recordAnalyticsConsent` hang forever: the prompt stayed
+/// on screen, no artifact was ever written, and the only symptom was a test that
+/// looked like a timing flake. A version string must never be able to block a
+/// consent decision. It also resolves on web, where the force-update path's
+/// [packageVersionProvider] can legitimately return null.
+///
+/// ONE source for both, deliberately: two would let a consent record and the
+/// events it authorises disagree about which build produced them.
+const String kAnalyticsAppVersion = String.fromEnvironment(
+  'APP_VERSION',
+  defaultValue: 'dev',
+);
+
+/// Which of the six platforms this build runs on, for the analytics envelope.
+String analyticsPlatformName() {
+  if (kIsWeb) return 'web';
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android => 'android',
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.macOS => 'macos',
+    TargetPlatform.windows => 'windows',
+    TargetPlatform.linux => 'linux',
+    TargetPlatform.fuchsia => 'fuchsia',
+  };
+}
+
+/// THE OUTER SWITCH, checked before consent is even considered.
+///
+/// 🔴 A FRESHLY STAMPED APP IS BORN WITH THIS OFF. [AppConfig.isBackendLive] is
+/// false until the owner supplies real identity `--dart-define`s, so a demo
+/// build and every widget test collect nothing and show no prompt — which is
+/// required (a widget test must never reach the network). Making a build
+/// collect for real is therefore an OWNER step, not an agent step, and this
+/// comment is the visible marker the task asked for: **until those defines are
+/// supplied the stamped app is instrumented but silent, by design.**
+///
+/// It is a provider rather than a bare `AppConfig.isBackendLive` read precisely
+/// so that "silent by design" can be told apart from "broken": the property test
+/// overrides it to true and drives a real event all the way to a transport.
+final Provider<bool> analyticsEnabledProvider = Provider<bool>(
+  (ref) => AppConfig.isBackendLive,
+);
+
+/// The DPDP consent seam, hydrated from disk. Resolves to `unknown` — which
+/// blocks all collection — if the store is unreadable.
+final FutureProvider<core.ConsentController> consentControllerProvider =
+    FutureProvider<core.ConsentController>((ref) async {
+      final core.KeyValueStore kv = await ref.watch(
+        keyValueStoreProvider.future,
+      );
+      final core.ConsentController c = core.ConsentController(store: kv);
+      await c.hydrate(core.ConsentPurpose.analytics);
+      return c;
+    });
+
+/// Current analytics consent, for the UI to read.
+final Provider<core.ConsentStatus> analyticsConsentProvider =
+    Provider<core.ConsentStatus>((ref) {
+      final core.ConsentController? c = ref
+          .watch(consentControllerProvider)
+          .valueOrNull;
+      return c?.statusOf(core.ConsentPurpose.analytics) ??
+          core.ConsentStatus.unknown;
+    });
+
+/// Whether the consent question has been ANSWERED — distinct from answered yes.
+///
+/// `unknown` means two different things to two callers: to the recorder it means
+/// "collect nothing" (correct), but to the UI it must mean "still ask" — and
+/// while [consentControllerProvider] is resolving from disk the status also
+/// reads `unknown`. Prompting on that would flash the sheet at every launch for
+/// a user who already decided, so the UI keys off the RESOLVED controller.
+final Provider<bool> consentDecidedProvider = Provider<bool>((ref) {
+  final AsyncValue<core.ConsentController> c = ref.watch(
+    consentControllerProvider,
+  );
+  if (!c.hasValue) return true; // still loading — do NOT prompt yet
+  return c.requireValue.statusOf(core.ConsentPurpose.analytics) !=
+      core.ConsentStatus.unknown;
+});
+
+/// Ships the consent artifact to the append-only server record. Discards when
+/// the switch is off, so a widget test never reaches the network.
+final Provider<core.ConsentTransport> consentTransportProvider =
+    Provider<core.ConsentTransport>((ref) {
+      if (!ref.watch(analyticsEnabledProvider)) {
+        return const core.DiscardingConsentTransport();
+      }
+      return DioConsentTransport(platformBaseUrl: kPlatformBaseUrl);
+    });
+
+/// Ships event batches. A provider so the property test can watch a real event
+/// arrive — see the C-6 note at the top of this section.
+final Provider<core.EventTransport> eventTransportProvider =
+    Provider<core.EventTransport>(
+      (ref) => DioEventTransport(platformBaseUrl: kPlatformBaseUrl),
+    );
+
+/// The decision path, with no Riverpod and no Flutter in it.
+///
+/// Split out from [recordAnalyticsConsent] so it can be driven directly against
+/// fakes. That is the point of the split rather than a nicety: the C-6 bug was
+/// that nothing ever called [core.ConsentController.record], and a path only
+/// reachable through a widget tree and three async providers is one nobody
+/// writes a test for.
+Future<core.ConsentArtifact> applyConsentDecision({
+  required core.ConsentController controller,
+  required core.ConsentTransport transport,
+  required String appId,
+  required String anonId,
+  required bool granted,
+  String appVersion = kAnalyticsAppVersion,
+  String? platform,
+  DateTime? now,
+}) async {
+  final core.ConsentArtifact artifact = await controller.record(
+    core.ConsentPurpose.analytics,
+    granted: granted,
+    policyVersion: kPrivacyPolicyVersion,
+    anonId: anonId,
+    now: now ?? DateTime.now(),
+    appVersion: appVersion,
+    platform: platform ?? analyticsPlatformName(),
+  );
+  // Best-effort by contract. The decision already applies on-device, so an
+  // upload failure must never make the user's choice look rejected.
+  await transport.send(appId: appId, artifact: artifact);
+  return artifact;
+}
+
+/// Record the user's analytics decision, upload the artifact, and make the new
+/// decision visible to everything watching.
+///
+/// The invalidate at the end is load-bearing, not tidiness:
+/// [core.ConsentController.record] mutates the controller's own cache, so
+/// Riverpod sees no new object and would never rebuild [analyticsProvider] — the
+/// recorder would keep its stale fail-closed view and go on discarding for the
+/// rest of the session, which is indistinguishable from the bug this wiring
+/// exists to prevent. Invalidating re-reads the decision from disk, which also
+/// proves the write landed.
+Future<void> recordAnalyticsConsent(
+  WidgetRef ref, {
+  required bool granted,
+}) async {
+  final core.ConsentController controller = await ref.read(
+    consentControllerProvider.future,
+  );
+  await applyConsentDecision(
+    controller: controller,
+    transport: ref.read(consentTransportProvider),
+    appId: AppConfig.appId,
+    // 🔒 THE SAME id feature flags bucket on. Minting a second one here would
+    // make the rollout bucket and the analytics cohort impossible to join, which
+    // silently renders every experiment unmeasurable — and it cannot be repaired
+    // across installs already in the field.
+    anonId: await ref.read(installIdProvider.future),
+    granted: granted,
+  );
+  ref.invalidate(consentControllerProvider);
+}
+
+/// The analytics facade the app programs against.
+///
+/// Resolves to [core.NoOpAnalytics] while [analyticsEnabledProvider] is off, so
+/// demo mode and tests are hermetic. When on, the recorder ITSELF still refuses
+/// to collect until consent is granted — this provider being non-noop is NOT
+/// consent.
+final FutureProvider<core.Analytics> analyticsProvider =
+    FutureProvider<core.Analytics>((ref) async {
+      if (!ref.watch(analyticsEnabledProvider)) {
+        return const core.NoOpAnalytics();
+      }
+      final core.KeyValueStore kv = await ref.watch(
+        keyValueStoreProvider.future,
+      );
+      final core.ConsentController consent = await ref.watch(
+        consentControllerProvider.future,
+      );
+      final core.AnalyticsRecorder recorder = core.AnalyticsRecorder(
+        appId: AppConfig.appId,
+        // 🔒 Same id as the flag bucket — see [recordAnalyticsConsent].
+        anonId: await ref.watch(installIdProvider.future),
+        transport: ref.watch(eventTransportProvider),
+        consent: consent,
+        queueStore: kv,
+        envelope: <String, Object?>{
+          'platform': analyticsPlatformName(),
+          'app_version': kAnalyticsAppVersion,
+        },
+      );
+      await recorder.hydrate();
+      return recorder;
+    });
+
+/// Record [event].
+///
+/// AWAITS the provider rather than reading `.valueOrNull` and giving up. At
+/// launch [analyticsProvider] is still resolving, so a `valueOrNull` read would
+/// silently drop exactly the launch events the funnel's denominator is made of —
+/// the metric would look like a conversion problem rather than a wiring one.
+/// It does NOT await the network: the recorder queues and ships in batches.
+Future<void> logEvent(
+  WidgetRef ref,
+  String event, {
+  Map<String, Object?>? params,
+}) async {
+  final core.Analytics analytics = await ref.read(analyticsProvider.future);
+  await analytics.log(event, params: params);
+}
 
 String _generateInstallId() {
   final Random rng = Random.secure();
