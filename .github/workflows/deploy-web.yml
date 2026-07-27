@@ -100,6 +100,8 @@ jobs:
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+          --dart-define=APP_ENV=production
 
       - name: Deploy to Cloudflare Pages (project subly)
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3

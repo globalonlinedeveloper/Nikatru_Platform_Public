@@ -16,7 +16,7 @@
 // It also pins the privacy-policy version the app claims against the version the
 // published policy actually carries. A consent artifact naming a policy version
 // nobody was shown is worse than no artifact: it is a false compliance record.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, sep } from 'node:path';
 
 const repo = process.cwd();
@@ -219,6 +219,40 @@ try {
   }
 } catch (e) {
   fail(`policy version check could not run: ${e.message}`);
+}
+
+// ── the crash sink is a fail-closed seam too, and it was closed ──────────────
+// TelemetryBootstrap falls back to a NoOp client when the DSN is empty — correct
+// behaviour, and indistinguishable from working. No workflow passed
+// GLITCHTIP_DSN, so the ONLY shipping app initialised the no-op client and a
+// real user's crash reached nobody. Nothing failed; the chassis was built,
+// tested and declared, and the last wire was never connected.
+//
+// BOTH ENDS are asserted on purpose. Checking only the workflow would keep
+// passing if main.dart stopped reading the value, and checking only main.dart
+// would keep passing if the deploy stopped supplying it. Either half alone is a
+// check watching one end of a pipe.
+{
+  const DEPLOY = 'deploy-web.yml';
+  const wfPath = join(repo, '.github', 'workflows', DEPLOY);
+  const entry = join(repo, 'apps', 'subly', 'lib', 'main.dart');
+  if (!existsSync(wfPath)) {
+    fail(`COVERAGE LOST — ${DEPLOY} is gone, so the crash-sink check is watching a deploy that no longer exists.`);
+  } else if (!existsSync(entry)) {
+    fail('COVERAGE LOST — apps/subly/lib/main.dart is gone; the consumer half of the crash-sink check cannot be verified.');
+  } else {
+    const wf = readFileSync(wfPath, 'utf8');
+    const main = readFileSync(entry, 'utf8');
+    const supplied = /--dart-define=GLITCHTIP_DSN=/.test(wf);
+    const consumed = /String\.fromEnvironment\(\s*'GLITCHTIP_DSN'/.test(main);
+    if (!consumed) {
+      fail("apps/subly/lib/main.dart no longer reads String.fromEnvironment('GLITCHTIP_DSN') — the deploy would be supplying a value nothing consumes.");
+    } else if (!supplied) {
+      fail(`${DEPLOY} does not pass --dart-define=GLITCHTIP_DSN. The shipped build initialises a NoOp telemetry client, so production crashes reach nobody and nothing goes red.`);
+    } else {
+      ok('crash sink wired — deploy supplies GLITCHTIP_DSN and the app reads it');
+    }
+  }
 }
 
 if (failed) {
