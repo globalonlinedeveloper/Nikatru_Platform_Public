@@ -284,20 +284,38 @@ void main() {
   });
 
   group('pinned keys + rejecting verifier', () {
-    test('no key is pinned until S-3 lands', () {
-      expect(isContentPackKeyConfigured, isFalse);
-      expect(kContentPackPublicKeys, isEmpty);
-      expect(contentPackPublicKeyFor('k1'), isNull);
+    // INVERTED 2026-07-27 when S-3 landed. This asserted the PRE-key state
+    // ("nothing is pinned yet"), which was correct then and is wrong now. It is
+    // rewritten rather than deleted, because the invariant it guards still
+    // matters -- it just points the other way: a key IS pinned, it is the right
+    // shape, and an id nobody pinned still resolves to null. [ADR 022]
+    test('the production key is pinned, and only the pinned id resolves', () {
+      expect(isContentPackKeyConfigured, isTrue);
+      expect(kContentPackPublicKeys, contains('k1'));
+
+      // Base64 of a RAW 32-byte Ed25519 key. Asserting the DECODED length is the
+      // point: a key pasted in the wrong encoding (PEM, DER, hex) would still be
+      // a non-empty string and would still "look pinned", while failing every
+      // real verification later.
+      expect(base64.decode(kContentPackPublicKeys['k1']!).length, 32);
+
+      expect(contentPackPublicKeyFor('k1'), isNotNull);
+      expect(contentPackPublicKeyFor('k2'), isNull);
     });
 
     test('an unpinned key_id fails closed against the REAL pinned map',
         () async {
-      // Guards the production default: with kContentPackPublicKeys empty, no
-      // remote pack can load no matter what verifier an app layer injects.
+      // Until 2026-07-27 this passed a pack with the DEFAULT key_id ('k1') and
+      // relied on kContentPackPublicKeys being empty. Now that S-3 has pinned k1,
+      // that pack legitimately loads, so the test was asserting the old world.
+      //
+      // The invariant it exists to protect is unchanged and still worth having:
+      // an id nobody pinned must fail closed EVEN IF the injected verifier says
+      // yes. So it now uses an id that is genuinely unpinned. [ADR 022]
       const ContentPackLoader loader =
           ContentPackLoader(verifier: _FakeVerifier(true));
       final Result<ContentPack> r =
-          await loader.loadFrom(_pack(), requireSignature: true);
+          await loader.loadFrom(_pack(keyId: 'k2'), requireSignature: true);
       expect(r.isOk, isFalse);
     });
 

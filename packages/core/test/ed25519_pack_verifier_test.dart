@@ -139,14 +139,23 @@ void main() {
       );
     });
 
-    test('the production default pins nothing, so it rejects', () async {
-      // kContentPackPublicKeys is empty until OWNER_QUEUE S-3. The verifier must
-      // fail closed on the real map, not fall back to accepting.
+    // INVERTED 2026-07-27 when S-3 landed. It asserted "the production default
+    // pins nothing, so it rejects" -- true before the key existed. The half that
+    // still matters is that a GARBAGE signature is refused even against a real
+    // pinned key: pinning a key must not weaken the fail-closed posture, it must
+    // only add a way to succeed. [ADR 022]
+    test('a real pinned key still rejects a garbage signature', () async {
       final Ed25519PackVerifier verifier = Ed25519PackVerifier();
-      expect(isContentPackKeyConfigured, isFalse);
+      expect(isContentPackKeyConfigured, isTrue);
       expect(
         await verifier.verify(
             keyId: 'k1', message: _b('x'), signature: List<int>.filled(64, 0)),
+        isFalse,
+      );
+      // And an id that was never pinned is still refused outright.
+      expect(
+        await verifier.verify(
+            keyId: 'nope', message: _b('x'), signature: List<int>.filled(64, 0)),
         isFalse,
       );
     });
