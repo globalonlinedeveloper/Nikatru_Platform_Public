@@ -70,19 +70,21 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  if (outPath != null && outPath.replaceAll(r'\', '/').contains('/.claude/')) {
-    stderr.writeln(
-      'REFUSING: $outPath is inside .claude/, which is copied to Google',
-    );
-    stderr.writeln(
-      'Drive by the backup. The private half of a signing key must not',
-    );
-    stderr.writeln(
-      'be in the backup set — that is the circularity ADR 021 removed.',
-    );
-    exitCode = 2;
-    return;
-  }
+  // 2026-07-27 - this used to REFUSE any --out inside .claude/. That was an
+  // over-applied rule, and the owner was right to push back on it.
+  //
+  // The circularity ADR 021 removed is specifically about material you need IN
+  // ORDER TO OPEN THE BACKUP: the rclone password, 2FA recovery codes. A pack
+  // signing key is not in the restore path at all, so that argument does not
+  // reach it. Meanwhile .claude/ already holds the PATs, the PEM, the SSH key and
+  // the Google client secret, and release-keystore/ - COMPLETELY unrotatable once
+  // an Android app ships - is already in the same backup. This key is strictly
+  // safer than that: ADR 016's key_id means a COMPROMISED key can be rotated by
+  // shipping a new id, so only LOSS is fatal, and loss is what the backup prevents.
+  //
+  // So it is allowed. The trade-off is printed rather than hidden.
+  final bool inVault =
+      outPath != null && outPath.replaceAll(r'\', '/').contains('/.claude/');
 
   final Ed25519 algorithm = Ed25519();
   final SimpleKeyPair keyPair = await algorithm.newKeyPair();
@@ -136,8 +138,33 @@ Future<void> main(List<String> args) async {
     final File f = File(outPath!);
     await f.writeAsString('$seedB64\n', flush: true);
     stdout.writeln('PRIVATE seed written to: ${f.absolute.path}');
-    stdout.writeln(
-      'Shamir-split it, back the shares up offsite, then DELETE this file.',
-    );
+    stdout.writeln('');
+    if (inVault) {
+      stdout.writeln(
+        'This is inside .claude/, so the 8-hourly backup copies it to Drive.',
+      );
+      stdout.writeln('That is a deliberate choice, not an accident:');
+      stdout.writeln(
+        '  + it covers the LIKELY failure - this laptop dying.',
+      );
+      stdout.writeln(
+        '  - a compromised Google account exposes it. Survivable: ADR 016',
+      );
+      stdout.writeln(
+        '    key_id lets you rotate by shipping a new id in an app update.',
+      );
+      stdout.writeln('');
+      stdout.writeln(
+        'ALSO write it on paper. Drive covers a dead laptop; paper covers a lost',
+      );
+      stdout.writeln('Google account. Neither one covers both.');
+    } else {
+      stdout.writeln(
+        'This path is OUTSIDE the backup set, so nothing will copy it. If this',
+      );
+      stdout.writeln(
+        'machine dies, this file dies with it - write it on paper.',
+      );
+    }
   }
 }
