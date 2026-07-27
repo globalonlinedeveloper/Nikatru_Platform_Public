@@ -22,8 +22,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'Add what you pay for and every renewal lands on one board.',
     ],
     <String>[
-      'See every renewal\nbefore it lands',
-      'A calendar of what is due and when, across every plan you track.',
+      'Never get surprised\nby a renewal',
+      'A reminder arrives before each renewal, and every due date sits on one calendar.',
     ],
     <String>[
       'Cut what\nyou don’t use',
