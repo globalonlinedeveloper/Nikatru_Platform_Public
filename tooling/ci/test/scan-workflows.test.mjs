@@ -34,8 +34,9 @@ after(() => {
 /** A stub scanner. `exitFor` maps a call kind to an exit code:
  *   version -> always 0 unless `noVersion`
  *   any scan -> `findings` (14) or `clean` (0), chosen per invocation. */
-function stub(name, { versionExit = 0, canaryExit = 14, realExit = 0, weirdExit = null } = {}) {
+function stub(name, { versionExit = 0, canaryExit = 14, realExit = 0, weirdExit = null, ansi = false } = {}) {
   const path = join(TMP, name);
+  const esc = ansi ? "'\\u001b[1m' + " : "'' + ";
   writeFileSync(
     path,
     `
@@ -44,7 +45,8 @@ if (argv.includes('--version')) { console.log('stub 0.0.0'); process.exit(${vers
 const target = argv[argv.length - 1];
 const isCanary = target.includes('nikatru-wf-canary-');
 if (${weirdExit !== null} && !isCanary) { process.exit(${weirdExit ?? 0}); }
-console.log(isCanary ? '1 findings: 0 informational, 0 low, 0 medium, 1 high' : '0 findings: 0 informational, 0 low, 0 medium, 0 high');
+const line = ${esc} (isCanary ? '1 findings: 0 informational, 0 low, 0 medium, 1 high' : '9 findings: 4 informational, 0 low, 5 medium, 0 high') + '\\u001b[0m';
+console.log(line);
 process.exit(isCanary ? ${canaryExit} : ${realExit});
 `,
   );
@@ -124,5 +126,32 @@ describe('scan-workflows wrapper', () => {
     // full coverage when it is not.
     const r = run(fakeRepo('vis', 5), stub('vis.mjs'));
     assert.match(r.stdout, /below the gate \(reported, not blocking\)/);
+    assert.match(r.stdout, /9 findings/);
+  });
+
+  test('a COLOURISED summary is still read — the real CI regression', () => {
+    // This exact case shipped: the visibility line worked locally and printed
+    // "could not read a summary line" on the first real Linux CI run, because
+    // zizmor colourises its summary there and the count is no longer at the
+    // start of the line once the escape sequence is present.
+    const r = run(fakeRepo('ansi', 5), stub('ansi.mjs', { ansi: true }));
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /below the gate \(reported, not blocking\).*9 findings/);
+  });
+
+  test('when nothing matches, it says what WAS there instead of shrugging', () => {
+    const path = join(TMP, 'silent.mjs');
+    writeFileSync(
+      path,
+      `const a=process.argv.slice(2);
+if(a.includes('--version')){console.log('stub');process.exit(0)}
+const isCanary=a[a.length-1].includes('nikatru-wf-canary-');
+console.log(isCanary?'x':'totally unexpected output shape');
+process.exit(isCanary?14:0);`,
+    );
+    const r = run(fakeRepo('silent', 5), path);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /no summary line matched. Last output line was:/);
+    assert.match(r.stdout, /totally unexpected output shape/);
   });
 });

@@ -138,11 +138,25 @@ if (workflows.length < MIN_WORKFLOWS) {
 // "No silent caps" — a gate that hides what it chose not to block reads as full
 // coverage when it is not. This pass never fails the build; it only reports.
 const full = runZizmor(wfDir, { gated: false });
-const summary = `${full.stdout ?? ''}\n${full.stderr ?? ''}`
-  .split('\n')
-  .map((l) => l.trim())
-  .find((l) => /^\d+ findings?\b/.test(l) || /^No findings to report/.test(l));
-console.log(`    below the gate (reported, not blocking): ${summary ?? 'could not read a summary line'}`);
+// Strip ANSI before matching. This line read "could not read a summary line" on
+// the very first real CI run while working locally, because zizmor colourises
+// its summary on the Linux runner and the count is not at the start of the line
+// once the escape sequence is there. The gate was unaffected — but the header
+// promises "nothing is hidden", and a visibility line that quietly stops being
+// able to see is the same silent-degradation failure this repo keeps hitting.
+const ANSI = /\[[0-9;]*[A-Za-z]/g;
+const combined = `${full.stdout ?? ''}\n${full.stderr ?? ''}`.replace(ANSI, '');
+const lines = combined.split('\n').map((l) => l.trim()).filter(Boolean);
+const summary =
+  lines.find((l) => /\b\d+ findings?\b/.test(l)) ?? lines.find((l) => /No findings to report/.test(l));
+if (summary) {
+  console.log(`    below the gate (reported, not blocking): ${summary}`);
+} else {
+  // Do not print a bare "could not read" and move on — say what WAS there, so the
+  // next person can see why rather than guessing.
+  console.log('    below the gate: no summary line matched. Last output line was:');
+  console.log(`      ${lines.at(-1) ?? '(no output at all)'}`);
+}
 
 // ── 4. THE GATE ──────────────────────────────────────────────────────────────
 const gated = runZizmor(wfDir);
