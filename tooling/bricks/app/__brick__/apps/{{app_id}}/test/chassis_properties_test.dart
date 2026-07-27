@@ -27,6 +27,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:{{app_id.snakeCase()}}/app.dart';
+import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
 
 /// In-memory store: `PrefsKeyValueStore` needs a platform channel that does not
@@ -47,6 +48,87 @@ class _MemStore implements core.KeyValueStore {
 ProviderContainer _container(_MemStore store) => ProviderContainer(
   overrides: <Override>[keyValueStoreProvider.overrideWith((_) async => store)],
 );
+
+/// Captures whatever the analytics rail actually ships. The point of a FAKE
+/// rather than a mock: the assertion is "a real batch, with real contents,
+/// arrived", which is the single thing no test in this repo was making before
+/// [pipeline C-6].
+class _FakeEventTransport implements core.EventTransport {
+  final List<Map<String, Object?>> sent = <Map<String, Object?>>[];
+  String? lastAnonId;
+  Map<String, Object?>? lastEnvelope;
+
+  @override
+  Future<core.Result<void>> send({
+    required String appId,
+    required String anonId,
+    required Map<String, Object?> envelope,
+    required List<Map<String, Object?>> events,
+  }) async {
+    lastAnonId = anonId;
+    lastEnvelope = envelope;
+    sent.addAll(events);
+    return const core.Result<void>.ok(null);
+  }
+}
+
+class _FakeConsentTransport implements core.ConsentTransport {
+  final List<core.ConsentArtifact> sent = <core.ConsentArtifact>[];
+
+  @override
+  Future<core.Result<void>> send({
+    required String appId,
+    required core.ConsentArtifact artifact,
+  }) async {
+    sent.add(artifact);
+    return const core.Result<void>.ok(null);
+  }
+}
+
+/// A container with the analytics switch FORCED ON.
+///
+/// `AppConfig.isBackendLive` is compile-time, so without this override the open
+/// path could never be exercised at all — and an open path nobody exercises is
+/// the exact defect [pipeline C-6] was about.
+ProviderContainer _analyticsContainer({
+  required _MemStore store,
+  required _FakeEventTransport events,
+  required _FakeConsentTransport consent,
+  bool enabled = true,
+}) => ProviderContainer(
+  overrides: <Override>[
+    keyValueStoreProvider.overrideWith((_) async => store),
+    analyticsEnabledProvider.overrideWithValue(enabled),
+    eventTransportProvider.overrideWithValue(events),
+    consentTransportProvider.overrideWithValue(consent),
+  ],
+);
+
+/// Grant (or refuse) analytics consent through the SAME decision path the UI
+/// uses, then make the new decision visible the way the UI does.
+Future<core.ConsentArtifact> _decide(
+  ProviderContainer c, {
+  required bool granted,
+}) async {
+  final core.ConsentArtifact a = await applyConsentDecision(
+    controller: await c.read(consentControllerProvider.future),
+    transport: c.read(consentTransportProvider),
+    appId: AppConfig.appId,
+    anonId: await c.read(installIdProvider.future),
+    granted: granted,
+  );
+  c.invalidate(consentControllerProvider);
+  return a;
+}
+
+/// Widget tests here have no animations and no timers, but several provider
+/// futures resolve in sequence; `pumpAndSettle` would be a lie about why we are
+/// waiting, so turn the event loop a fixed number of times instead.
+Future<void> _turns(WidgetTester tester, [int n = 12]) async {
+  for (int i = 0; i < n; i++) {
+    await tester.pump();
+  }
+}
 
 void main() {
   // ── PROPERTY: theme-mode-persisted ────────────────────────────────────────
@@ -158,6 +240,262 @@ void main() {
       // Guards against `darkTheme: buildAppTheme()` — present, and light.
       expect(app.theme!.brightness, Brightness.light);
       expect(app.darkTheme!.brightness, Brightness.dark);
+    });
+  });
+
+  // ── PROPERTY: analytics-consent-gated ─────────────────────────────────────
+  // Stage 11 says a stamped app answers is-it-working / is-it-converting /
+  // is-it-broken with no per-app instrumentation. That claim is only true if the
+  // rail both REFUSES without consent and DELIVERS with it. Asserting only the
+  // refusal is what let apps/subly ship a rail that was inert for months: every
+  // test passed, because discarding is the correct answer when consent is
+  // absent. Both directions, or neither is worth anything.
+  group('property: analytics-consent-gated', () {
+    test('collects NOTHING before consent, even with the switch on', () async {
+      final _FakeEventTransport events = _FakeEventTransport();
+      final ProviderContainer c = _analyticsContainer(
+        store: _MemStore(),
+        events: events,
+        consent: _FakeConsentTransport(),
+      );
+      addTearDown(c.dispose);
+
+      final core.Analytics a = await c.read(analyticsProvider.future);
+      await a.log('app_open');
+      await a.flush();
+
+      expect(events.sent, isEmpty, reason: 'collected without consent');
+      expect(
+        (a as core.AnalyticsRecorder).queuedCount,
+        0,
+        reason: 'pre-consent events must be DISCARDED, not buffered for replay',
+      );
+    });
+
+    test('a DENIAL keeps the rail shut', () async {
+      final _FakeEventTransport events = _FakeEventTransport();
+      final ProviderContainer c = _analyticsContainer(
+        store: _MemStore(),
+        events: events,
+        consent: _FakeConsentTransport(),
+      );
+      addTearDown(c.dispose);
+
+      await _decide(c, granted: false);
+      final core.Analytics a = await c.read(analyticsProvider.future);
+      await a.log('app_open');
+      await a.flush();
+
+      expect(events.sent, isEmpty);
+    });
+
+    test('granting consent OPENS the rail — an event really ships', () async {
+      final _FakeEventTransport events = _FakeEventTransport();
+      final ProviderContainer c = _analyticsContainer(
+        store: _MemStore(),
+        events: events,
+        consent: _FakeConsentTransport(),
+      );
+      addTearDown(c.dispose);
+
+      await _decide(c, granted: true);
+      final core.Analytics a = await c.read(analyticsProvider.future);
+      await a.log('app_open');
+      await a.flush();
+
+      expect(
+        events.sent.map((Map<String, Object?> e) => e['event']),
+        contains('app_open'),
+        reason:
+            'the rail is fail-closed; if this never passes the app is '
+            'instrumented on paper and silent in production',
+      );
+      expect(
+        events.lastEnvelope?['platform'],
+        isNotNull,
+        reason: 'the envelope must name the platform for per-OS triage',
+      );
+    });
+
+    test('the analytics anon_id IS the feature-flag install id', () async {
+      final _MemStore store = _MemStore();
+      final _FakeEventTransport events = _FakeEventTransport();
+      final ProviderContainer c = _analyticsContainer(
+        store: store,
+        events: events,
+        consent: _FakeConsentTransport(),
+      );
+      addTearDown(c.dispose);
+
+      await _decide(c, granted: true);
+      final core.Analytics a = await c.read(analyticsProvider.future);
+      await a.log('app_open');
+      await a.flush();
+
+      final String installId = store.data['nikatru.install_id']!;
+      expect(
+        events.lastAnonId,
+        installId,
+        reason:
+            'two independently minted ids make the rollout bucket and the '
+            'analytics cohort impossible to join, and that cannot be repaired '
+            'across installs already in the field',
+      );
+    });
+
+    test('the artifact names the pinned policy and the same id', () async {
+      final _MemStore store = _MemStore();
+      final _FakeConsentTransport consent = _FakeConsentTransport();
+      final ProviderContainer c = _analyticsContainer(
+        store: store,
+        events: _FakeEventTransport(),
+        consent: consent,
+      );
+      addTearDown(c.dispose);
+
+      await _decide(c, granted: true);
+
+      final core.ConsentArtifact sent = consent.sent.single;
+      expect(sent.granted, isTrue);
+      expect(
+        sent.policyVersion,
+        kPrivacyPolicyVersion,
+        reason: 'an artifact naming no policy proves nothing was agreed to',
+      );
+      expect(sent.anonId, store.data['nikatru.install_id']);
+    });
+
+    test('a recorded decision SURVIVES a restart', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer first = _analyticsContainer(
+        store: store,
+        events: _FakeEventTransport(),
+        consent: _FakeConsentTransport(),
+      );
+      await _decide(first, granted: true);
+      first.dispose();
+
+      // A fresh container over the same store == the next app launch.
+      final _FakeEventTransport events = _FakeEventTransport();
+      final ProviderContainer reborn = _analyticsContainer(
+        store: store,
+        events: events,
+        consent: _FakeConsentTransport(),
+      );
+      addTearDown(reborn.dispose);
+
+      await reborn.read(consentControllerProvider.future);
+      expect(reborn.read(consentDecidedProvider), isTrue);
+      final core.Analytics a = await reborn.read(analyticsProvider.future);
+      await a.log('app_open');
+      await a.flush();
+      expect(
+        events.sent,
+        isNotEmpty,
+        reason: 're-prompting a user who already decided is the other failure',
+      );
+    });
+
+    test('with the switch OFF the rail is a no-op', () async {
+      final _FakeEventTransport events = _FakeEventTransport();
+      final ProviderContainer c = _analyticsContainer(
+        store: _MemStore(),
+        events: events,
+        consent: _FakeConsentTransport(),
+        enabled: false,
+      );
+      addTearDown(c.dispose);
+
+      final core.Analytics a = await c.read(analyticsProvider.future);
+      expect(a, isA<core.NoOpAnalytics>());
+      await a.log('app_open');
+      await a.flush();
+      expect(events.sent, isEmpty);
+    });
+  });
+
+  // ── PROPERTY: analytics-on-switch-mounted ─────────────────────────────────
+  // The unit tests above prove the rail CAN open. This one proves the app
+  // actually contains the thing that opens it. That distinction is the whole
+  // [pipeline C-6] defect: every piece worked, and nothing was wired to the
+  // button. Asserted against the REAL app root, so deleting AnalyticsGate from
+  // app.dart turns this red instead of turning production silent.
+  group('property: analytics-on-switch-mounted', () {
+    testWidgets('the app root asks for consent, and Allow opens the rail', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      final _FakeEventTransport events = _FakeEventTransport();
+      final _FakeConsentTransport consent = _FakeConsentTransport();
+      final ProviderContainer container = _analyticsContainer(
+        store: store,
+        events: events,
+        consent: consent,
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turns(tester);
+
+      expect(
+        find.text('Allow'),
+        findsOneWidget,
+        reason:
+            'no consent prompt in the app root ⇒ nothing ever calls '
+            'ConsentController.record ⇒ every event is silently discarded',
+      );
+      expect(
+        find.text('No thanks'),
+        findsOneWidget,
+        reason: 'a one-sided prompt is a dark pattern, not a choice',
+      );
+
+      await tester.tap(find.text('Allow'));
+      await _turns(tester);
+
+      expect(find.text('Allow'), findsNothing, reason: 'asked twice');
+      expect(consent.sent.single.granted, isTrue);
+
+      // …and the launch event the funnel's denominator is made of got through.
+      final core.Analytics a = await container.read(analyticsProvider.future);
+      await a.flush();
+      expect(
+        events.sent.map((Map<String, Object?> e) => e['event']),
+        contains('app_open'),
+      );
+    });
+
+    testWidgets('no prompt at all while the switch is OFF', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer container = _analyticsContainer(
+        store: _MemStore(),
+        events: _FakeEventTransport(),
+        consent: _FakeConsentTransport(),
+        enabled: false,
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turns(tester);
+
+      expect(
+        find.text('Allow'),
+        findsNothing,
+        reason:
+            'a demo build collects nothing, so asking would be a question '
+            'whose answer changes nothing',
+      );
     });
   });
 }
