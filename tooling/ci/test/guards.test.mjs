@@ -21,7 +21,8 @@
 //
 // Pipeline requirement: company/pipeline/01-foundation.md → F-10.
 //
-// Run:  node --test tooling/ci/test/
+// Run:  node --test "tooling/ci/test/*.test.mjs"   (glob, so every *.test.mjs runs;
+//       a bare directory path is treated as a module on Windows and throws)
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
