@@ -49,6 +49,24 @@ const BRANCH = 'main';
 const MAX_AGE_DAYS = 14;
 const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
 
+// The six platforms the factory claims, as they appear in `flutter build <x>`.
+// `apk` is Android — it cannot build on the owner's Windows box (a socket-layer
+// fault, not Gradle), so CI is the ONLY place Android is ever compiled.
+const REQUIRED_BUILDS = ['web', 'linux', 'apk', 'windows', 'macos', 'ios'];
+const REQUIRED_JOBS = ['linux_web_android', 'windows', 'apple'];
+
+// A hand-pressed run proves the workflow works. It does NOT prove the timer
+// works, and freshness is a claim about the timer. All five runs to date are
+// `workflow_dispatch` — the schedule has never once fired — so a dead cron has
+// been indistinguishable from a healthy one, masked by any manual press.
+//
+// Failing outright today would block every PR for work that simply has not had
+// a chance to happen yet (the cron landed 50 minutes after its own Monday slot;
+// first possible fire 2026-08-03). So this is a DATED tripwire, not a permanent
+// warning: printed loudly until the deadline, hard failure after it. A gap that
+// only ever prints is one nobody closes.
+const SCHEDULE_PROOF_DEADLINE = Date.parse('2026-08-10T00:00:00Z');
+
 function fail(msg) {
   console.error(`FAIL  ${msg}`);
   process.exitCode = 1;
@@ -89,6 +107,33 @@ export function assertWatchedWorkflowIntact(root = ROOT) {
   if (!/\n\s+-\s*cron:\s*['"]/.test(yaml)) {
     return `COVERAGE LOST — ${WORKFLOW} has a 'schedule:' block with no cron entry.`;
   }
+
+  // ⚠️ THE ABOVE CHECKS THE TIMER, NOT THE WORK. Until 2026-07-27 this function
+  // stopped here: it asserted the file existed and carried a cron, and never
+  // looked at what the workflow BUILDS. Deleting every macOS and iOS build step
+  // returned null — pass. This is the only place anything compiles for macOS,
+  // iOS, Windows or Linux (main CI runs analyze/test, which compile no native
+  // target), so two of the six platforms could vanish from the factory's only
+  // compile proof with ci-gate green and F-4 reading VERIFIED throughout.
+  const missing = REQUIRED_BUILDS.filter((b) => !new RegExp(`flutter build ${b}\\b`).test(yaml));
+  if (missing.length) {
+    return (
+      `COVERAGE LOST — ${WORKFLOW} no longer builds: ${missing.join(', ')}. ` +
+      'The factory claims six platforms and this workflow is the only thing that compiles them, ' +
+      'so a missing target means the claim is unproven rather than merely untested.'
+    );
+  }
+
+  // A build job that exists but is not in the aggregator's `needs:` still runs
+  // and can still fail without failing the workflow — a green tick over a red job.
+  const needs = yaml.match(/needs:\s*\[([^\]]+)\]/)?.[1] ?? '';
+  const unwired = REQUIRED_JOBS.filter((j) => !needs.includes(j));
+  if (unwired.length) {
+    return (
+      `COVERAGE LOST — ${WORKFLOW}'s aggregator does not depend on: ${unwired.join(', ')}. ` +
+      'A build job outside the aggregator can fail while the workflow still reports success.'
+    );
+  }
   return null;
 }
 
@@ -102,7 +147,21 @@ export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS) {
   if (successes.length === 0) {
     return { ok: false, reason: `no successful ${WORKFLOW} run found on ${BRANCH}` };
   }
-  const newest = successes.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a));
+
+  // FRESHNESS IS A CLAIM ABOUT THE TIMER, so only a scheduled run can satisfy
+  // it. Counting manual runs is what let a never-firing cron look healthy.
+  const scheduled = successes.filter((r) => r.event === 'schedule');
+  if (scheduled.length === 0) {
+    return {
+      ok: false,
+      neverScheduled: true,
+      manualCount: successes.length,
+      reason:
+        `${successes.length} successful run(s), but NONE was triggered by the schedule — every one was manual. ` +
+        'A dead cron is invisible behind a hand-press, which is exactly what freshness exists to detect.',
+    };
+  }
+  const newest = scheduled.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a));
   const stamp = Date.parse(newest.updated_at);
   if (Number.isNaN(stamp)) {
     return { ok: false, reason: `newest run has an unparseable timestamp: ${newest.updated_at}` };
@@ -168,13 +227,31 @@ async function main() {
   }
 
   const verdict = evaluateFreshness(runs, nowMs);
+
+  // The schedule has never fired yet — a "not proven" state, not a regression,
+  // and it resolves itself the first Monday the cron runs. Printed loudly until
+  // the deadline so it cannot be missed, then a hard failure so it cannot rot.
+  if (verdict.neverScheduled) {
+    const past = nowMs >= SCHEDULE_PROOF_DEADLINE;
+    const line = past ? fail : (m) => console.log(`⬜  ${m}`);
+    line(`platform proof has NEVER run on its schedule — ${verdict.reason}`);
+    console[past ? 'error' : 'log'](
+      past
+        ? `      The deadline (2026-08-10) has passed and no scheduled run exists, so the timer is broken, not merely young. [pipeline F-4]`
+        : `      ${verdict.manualCount} manual run(s) prove the BUILD works; none proves the TIMER does.\n` +
+            '      This becomes a hard failure on 2026-08-10 if no scheduled run has landed by then.\n' +
+            '      Do NOT satisfy it with `gh workflow run` — a manual press is what hid this. [pipeline F-4]',
+    );
+    return;
+  }
+
   if (!verdict.ok) {
     fail(`platform proof is not fresh — ${verdict.reason}`);
     console.error('');
     console.error(`      The six-platform build has not gone green on ${BRANCH} recently enough.`);
-    console.error('      Refresh it with ONE command, then re-run this job:');
-    console.error('');
-    console.error(`          gh workflow run ${WORKFLOW} --ref ${BRANCH}`);
+    console.error('      ⚠️ A MANUAL RUN NO LONGER SATISFIES THIS. Freshness is a claim about the');
+    console.error('      timer, so only a run triggered by `schedule` counts. If the cron is not');
+    console.error('      firing, fix the cron — pressing the button just hides it again.');
     console.error('');
     console.error('      If it is failing rather than merely stale, that is the real signal —');
     console.error('      a platform we CLAIM to support has stopped building. [pipeline F-4]');
