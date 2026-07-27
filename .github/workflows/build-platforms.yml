@@ -22,6 +22,19 @@ on:
   # Also gate release tags, where "it built on my machine" is not good enough.
   push:
     tags: ['subly-v*']
+  # WEEKLY, added 2026-07-27 for [pipeline F-4]. Until this existed the workflow
+  # ran only when a human clicked it, so the "all 6 platforms build" claim was
+  # true but UNDATED — found eight commits stale, and green again only because
+  # someone dispatched it by hand. An undated proof is a requirement that cannot
+  # fail, which is the exact defect this stage exists to remove.
+  #
+  # The timer alone is NOT the fix. GitHub disables scheduled workflows in public
+  # repos after a long inactive stretch, and a renamed branch or quota change does
+  # the same — so a dead cron looks identical to a healthy one. tooling/ci/
+  # assert-platform-proof-fresh.mjs reads the AGE of the newest green run on every
+  # build and fails past 14 days, which is what turns this silence into a signal.
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC
 
 env:
   FLUTTER_VERSION: '3.44.7'
