@@ -18,9 +18,16 @@ on:
   schedule:
     - cron: '17 3 * * *' # 03:17 UTC nightly
 
-# Least privilege. These jobs only read the repo — they publish nothing through
+# Least privilege, and this is the DEFAULT for every job that does not override
+# it. The e2e job below only reads the repo — it publishes nothing through
 # GITHUB_TOKEN. Without this every job ran at the repository-default scope, which
 # on a public repo is a standing hand-out to any compromised action. [pipeline F-11]
+#
+# The `alert` job needs `issues: write` and declares that AT THE JOB LEVEL, which
+# REPLACES this block for that job alone rather than merging into it. That is the
+# whole reason alerting is a separate job: the job that holds
+# SUPABASE_SERVICE_ROLE_KEY and CLOUDFLARE_API_TOKEN must not also be handed a
+# token that can write to the issue tracker.
 permissions:
   contents: read
 
@@ -131,3 +138,95 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/purge.mjs
+
+  # ── Alerting ────────────────────────────────────────────────────────────────
+  # A test suite nobody watches is not a test suite. This workflow FAILED on 19,
+  # 20, 21, 22, 23 and 24 July 2026 — six consecutive unattended nights against
+  # live Supabase, the live Worker and live D1 — and nothing responded, because
+  # the only record of a red run was a line in a list nobody opens. Silence is
+  # not success.
+  #
+  # The signal is a GitHub issue. It is the only channel that costs nothing, adds
+  # no service to the stack, and PERSISTS: a notification is read once and gone,
+  # whereas an open issue sits on the repo until a human closes it — and closing
+  # it is the acknowledgement that someone actually looked.
+  #
+  # ONE issue, reused. Six failures must not become six issues; that is the noise
+  # that gets a channel muted, which is the original bug wearing a different hat.
+  # A new issue is opened only when no matching one is already open; otherwise the
+  # failure is added as a comment (a comment still notifies subscribers, so the
+  # escalation is not lost). The issue is deliberately NOT auto-closed on a later
+  # green run — a human closing it is the only evidence anyone saw it.
+  #
+  # SCHEDULED RUNS ONLY. A workflow_dispatch failure is attended by definition:
+  # somebody is sitting there watching the run they just started. The defect is
+  # specifically the unattended path, and alerting on manual runs would file an
+  # issue every time someone iterates on a fix.
+  #
+  # No `uses:` is added: `gh` is preinstalled on GitHub-hosted runners, so this
+  # introduces no third-party action to SHA-pin and nothing new can go stale.
+  alert:
+    name: Open or refresh the nightly-failure issue
+    needs: e2e
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: File the failure against one durable issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # THE MARKER. Matched exactly, so rewording it means the next failure
+          # opens a second issue next to the one already open.
+          TITLE: 'Nightly E2E (live) is failing against production'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          note="Failed: [run ${GITHUB_RUN_ID}, attempt ${GITHUB_RUN_ATTEMPT}](${RUN_URL}) at $(date -u '+%Y-%m-%d %H:%M UTC')."
+
+          # Quoted heredoc on purpose — the body is markdown full of backticks,
+          # and an unquoted one would execute them as commands. The body lines
+          # below sit at the block scalar's own indent, which YAML strips, so the
+          # heredoc terminator really is at column 0 by the time bash sees it.
+          body="${RUNNER_TEMP}/e2e-alert.md"
+          { printf '%s\n\n' "$note"; cat <<'BODY'
+          The nightly **E2E (live)** run is red. It runs unattended at 03:17 UTC against
+          LIVE Supabase auth, the live Cloudflare Worker and live D1 — so a failure may
+          mean the deployed Subly app is broken for real users, not merely that a test
+          is flaky. Treat it as production until proven otherwise.
+
+          **This issue is reused.** Every later nightly failure is added here as a
+          comment instead of opening a new issue, and it is not closed automatically.
+          It stays open until a human closes it; closing it *is* the acknowledgement
+          that someone looked.
+
+          Where to start:
+          - the failing step in the run linked above
+          - the `e2e-screenshots` artifact attached to that run — one screenshot per page
+          - whether `Purge test data` still ran (it is `if: always()`), or a throwaway
+            user and its D1 rows are now stranded in production
+          - re-run via **Actions → E2E (live) → Run workflow** to tell a real regression
+            apart from a flake
+
+          Filed automatically by the `alert` job in `.github/workflows/e2e.yml`.
+          BODY
+          } > "$body"
+
+          # Looked up through the LIST api, not the search index: search lags
+          # behind writes, and a lookup that misses opens a duplicate.
+          existing="$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title == env.TITLE) | .number] | first // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still red. ${note}"
+            url="${GITHUB_SERVER_URL}/${GH_REPO}/issues/${existing}"
+            echo "::warning title=Nightly E2E still failing::commented on the already-open issue #${existing}"
+          else
+            url="$(gh issue create --title "$TITLE" --body-file "$body")"
+            echo "::error title=Nightly E2E failed::opened ${url}"
+          fi
+
+          echo "Nightly E2E failure tracked at ${url}" >> "$GITHUB_STEP_SUMMARY"
