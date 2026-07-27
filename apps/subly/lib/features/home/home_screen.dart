@@ -21,16 +21,22 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final Currency currency = ref.watch(currencyProvider);
     final AuthUser? user = ref.watch(authRepositoryProvider).currentUser;
+    // The `unused` setting was declared in settings_controller.dart and read
+    // NOWHERE, so the switch in Settings did nothing. It now gates the surface it
+    // describes: "Flag subscriptions you don't use".
+    final bool showUnused =
+        ref.watch(settingsControllerProvider).prefs['unused'] ?? true;
     return ref.watch(subscriptionsControllerProvider).when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (Object e, _) =>
               Center(child: Text('Could not load: $e', style: AppText.muted)),
-          data: (List<Subscription> subs) => _content(context, currency, user, subs),
+          data: (List<Subscription> subs) =>
+              _content(context, currency, user, subs, showUnused),
         );
   }
 
   Widget _content(BuildContext context, Currency currency, AuthUser? user,
-      List<Subscription> subs) {
+      List<Subscription> subs, bool showUnused) {
     final DateTime now = DateTime.now();
     final double total = SubMath.totalMonthly(subs);
     final double dueSoon = SubMath.dueWithin(subs, now, 7);
@@ -81,7 +87,7 @@ class HomeScreen extends ConsumerWidget {
         _heroCard(currency, total, subs.length, dueSoon,
             SubMath.dueWithin(subs, now, 30)),
         const SizedBox(height: 14),
-        if (unused.isNotEmpty)
+        if (showUnused && unused.isNotEmpty)
           RowCard(
             accentBar: AppColors.warn,
             onTap: () => context.go('/insights'),
