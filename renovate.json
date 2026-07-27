@@ -91,63 +91,63 @@
     {
       "customType": "regex",
       "description": "tooling/versions.json - flutter [pipeline F-2]",
-      "fileMatch": [
-        "^tooling/versions\\.json$"
-      ],
       "matchStrings": [
         "\"flutter\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "depNameTemplate": "flutter",
-      "datasourceTemplate": "flutter-version"
+      "datasourceTemplate": "flutter-version",
+      "managerFilePatterns": [
+        "^tooling/versions\\.json$"
+      ]
     },
     {
       "customType": "regex",
       "description": "tooling/versions.json - node [pipeline F-2]",
-      "fileMatch": [
-        "^tooling/versions\\.json$"
-      ],
       "matchStrings": [
         "\"node\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "depNameTemplate": "node",
       "datasourceTemplate": "node-version",
-      "versioningTemplate": "node"
+      "versioningTemplate": "node",
+      "managerFilePatterns": [
+        "^tooling/versions\\.json$"
+      ]
     },
     {
       "customType": "regex",
       "description": "tooling/versions.json - java [pipeline F-2]",
-      "fileMatch": [
-        "^tooling/versions\\.json$"
-      ],
       "matchStrings": [
         "\"java\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "depNameTemplate": "java",
-      "datasourceTemplate": "java-version"
+      "datasourceTemplate": "java-version",
+      "managerFilePatterns": [
+        "^tooling/versions\\.json$"
+      ]
     },
     {
       "customType": "regex",
       "description": "tooling/versions.json - melos [pipeline F-2]",
-      "fileMatch": [
-        "^tooling/versions\\.json$"
-      ],
       "matchStrings": [
         "\"melos\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "depNameTemplate": "melos",
-      "datasourceTemplate": "pub"
+      "datasourceTemplate": "pub",
+      "managerFilePatterns": [
+        "^tooling/versions\\.json$"
+      ]
     },
     {
       "customType": "regex",
       "description": "tooling/versions.json - mason_cli [pipeline F-2]",
-      "fileMatch": [
-        "^tooling/versions\\.json$"
-      ],
       "matchStrings": [
         "\"mason_cli\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "depNameTemplate": "mason_cli",
-      "datasourceTemplate": "pub"
+      "datasourceTemplate": "pub",
+      "managerFilePatterns": [
+        "^tooling/versions\\.json$"
+      ]
     }
   ],
   "ignorePaths": [
