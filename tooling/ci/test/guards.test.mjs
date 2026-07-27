@@ -600,6 +600,14 @@ process.exit(0);
     const root = fixture(name, {
       'bin/stub.mjs': stub,
       'repo/README.md': 'nothing secret here\n',
+      // The fixture carries the same marker paths the real tree has, because
+      // scan-secrets now asserts its scan actually reached a repository before
+      // believing a clean result — gitleaks over an empty directory exits 0 with
+      // no findings, byte-for-byte identical to a clean repo. [pipeline F-10]
+      'repo/.github/workflows/ci.yml': 'name: ci\n',
+      'repo/tooling/ci/placeholder.mjs': '// guard\n',
+      'repo/packages/.keep': '',
+      'repo/apps/.keep': '',
       ...Object.fromEntries(Object.entries(files).map(([k, v]) => [`repo/${k}`, v])),
     });
     return { repo: join(root, 'repo'), stub: join(root, 'bin', 'stub.mjs'), root };
@@ -611,6 +619,19 @@ process.exit(0);
     assert.equal(code, 0, out);
     assert.match(out, /self-test — a planted secret is still detected/);
     assert.match(out, /no findings/);
+  });
+
+  test('COVERAGE: a tree that is not the repo FAILS instead of reporting clean', () => {
+    // The self-test proves the SCANNER detects. It says nothing about whether
+    // the scanner was pointed at anything. A mistyped path, a checkout that did
+    // not happen, or a relocated working directory all yield exit 0 and no
+    // findings — identical to success. [pipeline F-10]
+    const { repo, stub, root } = build('ss-wrong-root', HONEST);
+    void repo;
+    const { code, out } = run('scan-secrets.mjs', { args: [join(root, 'bin'), '--gitleaks', stub] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /The scan is broken, not the tree/);
   });
 
   test('FAILS when the scanner has silently stopped detecting — the whole point', () => {

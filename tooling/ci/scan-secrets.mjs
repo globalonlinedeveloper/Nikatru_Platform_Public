@@ -98,9 +98,24 @@ try {
   rmSync(canaryDir, { recursive: true, force: true });
 }
 
-// ── 2. the real scan ─────────────────────────────────────────────────────────
+// ── 2. COVERAGE: the scan must actually reach the repository ─────────────────
+// [pipeline F-10] The self-test proves the SCANNER still detects. It says
+// nothing about whether the scanner is pointed at anything. gitleaks over an
+// empty or wrong directory exits 0 and prints no findings, which is byte-for-byte
+// the same result as a clean repo — so a mistyped path, a checkout that did not
+// happen, or a relocated working directory would report "clean" forever. These
+// markers are the tree this repo actually has; their absence means the scan is
+// broken, not that the tree is clean.
 if (!existsSync(repoRoot)) {
   console.error(`✗ repo root does not exist: ${repoRoot}`);
+  process.exit(1);
+}
+const MARKERS = ['.github/workflows', 'tooling/ci', 'packages', 'apps'];
+const absent = MARKERS.filter((m) => !existsSync(join(repoRoot, m)));
+if (absent.length) {
+  console.error(`✗ COVERAGE LOST — "${repoRoot}" is missing: ${absent.join(', ')}`);
+  console.error('  The scan is broken, not the tree. gitleaks over the wrong directory');
+  console.error('  exits 0 with no findings, which is indistinguishable from a clean repo.');
   process.exit(1);
 }
 

@@ -71,6 +71,10 @@ function parseJsonc(path) {
  *  and an extension filter so this stays cheap and text-safe after
  *  `flutter pub get` has populated the app directory. */
 const kReadableExt = new Set(['.dart', '.yaml', '.yml', '.json', '.arb']);
+/** Floor for the banned-name scan. A freshly stamped app carries far more than
+ *  this (pubspec, analysis_options, l10n arb, and the whole lib/ tree), so a
+ *  count below it means the walk broke rather than the app being small. */
+const MIN_CLIENT_SOURCES = 5;
 function walk(dir) {
   const found = [];
   for (const entry of readdirSync(dir)) {
@@ -120,14 +124,30 @@ if (clientApp) {
     // wrangler check cannot see.
     const banned = [`${clientApp}_db`, `${clientApp}-exports`];
     const hits = [];
-    for (const file of walk(appDir)) {
+    const scanned = walk(appDir);
+    for (const file of scanned) {
       const text = readFileSync(file, 'utf8');
       for (const needle of banned) {
         if (text.includes(needle)) hits.push(`${file} mentions "${needle}"`);
       }
     }
-    if (hits.length) hits.forEach(fail);
-    else ok('no per-app D1/bucket name appears in client source');
+    // COVERAGE ASSERTION [pipeline F-10]. Until 2026-07-27 this printed "ok, no
+    // per-app D1/bucket name appears" whether it had read 200 files or ZERO —
+    // and zero is exactly what an extension-filter change, a renamed source
+    // folder, or a skip-list typo produces. A clean scan over nothing is this
+    // repo's most repeated failure, so the scan now proves it reached the tree
+    // before its result is believed.
+    if (scanned.length < MIN_CLIENT_SOURCES) {
+      fail(
+        `COVERAGE LOST — the banned-name scan read only ${scanned.length} source file(s) under ` +
+          `${appDir} (expected at least ${MIN_CLIENT_SOURCES}). The scan is broken, not the tree: ` +
+          'a scan that reaches nothing reports clean.',
+      );
+    } else if (hits.length) {
+      hits.forEach(fail);
+    } else {
+      ok(`no per-app D1/bucket name appears in client source (${scanned.length} file(s) scanned)`);
+    }
 
     // Assert the ACTUAL assignment, not "the string appears in the file" — a
     // doc-comment mentioning the host must not satisfy this while _phApiBase

@@ -80,6 +80,16 @@ jobs:
       - name: The guards must be able to fail
         working-directory: ${{ github.workspace }}
         run: node --test "tooling/ci/test/*.test.mjs"
+      # …and every guard must HAVE such a test, plus a self-check that its own
+      # scan still reaches what it claims. That was a rule people followed and
+      # the accounting rotted: the spec said "5 of 6 guards" while the tree held
+      # SEVENTEEN. A count nobody computes is a count that drifts. This is F-9's
+      # idea — every unit claimed by a lane — applied to the guards themselves.
+      # The two guards that scan nothing are exempt BY NAME AND REASON in the
+      # script, never by silent omission. [pipeline F-10]
+      - name: Every guard is tested and self-checking
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-guard-coverage.mjs
       # Additive-only schema guard. Lives in this lane (no new lane) but scans
       # EVERY migration set in the repo — one shared platform_db means one
       # destructive migration is a portfolio-wide outage. Runs before the build
