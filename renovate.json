@@ -1,0 +1,160 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "[OWNER_QUEUE S-2] The update mechanism three FINISHED requirements depend on.",
+    "F-2 pinned every build version, F-8 every dependency, F-11 all 42 actions. Each",
+    "closed a real hole -- and each STOPS RECEIVING SECURITY FIXES the moment it is",
+    "pinned. That trade was accepted deliberately and written into the scripts; this",
+    "is the half that makes it sustainable. Without it the pins rot and the repo ends",
+    "up LESS safe than before they were added.",
+    "NO AUTOMERGE, deliberately: the queue says review-required, and a bot that merges",
+    "its own PRs is the kind of unattended write path F-11 spent its time removing."
+  ],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Asia/Kolkata",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "automerge": false,
+  "dependencyDashboard": true,
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "branchPrefix": "chore/renovate-",
+  "vulnerabilityAlerts": {
+    "description": "Security fixes bypass the weekly window entirely.",
+    "labels": [
+      "dependencies",
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Actions move together and are low-risk to review as one PR.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions",
+      "commitMessagePrefix": "chore(ci):"
+    },
+    {
+      "description": [
+        "mason_cli gets its own PR, never a group. Mason is what STAMPS APPS: an",
+        "unnoticed bump means the factory's own product can differ between runs with",
+        "nothing in the repo to explain it. Worth reading a dedicated PR for."
+      ],
+      "matchPackageNames": [
+        "mason_cli"
+      ],
+      "labels": [
+        "dependencies",
+        "stamper"
+      ],
+      "prPriority": 5
+    },
+    {
+      "description": [
+        "flutter_local_notifications is pinned to 17.x on purpose -- the service header",
+        "says a major bump needs zonedSchedule, androidScheduleMode and the Windows",
+        "init settings re-checked by hand. Majors are still SURFACED, just not routine."
+      ],
+      "matchPackageNames": [
+        "flutter_local_notifications"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "labels": [
+        "dependencies",
+        "needs-manual-check"
+      ],
+      "prPriority": -1
+    },
+    {
+      "description": "Dev-only tooling can travel together; it cannot reach users.",
+      "matchDepTypes": [
+        "devDependencies",
+        "dev_dependencies"
+      ],
+      "groupName": "dev tooling"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "tooling/versions.json - flutter [pipeline F-2]",
+      "fileMatch": [
+        "^tooling/versions\\.json$"
+      ],
+      "matchStrings": [
+        "\"flutter\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "flutter",
+      "datasourceTemplate": "flutter-version"
+    },
+    {
+      "customType": "regex",
+      "description": "tooling/versions.json - node [pipeline F-2]",
+      "fileMatch": [
+        "^tooling/versions\\.json$"
+      ],
+      "matchStrings": [
+        "\"node\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node-version",
+      "versioningTemplate": "node"
+    },
+    {
+      "customType": "regex",
+      "description": "tooling/versions.json - java [pipeline F-2]",
+      "fileMatch": [
+        "^tooling/versions\\.json$"
+      ],
+      "matchStrings": [
+        "\"java\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "java",
+      "datasourceTemplate": "java-version"
+    },
+    {
+      "customType": "regex",
+      "description": "tooling/versions.json - melos [pipeline F-2]",
+      "fileMatch": [
+        "^tooling/versions\\.json$"
+      ],
+      "matchStrings": [
+        "\"melos\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "melos",
+      "datasourceTemplate": "pub"
+    },
+    {
+      "customType": "regex",
+      "description": "tooling/versions.json - mason_cli [pipeline F-2]",
+      "fileMatch": [
+        "^tooling/versions\\.json$"
+      ],
+      "matchStrings": [
+        "\"mason_cli\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "mason_cli",
+      "datasourceTemplate": "pub"
+    }
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    ".claude/worktrees/**",
+    "apps/probe/**",
+    "apps/probeapi/**",
+    "services/probeapi-api/**"
+  ]
+}
