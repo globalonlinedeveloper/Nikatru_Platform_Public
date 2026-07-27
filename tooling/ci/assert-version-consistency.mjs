@@ -47,6 +47,7 @@ const RULES = [
   // floating action tag is: macos-latest rolling to a new Xcode changes what an
   // identical commit builds, with no diff in the repo. Matched per-OS so the
   // error can name the expected label rather than just "not pinned".
+  { key: 'wrangler', label: 'Wrangler', re: /wranglerVersion:\s*'?([0-9][^\s'"#]*)'?/g },
   { key: 'runner_ubuntu', label: 'Ubuntu runner', re: /runs-on:\s*(ubuntu-[^\s'"#]+)/g },
   { key: 'runner_windows', label: 'Windows runner', re: /runs-on:\s*(windows-[^\s'"#]+)/g },
   { key: 'runner_macos', label: 'macOS runner', re: /runs-on:\s*(macos-[^\s'"#]+)/g },
@@ -92,6 +93,26 @@ for (const rel of TARGETS) {
       }
     }
   });
+}
+
+// ── REQUIRED COVERAGE: a rule that matches nothing is not "clean" ────────────
+// MIN_OCCURRENCES is a GLOBAL total, so a single rule silently matching zero
+// stays invisible behind the other rules' matches. That matters most here:
+// deleting the `wranglerVersion:` line does not produce an unpinned literal for
+// the loop above to catch — it produces NO literal, and the deploy quietly falls
+// back to the version compiled into cloudflare/wrangler-action's own bundle.
+// That is exactly how production ended up on 3.90.0 while the repo used 4.114.0.
+for (const rel of TARGETS) {
+  const text = readFileSync(join(repoRoot, rel), 'utf8');
+  const code = text.replace(/^\s*#.*$/gm, '');
+  if (!/uses:\s*cloudflare\/wrangler-action/.test(code)) continue;
+  if (!/wranglerVersion:/.test(code)) {
+    problems.push(
+      `${rel} uses cloudflare/wrangler-action WITHOUT a wranglerVersion: — the action will install ` +
+        `whatever version is hardcoded in its own bundle, not the ${decl.wrangler} this repo declares. ` +
+        'An unpinned deploy tool holds the account API token and writes to production.',
+    );
+  }
 }
 
 // ── coverage self-check, BEFORE reporting clean ──────────────────────────────

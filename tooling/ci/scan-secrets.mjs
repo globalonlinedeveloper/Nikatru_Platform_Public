@@ -56,6 +56,31 @@ const CANARY = [
   `${DASHES}END ${KEY_TAIL}`,
 ].join('\n');
 
+/** ONE CANARY PER RULE. The PEM proves gitleaks detects SOMETHING; it says nothing
+ *  about whether THIS repo's rules are loaded. "The scanner works" and "the scanner
+ *  would catch our leak" are different claims and only the second one matters.
+ *  Prefixes are assembled at runtime for the same reason the PEM is: written
+ *  literally, this file becomes a finding in its own scan. */
+const U = '_';
+const CANARIES = [
+  { rule: 'private-key (gitleaks default)', file: 'planted.key', body: CANARY },
+  {
+    rule: 'nikatru-cloudflare-api-token',
+    file: 'cf.env',
+    body: `CLOUDFLARE_API_TOKEN=${'cfut'}${U}${'Kx7'.repeat(16)}`,
+  },
+  {
+    rule: 'nikatru-supabase-pat',
+    file: 'sb-pat.env',
+    body: `SUPABASE_PAT=${'sbp'}${U}${'a9f'.repeat(14)}`,
+  },
+  {
+    rule: 'nikatru-supabase-secret-key',
+    file: 'sb-sec.env',
+    body: `SUPABASE_SECRET_KEY=${'sb'}${U}${'secret'}${U}${'Vt5'.repeat(10)}`,
+  },
+];
+
 /** TESTABILITY SEAM, and the only reason it exists: the behaviour that matters
  *  most here is "the wrapper FAILS when the scanner stops detecting", and that
  *  cannot be exercised with the real binary — a working gitleaks always detects.
@@ -66,11 +91,14 @@ const asJs = /\.m?js$/.test(gitleaks);
 const exe = asJs ? process.execPath : gitleaks;
 const lead = asJs ? [gitleaks] : [];
 
+const CONFIG = join(repoRoot, '.gitleaks.toml');
+
 function runGitleaks(sourceDir, extra = []) {
-  return spawnSync(exe, [...lead, 'detect', '--no-git', '--redact', '--source', sourceDir, ...extra], {
-    encoding: 'utf8',
-    cwd: repoRoot,
-  });
+  return spawnSync(
+    exe,
+    [...lead, 'detect', '--no-git', '--redact', '--config', CONFIG, '--source', sourceDir, ...extra],
+    { encoding: 'utf8', cwd: repoRoot },
+  );
 }
 
 // ── 0. the scanner must exist at all ─────────────────────────────────────────
@@ -82,30 +110,19 @@ if (version.error || version.status !== 0) {
 }
 console.log(`gitleaks ${(version.stdout ?? '').trim()}`);
 
-// ── 1. SELF-TEST: prove the scanner still detects ────────────────────────────
-const canaryDir = mkdtempSync(join(tmpdir(), 'nikatru-canary-'));
-try {
-  writeFileSync(join(canaryDir, 'planted.key'), `${CANARY}\n`);
-  const probe = runGitleaks(canaryDir);
-  if (probe.status === 0) {
-    console.error('✗ SELF-TEST FAILED — the scanner did not flag a planted private key.');
-    console.error('  It would have reported this repository "clean" while detecting nothing.');
-    console.error('  Do not trust a passing scan until this is fixed.');
-    process.exit(1);
-  }
-  console.log('ok  self-test — a planted secret is still detected');
-} finally {
-  rmSync(canaryDir, { recursive: true, force: true });
-}
-
-// ── 2. COVERAGE: the scan must actually reach the repository ─────────────────
-// [pipeline F-10] The self-test proves the SCANNER still detects. It says
+// ── 1. COVERAGE: the scan must actually reach the repository ─────────────────
+// [pipeline F-10] The self-test below proves the SCANNER still detects. It says
 // nothing about whether the scanner is pointed at anything. gitleaks over an
 // empty or wrong directory exits 0 and prints no findings, which is byte-for-byte
 // the same result as a clean repo — so a mistyped path, a checkout that did not
 // happen, or a relocated working directory would report "clean" forever. These
 // markers are the tree this repo actually has; their absence means the scan is
 // broken, not that the tree is clean.
+//
+// ORDER MATTERS: this runs BEFORE the rule-set and self-test checks, because
+// "you are not pointed at a repository" is a more basic failure than "this
+// repository's rules are wrong", and reporting the deeper one first would be
+// misleading.
 if (!existsSync(repoRoot)) {
   console.error(`✗ repo root does not exist: ${repoRoot}`);
   process.exit(1);
@@ -119,17 +136,52 @@ if (absent.length) {
   process.exit(1);
 }
 
-const cfg = join(repoRoot, '.gitleaks.toml');
+// ── 2. THE RULE SET MUST EXIST, and both runs must use the SAME one ──────────
+// 🔴 THE DEFECT THIS CLOSES. `--config` used to be applied ONLY to the real scan,
+// and only if the file happened to exist. The SELF-TEST ran on gitleaks' defaults.
+// So the self-test could never prove the repo's own rules work — and until
+// 2026-07-28 there were none, leaving Cloudflare (`cfut_`) and Supabase (`sbp_`)
+// credentials — two of three vendors — completely undetectable while every check
+// printed ok. runGitleaks now passes --config on EVERY invocation.
+if (!existsSync(CONFIG)) {
+  console.error(`✗ COVERAGE LOST — ${CONFIG} is missing. gitleaks would fall back to default rules,`);
+  console.error('  which match GitHub tokens and private keys but NOT Cloudflare or Supabase.');
+  console.error('  The scan would report clean while blind to two of three vendors.');
+  process.exit(1);
+}
+
+// ── 3. SELF-TEST: prove the scanner detects EVERY shape we care about ────────
+// One canary per rule, each planted ALONE so a pass proves that specific rule
+// fired rather than another rule matching first and masking a dead one.
+const RULES_IN_CONFIG = (readFileSync(CONFIG, 'utf8').match(/^\s*id\s*=/gm) ?? []).length;
+const CUSTOM_CANARIES = CANARIES.length - 1; // minus the gitleaks-default PEM
+if (CUSTOM_CANARIES !== RULES_IN_CONFIG) {
+  console.error(
+    `✗ COVERAGE LOST — ${CONFIG} declares ${RULES_IN_CONFIG} rule(s) but ${CUSTOM_CANARIES} ` +
+      'canary/canaries are planted. A rule with no canary is never proven to fire.',
+  );
+  process.exit(1);
+}
+for (const c of CANARIES) {
+  const canaryDir = mkdtempSync(join(tmpdir(), 'nikatru-canary-'));
+  try {
+    writeFileSync(join(canaryDir, c.file), `${c.body}\n`);
+    if (runGitleaks(canaryDir).status === 0) {
+      console.error(`✗ SELF-TEST FAILED — the scanner did not flag a planted "${c.rule}" secret.`);
+      console.error('  It would have reported this repository "clean" while blind to that shape.');
+      console.error('  Do not trust a passing scan until this is fixed.');
+      process.exit(1);
+    }
+  } finally {
+    rmSync(canaryDir, { recursive: true, force: true });
+  }
+}
+console.log(`ok  self-test — a planted secret is still detected (${CANARIES.length} shapes)`);
+
 const reportDir = mkdtempSync(join(tmpdir(), 'nikatru-scan-'));
 const reportPath = join(reportDir, 'findings.json');
 
-const real = runGitleaks(repoRoot, [
-  '--report-format',
-  'json',
-  '--report-path',
-  reportPath,
-  ...(existsSync(cfg) ? ['--config', cfg] : []),
-]);
+const real = runGitleaks(repoRoot, ['--report-format', 'json', '--report-path', reportPath]);
 
 if (real.status !== 0) {
   console.error('✗ secret scan found something:');

@@ -47,6 +47,25 @@
     "starts. Current aliases: ubuntu-latest→24.04, windows-latest→2025, macos-latest",
     "→macOS 26 Arm64."
   ],
+  "$wrangler_comment": [
+    "ADDED 2026-07-28 after the external-facts pass found the worst kind of drift:",
+    "the tool that PUBLISHES production was not on this list at all.",
+    "",
+    "cloudflare/wrangler-action runs `npm i wrangler@<version>`. It resolves that",
+    "version from the package.json in `workingDirectory` — and deploy-web.yml points",
+    "it at `apps/subly`, which is a Flutter app with NO package.json. So the action",
+    "fell back to the constant compiled into its own bundle: 3.90.0.",
+    "",
+    "Live-proven, not inferred: run 30292045671 (2026-07-27) logs",
+    "`npm i wrangler@3.90.0` while both Workers lock 4.114.0. A MAJOR version behind",
+    "the rest of the repo, past its bug-fix window per Cloudflare's own changelog,",
+    "holding the account API token, and chosen by a third party's default.",
+    "",
+    "F-2 says every version is declared once and F-11 says build inputs are pinned.",
+    "Both read VERIFIED while this was true, because both looked at what the repo",
+    "WRITES and never at what the deploy RESOLVES."
+  ],
+  "wrangler": "4.114.0",
   "runner_ubuntu": "ubuntu-24.04",
   "runner_windows": "windows-2025",
   "runner_macos": "macos-26"
