@@ -115,6 +115,14 @@ jobs:
       - name: Build versions all match versions.json
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-version-consistency.mjs
+      # The app's OWN version, distinct from the build-tool versions above. It sat
+      # at 1.0.0+1 from the first deploy with nothing able to raise it, which left
+      # the CFG-1 force-update kill-switch inert on the only live channel — the
+      # gate compares major.minor.patch, and a frozen patch means no reachable
+      # floor. [pipeline stage 9]
+      - name: The app version is derived and monotonic
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-app-versioning.mjs
       # A fail-closed seam with no on-switch is a dead feature that reports
       # healthy. Four shipped that way — the analytics rail discarded every event
       # because nothing ever recorded consent, and no test went red because

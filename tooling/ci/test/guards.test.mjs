@@ -702,6 +702,14 @@ Future<void> recordAnalyticsConsent(
   // pack-verifier files fails for a reason unrelated to what the test is about.
   // Kept realistic rather than minimal — the same correction the caller-vs-
   // declaration bug forced.
+  // The brick template also declares kPrivacyPolicyVersion, so the guard checks
+  // BOTH files. A fixture missing it fails for a reason unrelated to the test —
+  // fixtures must mirror the real tree.
+  const BRICK_POLICY_FILE = {
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
+      "const String kPrivacyPolicyVersion = '2026-07-26';\n",
+  };
+
   const PACK_FILES = {
     'packages/core/lib/src/content/ed25519_pack_verifier.dart':
       'class Ed25519PackVerifier implements PackVerifier {\n  verify() async { if (x == null) return false; return await _ed.verify(m); }\n}\n',
@@ -714,6 +722,7 @@ Future<void> recordAnalyticsConsent(
     fixture(name, {
       ...filler(fillerCount),
       ...PACK_FILES,
+      ...BRICK_POLICY_FILE,
       'apps/subly/lib/state/analytics_providers.dart':
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
@@ -750,6 +759,7 @@ Future<void> recordAnalyticsConsent(
     const dir = fixture('seams-decl-only', {
       ...filler(14),
       ...PACK_FILES,
+      ...BRICK_POLICY_FILE,
       'apps/subly/lib/state/analytics_providers.dart':
         `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       // no consent_prompt.dart, no settings caller — nothing calls it at all
@@ -772,6 +782,7 @@ Future<void> recordAnalyticsConsent(
     const dir = fixture('seams-noversion', {
       ...filler(14),
       ...PACK_FILES,
+      ...BRICK_POLICY_FILE,
       'apps/subly/lib/state/analytics_providers.dart': `${RECORD_CALL}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': UI_CALLER,
       'sites/nikatru/privacy.html': '<p class="updated">Last updated: whenever</p>',
@@ -823,6 +834,8 @@ class Ed25519PackVerifier implements PackVerifier {
       "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
     'apps/subly/lib/features/consent/consent_prompt.dart': 'recordAnalyticsConsent(ref, granted: true);',
     'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
+      "const String kPrivacyPolicyVersion = '2026-07-26';\n",
   };
 
   const build = (name, { impl = REAL_IMPL, barrel = BARREL, keys = keysFile('') } = {}) =>
@@ -890,14 +903,30 @@ describe('assert-stamp-properties', () => {
   const PROP = `${BRICK}/test/chassis_properties_test.dart`;
   const APP = `${BRICK}/lib/app.dart`;
 
+  // Mirrors the real template: four declared properties and >= MIN_BLOCKS blocks.
+  // A fixture thinner than the tree it stands for fails for reasons that have
+  // nothing to do with the behaviour under test.
   const goodTest = `
 group('property: theme-mode-persisted', () {
   test('a', () {});
   test('b', () {});
   test('c', () {});
+  test('d', () {});
 });
 group('property: theme-triplet-supplied', () {
-  testWidgets('d', (t) async {});
+  testWidgets('e', (t) async {});
+  test('f', () {});
+  test('g', () {});
+  test('h', () {});
+});
+group('property: analytics-consent-gated', () {
+  test('i', () {});
+  test('j', () {});
+  test('k', () {});
+});
+group('property: analytics-on-switch-mounted', () {
+  testWidgets('l', (t) async {});
+  test('m', () {});
 });
 `;
   const goodApp = `
@@ -905,11 +934,25 @@ return MaterialApp.router(
   theme: buildAppTheme(),
   darkTheme: buildAppTheme(brightness: Brightness.dark),
   themeMode: ref.watch(themeModeProvider),
+  builder: (c, child) => ForceUpdateGate(
+    child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
+  ),
 );
 `;
+  // The analytics property also checks the TEMPLATE really calls record().
+  const goodProviders = `
+final x = () async {
+  await controller.record(
+    core.ConsentPurpose.analytics,
+    granted: granted,
+  );
+};
+`;
+  const BRICK_PROVIDERS =
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
 
-  const build = (name, { propTest = goodTest, app = goodApp, omitProp = false } = {}) => {
-    const files = { [APP]: app };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers };
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
   };
@@ -919,6 +962,8 @@ return MaterialApp.router(
     assert.equal(code, 0);
     assert.match(out, /theme-mode-persisted' asserted/);
     assert.match(out, /theme-triplet-supplied' asserted and implemented/);
+    assert.match(out, /analytics-consent-gated' asserted and implemented/);
+    assert.match(out, /analytics-on-switch-mounted' asserted and implemented/);
   });
 
   test('FAILS when the inherited property test is deleted', () => {

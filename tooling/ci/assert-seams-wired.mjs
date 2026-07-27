@@ -176,20 +176,46 @@ try {
 
 // ── the policy-version pin ──────────────────────────────────────────────────
 const POLICY_HTML = 'sites/nikatru/privacy.html';
-const POLICY_CONST = 'apps/subly/lib/state/analytics_providers.dart';
+// EVERY file that claims a policy version, not just the first one written.
+// The brick template gained its own `kPrivacyPolicyVersion` when analytics were
+// wired into it — and a single-file check would have let the TEMPLATE drift
+// silently, so every app stamped afterwards would ship a consent artifact naming
+// a policy its users were never shown. A false compliance record is worse than
+// none. Add a file here the moment it declares the constant.
+const POLICY_CONSTS = [
+  'apps/subly/lib/state/analytics_providers.dart',
+  'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart',
+];
 try {
   const html = readFileSync(join(repo, POLICY_HTML), 'utf8');
-  const dart = readFileSync(join(repo, POLICY_CONST), 'utf8');
   const published = html.match(/data-policy-version="([^"]+)"/)?.[1];
-  const claimed = dart.match(/kPrivacyPolicyVersion\s*=\s*'([^']+)'/)?.[1];
   if (!published) {
     fail(`${POLICY_HTML} has no data-policy-version attribute — the consent artifact cannot name what the user was shown.`);
-  } else if (!claimed) {
-    fail(`${POLICY_CONST} has no kPrivacyPolicyVersion constant.`);
-  } else if (published !== claimed) {
-    fail(`policy version DRIFT — app claims '${claimed}', ${POLICY_HTML} publishes '${published}'. Every consent artifact would name a policy the user never saw.`);
   } else {
-    ok(`policy version pinned — app and published policy both '${claimed}'`);
+    let checked = 0;
+    for (const file of POLICY_CONSTS) {
+      let dart;
+      try {
+        dart = readFileSync(join(repo, file), 'utf8');
+      } catch {
+        fail(`${file} declares a policy version in the coverage list but could not be read.`);
+        continue;
+      }
+      const claimed = dart.match(/kPrivacyPolicyVersion\s*=\s*'([^']+)'/)?.[1];
+      if (!claimed) {
+        fail(`${file} has no kPrivacyPolicyVersion constant.`);
+      } else if (published !== claimed) {
+        fail(`policy version DRIFT — ${file} claims '${claimed}', ${POLICY_HTML} publishes '${published}'. Every consent artifact would name a policy the user never saw.`);
+      } else {
+        checked++;
+      }
+    }
+    // Coverage self-check: an emptied list would silently assert nothing.
+    if (checked === POLICY_CONSTS.length && checked > 0) {
+      ok(`policy version pinned — ${checked} file(s) and the published policy all '${published}'`);
+    } else if (POLICY_CONSTS.length === 0) {
+      fail('COVERAGE LOST — no file is checked against the published policy version.');
+    }
   }
 } catch (e) {
   fail(`policy version check could not run: ${e.message}`);

@@ -44,6 +44,22 @@ const REQUIRED_COVERAGE = [
     source: { file: APP_ROOT, re: /themeMode:\s*ref\.watch\(themeModeProvider\)/, what: 'app.dart must pass themeMode to MaterialApp' },
     why: 'theme + darkTheme + themeMode must all reach MaterialApp',
   },
+  {
+    key: 'analytics-consent-gated',
+    group: /group\(\s*'property: analytics-consent-gated'/,
+    source: { file: `${BRICK}/lib/state/providers.dart`, re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted/, what: 'the template must really call ConsentController.record' },
+    why: 'a stamped app must refuse without consent AND deliver with it',
+  },
+  {
+    key: 'analytics-on-switch-mounted',
+    // NOT /AnalyticsGate\(/ — that matches the constructor DECLARATION, so the
+    // check passed with the gate deleted from app.dart. Same declaration-vs-caller
+    // trap that shipped in assert-seams-wired.mjs earlier today; caught here by
+    // mutating the real tree rather than a fixture.
+    group: /group\(\s*'property: analytics-on-switch-mounted'/,
+    source: { file: APP_ROOT, re: /child:\s*AnalyticsGate\(/, what: 'app.dart must mount AnalyticsGate — the analytics on-switch' },
+    why: 'the rail is fail-closed: with nothing calling record() it goes silent and no test goes red',
+  },
 ];
 
 let test;
@@ -59,7 +75,7 @@ try {
 // would satisfy every `group` regex below only if they were also removed — but a
 // file gutted down to one token would otherwise pass the "exists" check alone.
 const blocks = (test.match(/\b(?:test|testWidgets)\(/g) ?? []).length;
-const MIN_BLOCKS = 4;
+const MIN_BLOCKS = 12;
 if (blocks < MIN_BLOCKS) {
   fail(`COVERAGE LOST — ${PROP_TEST} declares only ${blocks} test block(s), expected >= ${MIN_BLOCKS}. The file exists but has stopped asserting.`);
 } else {
