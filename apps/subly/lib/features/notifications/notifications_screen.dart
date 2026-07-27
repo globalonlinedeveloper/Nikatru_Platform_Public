@@ -21,24 +21,55 @@ class NotificationsScreen extends ConsumerWidget {
             const <Subscription>[];
     final double savings = SubMath.savings(subs);
 
+    // 2026-07-27 - this list was FIVE HARDCODED entries naming real brands and
+    // inventing facts about the user's own accounts: "Adobe CC and Disney+
+    // haven't been opened in weeks", "Netflix price increased from 13.99 to
+    // 15.49", renewals for plans the user may not even track. It rendered
+    // identically for everyone, because none of it came from their data.
+    //
+    // The app has no usage tracking and no price history, so neither claim could
+    // ever have been derived. Every row below is now computed from the
+    // subscriptions actually held, and anything that cannot be computed is not
+    // shown at all.
+    final DateTime now = DateTime.now();
+
+    final List<Subscription> dueSoon = subs
+        .where((Subscription x) {
+          final int d = x.daysUntil(now);
+          return d >= 0 && d <= 7;
+        })
+        .toList()
+      ..sort((Subscription a, Subscription b) =>
+          a.daysUntil(now).compareTo(b.daysUntil(now)));
+
+    final List<Subscription> flaggedUnused =
+        subs.where((Subscription x) => x.unused).toList();
+
     final List<_Notif> items = <_Notif>[
-      _Notif(Icons.priority_high, AppColors.warn,
-          const Color.fromRGBO(245, 158, 11, 0.13), '2 subscriptions look unused',
-          'Adobe CC and Disney+ haven’t been opened in weeks. Cancel to save ${currency.fmt(savings)}/mo.',
-          '2h ago'),
-      _Notif(Icons.trending_up, AppColors.danger,
-          const Color.fromRGBO(239, 77, 106, 0.12), 'Netflix price increased',
-          'Premium went from ${currency.fmt(13.99)} to ${currency.fmt(15.49)}/mo.',
-          'Yesterday'),
-      _Notif(Icons.notifications_none, AppColors.accent,
-          const Color.fromRGBO(100, 89, 245, 0.12), 'Spotify renews in 2 days',
-          '${currency.fmt(11.99)} will be charged on Jul 19.', 'Yesterday'),
-      _Notif(Icons.notifications_none, AppColors.accent,
-          const Color.fromRGBO(100, 89, 245, 0.12), 'ChatGPT Plus renews soon',
-          '${currency.fmt(20)} on Jul 20.', '2d ago'),
-      _Notif(Icons.check_rounded, AppColors.positive,
-          const Color.fromRGBO(16, 185, 129, 0.13), 'You’re under budget',
-          'Spending is below your monthly cap.', '3d ago'),
+      for (final Subscription x in dueSoon)
+        _Notif(
+          Icons.notifications_none,
+          AppColors.accent,
+          const Color.fromRGBO(100, 89, 245, 0.12),
+          x.daysUntil(now) == 0
+              ? '${x.name} renews today'
+              : '${x.name} renews in ${x.daysUntil(now)} '
+                  '${x.daysUntil(now) == 1 ? "day" : "days"}',
+          '${currency.fmt(x.price)} on '
+              '${x.nextRenewal.day}/${x.nextRenewal.month}/${x.nextRenewal.year}',
+          '',
+        ),
+      if (flaggedUnused.isNotEmpty)
+        _Notif(
+          Icons.priority_high,
+          AppColors.warn,
+          const Color.fromRGBO(245, 158, 11, 0.13),
+          '${flaggedUnused.length} '
+              '${flaggedUnused.length == 1 ? "plan is" : "plans are"} marked unused',
+          'Cancelling ${flaggedUnused.length == 1 ? "it" : "them"} would save '
+              '${currency.fmt(savings)}/mo.',
+          '',
+        ),
     ];
 
     return Scaffold(
@@ -70,12 +101,23 @@ class NotificationsScreen extends ConsumerWidget {
             ),
             const Divider(height: 1, color: AppColors.line),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(18),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (BuildContext context, int i) => _card(items[i]),
-              ),
+              child: items.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          'Nothing due in the next 7 days.',
+                          textAlign: TextAlign.center,
+                          style: AppText.body.copyWith(color: AppColors.muted),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(18),
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (BuildContext context, int i) => _card(items[i]),
+                    ),
             ),
           ],
         ),

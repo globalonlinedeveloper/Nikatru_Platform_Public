@@ -22,7 +22,7 @@ class SettingsScreen extends ConsumerWidget {
       'Price-hike alerts',
       'When a plan gets more expensive',
     ],
-    <String>['unused', 'Unused detection', 'Flag subscriptions you don’t use'],
+    <String>['unused', 'Unused plans', 'Flag subscriptions you don’t use'],
     <String>['weekly', 'Weekly digest', 'Sunday spending summary'],
   ];
 

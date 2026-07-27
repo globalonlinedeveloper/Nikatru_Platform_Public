@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/theme/app_colors.dart';
 import '../add/add_subscription_sheet.dart';
@@ -27,6 +28,35 @@ class AppShell extends StatelessWidget {
       body: Stack(
         children: <Widget>[
           Positioned.fill(child: navigationShell),
+          // DEMO-DATA MARKER. Without a backend configured the app serves
+          // SeedApiClient - Netflix, Spotify, ChatGPT Plus and friends - and until
+          // 2026-07-27 that was indistinguishable from the user's own data. Paired
+          // with the old "detected across your accounts" copy it read as a real
+          // account scan. Seed data is fine; seed data wearing real data's clothes
+          // is not. Shows ONLY when unconfigured, so production never sees it.
+          if (!AppConfig.isApiConfigured)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  color: AppColors.warn,
+                  child: const Text(
+                    'Demo data - sample subscriptions, not your account',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             left: 16,
             right: 16,

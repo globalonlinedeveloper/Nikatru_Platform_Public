@@ -19,15 +19,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   static const List<List<String>> _slides = <List<String>>[
     <String>[
       'Every subscription,\none clean board',
-      'Subly maps every recurring charge across your cards and inboxes — automatically.',
+      'Add what you pay for and every renewal lands on one board.',
     ],
     <String>[
-      'Never get surprised\nby a renewal',
-      'Alerts warn you before a charge, and flag price hikes the moment they land.',
+      'See every renewal\nbefore it lands',
+      'A calendar of what is due and when, across every plan you track.',
     ],
     <String>[
       'Cut what\nyou don’t use',
-      'We detect forgotten subscriptions and show exactly what cancelling would save.',
+      'Mark a plan unused and Subly totals up what cancelling would save.',
     ],
   ];
 
