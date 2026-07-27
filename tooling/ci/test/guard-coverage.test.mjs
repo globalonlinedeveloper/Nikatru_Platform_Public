@@ -35,15 +35,35 @@ let seq = 0;
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
  */
-function repo(guards, { testFiles = 4, mentionAll = true } = {}) {
+function repo(guards, { testFiles = 4, mentionAll = true, hollow = false, commentsOnly = false } = {}) {
   const root = join(TMP, `r${seq++}`);
   const ci = join(root, 'tooling', 'ci');
   const t = join(ci, 'test');
   mkdirSync(t, { recursive: true });
   for (const [name, src] of Object.entries(guards)) writeFileSync(join(ci, name), src);
-  const names = mentionAll ? Object.keys(guards).join('\n// ') : 'nothing-real.mjs';
+  // ⚠️ These must be REAL test declarations, not comments. This fixture used to
+  // write `// <guard-name>` and pass — encoding the same blind spot the guard
+  // itself had, so neither could see that a hollowed-out test file covers
+  // nothing. Found 2026-07-27 while closing F-10.
+  const covered = mentionAll ? Object.keys(guards) : ['nothing-real.mjs'];
   for (let i = 0; i < testFiles; i++) {
-    writeFileSync(join(t, `t${i}.test.mjs`), `// ${names}\n`);
+    // commentsOnly reproduces this fixture's ORIGINAL behaviour, kept so the fix
+    // that removed it has a failing case of its own.
+    if (commentsOnly) {
+      writeFileSync(join(t, `t${i}.test.mjs`), `// ${covered.join('\n// ')}\n`);
+      continue;
+    }
+    // hollow leaves file 0 present but declaring nothing — it still counts
+    // toward MIN_TEST_FILES while asserting exactly zero.
+    if (hollow && i === 0) {
+      writeFileSync(join(t, `t${i}.test.mjs`), `// ${covered.join('\n// ')}\n`);
+      continue;
+    }
+    const body = covered.map((n) => `test('exercises ${n}', () => { assert.ok('${n}'); });`).join('\n');
+    writeFileSync(
+      join(t, `t${i}.test.mjs`),
+      `import { test } from 'node:test';\nimport assert from 'node:assert/strict';\n${body}\n`,
+    );
   }
   return root;
 }
@@ -82,6 +102,22 @@ describe('assert-guard-coverage', () => {
     const r = run(repo(compliant({ 'assert-gate-passed.mjs': 'const sha = process.argv[2];\n' })));
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /1 exempt with a recorded reason/);
+  });
+
+  test('a test file that declares NO tests FAILS', () => {
+    // The file is present, so it still satisfies MIN_TEST_FILES — and it runs
+    // nothing. Counting files is not counting tests.
+    const r = run(repo(compliant(), { hollow: true }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /declare no tests/);
+  });
+
+  test('a guard named only inside a COMMENT is not covered', () => {
+    // This is what this fixture used to write for every file, and the guard
+    // accepted it: `includes()` over raw text cannot tell code from prose.
+    const r = run(repo(compliant(), { commentsOnly: true }));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /declare no tests/);
   });
 
   test('an exempt guard that GROWS a scan loses the exemption', () => {

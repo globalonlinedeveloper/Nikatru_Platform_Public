@@ -41,10 +41,17 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 const CI = join(ROOT, 'tooling', 'ci');
 const TESTS = join(CI, 'test');
 
-// Floors. The tree carries 18 guards and 6 test files; a count far below either
-// means this scan broke, not that the guards vanished.
+// Floors. The tree carries 18 guards, 7 test files and 178 test declarations; a
+// count far below any of them means this scan broke, not that the guards vanished.
 const MIN_GUARDS = 15;
 const MIN_TEST_FILES = 4;
+// ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
+// comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
+// exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
+// — so the suite can be hollowed out or moved out from under its own glob while
+// ci.yml's "The guards must be able to fail" step still reports success. Counting
+// the declarations is what makes an empty suite loud.
+const MIN_TEST_CASES = 140;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing
@@ -86,7 +93,42 @@ if (testFiles.length < MIN_TEST_FILES) {
   process.exit(1);
 }
 
-const testCorpus = testFiles.map((f) => readFileSync(join(TESTS, f), 'utf8')).join('\n');
+const rawCorpus = testFiles.map((f) => readFileSync(join(TESTS, f), 'utf8')).join('\n');
+
+// Only EXECUTABLE lines count as evidence. `includes()` over the raw text was
+// satisfied by a guard's name sitting in a comment — so a test file could be
+// gutted down to its header comment and still "cover" every guard it names.
+const testCorpus = rawCorpus
+  .split('\n')
+  .filter((line) => {
+    const t = line.trim();
+    return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+  })
+  .join('\n');
+
+const countCases = (text) => (text.match(/^\s*(test|it)\s*\(/gm) ?? []).length;
+
+// (a) PER FILE — applies to any tree, so a fixture can prove this fires. A test
+//     file carrying no declaration is a file that runs nothing while still
+//     counting toward MIN_TEST_FILES.
+const hollow = testFiles.filter((f) => countCases(readFileSync(join(TESTS, f), 'utf8')) === 0);
+if (hollow.length) {
+  console.error(`✗ COVERAGE LOST — ${hollow.length} test file(s) declare no tests: ${hollow.join(', ')}`);
+  console.error('  The file is present so it still counts toward the file floor, and it asserts nothing.');
+  process.exit(1);
+}
+
+// (b) WHOLE SUITE — only meaningful against the real repository, so it is skipped
+//     when a caller points this guard at a fixture root. This is the one that
+//     catches the suite being moved out from under ci.yml's glob: `node --test`
+//     exits 0 on a pattern matching nothing (verified, node v24, 2026-07-27).
+const scanningRealRepo = process.argv[2] === undefined;
+const testCases = countCases(testCorpus);
+if (scanningRealRepo && testCases < MIN_TEST_CASES) {
+  console.error(`✗ COVERAGE LOST — found ${testCases} test declaration(s), expected at least ${MIN_TEST_CASES}.`);
+  console.error('  Every requirement in all fourteen stages rests on these guards being exercised.');
+  process.exit(1);
+}
 
 let scanners = 0;
 let exempt = 0;
