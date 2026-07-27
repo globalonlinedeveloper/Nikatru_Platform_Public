@@ -184,6 +184,36 @@ jobs:
       - name: Secret scan (self-tests, then scans)
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks"
+      # Static analysis of CI's OWN workflows. SHA-pinning closed the movable-tag
+      # hole; it says nothing about attacker-controlled text expanded into a
+      # `run:` block, a pull_request_target that checks out the PR head, or a
+      # permission granted workflow-wide that one job needs. `39-CHASSIS` §4 cut 14
+      # keeps exactly two things out of G-47 — SHA-pinning (shipped) and this.
+      # Same discipline as gitleaks above: pinned version, bytes checksum-verified
+      # rather than a ref trusted, unpacked into RUNNER_TEMP so the binary is not
+      # sitting in the tree the next step scans. [pipeline F-11]
+      - name: Install zizmor (pinned + checksum-verified)
+        working-directory: ${{ github.workspace }}
+        env:
+          ZIZMOR_VERSION: '1.28.0'
+          ZIZMOR_SHA256: 'e87b67160194884e375a46a12c57ccc904f762b53845f254fab7f17d98809c09'
+        run: |
+          set -euo pipefail
+          tarball="${RUNNER_TEMP}/zizmor_${ZIZMOR_VERSION}_linux_x64.tar.gz"
+          wget -q -O "$tarball" \
+            "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${ZIZMOR_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball" -C "${RUNNER_TEMP}" zizmor
+          "${RUNNER_TEMP}/zizmor" --version
+      # Gates on HIGH severity AND HIGH confidence only. Unfiltered this repo
+      # returns 77 findings, mostly low-confidence cache-poisoning notes about
+      # setup-node's default cache — and a guard that cries wolf 77 times is one
+      # somebody switches off. Everything below the gate is PRINTED on every run,
+      # so nothing is hidden; it just does not block. Self-tests against a
+      # deliberately vulnerable workflow before it trusts a clean result.
+      - name: Workflow static analysis (self-tests, then scans)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/scan-workflows.mjs . --zizmor "${RUNNER_TEMP}/zizmor"
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
