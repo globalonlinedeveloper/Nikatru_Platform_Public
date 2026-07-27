@@ -17,14 +17,21 @@ class SettingsScreen extends ConsumerWidget {
 
   static const List<List<String>> _toggles = <List<String>>[
     <String>['alerts', 'Renewal alerts', 'Notify 2 days before charge'],
-    <String>[
-      'priceHike',
-      'Price-hike alerts',
-      'When a plan gets more expensive',
-    ],
     <String>['unused', 'Unused plans', 'Flag subscriptions you don’t use'],
     <String>['weekly', 'Weekly digest', 'Sunday spending summary'],
   ];
+
+  // 'priceHike' / 'Price-hike alerts' was REMOVED 2026-07-27, not wired.
+  //
+  // It was declared in settings_controller.dart and read nowhere, so the switch
+  // did nothing. Unlike `alerts`, `unused` and `weekly` it cannot simply be
+  // wired: detecting a price rise needs the PROVIDER's price to change, which
+  // needs an external data source the app does not have. Comparing against a
+  // figure the user just typed themselves is not detection.
+  //
+  // A switch that promises a feature and delivers none is the same defect class
+  // as copy that claims one, so it is gone rather than left looking live. The
+  // pref key stays in SettingsState so any persisted value round-trips harmlessly.
 
   // [icon, label, url] — url empty = in-app action (not yet wired), non-empty =
   // opens the live nikatru.com page in the browser.

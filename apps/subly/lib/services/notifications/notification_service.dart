@@ -98,6 +98,48 @@ class NotificationService {
     );
   }
 
+  /// The weekly spending digest, behind the `weekly` setting.
+  ///
+  /// Repeats on Sundays at 18:00 local via `matchDateTimeComponents:
+  /// dayOfWeekAndTime` -- one scheduled notification, not one per week, so it
+  /// survives the app not being opened. [total] is the real monthly figure
+  /// computed from the subscriptions actually held; nothing here is invented.
+  ///
+  /// Wired 2026-07-27. The `weekly` toggle existed in settings_controller.dart
+  /// and was read NOWHERE, so switching it on did nothing at all -- a switch
+  /// that promises a feature and delivers none is the same defect class as copy
+  /// that claims one.
+  Future<void> scheduleWeeklyDigest({
+    required int count,
+    required String formattedTotal,
+  }) async {
+    if (!_ready) return;
+    await _plugin.cancel(_digestId);
+    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+    tz.TZDateTime when =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, 18);
+    // DateTime.sunday == 7; walk forward to the next Sunday 18:00.
+    while (when.weekday != DateTime.sunday || !when.isAfter(now)) {
+      when = when.add(const Duration(days: 1));
+    }
+    await _plugin.zonedSchedule(
+      _digestId,
+      'Your week in subscriptions',
+      '$count active, $formattedTotal a month.',
+      when,
+      _details,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  }
+
+  Future<void> cancelWeeklyDigest() async {
+    if (!_ready) return;
+    await _plugin.cancel(_digestId);
+  }
+
   Future<void> cancelForSubscription(String id) async {
     if (!_ready) return;
     await _plugin.cancel(_idFor(id));
@@ -117,7 +159,14 @@ class NotificationService {
     }
   }
 
-  int _idFor(String id) => id.hashCode & 0x7fffffff;
+  /// Fixed id for the digest, outside the range `_idFor` can produce for a
+  /// subscription, so `cancelForSubscription` can never cancel it by collision.
+  static const int _digestId = 0x7ffffffe;
+
+  int _idFor(String id) {
+    final int h = id.hashCode & 0x7fffffff;
+    return h == _digestId ? h - 1 : h;
+  }
 
   String _pretty(DateTime d) {
     const List<String> m = <String>[
