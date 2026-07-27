@@ -78,7 +78,8 @@ class HomeScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 18),
-        _heroCard(currency, total, subs.length, dueSoon),
+        _heroCard(currency, total, subs.length, dueSoon,
+            SubMath.dueWithin(subs, now, 30)),
         const SizedBox(height: 14),
         if (unused.isNotEmpty)
           RowCard(
@@ -98,7 +99,7 @@ class HomeScreen extends ConsumerWidget {
                       fontSize: 19,
                       color: AppColors.warn)),
             ),
-            title: '${unused.length} likely unused',
+            title: '${unused.length} marked unused',
             subtitle: Text('Cancel to save ${currency.fmt(savings)}/mo',
                 style: AppText.muted.copyWith(fontSize: 12)),
             trailing: const Icon(Icons.arrow_forward, color: AppColors.muted, size: 20),
@@ -124,7 +125,8 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _heroCard(Currency currency, double total, int count, double dueSoon) {
+  Widget _heroCard(Currency currency, double total, int count, double dueSoon,
+      double due30) {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -162,8 +164,13 @@ class HomeScreen extends ConsumerWidget {
             children: <Widget>[
               _statBox('DUE IN 7 DAYS', currency.fmt(dueSoon), Colors.white),
               const SizedBox(width: 12),
-              _statBox('VS LAST MONTH', '+${currency.fmt(total - 174)}',
-                  const Color(0xFFFFB4C8)),
+              // Was 'VS LAST MONTH', computed as `total - 174`. 174 was the last
+              // element of the fabricated six-month trend array in insights, so this
+              // compared the user's real total against a number someone typed. It
+              // also hardcoded a '+', so it reported an increase every single month.
+              // The app stores no history, so no month-over-month figure can be
+              // honest. Replaced with a 30-day horizon, which is derived.
+              _statBox('DUE IN 30 DAYS', currency.fmt(due30), Colors.white),
             ],
           ),
         ],

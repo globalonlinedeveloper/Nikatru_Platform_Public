@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,8 +34,6 @@ class InsightsScreen extends ConsumerWidget {
         const SizedBox(height: 4),
         Text('Where your money goes', style: AppText.muted.copyWith(fontSize: 12)),
         const SizedBox(height: 16),
-        _trendCard(currency, total),
-        const SizedBox(height: 14),
         _categoryCard(currency, cats, total),
         const SizedBox(height: 14),
         _savingsCard(context, currency, unused, savings),
@@ -44,56 +41,15 @@ class InsightsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _trendCard(Currency currency, double total) {
-    final List<double> vals = <double>[142, 156, 151, 168, 174, total];
-    const List<String> labels = <String>['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
-    final double maxV = vals.reduce(math.max) * 1.15;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text('6-month trend', style: AppText.title.copyWith(fontSize: 16)),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 150,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List<Widget>.generate(vals.length, (int i) {
-                final bool last = i == vals.length - 1;
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: <Widget>[
-                        Text(currency.fmt0(vals[i]),
-                            style: AppText.fig.copyWith(fontSize: 10)),
-                        const SizedBox(height: 6),
-                        Container(
-                          height: (vals[i] / maxV) * 104,
-                          decoration: BoxDecoration(
-                            gradient: last ? AppColors.brandGradient : null,
-                            color: last ? null : const Color(0xFFD9D5FB),
-                            borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(8), bottom: Radius.circular(4)),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(labels[i], style: AppText.label.copyWith(fontSize: 10)),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // 2026-07-27 - the six-month spending trend was REMOVED, not repaired.
+  //
+  // It drew `[142, 156, 151, 168, 174, total]` against labels Feb..Jul: five
+  // invented figures and one real one, presented as the user's own history. The
+  // app stores no spending history at all, so there was nothing to plot and no
+  // way to make the series honest.
+  //
+  // Everything left on this screen is computed from the subscriptions actually
+  // held. When real history exists, a trend can come back and be true.
 
   Widget _categoryCard(Currency currency, List<CategoryTotal> cats, double total) {
     final List<MapEntry<double, Color>> segments = <MapEntry<double, Color>>[
