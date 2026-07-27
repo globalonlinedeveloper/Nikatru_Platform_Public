@@ -54,19 +54,19 @@ const daysAgo = (n) => new Date(NOW_MS - n * 86_400_000).toISOString();
 
 describe('evaluateFreshness — the decision', () => {
   test('a run inside the ceiling passes', () => {
-    const v = evaluateFreshness([{ id: 1, conclusion: 'success', updated_at: daysAgo(3) }], NOW_MS);
+    const v = evaluateFreshness([{ id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(3) }], NOW_MS);
     assert.equal(v.ok, true);
     assert.ok(Math.abs(v.ageDays - 3) < 0.01);
   });
 
   test('a run past the ceiling FAILS — this is the whole requirement', () => {
-    const v = evaluateFreshness([{ id: 1, conclusion: 'success', updated_at: daysAgo(15) }], NOW_MS);
+    const v = evaluateFreshness([{ id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(15) }], NOW_MS);
     assert.equal(v.ok, false);
     assert.match(v.reason, /15\.0 days old/);
   });
 
   test('exactly at the ceiling passes — the boundary is inclusive and pinned', () => {
-    const v = evaluateFreshness([{ id: 1, conclusion: 'success', updated_at: daysAgo(14) }], NOW_MS);
+    const v = evaluateFreshness([{ id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(14) }], NOW_MS);
     assert.equal(v.ok, true);
   });
 
@@ -85,8 +85,8 @@ describe('evaluateFreshness — the decision', () => {
   test('the NEWEST success wins, not the first in the list', () => {
     const v = evaluateFreshness(
       [
-        { id: 1, conclusion: 'success', updated_at: daysAgo(40) },
-        { id: 2, conclusion: 'success', updated_at: daysAgo(2) },
+        { id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(40) },
+        { id: 2, conclusion: 'success', event: 'schedule', updated_at: daysAgo(2) },
       ],
       NOW_MS,
     );
@@ -106,27 +106,56 @@ describe('evaluateFreshness — the decision', () => {
   });
 
   test('an unparseable timestamp FAILS CLOSED', () => {
-    const v = evaluateFreshness([{ id: 1, conclusion: 'success', updated_at: 'yesterday-ish' }], NOW_MS);
+    const v = evaluateFreshness([{ id: 1, conclusion: 'success', event: 'schedule', updated_at: 'yesterday-ish' }], NOW_MS);
     assert.equal(v.ok, false);
   });
 });
 
 describe('the guard as CI runs it', () => {
   test('fresh proof exits 0 and names the run', () => {
-    const f = fixture('fresh.json', [{ id: 999, conclusion: 'success', updated_at: daysAgo(1) }]);
+    const f = fixture('fresh.json', [{ id: 999, conclusion: 'success', event: 'schedule', updated_at: daysAgo(1) }]);
     const r = run(f);
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /platform proof fresh/);
     assert.match(r.stdout, /999/);
   });
 
-  test('stale proof exits 1 AND prints the one-command remedy', () => {
-    const f = fixture('stale.json', [{ id: 1, conclusion: 'success', updated_at: daysAgo(30) }]);
+  test('stale proof exits 1 and REFUSES to recommend a manual run', () => {
+    const f = fixture('stale.json', [{ id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(30) }]);
     const r = run(f);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /not fresh/);
-    // A guard whose fix is not obvious is a guard somebody disables.
-    assert.match(r.stderr, /gh workflow run build-platforms\.yml/);
+    // This used to assert the remedy was `gh workflow run` — advice that would
+    // paper over the exact defect F-4 exists to catch, because a hand-press
+    // resets the clock without proving the timer works. The guard must now say
+    // the opposite, and the test has to move with it.
+    assert.match(r.stderr, /MANUAL RUN NO LONGER SATISFIES THIS/);
+    assert.doesNotMatch(r.stderr, /Refresh it with ONE command/);
+  });
+
+  test('a manual run cannot mask a STALE scheduled run — the live defect', () => {
+    // All five real runs to date were workflow_dispatch, so the newest success
+    // was always ~today and freshness always passed, whether or not the cron
+    // had fired since March.
+    const f = fixture('masked.json', [
+      { id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(60) },
+      { id: 2, conclusion: 'success', event: 'workflow_dispatch', updated_at: daysAgo(1) },
+    ]);
+    const r = run(f);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /60\.0 days old/);
+  });
+
+  test('no scheduled run at all is announced, not silently passed', () => {
+    const f = fixture('manual-only.json', [
+      { id: 1, conclusion: 'success', event: 'workflow_dispatch', updated_at: daysAgo(1) },
+    ]);
+    const r = run(f);
+    // Before the dated deadline this is "not proven yet", not a regression —
+    // but it must be impossible to miss, and it must not stay a warning forever.
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /NEVER run on its schedule/);
+    assert.match(r.stdout, /hard failure on 2026-08-10/);
   });
 
   test('a missing fixture file fails rather than passing silently', () => {
@@ -136,13 +165,13 @@ describe('the guard as CI runs it', () => {
   });
 
   test('offline mode announces itself so it cannot hide in a CI log', () => {
-    const f = fixture('announce.json', [{ id: 1, conclusion: 'success', updated_at: daysAgo(1) }]);
+    const f = fixture('announce.json', [{ id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(1) }]);
     const r = run(f);
     assert.match(r.stdout, /OFFLINE FIXTURE MODE/);
   });
 
   test('a bad --now is rejected, not silently treated as epoch 0', () => {
-    const f = fixture('now.json', [{ id: 1, conclusion: 'success', updated_at: daysAgo(1) }]);
+    const f = fixture('now.json', [{ id: 1, conclusion: 'success', event: 'schedule', updated_at: daysAgo(1) }]);
     const r = spawnSync(process.execPath, [GUARD, '--runs-file', join(TMP, f), '--now', 'not-a-date'], {
       cwd: REPO,
       encoding: 'utf8',
