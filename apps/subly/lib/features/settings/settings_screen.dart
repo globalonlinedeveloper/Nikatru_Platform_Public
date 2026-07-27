@@ -90,8 +90,16 @@ class SettingsScreen extends ConsumerWidget {
                         fontSize: 16,
                       ),
                     ),
+                    // No tier is shown, deliberately. This read '· Pro plan' as a
+                    // HARDCODED string — not derived from `isPro`, so every user
+                    // saw it regardless of entitlement, for a tier that is not
+                    // sold and gates nothing (`PaywallGate` has no consumers).
+                    // A paid-tier claim is the category Apple's accurate-metadata
+                    // rule and Google's deceptive-behaviour policy scrutinise
+                    // hardest, and Paddle reviews the site against the product.
+                    // Restore a tier line only when a real entitlement backs it.
                     Text(
-                      '${user?.email ?? ''} · Pro plan',
+                      user?.email ?? '',
                       style: AppText.muted.copyWith(fontSize: 13),
                     ),
                   ],

@@ -739,7 +739,27 @@ Future<void> recordAnalyticsConsent(
       'const Map<String, String> kContentPackPublicKeys = <String, String>{};\n',
   };
 
-  const build = (name, { record = RECORD_CALL, ui = UI_CALLER, decl = DECLARATION, htmlVersion = '2026-07-26', dartVersion = '2026-07-26', fillerCount = 14 } = {}) =>
+  // The crash sink is a seam like the others: TelemetryBootstrap falls back to a
+  // NoOp client on an empty DSN, so "no crash reports" and "no crashes" look
+  // identical. Both ends are fixtured because the guard asserts both — a deploy
+  // that supplies a value nothing reads is as broken as an app reading a value
+  // nothing supplies.
+  const DEPLOY_WITH_DSN = 'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
+  const MAIN_READS_DSN = "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n";
+
+  const build = (
+    name,
+    {
+      record = RECORD_CALL,
+      ui = UI_CALLER,
+      decl = DECLARATION,
+      htmlVersion = '2026-07-26',
+      dartVersion = '2026-07-26',
+      fillerCount = 14,
+      deploy = DEPLOY_WITH_DSN,
+      mainDart = MAIN_READS_DSN,
+    } = {},
+  ) =>
     fixture(name, {
       ...filler(fillerCount),
       ...PACK_FILES,
@@ -748,6 +768,8 @@ Future<void> recordAnalyticsConsent(
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
       'sites/nikatru/privacy.html': POLICY(htmlVersion),
+      '.github/workflows/deploy-web.yml': deploy,
+      'apps/subly/lib/main.dart': mainDart,
     });
 
   test('passes when the seam has a real call site and the policy matches', () => {
@@ -755,6 +777,25 @@ Future<void> recordAnalyticsConsent(
     assert.equal(code, 0);
     assert.match(out, /a real record\(\) call/);
     assert.match(out, /policy version pinned/);
+  });
+
+  test('FAILS when the deploy stops supplying GLITCHTIP_DSN — the original defect', () => {
+    // This was live: no workflow passed the DSN, so the only shipping app
+    // initialised a NoOp client and a real user's crash reached nobody.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-dsn', { deploy: 'run: flutter build web --release\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  test('FAILS when the app stops reading the DSN the deploy supplies', () => {
+    // The other end of the pipe. Checking only the workflow would keep passing.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-unread', { mainDart: '// telemetry removed\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /no longer reads/);
   });
 
   test('FAILS when the record() call is deleted — the original defect', () => {
@@ -849,8 +890,14 @@ class Ed25519PackVerifier implements PackVerifier {
     for (let i = 0; i < n; i++) out[`apps/subly/lib/f_${i}.dart`] = '// filler\n';
     return out;
   };
-  // The consent half must stay satisfied so these tests isolate the verifier.
+  // The OTHER seams must stay satisfied so these tests isolate the verifier —
+  // consent, the policy pin, and the crash sink. A fixture that omits one fails
+  // for a reason unrelated to what the test is about, which is how a fixture
+  // starts lying about the guard it exercises.
   const consentOk = {
+    '.github/workflows/deploy-web.yml':
+      'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n',
+    'apps/subly/lib/main.dart': "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n",
     'apps/subly/lib/state/analytics_providers.dart':
       "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
     'apps/subly/lib/features/consent/consent_prompt.dart': 'recordAnalyticsConsent(ref, granted: true);',
