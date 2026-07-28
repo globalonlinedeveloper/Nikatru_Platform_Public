@@ -1,0 +1,198 @@
+{
+  "_readme": [
+    "THE SCREEN REGISTER — [pipeline C-13] company/pipeline/02-shared-chassis.md",
+    "",
+    "The complete set of NON-APP-SPECIFIC screens: the ones that are the same in all fifty apps and",
+    "therefore ship in the chassis rather than being written per app. Sourced from DoD §4-A.",
+    "",
+    "WHY A REGISTER AND NOT A CHECKLIST IN PROSE. C-13's acceptance is that a NAMED LIST is declared and",
+    "the app_brick probe asserts each screen is present in a fresh stamp. A list nobody can check is how",
+    "an account-deletion button sat doing nothing for months while passing every check the repo had.",
+    "",
+    "STATUS values:",
+    "  present  - it exists in the chassis; `anchor` names the file and the symbol that prove it",
+    "  blocked  - it CANNOT be built yet; `blockedBy` names what has to land first, and that claim is",
+    "             checked (a blocker that has already shipped fails the build, so nothing hides behind",
+    "             a stale excuse)",
+    "  todo     - buildable now, not yet built. Counted and PRINTED on every run.",
+    "",
+    "Enforced by tooling/ci/assert-screen-set.mjs.",
+    "",
+    "ANCHOR KINDS. `anchor.kind` says what the symbol IS, because a bare word match is the",
+    "declaration-vs-usage trap: renaming `class NotFoundScreen` to `class NotFoundScreenGone` left the",
+    "guard green, since the class's own constructor still matched the bare name.",
+    "  class  (default) - our own widget/class; matches the DECLARATION",
+    "  member           - a method we own",
+    "  uses             - a Flutter widget we use rather than declare (SegmentedButton, AboutListTile)"
+  ],
+  "screens": [
+    {
+      "id": "system.error-boundary",
+      "what": "A friendly screen when a widget throws during build, instead of Flutter's grey/red default.",
+      "status": "present",
+      "anchor": {
+        "file": "packages/design_system/lib/src/widgets/system_screens.dart",
+        "symbol": "AppErrorScreen"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart",
+        "pattern": "AppErrorScreen.install",
+        "why": "installed before runApp, so an error in the FIRST build is already covered"
+      }
+    },
+    {
+      "id": "system.not-found",
+      "what": "404 for a route that does not resolve. Matters most on web, where a user can type a URL or follow a stale link.",
+      "status": "present",
+      "anchor": {
+        "file": "packages/design_system/lib/src/widgets/system_screens.dart",
+        "symbol": "NotFoundScreen"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart",
+        "pattern": "errorBuilder:",
+        "why": "without it go_router shows its own error page, which names internal route patterns"
+      }
+    },
+    {
+      "id": "system.offline",
+      "what": "Tells the user the network could not be reached. Driven by a FAILED REQUEST, not a connectivity plugin — knowing the radio is on says nothing about whether the API is reachable.",
+      "status": "present",
+      "anchor": {
+        "file": "packages/design_system/lib/src/widgets/system_screens.dart",
+        "symbol": "OfflineNotice"
+      }
+    },
+    {
+      "id": "system.force-update",
+      "what": "The kill-switch wall when the running version is below min_supported_version.",
+      "status": "present",
+      "anchor": {
+        "file": "packages/design_system/lib/src/widgets/force_update_gate.dart",
+        "symbol": "ForceUpdateGate"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart",
+        "pattern": "ForceUpdateGate(",
+        "why": "mounted in MaterialApp's builder, above the router"
+      }
+    },
+    {
+      "id": "system.consent-banner",
+      "what": "The DPDP analytics consent question. THE single piece that turns the whole analytics rail on.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart",
+        "symbol": "_ConsentPrompt"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart",
+        "pattern": "child: AnalyticsGate(",
+        "why": "[2]C-6: the recorder had ZERO call sites and every event was silently discarded, and no test went red because refusing is the correct behaviour when consent is absent"
+      }
+    },
+    {
+      "id": "settings.root",
+      "what": "The settings screen itself.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "SettingsScreen"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart",
+        "pattern": "/settings",
+        "why": "a screen no route reaches is one no user can open"
+      }
+    },
+    {
+      "id": "settings.appearance",
+      "what": "Light/dark/system choice, persisted.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "SegmentedButton",
+        "kind": "uses"
+      }
+    },
+    {
+      "id": "settings.support",
+      "what": "Opens a support email with the app name pre-filled.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "_contactSupport",
+        "kind": "member"
+      }
+    },
+    {
+      "id": "settings.account-deletion",
+      "what": "Delete the account and its data, with re-authentication first.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "_DeleteAccountDialog",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "await auth.deleteAccount()",
+        "why": "its confirm button called Navigator.pop and NOTHING else until 2026-07-28 — a store-compliance defect that passed every check the repo had"
+      }
+    },
+    {
+      "id": "settings.about",
+      "what": "Standard about dialog with version and legalese.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "AboutListTile",
+        "kind": "uses"
+      }
+    },
+    {
+      "id": "monetization.paywall",
+      "what": "The paywall shell.",
+      "status": "blocked",
+      "blockedBy": "stage 5 (money rail)",
+      "detail": "PaywallGate exists in the design system with ZERO consumers. Wiring it before a payment can be taken would be a fail-closed seam with no proven open path — the [2]C-6 shape. Kept as a shell deliberately.",
+      "declaredOn": "2026-07-28"
+    },
+    {
+      "id": "monetization.purchase-states",
+      "what": "In-progress / success / error / manage-subscription.",
+      "status": "blocked",
+      "blockedBy": "stage 5 (money rail)",
+      "detail": "Nothing can be purchased yet, so every one of these would be a screen no path reaches.",
+      "declaredOn": "2026-07-28"
+    },
+    {
+      "id": "auth.screens",
+      "what": "Landing / sign-up / sign-in / forgot / reset / verify / OAuth callback.",
+      "status": "todo",
+      "detail": "UNBLOCKED 2026-07-28 by [2]C-15, which gave the chassis a real AuthRepository. Buildable now; not yet built.",
+      "declaredOn": "2026-07-28"
+    },
+    {
+      "id": "firstrun.screens",
+      "what": "Splash / onboarding / permission priming.",
+      "status": "todo",
+      "detail": "Buildable now — no dependency on auth or money.",
+      "declaredOn": "2026-07-28"
+    },
+    {
+      "id": "settings.remaining",
+      "what": "Profile / notification prefs / language / privacy-export / legal / sign-out.",
+      "status": "todo",
+      "detail": "Sign-out is buildable now that [2]C-15 landed. Privacy-export needs the subly-api EXPORTS R2 binding, which is bound and used NOWHERE — routed to stage 4.",
+      "declaredOn": "2026-07-28"
+    },
+    {
+      "id": "system.review-prompt",
+      "what": "Ask for a store review at a good moment.",
+      "status": "todo",
+      "detail": "Needs in_app_review, which under [2]C-4 lands in platform_storage rather than earning its own package.",
+      "declaredOn": "2026-07-28"
+    }
+  ]
+}
