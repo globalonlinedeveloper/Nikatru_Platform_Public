@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+// [pipeline C-11] buildAppTheme + AppThemeX, for the brand-seed property.
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:{{app_id.snakeCase()}}/app.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
@@ -240,6 +242,94 @@ void main() {
       // Guards against `darkTheme: buildAppTheme()` — present, and light.
       expect(app.theme!.brightness, Brightness.light);
       expect(app.darkTheme!.brightness, Brightness.dark);
+    });
+  });
+
+  // ── PROPERTY: brand-seed-drives-paint ─────────────────────────────────────
+  // [pipeline C-11] One brand input must produce a VISIBLY DISTINCT app.
+  //
+  // It did not. `buildAppTheme` passed the seed to ColorScheme.fromSeed and then
+  // overrode `primary` with a constant, and attached a `const` AppThemeX — so a
+  // red-seeded app and a green-seeded app came out with an identical primary, an
+  // identical brand gradient and an identical category ramp. Every app the
+  // factory stamped looked the same.
+  //
+  // This is a STORE-SURVIVAL property, not a cosmetic one: both stores treat
+  // near-identical apps as spam, Play enforcement reaches RELATED ACCOUNTS, and
+  // the portfolio stakes everything on one store identity — so one clone-flag is
+  // a portfolio-wide event. Asserted here so every stamped app keeps proving it.
+  group('property: brand-seed-drives-paint', () {
+    test('two different seeds paint differently', () {
+      final ThemeData red = buildAppTheme(seed: const Color(0xFFFF0000));
+      final ThemeData green = buildAppTheme(seed: const Color(0xFF00FF00));
+
+      expect(
+        red.colorScheme.primary,
+        isNot(green.colorScheme.primary),
+        reason:
+            'the seed does not reach primary — every app is the same colour',
+      );
+
+      final AppThemeX rx = red.extension<AppThemeX>()!;
+      final AppThemeX gx = green.extension<AppThemeX>()!;
+      expect(
+        rx.brandGradient,
+        isNot(gx.brandGradient),
+        reason:
+            'the brand gradient is the most visible surface in the app; a '
+            'const gradient makes every stamp look identical no matter the seed',
+      );
+      expect(
+        rx.categoryRamp,
+        isNot(gx.categoryRamp),
+        reason: 'a shared category ramp is a clone tell on every chart',
+      );
+    });
+
+    // Anchored to THIS app's real theme, not to the builder in isolation: the
+    // defect being prevented is somebody hardcoding a colour into app.dart, or
+    // dropping the `seed:` argument, which a builder-only test cannot see.
+    testWidgets('this app really paints with ITS OWN seed', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+          ],
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await tester.pump();
+
+      final MaterialApp app = tester.widget<MaterialApp>(
+        find.byType(MaterialApp),
+      );
+      // One line, deliberately: `seed_hex` is always six hex characters, so the
+      // substituted length is fixed and `dart format` leaves this alone. The
+      // template is mustache and cannot be formatted — only the stamp can, so
+      // the indentation here has to match the formatter's output by hand.
+      final ThemeData expected = buildAppTheme(seed: const Color(0xFF{{{seed_hex}}}));
+      expect(
+        app.theme!.colorScheme.primary,
+        expected.colorScheme.primary,
+        reason: 'the app is not painting with the seed it was stamped with',
+      );
+    });
+
+    // Status colours must NOT follow the brand. Green means good and red means
+    // danger in every app; re-hueing them from a seed trades a universal signal
+    // for decoration, and this asserts that trade was not made by accident.
+    test('status colours stay universal across brands', () {
+      final AppThemeX red = buildAppTheme(
+        seed: const Color(0xFFFF0000),
+      ).extension<AppThemeX>()!;
+      final AppThemeX green = buildAppTheme(
+        seed: const Color(0xFF00FF00),
+      ).extension<AppThemeX>()!;
+      expect(red.positive, green.positive);
+      expect(red.danger, green.danger);
+      expect(red.warn, green.warn);
     });
   });
 

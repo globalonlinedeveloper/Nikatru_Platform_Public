@@ -1023,6 +1023,11 @@ group('property: theme-triplet-supplied', () {
   test('g', () {});
   test('h', () {});
 });
+group('property: brand-seed-drives-paint', () {
+  test('n', () {});
+  testWidgets('o', (t) async {});
+  test('p', () {});
+});
 group('property: analytics-consent-gated', () {
   test('i', () {});
   test('j', () {});
@@ -1033,10 +1038,16 @@ group('property: analytics-on-switch-mounted', () {
   test('m', () {});
 });
 `;
+  // [pipeline C-11] BOTH themes carry the seed. A fixture with only the light
+  // one seeded would agree with the first version of that anchor, which passed
+  // while `theme:` had been gutted because `darkTheme:` still matched.
   const goodApp = `
 return MaterialApp.router(
-  theme: buildAppTheme(),
-  darkTheme: buildAppTheme(brightness: Brightness.dark),
+  theme: buildAppTheme(seed: const Color(0xFF6459F5)),
+  darkTheme: buildAppTheme(
+    seed: const Color(0xFF6459F5),
+    brightness: Brightness.dark,
+  ),
   themeMode: ref.watch(themeModeProvider),
   builder: (c, child) => ForceUpdateGate(
     child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
@@ -1094,8 +1105,20 @@ final x = () async {
   const BRICK_PROVIDERS =
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers };
+  // [pipeline C-11] The brand property also anchors into the design system, so
+  // the fixture has to carry that file too — the tokens must be DERIVED from the
+  // scheme, not const, or every stamp shares one gradient and one ramp.
+  const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
+  const goodThemeX = `
+class AppThemeX extends ThemeExtension<AppThemeX> {
+  factory AppThemeX.fromScheme(ColorScheme scheme, {Brightness brightness = Brightness.light}) {
+    return AppThemeX(muted: scheme.onSurfaceVariant);
+  }
+}
+`;
+
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX };
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
   };
@@ -1170,6 +1193,40 @@ final x = () async {
       });
       assert.equal(code, 1);
       assert.match(out, /must READ the stored choice back/);
+    });
+  });
+
+  // [pipeline C-11] The brand seed must reach BOTH themes. This pair exists
+  // because the first version of the anchor was a single `buildAppTheme(\s*seed:`
+  // match, and it PASSED against the real template with the seed deleted from
+  // `theme:` — `darkTheme:` still matched. An app could have shipped a branded
+  // dark theme and a generic light one with the guard green. Found by mutating
+  // the real tree; no fixture I wrote first would have shown it.
+  describe('the brand seed reaches both themes', () => {
+    test('FAILS when the LIGHT theme loses its seed', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-lightseed', { app: goodApp.replace('theme: buildAppTheme(seed: const Color(0xFF6459F5))', 'theme: buildAppTheme()') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /seed to the LIGHT theme/);
+    });
+
+    test('FAILS when the DARK theme loses its seed', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-darkseed', { app: goodApp.replace('    seed: const Color(0xFF6459F5),\n', '') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /seed to the DARK theme too/);
+    });
+
+    // A const AppThemeX is the other half of the same defect: the scheme can be
+    // seeded perfectly and every app still shares one gradient and one ramp.
+    test('FAILS when brand tokens stop being derived from the scheme', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-consttokens', { themeX: 'class AppThemeX { static const AppThemeX light = AppThemeX(); }\n' }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /brand tokens must be DERIVED from the scheme/);
     });
   });
 
