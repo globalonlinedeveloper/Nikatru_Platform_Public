@@ -28,6 +28,72 @@
     "apps/subly",
     "tooling/bricks/app/__brick__/apps/{{app_id}}"
   ],
+  "packageEarnReasons": {
+    "_why": [
+      "[pipeline C-4] A PACKAGE IS EARNED, NEVER NAMED. 39-CHASSIS §2 adjudicated this and it was",
+      "written nowhere that binds. A capability name is not a reason: followed loosely, the remaining",
+      "gap list would spawn packages for share, deep-links, review, purchases, connectivity and",
+      "analytics -- six pubspecs, six analysis_options, six workspace entries, six test harnesses and",
+      "six CI surfaces, forever, for one founder. Applied correctly, share_plus / app_links /",
+      "in_app_review all land in the existing platform_storage.",
+      "",
+      "Keyed by PACKAGE, not capability, because two capabilities can share one package (core owns",
+      "both `core` and `analytics_funnel`) and the cost being controlled is the package.",
+      "",
+      "THE ENUM IS CLOSED and each reason must SUBSTANTIATE ITSELF AGAINST THE TREE -- free text was",
+      "rejected at lock time because a justification nobody can check is a justification that always",
+      "passes:",
+      "  native-binary    evidence.dependency must be declared in that package's own pubspec",
+      "  licence-exposure evidence.dependency must be declared, and evidence.licence named",
+      "  codegen          evidence.buildFile must exist on disk",
+      "  GRANDFATHERED    predates the rule; needs declaredOn + detail, and PRINTS on every run",
+      "",
+      "Rejections already adjudicated, recorded so no future session re-litigates them: do NOT rename",
+      "platform_storage -> platform_adapters, and do NOT merge notifications into it. Both were built",
+      "under the older reading; the rename is churn across every pubspec and import for zero",
+      "user-visible value."
+    ],
+    "packages/platform_storage": {
+      "reason": "native-binary",
+      "evidence": { "dependency": "flutter_secure_storage" },
+      "detail": "Keychain on iOS/macOS, KeyStore on Android, DPAPI on Windows, libsecret on Linux -- five different native implementations behind one Dart call. This is the shape that earns a package: the platform difference is real and somebody must absorb it once."
+    },
+    "packages/notifications": {
+      "reason": "native-binary",
+      "evidence": { "dependency": "flutter_local_notifications" },
+      "detail": "Native scheduling APIs per platform, and the capability genuinely differs per platform (Linux shows but cannot schedule; Windows on the pinned 17.x does neither; web has no plugin at all) -- which is why NotificationCapabilities exists at all."
+    },
+    "packages/telemetry": {
+      "reason": "native-binary",
+      "evidence": { "dependency": "sentry_flutter" },
+      "detail": "Ships native crash handlers -- a Dart-only reporter cannot catch a native crash, which is the class of failure this package exists for."
+    },
+    "packages/tokens": {
+      "reason": "codegen",
+      "evidence": { "buildFile": "packages/tokens/style-dictionary.config.mjs" },
+      "detail": "A build step, not a library: style-dictionary compiles the token source into sites/_shared/assets/tokens.css, and ci.yml's `tokens` lane rebuilds and fails on any diff. It has no pubspec because it is a Node package."
+    },
+    "packages/core": {
+      "reason": "GRANDFATHERED",
+      "declaredOn": "2026-07-28",
+      "detail": "The spine, not an earned split -- it is what the other packages are separate FROM, so the earn test does not really apply to it. Substantiates none of the three (crypto and cryptography are both pure Dart). Left grandfathered rather than given an invented reason: an exemption you can see is safer than a justification that is not true."
+    },
+    "packages/design_system": {
+      "reason": "GRANDFATHERED",
+      "declaredOn": "2026-07-28",
+      "detail": "Pure Flutter widgets -- no native payload, no licence exposure, no codegen. Its real justification is the C-5 boundary (it must not be able to see the domain), which is a boundary argument rather than one of the three structural reasons. Recorded honestly instead of stretching the enum to fit."
+    },
+    "packages/api_client": {
+      "reason": "GRANDFATHERED",
+      "declaredOn": "2026-07-28",
+      "detail": "dio is pure Dart, so this substantiates nothing. It is the single most likely package to be MERGED if the rule is ever applied retroactively -- kept because [2]C-3 has just moved all three dio transports into it and moving them twice would be churn."
+    },
+    "packages/analysis": {
+      "reason": "GRANDFATHERED",
+      "declaredOn": "2026-07-28",
+      "detail": "A lint ruleset -- config, not code, and flutter_lints is not a native payload. It also has ZERO consumers today (its own include sits commented out), so it is currently a package that costs upkeep and delivers nothing; wiring it up is [2]C-12."
+    }
+  },
   "capabilities": [
     {
       "id": "core",
