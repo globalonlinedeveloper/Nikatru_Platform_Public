@@ -20,6 +20,9 @@ dependencies:
   sentry_flutter: ^9.24.0
 
 dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

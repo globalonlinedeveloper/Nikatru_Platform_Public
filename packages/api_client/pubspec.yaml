@@ -20,5 +20,8 @@ dependencies:
     path: ../core
 
 dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
   lints: ^6.0.0
   test: ^1.25.0

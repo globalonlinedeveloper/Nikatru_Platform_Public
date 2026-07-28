@@ -74,6 +74,9 @@ dependencies:
   #   purchases_flutter: ^8.0.0
 
 dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../../packages/analysis
   flutter_test:
     sdk: flutter
 

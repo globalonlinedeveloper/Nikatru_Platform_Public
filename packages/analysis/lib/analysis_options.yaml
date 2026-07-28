@@ -14,6 +14,33 @@ linter:
 analyzer:
   language:
     strict-casts: true
+
+  # ── [pipeline C-12] SEVERITY, NOT PRESENCE ─────────────────────────────────
+  # Settled by live spike on a real stamped app 2026-07-28, because the answer
+  # was not guessable:
+  #
+  #   include declared, no dev_dependency  → `include_file_not_found` WARNING,
+  #                                          analyze EXIT 1. Fails loudly. Good.
+  #   include resolving, default severity  → both rules fire as INFO,
+  #                                          analyze EXIT 0. THE BUILD PASSES.
+  #   severity raised HERE                 → same rules fire as ERROR,
+  #                                          analyze EXIT 1, in the stamped app.
+  #
+  # The middle row is the whole point. The brick lane runs
+  # `flutter analyze --no-fatal-infos`, so a convention inherited at default
+  # severity is a convention that prints and ships. Inheriting the ruleset is
+  # necessary and not sufficient — a banned pattern has to fail the build.
+  #
+  # WHAT BELONGS HERE: things that must never reach production. Style stays a
+  # lint. `avoid_print` qualifies — a stray print in a released app leaks to
+  # device logs and is the one lint here with a privacy edge.
+  errors:
+    avoid_print: error
+    # An unresolvable include is already a warning (hence exit 1), but naming it
+    # explicitly means a future --no-fatal-warnings cannot quietly demote the
+    # one failure that would hide every rule below it.
+    include_file_not_found: error
+
   exclude:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
