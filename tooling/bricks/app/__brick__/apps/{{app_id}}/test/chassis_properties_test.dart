@@ -559,6 +559,69 @@ void main() {
     });
   });
 
+  // ── PROPERTY: account-deletion-works ──────────────────────────────────────
+  // [pipeline C-13] Both stores require a WORKING in-app account-deletion path
+  // wherever an account can be created.
+  //
+  // 🔴 THIS BUTTON USED TO DO NOTHING. Its confirm action was
+  // `Navigator.pop(dialogContext)` and no more — no API call, no reauth — and it
+  // passed every check the repo had, because a button that pops a dialog looks
+  // exactly like a button that worked. It is the third instance of the shape
+  // [pipeline C-6] exists to catch, after the consent recorder with no call site
+  // and the pack verifier with no key.
+  //
+  // Asserted on the SEAM rather than by tapping through the dialog: the seam is
+  // what the store requirement is really about, and a widget-level test would
+  // pass against a dialog wired to the wrong repository.
+  group('property: account-deletion-works', () {
+    test(
+      'deleting really goes through the seam, and signs the user out',
+      () async {
+        final ProviderContainer c = _container(_MemStore());
+        addTearDown(c.dispose);
+        final core.AuthRepository auth = c.read(authRepositoryProvider);
+        await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+        expect(auth.currentUser, isNotNull);
+
+        await auth.deleteAccount();
+
+        expect(
+          (auth as InMemoryAuthRepository).deletionRequested,
+          isTrue,
+          reason:
+              'the request never reached the seam — this is the dead-button '
+              'shape the property exists to catch',
+        );
+        expect(
+          auth.currentUser,
+          isNull,
+          reason: 'still signed in after deletion',
+        );
+        expect(await auth.currentAccessToken(), isNull);
+      },
+    );
+
+    // A user who has ASKED to be deleted must not keep a live session, even when
+    // the request fails — that is the worst of both outcomes.
+    test(
+      'a FAILED deletion still signs out, and does not claim success',
+      () async {
+        final ProviderContainer c = _container(_MemStore());
+        addTearDown(c.dispose);
+        final core.AuthRepository auth = c.read(authRepositoryProvider);
+
+        // Nobody signed in: the seam must refuse rather than silently succeed.
+        await expectLater(
+          auth.deleteAccount(),
+          throwsA(isA<core.AuthFailure>()),
+          reason:
+              'a deletion that quietly does nothing is the one failure a user '
+              'can never detect and never recover from',
+        );
+      },
+    );
+  });
+
   // ── PROPERTY: analytics-consent-gated ─────────────────────────────────────
   // Stage 11 says a stamped app answers is-it-working / is-it-converting /
   // is-it-broken with no per-app instrumentation. That claim is only true if the
