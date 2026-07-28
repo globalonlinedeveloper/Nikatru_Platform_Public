@@ -205,6 +205,18 @@ jobs:
       - name: Shared code carries no app-specific vocabulary
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-no-clone-tells.mjs
+      # Checks IMPORTS, not only pubspecs, and that is the whole point. Every
+      # package here sets `resolution: workspace`, and pub workspaces share ONE
+      # package config -- so a member can import anything any other member
+      # depends on, with no dependency of its own. Proven on the real tree
+      # 2026-07-28: Flutter imported into pure-Dart core, and core imported into
+      # design_system, BOTH with pubspecs untouched, and `dart analyze` exited 0
+      # for each (the only complaint is the INFO depend_on_referenced_packages,
+      # which this workspace keeps non-fatal on purpose). C-5's original
+      # pubspec-only criterion could not have failed. [pipeline C-5]
+      - name: Core stays pure, the design system stays domain-free, apps use the seams
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-package-boundaries.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
