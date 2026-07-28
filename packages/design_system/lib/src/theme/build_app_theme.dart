@@ -24,8 +24,16 @@ import 'app_theme_x.dart';
 /// Everything here is now derived from the scheme: [ThemeData.colorScheme] from
 /// the seed, the neutrals from the scheme's own semantic slots, and the brand
 /// tokens via [AppThemeX.fromScheme].
+/// 🔒 [seed] is REQUIRED, deliberately — owner decision 2026-07-28.
+///
+/// It used to default to `AppColors.accent`, which is *Subly's* colour. That
+/// left one app-specific constant in the chassis path after C-11 removed the
+/// rest: any call site that forgot a seed silently rendered a product's brand,
+/// and the brick's own `smoke_test.dart` did exactly that. Requiring it turns a
+/// silent wrong colour into a compile error, which is the only version of this
+/// that cannot be got wrong by omission.
 ThemeData buildAppTheme({
-  Color seed = AppColors.accent,
+  required Color seed,
   Brightness brightness = Brightness.light,
 }) {
   final ColorScheme scheme = ColorScheme.fromSeed(

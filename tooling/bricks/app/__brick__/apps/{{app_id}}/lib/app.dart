@@ -171,6 +171,7 @@ class _ConsentPrompt extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return Positioned.fill(
       child: ColoredBox(
         color: Colors.black54,
@@ -189,19 +190,14 @@ class _ConsentPrompt extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        'Help improve ${AppConfig.appName}?',
+                        l10n.consentTitle(AppConfig.appName),
                         style: theme.textTheme.titleLarge,
                       ),
                       const SizedBox(height: 12),
-                      Text(
-                        'We can record which features you use, so we can see '
-                        'what works and fix what does not.',
-                        style: theme.textTheme.bodyMedium,
-                      ),
+                      Text(l10n.consentBody, style: theme.textTheme.bodyMedium),
                       const SizedBox(height: 8),
                       Text(
-                        'No name, no email, no advertising ID and no IP '
-                        'address — just a random code for this installation.',
+                        l10n.consentPrivacy,
                         style: theme.textTheme.bodySmall,
                       ),
                       const SizedBox(height: 16),
@@ -214,14 +210,14 @@ class _ConsentPrompt extends ConsumerWidget {
                           Expanded(
                             child: OutlinedButton(
                               onPressed: () => _answer(ref, granted: false),
-                              child: const Text('No thanks'),
+                              child: Text(l10n.consentDecline),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: FilledButton(
                               onPressed: () => _answer(ref, granted: true),
-                              child: const Text('Allow'),
+                              child: Text(l10n.consentAllow),
                             ),
                           ),
                         ],

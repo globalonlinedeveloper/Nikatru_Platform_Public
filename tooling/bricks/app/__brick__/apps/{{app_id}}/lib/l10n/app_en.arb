@@ -31,5 +31,71 @@
   "themeDark": "Dark",
   "@themeDark": {
     "description": "Theme option forcing the dark colour scheme."
-  }
+  },
+  "deleteAccountSubtitle": "Permanently delete your account and data",
+  "@deleteAccountSubtitle": {
+    "description": "Explains what the delete-account entry does."
+  },
+  "deleteAccountConfirmTitle": "Delete account?",
+  "@deleteAccountConfirmTitle": {
+    "description": "Title of the irreversible delete-account confirmation dialog."
+  },
+  "deleteAccountConfirmBody": "This permanently deletes your account and all its data. This cannot be undone.",
+  "@deleteAccountConfirmBody": {
+    "description": "Body of the delete-account confirmation. Must state that the action cannot be undone."
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Dismisses a dialog without acting."
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "Confirms the destructive delete action."
+  },
+  "about": "About",
+  "@about": {
+    "description": "Opens the standard about dialog."
+  },
+  "legalese": "© Nikatru",
+  "@legalese": {
+    "description": "Copyright line in the about dialog. The company name is not translated."
+  },
+  "consentAllow": "Allow",
+  "@consentAllow": {
+    "description": "Grants analytics consent. Must be as prominent as the refusal."
+  },
+  "consentDecline": "No thanks",
+  "@consentDecline": {
+    "description": "Refuses analytics consent. A one-sided prompt is a dark pattern, not a choice."
+  },
+  "homeTagline": "Stamped from the NIKATRU app brick.",
+  "@homeTagline": {
+    "description": "Placeholder home copy in a freshly stamped app."
+  },
+  "welcomeTo": "Welcome to {appName}",
+  "@welcomeTo": {
+    "description": "Home screen greeting.",
+    "placeholders": {
+      "appName": { "type": "String" }
+    }
+  },
+  "consentTitle": "Help improve {appName}?",
+  "@consentTitle": {
+    "description": "Consent prompt heading.",
+    "placeholders": { "appName": { "type": "String" } }
+  },
+  "consentBody": "We can record which features you use, so we can see what works and fix what does not.",
+  "@consentBody": {
+    "description": "What the analytics consent actually covers."
+  },
+  "consentPrivacy": "No name, no email, no advertising ID and no IP address — just a random code for this installation.",
+  "@consentPrivacy": {
+    "description": "States exactly what is NOT collected. Must stay accurate to the privacy policy."
+  },
+  "navHome": "Home",
+  "@navHome": { "description": "Primary navigation destination." },
+  "navExplore": "Explore",
+  "@navExplore": { "description": "Secondary navigation destination." },
+  "navSettings": "Settings",
+  "@navSettings": { "description": "Settings navigation destination." }
 }

@@ -72,7 +72,7 @@ void main() {
     });
 
     test('useMaterial3 and the Manrope text theme still apply', () {
-      final ThemeData t = buildAppTheme();
+      final ThemeData t = buildAppTheme(seed: const Color(0xFF0E7C6B));
       expect(t.useMaterial3, isTrue);
       expect(t.textTheme.bodyMedium?.fontFamily, 'Manrope');
       expect(t.extension<AppThemeX>(), isNotNull);
