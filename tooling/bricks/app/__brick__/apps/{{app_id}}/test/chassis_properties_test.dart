@@ -333,6 +333,155 @@ void main() {
     });
   });
 
+  // ── PROPERTY: ui-invariants-inherited ─────────────────────────────────────
+  // [pipeline C-14] The invariants that are near-free in the chassis and
+  // near-impossible to retrofit across 50 shipped apps. MASTER_PLAN §4 tagged
+  // these `[CI]` and no CI lane had ever touched them: `Semantics(` appeared 0
+  // times repo-wide, `TextScaler` 0 times, and AppScaffold covered 3 window
+  // classes where DoD §4-C asked for 5.
+  //
+  // Each limb below is INDEPENDENTLY FALSIFIABLE — one can go red without the
+  // others, which is what stops this becoming a single check that passes for
+  // the wrong reason.
+  group('property: ui-invariants-inherited', () {
+    // LIMB 1 — TEXT SCALING, clamped at the root.
+    testWidgets('text scaling is clamped to 1.0–2.0 at the app root', (
+      WidgetTester tester,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 4.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+          ],
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turns(tester);
+
+      // Read the scaling INSIDE the app, below the clamp — asserting on the
+      // dispatcher would only prove the test set it.
+      final BuildContext ctx = tester.element(find.byType(Scaffold).first);
+      final double scaled = MediaQuery.textScalerOf(ctx).scale(10.0);
+      expect(
+        scaled,
+        lessThanOrEqualTo(20.0),
+        reason:
+            'the OS asked for 4x and nothing clamped it — unbounded scaling '
+            'overflows, and an overflowing screen is one the user cannot finish',
+      );
+      expect(
+        scaled,
+        greaterThanOrEqualTo(10.0),
+        reason: 'text must never render below the design size',
+      );
+    });
+
+    // LIMB 2 — REACHABILITY. A control smaller than 48x48 is one a person with
+    // imprecise touch cannot reliably hit; both platforms' own guidance says so.
+    testWidgets('every navigation target is at least 48px', (
+      WidgetTester tester,
+    ) async {
+      // A PHONE-sized window, explicitly. Flutter's default test surface is
+      // 800x600, and 800 now resolves to `medium` — a rail, not a bottom bar —
+      // so this limb silently had nothing to measure until the size was pinned.
+      // Tap-target size matters most exactly here, on touch.
+      await tester.binding.setSurfaceSize(const Size(400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+          ],
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turns(tester);
+
+      final Finder targets = find.byType(NavigationDestination);
+      // A non-empty domain is asserted FIRST. "Every target is big enough" over
+      // zero targets is the vacuous check this property exists to replace.
+      expect(
+        targets,
+        findsWidgets,
+        reason:
+            'no navigation destinations found — the size check below would '
+            'range over nothing and pass without examining anything',
+      );
+      for (final Element e in targets.evaluate()) {
+        expect(
+          tester.getSize(find.byWidget(e.widget)).height,
+          greaterThanOrEqualTo(48.0),
+          reason: 'tap target below the 48px floor',
+        );
+      }
+    });
+
+    // LIMB 3 — ADAPTIVE LAYOUT at Material's exact boundaries. Asserted on the
+    // PURE resolver, so the five classes are checked at their exact edges rather
+    // than at five sizes that happen to be far from any boundary. `medium` was
+    // 640 — not a Material breakpoint — so 600..639 silently got the phone
+    // layout; that off-by-40 is exactly what an edge test catches and a
+    // mid-range test does not.
+    test('five window classes, at Material 600/840/1200/1600', () {
+      expect(windowClassFor(599), WindowClass.compact);
+      expect(windowClassFor(600), WindowClass.medium);
+      expect(windowClassFor(839), WindowClass.medium);
+      expect(windowClassFor(840), WindowClass.expanded);
+      expect(windowClassFor(1199), WindowClass.expanded);
+      expect(windowClassFor(1200), WindowClass.large);
+      expect(windowClassFor(1599), WindowClass.large);
+      expect(windowClassFor(1600), WindowClass.extraLarge);
+      // All five must be reachable; a class no width maps to is a number in a
+      // doc, not a layout.
+      expect(
+        <double>[400, 700, 1000, 1400, 1800].map(windowClassFor).toSet(),
+        hasLength(5),
+      );
+    });
+
+    // LIMB 4 — the ICON-LABEL check, made real. Every navigation destination
+    // must carry a non-empty text label, and the domain must be non-empty. The
+    // vacuous version of this check asserted labels on "icon-only controls", of
+    // which the tree contains zero — so it passed by having nothing to inspect.
+    testWidgets('every icon in the navigation carries a real label', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+          ],
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turns(tester);
+
+      final Iterable<NavigationDestination> found = tester
+          .widgetList<NavigationDestination>(
+            find.byType(NavigationDestination),
+          );
+      expect(
+        found,
+        isNotEmpty,
+        reason:
+            'nothing to check — a label assertion over an empty set is the '
+            'vacuous check this limb replaces',
+      );
+      for (final NavigationDestination d in found) {
+        expect(
+          d.label.trim(),
+          isNotEmpty,
+          reason: 'an unlabelled icon is unusable with a screen reader',
+        );
+      }
+    });
+  });
+
   // ── PROPERTY: analytics-consent-gated ─────────────────────────────────────
   // Stage 11 says a stamped app answers is-it-working / is-it-converting /
   // is-it-broken with no per-app instrumentation. That claim is only true if the

@@ -54,6 +54,7 @@ const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const PROP_TEST = `${BRICK}/test/chassis_properties_test.dart`;
 const APP_ROOT = `${BRICK}/lib/app.dart`;
 const PROVIDERS = `${BRICK}/lib/state/providers.dart`;
+const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 
 // REQUIRED_COVERAGE. Each entry is a property the stamped app must assert about
 // itself. `group` is the marker the test file must declare; `sources` are the
@@ -95,6 +96,16 @@ const REQUIRED_COVERAGE = [
       { file: 'packages/design_system/lib/src/theme/app_theme_x.dart', re: /factory\s+AppThemeX\.fromScheme/, what: 'brand tokens must be DERIVED from the scheme — a const AppThemeX makes every stamp share one gradient and one ramp' },
     ],
     why: 'identical-looking apps are treated as spam by both stores, and Play enforcement reaches related accounts',
+  },
+  {
+    key: 'ui-invariants-inherited',
+    group: /group\(\s*'property: ui-invariants-inherited'/,
+    sources: [
+      { file: APP_ROOT, re: /MediaQuery\.withClampedTextScaling\(/, what: 'app.dart must clamp text scaling at the root — unbounded scaling overflows, and an overflowing screen is one the user cannot finish' },
+      { file: SCAFFOLD, re: /static const double medium = 600;/, what: 'AppScaffold must use Material’s 600 boundary — it was 640, so every window 600–639 got the phone layout' },
+      { file: SCAFFOLD, re: /enum WindowClass \{\s*compact,\s*medium,\s*expanded,\s*large,\s*extraLarge\s*\}/, what: 'all FIVE Material window classes must exist — the tree covered three' },
+    ],
+    why: 'these are near-free in the chassis and near-impossible to retrofit across 50 shipped apps',
   },
   {
     key: 'analytics-consent-gated',

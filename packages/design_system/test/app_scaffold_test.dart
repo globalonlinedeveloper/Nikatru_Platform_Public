@@ -4,9 +4,16 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 void main() {
   const List<AppDestination> destinations = <AppDestination>[
-    AppDestination(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
-    AppDestination(icon: Icons.pie_chart_outline, selectedIcon: Icons.pie_chart, label: 'Budget'),
-    AppDestination(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: 'Settings'),
+    AppDestination(
+        icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
+    AppDestination(
+        icon: Icons.pie_chart_outline,
+        selectedIcon: Icons.pie_chart,
+        label: 'Budget'),
+    AppDestination(
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings,
+        label: 'Settings'),
   ];
 
   Widget harness({int index = 0, ValueChanged<int>? onSelected}) {
@@ -26,7 +33,8 @@ void main() {
     await tester.pumpWidget(w);
   }
 
-  testWidgets('compact width → NavigationBar only', (WidgetTester tester) async {
+  testWidgets('compact width → NavigationBar only',
+      (WidgetTester tester) async {
     await pumpAt(tester, const Size(400, 800), harness());
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
@@ -34,29 +42,92 @@ void main() {
     expect(find.text('BODY'), findsOneWidget);
   });
 
-  testWidgets('medium width → NavigationRail only', (WidgetTester tester) async {
+  testWidgets('medium width → NavigationRail only',
+      (WidgetTester tester) async {
     await pumpAt(tester, const Size(800, 800), harness(index: 1));
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(NavigationDrawer), findsNothing);
   });
 
-  testWidgets('expanded width → NavigationDrawer only', (WidgetTester tester) async {
+  testWidgets('expanded width → extended NavigationRail',
+      (WidgetTester tester) async {
+    await pumpAt(tester, const Size(1000, 900), harness(index: 2));
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isTrue);
+    expect(find.byType(NavigationDrawer), findsNothing);
+  });
+
+  testWidgets('large width → NavigationDrawer only',
+      (WidgetTester tester) async {
     await pumpAt(tester, const Size(1300, 900), harness(index: 2));
     expect(find.byType(NavigationDrawer), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(NavigationRail), findsNothing);
   });
 
-  testWidgets('tapping a destination reports its index', (WidgetTester tester) async {
+  // ── [pipeline C-14] The five Material window classes, AT THEIR EDGES ───────
+  // `medium` was 640, which is not a Material breakpoint. Every window from 600
+  // to 639 logical pixels got the PHONE layout — a bottom bar on a device wide
+  // enough for a rail. A test at 400 / 800 / 1300 could never have caught that,
+  // because none of those widths is near the boundary that was wrong. Edges are
+  // where off-by-40 lives.
+  group('window classes at Material 600/840/1200/1600', () {
+    test('every boundary resolves on the correct side', () {
+      expect(windowClassFor(599), WindowClass.compact);
+      expect(windowClassFor(600), WindowClass.medium); // ← the 640 bug
+      expect(windowClassFor(639), WindowClass.medium); // ← was compact before
+      expect(windowClassFor(839), WindowClass.medium);
+      expect(windowClassFor(840), WindowClass.expanded);
+      expect(windowClassFor(1199), WindowClass.expanded);
+      expect(windowClassFor(1200), WindowClass.large);
+      expect(windowClassFor(1599), WindowClass.large);
+      expect(windowClassFor(1600), WindowClass.extraLarge);
+    });
+
+    test('all five classes are reachable', () {
+      // A class no width maps to is a number in a document, not a layout.
+      expect(
+        <double>[320, 700, 900, 1400, 2000].map(windowClassFor).toSet(),
+        hasLength(5),
+      );
+    });
+
+    testWidgets('600px gets a rail, not a phone bar',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(600, 800), harness());
+      expect(
+        find.byType(NavigationRail),
+        findsOneWidget,
+        reason: 'this is the exact width the 640 breakpoint got wrong',
+      );
+      expect(find.byType(NavigationBar), findsNothing);
+    });
+
+    testWidgets('extra-large caps the body width', (WidgetTester tester) async {
+      await pumpAt(tester, const Size(2000, 900), harness());
+      expect(find.byType(NavigationDrawer), findsOneWidget);
+      // The distinction from `large` must be REAL, or the fifth class is
+      // decorative: past 1600 the body stops growing, because a paragraph
+      // 1400px wide is genuinely hard to read.
+      expect(tester.getSize(find.text('BODY')).width,
+          lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth));
+    });
+  });
+
+  testWidgets('tapping a destination reports its index',
+      (WidgetTester tester) async {
     int? tapped;
-    await pumpAt(tester, const Size(400, 800), harness(onSelected: (int i) => tapped = i));
+    await pumpAt(tester, const Size(400, 800),
+        harness(onSelected: (int i) => tapped = i));
     await tester.tap(find.text('Settings'));
     await tester.pump();
     expect(tapped, 2);
   });
 
-  testWidgets('renders an app bar title when provided', (WidgetTester tester) async {
+  testWidgets('renders an app bar title when provided',
+      (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
