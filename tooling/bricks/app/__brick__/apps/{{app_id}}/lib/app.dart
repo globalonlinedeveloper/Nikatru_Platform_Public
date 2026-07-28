@@ -20,6 +20,16 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
     // below the resolved min_supported_version. Watching this resolves the config
     // at launch too; it fails open while config/version load (never blocks the UI).
     final bool mustUpdate = ref.watch(mustForceUpdateProvider);
+
+    // [pipeline C-8] RUNTIME first, compiled-in default as the fallback. The
+    // wall's destination must be repointable without a release: it is the
+    // emergency exit, and an emergency exit you can only move by shipping a new
+    // build is not one. `valueOrNull` and the `??` are both load-bearing —
+    // while the config resolves, or with no network at all, the compiled-in
+    // default still gives the button somewhere to go.
+    final String updateUrl =
+        ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
+            AppConfig.updateUrl;
     return MaterialApp.router(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
@@ -39,14 +49,14 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
       routerConfig: router,
       builder: (BuildContext context, Widget? child) => ForceUpdateGate(
         mustUpdate: mustUpdate,
-        onUpdate: _openUpdate,
+        onUpdate: () => _openUpdate(updateUrl),
         child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
       ),
     );
   }
 
-  Future<void> _openUpdate() async {
-    final Uri uri = Uri.parse(AppConfig.updateUrl);
+  Future<void> _openUpdate(String url) async {
+    final Uri uri = Uri.parse(url);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
