@@ -1028,6 +1028,12 @@ group('property: brand-seed-drives-paint', () {
   testWidgets('o', (t) async {});
   test('p', () {});
 });
+group('property: ui-invariants-inherited', () {
+  testWidgets('q', (t) async {});
+  testWidgets('r', (t) async {});
+  test('s', () {});
+  testWidgets('u', (t) async {});
+});
 group('property: analytics-consent-gated', () {
   test('i', () {});
   test('j', () {});
@@ -1049,10 +1055,28 @@ return MaterialApp.router(
     brightness: Brightness.dark,
   ),
   themeMode: ref.watch(themeModeProvider),
-  builder: (c, child) => ForceUpdateGate(
-    child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
+  builder: (c, child) => MediaQuery.withClampedTextScaling(
+    minScaleFactor: 1.0,
+    maxScaleFactor: 2.0,
+    child: ForceUpdateGate(
+      child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
+    ),
   ),
 );
+`;
+  // [pipeline C-14] The window-class anchors live in the design system, so the
+  // fixture carries that file too — Material's exact 600 boundary and all FIVE
+  // classes. 640 is not a Material breakpoint and was the live bug.
+  const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
+  const goodScaffold = `
+class AppBreakpoints {
+  static const double medium = 600;
+  static const double expanded = 840;
+  static const double large = 1200;
+  static const double extraLarge = 1600;
+}
+
+enum WindowClass { compact, medium, expanded, large, extraLarge }
 `;
   // ⚠️ THIS FIXTURE MUST MIRROR THE REAL TEMPLATE, and the reason is not tidiness.
   // It used to be a four-line stub holding only the record() call, which was fine
@@ -1117,8 +1141,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold };
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
   };
@@ -1227,6 +1251,39 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       });
       assert.equal(code, 1);
       assert.match(out, /brand tokens must be DERIVED from the scheme/);
+    });
+  });
+
+  // [pipeline C-14] The UI invariants MASTER_PLAN §4 tagged `[CI]` while no CI
+  // lane had ever touched them: Semantics 0 occurrences, TextScaler 0, and three
+  // window classes where the standard and DoD §4-C both say five.
+  describe('the un-retrofittable UI invariants', () => {
+    test('FAILS when text scaling is no longer clamped at the root', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noclamp', { app: goodApp.replace('MediaQuery.withClampedTextScaling(', 'MediaQuery.nothing(') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must clamp text scaling at the root/);
+    });
+
+    // THE LIVE BUG. 640 is not a Material breakpoint, so windows 600–639 got
+    // the phone layout — a bottom bar on a device wide enough for a rail.
+    test('FAILS when the 640 breakpoint comes back', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-640', { scaffold: goodScaffold.replace('medium = 600', 'medium = 640') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must use Material’s 600 boundary/);
+    });
+
+    test('FAILS when a window class is dropped from the set', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-4classes', {
+          scaffold: goodScaffold.replace('enum WindowClass { compact, medium, expanded, large, extraLarge }', 'enum WindowClass { compact, medium, expanded, large }'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /all FIVE Material window classes must exist/);
     });
   });
 

@@ -50,11 +50,26 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
       // the build of every stamped app, not just this one.
       themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
-      builder: (BuildContext context, Widget? child) => ForceUpdateGate(
-        mustUpdate: mustUpdate,
-        onUpdate: () => _openUpdate(updateUrl),
-        child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
-      ),
+      // [pipeline C-14] TEXT SCALING, clamped at the ROOT so every screen in
+      // every stamped app inherits it — this is one of the invariants that is
+      // near-free here and near-impossible to retrofit across 50 shipped apps.
+      //
+      // The floor of 1.0 refuses to shrink text below the design size; the
+      // ceiling of 2.0 is what keeps a layout usable. Both stores' accessibility
+      // settings can push well past 2.0, and unbounded scaling does not degrade
+      // gracefully — it overflows, and an overflow is a screen the user cannot
+      // finish. Clamping is the honest trade: very large text still works,
+      // rather than every screen breaking at the extreme.
+      builder: (BuildContext context, Widget? child) =>
+          MediaQuery.withClampedTextScaling(
+            minScaleFactor: 1.0,
+            maxScaleFactor: 2.0,
+            child: ForceUpdateGate(
+              mustUpdate: mustUpdate,
+              onUpdate: () => _openUpdate(updateUrl),
+              child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
+            ),
+          ),
     );
   }
 
