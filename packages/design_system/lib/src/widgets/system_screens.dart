@@ -46,14 +46,30 @@ class AppErrorScreen extends StatelessWidget {
   /// to a user who cannot act on them, and to anyone shoulder-surfing.
   final String? details;
 
+  /// LAST-RESORT copy, used when the error happens before Localizations exist.
+  ///
+  /// 🔴 THIS CANNOT COME FROM THE APP'S ARB. [install] runs before `runApp`, so
+  /// there is no `BuildContext` and no `Localizations` to read — and an error
+  /// during the FIRST build is exactly the case this screen exists for. English
+  /// in the wrong locale beats no error screen at all.
+  ///
+  /// It lives in the design system rather than the brick because it is a
+  /// property of this widget, not of any app: the design system already takes
+  /// its copy as parameters and has no l10n dependency by design. A stamped app
+  /// that wants localised copy passes it to the constructor, which is what every
+  /// in-tree error screen does.
+  static const String fallbackTitle = 'Something went wrong';
+  static const String fallbackMessage =
+      'The app hit an unexpected problem. Restarting usually helps.';
+
   /// Install this as Flutter's global build-error widget.
   ///
   /// Call once at startup, before `runApp`. Returns the previous builder so a
   /// test can restore it — a global left mutated across tests is a flake
   /// generator.
   static ErrorWidgetBuilder install({
-    required String title,
-    required String message,
+    String title = fallbackTitle,
+    String message = fallbackMessage,
   }) {
     final ErrorWidgetBuilder previous = ErrorWidget.builder;
     ErrorWidget.builder = (FlutterErrorDetails details) => AppErrorScreen(

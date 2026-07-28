@@ -26,13 +26,11 @@ Future<void> main() async {
       // leaks widget internals. One line at startup, impossible to retrofit across
       // fifty shipped apps.
       //
-      // English literals, deliberately: this runs BEFORE any BuildContext exists,
-      // so there is no Localizations to read. A wrong-language fallback beats no
-      // error screen at all.
-      AppErrorScreen.install(
-        title: 'Something went wrong',
-        message: 'The app hit an unexpected problem. Restarting usually helps.',
-      );
+      // The copy is the design system's own last-resort fallback: this runs
+      // before any BuildContext exists, so there is no Localizations to read,
+      // and an error during the FIRST build is exactly what this covers. See
+      // AppErrorScreen.fallbackTitle for why it cannot come from the app's ARB.
+      AppErrorScreen.install();
 
       runApp(const ProviderScope(child: {{app_id.pascalCase()}}App()));
     },
