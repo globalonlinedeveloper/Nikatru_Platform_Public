@@ -260,6 +260,25 @@ jobs:
       - name: One convention set reaches every app, and can fail a build
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-lint-inheritance.mjs
+      # DoD §4-E: zero hardcoded user-facing strings. A string baked into a
+      # widget cannot be translated, and retrofitting l10n across 50 shipped
+      # apps is the expensive path (architecture.md §16) -- so the brick, which
+      # every stamped app inherits, is where this is nearly free.
+      #
+      # A CI guard rather than a custom lint, on two CHECKED facts: custom_lint
+      # does NOT run under `dart analyze` (its own docs say so, and it needs
+      # `dart run custom_lint`), so it would need its own CI step exactly like
+      # this one; and it is a new package that earns none of C-4's three
+      # structural reasons, so it would arrive grandfathered.
+      #
+      # Carries a CANARY: the brick is clean, so enforcement passes over an empty
+      # set, which is indistinguishable from matchers that have stopped matching.
+      # They are re-proven every run against apps/subly, a tree known to be full
+      # of violations and excluded from enforcement because it is frozen.
+      # [pipeline C-12]
+      - name: No hardcoded user-facing strings in the brick
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-hardcoded-strings.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any

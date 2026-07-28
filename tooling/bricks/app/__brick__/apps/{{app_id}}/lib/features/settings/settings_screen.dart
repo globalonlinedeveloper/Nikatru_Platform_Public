@@ -69,13 +69,13 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.delete_outline),
             title: Text(l10n.deleteAccount),
-            subtitle: const Text('Permanently delete your account and data'),
-            onTap: () => _confirmDelete(context),
+            subtitle: Text(l10n.deleteAccountSubtitle),
+            onTap: () => _confirmDelete(context, l10n),
           ),
-          const AboutListTile(
+          AboutListTile(
             applicationName: AppConfig.appName,
-            applicationLegalese: '© Nikatru',
-            child: Text('About'),
+            applicationLegalese: l10n.legalese,
+            child: Text(l10n.about),
           ),
         ],
       ),
@@ -94,23 +94,20 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _confirmDelete(BuildContext context) {
+  void _confirmDelete(BuildContext context, AppLocalizations l10n) {
     showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Delete account?'),
-        content: const Text(
-          'This permanently deletes your account and all its data. '
-          'This cannot be undone.',
-        ),
+        title: Text(l10n.deleteAccountConfirmTitle),
+        content: Text(l10n.deleteAccountConfirmBody),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Delete'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
