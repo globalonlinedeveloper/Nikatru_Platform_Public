@@ -229,6 +229,21 @@ jobs:
       - name: Every package is earned, or dated
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-package-earned.mjs
+      # SIX checklist parts per vendor, not "behind a seam" alone -- a seam alone
+      # LOOKS like portability while a swap still needs a store release. Four
+      # parts are checked against the tree and BLOCK; two are judgement and
+      # PRINT, because a guard that pretends to check judgement always passes.
+      # Surfaces are DERIVED from four sources, and any one alone is blind
+      # (all verified 2026-07-28): a MULTILINE dart-define scan (a line-based
+      # grep finds 2 of the 11 that exist, and misses UPDATE_URL), the Worker
+      # `Env` (REVENUECAT_WEBHOOK_SECRET lives only there, so RevenueCat is
+      # otherwise invisible), wrangler `binding` keys AND `ratelimits[].name`
+      # (that block keys on `name`, so EVENTS_LIMITER is invisible to a
+      # binding-only scan), and `triggers.crons`. Its first run failed on the
+      # real tree on exactly what the lock predicted. [pipeline C-8]
+      - name: Every vendor satisfies the portability checklist
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-vendor-portability.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any

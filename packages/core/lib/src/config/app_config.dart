@@ -39,6 +39,7 @@ class AppConfig {
     required this.minSupportedVersion,
     this.flags = const <String, int>{},
     this.theme,
+    this.updateUrl,
   });
 
   final String appId;
@@ -54,6 +55,20 @@ class AppConfig {
   /// a hard on/off toggle.
   final Map<String, int> flags;
   final Map<String, Object?>? theme;
+
+  /// Where the force-update wall sends users, resolved at RUNTIME.
+  ///
+  /// [pipeline C-8] This was compile-time only, which made the kill-switch
+  /// circular: the one thing the wall must do in an emergency is send users
+  /// somewhere, but its destination was frozen at build time — so redirecting it
+  /// meant shipping the very build the wall exists to replace. Owner decision
+  /// 2026-07-27: UPDATE_URL moves to runtime config; GLITCHTIP_DSN deliberately
+  /// does not, because a build must report crashes as itself.
+  ///
+  /// Null means "the server has no opinion" and the app keeps its compiled-in
+  /// default, so this stays offline-safe: an unreachable config service can
+  /// never leave the wall with nowhere to send anyone.
+  final String? updateUrl;
 
   /// Whether feature [key] is enabled ([orElse] when the key is absent).
   bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;
@@ -98,6 +113,12 @@ class AppConfig {
       minSupportedVersion: minVer,
       flags: _intMap(json['flags']),
       theme: json['theme'] == null ? null : _asMap(json['theme']),
+      // Empty string coerces to null, not to "": a blank value in a config body
+      // must mean "no opinion", never "send users to nowhere".
+      updateUrl: json['update_url'] is String &&
+              (json['update_url'] as String).isNotEmpty
+          ? json['update_url'] as String
+          : null,
     );
   }
 
@@ -123,6 +144,7 @@ class AppConfig {
     String? minSupportedVersion,
     Map<String, int>? flags,
     Map<String, Object?>? theme,
+    String? updateUrl,
   }) =>
       AppConfig(
         appId: appId ?? this.appId,
@@ -134,6 +156,7 @@ class AppConfig {
         minSupportedVersion: minSupportedVersion ?? this.minSupportedVersion,
         flags: flags ?? this.flags,
         theme: theme ?? this.theme,
+        updateUrl: updateUrl ?? this.updateUrl,
       );
 
   @override
