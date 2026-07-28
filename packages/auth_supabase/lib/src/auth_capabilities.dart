@@ -43,8 +43,21 @@ class AuthCapabilities {
   final String note;
 
   /// The matrix for the platform this build is running on.
-  static AuthCapabilities current() {
-    if (kIsWeb) {
+  ///
+  /// Thin wrapper over [forPlatform] so the six rows stay reachable from a test.
+  /// A matrix that can only be evaluated on the host is one where five of six
+  /// rows are never exercised — a comment with a type.
+  static AuthCapabilities current() =>
+      forPlatform(defaultTargetPlatform, isWeb: kIsWeb);
+
+  /// The capabilities for [platform], with [isWeb] taking precedence: a web
+  /// build still reports a host [TargetPlatform], but a browser is its own
+  /// platform for every question this class answers.
+  static AuthCapabilities forPlatform(
+    TargetPlatform platform, {
+    required bool isWeb,
+  }) {
+    if (isWeb) {
       return const AuthCapabilities(
         emailPassword: true,
         oauthRedirect: true,
@@ -58,7 +71,7 @@ class AuthCapabilities {
             'web storage; short token lifetimes carry the risk instead.',
       );
     }
-    return switch (defaultTargetPlatform) {
+    return switch (platform) {
       TargetPlatform.android || TargetPlatform.iOS => const AuthCapabilities(
         emailPassword: true,
         oauthRedirect: true,

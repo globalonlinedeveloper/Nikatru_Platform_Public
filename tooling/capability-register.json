@@ -66,47 +66,114 @@
     "supabase": {
       "surface": "Portfolio-wide identity/auth (project Cross_Platform_Auth) and the Postgres behind it.",
       "stickiness": "★★★ — portability-standard.md names RLS coupling as one of three sticky points.",
-      "surfaces": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET", "SUPABASE_KEEPALIVE_URLS"],
+      "surfaces": [
+        "SUPABASE_URL",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEEPALIVE_URLS"
+      ],
       "openProtocol": "YES — OIDC/JWKS for tokens and plain Postgres underneath. Verification is against standard JWKS claims, not a Supabase SDK call, which is what makes the identity provider swappable.",
-      "seam": { "file": "packages/core/lib/src/auth/auth_repository.dart", "symbol": "AuthRepository" },
-      "configKeyed": { "kind": "runtime", "detail": "URL and anon key are dart-defines with compiled-in fallbacks, and the Worker reads SUPABASE_URL from its own env — repointing needs no app release." },
+      "seam": {
+        "file": "packages/core/lib/src/auth/auth_repository.dart",
+        "symbol": "AuthRepository"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "detail": "URL and anon key are dart-defines with compiled-in fallbacks, and the Worker reads SUPABASE_URL from its own env — repointing needs no app release."
+      },
       "ownTheRecord": "YES — entitlements and app state live in OUR D1, keyed on the standard `sub` claim. The app depends on our record, not Supabase's.",
-      "exportPath": { "path": "company/runbooks/operations.md", "detail": "pg_dump via the Supabase dashboard/API; the schema is plain Postgres with no proprietary types." },
-      "exitPlan": { "alternative": "any OIDC provider (Auth0, Clerk, self-hosted Keycloak) behind the same AuthRepository seam", "swapCost": "Medium — JWKS verification is standard, so the cost is re-issuing sessions and migrating the user table, NOT rewriting the app." }
+      "exportPath": {
+        "path": "company/runbooks/operations.md",
+        "detail": "pg_dump via the Supabase dashboard/API; the schema is plain Postgres with no proprietary types."
+      },
+      "exitPlan": {
+        "alternative": "any OIDC provider (Auth0, Clerk, self-hosted Keycloak) behind the same AuthRepository seam",
+        "swapCost": "Medium — JWKS verification is standard, so the cost is re-issuing sessions and migrating the user table, NOT rewriting the app."
+      }
     },
     "cloudflare": {
       "surface": "Workers runtime, D1 (platform_db, subly_db), KV (config, JWKS cache), R2 (exports), and the events rate-limiter.",
       "stickiness": "★★★ — portability-standard.md names KV/DO as a sticky point.",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB", "CONFIG_KV", "JWKS_CACHE", "EXPORTS", "EVENTS_LIMITER", "triggers.crons"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB",
+        "CONFIG_KV",
+        "JWKS_CACHE",
+        "EXPORTS",
+        "EVENTS_LIMITER",
+        "triggers.crons"
+      ],
       "openProtocol": "PARTIAL — D1 is SQLite dialect and R2 is S3-compatible, both portable. KV and the rate-limiter are proprietary; the crons are a Workers-only scheduler. This is the honest weak spot, and it is why the stickiness is ★★★.",
-      "seam": { "file": "packages/core/lib/src/config/config_loader.dart", "symbol": "ConfigTransport" },
-      "configKeyed": { "kind": "runtime", "detail": "Bindings are wrangler config, not code — swapping a database or bucket is a config edit and a deploy, never an app release." },
+      "seam": {
+        "file": "packages/core/lib/src/config/config_loader.dart",
+        "symbol": "ConfigTransport"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "detail": "Bindings are wrangler config, not code — swapping a database or bucket is a config edit and a deploy, never an app release."
+      },
       "ownTheRecord": "YES — D1 IS our record. The risk here is not losing the record to a vendor, it is the SQLite dialect and the KV semantics.",
-      "exportPath": { "path": "services/platform/migrations", "detail": "PUBLIC, CHECKABLE EVIDENCE: the D1 schema is plain SQL migrations in this repo — that IS the export shape, and it is why a D1 export lands in any SQLite or Postgres. R2 is S3-compatible so rclone moves it. KV has no bulk export primitive; the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record. ⬜ FINDING 2026-07-28: the subly-api `EXPORTS` R2 binding is declared in types.ts and referenced NOWHERE in the code — a bound bucket with no writer, the same fail-closed-with-no-open-path shape [2]C-6 exists to catch. Routed to stage 4." },
-      "exitPlan": { "alternative": "Postgres/Neon + S3 + any Node host behind the same Worker handlers", "swapCost": "High for KV/DO semantics, Low for D1/R2. Deliberately kept: nothing durable lives in KV." }
+      "exportPath": {
+        "path": "services/platform/migrations",
+        "detail": "PUBLIC, CHECKABLE EVIDENCE: the D1 schema is plain SQL migrations in this repo — that IS the export shape, and it is why a D1 export lands in any SQLite or Postgres. R2 is S3-compatible so rclone moves it. KV has no bulk export primitive; the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record. ⬜ FINDING 2026-07-28: the subly-api `EXPORTS` R2 binding is declared in types.ts and referenced NOWHERE in the code — a bound bucket with no writer, the same fail-closed-with-no-open-path shape [2]C-6 exists to catch. Routed to stage 4."
+      },
+      "exitPlan": {
+        "alternative": "Postgres/Neon + S3 + any Node host behind the same Worker handlers",
+        "swapCost": "High for KV/DO semantics, Low for D1/R2. Deliberately kept: nothing durable lives in KV."
+      }
     },
     "revenuecat": {
       "surface": "Subscription entitlement provider — the client SDK key and the server webhook secret.",
       "stickiness": "★★★★ — payments, the stickiest point the standard names.",
-      "surfaces": ["REVENUECAT_KEY", "REVENUECAT_WEBHOOK_SECRET"],
+      "surfaces": [
+        "REVENUECAT_KEY",
+        "REVENUECAT_WEBHOOK_SECRET"
+      ],
       "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. This is precisely why part 4 carries the weight for this vendor.",
-      "seam": { "file": "packages/core/lib/src/entitlement_cache.dart", "symbol": "EntitlementCache" },
-      "configKeyed": { "kind": "runtime", "detail": "Client key is a dart-define with a fallback; the webhook secret is Worker env. Neither requires an app release to rotate." },
+      "seam": {
+        "file": "packages/core/lib/src/entitlement_cache.dart",
+        "symbol": "EntitlementCache"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "detail": "Client key is a dart-define with a fallback; the webhook secret is Worker env. Neither requires an app release to rotate."
+      },
       "ownTheRecord": "YES, AND IT IS THE WHOLE STRATEGY — entitlements live in OUR table fed by a per-provider adapter, so the payment vendor is swappable even though payment APIs are not. This is the one line the audit note said to carry forward verbatim.",
-      "exportPath": { "path": "company/runbooks/operations.md", "detail": "Entitlements are ours in D1 and export with it. RevenueCat itself holds no record we depend on." },
-      "exitPlan": { "alternative": "Paddle (the locked MoR, ADR 004) or direct store IAP, behind the same entitlement adapter", "swapCost": "Medium — a new adapter and a webhook, but no app data migration, because we own the record." },
+      "exportPath": {
+        "path": "company/runbooks/operations.md",
+        "detail": "Entitlements are ours in D1 and export with it. RevenueCat itself holds no record we depend on."
+      },
+      "exitPlan": {
+        "alternative": "Paddle (the locked MoR, ADR 004) or direct store IAP, behind the same entitlement adapter",
+        "swapCost": "Medium — a new adapter and a webhook, but no app data migration, because we own the record."
+      },
       "note": "⬜ NOT YET LIVE. Nobody can pay NIKATRU today; stage 5 owns the money rail. Recorded now because the surfaces already exist in the tree, and a vendor whose keys are wired before its checklist is exactly the adoption-without-review this requirement stops."
     },
     "glitchtip": {
       "surface": "Crash and error reporting sink (self-hostable Sentry-protocol server).",
       "stickiness": "★ — deliberately the least sticky choice available.",
-      "surfaces": ["GLITCHTIP_DSN"],
+      "surfaces": [
+        "GLITCHTIP_DSN"
+      ],
       "openProtocol": "YES — speaks the Sentry protocol, so the sentry_flutter SDK talks to it unmodified and any Sentry-protocol sink is a drop-in.",
-      "seam": { "file": "packages/telemetry/lib/src/telemetry_client.dart", "symbol": "TelemetryClient" },
-      "configKeyed": { "kind": "compile-time", "reason": "OWNER DECISION 2026-07-27: GLITCHTIP_DSN stays compile-time while UPDATE_URL moves to runtime. A DSN is a build-identity fact — a build reports as itself — and routing crash reports through runtime config would mean a broken config could silently disable the very channel that reports it being broken." },
+      "seam": {
+        "file": "packages/telemetry/lib/src/telemetry_client.dart",
+        "symbol": "TelemetryClient"
+      },
+      "configKeyed": {
+        "kind": "compile-time",
+        "reason": "OWNER DECISION 2026-07-27: GLITCHTIP_DSN stays compile-time while UPDATE_URL moves to runtime. A DSN is a build-identity fact — a build reports as itself — and routing crash reports through runtime config would mean a broken config could silently disable the very channel that reports it being broken."
+      },
       "ownTheRecord": "N/A — telemetry is a diagnostic stream, not a record the app depends on. Losing history costs insight, never correctness.",
-      "exportPath": { "path": "company/runbooks/glitchtip.md", "detail": "Self-hosted; the whole instance is ours, and the runbook covers the server backup." },
-      "exitPlan": { "alternative": "Sentry SaaS, or any Sentry-protocol server — the DSN is the only thing that changes", "swapCost": "Low — one config value, because the protocol is open." }
+      "exportPath": {
+        "path": "company/runbooks/glitchtip.md",
+        "detail": "Self-hosted; the whole instance is ours, and the runbook covers the server backup."
+      },
+      "exitPlan": {
+        "alternative": "Sentry SaaS, or any Sentry-protocol server — the DSN is the only thing that changes",
+        "swapCost": "Low — one config value, because the protocol is open."
+      }
     }
   },
   "nonVendorSurfaces": {
@@ -157,27 +224,37 @@
     ],
     "packages/auth_supabase": {
       "reason": "native-binary",
-      "evidence": { "dependency": "supabase_flutter" },
+      "evidence": {
+        "dependency": "supabase_flutter"
+      },
       "detail": "Ships platform code: the secure-storage bridges and the deep-link/callback handling that completes an OAuth redirect, which differ on all six targets. It is also the ONLY package permitted to import the Supabase SDK — [2]C-5 limb (c) fails the build for any app that reaches for it directly, which is what keeps the identity provider swappable."
     },
     "packages/platform_storage": {
       "reason": "native-binary",
-      "evidence": { "dependency": "flutter_secure_storage" },
+      "evidence": {
+        "dependency": "flutter_secure_storage"
+      },
       "detail": "Keychain on iOS/macOS, KeyStore on Android, DPAPI on Windows, libsecret on Linux -- five different native implementations behind one Dart call. This is the shape that earns a package: the platform difference is real and somebody must absorb it once."
     },
     "packages/notifications": {
       "reason": "native-binary",
-      "evidence": { "dependency": "flutter_local_notifications" },
+      "evidence": {
+        "dependency": "flutter_local_notifications"
+      },
       "detail": "Native scheduling APIs per platform, and the capability genuinely differs per platform (Linux shows but cannot schedule; Windows on the pinned 17.x does neither; web has no plugin at all) -- which is why NotificationCapabilities exists at all."
     },
     "packages/telemetry": {
       "reason": "native-binary",
-      "evidence": { "dependency": "sentry_flutter" },
+      "evidence": {
+        "dependency": "sentry_flutter"
+      },
       "detail": "Ships native crash handlers -- a Dart-only reporter cannot catch a native crash, which is the class of failure this package exists for."
     },
     "packages/tokens": {
       "reason": "codegen",
-      "evidence": { "buildFile": "packages/tokens/style-dictionary.config.mjs" },
+      "evidence": {
+        "buildFile": "packages/tokens/style-dictionary.config.mjs"
+      },
       "detail": "A build step, not a library: style-dictionary compiles the token source into sites/_shared/assets/tokens.css, and ci.yml's `tokens` lane rebuilds and fails on any diff. It has no pubspec because it is a Node package."
     },
     "packages/core": {
@@ -285,7 +362,14 @@
         "apps/subly",
         "tooling/bricks/app/__brick__/apps/{{app_id}}"
       ],
-      "note": "Gained its first real consumers at 5f3466b when [2]C-3 moved all three dio transports here out of apps/subly and the brick."
+      "note": "Gained its first real consumers at 5f3466b when [2]C-3 moved all three dio transports here out of apps/subly and the brick.",
+      "capabilityMatrix": {
+        "file": "packages/api_client/lib/src/http_capabilities.dart",
+        "symbol": "HttpCapabilities",
+        "test": "packages/api_client/test/http_capabilities_test.dart",
+        "pinnedTo": "dio 5.x",
+        "degradesOn": "Web is a different network stack: CORS is enforced by the browser and only fixable SERVER-side, User-Agent cannot be set and the assignment is silently IGNORED, and certificate pinning is impossible because the page never sees the socket. Uses its own HttpPlatform enum rather than TargetPlatform because this package is pure Dart and declares no Flutter dependency."
+      }
     },
     {
       "id": "auth",
@@ -319,7 +403,14 @@
           "fixOwner": "[2]C-3's de-forking increment",
           "blockedBy": "Same cut-1 freeze."
         }
-      ]
+      ],
+      "capabilityMatrix": {
+        "file": "packages/auth_supabase/lib/src/auth_capabilities.dart",
+        "symbol": "AuthCapabilities",
+        "test": "packages/auth_supabase/test/auth_capabilities_test.dart",
+        "pinnedTo": "supabase_flutter 2.16.0 + app_links 7.2.1",
+        "degradesOn": "Web has no OS keychain for a page, so the session is NOT OS-backed; the OAuth token arrives in the URL FRAGMENT (query parsing fails silently) and the flow must be a full-page redirect, never a popup. Linux IS supported — the contrary claim was checked against pub.dev and is false."
+      }
     },
     {
       "id": "design_system",
@@ -346,7 +437,14 @@
       "consumers": [
         "apps/subly",
         "tooling/bricks/app/__brick__/apps/{{app_id}}"
-      ]
+      ],
+      "capabilityMatrix": {
+        "file": "packages/platform_storage/lib/src/storage_capabilities.dart",
+        "symbol": "StorageCapabilities",
+        "test": "packages/platform_storage/test/storage_capabilities_test.dart",
+        "pinnedTo": "flutter_secure_storage 9.x + shared_preferences 2.x",
+        "degradesOn": "Linux secure storage is CONDITIONAL ON THE ENVIRONMENT: libsecret must be installed AND a Secret Service daemon running and unlocked. Headless, kiosk and CI sessions often have neither, so a write can fail at runtime where every other desktop succeeds. Web is not OS-backed at all."
+      }
     },
     {
       "id": "telemetry",
@@ -363,7 +461,14 @@
         "apps/subly",
         "tooling/bricks/app/__brick__/apps/{{app_id}}"
       ],
-      "note": "Wired into Subly at 5f3466b. Until then the only app in production had NO crash reporting: the package existed, passed 8 tests, and shipped to nobody."
+      "note": "Wired into Subly at 5f3466b. Until then the only app in production had NO crash reporting: the package existed, passed 8 tests, and shipped to nobody.",
+      "capabilityMatrix": {
+        "file": "packages/telemetry/lib/src/telemetry_capabilities.dart",
+        "symbol": "TelemetryCapabilities",
+        "test": "packages/telemetry/test/telemetry_capabilities_test.dart",
+        "pinnedTo": "sentry_flutter 9.x",
+        "degradesOn": "Dart errors report everywhere, but NATIVE crashes only on Android/iOS/macOS. On desktop Windows and Linux a segfault or OOM kill produces NO report — which is exactly what a user means by \"it just closed\". Collapsing the two is how a portfolio believes it has crash reporting and does not."
+      }
     },
     {
       "id": "notifications",
@@ -393,7 +498,14 @@
           "fixOwner": "[2]C-3 de-forking increment",
           "blockedBy": "39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting this fork reverses an agreed cut, which the standing authorization does not cover — owner decided 2026-07-28 to declare it rather than move it."
         }
-      ]
+      ],
+      "capabilityMatrix": {
+        "file": "packages/notifications/lib/src/notification_capabilities.dart",
+        "symbol": "NotificationCapabilities",
+        "test": "packages/notifications/test/notification_capabilities_test.dart",
+        "pinnedTo": "flutter_local_notifications 17.x — re-review on any bump",
+        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Unsupported calls no-op so a caller falls back to an in-app nudge."
+      }
     },
     {
       "id": "analytics_funnel",
