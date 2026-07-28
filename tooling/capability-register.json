@@ -2,94 +2,233 @@
   "_readme": [
     "THE CAPABILITY REGISTER — [pipeline C-1] company/pipeline/02-shared-chassis.md",
     "",
-    "The complete set of non-app-specific capabilities the factory provides. Each names ONE owning",
-    "package, ONE seam entrypoint, and its real consumers.",
+    "The complete set of non-app-specific capabilities the factory provides: what it is, which package",
+    "owns it, which SEAM INTERFACE (file + symbol + methods) others code against, and who consumes it.",
     "",
-    "Why it exists: the charter's word 'every' is not checkable against an unstated set. Three separate",
-    "notification implementations were written because there was no place to look that would have said",
-    "one already existed. This is that place.",
+    "Why it exists: 'every capability' cannot be checked against a list that does not exist. THREE",
+    "notification implementations were written because nobody had a place to look that would have said",
+    "one already existed. The third is still in the tree -- see violations on `notifications`.",
     "",
-    "Enforced by tooling/ci/assert-capability-register.mjs, which checks BOTH directions -- a package on",
-    "disk missing from here fails, and an entry here naming a path or consumer that is not real fails.",
-    "Consumers are declared AND verified against the consumer's own pubspec, so this file cannot drift",
-    "into fiction.",
+    "THE ARCHITECTURE THIS ENCODES: packages/core DECLARES the contracts; other packages IMPLEMENT them.",
+    "So `seams` are the interfaces a package declares, and `implementsSeams` names contracts declared",
+    "elsewhere that it satisfies. v1 of this file pointed every seam at a package barrel file, which",
+    "described nothing -- corrected 2026-07-28.",
     "",
-    "Adding a package means adding an entry. That friction is the point ([pipeline C-4]: a package is",
-    "earned, never named)."
+    "Enforced by tooling/ci/assert-capability-register.mjs:",
+    "  · every packages/* dir on disk has an entry, and every path named here exists",
+    "  · every declared seam SYMBOL really appears in the file that claims it",
+    "  · every declared seam METHOD really appears in that interface  [decision item 12]",
+    "  · consumers verified in BOTH directions against real pubspecs",
+    "  · no registered seam may be implemented under apps/ unless declared as a violation  [C-3, widened]",
+    "",
+    "VIOLATIONS ARE DECLARED, DATED AND PRINTED ON EVERY RUN. A known gap that nobody sees becomes",
+    "permanent. Each names why it is not yet fixed and what would unblock it."
   ],
-
   "consumerRoots": [
     "apps/subly",
     "tooling/bricks/app/__brick__/apps/{{app_id}}"
   ],
-
   "capabilities": [
     {
       "id": "core",
-      "capability": "App-neutral domain spine — config, caches, entitlement and notification models, and the seam interfaces every other package implements against.",
+      "capability": "The app-neutral spine: it DECLARES most of the factory's seam contracts, and owns config, caches and domain models. Nothing here may know about a specific app.",
       "owner": "packages/core",
       "package": "nikatru_core",
-      "seam": "packages/core/lib/nikatru_core.dart",
-      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+      "seams": [
+        {
+          "file": "packages/core/lib/src/analytics/analytics.dart",
+          "symbol": "Analytics"
+        },
+        {
+          "file": "packages/core/lib/src/analytics/analytics.dart",
+          "symbol": "EventTransport"
+        },
+        {
+          "file": "packages/core/lib/src/analytics/consent_transport.dart",
+          "symbol": "ConsentTransport"
+        },
+        {
+          "file": "packages/core/lib/src/auth/auth_repository.dart",
+          "symbol": "AuthRepository"
+        },
+        {
+          "file": "packages/core/lib/src/config/config_loader.dart",
+          "symbol": "ConfigTransport"
+        },
+        {
+          "file": "packages/core/lib/src/content/content_pack_source.dart",
+          "symbol": "ContentPackSource"
+        },
+        {
+          "file": "packages/core/lib/src/content/pack_verifier.dart",
+          "symbol": "PackVerifier"
+        },
+        {
+          "file": "packages/core/lib/src/storage/key_value_store.dart",
+          "symbol": "KeyValueStore"
+        },
+        {
+          "file": "packages/core/lib/src/storage/secure_store.dart",
+          "symbol": "SecureStore"
+        },
+        {
+          "file": "packages/core/lib/src/notifications/notification_service.dart",
+          "symbol": "NotificationService",
+          "methods": [
+            "init",
+            "requestPermission",
+            "showNow",
+            "scheduleDaily",
+            "cancel",
+            "cancelAll"
+          ],
+          "missingMethods": [
+            {
+              "surface": "notification tap / open",
+              "decision": "00-RECONCILIATION-DECISIONS.md PART 2.2 item 12 — \"NotificationService tap surface: stage 2, named seam method in C-1's register\"",
+              "why": "The seam can schedule and cancel but has no way to DELIVER a tap back to the app, so a scheduled reminder cannot open anything. The analytics half already exists and is stranded: AnalyticsFunnel.onNotificationOpened(String kind) at apps/subly/lib/state/analytics_funnel.dart can RECORD a tap that nothing can report. A reminder nobody can act on is the dead-feature shape C-6 exists to catch.",
+              "fixOwner": "[2]C-3's de-forking increment, per the decision"
+            }
+          ]
+        }
+      ],
+      "consumers": [
+        "apps/subly",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ]
     },
     {
       "id": "api_client",
       "capability": "HTTP transport to the shared platform Worker — config, consent and analytics event delivery.",
       "owner": "packages/api_client",
       "package": "nikatru_api_client",
-      "seam": "packages/api_client/lib/nikatru_api_client.dart",
-      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+      "seams": [],
+      "implementsSeams": [
+        "ConfigTransport",
+        "ConsentTransport",
+        "EventTransport"
+      ],
+      "consumers": [
+        "apps/subly",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "Gained its first real consumers at 5f3466b when [2]C-3 moved all three dio transports here out of apps/subly and the brick."
     },
     {
       "id": "design_system",
-      "capability": "Shared widgets and theming. Deliberately domain-free — the lock decision lives with the caller, never here ([pipeline C-5] boundary).",
+      "capability": "Shared widgets and theming. Deliberately domain-free — the lock DECISION stays with the caller so this package never learns what a paywall is ([2]C-5 boundary).",
       "owner": "packages/design_system",
       "package": "nikatru_design_system",
-      "seam": "packages/design_system/lib/nikatru_design_system.dart",
-      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+      "seams": [],
+      "consumers": [
+        "apps/subly",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "noSeamReason": "A widget library, not a contract — callers use the widgets directly. The one decision that COULD have become a seam (what to lock) is deliberately left with the caller so this package never learns domain vocabulary: that is [2]C-5's boundary, and PaywallGate is the example."
     },
     {
       "id": "platform_storage",
-      "capability": "Secure-token and key-value storage adapters across all six platforms.",
+      "capability": "Secure-token and key-value storage across all six platforms.",
       "owner": "packages/platform_storage",
       "package": "nikatru_platform_storage",
-      "seam": "packages/platform_storage/lib/nikatru_platform_storage.dart",
-      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+      "seams": [],
+      "implementsSeams": [
+        "SecureStore",
+        "KeyValueStore"
+      ],
+      "consumers": [
+        "apps/subly",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ]
     },
     {
       "id": "telemetry",
-      "capability": "Crash and error reporting sink. Wired into Subly at 5f3466b — until then the only live app had no crash reporting at all.",
+      "capability": "Crash and error reporting sink.",
       "owner": "packages/telemetry",
       "package": "nikatru_telemetry",
-      "seam": "packages/telemetry/lib/nikatru_telemetry.dart",
-      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+      "seams": [
+        {
+          "file": "packages/telemetry/lib/src/telemetry_client.dart",
+          "symbol": "TelemetryClient"
+        }
+      ],
+      "consumers": [
+        "apps/subly",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "Wired into Subly at 5f3466b. Until then the only app in production had NO crash reporting: the package existed, passed 8 tests, and shipped to nobody."
     },
     {
       "id": "notifications",
       "capability": "Local notification scheduling adapter (flutter_local_notifications baseline).",
       "owner": "packages/notifications",
       "package": "nikatru_notifications",
-      "seam": "packages/notifications/lib/nikatru_notifications.dart",
-      "consumers": ["tooling/bricks/app/__brick__/apps/{{app_id}}"],
-      "note": "Deliberately NOT given to apps/subly, which is a frozen legacy rail-prover (39-CHASSIS cut 1). That is why the FLN 17.x pin stays there."
+      "seams": [
+        {
+          "file": "packages/notifications/lib/src/local_notification_service_io.dart",
+          "symbol": "NotificationPlugin"
+        }
+      ],
+      "implementsSeams": [
+        "NotificationService"
+      ],
+      "consumers": [
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "Deliberately NOT given to apps/subly, which 39-CHASSIS cut 1 froze as a legacy rail-prover. That freeze is why the FLN 17.x pin stays there.",
+      "violations": [
+        {
+          "path": "apps/subly/lib/services/notifications/notification_service.dart",
+          "kind": "seam-implemented-in-app",
+          "symbol": "NotificationService",
+          "detail": "A third, independent implementation: its own `class NotificationService` singleton calling flutter_local_notifications 17.x directly, and importing Subly's own Subscription model. This is the exact fork [2]C-1's audit note cites as the reason the register exists.",
+          "declaredOn": "2026-07-28",
+          "fixOwner": "[2]C-3 de-forking increment",
+          "blockedBy": "39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting this fork reverses an agreed cut, which the standing authorization does not cover — owner decided 2026-07-28 to declare it rather than move it."
+        }
+      ]
+    },
+    {
+      "id": "analytics_funnel",
+      "capability": "The portfolio-wide conversion funnel: launch, activation, paywall viewed, checkout started, purchase success/failed, notification opened. Entirely app-neutral — it names no Subly concept.",
+      "owner": "packages/core",
+      "package": "nikatru_core",
+      "seams": [],
+      "consumers": [
+        "apps/subly"
+      ],
+      "violations": [
+        {
+          "path": "apps/subly/lib/state/analytics_funnel.dart",
+          "kind": "capability-implemented-in-app",
+          "symbol": "AnalyticsFunnel",
+          "detail": "Lives inside an app despite being app-neutral, so no other app or stamped brick can emit the funnel. [5]M-16 already records that four of its methods (onPaywallViewed, onCheckoutStarted, onPurchaseSuccess, onPurchaseFailed) have ZERO callers — the analytics rail emits everything except the money.",
+          "declaredOn": "2026-07-28",
+          "fixOwner": "00-RECONCILIATION-DECISIONS.md PART 2.2 item 15 — \"C-1 assigns an owning package\". Assigned here to packages/core, beside the Analytics seam it wraps.",
+          "blockedBy": "Moving it edits apps/subly, frozen by 39-CHASSIS cut 1. Owner decided 2026-07-28 to declare the assignment now and move it in [2]C-3's increment."
+        }
+      ],
+      "noSeamReason": "A concrete funnel over the Analytics seam that core already declares; it adds no contract of its own. Callers use it directly."
     },
     {
       "id": "lints",
-      "capability": "Shared analysis ruleset — the one convention set every package and stamped app should inherit.",
+      "capability": "The shared analysis ruleset — the one convention set every package and stamped app should inherit.",
       "owner": "packages/analysis",
       "package": "nikatru_lints",
+      "seams": [],
       "seam": "packages/analysis/lib/analysis_options.yaml",
       "consumers": [],
-      "unconsumedReason": "ZERO consumers today, including its own analysis_options.yaml where the include sits commented out. Wiring it into every package and the brick template is [pipeline C-12] (one inherited convention set reaches every app), which is PROPOSED and not yet built. Tracked, not waived -- this guard prints it on every run."
+      "unconsumedReason": "ZERO consumers, including its own analysis_options.yaml where the include sits commented out. Wiring it into every package and the brick is [2]C-12, still PROPOSED. Tracked, not waived."
     },
     {
       "id": "tokens",
       "capability": "Design tokens built by style-dictionary into sites/_shared/assets/tokens.css, which the websites serve.",
       "owner": "packages/tokens",
       "package": null,
+      "seams": [],
       "seam": "packages/tokens/style-dictionary.config.mjs",
       "consumers": [],
-      "unconsumedReason": "A Node package with no pubspec.yaml, so it cannot be declared as a Dart dependency and the consumer test does not apply. Its real consumer is sites/_shared/assets/tokens.css, gated by ci.yml's `tokens` lane, which rebuilds the tokens and fails on any diff. The 39-CHASSIS cut-3 'zero consumers, delete it' premise was falsified on 2026-07-26 -- recorded as SUPERSEDED BY FACTS rather than executed blindly."
+      "unconsumedReason": "A Node package with no pubspec.yaml, so the Dart-consumer test cannot apply. Its real consumer is sites/_shared/assets/tokens.css, gated by ci.yml's `tokens` lane which rebuilds and fails on any diff. 39-CHASSIS cut 3's 'zero consumers, delete it' premise was falsified 2026-07-26 — recorded as SUPERSEDED BY FACTS rather than executed blindly."
     }
   ]
 }
