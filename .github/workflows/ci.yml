@@ -217,6 +217,18 @@ jobs:
       - name: Core stays pure, the design system stays domain-free, apps use the seams
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-package-boundaries.mjs
+      # A package is EARNED, never named -- a native payload, a licence exposure
+      # or a codegen step. A capability name is not a reason: followed loosely,
+      # the remaining gap list alone would spawn six more packages, each costing
+      # a pubspec, an analysis_options, a workspace entry, a test harness and a
+      # CI surface forever, for one founder. Free text was rejected at lock time
+      # because a justification nobody can check always passes, so every reason
+      # must SUBSTANTIATE itself against the tree -- the cited dependency really
+      # declared, the cited build file really present. Measured 2026-07-28: 4 of
+      # 8 packages substantiate, 4 are grandfathered with dates. [pipeline C-4]
+      - name: Every package is earned, or dated
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-package-earned.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
