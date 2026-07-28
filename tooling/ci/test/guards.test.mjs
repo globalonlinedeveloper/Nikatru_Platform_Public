@@ -1043,8 +1043,47 @@ return MaterialApp.router(
   ),
 );
 `;
-  // The analytics property also checks the TEMPLATE really calls record().
+  // ⚠️ THIS FIXTURE MUST MIRROR THE REAL TEMPLATE, and the reason is not tidiness.
+  // It used to be a four-line stub holding only the record() call, which was fine
+  // while the guard only looked for that one line. The moment "every" got a
+  // tracked DOMAIN, a stub became a fixture that agrees with a broken guard: it
+  // declares no providers, so a domain check that matched nothing would have
+  // looked green here forever. The real-tree mutations came first (2026-07-28) and
+  // this fixture was written afterwards to match what they showed — never the
+  // other way round.
+  //
+  // All 19 chassis behaviours, plus the two theme-persistence limbs and the
+  // consent record() call the property anchors point at.
   const goodProviders = `
+final Provider<core.ConfigTransport> configTransportProvider = X();
+final Provider<core.ConfigLoader> configLoaderProvider = X();
+final FutureProvider<core.AppConfig> appConfigProvider = X();
+final FutureProvider<String?> packageVersionProvider = X();
+final Provider<bool> mustForceUpdateProvider = X();
+final FutureProvider<core.KeyValueStore> keyValueStoreProvider = X();
+final Provider<core.SecureStore> secureStoreProvider = X();
+final FutureProvider<String> installIdProvider = X();
+final FutureProvider<core.FeatureFlags> featureFlagsProvider = X();
+final Provider<core.NotificationService> notificationServiceProvider = X();
+final NotifierProvider<ThemeModeController, ThemeMode> themeModeProvider = X();
+final Provider<core.EntitlementCache> entitlementCacheProvider = X();
+final Provider<bool> analyticsEnabledProvider = X();
+final FutureProvider<core.ConsentController> consentControllerProvider = X();
+final Provider<core.ConsentStatus> analyticsConsentProvider = X();
+final Provider<bool> consentDecidedProvider = X();
+final Provider<core.ConsentTransport> consentTransportProvider = X();
+final Provider<core.EventTransport> eventTransportProvider = X();
+final FutureProvider<core.Analytics> analyticsProvider = X();
+
+class ThemeModeController extends Notifier<ThemeMode> {
+  Future<void> _hydrate() async {
+    final stored = _decode(await kv.read(_themeModeKey));
+  }
+  Future<void> set(ThemeMode mode) async {
+    await kv.write(_themeModeKey, _encode(mode));
+  }
+}
+
 final x = () async {
   await controller.record(
     core.ConsentPurpose.analytics,
@@ -1102,5 +1141,85 @@ final x = () async {
     });
     assert.equal(code, 1);
     assert.match(out, /IMPLEMENTATION is gone/);
+  });
+
+  // ── C-16 narrowed lock, 2026-07-28. Every case below was FIRST reproduced by
+  //    mutating the real brick template and watching the old guard print `ok`.
+  //    These fixtures encode what those runs showed. ──────────────────────────
+  describe('theme-mode-persisted is anchored to persistence itself', () => {
+    // THE ORIGINAL HOLE. 'persisted' was the only property with no source anchor,
+    // so deleting the write — turning a saved setting into one that resets at
+    // every launch, the exact defect the property is named after — was green.
+    test('FAILS when the choice is no longer WRITTEN', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nowrite', {
+          providers: goodProviders.replace('await kv.write(_themeModeKey, _encode(mode));', 'state = mode;'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must WRITE the choice/);
+    });
+
+    // The other half. A write nobody reads back restores nothing, and from the
+    // user's chair that is indistinguishable from never having saved at all.
+    test('FAILS when the stored choice is no longer READ at launch', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noread', {
+          providers: goodProviders.replace('await kv.read(_themeModeKey)', 'null'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must READ the stored choice back/);
+    });
+  });
+
+  describe('"every property" has a tracked domain', () => {
+    test('the domain is read from the template, and the gaps are named', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
+      assert.equal(code, 0);
+      assert.match(out, /tracked domain: 19 chassis behaviour\(s\)/);
+      // The admitted gaps must PRINT. An inventory nobody sees is a list that
+      // quietly grows; this is the same reasoning as the owner-gated residual.
+      assert.match(out, /10 chassis behaviour\(s\) a stamped app does NOT prove/);
+      assert.match(out, /mustForceUpdateProvider/);
+    });
+
+    // HOLE 2. Adding a provider to the real template changed nothing before this.
+    test('FAILS on a NEW chassis behaviour that is classified nowhere', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-newcap', {
+          providers: `${goodProviders}\nfinal Provider<bool> onboardingSeenProvider = X();\n`,
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /NEW CHASSIS BEHAVIOUR 'onboardingSeenProvider'/);
+    });
+
+    // The other direction: a classification for something that no longer exists
+    // inflates apparent coverage exactly like an assertion that cannot fail.
+    test('FAILS on a stale classification when a behaviour is deleted', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-stale', {
+          providers: goodProviders.replace(
+            'final Provider<core.SecureStore> secureStoreProvider = X();\n',
+            '',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
+      // …and the domain's own floor catches the same edit from the other side.
+      assert.match(out, /COVERAGE LOST — the domain parse found 18/);
+    });
+
+    // The scanner-stopped-scanning case, which is how this repo has been bitten
+    // repeatedly: a domain regex that matches nothing must not read as "clean".
+    test('FAILS rather than reporting clean when the domain parse finds nothing', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-blind', { providers: '// every provider declaration gone\n' }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — the domain parse found 0/);
+    });
   });
 });
