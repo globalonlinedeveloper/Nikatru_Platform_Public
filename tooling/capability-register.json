@@ -193,7 +193,7 @@
     "packages/analysis": {
       "reason": "GRANDFATHERED",
       "declaredOn": "2026-07-28",
-      "detail": "A lint ruleset -- config, not code, and flutter_lints is not a native payload. It also has ZERO consumers today (its own include sits commented out), so it is currently a package that costs upkeep and delivers nothing; wiring it up is [2]C-12."
+      "detail": "A lint ruleset -- config, not code, and flutter_lints is not a native payload. It is nonetheless the one grandfathered package with a clear reason to stay separate: [2]C-12 made it the single convention set that every package, every app and the brick template inherits, so one rule edit reaches every app the factory will ever stamp. (Until 2026-07-28 it had ZERO consumers and its own include sat commented out, which is why this entry originally read 'delivers nothing'.)"
     }
   },
   "capabilities": [
@@ -385,8 +385,11 @@
       "package": "nikatru_lints",
       "seams": [],
       "seam": "packages/analysis/lib/analysis_options.yaml",
-      "consumers": [],
-      "unconsumedReason": "ZERO consumers, including its own analysis_options.yaml where the include sits commented out. Wiring it into every package and the brick is [2]C-12, still PROPOSED. Tracked, not waived."
+      "consumers": [
+        "apps/subly",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "✅ [2]C-12 WIRED IT 2026-07-28. It previously had ZERO consumers — including its own analysis_options.yaml, where the include sat inside a COMMENT, so the package's only mention of the mechanism it exists to provide was not code. Score was 0 of 10: every analysis_options.yaml in the tree included flutter_lints or lints directly. All eight non-exempt files now inherit it, each with the dev_dependency that makes the include resolve. The two exempt files are the shared set itself and the package's own self-apply, which uses a relative include so the lint package can analyze itself before the workspace resolves. Enforced by tooling/ci/assert-lint-inheritance.mjs — which also asserts the set still ESCALATES a rule to `error`, because inheritance at default severity prints and ships (measured: analyze exits 0)."
     },
     {
       "id": "tokens",

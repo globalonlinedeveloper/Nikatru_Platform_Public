@@ -1,16 +1,9 @@
-include: package:flutter_lints/flutter.yaml
-
-linter:
-  rules:
-    prefer_final_locals: true
-    avoid_print: true
-    # prefer_const_constructors intentionally left off: keeps the template's
-    # analyze green without hand-annotating every const call site. Enable it and
-    # run `dart fix --apply` if you want const enforcement.
-
-analyzer:
-  language:
-    strict-casts: true
-  exclude:
-    - "**/*.g.dart"
-    - "**/*.freezed.dart"
+# [pipeline C-12] ONE inherited convention set. Change a rule in
+# packages/analysis/lib/analysis_options.yaml and it reaches every package, every
+# app and every app the factory ever stamps — this is the only place in the
+# factory where one edit reaches 50 apps.
+#
+# The include needs `nikatru_lints` as a dev_dependency to resolve. It does not
+# fail silently if you forget: the analyzer reports `include_file_not_found` as a
+# WARNING and analyze exits 1 (measured on a real stamp 2026-07-28).
+include: package:nikatru_lints/analysis_options.yaml

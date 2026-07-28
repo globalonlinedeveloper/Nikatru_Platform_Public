@@ -244,6 +244,22 @@ jobs:
       - name: Every vendor satisfies the portability checklist
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-vendor-portability.mjs
+      # ONE convention set, inherited everywhere -- the only place in the factory
+      # where a single edit reaches 50 apps, and therefore the only place where a
+      # silent break costs 50 apps. It was 0 OF 10: every analysis_options.yaml
+      # included flutter_lints directly and `nikatru_lints` was inherited by
+      # nobody, its one mention of its own include sitting inside a COMMENT. The
+      # brick shipped ONE line while apps/subly carried strict-casts and
+      # avoid_print, so every stamped app was born with LESS checking than the
+      # only app that existed.
+      #
+      # Checks SEVERITY as well as presence, settled by live spike on a real
+      # stamp: inheriting at default severity makes the rules fire as INFO and
+      # `flutter analyze --no-fatal-infos` still EXITS 0 -- inheritance working
+      # and enforcing nothing. [pipeline C-12]
+      - name: One convention set reaches every app, and can fail a build
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-lint-inheritance.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
