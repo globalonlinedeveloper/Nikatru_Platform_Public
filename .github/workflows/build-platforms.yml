@@ -37,7 +37,7 @@ on:
     - cron: '0 6 * * 1'   # Mondays 06:00 UTC
 
 env:
-  FLUTTER_VERSION: '3.44.7'
+  FLUTTER_VERSION: '3.44.8'
 
 # Least privilege. These jobs only read the repo — they publish nothing through
 # GITHUB_TOKEN. Without this every job ran at the repository-default scope, which
