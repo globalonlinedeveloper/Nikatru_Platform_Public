@@ -54,6 +54,7 @@ const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const PROP_TEST = `${BRICK}/test/chassis_properties_test.dart`;
 const APP_ROOT = `${BRICK}/lib/app.dart`;
 const PROVIDERS = `${BRICK}/lib/state/providers.dart`;
+const SETTINGS = `${BRICK}/lib/features/settings/settings_screen.dart`;
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 
 // REQUIRED_COVERAGE. Each entry is a property the stamped app must assert about
@@ -118,6 +119,19 @@ const REQUIRED_COVERAGE = [
       { file: 'packages/auth_supabase/lib/nikatru_auth_supabase.dart', re: /localStorage:\s*SecureSessionStorage\(/, what: 'the session must go in the SECURE store — the Supabase SDK defaults to plaintext shared_preferences for the access AND refresh tokens [G-43]' },
     ],
     why: 'the auth seam had no home: the only implementations lived inside apps/subly, and the brick wired no auth and no tokenProvider',
+  },
+  {
+    key: 'account-deletion-works',
+    group: /group\(\s*'property: account-deletion-works'/,
+    sources: [
+      // NOT merely that the method exists — that the BUTTON calls it. The defect
+      // was a confirm action of `Navigator.pop(dialogContext)` and nothing else,
+      // which looks exactly like a button that worked.
+      { file: SETTINGS, re: /onConfirm:\s*\(\)\s*=>\s*_deleteAccount\(/, what: 'the confirm button must call _deleteAccount — it used to call Navigator.pop and nothing else' },
+      { file: SETTINGS, re: /await auth\.deleteAccount\(\)/, what: 'the delete flow must reach AuthRepository.deleteAccount' },
+      { file: SETTINGS, re: /await auth\.signInWithEmail\(/, what: 'deletion is irreversible and must REAUTH first — a borrowed or unattended device must not be enough to destroy an account' },
+    ],
+    why: 'both stores require a WORKING in-app deletion path wherever an account can be created',
   },
   {
     key: 'analytics-consent-gated',

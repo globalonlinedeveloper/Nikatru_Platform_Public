@@ -1028,6 +1028,10 @@ group('property: brand-seed-drives-paint', () {
   testWidgets('o', (t) async {});
   test('p', () {});
 });
+group('property: account-deletion-works', () {
+  test('aa', () {});
+  test('bb', () {});
+});
 group('property: auth-seam-wired', () {
   test('v', () {});
   test('w', () {});
@@ -1162,6 +1166,26 @@ Future<void> initNikatruAuth() async {
 }
 `;
 
+  // [pipeline C-13] The delete button used to be `Navigator.pop` and nothing
+  // else, which looks exactly like a button that worked. The fixture carries a
+  // working one so the mutation cases below have something real to break.
+  const SETTINGS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart';
+  const goodSettings = `
+void _confirmDelete(BuildContext context, WidgetRef ref, AppLocalizations l10n) {
+  showDialog<void>(
+    context: context,
+    builder: (c) => _DeleteAccountDialog(
+      onConfirm: () => _deleteAccount(dialogContext, ref, l10n, password.text),
+    ),
+  );
+}
+
+Future<void> _deleteAccount(...) async {
+  await auth.signInWithEmail(email: email, password: password);
+  await auth.deleteAccount();
+}
+`;
+
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -1171,8 +1195,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings };
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
   };
@@ -1345,6 +1369,38 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       });
       assert.equal(code, 1);
       assert.match(out, /session must go in the SECURE store/);
+    });
+  });
+
+  // [pipeline C-13] Both stores require a WORKING in-app deletion path. This
+  // button passed every check the repo had while doing nothing at all.
+  describe('the account-deletion button actually acts', () => {
+    test('FAILS when confirm goes back to just popping the dialog', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-deadbutton', {
+          settings: goodSettings.replace('onConfirm: () => _deleteAccount(dialogContext, ref, l10n, password.text),', 'onConfirm: () => Navigator.pop(dialogContext),'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /it used to call Navigator\.pop and nothing else/);
+    });
+
+    test('FAILS when the flow never reaches the seam', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noseam', { settings: goodSettings.replace('  await auth.deleteAccount();\n', '') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must reach AuthRepository\.deleteAccount/);
+    });
+
+    // Deletion is irreversible: a borrowed or unattended device must not be
+    // enough to destroy an account.
+    test('FAILS when the reauth step is dropped', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noreauth', { settings: goodSettings.replace('  await auth.signInWithEmail(email: email, password: password);\n', '') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must REAUTH first/);
     });
   });
 

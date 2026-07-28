@@ -97,5 +97,17 @@
   "navExplore": "Explore",
   "@navExplore": { "description": "Secondary navigation destination." },
   "navSettings": "Settings",
-  "@navSettings": { "description": "Settings navigation destination." }
+  "@navSettings": { "description": "Settings navigation destination." },
+  "deleteAccountPassword": "Password",
+  "@deleteAccountPassword": {
+    "description": "Re-authentication field before an irreversible account deletion."
+  },
+  "deleteAccountReauthHint": "Confirm your password to continue.",
+  "@deleteAccountReauthHint": {
+    "description": "Explains why a password is required to delete the account."
+  },
+  "deleteAccountFailed": "Could not delete your account. Your account has NOT been deleted.",
+  "@deleteAccountFailed": {
+    "description": "Shown when deletion fails. Must state plainly that nothing was deleted."
+  }
 }
