@@ -21,11 +21,24 @@ void main() {
       expect(t.scaffoldBackgroundColor, AppColors.onboardBg);
     });
 
-    test('honours a custom seed', () {
-      final ThemeData t =
-          buildAppTheme(seed: const Color(0xFF00A0FF), brightness: Brightness.dark);
-      expect(t.brightness, Brightness.dark);
-    });
+    // ── DELETED 2026-07-28: a test that could not fail ──────────────────────
+    // It read:
+    //     test('honours a custom seed', () {
+    //       final t = buildAppTheme(seed: Color(0xFF00A0FF), brightness: dark);
+    //       expect(t.brightness, Brightness.dark);      // ← the OTHER parameter
+    //     });
+    // It passed a seed colour and then asserted the BRIGHTNESS. Any seed passed;
+    // no colour was ever examined. So it carried the name of the check the
+    // codebase most needed while performing none of it — and that green tick is
+    // why nobody noticed that AppThemeX's brand tokens are `static const` and
+    // ignore the seed entirely (a stamped app gets its own primary colour and
+    // Subly's gradient, side by side, on screen).
+    //
+    // Deleted rather than rewritten, per the [2]C-11 lock: an assertion that
+    // cannot fail is worse than none, because it occupies the space a real one
+    // would take. The real test — the seed provably reaching ColorScheme.primary
+    // AND AppThemeX.brandGradient — lands with C-11's increment.
+    // ─────────────────────────────────────────────────────────────────────────
 
     test('attaches the AppThemeX extension with brand tokens', () {
       final AppThemeX? x = buildAppTheme().extension<AppThemeX>();

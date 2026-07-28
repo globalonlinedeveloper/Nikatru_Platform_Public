@@ -230,5 +230,16 @@
       "consumers": [],
       "unconsumedReason": "A Node package with no pubspec.yaml, so the Dart-consumer test cannot apply. Its real consumer is sites/_shared/assets/tokens.css, gated by ci.yml's `tokens` lane which rebuilds and fails on any diff. 39-CHASSIS cut 3's 'zero consumers, delete it' premise was falsified 2026-07-26 — recorded as SUPERSEDED BY FACTS rather than executed blindly."
     }
-  ]
+  ],
+  "cloneTells": {
+    "_why": "[pipeline C-10] limb 2. Domain vocabulary that belongs to ONE app's problem, not to the chassis. MUST NOT BE EMPTY -- an empty list passes everything silently, which is the failure this repo has hit repeatedly. App NAMES are derived from apps/ on disk, never listed here, so they cannot go stale.",
+    "domainNouns": [
+      "subscription",
+      "renewal",
+      "billingCycle",
+      "freeTrial",
+      "payee",
+      "merchantName"
+    ]
+  }
 }

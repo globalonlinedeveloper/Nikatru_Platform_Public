@@ -38,8 +38,6 @@ dependencies:
   # Launch external URLs (support mailto, legal links) — all 6 platforms.
   url_launcher: ^6.3.0
 
-  # HTTP for the CFG-1 runtime-config transport (matches the shared spine client).
-  dio: ^5.4.0
 
   # Running app version — drives the CFG-1 force-update kill-switch.
   package_info_plus: ^8.0.0
