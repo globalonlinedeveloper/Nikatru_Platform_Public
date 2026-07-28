@@ -123,9 +123,20 @@ Thumbs.db
 /PROJECT_STATE.md
 /NIKATRU_MASTER_REQUIREMENTS.md
 
-# Throwaway app stamped by the brick CI lane (P0.7)
+# Throwaway apps stamped by the brick CI lane (P0.7).
+#
+# BOTH variants, and the second half was missing until 2026-07-28: the lane
+# stamps `_probe_vars.json` (app_id `probe`) AND `_probe_backend_vars.json`
+# (app_id `probeapi`), and the backend variant also generates a Worker. Only the
+# `probe` names were listed, so stamping the backend variant locally left
+# `apps/probeapi/` and `services/probeapi-api/` untracked-but-not-ignored — one
+# `git add -A` from committing generated code. Noticed while verifying [2]C-11
+# against both stamps; the same class as the documented gotcha where a leftover
+# `apps/probe` on disk makes assert-lane-coverage fail locally.
 apps/probe/
 services/probe-api/
+apps/probeapi/
+services/probeapi-api/
 
 # Mason local brick cache
 .mason/
