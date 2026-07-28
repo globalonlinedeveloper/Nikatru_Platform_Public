@@ -5,6 +5,7 @@
 /// never be imported anywhere else in the monorepo.
 library;
 
+export 'src/telemetry_capabilities.dart';
 export 'src/noop_telemetry_client.dart';
 export 'src/pii_scrubber.dart';
 export 'src/sentry_telemetry_client.dart';

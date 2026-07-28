@@ -279,6 +279,20 @@ jobs:
       - name: No hardcoded user-facing strings in the brick
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-no-hardcoded-strings.mjs
+      # G-17 sat on the gap list from the beginning with no owner. Every adapter
+      # must publish where it works and degrade rather than crash -- this is what
+      # makes the "six platforms" claim honest at the CAPABILITY level, not just
+      # the builds-green level F-4 covers. An app that builds on Windows, never
+      # fires a reminder, and reports nothing when it dies natively is passing CI
+      # and failing the user.
+      #
+      # Each matrix must cover all six platforms, take the platform as a
+      # PARAMETER (a matrix only evaluable on the host leaves five of six rows
+      # unreachable from a test), name what it was verified against, and be
+      # exercised by its own test. [pipeline C-7]
+      - name: Every adapter declares where it works
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-adapter-capabilities.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
