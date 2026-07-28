@@ -109,5 +109,33 @@
   "deleteAccountFailed": "Could not delete your account. Your account has NOT been deleted.",
   "@deleteAccountFailed": {
     "description": "Shown when deletion fails. Must state plainly that nothing was deleted."
+  },
+  "errorTitle": "Something went wrong",
+  "@errorTitle": {
+    "description": "Heading of the global error screen shown when a widget fails to build."
+  },
+  "errorMessage": "The app hit an unexpected problem. Restarting usually helps.",
+  "@errorMessage": {
+    "description": "Body of the global error screen. Must offer the user a way forward."
+  },
+  "notFoundTitle": "Page not found",
+  "@notFoundTitle": {
+    "description": "Heading of the 404 screen."
+  },
+  "notFoundMessage": "That address does not exist in this app.",
+  "@notFoundMessage": {
+    "description": "Body of the 404 screen."
+  },
+  "goHome": "Go home",
+  "@goHome": {
+    "description": "Returns the user to the home screen from an error or 404."
+  },
+  "offlineMessage": "Could not reach the network. Some things may be out of date.",
+  "@offlineMessage": {
+    "description": "Shown when a request failed — driven by a failed request, not a connectivity plugin."
+  },
+  "retry": "Retry",
+  "@retry": {
+    "description": "Retries the action that failed."
   }
 }

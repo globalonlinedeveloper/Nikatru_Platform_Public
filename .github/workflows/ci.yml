@@ -293,6 +293,19 @@ jobs:
       - name: Every adapter declares where it works
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-adapter-capabilities.mjs
+      # The non-app-specific screen set, DECLARED and checked. "Present" and
+      # "reachable" are separate assertions because this repo has shipped the
+      # difference three times with everything green: ConsentController.record
+      # with zero call sites, PaywallGate with zero consumers, and an
+      # account-deletion button whose confirm action was Navigator.pop and
+      # nothing else. A screen nothing reaches is not a screen.
+      #
+      # A `blocked` entry's blocker is itself re-checked, so "blocked by stage 5"
+      # cannot outlive stage 5. TODO screens are counted and printed rather than
+      # forgotten. [pipeline C-13]
+      - name: The inherited screen set is declared, present and reachable
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-screen-set.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
