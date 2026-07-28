@@ -187,6 +187,24 @@ jobs:
       - name: Every shared capability has one home and a real consumer
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-capability-register.mjs
+      # A fork in the TEMPLATE is not one bad app -- it is every app the factory
+      # will ever stamp, born wrong. Proven 2026-07-28: a fork planted there
+      # passed all three existing guards. Matches on what a class IMPLEMENTS as
+      # well as what it is CALLED, because a renamed fork is still a fork; and
+      # distinguishes a fork (a shared version exists) from a homeless sole
+      # implementation (C-15's problem, printed not failed). [pipeline C-3, C-9]
+      - name: No capability exists twice, in an app or the template
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-seam-forks.mjs
+      # Shared code that names one app stops being shared: app #2 inherits a rule
+      # about a product it is not. Comments are EXEMPT and code is scanned --
+      # measured 2026-07-28, all 8 current "Subly" mentions in packages/ are
+      # comments, so scanning them would fire 8 false alarms on day one and the
+      # guard would be switched off. App names derive from apps/ on disk.
+      # [pipeline C-10]
+      - name: Shared code carries no app-specific vocabulary
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-clone-tells.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any

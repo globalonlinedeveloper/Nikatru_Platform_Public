@@ -121,7 +121,7 @@ describe('assert-capability-register.mjs — the passing path', () => {
     // The waiver must be VISIBLE on a passing run — a waiver you stop seeing
     // becomes permanent.
     assert.match(out, /⚠ {2}lonely — no consumer/);
-    assert.match(out, /1 with a recorded reason/);
+    assert.match(out, /1 unconsumed with a reason/);
   });
 });
 
@@ -148,21 +148,21 @@ describe('[C-1] register ↔ disk', () => {
     });
     const r2 = run(root2);
     assert.equal(r2.code, 1, r2.out);
-    assert.match(r2.out, /packages\/telemetry — on disk but absent from the capability register/);
+    assert.match(r2.out, /packages\/telemetry — on disk but no capability register entry owns it/);
   });
 
   test('fails when the register names an owner dir that does not exist', () => {
     const root = tree({ mutate: (reg) => { reg.capabilities[0].owner = 'packages/ghost'; } });
     const { code, out } = run(root);
     assert.equal(code, 1);
-    assert.match(out, /names owner `packages\/ghost`, which does not exist/);
+    assert.match(out, /owner `packages\/ghost` does not exist on disk/);
   });
 
   test('fails when the register names a seam file that does not exist', () => {
     const root = tree({ mutate: (reg) => { reg.capabilities[0].seam = 'packages/core/lib/gone.dart'; } });
     const { code, out } = run(root);
     assert.equal(code, 1);
-    assert.match(out, /names seam `packages\/core\/lib\/gone\.dart`, which does not exist/);
+    assert.match(out, /seam `packages\/core\/lib\/gone\.dart` does not exist on disk/);
   });
 
   test('fails when an entry has no owner path', () => {
@@ -176,7 +176,7 @@ describe('[C-1] register ↔ disk', () => {
     const root = tree({ mutate: (reg) => { delete reg.capabilities[0].seam; } });
     const { code, out } = run(root);
     assert.equal(code, 1);
-    assert.match(out, /has no `seam` entrypoint/);
+    assert.match(out, /declares no `seams`, no `implementsSeams` and no `noSeamReason`/);
   });
 });
 
@@ -211,7 +211,7 @@ describe('[C-1] consumers are verified in both directions', () => {
     const root = tree({ mutate: (reg) => { reg.capabilities[0].consumers = []; reg.capabilities[0].unconsumedReason = 'claims nobody uses it'; } });
     const { code, out } = run(root);
     assert.equal(code, 1);
-    assert.match(out, /but the register does not list it as a consumer/);
+    assert.match(out, /but no capability entry lists that consumer/);
   });
 
   test('fails when a consumerRoot has no pubspec at all', () => {
