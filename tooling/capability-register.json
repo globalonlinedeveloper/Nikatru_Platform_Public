@@ -1,0 +1,95 @@
+{
+  "_readme": [
+    "THE CAPABILITY REGISTER — [pipeline C-1] company/pipeline/02-shared-chassis.md",
+    "",
+    "The complete set of non-app-specific capabilities the factory provides. Each names ONE owning",
+    "package, ONE seam entrypoint, and its real consumers.",
+    "",
+    "Why it exists: the charter's word 'every' is not checkable against an unstated set. Three separate",
+    "notification implementations were written because there was no place to look that would have said",
+    "one already existed. This is that place.",
+    "",
+    "Enforced by tooling/ci/assert-capability-register.mjs, which checks BOTH directions -- a package on",
+    "disk missing from here fails, and an entry here naming a path or consumer that is not real fails.",
+    "Consumers are declared AND verified against the consumer's own pubspec, so this file cannot drift",
+    "into fiction.",
+    "",
+    "Adding a package means adding an entry. That friction is the point ([pipeline C-4]: a package is",
+    "earned, never named)."
+  ],
+
+  "consumerRoots": [
+    "apps/subly",
+    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+  ],
+
+  "capabilities": [
+    {
+      "id": "core",
+      "capability": "App-neutral domain spine — config, caches, entitlement and notification models, and the seam interfaces every other package implements against.",
+      "owner": "packages/core",
+      "package": "nikatru_core",
+      "seam": "packages/core/lib/nikatru_core.dart",
+      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+    },
+    {
+      "id": "api_client",
+      "capability": "HTTP transport to the shared platform Worker — config, consent and analytics event delivery.",
+      "owner": "packages/api_client",
+      "package": "nikatru_api_client",
+      "seam": "packages/api_client/lib/nikatru_api_client.dart",
+      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+    },
+    {
+      "id": "design_system",
+      "capability": "Shared widgets and theming. Deliberately domain-free — the lock decision lives with the caller, never here ([pipeline C-5] boundary).",
+      "owner": "packages/design_system",
+      "package": "nikatru_design_system",
+      "seam": "packages/design_system/lib/nikatru_design_system.dart",
+      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+    },
+    {
+      "id": "platform_storage",
+      "capability": "Secure-token and key-value storage adapters across all six platforms.",
+      "owner": "packages/platform_storage",
+      "package": "nikatru_platform_storage",
+      "seam": "packages/platform_storage/lib/nikatru_platform_storage.dart",
+      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+    },
+    {
+      "id": "telemetry",
+      "capability": "Crash and error reporting sink. Wired into Subly at 5f3466b — until then the only live app had no crash reporting at all.",
+      "owner": "packages/telemetry",
+      "package": "nikatru_telemetry",
+      "seam": "packages/telemetry/lib/nikatru_telemetry.dart",
+      "consumers": ["apps/subly", "tooling/bricks/app/__brick__/apps/{{app_id}}"]
+    },
+    {
+      "id": "notifications",
+      "capability": "Local notification scheduling adapter (flutter_local_notifications baseline).",
+      "owner": "packages/notifications",
+      "package": "nikatru_notifications",
+      "seam": "packages/notifications/lib/nikatru_notifications.dart",
+      "consumers": ["tooling/bricks/app/__brick__/apps/{{app_id}}"],
+      "note": "Deliberately NOT given to apps/subly, which is a frozen legacy rail-prover (39-CHASSIS cut 1). That is why the FLN 17.x pin stays there."
+    },
+    {
+      "id": "lints",
+      "capability": "Shared analysis ruleset — the one convention set every package and stamped app should inherit.",
+      "owner": "packages/analysis",
+      "package": "nikatru_lints",
+      "seam": "packages/analysis/lib/analysis_options.yaml",
+      "consumers": [],
+      "unconsumedReason": "ZERO consumers today, including its own analysis_options.yaml where the include sits commented out. Wiring it into every package and the brick template is [pipeline C-12] (one inherited convention set reaches every app), which is PROPOSED and not yet built. Tracked, not waived -- this guard prints it on every run."
+    },
+    {
+      "id": "tokens",
+      "capability": "Design tokens built by style-dictionary into sites/_shared/assets/tokens.css, which the websites serve.",
+      "owner": "packages/tokens",
+      "package": null,
+      "seam": "packages/tokens/style-dictionary.config.mjs",
+      "consumers": [],
+      "unconsumedReason": "A Node package with no pubspec.yaml, so it cannot be declared as a Dart dependency and the consumer test does not apply. Its real consumer is sites/_shared/assets/tokens.css, gated by ci.yml's `tokens` lane, which rebuilds the tokens and fails on any diff. The 39-CHASSIS cut-3 'zero consumers, delete it' premise was falsified on 2026-07-26 -- recorded as SUPERSEDED BY FACTS rather than executed blindly."
+    }
+  ]
+}
