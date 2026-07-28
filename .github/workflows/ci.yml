@@ -175,6 +175,18 @@ jobs:
       - name: Fail-closed seams have a real on-switch
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-seams-wired.mjs
+      # A capability with no declared home is how THREE notification
+      # implementations got written — nobody set out to write three, there was
+      # just no place to look that would have said one already existed. And a
+      # package nobody consumes is not delivered: it costs a pubspec, an
+      # analysis_options, a workspace entry, a test harness and a CI surface,
+      # forever, for one founder. C-2 shipped its fix at 5f3466b with this guard
+      # never written, so the tree was correct and unprotected. Checks the
+      # register against the tree in BOTH directions, so it cannot drift into
+      # fiction. [pipeline C-1, C-2]
+      - name: Every shared capability has one home and a real consumer
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-capability-register.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
