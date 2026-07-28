@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart'
 // valid Dart, so only a real stamp can catch it. [pipeline C-16]
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
@@ -488,3 +489,66 @@ String _generateInstallId() {
   final List<int> bytes = List<int>.generate(16, (_) => rng.nextInt(256));
   return bytes.map((int b) => b.toRadixString(16).padLeft(2, '0')).join();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IDENTITY ([pipeline C-15]).
+//
+// The app programs against core's `AuthRepository`. The Supabase SDK is imported
+// by exactly ONE package — `nikatru_auth_supabase` — so swapping identity
+// providers means writing one more implementation of the seam, not touching a
+// single screen. `assert-package-boundaries.mjs` fails the build if an app
+// reaches for `package:supabase_flutter` directly.
+//
+// 🔴 WIRED, NOT MOCKED. A stamped app with no Supabase project still gets a REAL
+// implementation — `InMemoryAuthRepository` signs in, holds a session, emits on
+// authStateChanges, expires and signs out. The alternative is a stub that
+// returns null from everything, which is the fail-closed shape [pipeline C-6]
+// exists to catch: every test passes because refusing is correct when nothing is
+// configured, and the open path is never exercised.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The identity seam. Real Supabase once the owner supplies the identity
+/// `--dart-define`s; a real in-memory implementation until then.
+final Provider<core.AuthRepository> authRepositoryProvider =
+    Provider<core.AuthRepository>((ref) {
+      if (!AppConfig.isBackendLive) return InMemoryAuthRepository();
+      return SupabaseAuthRepository(
+        // The server route is STAGE 4's and does not exist yet, so the client
+        // half refuses loudly rather than pretending to have deleted anything.
+        // Injecting it here is the seam where stage 4 plugs in.
+        requestServerDeletion: null,
+      );
+    });
+
+/// The bearer token every API call carries. This is the shape [RestClient]
+/// takes, which is why it returns a token rather than a session: the HTTP layer
+/// has no business knowing about refresh.
+/// Exposed as a PROVIDER rather than a bare function so a test can read the
+/// exact object [restClientProvider] is constructed with. A test that rebuilt an
+/// equivalent closure would pass while the client was wired to something else,
+/// which is the whole failure this property exists to rule out.
+final Provider<Future<String?> Function()> authTokenProvider =
+    Provider<Future<String?> Function()>(
+      (ref) =>
+          () => ref.read(authRepositoryProvider).currentAccessToken(),
+    );
+
+/// The shared REST client, authenticated.
+///
+/// [pipeline C-15] THE ACCEPTANCE CRITERION IN ONE LINE: a `tokenProvider`
+/// reaches the shared REST client. Without this the seam exists and no request
+/// ever carries a token — the app authenticates and the backend never knows.
+final Provider<RestClient> restClientProvider = Provider<RestClient>(
+  (ref) => RestClient(
+    baseUrl: AppConfig.apiBaseUrl,
+    tokenProvider: ref.watch(authTokenProvider),
+    // A 401 means the session is gone server-side. Signing out locally keeps
+    // the two ends from disagreeing about whether the user is logged in.
+    onUnauthorized: () => ref.read(authRepositoryProvider).signOut(),
+  ),
+);
+
+/// What identity can actually do on THIS platform — declared, not assumed.
+/// Ask before promising the user something the platform cannot deliver.
+final Provider<AuthCapabilities> authCapabilitiesProvider =
+    Provider<AuthCapabilities>((ref) => AuthCapabilities.current());

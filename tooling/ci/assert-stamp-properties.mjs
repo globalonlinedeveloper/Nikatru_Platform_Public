@@ -108,6 +108,18 @@ const REQUIRED_COVERAGE = [
     why: 'these are near-free in the chassis and near-impossible to retrofit across 50 shipped apps',
   },
   {
+    key: 'auth-seam-wired',
+    group: /group\(\s*'property: auth-seam-wired'/,
+    sources: [
+      { file: PROVIDERS, re: /final Provider<core\.AuthRepository> authRepositoryProvider/, what: 'the brick must wire an AuthRepository — before C-15 it wired none, so every stamped app was born unable to sign anyone in' },
+      // NOT just `tokenProvider:` — the acceptance is that it reaches the SHARED
+      // client, so both halves are anchored.
+      { file: PROVIDERS, re: /tokenProvider:\s*ref\.watch\(authTokenProvider\)/, what: 'the token provider must reach the shared RestClient, or the app authenticates and no request ever carries a token' },
+      { file: 'packages/auth_supabase/lib/nikatru_auth_supabase.dart', re: /localStorage:\s*SecureSessionStorage\(/, what: 'the session must go in the SECURE store — the Supabase SDK defaults to plaintext shared_preferences for the access AND refresh tokens [G-43]' },
+    ],
+    why: 'the auth seam had no home: the only implementations lived inside apps/subly, and the brick wired no auth and no tokenProvider',
+  },
+  {
     key: 'analytics-consent-gated',
     group: /group\(\s*'property: analytics-consent-gated'/,
     sources: [{ file: PROVIDERS, re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted/, what: 'the template must really call ConsentController.record' }],
@@ -131,16 +143,29 @@ const REQUIRED_COVERAGE = [
 // inherits; each must appear in COVERED_BY or UNASSERTED below, or the build
 // fails with the provider's name in the message.
 const DOMAIN_FILE = PROVIDERS;
-const DOMAIN_RE = /^final\s+[\w<>,?\s.]*?\b(\w+Provider)\s*=/gm;
+// Parens are in the class because a provider's TYPE can contain them —
+// `Provider<Future<String?> Function()>` is the token getter C-15 wires into the
+// REST client. Without them this scan silently skipped every function-typed
+// provider, and the only reason that surfaced is that the stale-entry check
+// below fired on a key the domain scan could no longer see. The two halves
+// caught each other; either alone would have stayed quiet.
+const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // Coverage self-check on the domain parse itself: this file has held 19 since
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 19;
+const MIN_DOMAIN = 23;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
 const COVERED_BY = {
+  // [pipeline C-15] The auth seam. All four are DRIVEN by the property, not just
+  // constructed: it signs in, reads the token back, and asserts the REST client
+  // was built with that exact getter.
+  authRepositoryProvider: 'auth-seam-wired',
+  authTokenProvider: 'auth-seam-wired',
+  restClientProvider: 'auth-seam-wired',
+  authCapabilitiesProvider: 'auth-seam-wired',
   keyValueStoreProvider: 'theme-mode-persisted',
   themeModeProvider: 'theme-mode-persisted',
   installIdProvider: 'analytics-consent-gated',

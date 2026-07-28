@@ -53,4 +53,21 @@ abstract class AuthRepository {
   /// matters (entitlement refresh, an offline-validity decision) — prefer
   /// [currentAccessToken] for plain request authorization.
   Future<AuthSession?> currentSession();
+
+  /// Ask the backend to delete the account and its data, then sign out locally.
+  ///
+  /// 🔴 [pipeline C-15] THE CLIENT HALF ONLY, and the split is deliberate.
+  /// `DELETE /v1/account` is **stage 4's** route and does not exist yet — only
+  /// CORS comments reference it. Requiring the route here is what made C-15
+  /// unbuildable, so the boundary is drawn at the network edge: this contract
+  /// owns *asking*, stage 4 owns *answering*.
+  ///
+  /// Both stores require an in-app path to account deletion where an account can
+  /// be created at all, so this cannot be left to a support email.
+  ///
+  /// Implementations MUST sign out locally even when the request fails —
+  /// otherwise a user who has asked to be deleted is left holding a live
+  /// session, which is the worst of both outcomes. Throws [AuthFailure] when the
+  /// server refused, AFTER signing out.
+  Future<void> deleteAccount();
 }

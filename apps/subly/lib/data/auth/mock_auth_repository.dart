@@ -66,4 +66,12 @@ class MockAuthRepository implements AuthRepository {
       // No expiry: the demo token never lapses, and `isValidAt` treats an
       // unknown expiry as still-valid rather than guessing on the client.
       : const AuthSession(accessToken: 'demo-token');
+  /// [pipeline C-15] Added when core's AuthRepository gained this member.
+  /// apps/subly is frozen (39-CHASSIS cut 1), so this is the minimum that keeps
+  /// it compiling — the real client lives in packages/auth_supabase.
+  @override
+  Future<void> deleteAccount() async {
+    if (currentUser == null) throw AuthFailure('Not signed in');
+    await signOut();
+  }
 }

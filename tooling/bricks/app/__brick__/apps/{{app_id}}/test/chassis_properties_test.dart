@@ -25,6 +25,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 // [pipeline C-11] buildAppTheme + AppThemeX, for the brand-seed property.
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -479,6 +480,82 @@ void main() {
           reason: 'an unlabelled icon is unusable with a screen reader',
         );
       }
+    });
+  });
+
+  // ── PROPERTY: auth-seam-wired ─────────────────────────────────────────────
+  // [pipeline C-15] A stamped app must be able to authenticate THROUGH THE SEAM,
+  // and the token must reach the shared REST client.
+  //
+  // Before this, the brick wired no auth and no tokenProvider: the working
+  // implementations lived inside apps/subly, so every app the factory stamped
+  // was born unable to sign anyone in. The seam existed in core and had no home.
+  //
+  // 🔴 PROVES THE SEAM OPENS, not merely that it refuses. [pipeline C-6]: a
+  // fail-closed seam with no proven open path is a dead feature that reports
+  // healthy — four shipped that way and no test went red, because refusing is
+  // correct when nothing is configured.
+  group('property: auth-seam-wired', () {
+    test('the app gets a REAL auth implementation, not a null stub', () {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      expect(auth, isNotNull);
+      // A demo build must still be able to sign in. A stub returning null from
+      // everything is the shape C-6 exists to catch.
+      expect(auth, isA<InMemoryAuthRepository>());
+    });
+
+    test('signing in OPENS the seam and yields a bearer token', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+
+      expect(await auth.currentAccessToken(), isNull);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      final String? token = await auth.currentAccessToken();
+      expect(token, isNotNull);
+      expect(token, isNotEmpty);
+    });
+
+    // THE ACCEPTANCE CRITERION. Without this the seam exists, the app signs in,
+    // and no request ever carries a token — the backend never knows.
+    test('the tokenProvider reaches the shared REST client', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      // Read the SAME function the RestClient is constructed with, so this
+      // cannot pass while the client is wired to something else.
+      final String? token = await c.read(authTokenProvider)();
+      expect(
+        token,
+        await auth.currentAccessToken(),
+        reason:
+            'the REST client would send a different token than the one the '
+            'session holds',
+      );
+      expect(c.read(restClientProvider), isNotNull);
+    });
+
+    test('signing out closes it again', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      await auth.signOut();
+      expect(await c.read(authTokenProvider)(), isNull);
+    });
+
+    // The six-platform matrix is DECLARED, so a caller can ask before promising
+    // the user something the platform cannot do.
+    test('the app declares what identity can do on this platform', () {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final AuthCapabilities caps = c.read(authCapabilitiesProvider);
+      // Email/password is pure REST — it must work on all six.
+      expect(caps.emailPassword, isTrue);
     });
   });
 

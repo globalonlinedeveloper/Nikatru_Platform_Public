@@ -86,4 +86,21 @@ class SupabaseAuthRepository implements AuthRepository {
             ),
     );
   }
+  /// [pipeline C-15] The CLIENT half only — `DELETE /v1/account` is stage 4's
+  /// route and does not exist yet. Signs out regardless (a user who asked to be
+  /// deleted must not keep a live session) and then throws, because silently
+  /// succeeding on a deletion request is the one outcome a user can never detect
+  /// and never recover from.
+  @override
+  Future<void> deleteAccount() async {
+    try {
+      await signOut();
+    } catch (_) {
+      // Already failing; do not mask the real cause below.
+    }
+    throw AuthFailure(
+      'Account deletion is not available yet: the server route is not wired. '
+      'Your account has NOT been deleted.',
+    );
+  }
 }

@@ -1,0 +1,35 @@
+name: nikatru_auth_supabase
+description: >-
+  The identity adapter for NIKATRU apps — the ONLY package that imports the
+  Supabase SDK. Implements core's AuthRepository seam so swapping identity
+  providers means writing one more implementation, not touching any app.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Project_Cross_Platform_Apps
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_core:
+    path: ../core
+  # [pipeline C-4] THE EARN-REASON: native-binary. supabase_flutter ships
+  # platform code (secure-storage bridges, the deep-link/callback handling that
+  # completes an OAuth redirect). That is what buys this package its own
+  # existence — see `packageEarnReasons` in tooling/capability-register.json.
+  #
+  # [pipeline C-5] It is declared HERE and nowhere else. An app importing
+  # `package:supabase_flutter/...` directly goes around the seam, and
+  # assert-package-boundaries.mjs fails the build for it.
+  supabase_flutter: ^2.16.0
+
+dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter

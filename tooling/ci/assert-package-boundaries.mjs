@@ -194,7 +194,7 @@ if (existsSync(pkgRoot)) {
 
 // The coverage self-check the lock demands, stated as a floor rather than a
 // "> 0" so that silently losing most of the set is caught too.
-const MIN_WRAPPED = 6;
+const MIN_WRAPPED = 7;
 if (WRAPPED.size < MIN_WRAPPED) {
   problems.push(
     `COVERAGE LOST — derived only ${WRAPPED.size} wrapped vendor(s) from the adapter packages, expected >= ${MIN_WRAPPED}. Limb (c) would range over an almost-empty set and pass everything. Either the adapters stopped declaring their SDKs, or this derivation has stopped working.`,
@@ -214,6 +214,8 @@ const KNOWN_BYPASSES = {
     '2026-07-28 · Subly predates the notifications adapter and does not depend on nikatru_notifications at all — it rolled its own NotificationService. The straightest of the three bypasses.',
   'apps/subly|timezone':
     '2026-07-28 · same NotificationService; timezone arrives with flutter_local_notifications and leaves with it.',
+  'apps/subly|supabase_flutter':
+    '2026-07-28 · NOT A NEW BYPASS — the same import that has always been there, reclassified the moment [2]C-15 created `packages/auth_supabase` to wrap it. Before that no adapter existed, so there was nothing to go around. Subly is frozen by 39-CHASSIS cut 1; moving it reverses an agreed cut. This entry appearing IS the guard working: build the shared home, and the app copy becomes visible as a bypass the same hour.',
   'apps/subly|dio':
     '2026-07-28 · Subly DOES depend on nikatru_api_client (it imports ApiException from it) but supplies its own DioApiClient transport. Narrower than the other two: the seam types are used, the transport is duplicated.',
 };
