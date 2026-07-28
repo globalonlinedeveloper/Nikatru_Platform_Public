@@ -79,6 +79,24 @@ const REQUIRED_COVERAGE = [
     why: 'theme + darkTheme + themeMode must all reach MaterialApp',
   },
   {
+    key: 'brand-seed-drives-paint',
+    group: /group\(\s*'property: brand-seed-drives-paint'/,
+    // Anchored to the SEED REACHING THE BUILDER, in app.dart. The builder could
+    // be perfect and the app still uniform if somebody drops the argument — and
+    // `buildAppTheme(` alone would match the parameterless call in smoke_test.
+    sources: [
+      // BOTH themes, not "at least one". The first version of this anchor was
+      // /buildAppTheme\(\s*seed:/ — it survived deleting the seed from `theme:`
+      // because `darkTheme:` still had one, so an app could ship a branded dark
+      // theme and a generic light one and the guard stayed green. Found by
+      // mutating the real template; the single-match version passed.
+      { file: APP_ROOT, re: /theme:\s*buildAppTheme\(\s*seed:/, what: 'app.dart must pass its stamped seed to the LIGHT theme' },
+      { file: APP_ROOT, re: /darkTheme:\s*buildAppTheme\(\s*\n?\s*seed:/, what: 'app.dart must pass its stamped seed to the DARK theme too' },
+      { file: 'packages/design_system/lib/src/theme/app_theme_x.dart', re: /factory\s+AppThemeX\.fromScheme/, what: 'brand tokens must be DERIVED from the scheme — a const AppThemeX makes every stamp share one gradient and one ramp' },
+    ],
+    why: 'identical-looking apps are treated as spam by both stores, and Play enforcement reaches related accounts',
+  },
+  {
     key: 'analytics-consent-gated',
     group: /group\(\s*'property: analytics-consent-gated'/,
     sources: [{ file: PROVIDERS, re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted/, what: 'the template must really call ConsentController.record' }],

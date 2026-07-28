@@ -3,64 +3,116 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 void main() {
-  group('buildAppTheme', () {
-    test('light reproduces the original Subly defaults', () {
-      final ThemeData t = buildAppTheme(brightness: Brightness.light);
-      expect(t.brightness, Brightness.light);
+  // ── [pipeline C-11] ────────────────────────────────────────────────────────
+  // THREE TESTS IN THIS FILE USED TO ASSERT THE DEFECT. They checked that
+  // `buildAppTheme(light)` returned `AppColors.accent` as primary, that it
+  // carried `AppColors.ramp`, and that `AppTheme.light()` matched
+  // `buildAppTheme(light)` exactly. All three passed — because the shared
+  // builder really did hand every app Subly's palette regardless of its seed.
+  // They were green, and they were describing the bug.
+  //
+  // The split is now explicit and both halves are asserted:
+  //   buildAppTheme(seed:) → the CHASSIS path, fully derived from the seed
+  //   AppTheme.light()/dark() → the PINNED legacy Subly palette, for apps/subly
+  //                             only, which 39-CHASSIS cut 1 froze
+  // ───────────────────────────────────────────────────────────────────────────
+  group('buildAppTheme — the seed drives what is painted', () {
+    // THE TEST THIS FILE MOST NEEDED AND DID NOT HAVE. The deleted
+    // `honours a custom seed` passed a colour and then asserted the BRIGHTNESS,
+    // so any seed passed and no colour was ever examined.
+    test('two different seeds produce different primaries', () {
+      final ThemeData red = buildAppTheme(seed: const Color(0xFFFF0000));
+      final ThemeData green = buildAppTheme(seed: const Color(0xFF00FF00));
+      expect(red.colorScheme.primary, isNot(green.colorScheme.primary));
+    });
+
+    test('the brand gradient and category ramp follow the seed too', () {
+      final AppThemeX red =
+          buildAppTheme(seed: const Color(0xFFFF0000)).extension<AppThemeX>()!;
+      final AppThemeX green =
+          buildAppTheme(seed: const Color(0xFF00FF00)).extension<AppThemeX>()!;
+      // The gradient is the most visible brand surface in the app; a const one
+      // made every stamp look identical no matter what it was seeded with.
+      expect(red.brandGradient, isNot(green.brandGradient));
+      expect(red.heroGradient, isNot(green.heroGradient));
+      expect(red.categoryRamp, isNot(green.categoryRamp));
+      expect(red.muted, isNot(green.muted));
+    });
+
+    test('the category ramp stays eight visually separable colours', () {
+      final AppThemeX x =
+          buildAppTheme(seed: const Color(0xFF0E7C6B)).extension<AppThemeX>()!;
+      expect(x.categoryRamp, hasLength(8));
+      // Eight slots off one Material palette would be eight tints of one hue,
+      // which is useless for a legend — so they must be genuinely distinct.
+      expect(x.categoryRamp.toSet(), hasLength(8));
+    });
+
+    test('status colours do NOT follow the brand', () {
+      final AppThemeX red =
+          buildAppTheme(seed: const Color(0xFFFF0000)).extension<AppThemeX>()!;
+      final AppThemeX green =
+          buildAppTheme(seed: const Color(0xFF00FF00)).extension<AppThemeX>()!;
+      // Green means good and red means danger in every app. Re-hueing these
+      // from a brand seed trades a universal signal for a decoration.
+      expect(red.positive, green.positive);
+      expect(red.warn, green.warn);
+      expect(red.danger, green.danger);
+    });
+
+    test('dark yields a dark scheme, and differs from light for one seed', () {
+      const Color seed = Color(0xFF0E7C6B);
+      final ThemeData light = buildAppTheme(seed: seed);
+      final ThemeData dark =
+          buildAppTheme(seed: seed, brightness: Brightness.dark);
+      expect(dark.brightness, Brightness.dark);
+      expect(dark.colorScheme.brightness, Brightness.dark);
+      expect(
+          dark.scaffoldBackgroundColor, isNot(light.scaffoldBackgroundColor));
+    });
+
+    test('useMaterial3 and the Manrope text theme still apply', () {
+      final ThemeData t = buildAppTheme();
       expect(t.useMaterial3, isTrue);
-      expect(t.scaffoldBackgroundColor, AppColors.bg);
-      expect(t.colorScheme.primary, AppColors.accent);
-      expect(t.colorScheme.secondary, AppColors.accent2);
-      expect(t.dividerColor, AppColors.line);
-    });
-
-    test('dark yields a dark colour scheme', () {
-      final ThemeData t = buildAppTheme(brightness: Brightness.dark);
-      expect(t.brightness, Brightness.dark);
-      expect(t.colorScheme.brightness, Brightness.dark);
-      expect(t.scaffoldBackgroundColor, AppColors.onboardBg);
-    });
-
-    // ── DELETED 2026-07-28: a test that could not fail ──────────────────────
-    // It read:
-    //     test('honours a custom seed', () {
-    //       final t = buildAppTheme(seed: Color(0xFF00A0FF), brightness: dark);
-    //       expect(t.brightness, Brightness.dark);      // ← the OTHER parameter
-    //     });
-    // It passed a seed colour and then asserted the BRIGHTNESS. Any seed passed;
-    // no colour was ever examined. So it carried the name of the check the
-    // codebase most needed while performing none of it — and that green tick is
-    // why nobody noticed that AppThemeX's brand tokens are `static const` and
-    // ignore the seed entirely (a stamped app gets its own primary colour and
-    // Subly's gradient, side by side, on screen).
-    //
-    // Deleted rather than rewritten, per the [2]C-11 lock: an assertion that
-    // cannot fail is worse than none, because it occupies the space a real one
-    // would take. The real test — the seed provably reaching ColorScheme.primary
-    // AND AppThemeX.brandGradient — lands with C-11's increment.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    test('attaches the AppThemeX extension with brand tokens', () {
-      final AppThemeX? x = buildAppTheme().extension<AppThemeX>();
-      expect(x, isNotNull);
-      expect(x!.categoryRamp, AppColors.ramp);
-      expect(x.positive, AppColors.positive);
-      expect(x.danger, AppColors.danger);
-      expect(x.line, AppColors.line);
+      expect(t.textTheme.bodyMedium?.fontFamily, 'Manrope');
+      expect(t.extension<AppThemeX>(), isNotNull);
     });
   });
 
-  group('AppTheme compat facade', () {
-    test('light() matches buildAppTheme(light)', () {
-      final ThemeData a = AppTheme.light();
-      final ThemeData b = buildAppTheme(brightness: Brightness.light);
-      expect(a.scaffoldBackgroundColor, b.scaffoldBackgroundColor);
-      expect(a.colorScheme.primary, b.colorScheme.primary);
-      expect(a.dividerColor, b.dividerColor);
+  group('AppTheme — the PINNED legacy Subly palette', () {
+    // apps/subly is frozen as a rail-prover, so these values must not move when
+    // the shared builder becomes seed-driven. Byte-for-byte, deliberately.
+    test('light() is exactly the palette Subly shipped', () {
+      final ThemeData t = AppTheme.light();
+      expect(t.colorScheme.primary, AppColors.accent);
+      expect(t.colorScheme.secondary, AppColors.accent2);
+      expect(t.scaffoldBackgroundColor, AppColors.bg);
+      expect(t.dividerColor, AppColors.line);
+      final AppThemeX x = t.extension<AppThemeX>()!;
+      expect(x.brandGradient, AppColors.brandGradient);
+      expect(x.categoryRamp, AppColors.ramp);
     });
 
-    test('dark() builds a dark theme', () {
-      expect(AppTheme.dark().brightness, Brightness.dark);
+    test('dark() is the pinned dark palette', () {
+      final ThemeData t = AppTheme.dark();
+      expect(t.brightness, Brightness.dark);
+      expect(t.colorScheme.primary, AppColors.accent2);
+      expect(t.scaffoldBackgroundColor, AppColors.onboardBg);
+      expect(t.extension<AppThemeX>()!.categoryRamp, AppColors.ramp);
+    });
+
+    // 🔒 THE REGRESSION THAT WOULD UNDO C-11. If the pinned façade and the
+    // seeded chassis path ever agree again, it means Subly's constants have been
+    // wired back into the shared builder — which is exactly the state that made
+    // every stamped app identical. They MUST differ.
+    test('the pinned palette is NOT what the chassis path produces', () {
+      expect(
+        AppTheme.light().colorScheme.primary,
+        isNot(buildAppTheme(seed: AppColors.accent).colorScheme.primary),
+        reason:
+            'if these match, app-specific constants are back in buildAppTheme '
+            'and every stamped app is the same colour again',
+      );
     });
   });
 
@@ -78,6 +130,15 @@ void main() {
       expect(a.lerp(b, 0.0).line, a.line);
       expect(a.lerp(b, 1.0).line, b.line);
       expect(a.lerp(null, 0.5), same(a));
+    });
+
+    test('fromScheme derives tokens from the scheme it is given', () {
+      final ColorScheme scheme =
+          ColorScheme.fromSeed(seedColor: const Color(0xFF0E7C6B));
+      final AppThemeX x = AppThemeX.fromScheme(scheme);
+      expect(x.muted, scheme.onSurfaceVariant);
+      expect(x.line, scheme.outlineVariant);
+      expect((x.brandGradient as LinearGradient).colors.first, scheme.primary);
     });
   });
 }

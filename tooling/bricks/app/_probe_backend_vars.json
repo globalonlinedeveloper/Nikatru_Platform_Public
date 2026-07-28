@@ -3,7 +3,7 @@
   "display_name": "ProbeApi — Brick Backend Smoke Test",
   "subdomain": "probeapi.nikatru.com",
   "api_domain": "api-probeapi.nikatru.com",
-  "seed_hex": "6459F5",
+  "seed_hex": "0E7C6B",
   "category": "productivity",
   "description": "Throwaway app stamped in CI with needs_backend=true, to prove the OPT-IN Worker + D1 half of the clone contract still typechecks.",
   "needs_backend": true
