@@ -28,6 +28,8 @@ dependencies:
   # NOTE apps/subly deliberately does NOT get this: it is a frozen legacy
   # rail-prover (cut list item 1) and keeps its own fork, which is also why
   # flutter_local_notifications stays pinned at 17.x for now.
+  nikatru_auth_supabase:
+    path: ../../packages/auth_supabase
   nikatru_notifications:
     path: ../../packages/notifications
 

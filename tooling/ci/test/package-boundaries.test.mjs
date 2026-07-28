@@ -64,6 +64,7 @@ function tree({
   dsDeps = '  flutter:\n    sdk: flutter\n',
   dsImports = "import 'package:flutter/material.dart';\n",
   apiClientDeps = '  dio: ^5.4.0\n  nikatru_core:\n    path: ../core\n',
+  authDeps = '  flutter:\n    sdk: flutter\n  nikatru_core:\n    path: ../core\n  supabase_flutter: ^2.16.0\n',
   sublyImports = null,
   brickImports = "import 'package:flutter/material.dart';\n",
   extra = {},
@@ -89,6 +90,7 @@ function tree({
     'nikatru_platform_storage',
     '  flutter:\n    sdk: flutter\n  nikatru_core:\n    path: ../core\n  shared_preferences: ^2.2.0\n  flutter_secure_storage: ^9.0.0\n',
   );
+  files[join(root, 'packages/auth_supabase/pubspec.yaml')] = spec('nikatru_auth_supabase', authDeps);
   files[join(root, 'packages/telemetry/pubspec.yaml')] = spec(
     'nikatru_telemetry',
     '  flutter:\n    sdk: flutter\n  sentry_flutter: ^9.24.0\n',
@@ -102,6 +104,8 @@ function tree({
   files[join(root, 'apps/subly/lib/services/notifications/notification_service.dart')] =
     sublyImports ??
     "import 'package:flutter_local_notifications/flutter_local_notifications.dart';\nimport 'package:timezone/timezone.dart' as tz;\n";
+  files[join(root, 'apps/subly/lib/data/auth/supabase_auth_repository.dart')] =
+    "import 'package:supabase_flutter/supabase_flutter.dart' as sb;\n";
   files[join(root, 'apps/subly/lib/data/api/dio_api_client.dart')] =
     "import 'package:dio/dio.dart';\nimport 'package:nikatru_api_client/nikatru_api_client.dart';\n";
 
@@ -125,11 +129,11 @@ describe('assert-package-boundaries', () => {
   test('passes on a tree shaped like the real repository', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /derived 6 wrapped vendor\(s\) from 4 adapter\(s\)/);
+    assert.match(out, /derived 7 wrapped vendor\(s\) from 5 adapter\(s\)/);
     // flutter_lints must NOT be treated as a wrapped vendor.
     assert.doesNotMatch(out, /flutter_lints/);
     // The real debt is printed, every run.
-    assert.match(out, /3 grandfathered adapter bypass\(es\)/);
+    assert.match(out, /4 grandfathered adapter bypass\(es\)/);
   });
 
   // ── A · core stays pure Dart ───────────────────────────────────────────────
@@ -217,7 +221,7 @@ describe('assert-package-boundaries', () => {
     test('FAILS rather than passing everything when the vendor set shrinks', () => {
       const { code, out } = run(tree({ apiClientDeps: '  nikatru_core:\n    path: ../core\n' }));
       assert.equal(code, 1);
-      assert.match(out, /COVERAGE LOST — derived only 5 wrapped vendor\(s\)/);
+      assert.match(out, /COVERAGE LOST — derived only 6 wrapped vendor\(s\)/);
       assert.match(out, /would range over an almost-empty set and pass everything/);
     });
 

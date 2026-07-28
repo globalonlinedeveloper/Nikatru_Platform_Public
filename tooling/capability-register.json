@@ -155,6 +155,11 @@
       "under the older reading; the rename is churn across every pubspec and import for zero",
       "user-visible value."
     ],
+    "packages/auth_supabase": {
+      "reason": "native-binary",
+      "evidence": { "dependency": "supabase_flutter" },
+      "detail": "Ships platform code: the secure-storage bridges and the deep-link/callback handling that completes an OAuth redirect, which differ on all six targets. It is also the ONLY package permitted to import the Supabase SDK — [2]C-5 limb (c) fails the build for any app that reaches for it directly, which is what keeps the identity provider swappable."
+    },
     "packages/platform_storage": {
       "reason": "native-binary",
       "evidence": { "dependency": "flutter_secure_storage" },
@@ -281,6 +286,40 @@
         "tooling/bricks/app/__brick__/apps/{{app_id}}"
       ],
       "note": "Gained its first real consumers at 5f3466b when [2]C-3 moved all three dio transports here out of apps/subly and the brick."
+    },
+    {
+      "id": "auth",
+      "capability": "Identity: sign-in/up, OAuth redirect, session and bearer token, and the CLIENT half of account deletion. The only package that imports the Supabase SDK.",
+      "owner": "packages/auth_supabase",
+      "package": "nikatru_auth_supabase",
+      "seams": [],
+      "implementsSeams": [
+        "AuthRepository"
+      ],
+      "consumers": [
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "[2]C-15, 2026-07-28. Before this the ONLY implementations lived inside apps/subly, so the brick wired no auth and no tokenProvider — every stamped app was born unable to authenticate. Ships SupabaseAuthRepository, a REAL InMemoryAuthRepository (wired, not mocked — a stub returning null from everything is the fail-closed shape [2]C-6 exists to catch), SecureSessionStorage (G-43: the SDK defaults to plaintext shared_preferences for the access AND refresh tokens), and AuthCapabilities, the declared six-platform matrix with Linux SUPPORTED — the contrary claim was checked against pub.dev and is false. `DELETE /v1/account` is stage 4's route: the client half refuses loudly rather than pretending to have deleted anything.",
+      "violations": [
+        {
+          "path": "apps/subly/lib/data/auth/supabase_auth_repository.dart",
+          "kind": "seam-implemented-in-app",
+          "symbol": "AuthRepository",
+          "detail": "Subly's own Supabase implementation, plus a direct `package:supabase_flutter` import in its main.dart. NOT A NEW DEFECT — it is the SAME code that C-15 has now given a shared home. Until 2026-07-28 it was a HOMELESS sole implementation, which [2]C-3's lock explicitly routed here; creating packages/auth_supabase is what makes it detectably a fork, and the guards said so the moment the package landed. That is the register working, not a regression.",
+          "declaredOn": "2026-07-28",
+          "fixOwner": "[2]C-3's de-forking increment",
+          "blockedBy": "39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting or moving this reverses an agreed cut, which the standing authorization does not cover — declared rather than moved, exactly as the notifications fork and the three adapter bypasses were."
+        },
+        {
+          "path": "apps/subly/lib/data/auth/mock_auth_repository.dart",
+          "kind": "seam-implemented-in-app",
+          "symbol": "AuthRepository",
+          "detail": "Subly's mock. Superseded by InMemoryAuthRepository in packages/auth_supabase, which is a real implementation rather than a mock — it signs in, holds a session, emits on authStateChanges, expires and signs out.",
+          "declaredOn": "2026-07-28",
+          "fixOwner": "[2]C-3's de-forking increment",
+          "blockedBy": "Same cut-1 freeze."
+        }
+      ]
     },
     {
       "id": "design_system",

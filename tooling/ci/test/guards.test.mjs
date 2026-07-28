@@ -1028,6 +1028,13 @@ group('property: brand-seed-drives-paint', () {
   testWidgets('o', (t) async {});
   test('p', () {});
 });
+group('property: auth-seam-wired', () {
+  test('v', () {});
+  test('w', () {});
+  test('x', () {});
+  test('y', () {});
+  test('z', () {});
+});
 group('property: ui-invariants-inherited', () {
   testWidgets('q', (t) async {});
   testWidgets('r', (t) async {});
@@ -1087,7 +1094,7 @@ enum WindowClass { compact, medium, expanded, large, extraLarge }
   // this fixture was written afterwards to match what they showed — never the
   // other way round.
   //
-  // All 19 chassis behaviours, plus the two theme-persistence limbs and the
+  // All 23 chassis behaviours (C-15 added four), plus the two theme-persistence limbs and the
   // consent record() call the property anchors point at.
   const goodProviders = `
 final Provider<core.ConfigTransport> configTransportProvider = X();
@@ -1109,6 +1116,15 @@ final Provider<bool> consentDecidedProvider = X();
 final Provider<core.ConsentTransport> consentTransportProvider = X();
 final Provider<core.EventTransport> eventTransportProvider = X();
 final FutureProvider<core.Analytics> analyticsProvider = X();
+final Provider<core.AuthRepository> authRepositoryProvider = X();
+final Provider<Future<String?> Function()> authTokenProvider = X();
+final Provider<RestClient> restClientProvider = Provider<RestClient>(
+  (ref) => RestClient(
+    baseUrl: AppConfig.apiBaseUrl,
+    tokenProvider: ref.watch(authTokenProvider),
+  ),
+);
+final Provider<AuthCapabilities> authCapabilitiesProvider = X();
 
 class ThemeModeController extends Notifier<ThemeMode> {
   Future<void> _hydrate() async {
@@ -1132,6 +1148,20 @@ final x = () async {
   // [pipeline C-11] The brand property also anchors into the design system, so
   // the fixture has to carry that file too — the tokens must be DERIVED from the
   // scheme, not const, or every stamp shares one gradient and one ramp.
+  // [pipeline C-15] The session must land in the SECURE store — the Supabase
+  // SDK defaults to plaintext shared_preferences for the access AND refresh
+  // tokens, so this anchor is the one that keeps G-43 true.
+  const AUTH_BARREL = 'packages/auth_supabase/lib/nikatru_auth_supabase.dart';
+  const goodAuthBarrel = `
+Future<void> initNikatruAuth() async {
+  await sb.Supabase.initialize(
+    authOptions: sb.FlutterAuthClientOptions(
+      localStorage: SecureSessionStorage(store: secureStore),
+    ),
+  );
+}
+`;
+
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -1141,8 +1171,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel };
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
   };
@@ -1287,11 +1317,42 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
   });
 
+  // [pipeline C-15] The auth seam had no home: the only implementations lived
+  // inside apps/subly, so the brick wired no auth and no tokenProvider — every
+  // stamped app was born unable to sign anyone in.
+  describe('the auth seam is wired into the stamp', () => {
+    test('FAILS when the brick wires no AuthRepository', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noauth', { providers: goodProviders.replace('final Provider<core.AuthRepository> authRepositoryProvider = X();', '') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must wire an AuthRepository/);
+    });
+
+    // The seam can be perfect and every request still anonymous.
+    test('FAILS when the token never reaches the shared REST client', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-notoken', { providers: goodProviders.replace('tokenProvider: ref.watch(authTokenProvider),', 'tokenProvider: () async => null,') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /token provider must reach the shared RestClient/);
+    });
+
+    // [G-43] The SDK's default writes the access AND refresh tokens as plaintext.
+    test('FAILS when the session falls back to plaintext storage', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-plaintext', { authBarrel: 'Future<void> initNikatruAuth() async { await sb.Supabase.initialize(); }\n' }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /session must go in the SECURE store/);
+    });
+  });
+
   describe('"every property" has a tracked domain', () => {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 19 chassis behaviour\(s\)/);
+      assert.match(out, /tracked domain: 23 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       assert.match(out, /10 chassis behaviour\(s\) a stamped app does NOT prove/);
@@ -1323,7 +1384,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 18/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 22/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
