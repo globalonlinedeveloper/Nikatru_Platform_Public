@@ -191,6 +191,37 @@ describe('assert-vendor-portability', () => {
       assert.match(out, /names seam symbol `AuthRepo`.*which does not declare it/s);
     });
 
+    // 🔴 THIS PAIR EXISTS BECAUSE CI CAUGHT WHAT THE LOCAL RUN COULD NOT.
+    // The guard runs in the PUBLIC repo, where `company/` is gitignored and
+    // structurally absent — so citing a private runbook as checkable evidence
+    // passes on a dev box (company/ is on disk) and fails in CI. Graded
+    // could-not-establish WITH ITS REASON and printed, never silently skipped;
+    // and the exemption is STRUCTURAL (only the `company/` prefix, the
+    // private-SSoT boundary itself) rather than a flag anyone could set.
+    test('grades a private-SSoT export path instead of failing on it', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => { r.vendors.supabase.exportPath.path = 'company/runbooks/operations.md'; return r; },
+      }));
+      assert.equal(code, 0);
+      assert.match(out, /could-not-establish \(1\)/);
+      assert.match(out, /supabase → company\/runbooks\/operations\.md/);
+    });
+
+    // …but if EVERY export path were private, part 5 would be recorded
+    // everywhere and verified nowhere: present, and decorative.
+    test('FAILS when NO export path is checkable at all', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => {
+          for (const k of Object.keys(r.vendors)) {
+            if (!k.startsWith('_')) r.vendors[k].exportPath.path = 'company/runbooks/ops.md';
+          }
+          return r;
+        },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /not one export path points at something this guard can open/);
+    });
+
     test('FAILS when the export path does not exist', () => {
       const { code, out } = run(tree({
         mutate: (r) => { r.vendors.glitchtip.exportPath.path = 'runbooks/gone.md'; return r; },

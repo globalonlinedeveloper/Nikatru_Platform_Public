@@ -82,7 +82,7 @@
       "seam": { "file": "packages/core/lib/src/config/config_loader.dart", "symbol": "ConfigTransport" },
       "configKeyed": { "kind": "runtime", "detail": "Bindings are wrangler config, not code — swapping a database or bucket is a config edit and a deploy, never an app release." },
       "ownTheRecord": "YES — D1 IS our record. The risk here is not losing the record to a vendor, it is the SQLite dialect and the KV semantics.",
-      "exportPath": { "path": "company/runbooks/operations.md", "detail": "D1 exports to SQL; R2 is S3-compatible so rclone moves it. KV has no bulk export primitive — the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record." },
+      "exportPath": { "path": "services/platform/migrations", "detail": "PUBLIC, CHECKABLE EVIDENCE: the D1 schema is plain SQL migrations in this repo — that IS the export shape, and it is why a D1 export lands in any SQLite or Postgres. R2 is S3-compatible so rclone moves it. KV has no bulk export primitive; the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record. ⬜ FINDING 2026-07-28: the subly-api `EXPORTS` R2 binding is declared in types.ts and referenced NOWHERE in the code — a bound bucket with no writer, the same fail-closed-with-no-open-path shape [2]C-6 exists to catch. Routed to stage 4." },
       "exitPlan": { "alternative": "Postgres/Neon + S3 + any Node host behind the same Worker handlers", "swapCost": "High for KV/DO semantics, Low for D1/R2. Deliberately kept: nothing durable lives in KV." }
     },
     "revenuecat": {

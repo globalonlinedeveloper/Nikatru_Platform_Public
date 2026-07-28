@@ -27,9 +27,12 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
     // build is not one. `valueOrNull` and the `??` are both load-bearing —
     // while the config resolves, or with no network at all, the compiled-in
     // default still gives the button somewhere to go.
+    // Indentation here matches `dart format`'s output exactly. The template is
+    // mustache, so nothing can format it — only a real stamp can, and the
+    // app_brick lane runs `dart format --set-exit-if-changed` on that stamp.
     final String updateUrl =
         ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
-            AppConfig.updateUrl;
+        AppConfig.updateUrl;
     return MaterialApp.router(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,

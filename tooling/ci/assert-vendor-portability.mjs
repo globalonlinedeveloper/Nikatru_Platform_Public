@@ -170,6 +170,8 @@ for (const t of Object.keys(nonVendor)) {
 const CHECKED = ['seam', 'configKeyed', 'exportPath', 'exitPlan'];
 const PRINTED = ['openProtocol', 'ownTheRecord'];
 let vendorCount = 0;
+const unverifiableExports = [];
+let checkableExports = 0;
 for (const [id, v] of Object.entries(vendors)) {
   if (id.startsWith('_')) continue;
   vendorCount++;
@@ -191,8 +193,27 @@ for (const [id, v] of Object.entries(vendors)) {
     problems.push(`vendor \`${id}\` is \`${ck.kind}\` config-keyed with no \`reason\`. "No release to repoint" is the property this part exists for, so an exception has to argue for itself.`);
   }
   // part 5 — the export path must exist on disk.
-  if (v.exportPath?.path && !existsSync(join(ROOT, v.exportPath.path))) {
-    problems.push(`vendor \`${id}\` cites export path \`${v.exportPath.path}\`, which does not exist. An untested exit is not an exit.`);
+  //
+  // 🔴 CAUGHT BY CI, NOT LOCALLY, AND THE DIVERGENCE IS THE POINT. This guard
+  // runs in the PUBLIC repo, where `company/` is gitignored and structurally
+  // absent — so citing a private runbook as machine-checkable evidence passes on
+  // a dev box (company/ is on disk) and fails in CI. The first version of this
+  // check did exactly that.
+  //
+  // The fix follows this repo's own grading rule — NO SILENT SKIPS: a path the
+  // guard cannot see is graded `could-not-establish` WITH ITS REASON and
+  // printed, never quietly passed. And the exemption is STRUCTURAL, not a flag:
+  // only `company/` qualifies, because that prefix is the private-SSoT boundary
+  // itself. A boolean anybody could set would make part 5 optional.
+  if (v.exportPath?.path) {
+    const p = v.exportPath.path;
+    if (p.startsWith('company/')) {
+      unverifiableExports.push(`${id} → ${p}`);
+    } else if (!existsSync(join(ROOT, p))) {
+      problems.push(`vendor \`${id}\` cites export path \`${p}\`, which does not exist. An untested exit is not an exit.`);
+    } else {
+      checkableExports++;
+    }
   }
   // part 6 — a named alternative and a swap cost.
   if (v.exitPlan && (!v.exitPlan.alternative || !v.exitPlan.swapCost)) {
@@ -203,6 +224,18 @@ if (vendorCount === 0) {
   problems.push('COVERAGE LOST — the register declares no vendors at all, so every checklist assertion below ranges over nothing and this guard passes by vacancy.');
 } else {
   ok(`${vendorCount} vendor(s) carry all six checklist parts; ${CHECKED.length} checked against the tree, ${PRINTED.length} printed`);
+}
+
+// If EVERY export path were private, part 5 would be recorded everywhere and
+// verified nowhere — present, and decorative. At least one has to be real.
+if (vendorCount > 0 && checkableExports === 0) {
+  problems.push(
+    'COVERAGE LOST — not one export path points at something this guard can open. Part 5 would then be recorded for every vendor and checked for none, which is the "assertion that cannot fail" shape. At least one vendor must cite public, checkable evidence.',
+  );
+}
+if (unverifiableExports.length) {
+  notes.push(`could-not-establish (${unverifiableExports.length}) — export path is in the PRIVATE company SSoT, which is gitignored and absent from this repo by design, so CI cannot open it:`);
+  for (const u of unverifiableExports) notes.push(`    ${u}`);
 }
 
 // ── Surfaces MOVED to runtime config must still be moved. ────────────────────
