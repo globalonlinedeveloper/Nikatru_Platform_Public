@@ -31,6 +31,19 @@ export interface Env {
    * Supabase's ~7-day auto-pause.
    */
   SUPABASE_KEEPALIVE_URLS?: string;
+
+  /**
+   * Supabase publishable ("anon") key, used ONLY to make the keep-alive a real
+   * request instead of a rejected one.
+   *
+   * Optional on purpose: the Worker must keep running without it, and the
+   * heartbeat row says explicitly when it is missing rather than quietly
+   * recording a 401 as success — which is what it did until 2026-07-29.
+   * Set with `wrangler secret put SUPABASE_ANON_KEY`, not as a committed var:
+   * the key is publishable, but this repo is public and the owner already
+   * treats it as a GitHub secret for the web build, so the two should agree.
+   */
+  SUPABASE_ANON_KEY?: string;
   API_VERSION: string;
   /** Comma-separated browser origins for CORS. Absent/empty ⇒ '*'. */
   ALLOWED_ORIGINS?: string;
