@@ -1,8 +1,9 @@
 name: app
 description: >-
   Stamps a new NIKATRU Cross Platform App, pre-wired to the shared spine
-  (design_system, api_client, core) and telemetry. Input contract = app.yaml
-  (master §10-B). Proven in CI by stamping a throwaway apps/_probe and analyzing.
+  (design_system, api_client, core) and telemetry. The input contract is THIS
+  FILE's `vars` block — every one of them validated by hooks/pre_gen.dart
+  [pipeline S-1]. Proven in CI by stamping a throwaway apps/probe and analyzing.
 version: 0.1.0
 
 environment:
