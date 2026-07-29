@@ -621,10 +621,7 @@ void main() {
       addTearDown(c.dispose);
 
       await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: c,
-          child: const {{app_id.pascalCase()}}App(),
-        ),
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
       );
       await _turns(tester);
 
@@ -667,10 +664,7 @@ void main() {
       addTearDown(c.dispose);
 
       await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: c,
-          child: const {{app_id.pascalCase()}}App(),
-        ),
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
       );
       await _turnsAndSettleRoute(tester);
       expect(find.byType(TextField), findsNothing);
