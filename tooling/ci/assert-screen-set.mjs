@@ -45,7 +45,7 @@ try {
 const screens = reg.screens ?? [];
 // A floor, not `> 0`: the register has held 16 since it was written, and a list
 // somebody trims to three would otherwise read as a clean pass.
-const MIN_SCREENS = 23;
+const MIN_SCREENS = 22;
 if (screens.length < MIN_SCREENS) {
   problems.push(
     `COVERAGE LOST — the register declares only ${screens.length} screen(s), expected >= ${MIN_SCREENS}. DoD §4-A names the full set; a register somebody has trimmed asserts less while looking identical.`,

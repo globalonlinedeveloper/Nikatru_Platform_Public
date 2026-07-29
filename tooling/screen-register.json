@@ -29,7 +29,13 @@
     "deliberately not built, with the reason recorded. It is not `todo` (nobody is coming back to it) and",
     "not `blocked` (nothing is in the way). Every entry names why building it would produce a DEAD",
     "FEATURE — a language picker with one locale, a profile form that saves nowhere — which is the shape",
-    "[2]C-6 exists to catch. A deliberate no is worth more than a permanent todo."
+    "[2]C-6 exists to catch. A deliberate no is worth more than a permanent todo.",
+    "",
+    "⚠️ A SUPERSEDED `todo` IS THE ONE DRIFT THIS GUARD CANNOT CATCH GENERICALLY. `firstrun.screens` sat",
+    "here as a todo after both of its halves had been split out into `firstrun.permission-priming`",
+    "(present) and `firstrun.splash-onboarding` (not-building) — a stale entry that read as outstanding",
+    "work. Nothing mechanical distinguishes it from a real todo, so WHEN YOU SPLIT AN ENTRY, DELETE THE",
+    "ORIGINAL in the same edit. Found 2026-07-29 by reading the list, not by running it."
   ],
   "screens": [
     {
@@ -193,13 +199,6 @@
       "status": "blocked",
       "blockedBy": "app_links (deep-link handling)",
       "detail": "Each of these is entered by following a link from an EMAIL or a browser redirect, so none can be reached without deep-link handling. `app_links` 7.2.1 supports all six platforms (verified against pub.dev 2026-07-28) and would earn its place under [2]C-4 as native-binary — it ships platform code — but it is not a dependency yet. ⚠️ Web carries two traps recorded in AuthCapabilities: the token arrives in the URL FRAGMENT so query parsing fails SILENTLY, and app_links on web reports only the INITIAL link.",
-      "declaredOn": "2026-07-28"
-    },
-    {
-      "id": "firstrun.screens",
-      "what": "Splash / onboarding / permission priming.",
-      "status": "todo",
-      "detail": "Buildable now — no dependency on auth or money.",
       "declaredOn": "2026-07-28"
     },
     {

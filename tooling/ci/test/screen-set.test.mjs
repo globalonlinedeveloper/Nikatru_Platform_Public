@@ -76,7 +76,7 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
     },
   ];
   // Padding to clear the floor without inventing meaning.
-  const padding = Array.from({ length: 17 }, (_, i) => ({
+  const padding = Array.from({ length: 16 }, (_, i) => ({
     id: `todo.pad${i}`,
     what: 'not yet built',
     status: 'todo',
@@ -144,11 +144,11 @@ describe('assert-screen-set', () => {
   test('passes when every declared screen is present and reachable', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /23 screen\(s\) declared/);
+    assert.match(out, /22 screen\(s\) declared/);
     assert.match(out, /3 screen\(s\) present and anchored/);
     // Blocked and todo must PRINT — a gap nobody sees is a gap that grows.
     assert.match(out, /2 BLOCKED/);
-    assert.match(out, /17 TODO/);
+    assert.match(out, /16 TODO/);
   });
 
   // ── present vs reachable — the distinction that keeps catching real bugs ──
