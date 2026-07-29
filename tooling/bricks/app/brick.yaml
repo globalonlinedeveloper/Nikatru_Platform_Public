@@ -30,8 +30,13 @@ vars:
       client-only and talks to the ONE shared platform Worker for config,
       analytics, entitlements and account deletion — it stamps no Worker, no D1
       and no R2 bucket of its own. Say yes ONLY when the app genuinely needs a
-      private database, and remember the ceiling: D1 Free allows 10 databases
-      per account TOTAL (verified 2026-07-25), one of which is platform_db.
+      private database, and remember the ceilings: D1 Free allows 10 databases
+      per account TOTAL, one of which is platform_db — but the one that BINDS
+      FIRST is the 5 GB account-wide storage cap, which across 50 apps is ~100 MB
+      each, tighter than the 500 MB per-database limit anyone would think to
+      check. (All three re-read from developers.cloudflare.com/d1/platform/limits
+      on 2026-07-29 and unchanged: 10 free / 50,000 paid databases, 500 MB free /
+      10 GB paid per database, 5 GB free / 1 TB paid per account.)
     prompt: Does this app store user rows server-side? (per-app D1 — say no unless sure)
     default: false
   display_name:
