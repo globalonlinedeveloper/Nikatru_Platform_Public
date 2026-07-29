@@ -468,6 +468,10 @@ jobs:
       # vanishing looks exactly like passing. [pipeline C-16]
       - name: The app spec is one validated input contract
         run: node tooling/ci/assert-input-contract.mjs
+      # [pipeline S-3 / S-4] The claim and the proof come from the same place,
+      # and the new app joins the workspace that checks it.
+      - name: A stamped app claims only platforms it is built for
+        run: node tooling/ci/assert-stamp-platforms.mjs
       - name: Stamped app asserts its own chassis properties
         run: node tooling/ci/assert-stamp-properties.mjs
       - name: Analyze + test the stamped app
@@ -476,6 +480,17 @@ jobs:
           flutter pub get
           flutter analyze --no-fatal-infos
           flutter test
+      # 🔴 [pipeline S-3] THE CLAIM, PROVEN. Until this step existed, every
+      # stamped app told the public catalogue it "works on web" while the
+      # template stamped no platform folder at all — so `flutter build web`
+      # failed immediately on a fresh stamp and nothing ever ran it. Analysis and
+      # tests passed throughout, because neither needs a platform folder.
+      #
+      # NO `flutter create` REPAIR STEP MAY BE ADDED HERE. Needing one is the
+      # defect; the stamp must produce a buildable app on its own.
+      - name: A fresh stamp really builds for every platform it claims
+        working-directory: apps/probe
+        run: flutter build web --pwa-strategy=none
 
       # ── Variant 2: the OPT-IN backend stamp (needs_backend=true). Rarer, but
       # it still has to typecheck and deploy-dry-run.
