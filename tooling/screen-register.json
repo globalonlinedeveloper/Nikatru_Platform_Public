@@ -35,7 +35,13 @@
     "here as a todo after both of its halves had been split out into `firstrun.permission-priming`",
     "(present) and `firstrun.splash-onboarding` (not-building) — a stale entry that read as outstanding",
     "work. Nothing mechanical distinguishes it from a real todo, so WHEN YOU SPLIT AN ENTRY, DELETE THE",
-    "ORIGINAL in the same edit. Found 2026-07-29 by reading the list, not by running it."
+    "ORIGINAL in the same edit. Found 2026-07-29 by reading the list, not by running it.",
+    "",
+    "🔴 THREE ENTRIES WERE MOVED BACK FROM `not-building` TO `todo` ON 2026-07-29, after the owner asked",
+    "what was actually blocking them. Each original reason stated a SYMPTOM as a CAUSE — \"no profile data",
+    "model\", \"content is app-specific\", \"no users to ask\" — and none survived checking. The language",
+    "picker was the fourth and is now built. THE RULE: a `not-building` entry must name what would",
+    "un-block it, and that un-blocker must be genuinely hard. If it is one file, it is a todo."
   ],
   "screens": [
     {
@@ -263,9 +269,9 @@
     },
     {
       "id": "settings.profile",
-      "what": "Edit display name and avatar.",
-      "status": "not-building",
-      "detail": "DELIBERATELY NOT BUILT. There is no profile data model in the chassis — AuthUser carries id, email and an optional displayName, and nothing writes it. A profile screen over that is a form with one field that saves nowhere, which is the dead-feature shape [2]C-6 exists to catch. It becomes real when an app has a profile to edit, and that is an APP concern, not a chassis one.",
+      "what": "Edit display name.",
+      "status": "todo",
+      "detail": "RE-OPENED 2026-07-29. Was not-building on the reason \"there is no profile data model\" — WRONG. Supabase's gotrue exposes `updateUser`, so user metadata IS a real store and the seam can expose `updateProfile(displayName)`. Buildable and testable today, driven end-to-end by InMemoryAuthRepository. The original reason described a field nothing wrote, and concluded from that it could never be written.",
       "declaredOn": "2026-07-29"
     },
     {
@@ -285,16 +291,16 @@
     },
     {
       "id": "firstrun.splash-onboarding",
-      "what": "Splash and onboarding carousel.",
-      "status": "not-building",
-      "detail": "DELIBERATELY NOT BUILT AS A CHASSIS SCREEN. A splash is native platform configuration (launch storyboard / drawable), not a Flutter screen — building one in Dart shows AFTER the native splash and adds a second flash. Onboarding CONTENT is app-specific by nature; a generic three-page carousel would be replaced by every app that stamps it. The permission-priming half, which IS generic, shipped separately above.",
+      "what": "Onboarding carousel. (The SPLASH half is correctly not-building — see detail.)",
+      "status": "todo",
+      "detail": "RE-OPENED 2026-07-29, the onboarding half only. Was not-building on \"content is app-specific\" — WRONG for the mechanism: `AppConfig.copy` is a runtime copy-override map that already exists, so a carousel can be CONFIG-DRIVEN rather than fabricated. The chassis owns the carousel, each app owns its words. ⚠️ The SPLASH half stands and is not re-opened: a splash is native platform configuration (launch storyboard / drawable), not a Flutter screen — a Dart one renders AFTER the native splash and adds a second flash.",
       "declaredOn": "2026-07-29"
     },
     {
       "id": "system.review-prompt",
       "what": "Ask for a store review at a good moment.",
-      "status": "not-building",
-      "detail": "DELIBERATELY DEFERRED. Needs `in_app_review`, which under [2]C-4 lands in platform_storage rather than earning its own package. But the prompt is untestable and unusable until an app has real users to ask — and asking at the wrong moment burns the one review request most users will ever consider. It belongs with the first real launch (stage 10), not with the chassis.",
+      "status": "todo",
+      "detail": "RE-OPENED 2026-07-29, the mechanism only. Was not-building on \"no users to ask\" — that argument is about WHEN to show it, not whether the seam can be built and proven. The seam plus its gating rule is buildable now with a no-op default, exactly as notifications works, and needs `in_app_review` which lands in platform_storage under [2]C-4. The timing rule still holds: iOS limits how often the prompt appears, so firing it at the wrong moment spends the one chance most users ever give.",
       "declaredOn": "2026-07-29"
     }
   ]
