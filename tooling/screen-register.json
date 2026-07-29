@@ -270,10 +270,18 @@
     },
     {
       "id": "settings.language",
-      "what": "Language picker.",
-      "status": "not-building",
-      "detail": "DELIBERATELY NOT BUILT. The brick ships exactly ONE locale (app_en.arb). A picker with one option is a control that cannot change anything — it would read as a feature and do nothing. architecture.md §16 already scopes i18n as \"seam now, translations later\"; the seam exists (gen_l10n + supportedLocales) and the picker belongs with the second locale.",
-      "declaredOn": "2026-07-29"
+      "what": "Language picker, with \"follow the device\" as a real option.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "RadioGroup",
+        "kind": "uses"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart",
+        "pattern": "locale: ref.watch(localeProvider)",
+        "why": "MaterialApp must READ the override, or the picker stores a choice the app ignores. Was recorded as not-building on 2026-07-29 (\"only one locale exists\") — which stated the symptom as the cause: nothing blocked adding a second ARB, and the i18n seam had never once run"
+      }
     },
     {
       "id": "firstrun.splash-onboarding",
