@@ -74,7 +74,8 @@ class InMemoryAuthRepository implements core.AuthRepository {
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
-  }) async => signInWithEmail(email: email, password: password);
+  }) async =>
+      signInWithEmail(email: email, password: password);
 
   @override
   Future<void> signInWithApple() async => _signIn('apple.user@example.com');
@@ -102,6 +103,24 @@ class InMemoryAuthRepository implements core.AuthRepository {
 
   @override
   Future<core.AuthSession?> currentSession() async => _session;
+
+  @override
+  Future<core.AuthUser> updateProfile({required String displayName}) async {
+    final core.AuthUser? current = _user;
+    if (current == null) throw core.AuthFailure('Not signed in');
+    final core.AuthUser updated = core.AuthUser(
+      id: current.id,
+      email: current.email,
+      // Empty clears it. One "no name" case, not two that render differently.
+      displayName: displayName.isEmpty ? null : displayName,
+    );
+    _user = updated;
+    // EMITTING IS THE POINT, not bookkeeping: a screen showing the user's name
+    // has no other way to learn it changed, and a save the user cannot see is
+    // indistinguishable from one that silently failed.
+    _changes.add(updated);
+    return updated;
+  }
 
   @override
   Future<void> deleteAccount() async {

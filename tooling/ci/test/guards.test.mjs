@@ -1054,6 +1054,13 @@ group('property: auth-redirect-follows-session', () {
   testWidgets('jj', (t) async {});
   testWidgets('kk', (t) async {});
 });
+group('property: profile-edit-works', () {
+  test('ll', () {});
+  test('mm', () {});
+  test('nn', () {});
+  test('oo', () {});
+  testWidgets('pp', (t) async {});
+});
 group('property: ui-invariants-inherited', () {
   testWidgets('q', (t) async {});
   testWidgets('r', (t) async {});
@@ -1146,6 +1153,7 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 );
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
 final Provider<AuthRefreshNotifier> authRefreshProvider = X();
+final StreamProvider<core.AuthUser?> authUserProvider = X();
 final NotifierProvider<RemindersEnabledController, bool> remindersEnabledProvider = X();
 final NotifierProvider<LocaleController, Locale?> localeProvider = X();
 
@@ -1225,6 +1233,24 @@ void _confirmDelete(BuildContext context, WidgetRef ref, AppLocalizations l10n) 
 
 final caps = NotificationCapabilities.forPlatform(defaultTargetPlatform, isWeb: kIsWeb);
 
+// [pipeline C-13] The profile editor. The tile watches the identity STREAM:
+// a currentUser snapshot compiles, renders, and never rebuilds, so a saved
+// name goes on showing the old value.
+final user = ref.watch(authUserProvider).valueOrNull;
+
+void _editProfile(BuildContext context, WidgetRef ref, AppLocalizations l10n, core.AuthUser user) {
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => _EditProfileDialog(
+      onSave: () => _saveProfile(dialogContext, ref, l10n, name.text),
+    ),
+  );
+}
+
+Future<void> _saveProfile(...) async {
+  await ref.read(authRepositoryProvider).updateProfile(displayName: displayName.trim());
+}
+
 Future<void> _deleteAccount(...) async {
   await auth.signInWithEmail(email: email, password: password);
   await auth.deleteAccount();
@@ -1236,6 +1262,17 @@ Future<void> _deleteAccount(...) async {
   // claiming internationalisation.
   const ARB_TA = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n/app_ta.arb';
   const goodArbTa = '{\n  "@@locale": "ta",\n  "settingsTitle": "x"\n}\n';
+
+  // [pipeline C-13] The auth SEAM itself. The profile screen was refused on the
+  // grounds that "there is no profile data model"; this method is the model, so
+  // the property is anchored to its declaration and not only to the screen.
+  const CORE_AUTH = 'packages/core/lib/src/auth/auth_repository.dart';
+  const goodCoreAuth = `
+abstract class AuthRepository {
+  Future<AuthUser> updateProfile({required String displayName});
+  Future<void> deleteAccount();
+}
+`;
 
   // [pipeline C-13] The router. `redirect:` was present the entire time the app
   // was unusable, so a fixture carrying only the guard would agree with a broken
@@ -1263,8 +1300,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, coreAuth = goodCoreAuth, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [CORE_AUTH]: coreAuth };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -1473,6 +1510,80 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
   });
 
+  // [pipeline C-13] EDIT DISPLAY NAME — the screen refused on the grounds that
+  // "there is no profile data model", which described a field nothing wrote and
+  // concluded it could never be written.
+  //
+  // 🔬 REAL-TREE MUTATIONS FIRST (2026-07-29, four, each grep-verified). Two of
+  // them are invisible to this guard by construction, and that is asserted below
+  // rather than left implied — an anchor cannot see behaviour.
+  describe('the profile editor is wired to the seam', () => {
+    // The dead-button shape, exactly as account deletion shipped it.
+    test('FAILS when the save button only closes the dialog', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-deadsave', {
+          settings: goodSettings.replace('onSave: () => _saveProfile(dialogContext, ref, l10n, name.text),', 'onSave: () => Navigator.pop(dialogContext),'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /a dialog whose action only pops looks exactly like one that worked/);
+    });
+
+    test('FAILS when the save flow never reaches the seam', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noupdate', {
+          settings: goodSettings.replace('  await ref.read(authRepositoryProvider).updateProfile(displayName: displayName.trim());\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must reach AuthRepository\.updateProfile/);
+    });
+
+    // THE INVISIBLE SAVE. Compiles, renders the right name on entry, and never
+    // rebuilds — so a saved name goes on showing the old value. Nothing about
+    // this looks wrong in review, which is why it is anchored.
+    test('FAILS when the tile reads the snapshot instead of the stream', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-snapshot', {
+          settings: goodSettings.replace('ref.watch(authUserProvider).valueOrNull;', 'ref.watch(authRepositoryProvider).currentUser;'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must watch the identity STREAM/);
+    });
+
+    // The seam method itself. A screen calling a method the contract does not
+    // declare is a compile error in the app and a silent pass here.
+    test('FAILS when the seam stops declaring updateProfile', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noseammethod', {
+          coreAuth: goodCoreAuth.replace('Future<AuthUser> updateProfile({required String displayName});', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /the seam must declare updateProfile/);
+    });
+
+    // 🔴 THE HONEST LIMIT, demonstrated with a mutation the ANCHOR STILL
+    // MATCHES. `\.updateProfile\(displayName:` matches both the correct call and
+    // this broken one, so the guard passes while the behaviour differs. On the
+    // real tree the same shape appeared twice — deleting the seam's EMIT, and
+    // storing '' instead of clearing the name — and both left this guard green
+    // while the property test went red.
+    //
+    // Anchors see TEXT; only the property sees BEHAVIOUR. If this ever goes red
+    // the guard got smarter, and this comment plus the property test header are
+    // stale.
+    test('does NOT catch a call that matches the anchor but misbehaves', () => {
+      const { code } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-notrim', {
+          settings: goodSettings.replace('updateProfile(displayName: displayName.trim());', 'updateProfile(displayName: displayName);'),
+        }),
+      });
+      assert.equal(code, 0, 'if this goes red, update the property test header and this comment');
+    });
+  });
+
   // [pipeline C-13] A user who signs in must END UP SOMEWHERE ELSE.
   //
   // 🔬 THE REAL-TREE MUTATIONS CAME FIRST (2026-07-29, four of them, each
@@ -1575,7 +1686,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 26 chassis behaviour\(s\)/);
+      assert.match(out, /tracked domain: 27 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -1609,7 +1720,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 25/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 26/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

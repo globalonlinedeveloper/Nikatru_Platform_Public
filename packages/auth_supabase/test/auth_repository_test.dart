@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -146,6 +148,63 @@ void main() {
       // …and a failed write must not abort a sign-in that already succeeded.
       await expectLater(broken.persistSession('x'), completes);
       await expectLater(broken.removePersistedSession(), completes);
+    });
+  });
+
+  // ── [pipeline C-13] updateProfile. ────────────────────────────────────────
+  // The profile screen was refused because "there is no profile data model".
+  // There is: gotrue writes `auth.users.user_metadata`, and this in-memory
+  // implementation drives the same seam end to end.
+  group('InMemoryAuthRepository.updateProfile', () {
+    late InMemoryAuthRepository auth;
+    setUp(() => auth = InMemoryAuthRepository());
+    tearDown(() => auth.dispose());
+
+    test('changes the name on the live session', () async {
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      expect(auth.currentUser!.displayName, isNull);
+      final core.AuthUser u = await auth.updateProfile(
+        displayName: 'Ada Lovelace',
+      );
+      expect(u.displayName, 'Ada Lovelace');
+      expect(auth.currentUser!.displayName, 'Ada Lovelace');
+      // The identity must not move: user_metadata is not the subject claim, and
+      // every server-side row is keyed on the id.
+      expect(auth.currentUser!.id, u.id);
+      expect(auth.currentUser!.email, 'a@b.com');
+    });
+
+    test('EMITS, so a screen showing the name learns it changed', () async {
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      final List<core.AuthUser?> seen = <core.AuthUser?>[];
+      final StreamSubscription<core.AuthUser?> sub = auth
+          .authStateChanges()
+          .listen(seen.add);
+      addTearDown(sub.cancel);
+
+      await auth.updateProfile(displayName: 'Ada');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        seen.map((core.AuthUser? u) => u?.displayName),
+        contains('Ada'),
+        reason: 'a save nothing is told about is invisible, which is '
+            'indistinguishable from one that silently failed',
+      );
+    });
+
+    test('an empty name CLEARS it rather than storing a blank', () async {
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      await auth.updateProfile(displayName: 'Ada');
+      await auth.updateProfile(displayName: '');
+      expect(auth.currentUser!.displayName, isNull);
+    });
+
+    test('refuses when nobody is signed in', () async {
+      await expectLater(
+        auth.updateProfile(displayName: 'Ada'),
+        throwsA(isA<core.AuthFailure>()),
+      );
     });
   });
 

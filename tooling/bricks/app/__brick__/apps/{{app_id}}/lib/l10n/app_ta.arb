@@ -62,5 +62,11 @@
   "language": "மொழி",
   "languageSystem": "சாதன மொழி",
   "languageEnglish": "English",
-  "languageTamil": "தமிழ்"
+  "languageTamil": "தமிழ்",
+  "profile": "சுயவிவரம்",
+  "displayName": "காட்சிப் பெயர்",
+  "displayNameNotSet": "பெயர் அமைக்கப்படவில்லை",
+  "editProfile": "சுயவிவரத்தைத் திருத்து",
+  "save": "சேமி",
+  "profileUpdateFailed": "உங்கள் பெயரைச் சேமிக்க முடியவில்லை. எதுவும் மாற்றப்படவில்லை."
 }

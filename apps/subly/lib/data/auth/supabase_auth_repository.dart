@@ -86,6 +86,25 @@ class SupabaseAuthRepository implements AuthRepository {
             ),
     );
   }
+
+  /// [pipeline C-13] Required by the shared `AuthRepository` seam. `updateUser`
+  /// writes `auth.users.user_metadata`, and this writes the same `full_name` key
+  /// `_map` reads — a write to any other key would succeed forever and change
+  /// nothing the app displays.
+  @override
+  Future<AuthUser> updateProfile({required String displayName}) async {
+    final sb.UserResponse res = await _auth.updateUser(
+      sb.UserAttributes(
+        data: <String, dynamic>{
+          'full_name': displayName.isEmpty ? null : displayName,
+        },
+      ),
+    );
+    final AuthUser? u = _map(res.user);
+    if (u == null) throw AuthFailure('Could not save your profile');
+    return u;
+  }
+
   /// [pipeline C-15] The CLIENT half only — `DELETE /v1/account` is stage 4's
   /// route and does not exist yet. Signs out regardless (a user who asked to be
   /// deleted must not keep a live session) and then throws, because silently

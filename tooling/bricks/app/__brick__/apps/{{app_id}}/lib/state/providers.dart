@@ -583,6 +583,26 @@ class AuthRefreshNotifier extends ChangeNotifier {
   }
 }
 
+/// The signed-in user as a STREAM, so a screen showing their details updates
+/// when those details change.
+///
+/// 🔴 SEEDED WITH THE SNAPSHOT, and that is load-bearing.
+/// [core.AuthRepository.authStateChanges] emits on CHANGE, so a screen built
+/// while the user is already signed in would sit on `AsyncLoading` — and
+/// therefore render as signed-out — until the next event, which on a settled
+/// session never comes.
+///
+/// Distinct from [authRepositoryProvider]'s synchronous `currentUser`, which is
+/// the right read for a redirect guard (it cannot await) and the wrong one for
+/// UI: it never rebuilds, so a name edited in place would go on showing the old
+/// value. [pipeline C-13]
+final StreamProvider<core.AuthUser?> authUserProvider =
+    StreamProvider<core.AuthUser?>((ref) async* {
+      final core.AuthRepository auth = ref.watch(authRepositoryProvider);
+      yield auth.currentUser;
+      yield* auth.authStateChanges();
+    });
+
 /// The router's refresh signal. One per container, disposed with it.
 final Provider<AuthRefreshNotifier> authRefreshProvider =
     Provider<AuthRefreshNotifier>((ref) {

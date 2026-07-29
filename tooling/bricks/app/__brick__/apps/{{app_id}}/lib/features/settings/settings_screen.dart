@@ -21,10 +21,39 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final ThemeMode mode = ref.watch(themeModeProvider);
+    // WATCHED as a stream, not read off `currentUser`: the tile below shows a
+    // value the user can edit from this very screen, and a snapshot read would
+    // go on showing the old name after a successful save. [pipeline C-13]
+    final core.AuthUser? user = ref.watch(authUserProvider).valueOrNull;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         children: <Widget>[
+          // ── PROFILE ──────────────────────────────────────────────────────
+          // Only when there is an account. Offering "edit your name" to a
+          // signed-out user is an offer the app cannot honour — the same reason
+          // the deletion entry is gated further down.
+          if (user != null) ...<Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                l10n.profile,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            ListTile(
+              leading: CircleAvatar(child: Text(user.initial)),
+              title: Text(
+                (user.displayName == null || user.displayName!.isEmpty)
+                    ? l10n.displayNameNotSet
+                    : user.displayName!,
+              ),
+              subtitle: Text(user.email),
+              trailing: const Icon(Icons.edit_outlined),
+              onTap: () => _editProfile(context, ref, l10n, user),
+            ),
+            const Divider(),
+          ],
           // [pipeline C-16] The on-switch for the persisted themeMode. A stored
           // preference with no control is a dead setting — the same shape as the
           // consent recorder that had no prompt and silently discarded every
@@ -257,6 +286,59 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  /// [pipeline C-13] EDIT DISPLAY NAME.
+  ///
+  /// This screen was refused on the grounds that "there is no profile data
+  /// model". There is: every identity provider worth using stores user
+  /// metadata, and Supabase's gotrue exposes `updateUser` for exactly this. The
+  /// original reason described a field nothing wrote and concluded from that
+  /// that it could never be written.
+  ///
+  /// Split into its own dialog widget for the same reason the delete dialog is —
+  /// a confirm action only reachable through a tap on a tile is one nobody
+  /// writes a test for, which is how a dead button survives.
+  void _editProfile(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+    core.AuthUser user,
+  ) {
+    final TextEditingController name = TextEditingController(
+      text: user.displayName ?? '',
+    );
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => _EditProfileDialog(
+        l10n: l10n,
+        name: name,
+        onSave: () => _saveProfile(dialogContext, ref, l10n, name.text),
+      ),
+    );
+  }
+
+  Future<void> _saveProfile(
+    BuildContext dialogContext,
+    WidgetRef ref,
+    AppLocalizations l10n,
+    String displayName,
+  ) async {
+    final NavigatorState nav = Navigator.of(dialogContext);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(
+      dialogContext,
+    );
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .updateProfile(displayName: displayName.trim());
+      nav.pop();
+    } catch (_) {
+      // Says plainly that nothing changed. "Saved" on a failed write is the
+      // kind of lie the user only discovers on their next launch.
+      nav.pop();
+      messenger.showSnackBar(SnackBar(content: Text(l10n.profileUpdateFailed)));
+    }
+  }
+
   /// 🔴 [pipeline C-13] THIS BUTTON USED TO DO NOTHING. Its confirm action was
   /// `Navigator.pop(dialogContext)` and no more — no API call, no reauth. Both
   /// stores require a working in-app deletion path where accounts exist, so that
@@ -312,6 +394,43 @@ class SettingsScreen extends ConsumerWidget {
       nav.pop();
       messenger.showSnackBar(SnackBar(content: Text(l10n.deleteAccountFailed)));
     }
+  }
+}
+
+/// [pipeline C-13] The display-name editor. No confirmation step and no reauth,
+/// deliberately: renaming yourself is reversible in one tap, and guarding a
+/// harmless action trains people to click through the guards on the dangerous
+/// one two tiles below.
+class _EditProfileDialog extends StatelessWidget {
+  const _EditProfileDialog({
+    required this.l10n,
+    required this.name,
+    required this.onSave,
+  });
+
+  final AppLocalizations l10n;
+  final TextEditingController name;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(l10n.editProfile),
+      content: TextField(
+        controller: name,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        decoration: InputDecoration(labelText: l10n.displayName),
+        onSubmitted: (_) => onSave(),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.cancel),
+        ),
+        FilledButton(onPressed: onSave, child: Text(l10n.save)),
+      ],
+    );
   }
 }
 

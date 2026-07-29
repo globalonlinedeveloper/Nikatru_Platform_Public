@@ -193,5 +193,17 @@
   "languageEnglish": "English",
   "@languageEnglish": { "description": "Language names are shown in their OWN language, so a speaker can find theirs without reading the current one." },
   "languageTamil": "தமிழ்",
-  "@languageTamil": { "description": "Tamil, written in Tamil — see languageEnglish." }
+  "@languageTamil": { "description": "Tamil, written in Tamil — see languageEnglish." },
+  "profile": "Profile",
+  "@profile": { "description": "Settings section for the user's own account details." },
+  "displayName": "Display name",
+  "@displayName": { "description": "The name shown to the user in the app. Editable." },
+  "displayNameNotSet": "No name set",
+  "@displayNameNotSet": { "description": "Shown in place of the display name when the user has not chosen one. An empty line would read as a rendering fault." },
+  "editProfile": "Edit profile",
+  "@editProfile": { "description": "Title of the dialog for changing the display name." },
+  "save": "Save",
+  "@save": { "description": "Commits an edit." },
+  "profileUpdateFailed": "Could not save your name. Nothing was changed.",
+  "@profileUpdateFailed": { "description": "Shown when the profile update fails. Must state plainly that nothing changed: 'saved' on a failed write is a lie the user only discovers at their next launch." }
 }
