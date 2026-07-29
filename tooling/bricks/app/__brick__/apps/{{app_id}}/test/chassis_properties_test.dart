@@ -632,6 +632,67 @@ void main() {
     );
   });
 
+  // ── PROPERTY: reminder-intent-persisted ───────────────────────────────────
+  // [pipeline C-13] The user's reminder choice survives a restart, and is stored
+  // SEPARATELY from the OS permission.
+  //
+  // 🔴 WHY SEPARATE. The OS can revoke notification permission at any time from
+  // the system settings app, and the app finds out only when it next tries. If
+  // the toggle stored "permission granted" it would read ON while every
+  // notification was silently dropped — the toggle lying about the feature is
+  // exactly the shape [pipeline C-6] exists to catch. So this stores INTENT, and
+  // the platform's answer is asked for fresh each time it matters.
+  group('property: reminder-intent-persisted', () {
+    test('defaults to OFF — nothing is scheduled without a choice', () {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      expect(c.read(remindersEnabledProvider), isFalse);
+    });
+
+    test('a choice is written to storage', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer c = _container(store);
+      addTearDown(c.dispose);
+      await c.read(remindersEnabledProvider.notifier).set(true);
+      expect(c.read(remindersEnabledProvider), isTrue);
+      expect(store.data['nikatru.reminders_enabled'], 'true');
+    });
+
+    test('a stored choice SURVIVES a restart', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer first = _container(store);
+      await first.read(remindersEnabledProvider.notifier).set(true);
+      first.dispose();
+
+      final ProviderContainer reborn = _container(store);
+      addTearDown(reborn.dispose);
+      reborn.read(remindersEnabledProvider); // triggers the background hydrate
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        reborn.read(remindersEnabledProvider),
+        isTrue,
+        reason: 'without this the toggle resets at every launch',
+      );
+    });
+
+    test(
+      'an unreadable store leaves reminders OFF, and never throws',
+      () async {
+        final ProviderContainer c = ProviderContainer(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith(
+              (_) async => throw StateError('disk gone'),
+            ),
+          ],
+        );
+        addTearDown(c.dispose);
+        expect(c.read(remindersEnabledProvider), isFalse);
+        await Future<void>.delayed(Duration.zero);
+        expect(c.read(remindersEnabledProvider), isFalse);
+      },
+    );
+  });
+
   // ── PROPERTY: analytics-consent-gated ─────────────────────────────────────
   // Stage 11 says a stamped app answers is-it-working / is-it-converting /
   // is-it-broken with no per-app instrumentation. That claim is only true if the

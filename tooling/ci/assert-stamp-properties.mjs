@@ -134,6 +134,19 @@ const REQUIRED_COVERAGE = [
     why: 'both stores require a WORKING in-app deletion path wherever an account can be created',
   },
   {
+    key: 'reminder-intent-persisted',
+    group: /group\(\s*'property: reminder-intent-persisted'/,
+    sources: [
+      { file: PROVIDERS, re: /kv\.write\(\s*_remindersKey/, what: 'the reminder choice must be WRITTEN — an in-memory toggle resets at every launch' },
+      { file: PROVIDERS, re: /kv\.read\(\s*_remindersKey/, what: 'it must be READ back at launch — a write nobody reads restores nothing' },
+      // `\s*` around the dot because `dart format` wraps this call across two
+      // lines in the stamped app, and an anchor that only matches the unwrapped
+      // form fails on the very file it is guarding.
+      { file: SETTINGS, re: /NotificationCapabilities\s*\.\s*forPlatform\(/, what: 'the toggle must consult the platform matrix — a switch that silently does nothing on Linux/Windows is worse than an honest sentence' },
+    ],
+    why: 'a toggle that reads ON while every notification is dropped is the C-6 shape',
+  },
+  {
     key: 'analytics-consent-gated',
     group: /group\(\s*'property: analytics-consent-gated'/,
     sources: [{ file: PROVIDERS, re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted/, what: 'the template must really call ConsentController.record' }],
@@ -168,7 +181,7 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 23;
+const MIN_DOMAIN = 24;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -180,6 +193,8 @@ const COVERED_BY = {
   authTokenProvider: 'auth-seam-wired',
   restClientProvider: 'auth-seam-wired',
   authCapabilitiesProvider: 'auth-seam-wired',
+  remindersEnabledProvider: 'reminder-intent-persisted',
+  notificationServiceProvider: 'reminder-intent-persisted',
   keyValueStoreProvider: 'theme-mode-persisted',
   themeModeProvider: 'theme-mode-persisted',
   installIdProvider: 'analytics-consent-gated',
@@ -203,7 +218,6 @@ const UNASSERTED = {
   mustForceUpdateProvider: '2026-07-28 · the force-update kill-switch. NOTHING proves the update wall appears on a stamped app — and this is the switch that was inert for 55 builds',
   secureStoreProvider: '2026-07-28 · no stamped-app property; the secure store needs a platform channel a widget test has not got',
   featureFlagsProvider: '2026-07-28 · rollout bucketing is unasserted in the stamp; core tests the maths, nothing tests that a stamped app buckets',
-  notificationServiceProvider: '2026-07-28 · C-7 owns the platform-capability matrix; deliberately not duplicated here',
   entitlementCacheProvider: '2026-07-28 · BLOCKED — the paid path is stage 5. C-6 routed the entitlement instance there rather than half-build it',
   analyticsConsentProvider: '2026-07-28 · the UI-facing read; consentDecidedProvider is the limb the property test drives, and it is the one that decides whether to prompt',
 };

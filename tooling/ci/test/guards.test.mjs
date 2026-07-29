@@ -1028,6 +1028,12 @@ group('property: brand-seed-drives-paint', () {
   testWidgets('o', (t) async {});
   test('p', () {});
 });
+group('property: reminder-intent-persisted', () {
+  test('cc', () {});
+  test('dd', () {});
+  test('ee', () {});
+  test('ff', () {});
+});
 group('property: account-deletion-works', () {
   test('aa', () {});
   test('bb', () {});
@@ -1129,6 +1135,16 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
   ),
 );
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
+final NotifierProvider<RemindersEnabledController, bool> remindersEnabledProvider = X();
+
+class RemindersEnabledController extends Notifier<bool> {
+  Future<void> _hydrate() async {
+    final bool stored = (await kv.read(_remindersKey)) == 'true';
+  }
+  Future<void> set(bool on) async {
+    await kv.write(_remindersKey, on ? 'true' : 'false');
+  }
+}
 
 class ThemeModeController extends Notifier<ThemeMode> {
   Future<void> _hydrate() async {
@@ -1179,6 +1195,8 @@ void _confirmDelete(BuildContext context, WidgetRef ref, AppLocalizations l10n) 
     ),
   );
 }
+
+final caps = NotificationCapabilities.forPlatform(defaultTargetPlatform, isWeb: kIsWeb);
 
 Future<void> _deleteAccount(...) async {
   await auth.signInWithEmail(email: email, password: password);
@@ -1408,10 +1426,12 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 23 chassis behaviour\(s\)/);
+      assert.match(out, /tracked domain: 24 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
-      assert.match(out, /10 chassis behaviour\(s\) a stamped app does NOT prove/);
+      // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
+      // admitted-gap list when the reminder toggle started driving it.
+      assert.match(out, /9 chassis behaviour\(s\) a stamped app does NOT prove/);
       assert.match(out, /mustForceUpdateProvider/);
     });
 
@@ -1440,7 +1460,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 22/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 23/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
