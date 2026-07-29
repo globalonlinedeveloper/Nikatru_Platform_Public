@@ -54,16 +54,19 @@ void run(HookContext context) {
       ..success('Stamped $id (apps/$id + services/$id-api). Owner checklist:')
       ..info('  1. Add store metadata for apps/\$id. Web icons were GENERATED '
           'from seed_hex — replace them only if you have real art.')
-      ..info('  2. wrangler d1 create ${id}_db --location apac, then paste the '
-          'id into services/$id-api/wrangler.jsonc (APP_DB.database_id).')
-      ..info('     (--location is CREATE-TIME ONLY and can never be changed.)')
-      ..info('  3. cd services/$id-api && npm install && npm run db:migrate.')
-      ..info('  4. Add DNS for $apiHost and the web subdomain $webHost.')
-      ..info('  5. REQUIRED for the web build: add "https://$webHost" to '
+      ..info('  2. ONE COMMAND provisions the backend — create the D1 in apac, '
+          'patch APP_DB.database_id, apply the starter migration, and PROVE '
+          'all three against the live database:')
+      ..info('       node tooling/scripts/provision-backend.mjs $id')
+      ..info('     (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Do NOT '
+          '`source` .claude/secrets.env — it is not a pure env file; extract '
+          'the two keys. [pipeline S-12])')
+      ..info('  3. Add DNS for $apiHost and the web subdomain $webHost.')
+      ..info('  4. REQUIRED for the web build: add "https://$webHost" to '
           'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
           'The allowlist is EXACT — omit this and the app silently loses '
           'config + analytics in the browser, with no server-side error.')
-      ..info('  6. cd apps/$id && flutter pub get && flutter analyze.')
+      ..info('  5. cd apps/$id && flutter pub get && flutter analyze.')
       ..warn('This app claimed one of the TEN D1 databases the free tier '
           'allows per ACCOUNT (platform_db is another). If it does not really '
           'store user rows, re-stamp with needs_backend=false.');

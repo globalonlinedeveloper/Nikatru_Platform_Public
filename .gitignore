@@ -13,7 +13,13 @@
 .claude/
 knowledge/
 company/
-scripts/
+# ANCHORED to the repo root on purpose. Without the leading slash this pattern
+# matches a directory named `scripts` at ANY depth — it was written for the
+# local helper scripts here, and it silently swallowed tooling/scripts/ the
+# first time one was added (2026-07-29, S-12's provisioner). `git add <path>`
+# warns; `git add -A` would simply have dropped the file, and the loss would
+# have surfaced as a missing tool in someone else's clone.
+/scripts/
 CLAUDE.md
 
 # Personal/ — the OWNER'S OWN documents, not the business's: Form 16, AIS/TIS,
