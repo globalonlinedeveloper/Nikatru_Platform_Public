@@ -93,13 +93,37 @@ export async function keepAliveSupabase(env: Env): Promise<void> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
+      // The anon key is what makes this a REAL request rather than a rejected
+      // one. Without it Supabase answers 401 before touching anything, and a
+      // rejected request is a poor candidate for "activity". Sent as both
+      // `apikey` and `Authorization` because Supabase accepts either depending
+      // on the service, and this endpoint should not be the place we find out
+      // which. Absent key ⇒ the call still goes out (some activity is better
+      // than none) but the row says so loudly.
+      const key = env.SUPABASE_ANON_KEY;
       const res = await fetch(`${target}/auth/v1/health`, {
         signal: controller.signal,
+        headers: key ? { apikey: key, Authorization: `Bearer ${key}` } : {},
       });
       console.log(`[cron] supabase keep-alive ${target}: ${res.status}`);
-      // A request that reaches a broken project still counts as activity, but it
-      // must not read as green — a 5xx is recorded as a failure.
-      rows.push({ target, ok: res.status < 500, detail: `HTTP ${res.status}` });
+      // 🔴 `ok` MEANS 2xx. It used to mean `res.status < 500`, which recorded a
+      // 401 as SUCCESS — and 401 is exactly what this call returned every night
+      // (verified in production 2026-07-29: three rows, all ok=1, all
+      // "HTTP 401"). So the one instrument standing between a low-traffic
+      // project and the ~7-day auto-pause reported green while being rejected at
+      // the door. `ratel` is already INACTIVE in the same organisation, so the
+      // failure mode is demonstrated, not theoretical.
+      // An explicit range rather than `res.ok`, deliberately: `.ok` is a real
+      // Response property that hand-rolled test doubles routinely omit, and a
+      // double missing it makes every success read as a failure. Depending on
+      // the narrowest fact — the status number — keeps the rule true for both.
+      const ok = res.status >= 200 && res.status < 300;
+      const detail = ok
+        ? `HTTP ${res.status}`
+        : res.status === 401
+          ? `HTTP 401 — REJECTED (unauthenticated${key ? ', key present but refused' : ', no SUPABASE_ANON_KEY configured'}). A rejected request is not proven activity.`
+          : `HTTP ${res.status}`;
+      rows.push({ target, ok, detail });
     } catch (err) {
       console.log(`[cron] supabase keep-alive ${target} FAILED: ${String(err)}`);
       rows.push({ target, ok: false, detail: String(err) });

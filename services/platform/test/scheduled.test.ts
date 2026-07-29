@@ -85,7 +85,7 @@ describe('keepAliveSupabase — every outcome is recorded', () => {
     const seen: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       seen.push(url);
-      return { status: 200 } as Response;
+      return new Response('', { status: 200 });
     }));
     const { db, bound } = fakeDb();
     await keepAliveSupabase({
@@ -120,7 +120,7 @@ describe('keepAliveSupabase — every outcome is recorded', () => {
   });
 
   it('a 5xx is recorded as a failure — a broken project must not read as green', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 503 }) as Response));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
     const { db, bound } = fakeDb();
     await keepAliveSupabase({
       SUPABASE_URL: 'https://live.supabase.co',
@@ -133,7 +133,7 @@ describe('keepAliveSupabase — every outcome is recorded', () => {
   it('one dead target does not stop the others being pinged', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.startsWith('https://dead')) throw new Error('boom');
-      return { status: 200 } as Response;
+      return new Response('', { status: 200 });
     }));
     const { db, bound } = fakeDb();
     await keepAliveSupabase({
@@ -166,7 +166,7 @@ describe('keepAliveSupabase — every outcome is recorded', () => {
   });
 
   it('a heartbeat write failure does not throw out of the cron', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 200 }) as Response));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200 })));
     const db = {
       prepare: () => ({ bind: () => ({}) }),
       batch: vi.fn(async () => {
@@ -179,5 +179,104 @@ describe('keepAliveSupabase — every outcome is recorded', () => {
         PLATFORM_DB: db,
       } as unknown as Env),
     ).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * 🔴 THE DEFECT THESE EXIST FOR, measured in production on 2026-07-29.
+ *
+ * `cron_heartbeat` held three rows (27-29 Jul), every one `ok=1`, every one
+ * `detail: "HTTP 401"`. The keep-alive was being REJECTED at the door every
+ * night and recording it as success, because `ok` was defined as
+ * `res.status < 500`. Supabase pauses idle free projects, and `ratel`
+ * (fkbmodjtxatrqcghhfba) is ALREADY `INACTIVE` in the same organisation — so
+ * this is a demonstrated failure mode, not a hypothetical one, and the
+ * instrument meant to warn about it was the thing lying.
+ */
+describe('keep-alive: a rejected request is not a success', () => {
+  function capture() {
+    const rows: { ok: unknown; detail: unknown }[] = [];
+    const db = {
+      prepare: () => ({
+        bind: (...a: unknown[]) => {
+          // INSERT ... (job, target, ok, detail, ran_at)
+          rows.push({ ok: a[2], detail: a[3] });
+          return { __stmt: true };
+        },
+      }),
+      batch: vi.fn(async () => []),
+    };
+    return { db, rows };
+  }
+
+  it('records a 401 as a FAILURE, not a success', async () => {
+    const { db, rows } = capture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })));
+    await keepAliveSupabase(env({ PLATFORM_DB: db } as never));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ok).toBe(0);
+    expect(String(rows[0].detail)).toContain('401');
+  });
+
+  it('says WHY a 401 happened when no anon key is configured', async () => {
+    const { db, rows } = capture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })));
+    await keepAliveSupabase(env({ PLATFORM_DB: db } as never));
+    expect(String(rows[0].detail)).toContain('no SUPABASE_ANON_KEY configured');
+  });
+
+  it('distinguishes "key present but refused" from "no key at all"', async () => {
+    const { db, rows } = capture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })));
+    await keepAliveSupabase(
+      env({ PLATFORM_DB: db, SUPABASE_ANON_KEY: 'anon-key' } as never),
+    );
+    expect(String(rows[0].detail)).toContain('key present but refused');
+  });
+
+  it('SENDS the anon key when it has one — that is what makes it a real request', async () => {
+    const { db } = capture();
+    const seen: Record<string, string>[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: { headers?: Record<string, string> }) => {
+        seen.push(init?.headers ?? {});
+        return new Response('', { status: 200 });
+      }),
+    );
+    await keepAliveSupabase(
+      env({ PLATFORM_DB: db, SUPABASE_ANON_KEY: 'anon-key' } as never),
+    );
+    expect(seen[0].apikey).toBe('anon-key');
+    expect(seen[0].Authorization).toBe('Bearer anon-key');
+  });
+
+  it('records a 200 as a success', async () => {
+    const { db, rows } = capture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200 })));
+    await keepAliveSupabase(env({ PLATFORM_DB: db } as never));
+    expect(rows[0].ok).toBe(1);
+  });
+
+  // The old rule was `status < 500`. Anything in 4xx is the range where it lied.
+  it.each([400, 401, 403, 404, 429])('records %i as a failure', async (status) => {
+    const { db, rows } = capture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status })));
+    await keepAliveSupabase(env({ PLATFORM_DB: db } as never));
+    expect(rows[0].ok).toBe(0);
+  });
+
+  // EVERY configured target must leave a row. A target that silently writes
+  // nothing is indistinguishable from one that was never configured.
+  it('writes one row per configured target', async () => {
+    const { db, rows } = capture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200 })));
+    await keepAliveSupabase(
+      env({
+        PLATFORM_DB: db,
+        SUPABASE_KEEPALIVE_URLS: 'https://a.supabase.co,https://b.supabase.co',
+      } as never),
+    );
+    expect(rows).toHaveLength(2);
   });
 });
