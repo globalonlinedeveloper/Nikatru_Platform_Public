@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:mason/mason.dart';
 
+import 'brand_assets.dart';
+
 /// After a stamp: (1) append the app to sites/_shared/_data/apps.json (SHOW-1,
 /// automated), then (2) print the owner's manual, non-automatable checklist.
 void run(HookContext context) {
@@ -35,13 +37,23 @@ void run(HookContext context) {
 
   _registerInWorkspace(context, id: id);
 
+  // [pipeline S-14] Brand assets are GENERATED, never copied. The brick used to
+  // ship Flutter's stock icons and every stamped app inherited them — measured
+  // 2026-07-29, all five were byte-identical to `flutter create` output, which is
+  // DoD §4-G's "ships the default Flutter icon" reproduced in the template where
+  // it lands on all fifty apps at once. The mark is pure arithmetic over app_id
+  // and seed_hex, so it obeys [ADR 019]'s NO-IP-PROMPTING rule by using no model
+  // at all, and a re-stamp reproduces it byte-for-byte ([3]S-15).
+  _writeBrandAssets(context, id: id, seedHex: (v['seed_hex'] ?? '').toString());
+
   final apiHost = apiDomain.isEmpty ? 'api-$id.nikatru.com' : apiDomain;
 
   context.logger.info('');
   if (needsBackend) {
     context.logger
       ..success('Stamped $id (apps/$id + services/$id-api). Owner checklist:')
-      ..info('  1. Add store metadata + brand assets for apps/\$id.')
+      ..info('  1. Add store metadata for apps/\$id. Web icons were GENERATED '
+          'from seed_hex — replace them only if you have real art.')
       ..info('  2. wrangler d1 create ${id}_db --location apac, then paste the '
           'id into services/$id-api/wrangler.jsonc (APP_DB.database_id).')
       ..info('     (--location is CREATE-TIME ONLY and can never be changed.)')
@@ -58,7 +70,8 @@ void run(HookContext context) {
   } else {
     context.logger
       ..success('Stamped $id (apps/$id — CLIENT-ONLY). Owner checklist:')
-      ..info('  1. Add store metadata + brand assets for apps/\$id.')
+      ..info('  1. Add store metadata for apps/\$id. Web icons were GENERATED '
+          'from seed_hex — replace them only if you have real art.')
       ..info('  2. Add DNS for the web subdomain $webHost. No API host and no '
           'D1 database are needed — this app uses the shared platform Worker.')
       ..info('  3. REQUIRED for the web build: add "https://$webHost" to '
@@ -87,7 +100,8 @@ void run(HookContext context) {
 void _registerInWorkspace(HookContext context, {required String id}) {
   final file = File('pubspec.yaml');
   if (!file.existsSync()) {
-    context.logger.warn('pubspec.yaml not found; skipped workspace registration.');
+    context.logger
+        .warn('pubspec.yaml not found; skipped workspace registration.');
     return;
   }
   final lines = file.readAsLinesSync();
@@ -103,7 +117,8 @@ void _registerInWorkspace(HookContext context, {required String id}) {
   }
   final entry = '  - apps/$id';
   if (lines.sublist(start + 1, end).any((l) => l.trimRight() == entry)) {
-    context.logger.info('pubspec.yaml already lists "apps/$id"; left unchanged.');
+    context.logger
+        .info('pubspec.yaml already lists "apps/$id"; left unchanged.');
     return;
   }
   lines.insert(end, entry);
@@ -155,4 +170,31 @@ void _appendToAppsJson(
   const encoder = JsonEncoder.withIndent('  ');
   file.writeAsStringSync('${encoder.convert(decoded)}\n');
   context.logger.success('apps.json: added "$id" (SHOW-1).');
+}
+
+/// [pipeline S-14] Generate the app's web icons from its spec.
+///
+/// Warns rather than throws: post_gen runs AFTER the tree is written, so a
+/// failure here would leave a half-stamped app, which is exactly the half-state
+/// [3]S-13's refusal exists to prevent. The missing assets are not silent — the
+/// `app_brick` lane's brand-asset guard fails on them, so the gap surfaces at the
+/// gate rather than in a store review.
+void _writeBrandAssets(
+  HookContext context, {
+  required String id,
+  required String seedHex,
+}) {
+  final webDir = Directory('apps/$id/web');
+  try {
+    final written = writeWebBrandAssets(
+      webDir: webDir,
+      appId: id,
+      seedHex: seedHex,
+    );
+    context.logger.success(
+      'brand assets: generated ${written.length} icon(s) for "$id" from seed #$seedHex.',
+    );
+  } catch (e) {
+    context.logger.warn('brand assets: generation failed ($e); icons NOT written.');
+  }
 }
