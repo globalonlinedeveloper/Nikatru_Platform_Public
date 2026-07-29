@@ -61,6 +61,13 @@ function fail(lines) {
   process.exit(1);
 }
 
+/** Same as fail(), but for the post-fetch paths — see the note beside `done`. */
+let softFailed = false;
+function failSoft(lines) {
+  for (const l of lines) console.error(l);
+  softFailed = true;
+}
+
 if (!existsSync(CATALOG)) {
   fail([
     `✗ COVERAGE LOST — no catalogue at ${CATALOG}.`,
@@ -94,6 +101,12 @@ async function probe(url) {
     // GET, not HEAD: Workers and static hosts routinely answer HEAD differently
     // (or not at all), so HEAD can report a failure the real visitor never sees.
     const res = await fetch(url, { signal: ctl.signal, redirect: 'follow' });
+    // 🔴 THE BODY MUST BE DRAINED, and it is not politeness. An unconsumed body
+    // leaves the socket checked out of the pool, so the later `process.exit()`
+    // tears down a connection that is still live — on Windows that surfaced as
+    // the guard CRASHING with 0xC0000409 instead of exiting 1, and only on the
+    // retrying (5xx) path, which is what made it look like a 522-specific bug.
+    await res.arrayBuffer().catch(() => {});
     return res.ok ? { ok: true, status: res.status } : { status: res.status };
   } catch (err) {
     return { transport: err?.cause?.code ?? err?.name ?? String(err) };
@@ -127,11 +140,20 @@ const answered = results.filter((r) => r.verdict.ok);
 const httpFailures = results.filter((r) => !r.verdict.ok && r.verdict.status !== undefined);
 const transportFailures = results.filter((r) => r.verdict.transport !== undefined);
 
+// 🔴 FROM HERE ON, EXIT VIA `process.exitCode` AND NEVER `process.exit()`.
+// Calling process.exit() after a fetch tears down undici's still-open pool
+// mid-flight, and on Windows that is not a tidy race — it aborts the process
+// (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`, exit 127) AFTER
+// printing "ok", so the guard reports success and returns a failure code. A
+// guard whose exit code contradicts its own output is worse than no guard.
+// Setting exitCode lets the loop drain and the process end on its own.
+const done = (code) => { process.exitCode = code; };
+
 // The network-is-down case. Only claim it when NOTHING got through and every
 // failure was a transport error — a single unreachable host among answering
 // ones is that host's problem, not the runner's.
 if (live.length > 0 && transportFailures.length === live.length) {
-  fail([
+  failSoft([
     `✗ COVERAGE LOST — all ${live.length} live entry(ies) failed at the transport layer, none returned`,
     '  any HTTP status.',
     '',
@@ -144,9 +166,13 @@ if (live.length > 0 && transportFailures.length === live.length) {
     '  catalogue entry reaches the HTTP branch above — a transport error here points off-wildcard.)',
     ...transportFailures.map((r) => `    ${r.slug} → ${r.url} — ${r.verdict.transport}`),
   ]);
+  done(1);
 }
 
+// Skipped entirely when the transport branch already fired: every entry would
+// be re-listed there, and one defect reported twice reads as two defects.
 const problems = [];
+if (!softFailed) {
 for (const r of httpFailures) {
   if (r.missingUrl) {
     problems.push(`${r.slug} — marked \`live\` with no \`url\`. An advertised app nobody can open.`);
@@ -168,15 +194,18 @@ for (const r of transportFailures) {
   );
 }
 
+}
+
 if (problems.length) {
   console.error(`✗ catalogue reachability — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
   console.error('');
   console.error('  [pipeline S-7a] a `live` entry is a promise to a stranger that the link works.');
   console.error(`  Catalogue: sites/_shared/_data/apps.json`);
-  process.exit(1);
+  done(1);
 }
 
+if (!softFailed && !problems.length) {
 for (const r of answered) console.log(`    ${r.slug} → ${r.url} (${r.verdict.status})`);
 if (skipped > 0) {
   // Printed on every run, pass or fail. Marking entries `preview` is the one way
@@ -187,11 +216,4 @@ console.log(
   `ok  catalogue reachability — ${answered.length} of ${live.length} live entry(ies) answered; ` +
     `${entries.length} entry(ies) in the catalogue, ${skipped} unprobed`,
 );
-
-// 🔴 EXPLICIT, AND NOT TIDINESS. `fetch` keeps pooled keep-alive sockets open,
-// so falling off the end of this file does NOT end the process — it sits until
-// the pool times out. Found by the fixtures hanging: every case, including the
-// passing ones, blocked for minutes. In CI that is a step that never returns,
-// which looks exactly like a slow network and is the worst possible failure
-// shape for a guard whose whole subject is "did it answer".
-process.exit(0);
+}

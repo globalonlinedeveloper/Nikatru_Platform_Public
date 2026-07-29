@@ -23,7 +23,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -88,59 +89,71 @@ function tree(entries) {
   return root;
 }
 
-const run = (cwd) => {
-  const r = spawnSync(process.execPath, [GUARD], { cwd, encoding: 'utf8' });
-  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+// 🔴 ASYNC, AND THAT IS THE WHOLE POINT. This was `spawnSync`, which BLOCKS the
+// event loop of the very process hosting the fixture server — so the guard's
+// request could never be answered and every network case reported a transport
+// error. It reproduced identically on the authoring machine and on the CI
+// runner, which is what finally ruled out "sandboxed localhost" and pointed at
+// the harness deadlocking itself. The guard was correct on every one of those
+// runs; the test could not let it succeed.
+const execFileAsync = promisify(execFile);
+const run = async (cwd) => {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [GUARD], { cwd, encoding: 'utf8' });
+    return { code: 0, out: `${stdout}${stderr}` };
+  } catch (err) {
+    return { code: err.code ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+  }
 };
 
 const entry = (slug, path, status = 'live') => ({ slug, name: slug, url: url(path), status });
 
 describe('assert-catalog-reachable', () => {
-  test('passes when every live entry answers', NET, () => {
-    const { code, out } = run(tree([entry('alpha', '/ok'), entry('beta', '/ok')]));
+  test('passes when every live entry answers', NET, async () => {
+    const { code, out } = await run(tree([entry('alpha', '/ok'), entry('beta', '/ok')]));
     assert.equal(code, 0, out);
     assert.match(out, /2 of 2 live entry\(ies\) answered/);
   });
 
   // 🔴 N1 — the defect S-7a exists for, in the exact shape production produces.
-  test('FAILS on a live entry answering 522 (a subdomain with no origin)', NET, () => {
-    const { code, out } = run(tree([entry('alpha', '/ok'), entry('dead', '/gone')]));
+  test('FAILS on a live entry answering 522 (a subdomain with no origin)', NET, async () => {
+    const { code, out } = await run(tree([entry('alpha', '/ok'), entry('dead', '/gone')]));
     assert.equal(code, 1);
     assert.match(out, /dead — marked `live` but .* answered HTTP 522/);
     assert.match(out, /NOTHING BEHIND IT/);
   });
 
-  test('FAILS on a live entry answering 404', NET, () => {
-    const { code, out } = run(tree([entry('alpha', '/ok'), entry('missing', '/missing')]));
+  test('FAILS on a live entry answering 404', NET, async () => {
+    const { code, out } = await run(tree([entry('alpha', '/ok'), entry('missing', '/missing')]));
     assert.equal(code, 1);
     assert.match(out, /missing — marked `live` but .* answered HTTP 404/);
   });
 
-  test('FAILS on a live entry with no url at all', () => {
-    const { code, out } = run(tree([{ slug: 'urlless', status: 'live' }]));
+  test('FAILS on a live entry with no url at all', async () => {
+    const { code, out } = await run(tree([{ slug: 'urlless', status: 'live' }]));
     assert.equal(code, 1);
     assert.match(out, /urlless — marked `live` with no `url`/);
   });
 
   // N2 — `preview` is legitimately skipped, but the shrink must be VISIBLE,
   // because marking everything preview is the one way to empty the domain.
-  test('skips preview entries and PRINTS that it did', NET, () => {
-    const { code, out } = run(tree([entry('alpha', '/ok'), entry('soon', '/gone', 'preview')]));
+  test('skips preview entries and PRINTS that it did', NET, async () => {
+    const { code, out } = await run(tree([entry('alpha', '/ok'), entry('soon', '/gone', 'preview')]));
     assert.equal(code, 0, out);
     assert.match(out, /1 entry\(ies\) not marked `live` and therefore NOT probed/);
   });
 
   // ── anti-vacuity ──────────────────────────────────────────────────────────
-  test('COVERAGE LOST on an empty catalogue', () => {
-    const { code, out } = run(tree([]));
+  test('COVERAGE LOST on an empty catalogue', async () => {
+    const { code, out } = await run(tree([]));
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST — the catalogue is empty/);
   });
 
-  test('COVERAGE LOST when the catalogue file is absent', () => {
+  test('COVERAGE LOST when the catalogue file is absent', async () => {
     const root = join(TMP, `r${seq++}`);
     mkdirSync(root, { recursive: true });
-    const { code, out } = run(root);
+    const { code, out } = await run(root);
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST — no catalogue/);
   });
@@ -148,8 +161,8 @@ describe('assert-catalog-reachable', () => {
   // 🔴 N4 — the honesty case. Every live entry fails at the transport layer, so
   // the guard cannot know whether the network died or every host is bogus. It
   // must exit 1 and must NOT claim a cause it cannot observe.
-  test('COVERAGE LOST — and no invented cause — when every entry fails transport', NET, () => {
-    const { code, out } = run(tree([
+  test('COVERAGE LOST — and no invented cause — when every entry fails transport', NET, async () => {
+    const { code, out } = await run(tree([
       { slug: 'a', url: dead('/x'), status: 'live' },
       { slug: 'b', url: dead('/y'), status: 'live' },
     ]));
@@ -159,8 +172,8 @@ describe('assert-catalog-reachable', () => {
 
   // The other side of that judgement: one unreachable host among answering ones
   // is that host's problem, and must NOT be excused as a network outage.
-  test('FAILS a single unreachable host when others answered', NET, () => {
-    const { code, out } = run(tree([
+  test('FAILS a single unreachable host when others answered', NET, async () => {
+    const { code, out } = await run(tree([
       entry('alpha', '/ok'),
       { slug: 'offline', url: dead('/z'), status: 'live' },
     ]));
