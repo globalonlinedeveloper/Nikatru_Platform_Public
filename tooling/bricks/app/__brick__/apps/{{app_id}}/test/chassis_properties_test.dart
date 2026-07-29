@@ -134,6 +134,19 @@ Future<void> _turns(WidgetTester tester, [int n = 12]) async {
   }
 }
 
+/// Turn the loop AND let a route transition finish.
+///
+/// 🔴 `tester.pump()` with no duration does not advance the clock, so a page
+/// transition never completes and the OUTGOING route stays mounted. A test that
+/// asserts "the sign-in form is gone" therefore fails on a router that navigated
+/// perfectly — which cost an hour, and looks exactly like a broken redirect.
+/// Anything asserting on navigation must advance time.
+Future<void> _turnsAndSettleRoute(WidgetTester tester) async {
+  await _turns(tester);
+  await tester.pump(const Duration(milliseconds: 500));
+  await _turns(tester, 4);
+}
+
 /// A container whose session is already established.
 ///
 /// 🔴 [pipeline C-13] ADDED WHEN THE AUTH GATE LANDED. The router now redirects a
@@ -567,6 +580,109 @@ void main() {
       final AuthCapabilities caps = c.read(authCapabilitiesProvider);
       // Email/password is pure REST — it must work on all six.
       expect(caps.emailPassword, isTrue);
+    });
+  });
+
+  // ── PROPERTY: auth-redirect-follows-session ───────────────────────────────
+  // [pipeline C-13] A user who signs in must END UP SOMEWHERE ELSE.
+  //
+  // 🔴 THEY DID NOT. `sign_in_screen.dart` deliberately does not navigate, on
+  // the grounds that the router's redirect guard moves the user the moment the
+  // session appears. It does not: `redirect` re-runs when the router is TOLD to,
+  // and nothing in the brick was watching `authStateChanges()`. So a stamped app
+  // signed the user in and went on showing them the form they had just
+  // completed. The seam worked. The guard worked. Nothing joined them.
+  //
+  // 🔬 It passed `assert-screen-set` throughout, because that guard proves the
+  // redirect guard EXISTS — which was never in doubt. Presence is not
+  // enforcement. Found by DRIVING THE FORM in a test rather than reading the
+  // code, which is also how the account-deletion dead button was found.
+  //
+  // Driven through the real widget tree on purpose: a unit test on the seam
+  // passes today and passed while the app was unusable.
+  //
+  // 🔬 MUTATION-TESTED ON THE REAL TEMPLATE, 4 of them, each grep-verified to
+  // have actually landed before the result was believed:
+  //   M1 `refreshListenable:` deleted           → guard RED, both limbs RED
+  //   M2 the notifier subscribes but never fires → guard GREEN, both limbs RED
+  //   M3 the signed-out redirect returns null    → both limbs RED (limb 1 by its
+  //      own domain assertion, before it ever reaches the interesting part)
+  //   M4 the notifier filters out null users     → ONLY LIMB 2 RED
+  // M2 is the one worth remembering: every anchor in assert-stamp-properties
+  // still matched, so the guard passed while the app was broken again. The guard
+  // stops this property VANISHING; only the property stops the behaviour
+  // vanishing. M4 is why limb 2 is here rather than being folded into limb 1 —
+  // it is the mutation limb 1 cannot see.
+  group('property: auth-redirect-follows-session', () {
+    testWidgets('signing in through the FORM moves the user off it', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turns(tester);
+
+      // The domain, asserted first: without a form on screen the check below
+      // would pass by having nothing to look at.
+      expect(
+        find.byType(TextField),
+        findsWidgets,
+        reason: 'a signed-out app must open on the sign-in screen',
+      );
+
+      await tester.enterText(find.byType(TextField).at(0), 'a@b.com');
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.tap(find.byType(FilledButton).first);
+      await _turnsAndSettleRoute(tester);
+
+      // Two separate failures, told apart. A seam that never opened and a
+      // redirect that never fired look identical from the screen.
+      expect(
+        c.read(authRepositoryProvider).currentUser,
+        isNotNull,
+        reason: 'the seam never signed anyone in',
+      );
+      expect(
+        find.byType(TextField),
+        findsNothing,
+        reason:
+            'signed in, and STILL looking at the form they just completed — '
+            'the router was never told the session appeared',
+      );
+    });
+
+    // The other direction, and independently falsifiable: a session that ends
+    // must take the user back out. Otherwise sign-out leaves them sitting on a
+    // screen they are no longer entitled to.
+    testWidgets('signing out puts the user back on the form', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await _signedInContainer(_MemStore());
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turnsAndSettleRoute(tester);
+      expect(find.byType(TextField), findsNothing);
+
+      await c.read(authRepositoryProvider).signOut();
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(TextField),
+        findsWidgets,
+        reason: 'the session ended and the user was left inside the app',
+      );
     });
   });
 
