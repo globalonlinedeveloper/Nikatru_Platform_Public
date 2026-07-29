@@ -6,7 +6,12 @@ import 'dart:math';
 // envelope. NOT `dart:io`'s `Platform`: merely IMPORTING `dart:io` makes the web
 // build fail to compile, and web is one of the six targets every app here ships.
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show
+        ChangeNotifier,
+        Listenable,
+        TargetPlatform,
+        defaultTargetPlatform,
+        kIsWeb;
 // ThemeMode only — this file is state wiring, not UI, and a narrow `show` keeps
 // it that way. Without the import the stamped app fails to compile, which no
 // amount of analyzing the TEMPLATE would reveal: the template is mustache, not
@@ -873,3 +878,101 @@ reviewPromptProvider =
     NotifierProvider<ReviewPromptController, core.ReviewGateState>(
       ReviewPromptController.new,
     );
+
+const String _onboardingSeenKey = 'nikatru.onboarding_seen';
+
+/// Whether first-run onboarding has been completed or skipped — [pipeline C-13].
+///
+/// Persisted, because the cost of getting this wrong is asymmetric: showing it
+/// twice is an irritation, and showing it never is a user who was dropped into
+/// an app nobody introduced. So it starts FALSE and hydrates in the background,
+/// which means a fresh install shows onboarding and a slow disk shows it again
+/// rather than skipping it.
+///
+/// Same background-hydrate shape as the other persisted controllers, and the
+/// same `_userChose` guard: hydration must never clobber a choice made while it
+/// was in flight. (This one IS a choice, not a counter — see
+/// [ReviewPromptController], where that distinction cost a lost launch on every
+/// cold start.)
+class OnboardingSeenController extends Notifier<bool?> {
+  bool _userChose = false;
+
+  /// 🔴 NULL MEANS "NOT KNOWN YET", AND IT IS NOT THE SAME AS FALSE. Hydration
+  /// is async, so a plain `false` default meant the router's FIRST redirect —
+  /// which runs before the disk read lands — saw "not onboarded" and sent a
+  /// RETURNING user to the carousel. Nothing re-ran the redirect afterwards, so
+  /// they were stuck there, and finishing it just wrote the flag they already
+  /// had. Every launch. Found by the property test, not by reading the code.
+  ///
+  /// With three states the redirect can decline to decide until it knows, which
+  /// is the only honest answer while the disk is still being read.
+  @override
+  bool? build() {
+    _hydrate();
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final bool stored = (await kv.read(_onboardingSeenKey)) == 'true';
+      if (_userChose) return; // the user got there first — never clobber
+      state = stored;
+    } catch (_) {
+      // Unreadable store ⇒ SHOW onboarding. Resolving to false rather than
+      // staying null matters: null blocks the decision forever, and the cost is
+      // asymmetric — showing it twice is an irritation, never showing it drops
+      // the user into an app nobody introduced.
+      if (!_userChose) state = false;
+    }
+  }
+
+  Future<void> set(bool seen) async {
+    _userChose = true;
+    // In memory FIRST: the router's redirect reads this synchronously the
+    // moment the screen navigates away, and a slow write must not bounce the
+    // user straight back into onboarding.
+    state = seen;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(_onboardingSeenKey, seen ? 'true' : 'false');
+    } catch (_) {
+      // Best-effort: a failed write only means it is shown once more.
+    }
+  }
+}
+
+final NotifierProvider<OnboardingSeenController, bool?> onboardingSeenProvider =
+    NotifierProvider<OnboardingSeenController, bool?>(
+      OnboardingSeenController.new,
+    );
+
+/// A ChangeNotifier something outside it can fire. `notifyListeners` is
+/// protected, which is the right default and the wrong one for a bridge whose
+/// entire job is to be fired from elsewhere.
+class _Bump extends ChangeNotifier {
+  void bump() => notifyListeners();
+}
+
+/// What the router listens to — [pipeline C-13].
+///
+/// TWO signals, merged, because the redirect depends on two things that arrive
+/// at different times: the session (auth) and the first-run flag (disk). The
+/// first version listened only to auth, so the onboarding flag could resolve and
+/// the router would never look again.
+final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
+  final _Bump onboarding = _Bump();
+  ref.listen<bool?>(
+    onboardingSeenProvider,
+    (bool? _, bool? __) => onboarding.bump(),
+  );
+  ref.onDispose(onboarding.dispose);
+  return Listenable.merge(<Listenable>[
+    ref.watch(authRefreshProvider),
+    onboarding,
+  ]);
+});

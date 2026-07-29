@@ -31,8 +31,10 @@
 // HOLE 2 — the requirement says the lane asserts EVERY mechanically checkable
 // property. `REQUIRED_COVERAGE` was a hand-kept list, so "every" ranged over
 // whatever somebody remembered to add: a brand-new provider in the template was
-// invisible here. Adding `onboardingSeenProvider` to the real template changed
-// nothing. So "every" now has a TRACKED DOMAIN (see DOMAIN_FILE below): the
+// invisible here. Adding a new provider to the real template changed nothing.
+// (The original example was `onboardingSeenProvider`, which has since been built
+// for real and is classified below — so the fixture that stands in for "a
+// behaviour nobody classified" now uses a name that is not a real capability.) So "every" now has a TRACKED DOMAIN (see DOMAIN_FILE below): the
 // chassis behaviours are read out of the template itself, and each one must be
 // classified — either covered by a named property, or listed as a dated,
 // reasoned gap. A behaviour in neither FAILS THE BUILD. That is what makes the
@@ -127,9 +129,10 @@ const REQUIRED_COVERAGE = [
     sources: [
       // The join that was missing. `redirect:` alone was present the whole time
       // the app was unusable, so anchoring on the guard would assert nothing.
-      { file: ROUTER, re: /refreshListenable:\s*ref\.watch\(authRefreshProvider\)/, what: 'the router must be TOLD when the session changes — redirect re-runs on navigation, not on a session appearing, so signing in left the user on the form they had just completed' },
+      { file: ROUTER, re: /refreshListenable:\s*ref\.watch\(routerRefreshProvider\)/, what: 'the router must be TOLD when the session changes — redirect re-runs on navigation, not on a session appearing, so signing in left the user on the form they had just completed' },
       { file: PROVIDERS, re: /class AuthRefreshNotifier extends ChangeNotifier/, what: 'the auth stream must be bridged to a Listenable — without it refreshListenable has nothing to listen to' },
       { file: PROVIDERS, re: /_sub\s*=\s*changes\.listen\(/, what: 'the notifier must actually SUBSCRIBE to authStateChanges — a ChangeNotifier that never fires is indistinguishable from no refresh at all' },
+      { file: PROVIDERS, re: /Listenable\.merge\(<Listenable>\[\s*ref\.watch\(authRefreshProvider\)/, what: 'the merged refresh must still carry the AUTH signal — the onboarding flag was added to it, and dropping auth from the merge would restore the original bug in a place nobody would look' },
     ],
     why: 'a stamped app signed the user in and went on showing them the sign-in form; the seam and the guard both worked and nothing joined them',
   },
@@ -161,6 +164,20 @@ const REQUIRED_COVERAGE = [
       { file: 'packages/core/lib/src/auth/auth_repository.dart', re: /Future<AuthUser> updateProfile\(\{required String displayName\}\)/, what: 'the seam must declare updateProfile — the screen was refused because "there is no profile data model", and this is the model' },
     ],
     why: 'a profile screen that saves nowhere is the dead feature C-6 exists to catch, and refusing to build it on the strength of a symptom is what kept it unbuilt',
+  },
+  {
+    key: 'onboarding-shown-once',
+    group: /group\(\s*'property: onboarding-shown-once'/,
+    sources: [
+      { file: `${BRICK}/lib/features/firstrun/onboarding_screen.dart`, re: /class OnboardingScreen extends ConsumerStatefulWidget/, what: 'the carousel must exist in the chassis — the refusal was that the CONTENT is app-specific, which is true of the words and false of the mechanism' },
+      // 🔴 THE ANCHOR THAT MATTERS. AppConfig.text(key) returns the KEY when
+      // there is no override, and a fresh stamp has none — so a carousel wired
+      // to it greets its first user with `onboarding.1.title`.
+      { file: `${BRICK}/lib/features/firstrun/onboarding_screen.dart`, re: /_copy\(cfg, 'onboarding\.1\.title', l10n\.onboarding1Title\)/, what: 'the copy must fall back to the l10n string, NEVER to the key — AppConfig.text() returns the key itself when unset, which would ship a raw key to a real user' },
+      { file: ROUTER, re: /return state\.matchedLocation == '\/onboarding' \? null : '\/onboarding';/, what: 'the router must send a fresh install to onboarding AND exempt it from the auth gate — falling through hands /onboarding to the signed-out rule, which sends it to /sign-in and the user never sees it' },
+      { file: PROVIDERS, re: /kv\.write\(_onboardingSeenKey/, what: 'the choice must be WRITTEN, or onboarding returns at every launch forever' },
+    ],
+    why: 'a first run shown twice is an irritation; one shown never drops the user into an app nobody introduced, and one showing raw config keys ships something no reviewer would read as a bug',
   },
   {
     key: 'review-prompt-gated',
@@ -236,7 +253,7 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 30;
+const MIN_DOMAIN = 32;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -259,6 +276,10 @@ const COVERED_BY = {
   reviewPrompterProvider: 'review-prompt-gated',
   reviewGateProvider: 'review-prompt-gated',
   reviewPromptProvider: 'review-prompt-gated',
+  onboardingSeenProvider: 'onboarding-shown-once',
+  // Driven by the onboarding property: it is what lets the router look again
+  // once the first-run flag resolves from disk.
+  routerRefreshProvider: 'onboarding-shown-once',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
   localeProvider: 'locale-actually-switches',
