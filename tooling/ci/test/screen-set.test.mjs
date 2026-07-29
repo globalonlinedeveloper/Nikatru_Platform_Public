@@ -76,7 +76,7 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
     },
   ];
   // Padding to clear the floor without inventing meaning.
-  const padding = Array.from({ length: 11 }, (_, i) => ({
+  const padding = Array.from({ length: 17 }, (_, i) => ({
     id: `todo.pad${i}`,
     what: 'not yet built',
     status: 'todo',
@@ -99,7 +99,19 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
     },
   ];
 
-  let register = { screens: [...present, ...blocked, ...padding] };
+  // [pipeline C-13] A `not-building` entry, so the fourth state is exercised
+  // rather than only described. It is a DELIBERATE no with its argument
+  // recorded — not a todo nobody came back to.
+  const notBuilding = [
+    {
+      id: 'settings.language',
+      what: 'language picker',
+      status: 'not-building',
+      detail: 'one locale ships, so a picker could not change anything',
+      declaredOn: '2026-07-29',
+    },
+  ];
+  let register = { screens: [...present, ...blocked, ...padding, ...notBuilding] };
   register = mutate(register);
 
   const files = {
@@ -132,11 +144,11 @@ describe('assert-screen-set', () => {
   test('passes when every declared screen is present and reachable', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /16 screen\(s\) declared/);
+    assert.match(out, /23 screen\(s\) declared/);
     assert.match(out, /3 screen\(s\) present and anchored/);
     // Blocked and todo must PRINT — a gap nobody sees is a gap that grows.
     assert.match(out, /2 BLOCKED/);
-    assert.match(out, /11 TODO/);
+    assert.match(out, /17 TODO/);
   });
 
   // ── present vs reachable — the distinction that keeps catching real bugs ──
@@ -210,6 +222,39 @@ describe('assert-screen-set', () => {
     }));
     assert.equal(code, 1);
     assert.match(out, /BLOCKED with no `blockedBy`/);
+  });
+
+  // ── the deliberate NO must carry its argument ────────────────────────────
+  describe('not-building is a decision, not a shrug', () => {
+    test('prints what was deliberately not built', () => {
+      const { code, out } = run(tree());
+      assert.equal(code, 0);
+      assert.match(out, /1 DELIBERATELY NOT BUILT/);
+    });
+
+    // "We decided not to" with no argument is indistinguishable from "nobody
+    // got to it" six months later.
+    test('FAILS when a deliberate no records no reason', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => {
+          delete r.screens.find((s) => s.id === 'settings.language').detail;
+          return r;
+        },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /NOT-BUILDING with no `detail`/);
+    });
+
+    test('FAILS when a deliberate no is undated', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => {
+          delete r.screens.find((s) => s.id === 'settings.language').declaredOn;
+          return r;
+        },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /NOT-BUILDING without a `declaredOn` date/);
+    });
   });
 
   // ── coverage self-checks ─────────────────────────────────────────────────

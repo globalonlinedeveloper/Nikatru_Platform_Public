@@ -45,7 +45,7 @@ try {
 const screens = reg.screens ?? [];
 // A floor, not `> 0`: the register has held 16 since it was written, and a list
 // somebody trims to three would otherwise read as a clean pass.
-const MIN_SCREENS = 16;
+const MIN_SCREENS = 23;
 if (screens.length < MIN_SCREENS) {
   problems.push(
     `COVERAGE LOST — the register declares only ${screens.length} screen(s), expected >= ${MIN_SCREENS}. DoD §4-A names the full set; a register somebody has trimmed asserts less while looking identical.`,
@@ -91,6 +91,7 @@ function readAll(dir) {
 let present = 0;
 let reachableChecked = 0;
 const todo = [];
+const notBuilding = [];
 const blocked = [];
 
 for (const s of screens) {
@@ -172,13 +173,24 @@ for (const s of screens) {
       );
     }
     blocked.push(s);
+  } else if (s.status === 'not-building') {
+    // A deliberate NO. It must carry a dated reason, because "we decided not to"
+    // with no argument is indistinguishable from "nobody got to it" six months
+    // later — and this state exists precisely to stop dead features being built.
+    if (!s.detail) {
+      problems.push(`\`${s.id}\` is NOT-BUILDING with no \`detail\`. A deliberate no needs its argument recorded, or it decays into an undocumented gap.`);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s.declaredOn ?? '')) {
+      problems.push(`\`${s.id}\` is NOT-BUILDING without a \`declaredOn\` date.`);
+    }
+    notBuilding.push(s);
   } else if (s.status === 'todo') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s.declaredOn ?? '')) {
       problems.push(`\`${s.id}\` is TODO without a \`declaredOn\` date.`);
     }
     todo.push(s);
   } else {
-    problems.push(`\`${s.id}\` has unknown status \`${s.status}\` (expected present / blocked / todo).`);
+    problems.push(`\`${s.id}\` has unknown status \`${s.status}\` (expected present / blocked / todo / not-building).`);
   }
 }
 
@@ -198,6 +210,10 @@ if (todo.length) {
   notes.push(`⬜ ${todo.length} TODO — buildable now, not yet built:`);
   for (const s of todo) notes.push(`   · ${s.id} — ${s.what}`);
 }
+if (notBuilding.length) {
+  notes.push(`⬜ ${notBuilding.length} DELIBERATELY NOT BUILT — each would be a dead feature, and the reason is recorded:`);
+  for (const s of notBuilding) notes.push(`   · ${s.id} (${s.declaredOn})`);
+}
 if (notes.length) console.log(`\n${notes.join('\n')}`);
 
 if (problems.length) {
@@ -206,5 +222,5 @@ if (problems.length) {
   console.error('\nassert-screen-set: FAILED');
   process.exitCode = 1;
 } else {
-  console.log(`\nassert-screen-set: ok — ${present} present, ${blocked.length} blocked, ${todo.length} to build`);
+  console.log(`\nassert-screen-set: ok — ${present} present, ${blocked.length} blocked, ${todo.length} to build, ${notBuilding.length} deliberately not built`);
 }

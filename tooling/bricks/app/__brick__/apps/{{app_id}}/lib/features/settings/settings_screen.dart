@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nikatru_notifications/nikatru_notifications.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -57,6 +59,67 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(),
+
+          // ── NOTIFICATIONS ────────────────────────────────────────────────
+          // [pipeline C-7 earning its keep in real UI] The platform matrix is
+          // consulted BEFORE a control is offered. On Linux the plugin shows but
+          // cannot schedule; on Windows (pinned 17.x) it does neither. A toggle
+          // that silently does nothing on those platforms is worse than an
+          // honest sentence, because the user believes reminders are on.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Text(
+              l10n.notifications,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          Builder(
+            builder: (BuildContext context) {
+              final NotificationCapabilities caps =
+                  NotificationCapabilities.forPlatform(
+                    defaultTargetPlatform,
+                    isWeb: kIsWeb,
+                  );
+              if (!caps.canSchedule) {
+                return ListTile(
+                  leading: const Icon(Icons.notifications_off_outlined),
+                  title: Text(l10n.remindersUnavailable),
+                  enabled: false,
+                );
+              }
+              return SwitchListTile(
+                secondary: const Icon(Icons.notifications_outlined),
+                title: Text(l10n.remindersEnabled),
+                value: ref.watch(remindersEnabledProvider),
+                onChanged: (bool on) =>
+                    _setReminders(context, ref, l10n, on: on),
+              );
+            },
+          ),
+          const Divider(),
+
+          // ── LEGAL. Both stores require these to be reachable IN-APP, not
+          //    only from a store listing. [pipeline C-13]
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Text(
+              l10n.legal,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: Text(l10n.privacyPolicy),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () => _openUrl(AppConfig.privacyUrl),
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: Text(l10n.termsOfService),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () => _openUrl(AppConfig.termsUrl),
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.mail_outline),
             title: Text(l10n.contactSupport),
@@ -64,6 +127,16 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: _contactSupport,
           ),
+          // Sign out sits ABOVE delete: it is the action a user wants
+          // hundreds of times more often, and putting the irreversible one
+          // first invites a misfire.
+          if (ref.watch(authRepositoryProvider).currentUser != null)
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: Text(l10n.signOut),
+              onTap: () => ref.read(authRepositoryProvider).signOut(),
+            ),
+
           // [pipeline C-13] Only when there is an account to delete. Both
           // stores require an in-app deletion path where accounts EXIST; an
           // entry shown to a signed-out user is an offer the app cannot honour.
@@ -82,6 +155,60 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// PERMISSION PRIMING — explain, THEN ask the OS.
+  ///
+  /// 🔴 The OS prompt can be shown ONCE on most platforms. A user who declines
+  /// it has effectively declined permanently, and the only route back is the
+  /// system settings app. So the cost of asking at a bad moment is not a
+  /// dismissed dialog — it is the feature, forever. Priming first means the one
+  /// prompt is spent on someone who has already said yes in principle.
+  Future<void> _setReminders(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n, {
+    required bool on,
+  }) async {
+    if (!on) {
+      await ref.read(notificationServiceProvider).cancelAll();
+      ref.read(remindersEnabledProvider.notifier).set(false);
+      return;
+    }
+    final bool proceed =
+        await showDialog<bool>(
+          context: context,
+          builder: (BuildContext c) => AlertDialog(
+            title: Text(l10n.permissionPrimingTitle),
+            content: Text(l10n.permissionPrimingBody),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: Text(l10n.notNow),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: Text(l10n.continueLabel),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    // Declining the PRIMING must not spend the OS prompt — that is the whole
+    // point of asking twice.
+    if (!proceed) return;
+    final bool granted = await ref
+        .read(notificationServiceProvider)
+        .requestPermission();
+    ref.read(remindersEnabledProvider.notifier).set(granted);
+  }
+
+  Future<void> _openUrl(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Best-effort — never crash settings.
+    }
   }
 
   Future<void> _contactSupport() async {

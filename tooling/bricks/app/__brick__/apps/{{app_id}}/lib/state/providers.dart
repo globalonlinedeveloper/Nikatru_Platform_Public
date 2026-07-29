@@ -552,3 +552,53 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 /// Ask before promising the user something the platform cannot deliver.
 final Provider<AuthCapabilities> authCapabilitiesProvider =
     Provider<AuthCapabilities>((ref) => AuthCapabilities.current());
+
+const String _remindersKey = 'nikatru.reminders_enabled';
+
+/// Whether the user has turned reminders on, persisted.
+///
+/// [pipeline C-13] Separate from the OS permission on purpose. The OS can revoke
+/// permission at any time from system settings, and the app finds out only when
+/// it next tries — so this stores the user's INTENT, and the platform's answer
+/// is asked for fresh each time it matters. Conflating the two is how a toggle
+/// reads ON while every notification is silently dropped.
+class RemindersEnabledController extends Notifier<bool> {
+  bool _userChose = false;
+
+  @override
+  bool build() {
+    _hydrate();
+    return false;
+  }
+
+  Future<void> _hydrate() async {
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final bool stored = (await kv.read(_remindersKey)) == 'true';
+      if (_userChose) return; // the user got there first — never clobber
+      state = stored;
+    } catch (_) {
+      // Unreadable store ⇒ reminders off. Never throw at launch.
+    }
+  }
+
+  Future<void> set(bool on) async {
+    _userChose = true;
+    state = on;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(_remindersKey, on ? 'true' : 'false');
+    } catch (_) {
+      // Best-effort: a failed write only means the choice resets next launch.
+    }
+  }
+}
+
+final NotifierProvider<RemindersEnabledController, bool>
+remindersEnabledProvider = NotifierProvider<RemindersEnabledController, bool>(
+  RemindersEnabledController.new,
+);

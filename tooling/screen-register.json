@@ -23,7 +23,13 @@
     "guard green, since the class's own constructor still matched the bare name.",
     "  class  (default) - our own widget/class; matches the DECLARATION",
     "  member           - a method we own",
-    "  uses             - a Flutter widget we use rather than declare (SegmentedButton, AboutListTile)"
+    "  uses             - a Flutter widget we use rather than declare (SegmentedButton, AboutListTile)",
+    "",
+    "STATUS `not-building` — a fourth state, added 2026-07-29. It means: this screen was CONSIDERED and",
+    "deliberately not built, with the reason recorded. It is not `todo` (nobody is coming back to it) and",
+    "not `blocked` (nothing is in the way). Every entry names why building it would produce a DEAD",
+    "FEATURE — a language picker with one locale, a profile form that saves nowhere — which is the shape",
+    "[2]C-6 exists to catch. A deliberate no is worth more than a permanent todo."
   ],
   "screens": [
     {
@@ -197,18 +203,92 @@
       "declaredOn": "2026-07-28"
     },
     {
-      "id": "settings.remaining",
-      "what": "Profile / notification prefs / language / privacy-export / legal / sign-out.",
-      "status": "todo",
-      "detail": "Sign-out is buildable now that [2]C-15 landed. Privacy-export needs the subly-api EXPORTS R2 binding, which is bound and used NOWHERE — routed to stage 4.",
-      "declaredOn": "2026-07-28"
+      "id": "settings.sign-out",
+      "what": "Ends the session on this device.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "signOut",
+        "kind": "member"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "ref.read(authRepositoryProvider).signOut()",
+        "why": "placed ABOVE account deletion — it is the action a user wants hundreds of times more often, and putting the irreversible one first invites a misfire"
+      }
+    },
+    {
+      "id": "settings.notifications",
+      "what": "Reminder toggle, gated on what the platform can actually do.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "SwitchListTile",
+        "kind": "uses"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "NotificationCapabilities",
+        "why": "[2]C-7 earning its keep in real UI: on Linux the plugin shows but cannot schedule, and on Windows (pinned 17.x) it does neither. An honest sentence replaces the toggle there, because a switch that silently does nothing is worse than no switch"
+      }
+    },
+    {
+      "id": "settings.legal",
+      "what": "Privacy policy and terms of service, reachable in-app.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "_openUrl",
+        "kind": "member"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "AppConfig.privacyUrl",
+        "why": "both stores require these to be reachable IN-APP, not only from a store listing"
+      }
+    },
+    {
+      "id": "firstrun.permission-priming",
+      "what": "Explains why a permission is wanted BEFORE the OS prompt appears.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "_setReminders",
+        "kind": "member"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "l10n.permissionPrimingTitle",
+        "why": "the OS prompt can be shown ONCE on most platforms — a user who declines it has effectively declined permanently, so the cost of asking at a bad moment is the feature, forever. Declining the PRIMING deliberately does not spend the OS prompt"
+      }
+    },
+    {
+      "id": "settings.profile",
+      "what": "Edit display name and avatar.",
+      "status": "not-building",
+      "detail": "DELIBERATELY NOT BUILT. There is no profile data model in the chassis — AuthUser carries id, email and an optional displayName, and nothing writes it. A profile screen over that is a form with one field that saves nowhere, which is the dead-feature shape [2]C-6 exists to catch. It becomes real when an app has a profile to edit, and that is an APP concern, not a chassis one.",
+      "declaredOn": "2026-07-29"
+    },
+    {
+      "id": "settings.language",
+      "what": "Language picker.",
+      "status": "not-building",
+      "detail": "DELIBERATELY NOT BUILT. The brick ships exactly ONE locale (app_en.arb). A picker with one option is a control that cannot change anything — it would read as a feature and do nothing. architecture.md §16 already scopes i18n as \"seam now, translations later\"; the seam exists (gen_l10n + supportedLocales) and the picker belongs with the second locale.",
+      "declaredOn": "2026-07-29"
+    },
+    {
+      "id": "firstrun.splash-onboarding",
+      "what": "Splash and onboarding carousel.",
+      "status": "not-building",
+      "detail": "DELIBERATELY NOT BUILT AS A CHASSIS SCREEN. A splash is native platform configuration (launch storyboard / drawable), not a Flutter screen — building one in Dart shows AFTER the native splash and adds a second flash. Onboarding CONTENT is app-specific by nature; a generic three-page carousel would be replaced by every app that stamps it. The permission-priming half, which IS generic, shipped separately above.",
+      "declaredOn": "2026-07-29"
     },
     {
       "id": "system.review-prompt",
       "what": "Ask for a store review at a good moment.",
-      "status": "todo",
-      "detail": "Needs in_app_review, which under [2]C-4 lands in platform_storage rather than earning its own package.",
-      "declaredOn": "2026-07-28"
+      "status": "not-building",
+      "detail": "DELIBERATELY DEFERRED. Needs `in_app_review`, which under [2]C-4 lands in platform_storage rather than earning its own package. But the prompt is untestable and unusable until an app has real users to ask — and asking at the wrong moment burns the one review request most users will ever consider. It belongs with the first real launch (stage 10), not with the chassis.",
+      "declaredOn": "2026-07-29"
     }
   ]
 }
