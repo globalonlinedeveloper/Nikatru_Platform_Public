@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    [pipeline S-3] THE STAMPED WEB SHELL.
+
+    Before this existed the catalogue claimed every app "works on web" while the
+    template stamped NO platform folder at all — so `flutter build web` failed
+    immediately on a fresh stamp, and its error message helpfully suggested
+    `flutter create . --platforms web`, the exact hand-repair a stamper exists to
+    make unnecessary. Analysis and tests passed throughout, because neither needs
+    a platform folder.
+
+    ⚠️ THERE IS NO SERVICE WORKER FILE HERE, and that is correct rather than
+    missing. Flutter generates the service worker at BUILD time through
+    flutter_bootstrap.js, controlled by `--pwa-strategy`. That coupling is
+    [9]R-9's to own; a checked-in service worker would be a second, stale copy.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="{{description}}">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="{{display_name}}">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>{{display_name}}</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

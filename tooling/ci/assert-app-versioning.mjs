@@ -178,13 +178,26 @@ const flag = (cmd, name) => {
 };
 
 // ── coverage self-check: has a release lane appeared that nobody declared? ────
+// Workflows that trip the build-and-ship heuristic without shipping anything.
+// EXPLICIT, not a cleverer regex: an exemption you can read is safer than a
+// pattern that quietly stops matching, and this list is short enough to audit.
+//
+// `ci.yml` earned its place on 2026-07-29 when [pipeline S-3] added
+// `flutter build web` against the throwaway probe. It typechecks two Workers
+// with `wrangler deploy --dry-run`, so it matches a deploy marker — but a dry
+// run ships nothing and the probe app is deleted seconds later. Holding it to
+// release-lane rules would fail the build for a version no user can ever see,
+// and a guard that fails for no user-visible reason is a guard that gets
+// switched off. Same reasoning the DEPLOY_MARKERS comment gives for
+// upload-artifact.
+const SHIPS_NOTHING = new Set(['ci.yml']);
 const declaredWorkflows = new Set(RELEASE_LANES.map((l) => l.workflow));
 const lostCoverage = [];
 for (const f of wfFiles) {
   const lines = stripAll(readFileSync(join(wfDir, f), 'utf8'));
   const text = lines.join('\n');
   const ships = DEPLOY_MARKERS.test(text) && /\bflutter build\b/.test(text);
-  if (ships && !declaredWorkflows.has(f)) {
+  if (ships && !declaredWorkflows.has(f) && !SHIPS_NOTHING.has(f)) {
     lostCoverage.push(
       `${f} builds a Flutter app AND deploys it, but is not in RELEASE_LANES — it ships unversioned`,
     );

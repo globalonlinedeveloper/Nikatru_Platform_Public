@@ -14,20 +14,28 @@ void run(HookContext context) {
   final tagline = (v['description'] ?? '').toString();
   final needsBackend = v['needs_backend'] == true;
 
+  // [pipeline S-8] DERIVE, do not blank. `subdomain` is now normally EMPTY —
+  // pre_gen refuses a value that disagrees with the convention, so leaving it
+  // blank is the expected input. Publishing '' here would put an entry with no
+  // url into the public catalogue; `webHost` below already derived correctly,
+  // and these two disagreeing is precisely the divergence S-8 exists to stop.
+  final webHost = subdomain.isEmpty ? '$id.nikatru.com' : subdomain;
+
   _appendToAppsJson(
     context,
     id: id,
     name: _shortName(displayName),
     tagline: tagline,
-    url: subdomain.isEmpty ? '' : 'https://$subdomain',
+    url: 'https://$webHost',
     // A client-only app has NO API host of its own — it calls the shared
     // platform Worker. Writing `api-<app>.nikatru.com` here would publish a
     // hostname that will never resolve into a PUBLIC catalog ([ADR 020]).
     api: (!needsBackend || apiDomain.isEmpty) ? '' : 'https://$apiDomain',
   );
 
+  _registerInWorkspace(context, id: id);
+
   final apiHost = apiDomain.isEmpty ? 'api-$id.nikatru.com' : apiDomain;
-  final webHost = subdomain.isEmpty ? '$id.nikatru.com' : subdomain;
 
   context.logger.info('');
   if (needsBackend) {
@@ -62,6 +70,45 @@ void run(HookContext context) {
           'later needs to store user rows server-side, add them deliberately '
           'rather than re-stamping over local changes.');
   }
+}
+
+/// [pipeline S-4] Add the stamped app to the root `workspace:` list.
+///
+/// 🔴 WITHOUT THIS, `melos run gate` SKIPS THE NEW APP ENTIRELY. The workspace
+/// list is what the gate iterates, `apps/subly` is on it because a human typed
+/// it there, and the stamper added nothing — so the newest and least-tested app
+/// in the repository was the one thing the one-command check did not check. It
+/// failed in the direction that looks fine: green tick, nothing examined.
+///
+/// Idempotent, and deliberately a text edit rather than a YAML round-trip: the
+/// root pubspec carries comments that a parse-and-rewrite would silently strip,
+/// including the one explaining why the odd `{{#needs_backend}}` directories
+/// under `__brick__/` must not be tidied.
+void _registerInWorkspace(HookContext context, {required String id}) {
+  final file = File('pubspec.yaml');
+  if (!file.existsSync()) {
+    context.logger.warn('pubspec.yaml not found; skipped workspace registration.');
+    return;
+  }
+  final lines = file.readAsLinesSync();
+  final start = lines.indexWhere((l) => l.trimRight() == 'workspace:');
+  if (start == -1) {
+    context.logger.warn('no `workspace:` block in pubspec.yaml; skipped.');
+    return;
+  }
+  // The block runs until the first line that is not a `  - ` entry.
+  var end = start + 1;
+  while (end < lines.length && RegExp(r'^  - \S').hasMatch(lines[end])) {
+    end++;
+  }
+  final entry = '  - apps/$id';
+  if (lines.sublist(start + 1, end).any((l) => l.trimRight() == entry)) {
+    context.logger.info('pubspec.yaml already lists "apps/$id"; left unchanged.');
+    return;
+  }
+  lines.insert(end, entry);
+  file.writeAsStringSync('${lines.join('\n')}\n');
+  context.logger.success('pubspec.yaml: added "apps/$id" to the workspace.');
 }
 
 /// "Lingo — Offline Phrasebook" -> "Lingo".
