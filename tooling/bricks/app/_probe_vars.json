@@ -2,7 +2,7 @@
   "app_id": "probe",
   "display_name": "Probe — Brick Smoke Test",
   "subdomain": "probe.nikatru.com",
-  "api_domain": "api-probe.nikatru.com",
+  "api_domain": "",
   "seed_hex": "6459F5",
   "category": "productivity",
   "description": "Throwaway app stamped in CI to prove the brick compiles + analyzes.",

@@ -33,7 +33,7 @@ void run(HookContext context) {
   if (needsBackend) {
     context.logger
       ..success('Stamped $id (apps/$id + services/$id-api). Owner checklist:')
-      ..info('  1. Fill apps/$id/app.yaml store metadata + brand assets.')
+      ..info('  1. Add store metadata + brand assets for apps/\$id.')
       ..info('  2. wrangler d1 create ${id}_db --location apac, then paste the '
           'id into services/$id-api/wrangler.jsonc (APP_DB.database_id).')
       ..info('     (--location is CREATE-TIME ONLY and can never be changed.)')
@@ -50,7 +50,7 @@ void run(HookContext context) {
   } else {
     context.logger
       ..success('Stamped $id (apps/$id — CLIENT-ONLY). Owner checklist:')
-      ..info('  1. Fill apps/$id/app.yaml store metadata + brand assets.')
+      ..info('  1. Add store metadata + brand assets for apps/\$id.')
       ..info('  2. Add DNS for the web subdomain $webHost. No API host and no '
           'D1 database are needed — this app uses the shared platform Worker.')
       ..info('  3. REQUIRED for the web build: add "https://$webHost" to '

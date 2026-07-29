@@ -435,6 +435,12 @@ jobs:
       - name: Stamp the default (client-only) app
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
+          # [pipeline S-13] The stamp now REFUSES to overwrite an existing app.
+          # CI re-stamps the same throwaway probe on every run, which is exactly
+          # the case the refusal is not about, so the escape hatch is set here
+          # and ONLY here. It is an env var rather than a flag so that a human
+          # cannot pass it by muscle memory.
+          export NIKATRU_ALLOW_OVERWRITE=1
           mason get
           mason make app -c tooling/bricks/app/_probe_vars.json -o . --on-conflict overwrite
       - name: SHOW-1 — post_gen appended probe to apps.json (then revert)
@@ -460,6 +466,8 @@ jobs:
       # assertions now live in the brick template so every stamped app inherits
       # them for life; this guard stops that file quietly vanishing, because
       # vanishing looks exactly like passing. [pipeline C-16]
+      - name: The app spec is one validated input contract
+        run: node tooling/ci/assert-input-contract.mjs
       - name: Stamped app asserts its own chassis properties
         run: node tooling/ci/assert-stamp-properties.mjs
       - name: Analyze + test the stamped app
@@ -474,6 +482,7 @@ jobs:
       - name: Stamp the opt-in backend app
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
+          export NIKATRU_ALLOW_OVERWRITE=1
           mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
           git checkout -- sites/_shared/_data/apps.json
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
