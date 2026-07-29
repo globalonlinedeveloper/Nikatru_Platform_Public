@@ -167,10 +167,26 @@
       "declaredOn": "2026-07-28"
     },
     {
-      "id": "auth.screens",
-      "what": "Landing / sign-up / sign-in / forgot / reset / verify / OAuth callback.",
-      "status": "todo",
-      "detail": "UNBLOCKED 2026-07-28 by [2]C-15, which gave the chassis a real AuthRepository. Buildable now; not yet built.",
+      "id": "auth.credentials",
+      "what": "Sign-in, sign-up and forgot-password, plus the redirect guard that gates every other route.",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart",
+        "symbol": "SignInScreen",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart",
+        "pattern": "return '/sign-in';",
+        "why": "the REDIRECT GUARD is what makes these screens reachable — screens do not navigate after sign-in themselves, because pushing from both places leaves two routes racing to be top of the stack"
+      }
+    },
+    {
+      "id": "auth.callbacks",
+      "what": "Password reset, email verification and the OAuth callback — the screens a link outside the app lands on.",
+      "status": "blocked",
+      "blockedBy": "app_links (deep-link handling)",
+      "detail": "Each of these is entered by following a link from an EMAIL or a browser redirect, so none can be reached without deep-link handling. `app_links` 7.2.1 supports all six platforms (verified against pub.dev 2026-07-28) and would earn its place under [2]C-4 as native-binary — it ships platform code — but it is not a dependency yet. ⚠️ Web carries two traps recorded in AuthCapabilities: the token arrives in the URL FRAGMENT so query parsing fails SILENTLY, and app_links on web reports only the INITIAL link.",
       "declaredOn": "2026-07-28"
     },
     {

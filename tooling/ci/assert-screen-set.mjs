@@ -65,6 +65,14 @@ const BLOCKERS_STILL_REAL = {
         ? readAll('tooling/bricks/app/__brick__/apps/{{app_id}}/lib')
         : '',
     ),
+  // Real until app_links is an actual dependency. The moment it is, the
+  // callback screens are buildable and this excuse must stop working.
+  'app_links (deep-link handling)': () =>
+    !/^\s+app_links\s*:/m.test(
+      existsSync(join(ROOT, 'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml'))
+        ? readFileSync(join(ROOT, 'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml'), 'utf8')
+        : '',
+    ),
 };
 
 function readAll(dir) {
