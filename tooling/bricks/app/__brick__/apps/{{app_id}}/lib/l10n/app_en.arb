@@ -185,5 +185,13 @@
   "privacyPolicy": "Privacy policy",
   "@privacyPolicy": { "description": "Opens the privacy policy. Both stores require it to be reachable in-app." },
   "termsOfService": "Terms of service",
-  "@termsOfService": { "description": "Opens the terms of service." }
+  "@termsOfService": { "description": "Opens the terms of service." },
+  "language": "Language",
+  "@language": { "description": "Settings section for the app language." },
+  "languageSystem": "System",
+  "@languageSystem": { "description": "Follow the device language." },
+  "languageEnglish": "English",
+  "@languageEnglish": { "description": "Language names are shown in their OWN language, so a speaker can find theirs without reading the current one." },
+  "languageTamil": "தமிழ்",
+  "@languageTamil": { "description": "Tamil, written in Tamil — see languageEnglish." }
 }

@@ -1028,6 +1028,11 @@ group('property: brand-seed-drives-paint', () {
   testWidgets('o', (t) async {});
   test('p', () {});
 });
+group('property: locale-actually-switches', () {
+  test('gg', () {});
+  test('hh', () {});
+  testWidgets('ii', (t) async {});
+});
 group('property: reminder-intent-persisted', () {
   test('cc', () {});
   test('dd', () {});
@@ -1072,6 +1077,7 @@ return MaterialApp.router(
     brightness: Brightness.dark,
   ),
   themeMode: ref.watch(themeModeProvider),
+  locale: ref.watch(localeProvider),
   builder: (c, child) => MediaQuery.withClampedTextScaling(
     minScaleFactor: 1.0,
     maxScaleFactor: 2.0,
@@ -1136,6 +1142,13 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 );
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
 final NotifierProvider<RemindersEnabledController, bool> remindersEnabledProvider = X();
+final NotifierProvider<LocaleController, Locale?> localeProvider = X();
+
+class LocaleController extends Notifier<Locale?> {
+  Future<void> set(Locale? locale) async {
+    await kv.write(_localeKey, locale?.languageCode ?? '');
+  }
+}
 
 class RemindersEnabledController extends Notifier<bool> {
   Future<void> _hydrate() async {
@@ -1204,6 +1217,12 @@ Future<void> _deleteAccount(...) async {
 }
 `;
 
+  // [pipeline C-13] A SECOND locale must exist. With one language file the
+  // i18n seam can never be exercised — the state the chassis was in while
+  // claiming internationalisation.
+  const ARB_TA = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n/app_ta.arb';
+  const goodArbTa = '{\n  "@@locale": "ta",\n  "settingsTitle": "x"\n}\n';
+
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -1213,8 +1232,9 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, omitProp = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
     const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings };
+    if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
   };
@@ -1422,11 +1442,52 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
   });
 
+  // [pipeline C-13] The chassis claimed internationalisation while shipping ONE
+  // locale, so the seam had never once run — the fail-closed-with-no-open-path
+  // shape, in a corner nobody had looked at.
+  describe('the i18n seam can actually open', () => {
+    // Deleting the file outright.
+    test('FAILS when the second locale file is deleted', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-onelocale', { omitArbTa: true }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /could not be read/);
+    });
+
+    // The sneakier case: the file is still THERE, but is no longer a second
+    // locale — copied from English, or its `@@locale` quietly changed. "A file
+    // exists at that path" is not "a second language ships".
+    test('FAILS when the file exists but is not a second locale', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-fakelocale', { arbTa: '{\n  "@@locale": "en",\n  "settingsTitle": "Settings"\n}\n' }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /a second locale must exist/);
+    });
+
+    test('FAILS when MaterialApp stops reading the override', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nolocale', { app: goodApp.replace('  locale: ref.watch(localeProvider),\n', '') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must READ the override/);
+    });
+
+    test('FAILS when the language choice is not persisted', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nolocalewrite', { providers: goodProviders.replace("    await kv.write(_localeKey, locale?.languageCode ?? '');\n", '') }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /choice must be written/);
+    });
+  });
+
   describe('"every property" has a tracked domain', () => {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 24 chassis behaviour\(s\)/);
+      assert.match(out, /tracked domain: 25 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -1460,7 +1521,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 23/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 24/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

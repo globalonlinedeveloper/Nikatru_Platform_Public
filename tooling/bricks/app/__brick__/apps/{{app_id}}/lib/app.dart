@@ -38,6 +38,12 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      // [pipeline C-13] The persisted language override. NULL is not "no value"
+      // — it is "follow the device", and MaterialApp already does the right
+      // thing with null. Without this line the picker would store a choice the
+      // app never reads, which is the dead-control shape [pipeline C-6] exists
+      // to catch.
+      locale: ref.watch(localeProvider),
       theme: buildAppTheme(seed: const Color(0xFF{{{seed_hex}}})),
       darkTheme: buildAppTheme(
         seed: const Color(0xFF{{{seed_hex}}}),
