@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart'
 // it that way. Without the import the stamped app fails to compile, which no
 // amount of analyzing the TEMPLATE would reveal: the template is mustache, not
 // valid Dart, so only a real stamp can catch it. [pipeline C-16]
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -602,3 +602,59 @@ final NotifierProvider<RemindersEnabledController, bool>
 remindersEnabledProvider = NotifierProvider<RemindersEnabledController, bool>(
   RemindersEnabledController.new,
 );
+
+const String _localeKey = 'nikatru.locale';
+
+/// The user's language choice, persisted — [pipeline C-13].
+///
+/// 🔴 NULL MEANS "FOLLOW THE DEVICE", and that is the important state. Storing a
+/// concrete locale as the default would freeze every app to whatever language
+/// the first launch happened to see, and a user who later changes their phone's
+/// language would find the app ignoring them. So null is the default and is a
+/// real, selectable option — not merely the absence of a choice.
+///
+/// Same background-hydrate shape as [ThemeModeController], for the same reason:
+/// first paint must never block on disk, and hydration must never clobber a
+/// choice the user made while it was in flight.
+class LocaleController extends Notifier<Locale?> {
+  bool _userChose = false;
+
+  @override
+  Locale? build() {
+    _hydrate();
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final String? raw = await kv.read(_localeKey);
+      if (_userChose) return; // the user got there first — never clobber
+      state = _decode(raw);
+    } catch (_) {
+      // Unreadable store ⇒ follow the device. Never throw at launch.
+    }
+  }
+
+  /// Pass null to go back to following the device.
+  Future<void> set(Locale? locale) async {
+    _userChose = true;
+    state = locale;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(_localeKey, locale?.languageCode ?? '');
+    } catch (_) {
+      // Best-effort: a failed write only means the choice resets next launch.
+    }
+  }
+
+  static Locale? _decode(String? raw) =>
+      (raw == null || raw.isEmpty) ? null : Locale(raw);
+}
+
+final NotifierProvider<LocaleController, Locale?> localeProvider =
+    NotifierProvider<LocaleController, Locale?>(LocaleController.new);

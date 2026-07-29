@@ -30,6 +30,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 // [pipeline C-11] buildAppTheme + AppThemeX, for the brand-seed property.
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:{{app_id.snakeCase()}}/app.dart';
+import 'package:{{app_id.snakeCase()}}/l10n/app_localizations.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
 
@@ -691,6 +692,119 @@ void main() {
         expect(c.read(remindersEnabledProvider), isFalse);
       },
     );
+  });
+
+  // ── PROPERTY: locale-actually-switches ────────────────────────────────────
+  // [pipeline C-13] The i18n seam is PROVEN TO OPEN.
+  //
+  // 🔴 WHY THIS IS THE POINT. Until a second locale existed, the chassis claimed
+  // internationalisation and had never once run it: one language file, one
+  // supportedLocales entry, and no path that could ever produce a different
+  // string. That is the fail-closed-with-no-open-path shape [pipeline C-6] keeps
+  // catching — a seam that refuses correctly and is never asked to deliver.
+  //
+  // So this asserts the STRINGS REALLY CHANGE, not that a setting was stored.
+  // A test that only checked the stored value would pass against a locale the
+  // app never reads.
+  group('property: locale-actually-switches', () {
+    test('both locales are offered', () {
+      // A picker over one locale is a control that cannot change anything.
+      expect(AppLocalizations.supportedLocales.length, greaterThanOrEqualTo(2));
+      expect(
+        AppLocalizations.supportedLocales.map((Locale l) => l.languageCode),
+        containsAll(<String>['en', 'ta']),
+      );
+    });
+
+    test('the same key yields DIFFERENT text in each locale', () async {
+      final AppLocalizations en = await AppLocalizations.delegate.load(
+        const Locale('en'),
+      );
+      final AppLocalizations ta = await AppLocalizations.delegate.load(
+        const Locale('ta'),
+      );
+      expect(
+        ta.settingsTitle,
+        isNot(en.settingsTitle),
+        reason: 'the translation is not being reached — the seam is not open',
+      );
+      expect(ta.signIn, isNot(en.signIn));
+      expect(ta.cancel, isNot(en.cancel));
+    });
+
+    test('a placeholder still interpolates in the second locale', () async {
+      final AppLocalizations ta = await AppLocalizations.delegate.load(
+        const Locale('ta'),
+      );
+      // Placeholders are where a translation most often breaks: a translator
+      // drops the {appName} and the string silently loses the value.
+      expect(ta.welcomeTo('Probe'), contains('Probe'));
+      expect(ta.consentTitle('Probe'), contains('Probe'));
+    });
+
+    test('NULL means follow the device, and is the default', () {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      expect(
+        c.read(localeProvider),
+        isNull,
+        reason:
+            'a concrete default would freeze the app to whatever language '
+            'the first launch happened to see',
+      );
+    });
+
+    test('a choice is written, and SURVIVES a restart', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer first = _container(store);
+      await first.read(localeProvider.notifier).set(const Locale('ta'));
+      expect(store.data['nikatru.locale'], 'ta');
+      first.dispose();
+
+      final ProviderContainer reborn = _container(store);
+      addTearDown(reborn.dispose);
+      reborn.read(localeProvider); // triggers the background hydrate
+      await Future<void>.delayed(Duration.zero);
+      expect(reborn.read(localeProvider)?.languageCode, 'ta');
+    });
+
+    test('choosing "follow the device" again clears the override', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer c = _container(store);
+      addTearDown(c.dispose);
+      await c.read(localeProvider.notifier).set(const Locale('ta'));
+      await c.read(localeProvider.notifier).set(null);
+      expect(c.read(localeProvider), isNull);
+      // Stored as empty, not deleted: an absent key and "follow the device" must
+      // read the same on the next launch, and they do.
+      expect(store.data['nikatru.locale'], '');
+    });
+
+    // The app must PAINT in the chosen language, not merely remember it.
+    testWidgets('the running app renders the chosen locale', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer c = await _signedInContainer(store);
+      addTearDown(c.dispose);
+      await c.read(localeProvider.notifier).set(const Locale('ta'));
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turns(tester);
+
+      final MaterialApp app = tester.widget<MaterialApp>(
+        find.byType(MaterialApp),
+      );
+      expect(
+        app.locale?.languageCode,
+        'ta',
+        reason:
+            'the override is stored but never reaches MaterialApp — the '
+            'picker would be a control the app ignores',
+      );
+    });
   });
 
   // ── PROPERTY: analytics-consent-gated ─────────────────────────────────────

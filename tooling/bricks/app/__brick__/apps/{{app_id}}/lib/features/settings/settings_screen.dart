@@ -60,6 +60,40 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
 
+          // ── LANGUAGE ─────────────────────────────────────────────────────
+          // Language names are shown in their OWN language, so a speaker can
+          // find theirs without first being able to read the current one.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Text(
+              l10n.language,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          RadioGroup<String>(
+            groupValue: ref.watch(localeProvider)?.languageCode ?? '',
+            onChanged: (String? code) => ref
+                .read(localeProvider.notifier)
+                .set((code == null || code.isEmpty) ? null : Locale(code)),
+            child: Column(
+              children: <Widget>[
+                RadioListTile<String>(
+                  value: '',
+                  title: Text(l10n.languageSystem),
+                ),
+                RadioListTile<String>(
+                  value: 'en',
+                  title: Text(l10n.languageEnglish),
+                ),
+                RadioListTile<String>(
+                  value: 'ta',
+                  title: Text(l10n.languageTamil),
+                ),
+              ],
+            ),
+          ),
+          const Divider(),
+
           // ── NOTIFICATIONS ────────────────────────────────────────────────
           // [pipeline C-7 earning its keep in real UI] The platform matrix is
           // consulted BEFORE a control is offered. On Linux the plugin shows but

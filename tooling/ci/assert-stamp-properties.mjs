@@ -147,6 +147,18 @@ const REQUIRED_COVERAGE = [
     why: 'a toggle that reads ON while every notification is dropped is the C-6 shape',
   },
   {
+    key: 'locale-actually-switches',
+    group: /group\(\s*'property: locale-actually-switches'/,
+    sources: [
+      // A SECOND locale file must exist. With one, the seam can never open — the
+      // state the chassis was in while claiming internationalisation.
+      { file: `${BRICK}/lib/l10n/app_ta.arb`, re: /"@@locale":\s*"ta"/, what: 'a second locale must exist — with one language file the i18n seam can never be exercised' },
+      { file: APP_ROOT, re: /locale:\s*ref\.watch\(localeProvider\)/, what: 'MaterialApp must READ the override, or the picker stores a choice the app ignores' },
+      { file: PROVIDERS, re: /kv\.write\(\s*_localeKey/, what: 'the choice must be written — an in-memory language resets at every launch' },
+    ],
+    why: 'the chassis claimed i18n while shipping one locale, so the seam had never once run',
+  },
+  {
     key: 'analytics-consent-gated',
     group: /group\(\s*'property: analytics-consent-gated'/,
     sources: [{ file: PROVIDERS, re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted/, what: 'the template must really call ConsentController.record' }],
@@ -181,7 +193,7 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 24;
+const MIN_DOMAIN = 25;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -195,6 +207,7 @@ const COVERED_BY = {
   authCapabilitiesProvider: 'auth-seam-wired',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
+  localeProvider: 'locale-actually-switches',
   keyValueStoreProvider: 'theme-mode-persisted',
   themeModeProvider: 'theme-mode-persisted',
   installIdProvider: 'analytics-consent-gated',
