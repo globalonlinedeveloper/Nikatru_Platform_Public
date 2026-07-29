@@ -478,6 +478,33 @@ jobs:
       # protects the public catalogue and the workspace gate from duplicates.
       # Byte-identical after the second stamp is what makes idempotency
       # OBSERVABLE rather than merely asserted in a comment.
+      # [pipeline S-14] The brick used to ship Flutter's stock icons, so every
+      # stamped app was born with the default icon — DoD §4-G's defect, but in
+      # the TEMPLATE, where it lands on all fifty apps at once and store
+      # reviewers see it first. post_gen now GENERATES the icons from app_id +
+      # seed_hex (no model, so [ADR 019]'s NO-IP-PROMPTING rule is obeyed by
+      # construction), and this proves the stamp did it.
+      #
+      # Compared against the LIVE SDK's stock assets, never pinned hashes: a
+      # hash list rots silently when Flutter changes its defaults, and the guard
+      # would go on reporting ok while stamping stock icons again. It runs HERE
+      # rather than beside the static guards because this is the lane with
+      # Flutter on PATH — and it exits COVERAGE LOST rather than skipping if it
+      # cannot find the SDK, so "I could not check" never reads as "ok".
+      #
+      # The seed is read from the probe's own vars file so the assertion cannot
+      # drift from the spec it is checking.
+      #
+      # 🔴 ORDERING IS LOAD-BEARING: this runs BEFORE the SHOW-1 step, which
+      # reverts sites/_shared/_data/apps.json to keep the tree clean. The asset
+      # set is derived from the app's platform CLAIM, and the claim lives in that
+      # file — so after the revert there is nothing to derive from. Placed after
+      # it once; the guard exited COVERAGE LOST rather than passing on an empty
+      # requirement, which is the whole reason it refuses an empty claim.
+      - name: Stamped app carries ITS brand assets, not Flutter's
+        run: |
+          SEED=$(node -p "require('./tooling/bricks/app/_probe_vars.json').seed_hex")
+          node tooling/ci/assert-stamp-brand-assets.mjs apps/probe --seed "$SEED"
       - name: SHOW-1 — probe is in apps.json, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -501,26 +528,6 @@ jobs:
       # portfolio starts as a copy of this output, so template dirt is dirt in
       # all of them at once — and it makes adding a repo-wide format gate
       # impossible for as long as it lasts. Cheap to hold, expensive to reclaim.
-      # [pipeline S-14] The brick used to ship Flutter's stock icons, so every
-      # stamped app was born with the default icon — DoD §4-G's defect, but in
-      # the TEMPLATE, where it lands on all fifty apps at once and store
-      # reviewers see it first. post_gen now GENERATES the icons from app_id +
-      # seed_hex (no model, so [ADR 019]'s NO-IP-PROMPTING rule is obeyed by
-      # construction), and this proves the stamp did it.
-      #
-      # Compared against the LIVE SDK's stock assets, never pinned hashes: a
-      # hash list rots silently when Flutter changes its defaults, and the guard
-      # would go on reporting ok while stamping stock icons again. It runs HERE
-      # rather than beside the static guards because this is the lane with
-      # Flutter on PATH — and it exits COVERAGE LOST rather than skipping if it
-      # cannot find the SDK, so "I could not check" never reads as "ok".
-      #
-      # The seed is read from the probe's own vars file so the assertion cannot
-      # drift from the spec it is checking.
-      - name: Stamped app carries ITS brand assets, not Flutter's
-        run: |
-          SEED=$(node -p "require('./tooling/bricks/app/_probe_vars.json').seed_hex")
-          node tooling/ci/assert-stamp-brand-assets.mjs apps/probe --seed "$SEED"
       - name: Stamped app is dart format-clean
         run: dart format --output=none --set-exit-if-changed apps/probe
       # The stamp lane used to assert only that the app COMPILES and its tests
