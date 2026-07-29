@@ -108,6 +108,20 @@ jobs:
       - name: Schema evolution is additive-only
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/check-migrations.mjs
+      # A Worker whose D1 binding still holds the brick's all-zeros placeholder
+      # deploys clean and reaches production pointing at nothing — and
+      # `wrangler deploy --dry-run` PASSES on it, because a dry run never
+      # contacts D1. That is why S-12's original criterion could not fail.
+      # Scoped to services/ so the brick template, which contains the
+      # placeholder correctly, is out of scope by construction.
+      #
+      # The second half has teeth today: subly_db and platform_db are each
+      # declared in TWO wrangler configs and nothing checked the uuids agreed.
+      # A copy-paste slip there does not error — the Worker deploys, runs, and
+      # reads and writes the WRONG database. [pipeline S-12]
+      - name: D1 bindings are real and consistent across Workers
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-d1-bindings.mjs
       # The CORS allowlist is EXACT, so it fails closed and silently — dropping
       # an origin breaks that surface in the browser with nothing logged server
       # side. This guards the deployed config; cors.test.ts guards the behaviour.
