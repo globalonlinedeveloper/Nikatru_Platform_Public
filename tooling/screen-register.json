@@ -196,7 +196,7 @@
       "reachable": {
         "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart",
         "pattern": "return '/sign-in';",
-        "why": "the REDIRECT GUARD is what makes these screens reachable — screens do not navigate after sign-in themselves, because pushing from both places leaves two routes racing to be top of the stack"
+        "why": "the REDIRECT GUARD is what makes these screens reachable — screens do not navigate after sign-in themselves, because pushing from both places leaves two routes racing to be top of the stack. 🔴 CORRECTED 2026-07-29: that was true about getting IN and false about getting OUT. `redirect` re-runs when the router is TOLD to, and nothing watched `authStateChanges()`, so a stamped app signed the user in and went on showing them the form they had just completed. This pattern matched throughout — PRESENCE IS NOT ENFORCEMENT, and no single grep can prove a screen can be left. The exit is proven instead by the `auth-redirect-follows-session` property, which drives the real form; found by running it, not by reading it."
       }
     },
     {

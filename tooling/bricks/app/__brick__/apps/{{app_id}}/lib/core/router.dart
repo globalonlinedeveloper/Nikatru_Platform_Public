@@ -25,6 +25,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     initialLocation: '/',
+    // 🔴 WITHOUT THIS THE GUARD BELOW NEVER RE-RUNS. `redirect` fires on
+    // navigation, not on a session appearing, so a user who signed in stayed on
+    // the form they had just completed — the seam worked, the guard worked, and
+    // nothing connected them. See [AuthRefreshNotifier].
+    refreshListenable: ref.watch(authRefreshProvider),
     redirect: (BuildContext context, GoRouterState state) {
       final bool signedIn = auth.currentUser != null;
       final bool onAuthScreen =

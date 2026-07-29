@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 
 // kIsWeb + defaultTargetPlatform name the running platform for the analytics
 // envelope. NOT `dart:io`'s `Platform`: merely IMPORTING `dart:io` makes the web
 // build fail to compile, and web is one of the six targets every app here ships.
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
 // ThemeMode only — this file is state wiring, not UI, and a narrow `show` keeps
 // it that way. Without the import the stamped app fails to compile, which no
 // amount of analyzing the TEMPLATE would reveal: the template is mustache, not
@@ -552,6 +553,45 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 /// Ask before promising the user something the platform cannot deliver.
 final Provider<AuthCapabilities> authCapabilitiesProvider =
     Provider<AuthCapabilities>((ref) => AuthCapabilities.current());
+
+/// Turns the auth stream into something `GoRouter` will listen to.
+///
+/// 🔴 [pipeline C-13] WITHOUT THIS, SIGNING IN LEAVES THE USER ON THE FORM.
+/// `sign_in_screen.dart` deliberately does not navigate — pushing from both the
+/// screen and the redirect guard is how two routes end up racing to be top of
+/// the stack — and its comment said the guard "moves the user the moment the
+/// session appears". It did not. `redirect` re-runs when the router is TOLD to,
+/// and nothing in the brick was watching [core.AuthRepository.authStateChanges],
+/// so a freshly stamped app signed the user in and then went on showing them the
+/// form they had just completed. The session was real; the app looked broken.
+///
+/// Found 2026-07-29 by driving the form in a widget test rather than by reading
+/// the code. It is the [pipeline C-6] shape once more — every part worked and
+/// nothing joined them — and it passed `assert-screen-set` because that guard
+/// checks the redirect guard EXISTS, which was never the thing in doubt.
+class AuthRefreshNotifier extends ChangeNotifier {
+  AuthRefreshNotifier(Stream<core.AuthUser?> changes) {
+    _sub = changes.listen((core.AuthUser? _) => notifyListeners());
+  }
+
+  late final StreamSubscription<core.AuthUser?> _sub;
+
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+}
+
+/// The router's refresh signal. One per container, disposed with it.
+final Provider<AuthRefreshNotifier> authRefreshProvider =
+    Provider<AuthRefreshNotifier>((ref) {
+      final AuthRefreshNotifier notifier = AuthRefreshNotifier(
+        ref.watch(authRepositoryProvider).authStateChanges(),
+      );
+      ref.onDispose(notifier.dispose);
+      return notifier;
+    });
 
 const String _remindersKey = 'nikatru.reminders_enabled';
 

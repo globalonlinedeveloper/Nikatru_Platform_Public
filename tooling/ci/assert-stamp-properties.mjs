@@ -55,6 +55,7 @@ const PROP_TEST = `${BRICK}/test/chassis_properties_test.dart`;
 const APP_ROOT = `${BRICK}/lib/app.dart`;
 const PROVIDERS = `${BRICK}/lib/state/providers.dart`;
 const SETTINGS = `${BRICK}/lib/features/settings/settings_screen.dart`;
+const ROUTER = `${BRICK}/lib/core/router.dart`;
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 
 // REQUIRED_COVERAGE. Each entry is a property the stamped app must assert about
@@ -119,6 +120,18 @@ const REQUIRED_COVERAGE = [
       { file: 'packages/auth_supabase/lib/nikatru_auth_supabase.dart', re: /localStorage:\s*SecureSessionStorage\(/, what: 'the session must go in the SECURE store — the Supabase SDK defaults to plaintext shared_preferences for the access AND refresh tokens [G-43]' },
     ],
     why: 'the auth seam had no home: the only implementations lived inside apps/subly, and the brick wired no auth and no tokenProvider',
+  },
+  {
+    key: 'auth-redirect-follows-session',
+    group: /group\(\s*'property: auth-redirect-follows-session'/,
+    sources: [
+      // The join that was missing. `redirect:` alone was present the whole time
+      // the app was unusable, so anchoring on the guard would assert nothing.
+      { file: ROUTER, re: /refreshListenable:\s*ref\.watch\(authRefreshProvider\)/, what: 'the router must be TOLD when the session changes — redirect re-runs on navigation, not on a session appearing, so signing in left the user on the form they had just completed' },
+      { file: PROVIDERS, re: /class AuthRefreshNotifier extends ChangeNotifier/, what: 'the auth stream must be bridged to a Listenable — without it refreshListenable has nothing to listen to' },
+      { file: PROVIDERS, re: /_sub\s*=\s*changes\.listen\(/, what: 'the notifier must actually SUBSCRIBE to authStateChanges — a ChangeNotifier that never fires is indistinguishable from no refresh at all' },
+    ],
+    why: 'a stamped app signed the user in and went on showing them the sign-in form; the seam and the guard both worked and nothing joined them',
   },
   {
     key: 'account-deletion-works',
@@ -193,7 +206,7 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 25;
+const MIN_DOMAIN = 26;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -205,6 +218,9 @@ const COVERED_BY = {
   authTokenProvider: 'auth-seam-wired',
   restClientProvider: 'auth-seam-wired',
   authCapabilitiesProvider: 'auth-seam-wired',
+  // Driven, not merely constructed: the property signs in through the real form
+  // and asserts the user ends up somewhere else.
+  authRefreshProvider: 'auth-redirect-follows-session',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
   localeProvider: 'locale-actually-switches',

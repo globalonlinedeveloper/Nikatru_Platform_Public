@@ -1050,6 +1050,10 @@ group('property: auth-seam-wired', () {
   test('y', () {});
   test('z', () {});
 });
+group('property: auth-redirect-follows-session', () {
+  testWidgets('jj', (t) async {});
+  testWidgets('kk', (t) async {});
+});
 group('property: ui-invariants-inherited', () {
   testWidgets('q', (t) async {});
   testWidgets('r', (t) async {});
@@ -1141,8 +1145,18 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
   ),
 );
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
+final Provider<AuthRefreshNotifier> authRefreshProvider = X();
 final NotifierProvider<RemindersEnabledController, bool> remindersEnabledProvider = X();
 final NotifierProvider<LocaleController, Locale?> localeProvider = X();
+
+// [pipeline C-13] The bridge from the auth stream to something GoRouter listens
+// to. Without it the redirect never re-runs, so a stamped app signed the user
+// in and went on showing them the form they had just completed.
+class AuthRefreshNotifier extends ChangeNotifier {
+  AuthRefreshNotifier(Stream<core.AuthUser?> changes) {
+    _sub = changes.listen((core.AuthUser? _) => notifyListeners());
+  }
+}
 
 class LocaleController extends Notifier<Locale?> {
   Future<void> set(Locale? locale) async {
@@ -1223,6 +1237,23 @@ Future<void> _deleteAccount(...) async {
   const ARB_TA = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n/app_ta.arb';
   const goodArbTa = '{\n  "@@locale": "ta",\n  "settingsTitle": "x"\n}\n';
 
+  // [pipeline C-13] The router. `redirect:` was present the entire time the app
+  // was unusable, so a fixture carrying only the guard would agree with a broken
+  // check — the refresh signal is the limb that was missing.
+  const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
+  const goodRouter = `
+final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
+    initialLocation: '/',
+    refreshListenable: ref.watch(authRefreshProvider),
+    redirect: (BuildContext context, GoRouterState state) {
+      if (!signedIn && !onAuthScreen) return '/sign-in';
+      return null;
+    },
+  );
+});
+`;
+
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -1232,8 +1263,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -1442,6 +1473,63 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
   });
 
+  // [pipeline C-13] A user who signs in must END UP SOMEWHERE ELSE.
+  //
+  // 🔬 THE REAL-TREE MUTATIONS CAME FIRST (2026-07-29, four of them, each
+  // grep-verified to have landed) and this fixture was written afterwards to
+  // match what they showed — never the other way round. The mutation this guard
+  // deliberately does NOT catch is recorded below, because a fixture that
+  // pretended otherwise would inflate what this file appears to prove.
+  describe('the sign-in screen can be LEFT', () => {
+    test('FAILS when the router is never told the session changed', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-norefresh', {
+          router: goodRouter.replace('    refreshListenable: ref.watch(authRefreshProvider),\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /the router must be TOLD when the session changes/);
+    });
+
+    // The bridge itself. `refreshListenable:` pointing at a notifier that does
+    // not exist is a compile error in the app and a silent pass here.
+    test('FAILS when the notifier class is gone', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nonotifier', {
+          providers: goodProviders.replace('class AuthRefreshNotifier extends ChangeNotifier {', 'class AuthRefreshNotifierGone extends ChangeNotifier {'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must be bridged to a Listenable/);
+    });
+
+    test('FAILS when the notifier stops subscribing to the auth stream', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nosub', {
+          providers: goodProviders.replace('    _sub = changes.listen((core.AuthUser? _) => notifyListeners());\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must actually SUBSCRIBE/);
+    });
+
+    // 🔴 THE HONEST LIMIT OF THIS GUARD, asserted rather than left implied.
+    // On the real tree, replacing the listener body with `{}` — subscribing and
+    // never notifying — left every anchor matching and this guard GREEN, while
+    // both limbs of the property test went red. That is the correct division of
+    // labour (the guard stops the property VANISHING; only the property stops
+    // the BEHAVIOUR vanishing), but it is worth a failing-if-it-changes test so
+    // nobody reads the guard as proving more than it does.
+    test('does NOT catch a notifier that fires nothing — the property does', () => {
+      const { code } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-silentnotifier', {
+          providers: goodProviders.replace('_sub = changes.listen((core.AuthUser? _) => notifyListeners());', '_sub = changes.listen((core.AuthUser? _) {});'),
+        }),
+      });
+      assert.equal(code, 0, 'if this ever goes red the guard got smarter — update the comment above, and the property test header');
+    });
+  });
+
   // [pipeline C-13] The chassis claimed internationalisation while shipping ONE
   // locale, so the seam had never once run — the fail-closed-with-no-open-path
   // shape, in a corner nobody had looked at.
@@ -1487,7 +1575,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 25 chassis behaviour\(s\)/);
+      assert.match(out, /tracked domain: 26 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -1521,7 +1609,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 24/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 25/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
