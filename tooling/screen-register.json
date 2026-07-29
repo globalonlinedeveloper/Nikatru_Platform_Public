@@ -307,9 +307,17 @@
     {
       "id": "system.review-prompt",
       "what": "Ask for a store review at a good moment.",
-      "status": "todo",
-      "detail": "RE-OPENED 2026-07-29, the mechanism only. Was not-building on \"no users to ask\" — that argument is about WHEN to show it, not whether the seam can be built and proven. The seam plus its gating rule is buildable now with a no-op default, exactly as notifications works, and needs `in_app_review` which lands in platform_storage under [2]C-4. The timing rule still holds: iOS limits how often the prompt appears, so firing it at the wrong moment spends the one chance most users ever give.",
-      "declaredOn": "2026-07-29"
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart",
+        "symbol": "ReviewPromptController",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart",
+        "pattern": "await review.maybeAsk()",
+        "why": "BUILT 2026-07-29. The refusal was \"no users to ask\" — an argument about WHEN, not about whether the mechanism can be built, and WHEN turned out to be pure arithmetic over four persisted numbers (`core.ReviewGate`). ⚠️ THE CALL SITE IS THE WHOLE POINT: the gate refuses on almost every launch BY DESIGN, so \"nothing happened\" is the correct outcome nearly always and a seam with no caller would be invisible for the life of the app. This is the [2]C-6 shape with the best possible camouflage. The prompt itself is OS-drawn and unobservable — neither store reports whether anything appeared — so what is proven is that the request ARRIVES once the gate agrees"
+      }
     }
   ]
 }

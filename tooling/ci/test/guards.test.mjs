@@ -1061,6 +1061,12 @@ group('property: profile-edit-works', () {
   test('oo', () {});
   testWidgets('pp', (t) async {});
 });
+group('property: review-prompt-gated', () {
+  test('qq', () {});
+  test('rr', () {});
+  test('ss', () {});
+  testWidgets('tt', (t) async {});
+});
 group('property: ui-invariants-inherited', () {
   testWidgets('q', (t) async {});
   testWidgets('r', (t) async {});
@@ -1081,6 +1087,14 @@ group('property: analytics-on-switch-mounted', () {
   // one seeded would agree with the first version of that anchor, which passed
   // while `theme:` had been gutted because `darkTheme:` still matched.
   const goodApp = `
+// [pipeline C-13] The review prompt's only call site.
+void initState() {
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await review.recordLaunch();
+    await review.maybeAsk();
+  });
+}
+
 return MaterialApp.router(
   theme: buildAppTheme(seed: const Color(0xFF6459F5)),
   darkTheme: buildAppTheme(
@@ -1154,6 +1168,18 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
 final Provider<AuthRefreshNotifier> authRefreshProvider = X();
 final StreamProvider<core.AuthUser?> authUserProvider = X();
+final Provider<core.ReviewPrompter> reviewPrompterProvider = X();
+final Provider<core.ReviewGate> reviewGateProvider = X();
+final NotifierProvider<ReviewPromptController, core.ReviewGateState> reviewPromptProvider = X();
+
+// [pipeline C-13] The review history plus the decision. The gate refuses on
+// almost every launch by design, so a seam with no caller here would be
+// invisible for the life of the app.
+class ReviewPromptController extends Notifier<core.ReviewGateState> {
+  Future<core.ReviewRequestOutcome> maybeAsk({DateTime? now}) async {
+    final verdict = ref.read(reviewGateProvider).decide(state, now: now, platformCanAsk: canAsk);
+  }
+}
 final NotifierProvider<RemindersEnabledController, bool> remindersEnabledProvider = X();
 final NotifierProvider<LocaleController, Locale?> localeProvider = X();
 
@@ -1510,6 +1536,46 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
   });
 
+  // [pipeline C-13] THE STORE-REVIEW PROMPT, and its call site.
+  //
+  // 🔬 R1 on the real tree — deleting `await review.maybeAsk()` from app.dart —
+  // left every stamped-app test GREEN until the widget limb was rebuilt, so for
+  // a while this anchor was the ONLY thing standing between the chassis and a
+  // review seam that never asked anybody. The gate refuses on almost every
+  // launch by design, which makes "nothing happened" the correct outcome nearly
+  // always: the best camouflage a dead feature has had here yet.
+  describe('the review prompt has a caller', () => {
+    test('FAILS when the app never asks', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noask', {
+          app: goodApp.replace('    await review.maybeAsk();\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /app\.dart must actually ask/);
+    });
+
+    test('FAILS when the launch is never counted', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nocount', {
+          app: goodApp.replace('    await review.recordLaunch();\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must count the launch/);
+    });
+
+    test('FAILS when the ask stops going through the gate', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nogate', {
+          providers: goodProviders.replace('ref.read(reviewGateProvider).decide(state, now: now, platformCanAsk: canAsk)', 'true'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must go through ReviewGate\.decide/);
+    });
+  });
+
   // [pipeline C-13] EDIT DISPLAY NAME — the screen refused on the grounds that
   // "there is no profile data model", which described a field nothing wrote and
   // concluded it could never be written.
@@ -1686,7 +1752,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 27 chassis behaviour\(s\)/);
+      assert.match(out, /tracked domain: 30 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -1720,7 +1786,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 26/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 29/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

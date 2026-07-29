@@ -94,21 +94,44 @@ if (adapters.length < MIN_ADAPTERS) {
 }
 
 // ── Register: every adapter owns a capabilityMatrix ─────────────────────────
+//
+// 🔴 ONE OWNER CAN HOLD MORE THAN ONE CAPABILITY, and this used to be a `Map`
+// keyed on owner — so the LAST entry silently replaced the earlier one and its
+// matrix stopped being checked, while this guard went on printing `ok N
+// matrices exercised`. Found 2026-07-29 by adding the `review` capability to
+// `packages/platform_storage`: `StorageCapabilities` vanished from the checked
+// set and nothing said so.
+//
+// The register has always allowed this (`core` owns both `core` and
+// `analytics_funnel`, and packageEarnReasons is keyed by PACKAGE precisely
+// because two capabilities can share one), so the collapse was a latent bug
+// waiting for the first adapter to grow a second capability. EVERY matrix is
+// checked now, and the count is asserted below so a future collapse cannot be
+// silent.
 const byOwner = new Map();
 for (const cap of reg.capabilities ?? []) {
-  if (cap.owner) byOwner.set(cap.owner, cap);
+  if (!cap.owner) continue;
+  if (!byOwner.has(cap.owner)) byOwner.set(cap.owner, []);
+  byOwner.get(cap.owner).push(cap);
 }
 
 // All six real targets plus web. Fuchsia is declared too, but is not a target.
 const REQUIRED_PLATFORMS = ['android', 'iOS', 'macOS', 'windows', 'linux', 'web'];
 
 let checked = 0;
+// Flattened deliberately: the unit of work is a MATRIX, not a package, because a
+// package with two capabilities has two matrices and both have to hold.
+const matrixJobs = [];
 for (const pkg of adapters) {
-  const cap = byOwner.get(pkg);
-  if (!cap) {
+  const caps = byOwner.get(pkg);
+  if (!caps || caps.length === 0) {
     problems.push(`\`${pkg}\` is an adapter but owns no capability register entry, so it can declare no matrix. [C-1] would normally catch this first.`);
     continue;
   }
+  for (const cap of caps) matrixJobs.push({ pkg, cap });
+}
+
+for (const { pkg, cap } of matrixJobs) {
   const m = cap.capabilityMatrix;
   if (!m) {
     problems.push(
@@ -190,6 +213,25 @@ for (const pkg of adapters) {
 }
 
 // A matrix nobody tests is the "assertion that cannot fail" shape again.
+// COVERAGE SELF-CHECK, expressed as a RELATIONSHIP rather than a magic number:
+// every matrix the register declares on an adapter package must actually reach
+// the checks above. A fixed floor would be wrong the moment the tree legitimately
+// grows or shrinks, and — as the first version of this proved — it also fails on
+// any synthetic tree, which is how a floor gets weakened to shut a test up.
+//
+// 🔴 THIS IS THE CHECK THAT WOULD HAVE CAUGHT THE BUG ABOVE. When `byOwner`
+// collapsed two capabilities into one, the register still declared 6 matrices
+// and only 5 were examined — while the guard printed `ok 5 matrices exercised`,
+// which is indistinguishable from there being 5.
+const declaredOnAdapters = (reg.capabilities ?? []).filter(
+  (c) => c.owner && adapters.includes(c.owner) && c.capabilityMatrix,
+);
+if (matrixJobs.length < declaredOnAdapters.length) {
+  problems.push(
+    `COVERAGE LOST — the register declares ${declaredOnAdapters.length} capability matrix/matrices on adapter packages, but only ${matrixJobs.length} reached the checks. A matrix that is declared and never examined reports as covered.`,
+  );
+}
+
 if (adapters.length > 0 && checked === 0) {
   problems.push('COVERAGE LOST — not one adapter matrix is exercised by a test that calls forPlatform. Every check above would then be asserting the existence of documentation.');
 } else if (checked > 0) {

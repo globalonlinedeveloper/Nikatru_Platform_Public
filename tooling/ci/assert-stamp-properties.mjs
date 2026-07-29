@@ -163,6 +163,20 @@ const REQUIRED_COVERAGE = [
     why: 'a profile screen that saves nowhere is the dead feature C-6 exists to catch, and refusing to build it on the strength of a symptom is what kept it unbuilt',
   },
   {
+    key: 'review-prompt-gated',
+    group: /group\(\s*'property: review-prompt-gated'/,
+    sources: [
+      { file: PROVIDERS, re: /class ReviewPromptController extends Notifier<core\.ReviewGateState>/, what: 'the chassis must own the review history — a prompt with no persisted history asks on every launch, and the store discards all but the first' },
+      { file: PROVIDERS, re: /\.decide\(/, what: 'the ask must go through ReviewGate.decide — a call site that decides for itself is how the one request a store honours gets spent at a bad moment' },
+      // The CALL SITE, not merely the machinery. A review seam with no caller is
+      // invisible: the gate refuses on almost every launch by design, so
+      // "nothing happened" is the correct outcome nearly always.
+      { file: APP_ROOT, re: /await review\.recordLaunch\(\)/, what: 'app.dart must count the launch, or the gate never reaches its threshold and the prompt is dead code' },
+      { file: APP_ROOT, re: /await review\.maybeAsk\(\)/, what: 'app.dart must actually ask — the seam having a caller is the whole difference between this and the four fail-closed seams C-6 was written for' },
+    ],
+    why: 'iOS silently discards requests beyond its quota, so a prompt asked at the wrong moment is not a dismissed dialog — it is the whole opportunity the app gets, spent',
+  },
+  {
     key: 'reminder-intent-persisted',
     group: /group\(\s*'property: reminder-intent-persisted'/,
     sources: [
@@ -222,7 +236,7 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 27;
+const MIN_DOMAIN = 30;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -240,6 +254,11 @@ const COVERED_BY = {
   // Driven: the property watches this stream and asserts the new name arrives
   // on it, which is the only thing that makes an edit visible.
   authUserProvider: 'profile-edit-works',
+  // Driven, not constructed: the property fakes the prompter and asserts a real
+  // request arrives once the gate agrees.
+  reviewPrompterProvider: 'review-prompt-gated',
+  reviewGateProvider: 'review-prompt-gated',
+  reviewPromptProvider: 'review-prompt-gated',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
   localeProvider: 'locale-actually-switches',

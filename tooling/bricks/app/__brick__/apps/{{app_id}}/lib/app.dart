@@ -123,6 +123,29 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 🔴 [pipeline C-13] THE REVIEW PROMPT'S ONLY CALL SITE. A seam with no
+    // caller is the [pipeline C-6] shape, and this one would be invisible: the
+    // gate refuses on almost every launch by design, so "nothing happened" is
+    // the correct outcome nearly always and tells you nothing.
+    //
+    // Counting the launch and asking are deliberately SEPARATE: the count must
+    // advance every time, and the ask must be considered every time, but the
+    // gate is what decides — never this widget.
+    //
+    // ⚠️ THIS IS THE CHASSIS DEFAULT, NOT THE BEST MOMENT. Both stores'
+    // guidance is to ask after something has gone well for the user, which only
+    // the app knows. An app with a real success moment should call
+    // `maybeAsk()` there instead of relying on launch count alone — the gate
+    // protects either way.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final ReviewPromptController review = ref.read(
+        reviewPromptProvider.notifier,
+      );
+      await review.recordLaunch();
+      if (!mounted) return;
+      await review.maybeAsk();
+    });
   }
 
   @override

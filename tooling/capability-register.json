@@ -340,6 +340,10 @@
               "fixOwner": "[2]C-3's de-forking increment, per the decision"
             }
           ]
+        },
+        {
+          "file": "packages/core/lib/src/review/review_prompter.dart",
+          "symbol": "ReviewPrompter"
         }
       ],
       "consumers": [
@@ -444,6 +448,27 @@
         "test": "packages/platform_storage/test/storage_capabilities_test.dart",
         "pinnedTo": "flutter_secure_storage 9.x + shared_preferences 2.x",
         "degradesOn": "Linux secure storage is CONDITIONAL ON THE ENVIRONMENT: libsecret must be installed AND a Secret Service daemon running and unlocked. Headless, kiosk and CI sessions often have neither, so a write can fail at runtime where every other desktop succeeds. Web is not OS-backed at all."
+      }
+    },
+    {
+      "id": "review",
+      "capability": "Store-review prompt: the OS rating dialog, and the timing rule that decides when it may be shown.",
+      "owner": "packages/platform_storage",
+      "package": "nikatru_platform_storage",
+      "seams": [],
+      "implementsSeams": [
+        "ReviewPrompter"
+      ],
+      "consumers": [
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "[2]C-13, 2026-07-29. A SECOND capability on an existing package, not a new one: [2]C-4 adjudicated that share_plus, app_links and in_app_review all land in platform_storage, because a capability name is not a reason to spawn a pubspec. The WHEN half is `core.ReviewGate` -- pure arithmetic over four persisted numbers, so every branch is reachable from a test without simulating four months of calendar time. The refusal this replaced was \"there are no users to ask\", which is an argument about timing and not about whether the mechanism can be built.",
+      "capabilityMatrix": {
+        "file": "packages/platform_storage/lib/src/review_capabilities.dart",
+        "symbol": "ReviewCapabilities",
+        "test": "packages/platform_storage/test/review_capabilities_test.dart",
+        "pinnedTo": "in_app_review 2.0.12",
+        "degradesOn": "Linux and web have NO implementation at all -- reaching the plugin there throws MissingPluginException, so the adapter checks the matrix before touching it. Windows is the asymmetric row: openStoreListing() exists and the inline prompt does not, so collapsing the two booleans into one would silently lose Windows' only route to the store. Android additionally needs the Play Store present ON THE DEVICE, which no build-time fact can know, so isAvailable() is asked at runtime. iOS requestReview() does NOTHING in TestFlight -- the one build a developer is most likely to test it in."
       }
     },
     {
