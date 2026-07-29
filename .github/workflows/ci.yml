@@ -457,9 +457,25 @@ jobs:
           export NIKATRU_ALLOW_OVERWRITE=1
           mason get
           mason make app -c tooling/bricks/app/_probe_vars.json -o . --on-conflict overwrite
-      - name: SHOW-1 — post_gen appended probe to apps.json (then revert)
+      # [pipeline S-7a] STAMPED TWICE, ON PURPOSE. post_gen carries two
+      # skip-if-already-present branches — one in _appendToAppsJson, one in
+      # _registerInWorkspace — and until now CI stamped exactly ONCE, so neither
+      # branch had ever executed. That is untested code sitting in the path that
+      # protects the public catalogue and the workspace gate from duplicates.
+      # Byte-identical after the second stamp is what makes idempotency
+      # OBSERVABLE rather than merely asserted in a comment.
+      - name: SHOW-1 — probe is in apps.json, and a RE-STAMP changes nothing
         run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          export NIKATRU_ALLOW_OVERWRITE=1
           grep -q '"slug": "probe"' sites/_shared/_data/apps.json
+          cp sites/_shared/_data/apps.json "$RUNNER_TEMP/apps-after-1.json"
+          cp pubspec.yaml "$RUNNER_TEMP/pubspec-after-1.yaml"
+          mason make app -c tooling/bricks/app/_probe_vars.json -o . --on-conflict overwrite
+          # diff, not `grep -c`: a second `probe` row and a missing one both fail
+          # a count check for opposite reasons, and only the diff says which.
+          diff -u "$RUNNER_TEMP/apps-after-1.json" sites/_shared/_data/apps.json
+          diff -u "$RUNNER_TEMP/pubspec-after-1.yaml" pubspec.yaml
           git checkout -- sites/_shared/_data/apps.json
       # THE CLONE CONTRACT, asserted rather than documented. A default stamp
       # that quietly regains a Worker/D1/R2 is how the portfolio walks back
@@ -560,6 +576,16 @@ jobs:
       # therefore cannot reach Cloudflare. [pipeline F-9]
       - name: Site integrity
         run: node tooling/ci/check-site-integrity.mjs
+      # [pipeline S-7a] apps.json is PUBLIC, so a `live` entry is a promise to a
+      # stranger that the link works. Under the wildcard `*.nikatru.com` ([ADR
+      # 006]) every name resolves and almost every name fails — measured
+      # 2026-07-29, `lingo.nikatru.com` and `zzz-nonexistent-app.nikatru.com`
+      # both answer 522 while `subly.nikatru.com` answers 200. So "it resolves"
+      # proves nothing and only the RESPONSE counts. `[3]S-7` asserts the stamp
+      # WRITES the catalogue; until now nothing asserted anyone could open what
+      # it wrote.
+      - name: Catalogue advertises no dead app
+        run: node tooling/ci/assert-catalog-reachable.mjs
 
   workspace_gate:
     name: Workspace gate (melos analyze + test)
