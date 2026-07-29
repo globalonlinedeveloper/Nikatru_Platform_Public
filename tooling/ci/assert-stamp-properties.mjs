@@ -147,6 +147,22 @@ const REQUIRED_COVERAGE = [
     why: 'both stores require a WORKING in-app deletion path wherever an account can be created',
   },
   {
+    key: 'profile-edit-works',
+    group: /group\(\s*'property: profile-edit-works'/,
+    sources: [
+      // The BUTTON calls it, not merely that the method exists. This is the
+      // exact anchor shape the account-deletion property needed after its
+      // confirm action turned out to be `Navigator.pop` and nothing else.
+      { file: SETTINGS, re: /onSave:\s*\(\)\s*=>\s*_saveProfile\(/, what: 'the save button must call _saveProfile — a dialog whose action only pops looks exactly like one that worked' },
+      { file: SETTINGS, re: /\.updateProfile\(displayName:/, what: 'the save flow must reach AuthRepository.updateProfile, or the name changes on screen and nowhere else' },
+      // The tile must read the STREAM. Reading `currentUser` compiles, renders,
+      // and never updates after a save — the failure is invisible in review.
+      { file: SETTINGS, re: /ref\.watch\(authUserProvider\)/, what: 'the profile tile must watch the identity STREAM — a currentUser snapshot never rebuilds, so a saved name goes on displaying the old value' },
+      { file: 'packages/core/lib/src/auth/auth_repository.dart', re: /Future<AuthUser> updateProfile\(\{required String displayName\}\)/, what: 'the seam must declare updateProfile — the screen was refused because "there is no profile data model", and this is the model' },
+    ],
+    why: 'a profile screen that saves nowhere is the dead feature C-6 exists to catch, and refusing to build it on the strength of a symptom is what kept it unbuilt',
+  },
+  {
     key: 'reminder-intent-persisted',
     group: /group\(\s*'property: reminder-intent-persisted'/,
     sources: [
@@ -206,7 +222,7 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 26;
+const MIN_DOMAIN = 27;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -221,6 +237,9 @@ const COVERED_BY = {
   // Driven, not merely constructed: the property signs in through the real form
   // and asserts the user ends up somewhere else.
   authRefreshProvider: 'auth-redirect-follows-session',
+  // Driven: the property watches this stream and asserts the new name arrives
+  // on it, which is the only thing that makes an edit visible.
+  authUserProvider: 'profile-edit-works',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
   localeProvider: 'locale-actually-switches',

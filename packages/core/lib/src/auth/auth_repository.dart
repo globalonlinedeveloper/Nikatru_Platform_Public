@@ -54,6 +54,28 @@ abstract class AuthRepository {
   /// [currentAccessToken] for plain request authorization.
   Future<AuthSession?> currentSession();
 
+  /// Change the signed-in user's display name.
+  ///
+  /// [pipeline C-13] This lives on the SEAM rather than in a screen because the
+  /// screen was refused on the grounds that "there is no profile data model" —
+  /// which was the symptom, not the cause. Every identity provider worth using
+  /// stores user metadata (Supabase's gotrue exposes `updateUser`), so the model
+  /// was there the whole time and nothing was writing to it. A field nothing
+  /// writes looks exactly like a field that cannot be written.
+  ///
+  /// An EMPTY string clears the name — `displayName` goes back to null rather
+  /// than becoming `''`, so callers have one "no name" case to handle instead of
+  /// two that render differently.
+  ///
+  /// Implementations MUST emit on [authStateChanges] so a screen showing the
+  /// user's details refreshes. Without that the save succeeds and the user goes
+  /// on looking at their old name, which is indistinguishable from a save that
+  /// silently failed.
+  ///
+  /// Throws [AuthFailure] when nobody is signed in, or when the provider
+  /// refused. Returns the updated user so a caller need not re-read.
+  Future<AuthUser> updateProfile({required String displayName});
+
   /// Ask the backend to delete the account and its data, then sign out locally.
   ///
   /// 🔴 [pipeline C-15] THE CLIENT HALF ONLY, and the split is deliberate.

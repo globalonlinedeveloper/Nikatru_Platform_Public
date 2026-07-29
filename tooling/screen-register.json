@@ -270,9 +270,17 @@
     {
       "id": "settings.profile",
       "what": "Edit display name.",
-      "status": "todo",
-      "detail": "RE-OPENED 2026-07-29. Was not-building on the reason \"there is no profile data model\" — WRONG. Supabase's gotrue exposes `updateUser`, so user metadata IS a real store and the seam can expose `updateProfile(displayName)`. Buildable and testable today, driven end-to-end by InMemoryAuthRepository. The original reason described a field nothing wrote, and concluded from that it could never be written.",
-      "declaredOn": "2026-07-29"
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "symbol": "_EditProfileDialog",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": ".updateProfile(displayName:",
+        "why": "BUILT 2026-07-29, after being refused on \"there is no profile data model\" — which described a field nothing wrote and concluded it could never be written. gotrue's `updateUser` writes `auth.users.user_metadata`, and the adapter now writes the SAME `full_name` key it already read. The tile watches the identity STREAM rather than the `currentUser` snapshot: a snapshot read compiles, renders, and never rebuilds, so a saved name would go on showing the old value — which is what a save button wired to nothing looks like"
+      }
     },
     {
       "id": "settings.language",

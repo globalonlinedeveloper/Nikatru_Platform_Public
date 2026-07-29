@@ -16,8 +16,8 @@ class SupabaseAuthRepository implements core.AuthRepository {
   SupabaseAuthRepository({
     sb.GoTrueClient? client,
     Future<void> Function()? requestServerDeletion,
-  }) : _injected = client,
-       _requestServerDeletion = requestServerDeletion;
+  })  : _injected = client,
+        _requestServerDeletion = requestServerDeletion;
 
   final sb.GoTrueClient? _injected;
 
@@ -116,6 +116,31 @@ class SupabaseAuthRepository implements core.AuthRepository {
               isUtc: true,
             ),
     );
+  }
+
+  /// [pipeline C-13] gotrue's `updateUser` writes `auth.users.user_metadata`,
+  /// which is a REAL store — the profile screen was refused on the grounds that
+  /// no profile data model existed, and that was never true.
+  ///
+  /// Writes the SAME `full_name` key [_map] reads. A write to any other key
+  /// would succeed forever and change nothing the app displays.
+  ///
+  /// The SDK emits `userUpdated` on its auth stream, so [authStateChanges]
+  /// carries the new user without this doing anything extra.
+  @override
+  Future<core.AuthUser> updateProfile({required String displayName}) async {
+    final sb.UserResponse res = await _auth.updateUser(
+      sb.UserAttributes(
+        // Empty clears it: storing `''` would give callers a second "no name"
+        // case that renders as a blank line instead of the not-set label.
+        data: <String, dynamic>{
+          'full_name': displayName.isEmpty ? null : displayName,
+        },
+      ),
+    );
+    final core.AuthUser? u = _map(res.user);
+    if (u == null) throw core.AuthFailure('Could not save your profile');
+    return u;
   }
 
   /// 🔴 [pipeline C-15] THE CLIENT HALF. `DELETE /v1/account` is stage 4's route

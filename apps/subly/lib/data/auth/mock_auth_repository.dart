@@ -66,6 +66,7 @@ class MockAuthRepository implements AuthRepository {
       // No expiry: the demo token never lapses, and `isValidAt` treats an
       // unknown expiry as still-valid rather than guessing on the client.
       : const AuthSession(accessToken: 'demo-token');
+
   /// [pipeline C-15] Added when core's AuthRepository gained this member.
   /// apps/subly is frozen (39-CHASSIS cut 1), so this is the minimum that keeps
   /// it compiling — the real client lives in packages/auth_supabase.
@@ -73,5 +74,24 @@ class MockAuthRepository implements AuthRepository {
   Future<void> deleteAccount() async {
     if (currentUser == null) throw AuthFailure('Not signed in');
     await signOut();
+  }
+
+  /// [pipeline C-13] Required by the shared `AuthRepository` seam, which Subly
+  /// implements via the F0-4 re-export shim. Subly is a FROZEN legacy rail-prover
+  /// (39-CHASSIS cut 1) and has no profile screen, so this exists to satisfy the
+  /// contract — but it is implemented properly rather than thrown from, because a
+  /// stub that refuses is the fail-closed shape [pipeline C-6] exists to catch.
+  @override
+  Future<AuthUser> updateProfile({required String displayName}) async {
+    final AuthUser? current = _user;
+    if (current == null) throw AuthFailure('Not signed in');
+    final AuthUser updated = AuthUser(
+      id: current.id,
+      email: current.email,
+      displayName: displayName.isEmpty ? null : displayName,
+    );
+    _user = updated;
+    _controller.add(updated);
+    return updated;
   }
 }

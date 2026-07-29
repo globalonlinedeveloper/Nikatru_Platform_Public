@@ -22,6 +22,8 @@
 // and say why in the commit. That is a visible, reviewed choice. Silently losing
 // the property is what this file prevents.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +34,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:{{app_id.snakeCase()}}/app.dart';
 import 'package:{{app_id.snakeCase()}}/l10n/app_localizations.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
+import 'package:{{app_id.snakeCase()}}/core/router.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
 
 /// In-memory store: `PrefsKeyValueStore` needs a platform channel that does not
@@ -741,6 +744,159 @@ void main() {
         );
       },
     );
+  });
+
+  // ── PROPERTY: profile-edit-works ──────────────────────────────────────────
+  // [pipeline C-13] The user can change their display name, and SEE that it
+  // changed.
+  //
+  // 🔴 THIS SCREEN WAS REFUSED, on the grounds that "there is no profile data
+  // model". There is: every identity provider worth using stores user metadata,
+  // and Supabase's gotrue exposes `updateUser` for exactly this. The refusal
+  // described a field that nothing wrote and concluded from that it could never
+  // be written — the symptom stated as the cause, which is what all four of
+  // those refusals had in common.
+  //
+  // The last limb drives the REAL UI, because the defect this repo keeps
+  // shipping is a button wired to nothing: a seam-level test passes against a
+  // dialog whose save button calls `Navigator.pop` and no more, which is
+  // precisely what account deletion did for months.
+  //
+  // 🔬 MUTATION-TESTED ON THE REAL TREE, 4, each grep-verified to have landed:
+  //   P1 save button only pops the dialog   → guard RED, widget limb RED
+  //   P2 tile reads `currentUser` not the stream → guard RED, widget limb RED
+  //   P3 the seam updates but never emits   → guard GREEN, emit + widget RED
+  //   P4 an empty name stored as '' not null → guard GREEN, ONLY the clear limb
+  // P3 and P4 are invisible to the guard by construction — no anchor can see
+  // behaviour — which is the division of labour this file exists for.
+  group('property: profile-edit-works', () {
+    test('the seam really changes the name', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      expect(auth.currentUser!.displayName, isNull);
+
+      final core.AuthUser updated = await auth.updateProfile(
+        displayName: 'Ada Lovelace',
+      );
+
+      expect(updated.displayName, 'Ada Lovelace');
+      expect(
+        auth.currentUser!.displayName,
+        'Ada Lovelace',
+        reason:
+            'the returned user changed but the session still holds the old '
+            'one, so the next screen to read it shows the stale name',
+      );
+    });
+
+    // An empty name must CLEAR it rather than store '', or callers get a second
+    // "no name" case that renders as a blank line instead of the not-set label.
+    test('an empty name clears it rather than storing a blank', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      await auth.updateProfile(displayName: 'Ada');
+      await auth.updateProfile(displayName: '');
+      expect(auth.currentUser!.displayName, isNull);
+    });
+
+    // Fail-closed, and asserted: an update with nobody signed in must refuse
+    // rather than invent a user.
+    test('updating while signed out refuses', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      await expectLater(
+        c.read(authRepositoryProvider).updateProfile(displayName: 'Ada'),
+        throwsA(isA<core.AuthFailure>()),
+      );
+    });
+
+    // The seam must EMIT, or a screen showing the name has no way to learn it
+    // changed and the save is invisible — indistinguishable from one that
+    // silently failed.
+    // The seam's contract says an implementation MUST emit, so this asserts on
+    // the seam's OWN stream rather than through a provider.
+    //
+    // 🔴 THE FIRST VERSION OF THIS TEST WATCHED [authUserProvider] AND PROVED
+    // NOTHING. That provider yields the synchronous snapshot before forwarding
+    // the stream, and the yield is async — so subscribing and immediately
+    // editing let the generator run AFTER the edit and seed the NEW name. With
+    // the emit deleted from the seam it still passed. Found by mutation, not by
+    // review; an assertion satisfied by a race is worse than no assertion,
+    // because it also reports coverage. The end-to-end widget limb below is
+    // what proves the provider half.
+    test('the change is EMITTED on the identity stream', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      final List<core.AuthUser?> emitted = <core.AuthUser?>[];
+      final StreamSubscription<core.AuthUser?> sub = auth
+          .authStateChanges()
+          .listen(emitted.add);
+      addTearDown(sub.cancel);
+
+      await auth.updateProfile(displayName: 'Ada Lovelace');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        emitted.map((core.AuthUser? u) => u?.displayName),
+        contains('Ada Lovelace'),
+        reason:
+            'nothing watching identity was told — the name changes in the '
+            'session and every screen showing it keeps the old value',
+      );
+    });
+
+    // THE LIMB THAT MATTERS. Everything above passes against a save button
+    // wired to nothing.
+    testWidgets('editing it in the REAL app updates what the user sees', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await _signedInContainer(_MemStore());
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      c.read(routerProvider).go('/settings');
+      await _turnsAndSettleRoute(tester);
+
+      // The domain first: with no profile tile the taps below would fail for
+      // the wrong reason.
+      final Finder tile = find.text('No name set');
+      expect(
+        tile,
+        findsOneWidget,
+        reason: 'no profile row on the settings screen — a seam with no way in',
+      );
+
+      await tester.tap(tile);
+      await _turns(tester);
+      await tester.enterText(find.byType(TextField).first, 'Ada Lovelace');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await _turns(tester, 20);
+
+      expect(
+        find.text('Ada Lovelace'),
+        findsOneWidget,
+        reason:
+            'the name was typed and saved and the screen still shows the old '
+            'value — which is what a save button wired to nothing looks like',
+      );
+      expect(find.text('No name set'), findsNothing);
+      expect(
+        c.read(authRepositoryProvider).currentUser?.displayName,
+        'Ada Lovelace',
+        reason: 'the UI updated but the seam was never called',
+      );
+    });
   });
 
   // ── PROPERTY: reminder-intent-persisted ───────────────────────────────────
