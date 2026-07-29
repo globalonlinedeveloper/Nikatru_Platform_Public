@@ -187,6 +187,20 @@ jobs:
       - name: Every shared capability has one home and a real consumer
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-capability-register.mjs
+      # The companion to the step above, and deliberately not folded into it: that
+      # guard verifies `consumers` against real pubspecs in both directions, which
+      # proves a package was DOWNLOADED and never that a line of it runs. Every
+      # capability the stamp declares could resolve, analyze and ship with no call
+      # site at all and it would stay green. S-2's own acceptance criterion was
+      # written as "for every register entry flagged `brick-wired`" — a flag that
+      # exists nowhere in the register, so the set was empty, the check vacuously
+      # true, and it would have passed while wiring nothing. The set is derived
+      # from `consumers` instead, and the coverage floor is a RELATIONSHIP to the
+      # stamp's own pubspec rather than a number somebody can lower.
+      # [pipeline S-2]
+      - name: A stamped app CALLS every capability it declares
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-stamp-wiring.mjs
       # A fork in the TEMPLATE is not one bad app -- it is every app the factory
       # will ever stamp, born wrong. Proven 2026-07-28: a fork planted there
       # passed all three existing guards. Matches on what a class IMPLEMENTS as
