@@ -1067,6 +1067,11 @@ group('property: review-prompt-gated', () {
   test('ss', () {});
   testWidgets('tt', (t) async {});
 });
+group('property: onboarding-shown-once', () {
+  testWidgets('uu', (t) async {});
+  testWidgets('vv', (t) async {});
+  test('ww', () {});
+});
 group('property: ui-invariants-inherited', () {
   testWidgets('q', (t) async {});
   testWidgets('r', (t) async {});
@@ -1171,6 +1176,16 @@ final StreamProvider<core.AuthUser?> authUserProvider = X();
 final Provider<core.ReviewPrompter> reviewPrompterProvider = X();
 final Provider<core.ReviewGate> reviewGateProvider = X();
 final NotifierProvider<ReviewPromptController, core.ReviewGateState> reviewPromptProvider = X();
+final NotifierProvider<OnboardingSeenController, bool?> onboardingSeenProvider = X();
+final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
+  return Listenable.merge(<Listenable>[ref.watch(authRefreshProvider), onboarding]);
+});
+
+class OnboardingSeenController extends Notifier<bool?> {
+  Future<void> set(bool seen) async {
+    await kv.write(_onboardingSeenKey, seen ? 'true' : 'false');
+  }
+}
 
 // [pipeline C-13] The review history plus the decision. The gate refuses on
 // almost every launch by design, so a seam with no caller here would be
@@ -1304,12 +1319,27 @@ abstract class AuthRepository {
   // was unusable, so a fixture carrying only the guard would agree with a broken
   // check — the refresh signal is the limb that was missing.
   const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
+  // [pipeline C-13] The carousel. Its copy must fall back to the l10n string,
+  // never to the key — AppConfig.text() returns the key itself when unset.
+  const ONBOARDING = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/firstrun/onboarding_screen.dart';
+  const goodOnboarding = `
+class OnboardingScreen extends ConsumerStatefulWidget {
+  const OnboardingScreen({super.key});
+}
+
+final pages = [
+  (title: _copy(cfg, 'onboarding.1.title', l10n.onboarding1Title), body: x),
+];
+`;
   const goodRouter = `
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
-    refreshListenable: ref.watch(authRefreshProvider),
+    refreshListenable: ref.watch(routerRefreshProvider),
     redirect: (BuildContext context, GoRouterState state) {
+      if (!onboarded) {
+        return state.matchedLocation == '/onboarding' ? null : '/onboarding';
+      }
       if (!signedIn && !onAuthScreen) return '/sign-in';
       return null;
     },
@@ -1326,8 +1356,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, coreAuth = goodCoreAuth, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [CORE_AUTH]: coreAuth };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -1536,6 +1566,45 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
   });
 
+  // [pipeline C-13] FIRST-RUN ONBOARDING.
+  //
+  // 🔬 O3 on the real tree is the one to remember: making `_copy` fall back the
+  // way `AppConfig.text()` does — TO THE KEY — left this guard green and failed
+  // exactly one limb of the property. A fresh stamp has no overrides, so that
+  // mutation ships `onboarding.1.title` to a real user, and it looks entirely
+  // deliberate in review.
+  describe('onboarding is reachable and does not leak config keys', () => {
+    test('FAILS when the router stops sending a fresh install there', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noonboard', {
+          router: goodRouter.replace("      if (!onboarded) {\n        return state.matchedLocation == '/onboarding' ? null : '/onboarding';\n      }\n", ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /exempt it from the auth gate/);
+    });
+
+    test('FAILS when the copy falls back to the raw key', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-rawkey', {
+          onboarding: goodOnboarding.replace("_copy(cfg, 'onboarding.1.title', l10n.onboarding1Title)", "cfg.text('onboarding.1.title')"),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /NEVER to the key/);
+    });
+
+    test('FAILS when the choice is never written', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nowrite', {
+          providers: goodProviders.replace("await kv.write(_onboardingSeenKey, seen ? 'true' : 'false');", ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /onboarding returns at every launch forever/);
+    });
+  });
+
   // [pipeline C-13] THE STORE-REVIEW PROMPT, and its call site.
   //
   // 🔬 R1 on the real tree — deleting `await review.maybeAsk()` from app.dart —
@@ -1661,7 +1730,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('FAILS when the router is never told the session changed', () => {
       const { code, out } = run('assert-stamp-properties.mjs', {
         cwd: build('sp-norefresh', {
-          router: goodRouter.replace('    refreshListenable: ref.watch(authRefreshProvider),\n', ''),
+          router: goodRouter.replace('    refreshListenable: ref.watch(routerRefreshProvider),\n', ''),
         }),
       });
       assert.equal(code, 1);
@@ -1752,7 +1821,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 30 chassis behaviour\(s\)/);
+      assert.match(out, /tracked domain: 32 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -1765,11 +1834,11 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('FAILS on a NEW chassis behaviour that is classified nowhere', () => {
       const { code, out } = run('assert-stamp-properties.mjs', {
         cwd: build('sp-newcap', {
-          providers: `${goodProviders}\nfinal Provider<bool> onboardingSeenProvider = X();\n`,
+          providers: `${goodProviders}\nfinal Provider<bool> darkPatternDetectorProvider = X();\n`,
         }),
       });
       assert.equal(code, 1);
-      assert.match(out, /NEW CHASSIS BEHAVIOUR 'onboardingSeenProvider'/);
+      assert.match(out, /NEW CHASSIS BEHAVIOUR 'darkPatternDetectorProvider'/);
     });
 
     // The other direction: a classification for something that no longer exists
@@ -1786,7 +1855,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 29/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 31/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

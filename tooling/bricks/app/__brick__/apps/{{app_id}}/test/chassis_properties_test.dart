@@ -36,6 +36,7 @@ import 'package:{{app_id.snakeCase()}}/app.dart';
 import 'package:{{app_id.snakeCase()}}/l10n/app_localizations.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/core/router.dart';
+import 'package:{{app_id.snakeCase()}}/features/firstrun/onboarding_screen.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
 
 /// In-memory store: `PrefsKeyValueStore` needs a platform channel that does not
@@ -56,6 +57,20 @@ class _MemStore implements core.KeyValueStore {
 ProviderContainer _container(_MemStore store) => ProviderContainer(
   overrides: <Override>[keyValueStoreProvider.overrideWith((_) async => store)],
 );
+
+/// A container that has already seen onboarding.
+///
+/// 🔴 [pipeline C-13] ADDED WHEN THE ONBOARDING GATE LANDED, for exactly the
+/// reason `_signedInContainer` was added when the auth gate did: the router now
+/// sends a fresh install to `/onboarding`, so every widget test that pumps the
+/// app was suddenly measuring the carousel instead of its own subject. A test
+/// establishes the state it needs; the alternative is a chassis that cannot add
+/// a first-run step without breaking its own assertions.
+_MemStore _onboardedStore([_MemStore? store]) {
+  final _MemStore s = store ?? _MemStore();
+  s.data['nikatru.onboarding_seen'] = 'true';
+  return s;
+}
 
 /// Captures whatever the analytics rail actually ships. The point of a FAKE
 /// rather than a mock: the assertion is "a real batch, with real contents,
@@ -193,7 +208,7 @@ ProviderContainer _reviewContainer(
 /// needs is the test's job; the alternative is a chassis that cannot add an auth
 /// gate without breaking its own assertions.
 Future<ProviderContainer> _signedInContainer(_MemStore store) async {
-  final ProviderContainer c = _container(store);
+  final ProviderContainer c = _container(_onboardedStore(store));
   await c
       .read(authRepositoryProvider)
       .signInWithEmail(email: 'a@b.com', password: 'pw');
@@ -654,7 +669,9 @@ void main() {
     testWidgets('signing in through the FORM moves the user off it', (
       WidgetTester tester,
     ) async {
-      final ProviderContainer c = _container(_MemStore());
+      // Past onboarding: this limb is about the AUTH redirect, and a fresh
+      // install would land on the carousel instead of the form.
+      final ProviderContainer c = _container(_onboardedStore());
       addTearDown(c.dispose);
 
       await tester.pumpWidget(
@@ -929,6 +946,184 @@ void main() {
         c.read(authRepositoryProvider).currentUser?.displayName,
         'Ada Lovelace',
         reason: 'the UI updated but the seam was never called',
+      );
+    });
+  });
+
+  // ── PROPERTY: onboarding-shown-once ───────────────────────────────────────
+  // [pipeline C-13] A first run introduces the app, exactly once.
+  //
+  // 🔴 THE REFUSAL THIS REPLACES was "the content is app-specific" — true of the
+  // WORDS and false of the MECHANISM. `AppConfig.copy` already existed, so the
+  // carousel is chassis and the words are per-app config.
+  //
+  // ⚠️ THE TRAP THIS PROPERTY EXISTS FOR: `AppConfig.text(key)` returns the KEY
+  // ITSELF when there is no override. A freshly stamped app has no overrides, so
+  // a purely config-driven carousel would greet its first user with
+  // `onboarding.1.title`. That would ship, look deliberate to every reviewer,
+  // and be visible only to a user. The l10n string is the default; config is the
+  // override.
+  //
+  // 🔬 MUTATION-TESTED ON THE REAL TREE, each grep-verified to have landed:
+  //   O1 the redirect drops the onboarding check   → the "shown on first run"
+  //      limb RED
+  //   O2 the flag is never persisted (write dropped) → the "only once" limb RED
+  //   O3 the copy falls back to the KEY, as AppConfig.text does → guard GREEN,
+  //      the "never shows a raw key" limb RED, and ONLY that one
+  //
+  // O3 is the one to remember. It is a one-word change to a fallback, it ships
+  // `onboarding.1.title` to a real user, and it reads as entirely deliberate in
+  // review — the guard cannot see it, because an anchor sees the CALL and this
+  // mutation is inside the callee.
+  group('property: onboarding-shown-once', () {
+    testWidgets('a fresh install lands on onboarding, before sign-in', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(OnboardingScreen),
+        findsOneWidget,
+        reason:
+            'a first run that goes straight to a sign-in form asks somebody to '
+            'sign into something nobody has introduced',
+      );
+    });
+
+    // The raw-key trap, asserted directly. This is the limb that would have
+    // caught a config-driven carousel in a stamped app.
+    testWidgets('it never shows a raw config key to a user', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      for (final String key in <String>[
+        'onboarding.1.title',
+        'onboarding.1.body',
+        'onboarding.2.title',
+        'onboarding.3.title',
+      ]) {
+        expect(
+          find.text(key),
+          findsNothing,
+          reason:
+              'the copy key leaked to the screen — AppConfig.text() returns the '
+              'KEY when there is no override, and a fresh stamp has none',
+        );
+      }
+      // …and the real default is what appeared instead.
+      expect(find.text('Welcome'), findsOneWidget);
+    });
+
+    testWidgets('finishing it moves the user on, and it does not come back', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer c = _container(store);
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Skip'));
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(OnboardingScreen),
+        findsNothing,
+        reason: 'skipping left the user exactly where they were',
+      );
+      expect(
+        store.data['nikatru.onboarding_seen'],
+        'true',
+        reason:
+            'nothing was written, so the next launch shows it again — and the '
+            'launch after that, forever',
+      );
+    });
+
+    test('a stored choice SURVIVES a restart', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer first = _container(store);
+      await first.read(onboardingSeenProvider.notifier).set(true);
+      first.dispose();
+
+      final ProviderContainer reborn = _container(store);
+      addTearDown(reborn.dispose);
+      reborn.read(onboardingSeenProvider); // triggers the background hydrate
+      await Future<void>.delayed(Duration.zero);
+      expect(reborn.read(onboardingSeenProvider), isTrue);
+    });
+
+    // Fail towards SHOWING it. Getting this wrong is asymmetric: showing it
+    // twice is an irritation, showing it never drops the user into an app
+    // nobody introduced.
+    test('an unreadable store shows onboarding, never skips it', () async {
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith(
+            (_) async => throw StateError('disk gone'),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+      // Starts UNKNOWN, then resolves to false. Both halves matter: unknown
+      // must not read as "seen", and it must not stay unknown forever either —
+      // a decision that never resolves is a user who never gets past it.
+      expect(c.read(onboardingSeenProvider), isNull);
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        c.read(onboardingSeenProvider),
+        isFalse,
+        reason:
+            'an unreadable store must resolve to SHOWING onboarding, not sit '
+            'unknown and block the redirect forever',
+      );
+    });
+
+    // The app's words win over the chassis default — the half that makes this
+    // chassis-owned rather than fabricated.
+    testWidgets('an app config override replaces the chassis default', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+          appConfigProvider.overrideWith(
+            (_) async => kAppDefaultConfig.copyWith(
+              copy: <String, String>{'onboarding.1.title': 'Track your spend'},
+            ),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(find.text('Track your spend'), findsOneWidget);
+      expect(
+        find.text('Welcome'),
+        findsNothing,
+        reason:
+            'the override was ignored, so every app in the portfolio would '
+            'introduce itself with the same three sentences',
       );
     });
   });

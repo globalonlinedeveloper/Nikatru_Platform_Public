@@ -5,6 +5,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../features/auth/sign_in_screen.dart';
+import '../features/firstrun/onboarding_screen.dart';
 import '../features/auth/sign_up_screen.dart';
 import '../features/home/home_screen.dart';
 import '../l10n/app_localizations.dart';
@@ -29,8 +30,32 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     // navigation, not on a session appearing, so a user who signed in stayed on
     // the form they had just completed — the seam worked, the guard worked, and
     // nothing connected them. See [AuthRefreshNotifier].
-    refreshListenable: ref.watch(authRefreshProvider),
+    refreshListenable: ref.watch(routerRefreshProvider),
     redirect: (BuildContext context, GoRouterState state) {
+      // [pipeline C-13] ONBOARDING COMES FIRST, before the auth gate. It is what
+      // explains the app; asking someone to sign into something nobody has
+      // introduced is the wrong order, and it is also the order that makes the
+      // sign-up conversion number mean anything.
+      //
+      // `read`, not `watch`: watching here would rebuild the ROUTER on every
+      // change and throw away the navigation stack. The flag is applied in
+      // memory before the onboarding screen navigates away, so this read sees
+      // it immediately.
+      // 🔴 RETURNS EARLY, and that is the whole subtlety. Onboarding must be
+      // EXEMPT from the auth gate below: a first run happens before there is an
+      // account, so falling through would hand `/onboarding` to the signed-out
+      // rule, which sends it to `/sign-in` — and the user never sees onboarding
+      // at all. Measured, not reasoned: the redirect log read
+      // `/` → `/onboarding` → `/sign-in` on the first run.
+      final bool? onboarded = ref.read(onboardingSeenProvider);
+      // Still reading the disk. Decline to decide rather than guessing: guessing
+      // `false` sends a returning user to the carousel they finished months ago.
+      if (onboarded == null) return null;
+      if (!onboarded) {
+        return state.matchedLocation == '/onboarding' ? null : '/onboarding';
+      }
+      if (state.matchedLocation == '/onboarding') return '/';
+
       final bool signedIn = auth.currentUser != null;
       final bool onAuthScreen =
           state.matchedLocation == '/sign-in' ||
@@ -68,6 +93,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/sign-up',
         builder: (BuildContext context, GoRouterState state) =>
             const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (BuildContext context, GoRouterState state) =>
+            const OnboardingScreen(),
       ),
       GoRoute(
         path: '/settings',

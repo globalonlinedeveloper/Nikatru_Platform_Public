@@ -299,10 +299,18 @@
     },
     {
       "id": "firstrun.splash-onboarding",
-      "what": "Onboarding carousel. (The SPLASH half is correctly not-building — see detail.)",
-      "status": "todo",
-      "detail": "RE-OPENED 2026-07-29, the onboarding half only. Was not-building on \"content is app-specific\" — WRONG for the mechanism: `AppConfig.copy` is a runtime copy-override map that already exists, so a carousel can be CONFIG-DRIVEN rather than fabricated. The chassis owns the carousel, each app owns its words. ⚠️ The SPLASH half stands and is not re-opened: a splash is native platform configuration (launch storyboard / drawable), not a Flutter screen — a Dart one renders AFTER the native splash and adds a second flash.",
-      "declaredOn": "2026-07-29"
+      "what": "Onboarding carousel. (The SPLASH half is deliberately NOT built — see reachable.why.)",
+      "status": "present",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/firstrun/onboarding_screen.dart",
+        "symbol": "OnboardingScreen",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart",
+        "pattern": "? null : '/onboarding'",
+        "why": "BUILT 2026-07-29 — the ONBOARDING half. The refusal was \"content is app-specific\", true of the WORDS and false of the MECHANISM: `AppConfig.copy` already existed, so the chassis owns the carousel and each app owns its words. ⚠️ THE COPY FALLS BACK TO l10n, NEVER TO THE KEY — `AppConfig.text(key)` returns the KEY ITSELF when unset and a fresh stamp has no overrides, so a purely config-driven carousel would greet its first user with `onboarding.1.title`. 🔴 The pattern matched here is the EARLY RETURN, because onboarding must be EXEMPT from the auth gate: falling through hands `/onboarding` to the signed-out rule, which sends it to `/sign-in`, and the user never sees onboarding at all — measured on the real redirect log, not reasoned. ⛔ THE SPLASH HALF IS DELIBERATELY NOT BUILT AND IS NOT A TODO: a splash is native platform configuration (launch storyboard / launch drawable), so a Dart one renders AFTER the native splash has already shown and adds a SECOND flash rather than removing the first. That refusal was re-checked on 2026-07-29 and stands."
+      }
     },
     {
       "id": "system.review-prompt",
