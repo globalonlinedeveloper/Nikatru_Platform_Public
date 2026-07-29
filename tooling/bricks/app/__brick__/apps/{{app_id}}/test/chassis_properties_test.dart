@@ -133,6 +133,22 @@ Future<void> _turns(WidgetTester tester, [int n = 12]) async {
   }
 }
 
+/// A container whose session is already established.
+///
+/// 🔴 [pipeline C-13] ADDED WHEN THE AUTH GATE LANDED. The router now redirects a
+/// signed-out app to /sign-in, so two of the accessibility limbs below — which
+/// measure the NAVIGATION BAR — suddenly had nothing to measure. They were
+/// silently relying on the app opening on Home. Establishing the state a test
+/// needs is the test's job; the alternative is a chassis that cannot add an auth
+/// gate without breaking its own assertions.
+Future<ProviderContainer> _signedInContainer(_MemStore store) async {
+  final ProviderContainer c = _container(store);
+  await c
+      .read(authRepositoryProvider)
+      .signInWithEmail(email: 'a@b.com', password: 'pw');
+  return c;
+}
+
 void main() {
   // ── PROPERTY: theme-mode-persisted ────────────────────────────────────────
   // DoD §4-D requires theme + darkTheme + a PERSISTED themeMode. MaterialApp
@@ -391,13 +407,10 @@ void main() {
       // Tap-target size matters most exactly here, on touch.
       await tester.binding.setSurfaceSize(const Size(400, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
+      final ProviderContainer c = await _signedInContainer(_MemStore());
+      addTearDown(c.dispose);
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: <Override>[
-            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
-          ],
-          child: const {{app_id.pascalCase()}}App(),
-        ),
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
       );
       await _turns(tester);
 
@@ -452,13 +465,10 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
+      final ProviderContainer c = await _signedInContainer(_MemStore());
+      addTearDown(c.dispose);
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: <Override>[
-            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
-          ],
-          child: const {{app_id.pascalCase()}}App(),
-        ),
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
       );
       await _turns(tester);
 

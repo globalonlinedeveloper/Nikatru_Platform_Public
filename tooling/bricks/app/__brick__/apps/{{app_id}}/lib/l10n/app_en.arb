@@ -137,5 +137,31 @@
   "retry": "Retry",
   "@retry": {
     "description": "Retries the action that failed."
-  }
+  },
+  "signInTitle": "Sign in",
+  "@signInTitle": { "description": "Title of the sign-in screen." },
+  "signUpTitle": "Create account",
+  "@signUpTitle": { "description": "Title of the sign-up screen." },
+  "email": "Email",
+  "@email": { "description": "Email field label." },
+  "password": "Password",
+  "@password": { "description": "Password field label." },
+  "signIn": "Sign in",
+  "@signIn": { "description": "Submits the sign-in form." },
+  "signUp": "Create account",
+  "@signUp": { "description": "Submits the sign-up form." },
+  "forgotPassword": "Forgot your password?",
+  "@forgotPassword": { "description": "Sends a password-reset email." },
+  "resetSent": "If that address has an account, a reset link is on its way.",
+  "@resetSent": { "description": "Deliberately does NOT confirm whether the account exists — that would let anyone test which emails are registered." },
+  "emailRequired": "Enter your email address first.",
+  "@emailRequired": { "description": "Shown when a password reset is requested with an empty email field." },
+  "passwordTooShort": "Use at least 8 characters.",
+  "@passwordTooShort": { "description": "Client-side length check before sending a sign-up." },
+  "needAccount": "Need an account? Create one",
+  "@needAccount": { "description": "Link from sign-in to sign-up." },
+  "haveAccount": "Already have an account? Sign in",
+  "@haveAccount": { "description": "Link from sign-up to sign-in." },
+  "continueWithApple": "Continue with Apple",
+  "@continueWithApple": { "description": "OAuth sign-in. Shown only where the platform can complete a redirect." }
 }
