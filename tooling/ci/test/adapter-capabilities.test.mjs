@@ -132,6 +132,36 @@ const run = (cwd) => {
 };
 
 describe('assert-adapter-capabilities', () => {
+  // 🔴 TWO CAPABILITIES CAN SHARE ONE OWNER, and the guard used to key its
+  // register lookup on a Map — so the LAST entry silently replaced the earlier
+  // one and its matrix stopped being checked, while the guard printed
+  // `ok N matrices exercised`. Found 2026-07-29 on the REAL tree, by adding the
+  // `review` capability to packages/platform_storage and watching
+  // StorageCapabilities vanish from the checked set.
+  //
+  // The register has always allowed this (`core` owns both `core` and
+  // `analytics_funnel`), so it was a latent bug waiting for the first adapter to
+  // grow a second capability.
+  test('checks BOTH matrices when one package owns two capabilities', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        const first = r.capabilities.find((c) => c.owner === 'packages/api_client');
+        r.capabilities.push({
+          ...JSON.parse(JSON.stringify(first)),
+          id: 'api_client_second',
+          capability: 'a second capability on the same package',
+        });
+        return r;
+      },
+    }));
+    assert.equal(code, 0);
+    assert.match(
+      out,
+      /6 adapter matrix\/matrices exercised per-platform/,
+      'the second capability on the same owner was not examined — it reports as covered while nothing checks it',
+    );
+  });
+
   test('passes when every adapter declares and proves its matrix', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);

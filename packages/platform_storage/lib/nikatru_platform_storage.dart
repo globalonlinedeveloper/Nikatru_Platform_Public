@@ -4,5 +4,7 @@
 library;
 
 export 'src/storage_capabilities.dart';
+export 'src/review_capabilities.dart';
+export 'src/in_app_review_prompter.dart';
 export 'src/flutter_secure_store.dart';
 export 'src/prefs_key_value_store.dart';

@@ -23,6 +23,7 @@
 // the property is what this file prevents.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -149,6 +150,39 @@ Future<void> _turnsAndSettleRoute(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 500));
   await _turns(tester, 4);
 }
+
+/// Records what the review seam was actually asked to do — [pipeline C-13].
+///
+/// A FAKE, not a mock: the assertion is "a request really arrived", which is the
+/// one thing worth knowing. Neither store reports whether a prompt was drawn, so
+/// nothing beyond this point is knowable to any test.
+class _RecordingPrompter implements core.ReviewPrompter {
+  int requests = 0;
+  int listings = 0;
+  bool available = true;
+
+  @override
+  Future<bool> isAvailable() async => available;
+
+  @override
+  Future<void> requestReview() async => requests++;
+
+  @override
+  Future<void> openStoreListing() async => listings++;
+}
+
+/// A container with the review prompter faked, so the OPEN path is reachable.
+/// The real adapter needs a platform channel a widget test has not got — which
+/// is exactly how a seam ends up never being exercised at all.
+ProviderContainer _reviewContainer(
+  _MemStore store,
+  _RecordingPrompter prompter,
+) => ProviderContainer(
+  overrides: <Override>[
+    keyValueStoreProvider.overrideWith((_) async => store),
+    reviewPrompterProvider.overrideWithValue(prompter),
+  ],
+);
 
 /// A container whose session is already established.
 ///
@@ -895,6 +929,225 @@ void main() {
         c.read(authRepositoryProvider).currentUser?.displayName,
         'Ada Lovelace',
         reason: 'the UI updated but the seam was never called',
+      );
+    });
+  });
+
+  // ── PROPERTY: review-prompt-gated ─────────────────────────────────────────
+  // [pipeline C-13] The store-review prompt asks, and asks RARELY.
+  //
+  // 🔴 THE REFUSAL THIS REPLACES was "there are no users to ask" — an argument
+  // about WHEN, not about whether the mechanism can be built and proven. WHEN is
+  // `ReviewGate`: pure arithmetic over four persisted numbers, decidable today
+  // with no users at all.
+  //
+  // ⚠️ WHY BOTH DIRECTIONS ARE ASSERTED HERE AND NOT JUST THE REFUSAL. The gate
+  // says no on almost every launch BY DESIGN, so a test suite that only checked
+  // "it did not ask" would pass against a prompter wired to nothing, forever,
+  // and nobody would notice until the app had shipped a year without ever
+  // asking. That is [pipeline C-6] exactly. The open path is the load-bearing
+  // limb.
+  // 🔬 MUTATION-TESTED ON THE REAL TREE, each grep-verified to have landed:
+  //   R1 `await review.maybeAsk()` deleted from app.dart → guard RED, and the
+  //      widget limb RED — but ONLY after that limb was rebuilt. Its first
+  //      version asserted just that the launch counter advanced, so R1 left
+  //      EVERY TEST GREEN and the guard's text anchor was the only thing that
+  //      noticed. An anchor is a text match; it cannot survive a refactor that
+  //      renames the call.
+  //   R2 the gate's verdict ignored (ask on every launch) → guard GREEN, the
+  //      "fresh install" and "not twice in a row" limbs RED.
+  //
+  // 🔴 REBUILDING THE WIDGET LIMB ALSO FOUND A REAL BUG IN THE CONTROLLER.
+  // Seeding a history and pumping the app showed `launches` stuck at its stored
+  // value: `recordLaunch()` fired from the first frame while `_hydrate()` was
+  // still in flight, incremented the EMPTY default, and hydration then
+  // overwrote it. One lost launch per cold start, forever. Counters cannot use
+  // the `_userChose` last-writer-wins guard the other controllers use.
+  group('property: review-prompt-gated', () {
+    test('a fresh install is NOT asked', () async {
+      final _MemStore store = _MemStore();
+      final _RecordingPrompter prompter = _RecordingPrompter();
+      final ProviderContainer c = _reviewContainer(store, prompter);
+      addTearDown(c.dispose);
+
+      await c.read(reviewPromptProvider.notifier).recordLaunch();
+      final core.ReviewRequestOutcome out = await c
+          .read(reviewPromptProvider.notifier)
+          .maybeAsk();
+
+      expect(out, core.ReviewRequestOutcome.gated);
+      expect(
+        prompter.requests,
+        0,
+        reason:
+            'asking on first launch asks somebody who has not seen the app '
+            'yet, and spends the one request the store will honour',
+      );
+    });
+
+    // THE OPEN PATH. Without this limb every other assertion here is satisfied
+    // by a prompter that does nothing at all.
+    test('a settled, engaged install IS asked — the request lands', () async {
+      final _MemStore store = _MemStore();
+      final _RecordingPrompter prompter = _RecordingPrompter();
+      final ProviderContainer c = _reviewContainer(store, prompter);
+      addTearDown(c.dispose);
+
+      final ReviewPromptController review = c.read(
+        reviewPromptProvider.notifier,
+      );
+      final DateTime installed = DateTime.utc(2026, 1, 1);
+      await review.recordLaunch(now: installed);
+      for (int i = 0; i < 5; i++) {
+        await review.recordLaunch(now: installed);
+      }
+
+      final core.ReviewRequestOutcome out = await review.maybeAsk(
+        now: installed.add(const Duration(days: 10)),
+      );
+
+      expect(out, core.ReviewRequestOutcome.requested);
+      expect(
+        prompter.requests,
+        1,
+        reason:
+            'the gate agreed and nothing reached the prompter — a seam that '
+            'refuses correctly and is never asked to deliver',
+      );
+    });
+
+    // 🔴 THE EXPENSIVE MISTAKE. iOS discards requests beyond its own quota
+    // WITHOUT SAYING SO, so a second ask does not annoy anyone — it silently
+    // burns the app's remaining requests on a dialog nobody sees.
+    test('it does not ask twice in a row', () async {
+      final _MemStore store = _MemStore();
+      final _RecordingPrompter prompter = _RecordingPrompter();
+      final ProviderContainer c = _reviewContainer(store, prompter);
+      addTearDown(c.dispose);
+
+      final ReviewPromptController review = c.read(
+        reviewPromptProvider.notifier,
+      );
+      final DateTime installed = DateTime.utc(2026, 1, 1);
+      for (int i = 0; i < 6; i++) {
+        await review.recordLaunch(now: installed);
+      }
+      final DateTime later = installed.add(const Duration(days: 10));
+      await review.maybeAsk(now: later);
+      final core.ReviewRequestOutcome second = await review.maybeAsk(
+        now: later.add(const Duration(days: 1)),
+      );
+
+      expect(second, core.ReviewRequestOutcome.gated);
+      expect(prompter.requests, 1);
+    });
+
+    test('a platform that cannot ask reports so, and spends nothing', () async {
+      final _MemStore store = _MemStore();
+      final _RecordingPrompter prompter = _RecordingPrompter()
+        ..available = false;
+      final ProviderContainer c = _reviewContainer(store, prompter);
+      addTearDown(c.dispose);
+
+      final ReviewPromptController review = c.read(
+        reviewPromptProvider.notifier,
+      );
+      final DateTime installed = DateTime.utc(2026, 1, 1);
+      for (int i = 0; i < 6; i++) {
+        await review.recordLaunch(now: installed);
+      }
+      final core.ReviewRequestOutcome out = await review.maybeAsk(
+        now: installed.add(const Duration(days: 10)),
+      );
+
+      expect(out, core.ReviewRequestOutcome.unavailable);
+      expect(prompter.requests, 0);
+      expect(
+        c.read(reviewPromptProvider).timesAsked,
+        0,
+        reason:
+            'a platform that cannot ask must not consume an ask — otherwise a '
+            'Linux user burns the quota their phone would have used',
+      );
+    });
+
+    test('the history SURVIVES a restart', () async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer first = _reviewContainer(
+        store,
+        _RecordingPrompter(),
+      );
+      await first.read(reviewPromptProvider.notifier).recordLaunch();
+      await first.read(reviewPromptProvider.notifier).recordLaunch();
+      first.dispose();
+
+      final ProviderContainer reborn = _reviewContainer(
+        store,
+        _RecordingPrompter(),
+      );
+      addTearDown(reborn.dispose);
+      reborn.read(reviewPromptProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        reborn.read(reviewPromptProvider).launches,
+        2,
+        reason:
+            'a launch counter that resets is a counter that never reaches the '
+            'threshold, so the app would never ask at all',
+      );
+    });
+
+    // 🔴 THE LIMB THAT MATTERS, and it had to be rebuilt. The first version
+    // asserted only that the launch counter advanced — so deleting
+    // `await review.maybeAsk()` from app.dart left EVERY TEST GREEN, and only
+    // the guard's text anchor noticed. That is the [pipeline C-6] shape wearing
+    // its best camouflage: the gate refuses on almost every launch by design, so
+    // "nothing was asked" is the correct outcome nearly always and proves
+    // nothing at all.
+    //
+    // So this seeds a history the gate WILL say yes to, then pumps the real app
+    // and asserts a request actually arrived. It is the only assertion here that
+    // fails when the call site disappears.
+    testWidgets('the running app records a launch AND really asks', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      // A settled, engaged install — written the way the controller persists it,
+      // so this exercises the real hydrate path rather than a private setter.
+      final DateTime installed = DateTime.now().toUtc().subtract(
+        const Duration(days: 30),
+      );
+      store.data['nikatru.review_gate'] = jsonEncode(
+        core.ReviewGateState(launches: 20, firstLaunch: installed).toJson(),
+      );
+
+      final _RecordingPrompter prompter = _RecordingPrompter();
+      final ProviderContainer c = _reviewContainer(store, prompter);
+      addTearDown(c.dispose);
+      await c
+          .read(authRepositoryProvider)
+          .signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+      await _turns(tester, 20);
+
+      expect(
+        c.read(reviewPromptProvider).launches,
+        greaterThan(20),
+        reason:
+            'nothing in the running app records a launch, so the gate can '
+            'never reach its threshold and the prompt is dead code',
+      );
+      expect(
+        prompter.requests,
+        1,
+        reason:
+            'the gate agreed and the running app never asked — the seam has no '
+            'caller, which no other assertion in this group can see',
       );
     });
   });

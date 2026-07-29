@@ -23,6 +23,13 @@ dependencies:
   # Secret persistence (auth tokens, entitlement cache): OS Keychain/Keystore/
   # DPAPI, libsecret on Linux, WebCrypto on web.
   flutter_secure_storage: ^9.0.0
+  # [pipeline C-13] Store-review prompt. Lands HERE rather than in a package of
+  # its own: [pipeline C-4] adjudicated that share_plus, app_links and
+  # in_app_review all belong in this existing adapter, because a capability name
+  # is not a reason to spawn a pubspec. MIT, verified publisher, and NOT
+  # available on Linux or web — see ReviewCapabilities, which is consulted
+  # before the plugin is ever touched.
+  in_app_review: ^2.0.12
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
