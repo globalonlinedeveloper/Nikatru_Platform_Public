@@ -180,6 +180,23 @@ jobs:
       - name: The app version is derived and monotonic
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-app-versioning.mjs
+      # NINE acceptance criteria across stages 9 and 10 quantified over "the
+      # served set" and the served set did not exist — so all nine reported clean
+      # over an undefined right-hand side, forever. R-5's own criterion was
+      # vacuous in BOTH directions: zero release jobs on one side, one uncontested
+      # row on the other, so no mismatch was reachable. The register is now
+      # anchored to a set that is already maintained and already public
+      # (sites/_shared/_data/apps.json), and `served` is the gate: adding
+      # "windows" to an app's platforms array fails here today, because both
+      # windows rows exist and neither is served. Also checks the aggregating
+      # job's `needs` still lists every job in its workflow — the "never a partial
+      # set" half, and the way a newly added platform silently stops being
+      # required. Owner-gated gaps PRINT (Apple's unpinned Xcode 26 floor,
+      # the undrilled pack key, Flathub still open in OWNER_QUEUE).
+      # [pipeline R-5, feeding R-3/R-4/R-6 and D-1/D-4/D-5/D-9/D-10]
+      - name: Every claimed channel is a served channel
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-channel-register.mjs
       # A fail-closed seam with no on-switch is a dead feature that reports
       # healthy. Four shipped that way — the analytics rail discarded every event
       # because nothing ever recorded consent, and no test went red because

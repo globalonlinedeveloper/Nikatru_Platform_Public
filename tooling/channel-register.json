@@ -1,0 +1,407 @@
+{
+  "_readme": [
+    "THE SERVED-CHANNEL REGISTER — [pipeline R-5] company/pipeline/09-release-engineering.md",
+    "",
+    "The complete set of channels this factory can release to: what artifact each one accepts, what",
+    "signing identity it needs, which lane produces it, which toolchain floor gates it, and — the field",
+    "everything else hangs off — whether it is SERVED today.",
+    "",
+    "WHY IT EXISTS. Nine acceptance criteria across stages 9 and 10 quantify over 'the served set', and",
+    "until this file landed that set did not exist. An undefined right-hand side cannot reject anything,",
+    "so all nine reported clean over nothing:",
+    "",
+    "  [9]R-3  every signing identity is enumerated and applied    -> signing.* on every row",
+    "  [9]R-4  a release artifact outlives the run that made it    -> artifactFormats + served flag",
+    "  [9]R-5  release only to declared channels, never a partial  -> this file + aggregatingJob",
+    "  [9]R-6  every artifact names the gated commit it came from  -> lane.*",
+    "  [10]D-1 no channel is claimed that is not served            -> platforms x served",
+    "  [10]D-4 every store channel has a publisher account         -> kind=store + ownerQueue",
+    "  [10]D-5 store listing metadata generated from the spec      -> storeMetadataDir",
+    "  [10]D-9 what is live on which channel, machine-answerable   -> deploymentEnvironment",
+    "  [10]D-10 each store channel has a repeatable submission path -> submittable",
+    "",
+    "🔴 THE ONE RULE THAT MAKES THIS FILE MEAN ANYTHING: `served` IS THE GATE, NOT MEMBERSHIP.",
+    "A row here is NOT a claim that the factory ships to that channel. Rows exist for channels that are",
+    "deferred, so their researched facts (formats, identities, toolchain floors, real costs) are recorded",
+    "once instead of rediscovered at submission time. Only `served: true` licenses a claim in",
+    "sites/_shared/_data/apps.json. Adding \"windows\" to an app's `platforms` array fails the build today",
+    "precisely because both windows rows exist and neither is served.",
+    "",
+    "Enforced by tooling/ci/assert-channel-register.mjs:",
+    "  · every apps.json `platforms` value resolves to a SERVED row here          [R-5, D-1]",
+    "  · every SERVED row's platforms are claimed by a real app — a served channel nobody ships to",
+    "    is the 'six platforms' lie growing back                                  [R-5, cut 5 corollary]",
+    "  · every SERVED row carries an artifact format, a signing identity with a restore drill, a lane",
+    "    that resolves to a real workflow JOB, a deployment-environment template, and a pinned",
+    "    toolchain floor                                                          [R-3, R-4, R-6, D-9]",
+    "  · the aggregating job's `needs` equals every other job in its workflow — the 'never a partial",
+    "    set' half, which is how a new platform job silently stops being required  [R-5]",
+    "  · disqualified channels are named with the LOCKED ADR that killed them, and printed every run",
+    "  · COVERAGE LOST when the register is absent, empty, or has nothing served   [D-1 requires loud]",
+    "",
+    "⚠️ `ownerQueue` IDS ARE DATA, NOT AN ASSERTION. company/ is gitignored (.gitignore:15) and is not",
+    "in the public repo, so no CI guard can read OWNER_QUEUE.md. [10]D-4's machine limbs as written are",
+    "unimplementable in CI for that reason — they are a LOCAL check. Recorded here so the ids are at",
+    "least in one place a guard could reach if company/ ever ships.",
+    "",
+    "⚠️ MINIMUM TOOLCHAIN NAMES KEYS, NOT VALUES. [pipeline F-2] says every version is declared once;",
+    "duplicating '3.44.8' here would make this file the second declaration and the first to drift. So a",
+    "row names the tooling/versions.json KEYS that gate it, and the guard asserts they are pinned there.",
+    "A served row naming an unpinned key FAILS; a deferred row naming one PRINTS — which is how Apple's",
+    "Xcode 26 floor stays visible without blocking CI on an owner-deferred channel."
+  ],
+
+  "aggregatingJob": {
+    "_why": [
+      "[R-5] 'a release either produces the complete artifact set for its declared channels or produces",
+      "nothing.' The aggregating job is that half. It is already built and correct — it fails on any",
+      "`failure` or `cancelled` across `needs.*` — but nothing checked that `needs` still LISTS every",
+      "job. Add a seventh platform job and forget one line, and the aggregate goes green over a set it",
+      "no longer covers, which is this repo's single most repeated failure wearing a YAML hat."
+    ],
+    "workflow": ".github/workflows/build-platforms.yml",
+    "job": "all_platforms"
+  },
+
+  "keyKinds": {
+    "none": "the channel signs for us — nothing of ours can be lost",
+    "upload-key": "we sign the upload; the store holds the real app signing key (Play App Signing)",
+    "app-signing-key": "we hold the key end users' installs are bound to — loss is unrecoverable",
+    "distribution-certificate": "an Apple distribution certificate + provisioning profile",
+    "code-signing-certificate": "a CA-issued certificate chaining to a trusted root — a real recurring cost",
+    "own-signing-key": "our own detached signature, no gatekeeper verifying it for us"
+  },
+
+  "channels": [
+    {
+      "id": "web",
+      "name": "Web (Cloudflare Pages, app subdomain)",
+      "platforms": ["web"],
+      "kind": "web",
+      "served": true,
+      "submittable": false,
+      "artifactFormats": ["static-bundle"],
+      "signing": {
+        "keyKind": "none",
+        "identity": null,
+        "custody": "n/a — the web channel signs nothing. TLS is Cloudflare's certificate, not ours.",
+        "restoreDrill": {
+          "date": null,
+          "required": false,
+          "note": "No identity of ours exists to restore. This is why [9]R-3 is not revenue-critical: the one live channel has no signing identity to lose."
+        }
+      },
+      "minimumToolchain": ["flutter", "wrangler"],
+      "lane": {
+        "workflow": ".github/workflows/deploy-web.yml",
+        "job": "deploy-web"
+      },
+      "deploymentEnvironment": "{app}-web",
+      "storeMetadataDir": null,
+      "ownerQueue": null,
+      "notes": [
+        "The only served channel, and deliberately so — 39-CHASSIS §4 cut 5 defers native platform",
+        "folders, the per-platform deploy workflows and tooling/release/ until an app proves it converts.",
+        "Verified live: apps.json carries subly platforms:[\"web\"] status:\"live\"; the deployment ledger",
+        "holds subly-web.",
+        "⚠️ deploy-web.yml builds with --pwa-strategy=none, so there is no service worker and no offline",
+        "support on the one platform the $0 desktop story rests on. Recorded, not fixed here."
+      ]
+    },
+    {
+      "id": "android-play",
+      "name": "Google Play",
+      "platforms": ["android"],
+      "kind": "store",
+      "served": false,
+      "submittable": true,
+      "artifactFormats": [".aab"],
+      "signing": {
+        "keyKind": "upload-key",
+        "identity": "release-keystore/release.keystore",
+        "custody": "gitignored working tree + the [ADR 021] unencrypted Drive backup (OWNER_QUEUE S-4, 3 files). Credential and the secret it unlocks sit in the same directory.",
+        "restoreDrill": {
+          "date": null,
+          "required": true,
+          "note": "NEVER DRILLED. The file has existed since 11 Jun 2026 and is wired to nothing. OWNER_QUEUE S-5 still says 'generate' — reconciliation decision #25 rewords it to 'adopt or replace, then drill a restore'. Unexecuted."
+        }
+      },
+      "minimumToolchain": ["flutter", "java"],
+      "lane": null,
+      "deploymentEnvironment": "{app}-android-play",
+      "storeMetadataDir": "apps/{app}/store/android-play",
+      "ownerQueue": "A-3",
+      "deferral": {
+        "reason": "39-CHASSIS §4 cut 5 — native store work is deferred until an app proves it converts strangers.",
+        "alsoBlockedBy": "Play Organization needs a D-U-N-S (OWNER_QUEUE A-3, waiting by choice). Play Individual needs none but costs the 12-tester / 14-day closed-testing window."
+      },
+      "notes": [
+        "🔴 TWO INDEPENDENT REASONS PLAY REFUSES WHAT CI BUILDS TODAY, and the register records both.",
+        "FORMAT: developer.android.com/guide/app-bundle — 'From August 2021, new apps are required to",
+        "publish with the Android App Bundle on Google Play.' build-platforms.yml runs `flutter build apk`.",
+        "SIGNING: apps/subly/android/app/build.gradle.kts resolves `release` to signingConfigs debug.",
+        "So the green 'Android builds' tick is a proof about an artifact Play rejects twice over.",
+        "The key we hold is an UPLOAD key, not the app signing key — different loss consequences."
+      ]
+    },
+    {
+      "id": "ios-appstore",
+      "name": "Apple App Store (iOS)",
+      "platforms": ["ios"],
+      "kind": "store",
+      "served": false,
+      "submittable": true,
+      "artifactFormats": [".ipa"],
+      "signing": {
+        "keyKind": "distribution-certificate",
+        "identity": null,
+        "custody": "does not exist — no Apple Developer account (OWNER_QUEUE A-4, DEFERRED by owner). Also needs an ASC API key and Team Agent account recovery (FIDO2 + Legacy Contact, G-48).",
+        "restoreDrill": {
+          "date": null,
+          "required": true,
+          "note": "Nothing to drill until the account exists."
+        }
+      },
+      "minimumToolchain": ["flutter", "xcode"],
+      "lane": null,
+      "deploymentEnvironment": "{app}-ios-appstore",
+      "storeMetadataDir": "apps/{app}/store/ios-appstore",
+      "ownerQueue": "A-4",
+      "deferral": {
+        "reason": "🔒 DEFERRED by owner (OWNER_QUEUE A-4) until non-Apple revenue exists — no Apple device, and no Apple ORGANIZATION path exists for a sole proprietorship (Apple: enroll as an individual).",
+        "alsoBlockedBy": "No Apple hardware for device testing, VoiceOver accessibility, or submission."
+      },
+      "notes": [
+        "🔴 UNPINNED TOOLCHAIN FLOOR, ALREADY IN FORCE. developer.apple.com/news/upcoming-requirements/",
+        "(fetched 2026-07-29): apps uploaded to App Store Connect 'must be built with Xcode 26 or later'",
+        "— effective 28 April 2026. build-platforms.yml runs on `macos-26` and pins NO Xcode, and",
+        "tooling/versions.json has no `xcode` key. The guard prints this gap on every run rather than",
+        "failing, because the channel is owner-deferred. versions.json's own $runners_comment names this",
+        "exact hazard and the fix it shipped pins the IMAGE LABEL, not the toolchain."
+      ]
+    },
+    {
+      "id": "macos-appstore",
+      "name": "Apple App Store (macOS)",
+      "platforms": ["macos"],
+      "kind": "store",
+      "served": false,
+      "submittable": true,
+      "artifactFormats": [".pkg"],
+      "signing": {
+        "keyKind": "distribution-certificate",
+        "identity": null,
+        "custody": "does not exist — same Apple Developer account as ios-appstore (OWNER_QUEUE A-4).",
+        "restoreDrill": {
+          "date": null,
+          "required": true,
+          "note": "Nothing to drill until the account exists."
+        }
+      },
+      "minimumToolchain": ["flutter", "xcode"],
+      "lane": null,
+      "deploymentEnvironment": "{app}-macos-appstore",
+      "storeMetadataDir": "apps/{app}/store/macos-appstore",
+      "ownerQueue": "A-4",
+      "deferral": {
+        "reason": "🔒 DEFERRED by owner with ios-appstore (OWNER_QUEUE A-4).",
+        "alsoBlockedBy": "Notarization is a separate step from signing and needs the same account."
+      },
+      "notes": [
+        "A separate submission from iOS even though it shares an account, which is why it is a separate",
+        "row: one App Store Connect record per platform, one metadata tree, one review outcome.",
+        "Same Xcode 26 floor as ios-appstore."
+      ]
+    },
+    {
+      "id": "windows-store",
+      "name": "Microsoft Store",
+      "platforms": ["windows"],
+      "kind": "store",
+      "served": false,
+      "submittable": true,
+      "artifactFormats": [".msix"],
+      "signing": {
+        "keyKind": "none",
+        "identity": null,
+        "custody": "n/a — the Store re-signs the submitted MSIX. Microsoft Store Policies v7.19 §10.2 makes the developer responsible for certificate acquisition 'unless provided by Microsoft Store signing'.",
+        "restoreDrill": {
+          "date": null,
+          "required": false,
+          "note": "No key of ours exists on this path. This is what makes Microsoft the cheapest real store channel."
+        }
+      },
+      "minimumToolchain": ["flutter"],
+      "lane": null,
+      "deploymentEnvironment": "{app}-windows-store",
+      "storeMetadataDir": "apps/{app}/store/windows-store",
+      "ownerQueue": "A-2",
+      "deferral": {
+        "reason": "39-CHASSIS §4 cut 5 — the SUBMISSION work is deferred. ⚠️ Account REGISTRATION is not deferred and is the fastest real channel: $0, no D-U-N-S required, 2–5 business days.",
+        "alsoBlockedBy": "🔴 ONE-WAY DOOR — publishing as NIKATRU requires a COMPANY account and OWNER_QUEUE A-2 points at Individual. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid."
+      },
+      "notes": [
+        "🔴 MSIX PACKAGE IDENTITY IS THIS ROW'S FIELD, not [9]R-7's (stage 3's tripwire bundle routes it",
+        "wrongly). It has a real downstream consumer: [13]T-5's Windows `cancelAll` is a NO-OP without it.",
+        "Fee is $0 for both account types, but only via storedeveloper.microsoft.com — other entry points",
+        "show the legacy paid flow. Company verification accepts a government business registration in",
+        "place of a D-U-N-S (GST + Udyam are live), and needs a work email on our own domain.",
+        "MS policy 10.5.1: a privacy policy URL is required in Partner Center for any product accessing",
+        "personal information — this channel carries its own stage-8 dependency, not just Play's."
+      ]
+    },
+    {
+      "id": "windows-direct",
+      "name": "Windows direct download (dl.nikatru.com)",
+      "platforms": ["windows"],
+      "kind": "direct",
+      "served": false,
+      "submittable": false,
+      "artifactFormats": [".msix", ".exe"],
+      "signing": {
+        "keyKind": "code-signing-certificate",
+        "identity": null,
+        "custody": "does not exist — and unlike every other row this one costs real money every year.",
+        "restoreDrill": {
+          "date": null,
+          "required": true,
+          "note": "No certificate purchased. Nothing to drill."
+        }
+      },
+      "minimumToolchain": ["flutter"],
+      "lane": null,
+      "deploymentEnvironment": "{app}-windows-direct",
+      "storeMetadataDir": null,
+      "ownerQueue": null,
+      "deferral": {
+        "reason": "39-CHASSIS §4 cut 5, and it is the more expensive of the two Windows paths.",
+        "alsoBlockedBy": "Needs a purchased code-signing certificate."
+      },
+      "notes": [
+        "🔬 THE SECOND WINDOWS ROW, and it exists because the two paths have OPPOSITE signing answers.",
+        "Microsoft Store Policies v7.19 §10.2.9 (non-gaming direct download): 'the binary and all of its",
+        "Portable Executable (PE) files must be digitally signed with a code signing certificate that",
+        "chains up to a certificate issued by a Certificate Authority (CA) that is part of the Microsoft",
+        "Trusted Root Program'. Store = no key; direct = our own cert. Recording both is the whole point",
+        "of the register — one 'windows' row would have hidden a recurring cost until submission day."
+      ]
+    },
+    {
+      "id": "linux-snap",
+      "name": "Snap Store",
+      "platforms": ["linux"],
+      "kind": "store",
+      "served": false,
+      "submittable": true,
+      "artifactFormats": [".snap"],
+      "signing": {
+        "keyKind": "none",
+        "identity": null,
+        "custody": "n/a — Canonical hosts and signs the binary.",
+        "restoreDrill": {
+          "date": null,
+          "required": false,
+          "note": "No key of ours. Cost is a per-app namespace registration, the same one-time shape as Play and MS Store."
+        }
+      },
+      "minimumToolchain": ["flutter"],
+      "lane": null,
+      "deploymentEnvironment": "{app}-linux-snap",
+      "storeMetadataDir": "apps/{app}/store/linux-snap",
+      "ownerQueue": null,
+      "deferral": {
+        "reason": "[ADR 015] §2 — native Linux is DEFERRED until there is revenue. The web build already serves Linux users at $0, and Linux is the smallest addressable market with no store payments.",
+        "alsoBlockedBy": null
+      },
+      "notes": [
+        "[ADR 015] §3 ranks Snap FIRST when native Linux is built: a real store link, discovery and",
+        "silent auto-update; accepts closed source; NO AI-code policy; ingests the prebuilt CI artifact",
+        "via `plugin: dump`; bundles libmpv via `stage-packages: [libmpv2]`; must declare",
+        "`plugs: [opengl, wayland, x11, audio-playback]`."
+      ]
+    },
+    {
+      "id": "linux-appimage",
+      "name": "AppImage from dl.nikatru.com",
+      "platforms": ["linux"],
+      "kind": "direct",
+      "served": false,
+      "submittable": false,
+      "artifactFormats": [".AppImage"],
+      "signing": {
+        "keyKind": "own-signing-key",
+        "identity": null,
+        "custody": "does not exist — no store gatekeeper verifies this one, so the signature is only worth what our custody of it is worth.",
+        "restoreDrill": {
+          "date": null,
+          "required": true,
+          "note": "No key generated."
+        }
+      },
+      "minimumToolchain": ["flutter"],
+      "lane": null,
+      "deploymentEnvironment": "{app}-linux-appimage",
+      "storeMetadataDir": null,
+      "ownerQueue": null,
+      "deferral": {
+        "reason": "[ADR 015] §2 — native Linux deferred until revenue.",
+        "alsoBlockedBy": null
+      },
+      "notes": [
+        "🔴 [ADR 015] §4 IS A CONSTRAINT ON THIS ROW, not a preference: the AppImage is served from",
+        "dl.nikatru.com on R2, NEVER a direct GitHub link. GitHub Releases stays the artifact ORIGIN;",
+        "it is not the download button. 'This does not conflict with L12: the invariant is that CI",
+        "produces the signed artifact, not where it is served from.'",
+        "🔒 [ADR 015] §5: the in-app update check is the LOCKED update mechanism for every non-store",
+        "channel — min_supported_version -> mustForceUpdate -> ForceUpdateGate -> AppConfig.updateUrl.",
+        "linuxdeploy traces and bundles libmpv.so into the image. No store, no discovery, no silent update."
+      ]
+    }
+  ],
+
+  "disqualified": [
+    {
+      "id": "flathub",
+      "name": "Flathub",
+      "platforms": ["linux"],
+      "adr": "knowledge/decisions/015-linux-distribution-channel.md",
+      "date": "2026-07-25",
+      "ownerQueue": "A-5",
+      "reason": [
+        "Flathub's requirements page bans AI-generated or AI-assisted code, documentation or any other",
+        "content, and says such submissions can be rejected without review with repeat violations risking",
+        "a permanent ban. This repo's public git history carries Claude co-author trailers and cannot be",
+        "rewritten, so we cannot comply — and a publisher-wide ban is existential against L21's single",
+        "store identity. AMENDS lock L12 ('Linux = Flathub first').",
+        "⬜ OWNER_QUEUE A-5 still reads PENDING for this channel, and site copy still carries live Flathub",
+        "links (sites/nikatru/index.html, sites/rajasekarselvam/index.html, apps/_template.html). Two",
+        "documents instruct a submission a LOCKED ADR forbids. [10]D-4's and [10]D-1's job, not R-5's."
+      ]
+    }
+  ],
+
+  "nonChannelSigningIdentities": [
+    {
+      "id": "content-pack-k1",
+      "name": "Content-pack Ed25519 signing key",
+      "keyKind": "app-signing-key",
+      "custody": "[ADR 022] (LOCKED 2026-07-27): seed in .claude/pack-signing.seed (and therefore the [ADR 021] Drive backup) PLUS a printed paper copy in two locations. `k1` is pinned in packages/core/lib/src/content/pack_verifier.dart.",
+      "restoreDrill": {
+        "date": null,
+        "required": true,
+        "note": "⬜ THE OPEN HALF IS THE DRILL, NOT THE KEY. OWNER_QUEUE S-3 records the seed as generated, pinned and printed; what remains is a restore from the paper copy BEFORE the first pack is signed under k1."
+      },
+      "notes": [
+        "Here because reconciliation C10 / decision 2.1 #3 assigned pack-key custody to [9]R-3's register,",
+        "and [9]R-3's register is this file. It is not a channel, so it lives outside `channels` rather",
+        "than being forced into a shape it does not have.",
+        "🔴 [ADR 022] SUPERSEDES THE SHAMIR PROCEDURE FOR THIS KEY: 'Shamir splitting is NOT required'.",
+        "G-48's air-gapped -> Shamir-split -> hardware sequence still governs the Android and Apple rows.",
+        "⬜ Two unexecuted bookkeeping items, both already decided: OWNER_QUEUE S-3 step (2) still says",
+        "'Shamir-split the raw seed' while its own status column records the supersession, and",
+        "packages/core/tool/gen_pack_keypair.dart still teaches it in its header ('steps 2 and 4 are not",
+        "optional')."
+      ]
+    }
+  ]
+}
