@@ -214,6 +214,23 @@ jobs:
       - name: No public surface advertises an unserved or dead channel
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-channel-claims.mjs
+      # Both mechanisms this asserts already exist and are VERIFIED (F-5b); what
+      # was missing was CALL SITES. R-6's own criterion ranged over "the release
+      # lane", which referred to nothing — so the set is derived from what a lane
+      # DOES: a `flutter build … --release` step, or a step that hands an artifact
+      # to something outside the run. build-platforms.yml failed this on the first
+      # run with six release builds, zero gate check and zero marker; it now gates
+      # once in a shared `gate` job that all three platform jobs need.
+      # ⚠️ COMMENTS ARE STRIPPED HERE — the opposite of assert-channel-claims.mjs,
+      # and both are right: there the comment was the payload, here deploy-web.yml
+      # explains IN PROSE why it calls both scripts, so a raw match would call a
+      # lane gated on the strength of a comment describing the gate.
+      # `--dry-run` is not a publish: ci.yml typechecks both Workers with
+      # `wrangler deploy --dry-run` and nothing leaves the runner.
+      # [pipeline R-6, feeding [10]D-9]
+      - name: No release build from an ungated commit, no publish unrecorded
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-release-provenance.mjs
       # A fail-closed seam with no on-switch is a dead feature that reports
       # healthy. Four shipped that way — the analytics rail discarded every event
       # because nothing ever recorded consent, and no test went red because

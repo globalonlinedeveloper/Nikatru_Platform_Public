@@ -42,13 +42,49 @@ env:
 # Least privilege. These jobs only read the repo — they publish nothing through
 # GITHUB_TOKEN. Without this every job ran at the repository-default scope, which
 # on a public repo is a standing hand-out to any compromised action. [pipeline F-11]
+# `checks: read` is the one addition the gate job below needs: it asks the API
+# for ci-gate's verdict and reads nothing else.
 permissions:
   contents: read
+  checks: read
 
 jobs:
+  # ── the gate, once, for all three platform jobs ────────────────────────────
+  # This workflow produces the ONLY 6-platform proof this factory has, and
+  # `assert-platform-proof-fresh.mjs` feeds that proof back into `ci-gate` as
+  # evidence. Ungated, it would build from any dispatched ref — including one
+  # whose gate is RED — and the resulting green run would be consumed as proof
+  # that the six platforms build at a commit that never passed its own tests.
+  # It also triggers on `push: tags: subly-v*`, which is a release trigger by
+  # any reading.
+  #
+  # ONE job rather than a first step in each of the three: the verdict is the
+  # same for all of them, `assert-gate-passed.mjs` POLLS (ci-gate is often still
+  # running), and three parallel polls of one API for one answer is waste. The
+  # cost is one extra runner-minute; the benefit is that a red gate skips all
+  # three builds instead of racing them.
+  #
+  # ⚠️ `all_platforms` must `needs:` this job too — `assert-channel-register.mjs`
+  # asserts the aggregator covers every other job, so forgetting it fails CI
+  # rather than silently narrowing what "all platforms green" means.
+  # [pipeline R-6, F-5b]
+  gate:
+    name: Require ci-gate to have passed
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Require ci-gate to have passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+
   linux_web_android:
     name: Linux + Web + Android
     runs-on: ubuntu-24.04
+    needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
@@ -116,6 +152,7 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-2025
+    needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -139,6 +176,7 @@ jobs:
   apple:
     name: macOS + iOS
     runs-on: macos-26
+    needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -168,12 +206,12 @@ jobs:
   all_platforms:
     name: all-platforms
     runs-on: ubuntu-24.04
-    needs: [linux_web_android, windows, apple]
+    needs: [gate, linux_web_android, windows, apple]
     if: always()
     steps:
       - name: Require every platform green
         run: |
-          echo "linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }}"
+          echo "gate=${{ needs.gate.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
             echo "::error::One or more platform builds failed"; exit 1
           fi
