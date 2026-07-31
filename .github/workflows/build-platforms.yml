@@ -219,6 +219,16 @@ jobs:
       # the step log and not in `gh run view --log-failed`. That flag is the only
       # thing that turns "exit -6" into an actual error message.
       # See $flutter_comment in tooling/versions.json for the 3.44.8 case.
+      #
+      # The patch step is the flutter/flutter#188060 workaround: gen_snapshot
+      # SIGABRTs because the tree shaker drops _window_macos.dart's private FFI
+      # structs while instances survive in the snapshot. @pragma('vm:entry-point')
+      # on those five classes keeps them. PROVEN on probe run 30645902458 — the
+      # first fully green 6-platform run since 2026-07-26, ConsentGate intact.
+      # The script fails LOUDLY if the SDK layout moves; drop it when upstream
+      # fixes #188060.
+      - name: Patch the SDK for flutter/flutter#188060 (macOS AOT abort)
+        run: python3 tooling/ci/patch-flutter-macos-aot.py "$FLUTTER_ROOT"
       - name: Build macos
         working-directory: apps/subly
         run: flutter build macos --release
