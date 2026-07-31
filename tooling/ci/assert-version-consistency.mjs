@@ -48,10 +48,14 @@ const RULES = [
   // identical commit builds, with no diff in the repo. Matched per-OS so the
   // error can name the expected label rather than just "not pinned".
   { key: 'wrangler', label: 'Wrangler', re: /wranglerVersion:\s*'?([0-9][^\s'"#]*)'?/g },
-  // A dependency SPEC, not a workflow input. `^` is captured deliberately so a
-  // caret reads as the version `4.0.0` and fails against the declared 4.114.0 —
-  // a float is exactly what this rule exists to catch, not something to tolerate.
-  { key: 'wrangler', label: 'Wrangler (brick dep)', re: /"wrangler":\s*"\^?([0-9][^"]*)"/g },
+  // A dependency SPEC, not a workflow input. 🔴 THE WHOLE STRING is captured —
+  // review 2026-07-31 (mutation-proven): the first version put `\^?` OUTSIDE
+  // the capture, so `"^4.114.0"` captured `4.114.0`, equalled the declared pin
+  // and PASSED — a caret wrapping the current version floated silently, which
+  // is the exact PR #79 incident reproduced green, while the comment here
+  // claimed the opposite. Now any range operator makes the captured string
+  // unequal to the exact pin and fails.
+  { key: 'wrangler', label: 'Wrangler (brick dep)', re: /"wrangler":\s*"([^"]+)"/g },
   { key: 'runner_ubuntu', label: 'Ubuntu runner', re: /runs-on:\s*(ubuntu-[^\s'"#]+)/g },
   { key: 'runner_windows', label: 'Windows runner', re: /runs-on:\s*(windows-[^\s'"#]+)/g },
   { key: 'runner_macos', label: 'macOS runner', re: /runs-on:\s*(macos-[^\s'"#]+)/g },

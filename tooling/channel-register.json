@@ -31,7 +31,8 @@
     "  · every apps.json `platforms` value resolves to a SERVED row here          [R-5, D-1]",
     "  · every SERVED row's platforms are claimed by a real app — a served channel nobody ships to",
     "    is the 'six platforms' lie growing back                                  [R-5, cut 5 corollary]",
-    "  · every SERVED row carries an artifact format, a signing identity with a restore drill, a lane",
+    "  · every SERVED row with a real keyKind carries a NAMED identity and a DATED restore drill",
+    "    (the row's own `required` flag cannot waive it — hardened 2026-07-31), plus a lane",
     "    that resolves to a real workflow JOB, a deployment-environment template, and a pinned",
     "    toolchain floor                                                          [R-3, R-4, R-6, D-9]",
     "  · the aggregating job's `needs` equals every other job in its workflow — the 'never a partial",
@@ -119,7 +120,7 @@
       "signing": {
         "keyKind": "upload-key",
         "identity": "release-keystore/release.keystore",
-        "custody": "gitignored working tree + the [ADR 021] unencrypted Drive backup (OWNER_QUEUE S-4, 3 files). Credential and the secret it unlocks sit in the same directory.",
+        "custody": "recorded in the private SSoT (OWNER_QUEUE S-4 / reconciliation #25). Redacted here 2026-07-31: a public register must say THAT custody is recorded, never WHERE a key lives or how it is protected.",
         "restoreDrill": {
           "date": null,
           "required": true,
@@ -372,8 +373,10 @@
         "these tokens case-insensitively over RAW site text. The id alone was not enough, proven by",
         "mutation 2026-07-31: a public surface reading \"install the flatpak from your distro store\"",
         "passed clean, because `flatpak` is the package FORMAT and `flathub` is the channel id. A reader",
-        "cannot tell the difference and neither can a store reviewer. The guard requires `id` to be in",
-        "this list, so narrowing it cannot silently narrow the scan.",
+        "cannot tell the difference and neither can a store reviewer. The guard REQUIRES this array —",
+        "non-empty and containing the id — so deleting or emptying it FAILS instead of silently",
+        "narrowing the scan to the id alone (hardened 2026-07-31 after a mutation proved the old",
+        "fallback made exactly that narrowing silent).",
         "⚠️ `.deb` and `apt` are deliberately NOT here: [ADR 015] rejected them as OPTIONS, it did not",
         "disqualify them as channels, and a token that broad would fire on any prose about Linux."
       ],
@@ -396,7 +399,7 @@
       "id": "content-pack-k1",
       "name": "Content-pack Ed25519 signing key",
       "keyKind": "app-signing-key",
-      "custody": "[ADR 022] (LOCKED 2026-07-27): seed in .claude/pack-signing.seed (and therefore the [ADR 021] Drive backup) PLUS a printed paper copy in two locations. `k1` is pinned in packages/core/lib/src/content/pack_verifier.dart.",
+      "custody": "recorded in [ADR 022] (LOCKED 2026-07-27, private SSoT). Public fact only: `k1` is pinned in packages/core/lib/src/content/pack_verifier.dart. Redacted here 2026-07-31 — seed locations belong in the private record, not a public register.",
       "restoreDrill": {
         "date": null,
         "required": true,

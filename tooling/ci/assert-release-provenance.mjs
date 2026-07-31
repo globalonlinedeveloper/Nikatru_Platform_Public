@@ -87,8 +87,18 @@ const RELEASE_BUILD = /flutter\s+build\s+\S+[^\n]*--release/;
 const PUBLISH = [
   { re: /wrangler[^\n]*\bdeploy\b|pages\s+deploy/, what: 'a Cloudflare deploy' },
   { re: /cloudflare\/wrangler-action/, what: 'a Cloudflare deploy action' },
-  { re: /gh\s+release\s+create|softprops\/action-gh-release|actions\/upload-release-asset/, what: 'a GitHub Release publish' },
+  // `upload` as well as `create` — review 2026-07-31: the register's own
+  // linux-appimage row locks the AppImage flow to Releases-as-origin, and a lane
+  // adding assets to an existing release says `gh release upload`. Missing it
+  // meant the exact flow the register prescribes escaped this guard.
+  { re: /gh\s+release\s+(create|upload)|softprops\/action-gh-release|actions\/upload-release-asset/, what: 'a GitHub Release publish' },
+  // `r2 object put` — dl.nikatru.com is R2 behind a domain ([ADR 015] §4), so
+  // pushing an object there IS publishing a user-receivable artifact.
+  { re: /wrangler[^\n]*\br2\s+object\s+put\b/, what: 'an R2 artifact upload' },
   { re: /snapcraft\s+upload|fastlane\s+(deliver|supply|pilot)|xcrun\s+altool/, what: 'a store submission' },
+  // The stores the register marks submittable that fastlane cannot reach:
+  // Microsoft's CLI/action, and the community Play-upload action.
+  { re: /msstore\s+publish|store-submission|r0adkll\/upload-google-play/, what: 'a store submission action' },
 ];
 
 /**
@@ -285,9 +295,20 @@ for (const wf of workflows) {
         );
       }
       // A publishing lane is also a release lane, whether or not it says --release.
-      if (!gatedBy(wf, job)) {
+      // 🔴 ORDER, not just presence — review 2026-07-31: this branch checked only
+      // that a gate call EXISTED, so a same-job gate placed after the publish
+      // passed limb 2 (limb 1's ordering only covers `--release` builds, and
+      // publish-only jobs like deploy-workers' are exactly the ones limb 1 never
+      // sees). A gate consulted after the artifact left the runner verified nothing.
+      const firstPublish = job.publishes[0];
+      const gateJob = gatedBy(wf, job);
+      if (!gateJob) {
         problems.push(
           `${wf.rel}: job "${job.name}" performs ${lastPublish.what} without any \`${GATE_SCRIPT}\` call in itself or a job it \`needs\`.`,
+        );
+      } else if (gateJob.name === job.name && gateJob.gateCall.n > firstPublish.n) {
+        problems.push(
+          `${wf.rel}: job "${job.name}" calls ${GATE_SCRIPT} at :${gateJob.gateCall.n}, AFTER its first publish at :${firstPublish.n}. A gate consulted after the artifact left the runner has verified nothing.`,
         );
       }
     }

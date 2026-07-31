@@ -116,18 +116,67 @@ function destinationAround(text, index) {
   return text.slice(start, end);
 }
 
-/** Store and artifact affordances, per channel. Matching an ANCHOR or an
- *  ARTIFACT is what makes this a promise rather than a sentence. */
-const AFFORDANCES = [
-  { channel: 'ios-appstore', platform: 'ios', re: /apps\.apple\.com|itunes\.apple\.com/gi, what: 'an App Store link' },
-  { channel: 'android-play', platform: 'android', re: /play\.google\.com\/store/gi, what: 'a Google Play link' },
-  { channel: 'windows-store', platform: 'windows', re: /apps\.microsoft\.com|microsoft\.com\/store/gi, what: 'a Microsoft Store link' },
-  { channel: 'linux-snap', platform: 'linux', re: /snapcraft\.io/gi, what: 'a Snap Store link' },
-  { channel: 'android-play', platform: 'android', re: /\.apk\b|\.aab\b/gi, what: 'an Android artifact' },
-  { channel: 'windows-direct', platform: 'windows', re: /\.msix\b/gi, what: 'a Windows artifact' },
-  { channel: 'macos-appstore', platform: 'macos', re: /\.dmg\b/gi, what: 'a macOS artifact' },
-  { channel: 'linux-appimage', platform: 'linux', re: /\.appimage\b/gi, what: 'a Linux artifact' },
+/** The QUOTE-delimited value around the match, spaces included. A bracketed
+ *  placeholder like href="[SNAP OR dl.nikatru.com APPIMAGE URL]" contains
+ *  spaces, so the tight token above sees only `dl.nikatru.com` and loses the
+ *  brackets that mark it as scaffolding. Found by this guard's own first run
+ *  after the dl.nikatru.com affordance landed. */
+function quotedValueAround(text, index) {
+  const stop = new Set(['"', "'", '`', '<', '>', '\n']);
+  let start = index;
+  let end = index;
+  while (start > 0 && !stop.has(text[start - 1])) start--;
+  while (end < text.length && !stop.has(text[end])) end++;
+  return text.slice(start, end);
+}
+
+/**
+ * Store and artifact affordances. Matching an ANCHOR or an ARTIFACT is what
+ * makes this a promise rather than a sentence. `platforms` is ANY-OF: the
+ * promise is honest if at least one listed platform is claimed.
+ *
+ * 🔴 ARTIFACT EXTENSIONS ARE DERIVED FROM THE REGISTER, NOT HAND-LISTED.
+ * Review 2026-07-31 (mutation-proven): the first version hand-copied a subset —
+ * `.exe`, `.ipa`, `.pkg` and `.snap` all passed clean while sitting in the
+ * register's own `artifactFormats` a directory away, and `.dmg` was listed here
+ * while mapping to NO register row. A hand-copied list beside its source of
+ * truth has already drifted by the time it ships. Store DOMAINS stay hand-listed
+ * (they are store URLs, not formats — the register has no field for them), with
+ * a coverage assertion below so a register format that resolves to no pattern
+ * is COVERAGE LOST rather than a silent pass.
+ */
+const STORE_AFFORDANCES = [
+  { platforms: ['ios', 'macos'], re: /apps\.apple\.com|itunes\.apple\.com/gi, what: 'an App Store link' },
+  { platforms: ['android'], re: /play\.google\.com\/store/gi, what: 'a Google Play link' },
+  { platforms: ['windows'], re: /apps\.microsoft\.com|microsoft\.com\/store/gi, what: 'a Microsoft Store link' },
+  { platforms: ['linux'], re: /snapcraft\.io/gi, what: 'a Snap Store link' },
+  // [ADR 015] §4's own remedy — and therefore a promise when it appears for
+  // real. Serves windows-direct and linux-appimage, hence any-of both.
+  { platforms: ['windows', 'linux'], re: /dl\.nikatru\.com/gi, what: 'a dl.nikatru.com download link' },
 ];
+
+/** Extension patterns built from `artifactFormats` across the register rows.
+ *  Formats that are not user-downloadable files are named exempt. */
+const NON_FILE_FORMATS = new Set(['static-bundle']);
+function artifactAffordances(register) {
+  const out = [];
+  const uncovered = [];
+  for (const c of register.channels ?? []) {
+    for (const fmt of c.artifactFormats ?? []) {
+      if (NON_FILE_FORMATS.has(fmt)) continue;
+      if (!fmt.startsWith('.')) {
+        uncovered.push(`${c.id}: "${fmt}"`);
+        continue;
+      }
+      out.push({
+        platforms: c.platforms ?? [],
+        re: new RegExp(fmt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi'),
+        what: `a ${fmt} artifact (register: ${c.id})`,
+      });
+    }
+  }
+  return { patterns: out, uncovered };
+}
 
 /** Prose that claims a platform COUNT. Printed, never failed — see the header. */
 const COUNT_CLAIM = /\b(six|6)\s+platforms\b|\ball\s+six\b/gi;
@@ -172,9 +221,33 @@ try {
 }
 const disqualified = Array.isArray(register.disqualified) ? register.disqualified : [];
 
-/** A disqualified channel's tells: its id plus every other string that
- *  advertises it. The id MUST be in the list — a `tells` array that dropped it
- *  would narrow the scan while still looking like a widening. */
+// ── assemble the affordance set: hand-listed store domains + register-derived
+//    artifact formats, with a coverage assertion tying the two together ───────
+const derived = artifactAffordances(register);
+if (derived.uncovered.length) {
+  coverageLost([
+    `register artifactFormats that resolve to NO scan pattern: ${derived.uncovered.join(', ')}.`,
+    'Every downloadable format the register declares must be scannable here, or a public surface can',
+    'advertise exactly the artifact the register knows about and this guard cannot see it.',
+  ]);
+}
+if (derived.patterns.length === 0) {
+  coverageLost([
+    `ZERO artifact patterns derived from ${REGISTER}.`,
+    'The register declares .aab/.msix/.AppImage and more; deriving none means the derivation broke,',
+    'and every extension check below would silently not exist.',
+  ]);
+}
+const AFFORDANCES = [...STORE_AFFORDANCES, ...derived.patterns];
+
+/**
+ * A disqualified channel's tells. 🔴 REQUIRED, non-empty, and containing the
+ * id — review 2026-07-31 (mutation-proven): the first version fell back to
+ * `[id]` when `tells` was emptied or deleted, so one keystroke narrowed the
+ * Flathub scan from ['flathub','flatpak'] to ['flathub'] with zero complaint,
+ * while the register's own `_tellsWhy` promised narrowing could not be silent.
+ * A promise the guard does not enforce is prose; now the key is mandatory.
+ */
 function tellsOf(d) {
   const id = String(d.id ?? '').trim();
   const extra = (Array.isArray(d.tells) ? d.tells : []).map((t) => String(t).trim()).filter(Boolean);
@@ -182,12 +255,18 @@ function tellsOf(d) {
     problems.push(`a disqualified entry has no \`id\`, so it contributes no tell and silently narrows this scan.`);
     return extra;
   }
-  if (extra.length && !extra.some((t) => t.toLowerCase() === id.toLowerCase())) {
+  if (extra.length === 0) {
+    problems.push(
+      `disqualified channel "${id}" has no \`tells\` array (or an empty one). The tell list IS the scan; deleting it narrows the scan to nothing while looking like tidying. Declare every string that advertises the channel, id included.`,
+    );
+    return [id];
+  }
+  if (!extra.some((t) => t.toLowerCase() === id.toLowerCase())) {
     problems.push(
       `disqualified channel "${id}" declares \`tells\` that do not include its own id. Narrowing the tell list is how a dead channel comes back under a name the guard stopped looking for.`,
     );
   }
-  return extra.length ? [...new Set(extra)] : [id];
+  return [...new Set(extra)];
 }
 
 if (disqualified.length === 0) {
@@ -292,14 +371,16 @@ for (const abs of files) {
     a.re.lastIndex = 0;
     for (const m of text.matchAll(a.re)) {
       affordanceHits++;
-      if (claimedPlatforms.has(a.platform)) continue;
+      // ANY-OF: the promise is honest if at least one of the platforms this
+      // affordance can serve is actually claimed.
+      if (a.platforms.some((p) => claimedPlatforms.has(p))) continue;
       const destination = destinationAround(text, m.index);
-      if (PLACEHOLDER.test(destination)) {
+      if (PLACEHOLDER.test(destination) || PLACEHOLDER.test(quotedValueAround(text, m.index))) {
         placeholders++;
         continue;
       }
       problems.push(
-        `${where}:${lineOf(text, m.index)} offers ${a.what} for platform "${a.platform}", which NO app in ${APPS_JSON} claims (claimed: ${[...claimedPlatforms].join(', ')}). ` +
+        `${where}:${lineOf(text, m.index)} offers ${a.what} for platform(s) ${a.platforms.map((p) => `"${p}"`).join('/')}, none of which any app in ${APPS_JSON} claims (claimed: ${[...claimedPlatforms].join(', ')}). ` +
           `The destination is REAL, not a placeholder: "${destination}". ` +
           'A store button with nothing behind it is a promise made to a stranger, and it rots into a lie without anyone editing it.',
       );

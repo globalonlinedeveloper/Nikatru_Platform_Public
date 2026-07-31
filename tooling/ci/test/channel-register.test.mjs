@@ -66,15 +66,33 @@ jobs:
 
 /** A build workflow shaped like the real one: three platform jobs plus an
  *  aggregator that needs all three and tests both verdicts. */
-function buildWorkflow({ needs = ['linux', 'windows', 'apple'], verdicts = ['failure', 'cancelled'] } = {}) {
+function buildWorkflow({
+  needs = ['linux', 'windows', 'apple'],
+  verdicts = ['failure', 'cancelled', 'skipped'],
+  // 'expr' emits the real contains() expression; 'echo' merely SAYS the verdict
+  // words — the shape the structural check exists to reject.
+  verdictStyle = 'expr',
+  exitOne = true,
+  extraJob = '',
+} = {}) {
   const tests = verdicts
     .map((v) => `[ "\${{ contains(needs.*.result, '${v}') }}" = "true" ]`)
     .join(' || ');
+  const aggBody =
+    verdictStyle === 'echo'
+      ? ['      - run: |', `          echo "would fail on ${verdicts.join(' or ')} here"`]
+      : [
+          '      - run: |',
+          `          if ${tests}; then`,
+          ...(exitOne ? ['            exit 1'] : ['            echo "detected but tolerated"']),
+          '          fi',
+        ];
   return [
     'name: Build',
     'on:',
     '  workflow_dispatch:',
     'jobs:',
+    ...(extraJob ? [extraJob] : []),
     '  linux:',
     '    runs-on: ubuntu-24.04',
     '    steps:',
@@ -92,10 +110,7 @@ function buildWorkflow({ needs = ['linux', 'windows', 'apple'], verdicts = ['fai
     `    needs: [${needs.join(', ')}]`,
     '    if: always()',
     '    steps:',
-    '      - run: |',
-    `          if ${tests}; then`,
-    '            exit 1',
-    '          fi',
+    ...aggBody,
     '',
   ].join('\n');
 }
@@ -152,7 +167,10 @@ function tree({
   omitRegister = false,
   registerRaw = null,
   needs = ['linux', 'windows', 'apple'],
-  verdicts = ['failure', 'cancelled'],
+  verdicts = ['failure', 'cancelled', 'skipped'],
+  verdictStyle = 'expr',
+  exitOne = true,
+  extraJob = '',
   adrLocked = true,
   adrOnDisk = true,
   // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
@@ -187,7 +205,7 @@ function tree({
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
   write(LANE_WORKFLOW, laneWorkflow);
-  write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts }));
+  write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob }));
   if (harnessPresent) {
     // The harness root exists even when the cited ADR does not — that is the
     // distinction the guard turns on, and the case a blanket existsSync() skip
@@ -242,7 +260,7 @@ describe('assert-channel-register — the served set exists and is honest', () =
       }),
     );
     assert.equal(code, 1, out);
-    assert.match(out, /SERVED but no app/);
+    assert.match(out, /SERVED and declares platform/);
   });
 });
 
@@ -349,10 +367,50 @@ describe('assert-channel-register — what SERVED obliges a row to carry', () =>
     const { code, out } = run(
       servedMutation((c) => {
         c.signing.keyKind = 'upload-key';
+        c.signing.identity = 'release-keystore/upload.keystore';
         c.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
       }),
     );
     assert.equal(code, 0, out);
+  });
+
+  // ── review 2026-07-31 hardening: the audited row cannot waive its own audit ──
+  test('FAILS when a served real-key row waives its drill via required:false', () => {
+    const { code, out } = run(
+      servedMutation((c) => {
+        c.signing.keyKind = 'upload-key';
+        c.signing.identity = 'release-keystore/upload.keystore';
+        c.signing.restoreDrill = { date: null, required: false, note: 'waived' };
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /cannot waive that/);
+  });
+
+  test('FAILS when a served real-key row names no identity — R-3 says ENUMERATED', () => {
+    const { code, out } = run(
+      servedMutation((c) => {
+        c.signing.keyKind = 'upload-key';
+        c.signing.identity = null;
+        c.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /no `signing\.identity`/);
+  });
+
+  test('FAILS when keyKind none carries a named identity — a contradiction', () => {
+    const { code, out } = run(servedMutation((c) => { c.signing.identity = 'ghost.pem'; }));
+    assert.equal(code, 1, out);
+    assert.match(out, /keyKind "none" but a non-null/);
+  });
+
+  test('FAILS when a SERVED row grows a platform no app claims (partial orphan)', () => {
+    // The register's headline guarantee, from the register side: the old check
+    // fired only when EVERY platform was orphaned, so this exact edit passed.
+    const { code, out } = run(servedMutation((c) => { c.platforms.push('windows'); }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares platform "windows", which no app/);
   });
 
   // A DEFERRED row with the same gap must PRINT, never fail — the standing rule
@@ -389,7 +447,27 @@ describe('assert-channel-register — the aggregating job is the "never a partia
   test('FAILS when the aggregator stops testing for cancelled', () => {
     const { code, out } = run(tree({ verdicts: ['failure', 'skipped'] }));
     assert.equal(code, 1, out);
-    assert.match(out, /never tests for 'cancelled'/);
+    assert.match(out, /never evaluates contains\(needs\.\*\.result, 'cancelled'\)/);
+  });
+
+  // ── review 2026-07-31 hardening: structural verdicts, exit 1, inline comments ──
+  test('FAILS when the aggregator merely ECHOES the verdict words (structural, not substring)', () => {
+    const { code, out } = run(tree({ verdictStyle: 'echo' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never evaluates contains/);
+  });
+
+  test('FAILS when the aggregator never exits 1', () => {
+    const { code, out } = run(tree({ exitOne: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never `exit 1`s/);
+  });
+
+  test('FAILS when an inline-commented job escapes the needs check', () => {
+    const extra = ['  wasm:   # experimental wasm lane', '    runs-on: ubuntu-24.04', '    steps:', '      - run: echo hi'].join('\n');
+    const { code, out } = run(tree({ extraJob: extra }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not `need` "wasm"/);
   });
 
   test('FAILS when the register names an aggregating job that does not exist', () => {

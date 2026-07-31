@@ -65,6 +65,15 @@ function tree({
   siblingConst = 'MIN_SITES',
   roots = ['nikatru', 'rajasekarselvam'],
   disqualified = [{ id: 'flathub', adr: 'knowledge/decisions/015-linux.md', date: '2026-07-25', tells: ['flathub', 'flatpak'] }],
+  // The guard derives its artifact patterns from these rows — an empty channels
+  // array is COVERAGE LOST by design, so every fixture carries a minimal set.
+  channels = [
+    { id: 'android-play', platforms: ['android'], artifactFormats: ['.apk', '.aab'] },
+    { id: 'windows-direct', platforms: ['windows'], artifactFormats: ['.msix', '.exe'] },
+    { id: 'macos-appstore', platforms: ['macos'], artifactFormats: ['.pkg'] },
+    { id: 'linux-appimage', platforms: ['linux'], artifactFormats: ['.AppImage'] },
+    { id: 'web', platforms: ['web'], artifactFormats: ['static-bundle'] },
+  ],
   omitRegister = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
@@ -81,7 +90,7 @@ function tree({
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write(`tooling/ci/check-site-integrity.mjs`, `const ${siblingConst} = ${minSites};\n`);
   if (!omitRegister) {
-    write('tooling/channel-register.json', JSON.stringify({ channels: [], disqualified }, null, 2));
+    write('tooling/channel-register.json', JSON.stringify({ channels, disqualified }, null, 2));
   }
   return root;
 }
@@ -133,6 +142,20 @@ describe('assert-channel-claims — [D-7] the dead channel has no honest mention
     assert.match(out, /do not include its own id/);
   });
 
+  // Hardened 2026-07-31 (review, mutation-proven): the old fallback made
+  // deleting or emptying `tells` a SILENT narrowing to the id alone.
+  test('FAILS when the tells key is DELETED from a disqualified entry', () => {
+    const { code, out } = run(tree({ disqualified: [{ id: 'flathub', adr: 'a/b.md' }] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `tells` array/);
+  });
+
+  test('FAILS when tells is EMPTIED on a disqualified entry', () => {
+    const { code, out } = run(tree({ disqualified: [{ id: 'flathub', adr: 'a/b.md', tells: [] }] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `tells` array/);
+  });
+
   test('FAILS on a direct GitHub-release download button ([ADR 015] §4)', () => {
     const { code, out } = run(tree({ nikatruBody: '<a href="https://github.com/x/y/releases/latest">Download</a>' }));
     assert.equal(code, 1, out);
@@ -144,7 +167,7 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
   test('FAILS on a REAL App Store URL while no app claims ios', () => {
     const { code, out } = run(tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871">iOS</a>' }));
     assert.equal(code, 1, out);
-    assert.match(out, /offers an App Store link for platform "ios"/);
+    assert.match(out, /offers an App Store link for platform\(s\) "ios"/);
     assert.match(out, /The destination is REAL, not a placeholder/);
   });
 
@@ -157,7 +180,7 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
   test('FAILS on an .apk offered for download', () => {
     const { code, out } = run(tree({ rajaBody: '<a href="/dl/subly-1.0.75.apk">Get the APK</a>' }));
     assert.equal(code, 1, out);
-    assert.match(out, /an Android artifact/);
+    assert.match(out, /a \.apk artifact \(register: android-play\)/);
   });
 
   test('FAILS on a snapcraft.io link while no app claims linux', () => {
@@ -186,6 +209,35 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
     assert.match(out, /platform-count claim/);
     assert.match(out, /six platforms/);
   });
+
+  // Derived-from-register patterns (review 2026-07-31): the hand-copied list
+  // had already drifted — .exe passed while sitting in the register next door.
+  test('FAILS on a REAL .exe download — the pattern comes from the register now', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="/dl/Subly-Setup.exe">Windows</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /a \.exe artifact \(register: windows-direct\)/);
+    test('FAILS COVERAGE LOST when a register format cannot resolve to a pattern', () => {
+    const { code, out } = run(
+      tree({ channels: [{ id: 'android-play', platforms: ['android'], artifactFormats: ['aab-bundle'] }] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /resolve to NO scan pattern/);
+  });
+
+  test("FAILS on a REAL dl.nikatru.com link — the guard's own prescribed remedy is a promise too", () => {
+    const { code, out } = run(tree({ rajaBody: '<a href="https://dl.nikatru.com/subly/latest">Get it</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /dl\.nikatru\.com download link/);
+  });
+
+  test('PASSES a bracketed dl.nikatru.com placeholder — spaces and all', () => {
+    // The QUOTED value is the placeholder; the tight token around the match is
+    // not. quotedValueAround() exists exactly for this shape.
+    const { code, out } = run(tree({ nikatruBody: '<a href="[SNAP OR dl.nikatru.com APPIMAGE URL]">Linux</a>' }));
+    assert.equal(code, 0, out);
+  });
+});
+
 });
 
 describe('assert-channel-claims — coverage is a relationship, not a number', () => {

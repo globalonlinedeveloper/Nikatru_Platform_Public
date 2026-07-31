@@ -244,7 +244,10 @@ jobs:
       - name: Require every platform green
         run: |
           echo "gate=${{ needs.gate.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }}"
-          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+          # 'skipped' added by review 2026-07-31: a job-level `if:` on any
+          # platform job would otherwise let this print "All 6 platforms built"
+          # over a platform that never built.
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
             echo "::error::One or more platform builds failed"; exit 1
           fi
           echo "All 6 platforms built"
