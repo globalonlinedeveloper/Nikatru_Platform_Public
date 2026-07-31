@@ -202,6 +202,23 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # KEPT, not temporary. `tooling/versions.json` pins the runner LABEL and the
+      # Flutter version, but NOTHING pins Xcode — and a label names an image
+      # family, not an immutable image. `[9]R-5`'s channel register prints that
+      # gap on every guard run for exactly this reason. When the macOS build
+      # breaks, the first question is "what toolchain was this?", and without
+      # these three lines the answer is unrecoverable after the fact.
+      # It cost one CI cycle to learn that on 2026-07-31; it costs 2 seconds here.
+      - name: Toolchain under test
+        run: |
+          sw_vers
+          xcodebuild -version
+          flutter --version
+      # ⚠️ If this ever aborts with `AOT snapshotter exited with code -6` again,
+      # add --verbose BEFORE diagnosing anything: gen_snapshot's stderr is not in
+      # the step log and not in `gh run view --log-failed`. That flag is the only
+      # thing that turns "exit -6" into an actual error message.
+      # See $flutter_comment in tooling/versions.json for the 3.44.8 case.
       - name: Build macos
         working-directory: apps/subly
         run: flutter build macos --release
