@@ -155,6 +155,9 @@ function tree({
   verdicts = ['failure', 'cancelled'],
   adrLocked = true,
   adrOnDisk = true,
+  // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
+  // check is decided by this ROOT, never by the individual file — see the guard.
+  harnessPresent = true,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -185,8 +188,14 @@ function tree({
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
   write(LANE_WORKFLOW, laneWorkflow);
   write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts }));
-  if (adrOnDisk) {
-    write('knowledge/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
+  if (harnessPresent) {
+    // The harness root exists even when the cited ADR does not — that is the
+    // distinction the guard turns on, and the case a blanket existsSync() skip
+    // would have thrown away.
+    write('knowledge/decisions/README.md', 'the harness is checked out\n');
+    if (adrOnDisk) {
+      write('knowledge/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
+    }
   }
   if (!omitRegister) {
     write('tooling/channel-register.json', registerRaw ?? JSON.stringify(register, null, 2));
@@ -421,16 +430,34 @@ describe('assert-channel-register — schema, stores and disqualified channels',
     assert.match(out, /duplicate id/);
   });
 
-  test('FAILS when a disqualified channel cites an ADR that is not on disk', () => {
+  // ── the ADR check is MODE-AWARE, and both modes are tested ────────────────
+  // Found the hard way: this guard's first CI run failed on run 30609219162
+  // because `knowledge/` is gitignored, so a correct check reported a fault that
+  // did not exist. The fix must not lose the case below, which is the one that
+  // matters — harness present, ADR gone.
+  test('FAILS when the harness IS checked out and the cited ADR is not on disk', () => {
     const { code, out } = run(tree({ adrOnDisk: false }));
     assert.equal(code, 1, out);
-    assert.match(out, /which is not on disk/);
+    assert.match(out, /which is not on disk although `knowledge\/` is/);
   });
 
-  test('FAILS when a disqualified channel cites an ADR that is not LOCKED', () => {
+  test('FAILS when the harness IS checked out and the ADR is not LOCKED', () => {
     const { code, out } = run(tree({ adrLocked: false }));
     assert.equal(code, 1, out);
     assert.match(out, /does not record itself as LOCKED/);
+  });
+
+  test('PRINTS the limit rather than failing when the whole harness is absent (CI)', () => {
+    const { code, out } = run(tree({ harnessPresent: false }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ADR UNVERIFIABLE IN THIS CHECKOUT/);
+    assert.match(out, /This is a stated limit, not a pass/);
+  });
+
+  test('still FAILS a malformed ADR citation even with no harness — every mode', () => {
+    const { code, out } = run(tree({ harnessPresent: false, mutate: (r) => { r.disqualified[0].adr = ''; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /cites no ADR path/);
   });
 
   test('FAILS when a channel is both live and disqualified', () => {

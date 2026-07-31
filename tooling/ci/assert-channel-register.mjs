@@ -42,9 +42,20 @@
 // work prints the gap on every run rather than blocking all CI on work only the
 // owner can do. A known gap nobody sees becomes permanent.
 //
-// ⚠️ NOTHING HERE READS company/. It is gitignored (.gitignore:15) and absent
-// from the public repo, so [10]D-4's OWNER_QUEUE limbs are not implementable in
-// CI. The register carries the row ids as data; asserting on them is local-only.
+// 🔴 CI CANNOT SEE company/ OR knowledge/. Both are gitignored (.gitignore:14-15)
+// and absent from the public checkout. Two consequences, and the second one bit
+// this guard on its own first CI run:
+//   · [10]D-4's OWNER_QUEUE limbs are NOT implementable in CI at all. The
+//     register carries the row ids as data; asserting on them is local-only.
+//   · every ADR path a guard cites is unresolvable in CI. This guard's
+//     disqualified-channel check failed on run 30609219162 for exactly that
+//     reason — a correct check reporting a fault that did not exist.
+// The fix is NOT to drop the check and it is NOT a silent skip ("silence is not
+// success"). It is to decide from the HARNESS ROOT: if knowledge/ is present the
+// full check runs and a deleted or downgraded ADR fails; if knowledge/ is absent
+// ENTIRELY the guard says so, loudly, on every run. A single missing ADR inside a
+// present knowledge/ is still a failure — which is the case that matters, and it
+// is the one a blanket existsSync() skip would have thrown away.
 //
 // Usage:  node tooling/ci/assert-channel-register.mjs [repoRoot]
 // Exit 0 = the register, the apps and the workflows agree. 1 = they do not.
@@ -441,21 +452,49 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 }
 
 // ── 7. disqualified channels ─────────────────────────────────────────────────
+// The ADR check is MODE-AWARE, and the mode is decided by the harness ROOT, not
+// by the individual file. `knowledge/` is gitignored, so in a CI checkout every
+// ADR path is unresolvable — reporting that as "the decision is missing" is a
+// false fault, and skipping it silently is worse. Decide once, say which.
 const disqualified = Array.isArray(register.disqualified) ? register.disqualified : [];
+const adrRoot = (p) => String(p ?? '').split('/')[0];
+const rootsPresent = new Map();
+const harnessPresent = (root) => {
+  if (!rootsPresent.has(root)) rootsPresent.set(root, root !== '' && existsSync(abs(root)));
+  return rootsPresent.get(root);
+};
+
 for (const d of disqualified) {
   const id = d.id ?? '(unnamed)';
   if (seenIds.has(id)) {
     problems.push(`"${id}" is both a live channel and a disqualified one. One of the two entries is a lie and nothing says which.`);
   }
-  if (typeof d.adr !== 'string' || !existsSync(abs(d.adr))) {
-    problems.push(`disqualified channel "${id}" names ADR "${d.adr}", which is not on disk. A channel killed by a decision nobody can open is a channel that comes back.`);
+  // Checkable in EVERY mode: the citation has to be a well-formed path.
+  if (typeof d.adr !== 'string' || d.adr === '' || !d.adr.includes('/')) {
+    problems.push(`disqualified channel "${id}" cites no ADR path. A channel killed by a decision nobody can name is a channel that comes back.`);
+    continue;
+  }
+  const summary = `${id} (${(d.platforms ?? []).join(', ')}) — ${d.adr}, ${d.date ?? 'undated'}${d.ownerQueue ? ` · OWNER_QUEUE ${d.ownerQueue}` : ''}`;
+
+  if (!harnessPresent(adrRoot(d.adr))) {
+    // The whole harness directory is absent — this is the public checkout, not a
+    // missing decision. Say so on every run rather than passing quietly.
+    prints.push(`DISQUALIFIED: ${summary}`);
+    prints.push(
+      `   └─ ADR UNVERIFIABLE IN THIS CHECKOUT — \`${adrRoot(d.adr)}/\` is not present (it is gitignored, .gitignore:14-15). The citation's CONTENT is checked only where the harness is checked out, i.e. locally. This is a stated limit, not a pass.`,
+    );
+    continue;
+  }
+  // Harness IS present, so a missing or unlocked ADR is a real fault.
+  if (!existsSync(abs(d.adr))) {
+    problems.push(`disqualified channel "${id}" names ADR "${d.adr}", which is not on disk although \`${adrRoot(d.adr)}/\` is. A channel killed by a decision nobody can open is a channel that comes back.`);
     continue;
   }
   const adr = read(d.adr) ?? '';
   if (!/LOCKED/.test(adr)) {
     problems.push(`disqualified channel "${id}" cites ${d.adr}, which does not record itself as LOCKED. Only a locked decision disqualifies a channel.`);
   } else {
-    prints.push(`DISQUALIFIED: ${id} (${(d.platforms ?? []).join(', ')}) — ${d.adr}, ${d.date ?? 'undated'}${d.ownerQueue ? ` · OWNER_QUEUE ${d.ownerQueue}` : ''}`);
+    prints.push(`DISQUALIFIED: ${summary}`);
   }
 }
 
