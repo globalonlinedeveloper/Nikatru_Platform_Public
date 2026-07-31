@@ -81,9 +81,21 @@ for (const f of ['tooling/wsl-setup.sh']) {
 // guard looked and nowhere the factory's own product looked.
 // Pinning it EXACTLY (no caret) is the point: a stamped app must resolve the same
 // way tomorrow, and this rule is what stops the caret coming back.
-for (const f of ['tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/package.json']) {
-  if (existsSync(join(repoRoot, f))) TARGETS.push(f);
+// 🔴 The path is REQUIRED, never existsSync-gated — triage 2026-07-31
+// (mutation-proven): the first version pushed this target only `if (existsSync)`,
+// so renaming one brick directory segment silently deleted the rule's ONLY
+// target while a live `^9.9.9` drift sat on disk — and MIN_OCCURRENCES is a
+// GLOBAL floor the workflows' 41 other matches satisfy alone, so the guard
+// printed "ok". A scan whose target vanished must say so, not shrink.
+const BRICK_PKG = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/package.json';
+if (!existsSync(join(repoRoot, BRICK_PKG))) {
+  console.error(`✗ COVERAGE LOST — the brick's stamped-service package.json is gone from ${BRICK_PKG}.`);
+  console.error('  The "Wrangler (brick dep)" rule now scans NOTHING, and the global MIN_OCCURRENCES floor');
+  console.error('  is satisfied by the workflows alone — the caret this rule exists to block would come back');
+  console.error('  unseen. If the brick moved, update this path in the same change.');
+  process.exit(1);
 }
+TARGETS.push(BRICK_PKG);
 
 /** A scan that quietly matches nothing reports "clean" forever. */
 const MIN_OCCURRENCES = 10;

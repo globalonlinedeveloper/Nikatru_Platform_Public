@@ -41,17 +41,26 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 const CI = join(ROOT, 'tooling', 'ci');
 const TESTS = join(CI, 'test');
 
-// Floors. The tree carries 18 guards, 7 test files and 178 test declarations; a
-// count far below any of them means this scan broke, not that the guards vanished.
-const MIN_GUARDS = 15;
-const MIN_TEST_FILES = 4;
+// Floors, RATCHETED to just under reality instead of frozen at birth. 🔴 The
+// original values (15/4/140) were written when the tree carried 18 guards and
+// never moved again — triage 2026-07-31 (mutation-proven): with 37 guards on
+// disk, MOVING 22 OF THEM into a subfolder still reported "ok 15 guard(s)",
+// because a floor at ~40% of reality guards against nothing that can actually
+// happen. Measured at the 2026-07-31 ratchet: 37 guards, 27 test files, 533
+// test declarations. When the tree grows, ratchet these UP behind it; a count
+// below any floor means this scan broke, not that the guards vanished.
+// The floors are also backed by a RELATIONSHIP below: every guard ci.yml
+// invokes must be a file this scan found, so the manifest CI actually runs is
+// what anchors the set, not just a number that goes stale.
+const MIN_GUARDS = 35;
+const MIN_TEST_FILES = 25;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 140;
+const MIN_TEST_CASES = 480;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing
@@ -81,6 +90,33 @@ if (!existsSync(CI) || !existsSync(TESTS)) {
 
 const guards = readdirSync(CI).filter((f) => f.endsWith('.mjs')).sort();
 const testFiles = readdirSync(TESTS).filter((f) => f.endsWith('.test.mjs')).sort();
+const scanningRealRepo = process.argv[2] === undefined;
+
+// ── the scan is FLAT by design, so a subfolder must be LOUD, not a leak ──────
+// readdirSync(CI) does not recurse. Triage 2026-07-31 (mutation-proven): a
+// "tidy into tooling/ci/guards/" refactor moved 22 guards into a subfolder and
+// this guard printed its intended pass message over the 15 that remained —
+// every moved guard silently left BOTH per-guard checks. Guards live flat in
+// tooling/ci on purpose; any .mjs in a subdirectory (test/ excepted — that is
+// the suite, audited separately below) is either a guard this scan can no
+// longer see or a new layout this guard was never taught.
+const strayMjs = [];
+const findStray = (dir, rel) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) findStray(join(dir, e.name), `${rel}${e.name}/`);
+    else if (e.name.endsWith('.mjs')) strayMjs.push(`${rel}${e.name}`);
+  }
+};
+for (const e of readdirSync(CI, { withFileTypes: true })) {
+  if (e.isDirectory() && e.name !== 'test') findStray(join(CI, e.name), `${e.name}/`);
+}
+if (strayMjs.length) {
+  console.error(`✗ COVERAGE LOST — ${strayMjs.length} .mjs file(s) sit in subdirectories of tooling/ci this scan does not reach:`);
+  for (const s of strayMjs) console.error(`    tooling/ci/${s}`);
+  console.error('  A guard moved into a subfolder leaves BOTH checks (negative test + self-check) silently.');
+  console.error('  Move it back to tooling/ci/, or teach this guard the new layout in the same change.');
+  process.exit(1);
+}
 
 // ── self-check first: this guard must still be finding guards ────────────────
 if (guards.length < MIN_GUARDS) {
@@ -90,6 +126,35 @@ if (guards.length < MIN_GUARDS) {
 }
 if (testFiles.length < MIN_TEST_FILES) {
   console.error(`✗ COVERAGE LOST — found ${testFiles.length} test file(s), expected at least ${MIN_TEST_FILES}.`);
+  process.exit(1);
+}
+
+// ── the RELATIONSHIP behind the floors: ci.yml is the committed manifest ─────
+// A floor is a number and numbers go stale — the 15/4/140 set proved it. What
+// cannot go stale is the workflow that actually runs the guards: every
+// `node tooling/ci/<guard>.mjs` invocation in ci.yml names a file CI depends
+// on, so any invoked guard this scan cannot find means the scan and the
+// pipeline have diverged — the scan is looking at the wrong tree, or a guard
+// CI runs was deleted/moved without ci.yml following. Either way: not clean.
+// (Fixture roots carry no ci.yml, so the cross-check applies when the manifest
+// exists — and its ABSENCE on the real repo is itself coverage lost.)
+const ciYml = join(ROOT, '.github', 'workflows', 'ci.yml');
+if (existsSync(ciYml)) {
+  const yml = readFileSync(ciYml, 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'))
+    .join('\n');
+  const invoked = [...new Set([...yml.matchAll(/tooling\/ci\/([A-Za-z0-9._-]+\.mjs)/g)].map((m) => m[1]))].sort();
+  const unfound = invoked.filter((g) => !guards.includes(g));
+  if (unfound.length) {
+    console.error(`✗ COVERAGE LOST — ci.yml invokes ${unfound.length} guard(s) this scan did not find: ${unfound.join(', ')}`);
+    console.error('  The manifest CI runs and the set this guard audits have diverged. Either the guard');
+    console.error('  was deleted/moved while ci.yml still calls it, or this scan reads the wrong directory.');
+    process.exit(1);
+  }
+} else if (scanningRealRepo) {
+  console.error('✗ COVERAGE LOST — .github/workflows/ci.yml not found, so the invoked-guard cross-check ran over nothing.');
+  console.error('  The floors alone cannot anchor the guard set; the manifest must exist to be checked against.');
   process.exit(1);
 }
 
@@ -122,7 +187,6 @@ if (hollow.length) {
 //     when a caller points this guard at a fixture root. This is the one that
 //     catches the suite being moved out from under ci.yml's glob: `node --test`
 //     exits 0 on a pattern matching nothing (verified, node v24, 2026-07-27).
-const scanningRealRepo = process.argv[2] === undefined;
 const testCases = countCases(testCorpus);
 if (scanningRealRepo && testCases < MIN_TEST_CASES) {
   console.error(`✗ COVERAGE LOST — found ${testCases} test declaration(s), expected at least ${MIN_TEST_CASES}.`);
