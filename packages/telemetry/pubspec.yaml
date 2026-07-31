@@ -14,10 +14,19 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Latest stable verified on pub.dev (9.24.0, July 2026). sentry_flutter 9.x
-  # requires Dart >=3.5.0 / Flutter >=3.24.0, matching this package's
-  # environment. Data classes are mutable in 9.x (beforeSend mutates in place).
-  sentry_flutter: ^9.24.0
+  # 🔴 RAISED TO ^9.26.0 (2026-07-31) BECAUSE 9.25.0 BREAKS THE macOS RELEASE
+  # BUILD. Bisected to `2e728aa`, the commit that added this dependency: the
+  # macOS AOT step then dies with `Unexpected object (Class with illegal cid,
+  # full-aot) … _window_macos.dart Class: _Rect`. Ruled out by experiment first:
+  # NOT the Flutter version (3.44.7 fails identically) and NOT the runner
+  # (commit 55eafe4a is still green today). The same dependency separately broke
+  # the Linux lane — sentry-native needs libcurl (PR #78). One package, two
+  # platforms.
+  # ⚠️ If macOS is still red on 9.26.0, this bump is NOT the fix — read
+  # tooling/versions.json $flutter_comment before re-deriving any of the above.
+  # sentry_flutter 9.x requires Dart >=3.5.0 / Flutter >=3.24.0. Data classes are
+  # mutable in 9.x (beforeSend mutates in place).
+  sentry_flutter: ^9.26.0
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
