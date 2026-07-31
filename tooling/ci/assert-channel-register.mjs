@@ -186,7 +186,12 @@ function workflow(rel) {
   const raw = read(rel);
   let parsed = null;
   if (raw !== null) {
-    const stripped = raw.replace(/^\s*#.*$/gm, '');
+    // Full-line AND trailing comments. Review 2026-07-31 (mutation-proven):
+    // stripping only full-line comments meant `wasm:   # experimental` was
+    // invisible as a JOB to this parser — while assert-release-provenance.mjs
+    // parsed it fine — so an inline-commented job silently escaped the
+    // never-a-partial-set check. The two parsers now strip identically.
+    const stripped = raw.replace(/^\s*#.*$/gm, '').replace(/\s#.*$/gm, '');
     const lines = stripped.split('\n');
     const jobsAt = lines.findIndex((l) => /^jobs:\s*$/.test(l));
     const jobs = new Map();
@@ -291,13 +296,34 @@ for (const c of channels) {
       );
     }
 
+    // 🔴 THE DRILL REQUIREMENT IS DERIVED FROM keyKind, NEVER FROM THE ROW.
+    // Review 2026-07-31 (mutation-proven): the old check honoured
+    // `restoreDrill.required: false`, so the audited row's own boolean decided
+    // whether the audit applied — a served channel holding a real key could
+    // self-certify its drill away with one word. `required` is now ignored
+    // here entirely: a real key on a served channel needs a dated drill, full
+    // stop; keyKind "none" needs nothing. The JSON field survives only as
+    // documentation of intent.
     if (signingOk && c.signing.keyKind !== 'none') {
       const drill = c.signing.restoreDrill ?? {};
-      if (drill.required !== false && !/^\d{4}-\d{2}-\d{2}$/.test(String(drill.date ?? ''))) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(drill.date ?? ''))) {
         problems.push(
-          `${where} is SERVED with keyKind "${c.signing.keyKind}" and has no DATED restore drill. [9]R-3: a published channel carries an identity, a format and a dated restore-drill record. An undrilled key is a key we only find out is unrestorable on the day we need it.`,
+          `${where} is SERVED with keyKind "${c.signing.keyKind}" and has no DATED restore drill. [9]R-3: a published channel carries an identity, a format and a dated restore-drill record — and the row's own \`required\` flag cannot waive that, or the audited object decides whether the audit applies.`,
         );
       }
+      // [9]R-3's headline is "every signing identity is ENUMERATED" — so the
+      // identity must actually be named. Review found `signing.identity` was
+      // never read anywhere: the enumeration guarantee enforced nothing.
+      if (typeof c.signing.identity !== 'string' || c.signing.identity.trim() === '') {
+        problems.push(
+          `${where} is SERVED with keyKind "${c.signing.keyKind}" and no \`signing.identity\`. [9]R-3 requires the identity be ENUMERATED — a row that names the kind of key but not the key is a register entry about nothing.`,
+        );
+      }
+    }
+    if (signingOk && c.signing.keyKind === 'none' && c.signing.identity !== null) {
+      problems.push(
+        `${where} has keyKind "none" but a non-null \`signing.identity\`. Either the channel holds a key (name its kind) or it does not (identity must be null) — a named identity on a keyless channel is a contradiction nobody will notice until custody matters.`,
+      );
     }
 
     if (Array.isArray(c.minimumToolchain)) {
@@ -375,11 +401,17 @@ if (claims === 0) {
 }
 
 // ── 5. direction B: no served channel is fiction ─────────────────────────────
+// 🔴 PER PLATFORM, not per row. Review 2026-07-31 (mutation-proven): the first
+// version fired only when EVERY platform of a served row was orphaned, so
+// adding "windows" to the served web row's platforms passed clean — "web" was
+// still claimed — and the register's own headline guarantee ("adding windows
+// fails the build") was false from the register side. Each platform a served
+// row declares must be claimed by some app, individually.
 for (const c of served) {
-  const orphan = (c.platforms ?? []).filter((p) => !claimed.has(p));
-  if (orphan.length === (c.platforms ?? []).length && orphan.length > 0) {
+  for (const p of c.platforms ?? []) {
+    if (claimed.has(p)) continue;
     problems.push(
-      `channel "${c.id}" is SERVED but no app in ${APPS} claims ${orphan.map((p) => `"${p}"`).join(' or ')}. A served channel the factory ships nothing to is cut 5's corollary growing back as data: "remove 'six platforms' from site copy until it is true".`,
+      `channel "${c.id}" is SERVED and declares platform "${p}", which no app in ${APPS} claims. A served platform the factory ships nothing to is cut 5's corollary growing back as data: "remove 'six platforms' from site copy until it is true".`,
     );
   }
 }
@@ -436,14 +468,29 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
     if (ghost.length) {
       problems.push(`${agg.workflow}: job "${agg.job}" needs ${ghost.map((j) => `"${j}"`).join(', ')}, which the workflow does not declare.`);
     }
-    // The aggregate must fail on CANCELLED as well as FAILURE. A cancelled job
-    // has not succeeded, and `if: always()` means the aggregate still runs.
-    for (const verdict of ['failure', 'cancelled']) {
-      if (!body.includes(`'${verdict}'`) && !body.includes(`"${verdict}"`)) {
+    // The aggregate must fail on FAILURE, CANCELLED **and SKIPPED** — none of
+    // the three is a green build, and `if: always()` means the aggregate runs
+    // over all of them. 'skipped' was missing until review 2026-07-31: a
+    // job-level `if:` on any platform job would have let the weekly cron print
+    // "All 6 platforms built" over a platform that never built.
+    //
+    // 🔴 STRUCTURAL, not substring. The first version did body.includes("'failure'"),
+    // which an `echo` merely MENTIONING the verdicts satisfied — mutation-proven:
+    // an aggregator that printed the words and exited 0 passed. The check now
+    // requires the actual `contains(needs.*.result, '<verdict>')` expression
+    // AND an `exit 1` in the job body, so prose about the check cannot be the check.
+    for (const verdict of ['failure', 'cancelled', 'skipped']) {
+      const expr = new RegExp(`contains\\(\\s*needs\\.\\*\\.result\\s*,\\s*['"]${verdict}['"]\\s*\\)`);
+      if (!expr.test(body)) {
         problems.push(
-          `${agg.workflow}: job "${agg.job}" never tests for '${verdict}'. A ${verdict} platform job is not a green one, and with \`if: always()\` the aggregate runs anyway and reports success.`,
+          `${agg.workflow}: job "${agg.job}" never evaluates contains(needs.*.result, '${verdict}'). A ${verdict} platform job is not a green one, and with \`if: always()\` the aggregate runs anyway and reports success. (A line merely SAYING '${verdict}' does not count — the expression must be there.)`,
         );
       }
+    }
+    if (!/\bexit\s+1\b/.test(body)) {
+      problems.push(
+        `${agg.workflow}: job "${agg.job}" tests verdicts but never \`exit 1\`s. An aggregate that detects a failed platform and exits 0 anyway is a green tick over a broken set.`,
+      );
     }
     if (!missing.length && !ghost.length) {
       ok(`aggregating job "${agg.job}" needs all ${others.length} other job(s) in ${agg.workflow}`);
