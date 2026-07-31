@@ -114,6 +114,30 @@ describe('assert-stamp-platforms', () => {
 
   // 🔴 M1 — the original defect. An empty claim made every per-platform check
   // pass by having nothing to iterate.
+  // ── the coverage self-check must itself be alive ──────────────────────────
+  // 🔴 Added 2026-07-31: the step counters were written /^\s*-\s+…/ — in a
+  // regex LITERAL that matches a literal backslash, so both counts were always
+  // 0 and neither branch of the self-check could ever run. It satisfied
+  // assert-guard-coverage's marker requirement while asserting nothing. The
+  // survived-steps ok-line is the testable symptom: it NEVER printed under the
+  // broken regex, so this assertion fails against it. Verified by mutation:
+  // restoring the double backslash makes exactly this test go red.
+  test('the step counters actually count — the survived-steps line prints', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /\d+ of \d+ CI step\(s\) survived comment stripping/);
+  });
+
+  test('FAILS COVERAGE LOST on a ci.yml with zero recognisable steps', () => {
+    // The constructible failing input the old self-check never had: a workflow
+    // file that parses but contains no steps at all.
+    const stepless = ['jobs:', '  app_brick:', '    if: false', ''].join('\n');
+    const { code, out } = run(tree({ ci: stepless }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /ZERO recognisable steps/);
+  });
+
   test('FAILS when the platform claim is emptied', () => {
     const { code, out } = run(tree({
       postGen: goodPostGen.replace("<String>['web']", '<String>[]'),

@@ -102,14 +102,28 @@ if (postGen !== null && ci !== null) {
   // same mistake: a floor that has to be tuned is a floor somebody eventually
   // lowers. So the check compares the two scans to each other. It holds for a
   // three-step fixture and a sixty-step workflow alike, and needs no tuning.
-  const rawSteps = (ciRaw.match(/^\\s*-\\s+(name|run):/gm) ?? []).length;
-  const ciSteps = (ci.match(/^\\s*-\\s+(name|run):/gm) ?? []).length;
+  // 🔴 FIXED 2026-07-31: this pair was written `/^\\s*-\\s+…/` — in a regex
+  // LITERAL `\\s` matches a literal backslash + s, so both counts were always 0
+  // and NEITHER branch below could ever run. The check satisfied
+  // assert-guard-coverage's "carries a COVERAGE LOST self-check" requirement
+  // while asserting nothing — an assertion that cannot fail, inside the guard
+  // whose own header records the comment-stripping lesson. The ok-line below is
+  // now the testable half: stamp-platforms.test.mjs asserts it prints with a
+  // sane count, which fails against the broken regex.
+  const rawSteps = (ciRaw.match(/^\s*-\s+(name|run):/gm) ?? []).length;
+  const ciSteps = (ci.match(/^\s*-\s+(name|run):/gm) ?? []).length;
   if (rawSteps > 0 && ciSteps === 0) {
     problems.push(
       `COVERAGE LOST — ${CI} has ${rawSteps} step(s), and none survived comment stripping. The stripper has eaten the file, so every check about what CI runs is being asked of an empty string.`,
     );
   } else if (ciSteps > 0) {
     ok(`${ciSteps} of ${rawSteps} CI step(s) survived comment stripping`);
+  } else {
+    // rawSteps === 0: the workflow parser found no steps AT ALL, which is its
+    // own coverage failure — a ci.yml with zero steps builds nothing.
+    problems.push(
+      `COVERAGE LOST — ${CI} contains ZERO recognisable steps. Either the file was emptied or this scan's step pattern no longer matches real workflow syntax.`,
+    );
   }
 
   // ── direction 2: every STAMPED platform folder is claimed ─────────────────
