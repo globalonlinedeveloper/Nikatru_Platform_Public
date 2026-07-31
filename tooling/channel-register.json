@@ -367,6 +367,17 @@
       "adr": "knowledge/decisions/015-linux-distribution-channel.md",
       "date": "2026-07-25",
       "ownerQueue": "A-5",
+      "_tellsWhy": [
+        "EVERY STRING THAT ADVERTISES THIS CHANNEL, not just its id. `assert-channel-claims.mjs` scans",
+        "these tokens case-insensitively over RAW site text. The id alone was not enough, proven by",
+        "mutation 2026-07-31: a public surface reading \"install the flatpak from your distro store\"",
+        "passed clean, because `flatpak` is the package FORMAT and `flathub` is the channel id. A reader",
+        "cannot tell the difference and neither can a store reviewer. The guard requires `id` to be in",
+        "this list, so narrowing it cannot silently narrow the scan.",
+        "⚠️ `.deb` and `apt` are deliberately NOT here: [ADR 015] rejected them as OPTIONS, it did not",
+        "disqualify them as channels, and a token that broad would fire on any prose about Linux."
+      ],
+      "tells": ["flathub", "flatpak"],
       "reason": [
         "Flathub's requirements page bans AI-generated or AI-assisted code, documentation or any other",
         "content, and says such submissions can be rejected without review with repeat violations risking",
