@@ -478,10 +478,19 @@ describe('assert-version-consistency', () => {
     java: '17',
     melos: '8.2.2',
     mason_cli: '0.1.3',
+    wrangler: '4.114.0',
     runner_ubuntu: 'ubuntu-24.04',
     runner_windows: 'windows-2025',
     runner_macos: 'macos-26',
   };
+
+  // The brick's stamped-service package.json — the ONLY target of the
+  // "Wrangler (brick dep)" rule, so every fixture must carry it: its absence
+  // is COVERAGE LOST by design (triage 2026-07-31 — the existsSync-gated
+  // version let a renamed brick path silently delete the rule's whole scan
+  // while a live caret drift sat on disk).
+  const BRICK = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/package.json';
+  const brickPkg = (pin) => JSON.stringify({ devDependencies: { wrangler: pin } });
 
   /** 12 references clears the scan's own MIN_OCCURRENCES floor. */
   const wf = ({ flutter = DECL.flutter, node = DECL.node, mason = DECL.mason_cli, extra = '' } = {}) =>
@@ -492,8 +501,12 @@ describe('assert-version-consistency', () => {
     `      - run: dart pub global activate mason_cli ${mason}\n` +
     extra;
 
-  const build = (name, opts) =>
-    fixture(name, { 'tooling/versions.json': JSON.stringify(DECL), '.github/workflows/ci.yml': wf(opts) });
+  const build = (name, opts = {}) => {
+    const { wranglerPin = DECL.wrangler, brick = true, ...wfOpts } = opts;
+    const files = { 'tooling/versions.json': JSON.stringify(DECL), '.github/workflows/ci.yml': wf(wfOpts) };
+    if (brick) files[BRICK] = brickPkg(wranglerPin);
+    return fixture(name, files);
+  };
 
   test('PASSES when every literal matches the declaration', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-ok')] });
@@ -545,13 +558,69 @@ describe('assert-version-consistency', () => {
   });
 
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
+    // The brick is present (its absence is a DIFFERENT COVERAGE LOST, tested
+    // below), so the only failure here is the MIN_OCCURRENCES floor itself.
     const dir = fixture('vc-cov', {
       'tooling/versions.json': JSON.stringify(DECL),
       '.github/workflows/ci.yml': `name: X\njobs:\n  j:\n    steps:\n      - run: echo hi\n`,
+      [BRICK]: brickPkg(DECL.wrangler),
     });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /COVERAGE LOST — matched 1 version reference/);
+  });
+
+  // ── the two rules PR #79 added, untested until triage 2026-07-31 ───────────
+  test('PASSES when the brick wrangler pin exactly matches the declaration', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-brick-ok')] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the brick wrangler pin grows a caret — the PR #79 incident', () => {
+    // Locks the PR #83 whole-string-capture fix: the first regex put `\^?`
+    // OUTSIDE the capture, so "^4.114.0" captured "4.114.0", equalled the pin
+    // and PASSED — the caret floated silently while the guard claimed the
+    // opposite. Any range operator must make the captured string unequal.
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-brick-caret', { wranglerPin: '^4.114.0' })] });
+    assert.equal(code, 1);
+    assert.match(out, /Wrangler \(brick dep\) is "\^4\.114\.0" but versions\.json declares "4\.114\.0"/);
+  });
+
+  test('FAILS on a drifted brick wrangler pin, naming the rule and both values', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-brick-drift', { wranglerPin: '4.100.0' })] });
+    assert.equal(code, 1);
+    assert.match(out, /Wrangler \(brick dep\) is "4\.100\.0" but versions\.json declares "4\.114\.0"/);
+  });
+
+  test('COVERAGE: the brick package.json going missing is LOUD, not a silent shrink', () => {
+    // Pre-fix this test could not be written: the target was existsSync-gated,
+    // so a renamed brick path deleted the rule's only target and the guard
+    // printed "ok" behind the workflows' 40+ other matches.
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-brick-gone', { brick: false })] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — the brick's stamped-service package\.json is gone/);
+  });
+
+  test('FAILS when a workflow uses cloudflare/wrangler-action WITHOUT wranglerVersion', () => {
+    // Deleting the wranglerVersion: line produces NO literal for the value
+    // loop to compare — the action falls back to the version compiled into
+    // its own bundle (production ran 3.90.0 while the repo declared 4.114.0).
+    const dir = build('vc-action-unpinned', {
+      extra: '      - uses: cloudflare/wrangler-action@9f5885d\n        with:\n          command: deploy\n',
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /uses cloudflare\/wrangler-action WITHOUT a wranglerVersion:/);
+  });
+
+  test('PASSES when the wrangler-action step pins wranglerVersion to the declaration', () => {
+    const dir = build('vc-action-pinned', {
+      extra:
+        '      - uses: cloudflare/wrangler-action@9f5885d\n        with:\n' +
+        `          wranglerVersion: '${DECL.wrangler}'\n          command: deploy\n`,
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
   });
 
   test('FAILS when there is no declaration to check against', () => {

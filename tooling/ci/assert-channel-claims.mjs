@@ -78,8 +78,30 @@ function coverageLost(lines) {
 }
 
 /** Surfaces a stranger can reach. `.md` is in because a README under a deploy
- *  root is published by a static host as readily as an .html file. */
-const SCANNED = ['.html', '.js', '.json', '.md', '.txt'];
+ *  root is published by a static host as readily as an .html file.
+ *
+ *  🔴 `.webmanifest` and `.xml` — review 2026-07-31 (medium/low triage,
+ *  mutation-proven): `sites/nikatru/site.webmanifest` ALREADY carried the
+ *  six-platform enumeration on its description line, and a `related_applications`
+ *  array full of real store URLs (plus two literal flathub tells) passed clean —
+ *  as did a flathub `<loc>` appended to sitemap.xml. A store reviewer and a
+ *  crawler both read these files; this guard must too. */
+const SCANNED = ['.html', '.js', '.json', '.md', '.txt', '.webmanifest', '.xml'];
+
+/** Extensionless Cloudflare deploy files, scanned BY NAME — same review: a
+ *  `_redirects` line 302-ing `/linux` to a store URL is an affordance with no
+ *  extension for SCANNED to see. */
+const SCANNED_NAMES = new Set(['_headers', '_redirects']);
+
+/** The walk must keep reaching these exact files — re-narrowing SCANNED (or the
+ *  walk) is COVERAGE LOST, not a silent pass. Same discipline as
+ *  check-migrations.mjs's REQUIRED_COVERAGE: a scanner needs a test that it is
+ *  still scanning what it thinks. */
+const REQUIRED_COVERAGE = [
+  'sites/nikatru/site.webmanifest',
+  'sites/nikatru/sitemap.xml',
+  'sites/rajasekarselvam/sitemap.xml',
+];
 
 /**
  * 🔴 AN AFFORDANCE IS A PROMISE ONLY IF ITS DESTINATION IS REAL.
@@ -101,8 +123,30 @@ const SCANNED = ['.html', '.js', '.json', '.md', '.txt'];
  * entirely: `[FLATHUB/SNAP URL]` is a placeholder AND must still fail, because a
  * dead channel has no honest mention on a public surface — example or not. That
  * asymmetry is the whole reason the two limbs are written separately below.
+ *
+ * 🔴 CUES ARE ANCHORED AND EVERY EXEMPTION IS PRINTED — review 2026-07-31
+ * (medium/low triage, mutation-proven): the old bare `0{4,}` exempted the
+ * real-shaped `apps.apple.com/app/id6500001234` (four zeros INSIDE the id), and
+ * bare `YOUR[_ -]` exempted a real Play package `id=com.your-apps.subly` —
+ * silently, because an exemption left no trace beyond an aggregate count. An
+ * exemption is a decision NOT to fail, and this guard's own COUNT_CLAIM
+ * discipline applies: listed every run so it cannot go unnoticed. Hence a cue
+ * TABLE (so the printed line can name which cue fired), the zero-run anchored
+ * to an id/query segment, and the YOUR- cue held to a path-segment boundary.
  */
-const PLACEHOLDER = /0{4,}|X{4,}|\.\.\.|\[[^\]]*\]|example\.com|YOUR[_ -]|<[A-Z_]+>/i;
+const PLACEHOLDER_CUES = [
+  { cue: 'zero-run id', re: /\bid0{4,}\d*\b|=0{4,}/i },
+  { cue: 'X-run', re: /X{4,}/i },
+  { cue: 'ellipsis', re: /\.\.\./ },
+  { cue: 'bracketed slot', re: /\[[^\]]*\]/ },
+  { cue: 'example.com', re: /example\.com/i },
+  { cue: 'YOUR- slot', re: /(?:^|[/=])YOUR[_ -]/i },
+  { cue: 'angle slot', re: /<[A-Z_]+>/ },
+];
+function placeholderCue(value) {
+  for (const c of PLACEHOLDER_CUES) if (c.re.test(value)) return c.cue;
+  return null;
+}
 
 /** The quoted string or attribute value the match sits inside — the destination
  *  itself, not the line, so a real URL next to a commented example is judged on
@@ -132,8 +176,11 @@ function quotedValueAround(text, index) {
 
 /**
  * Store and artifact affordances. Matching an ANCHOR or an ARTIFACT is what
- * makes this a promise rather than a sentence. `platforms` is ANY-OF: the
- * promise is honest if at least one listed platform is claimed.
+ * makes this a promise rather than a sentence. `platforms` is ANY-OF by
+ * default — the promise is honest if at least one listed platform is claimed —
+ * and ALL-OF where a row says so (`allOf: true`), because some domains front
+ * SEPARATE stores and an ambiguous link promises all of them (see the Apple
+ * row's rationale below).
  *
  * 🔴 ARTIFACT EXTENSIONS ARE DERIVED FROM THE REGISTER, NOT HAND-LISTED.
  * Review 2026-07-31 (mutation-proven): the first version hand-copied a subset —
@@ -145,8 +192,27 @@ function quotedValueAround(text, index) {
  * a coverage assertion below so a register format that resolves to no pattern
  * is COVERAGE LOST rather than a silent pass.
  */
+/**
+ * 🔴 THE APPLE ROW IS ALL-OF, NOT ANY-OF — review 2026-07-31 (medium/low
+ * triage, mutation-proven): under ANY-OF, claiming ios alone let a REAL Mac App
+ * Store URL pass clean while macos-appstore was unserved — the register keeps
+ * the two channels as separate submissions, so claiming one says nothing about
+ * the other. `apps.apple.com` is one domain fronting BOTH stores, so an
+ * ambiguous link promises both and must require both … UNLESS the destination
+ * itself disambiguates: `itunes.apple.com` and `mt=8` are the iOS store,
+ * `mt=12` is the Mac store. `soloOf` returns that narrower platform set, and
+ * the honesty check then ranges over it alone. dl.nikatru.com stays ANY-OF —
+ * one domain genuinely serving whichever of windows-direct/linux-appimage
+ * exists first is honest with either.
+ */
+function appleSolo(destination) {
+  if (/itunes\.apple\.com/i.test(destination) || /[?&]mt=8(?!\d)/i.test(destination)) return ['ios'];
+  if (/[?&]mt=12(?!\d)/i.test(destination)) return ['macos'];
+  return null;
+}
+
 const STORE_AFFORDANCES = [
-  { platforms: ['ios', 'macos'], re: /apps\.apple\.com|itunes\.apple\.com/gi, what: 'an App Store link' },
+  { platforms: ['ios', 'macos'], allOf: true, soloOf: appleSolo, re: /apps\.apple\.com|itunes\.apple\.com/gi, what: 'an App Store link' },
   { platforms: ['android'], re: /play\.google\.com\/store/gi, what: 'a Google Play link' },
   { platforms: ['windows'], re: /apps\.microsoft\.com|microsoft\.com\/store/gi, what: 'a Microsoft Store link' },
   { platforms: ['linux'], re: /snapcraft\.io/gi, what: 'a Snap Store link' },
@@ -163,6 +229,16 @@ function artifactAffordances(register) {
   const uncovered = [];
   for (const c of register.channels ?? []) {
     for (const fmt of c.artifactFormats ?? []) {
+      // A non-string element is a SCHEMA fault and assert-channel-register.mjs
+      // owns that complaint — but it must not CRASH this guard on the way past.
+      // Review 2026-07-31 (mutation-proven): `artifactFormats: [null]` reached
+      // `fmt.startsWith('.')` and threw a raw TypeError, and a crash is not a
+      // catch. Route it into the same COVERAGE-LOST path an unresolvable format
+      // takes, so the register's schema failure and this one say the same thing.
+      if (typeof fmt !== 'string' || fmt === '') {
+        uncovered.push(`${c.id}: ${JSON.stringify(fmt)} (not a non-empty string)`);
+        continue;
+      }
       if (NON_FILE_FORMATS.has(fmt)) continue;
       if (!fmt.startsWith('.')) {
         uncovered.push(`${c.id}: "${fmt}"`);
@@ -180,6 +256,24 @@ function artifactAffordances(register) {
 
 /** Prose that claims a platform COUNT. Printed, never failed — see the header. */
 const COUNT_CLAIM = /\b(six|6)\s+platforms\b|\ball\s+six\b/gi;
+
+/**
+ * Prose that claims the platforms by ENUMERATION — "iOS, Android, Windows,
+ * macOS, Linux and Web" — review 2026-07-31 (medium/low triage,
+ * mutation-proven): the same semantic claim as "six platforms" was invisible
+ * unless it used the magic word, so the every-run print under-reported the
+ * claim class it exists to surface. Four or more of the six platform names in
+ * one short span counts; two platforms in ordinary prose does not. Gaps are
+ * short and newline-free (≤12 separator chars, an optional literal "and") so a
+ * JS object spreading platform keys across lines, or a URL between two names,
+ * stays out. Printed, never failed — same limb, same prints list, and the
+ * on-tree count roughly doubling is the point, not a regression.
+ */
+const PLATFORM_NAME = '(?:ios|android|windows|macos|linux|web)';
+const ENUM_CLAIM = new RegExp(
+  `\\b${PLATFORM_NAME}\\b(?:[^a-z0-9\\n]{1,12}(?:and[^a-z0-9\\n]{1,4})?\\b${PLATFORM_NAME}\\b){3,}`,
+  'gi',
+);
 
 /** A direct GitHub-release download. [ADR 015] §4: Releases is the artifact
  *  ORIGIN, never the download button. Preventive — zero hits today, and it must
@@ -317,10 +411,16 @@ function walk(dir, out = []) {
     return out;
   }
   for (const e of entries) {
-    if (e.name === 'node_modules' || e.name === '_site' || e.name.startsWith('.')) continue;
+    if (e.name === 'node_modules' || e.name === '_site') continue;
+    // Dot-entries stay skipped in general — EXCEPT `.well-known`, which a static
+    // host SERVES (assetlinks.json, apple-app-site-association are exactly the
+    // store-claim class this guard scans for). Review 2026-07-31 (medium/low
+    // triage): preventive — no .well-known exists today, and the day one appears
+    // it must not be born invisible.
+    if (e.name.startsWith('.') && !(e.isDirectory() && e.name === '.well-known')) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) walk(p, out);
-    else if (SCANNED.some((ext) => e.name.toLowerCase().endsWith(ext))) out.push(p);
+    else if (SCANNED_NAMES.has(e.name) || SCANNED.some((ext) => e.name.toLowerCase().endsWith(ext))) out.push(p);
   }
   return out;
 }
@@ -330,12 +430,27 @@ if (files.length === 0) {
   coverageLost([`${siteRoots.length} deploy root(s) contain ZERO scannable files (${SCANNED.join(', ')}).`]);
 }
 
+// The scanned set must still include the files whose ESCAPE was the 2026-07-31
+// finding — otherwise re-narrowing SCANNED or the walk is a silent pass over
+// the exact surface that already carries the six-platform claim.
+const scannedRel = new Set(files.map((f) => relative(ROOT, f).split(sep).join('/')));
+const missingCoverage = REQUIRED_COVERAGE.filter((f) => !scannedRel.has(f));
+if (missingCoverage.length) {
+  coverageLost([
+    `the walk no longer reaches: ${missingCoverage.join(', ')}.`,
+    'These files are REQUIRED_COVERAGE — site.webmanifest already carries the six-platform enumeration',
+    'and a sitemap <loc> can advertise any URL. If a file was deliberately deleted from the site,',
+    'update REQUIRED_COVERAGE in the same change; if not, SCANNED or walk() just got narrower.',
+  ]);
+}
+
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 const rel = (abs) => relative(ROOT, abs).split(sep).join('/');
 
 let affordanceHits = 0;
 let placeholders = 0;
 let countClaims = 0;
+const exempted = [];
 
 for (const abs of files) {
   // RAW. No comment stripping. See the header — the comment is the payload.
@@ -371,16 +486,36 @@ for (const abs of files) {
     a.re.lastIndex = 0;
     for (const m of text.matchAll(a.re)) {
       affordanceHits++;
-      // ANY-OF: the promise is honest if at least one of the platforms this
-      // affordance can serve is actually claimed.
-      if (a.platforms.some((p) => claimedPlatforms.has(p))) continue;
       const destination = destinationAround(text, m.index);
-      if (PLACEHOLDER.test(destination) || PLACEHOLDER.test(quotedValueAround(text, m.index))) {
+      // ANY-OF by default; ALL-OF where the row says so, narrowed first by the
+      // destination's own disambiguation (see the Apple row's rationale).
+      let platforms = a.platforms;
+      let allOf = a.allOf === true;
+      if (allOf && a.soloOf) {
+        const solo = a.soloOf(destination);
+        if (solo) {
+          platforms = solo;
+          allOf = false;
+        }
+      }
+      const honest = allOf
+        ? platforms.every((p) => claimedPlatforms.has(p))
+        : platforms.some((p) => claimedPlatforms.has(p));
+      if (honest) continue;
+      const cue = placeholderCue(destination) ?? placeholderCue(quotedValueAround(text, m.index));
+      if (cue) {
         placeholders++;
+        // Every exemption is a decision not to fail — printed below, never silent.
+        exempted.push(`${where}:${lineOf(text, m.index)} — ${a.what}, "${destination}" (cue: ${cue})`);
         continue;
       }
+      const missing = platforms.filter((p) => !claimedPlatforms.has(p));
+      const claimClause =
+        missing.length === platforms.length
+          ? `none of which any app in ${APPS_JSON} claims`
+          : `and (all-of) an ambiguous link promises every one of them, yet ${missing.map((p) => `"${p}"`).join('/')} is claimed by no app in ${APPS_JSON}`;
       problems.push(
-        `${where}:${lineOf(text, m.index)} offers ${a.what} for platform(s) ${a.platforms.map((p) => `"${p}"`).join('/')}, none of which any app in ${APPS_JSON} claims (claimed: ${[...claimedPlatforms].join(', ')}). ` +
+        `${where}:${lineOf(text, m.index)} offers ${a.what} for platform(s) ${platforms.map((p) => `"${p}"`).join('/')}, ${claimClause} (claimed: ${[...claimedPlatforms].join(', ')}). ` +
           `The destination is REAL, not a placeholder: "${destination}". ` +
           'A store button with nothing behind it is a promise made to a stranger, and it rots into a lie without anyone editing it.',
       );
@@ -392,9 +527,23 @@ for (const abs of files) {
     countClaims++;
     prints.push(`${where}:${lineOf(text, m.index)} — "${m[0].trim()}"`);
   }
+
+  // ── the same claim spelled as an ENUMERATION — same limb, same print list ─
+  for (const m of text.matchAll(ENUM_CLAIM)) {
+    countClaims++;
+    prints.push(`${where}:${lineOf(text, m.index)} — "${m[0].trim()}"`);
+  }
 }
 
 ok(`${files.length} public file(s) scanned RAW across ${siteRoots.length} root(s); ${affordanceHits} store/artifact affordance(s) seen, ${placeholders} of them template placeholders`);
+
+// An exemption is a decision not to fail, and a silent one is how a real store
+// URL rode a matching cue past this guard (review 2026-07-31). Same discipline
+// as the COUNT_CLAIM block: listed every run so it cannot go unnoticed.
+if (exempted.length) {
+  console.log(`     placeholder-exempted destination(s), each with the cue that exempted it:`);
+  for (const e of exempted) console.log(`      · ${e}`);
+}
 
 // A guard whose pattern set stopped matching anything reports a clean tree. The
 // sites DO carry store affordances (the APPS/PROJECTS templates), so zero here

@@ -34,13 +34,22 @@ let seq = 0;
  * Build a fake repo.
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
+ * ⚠️ testFiles defaults to 25 because MIN_TEST_FILES ratcheted 4 → 25 on
+ * 2026-07-31 — a fixture below the floor would make every green case here red
+ * for a reason that has nothing to do with the behaviour under test.
+ * `files` writes extra files at the fixture root (e.g. a ci.yml manifest).
  */
-function repo(guards, { testFiles = 4, mentionAll = true, hollow = false, commentsOnly = false } = {}) {
+function repo(guards, { testFiles = 25, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
   const root = join(TMP, `r${seq++}`);
   const ci = join(root, 'tooling', 'ci');
   const t = join(ci, 'test');
   mkdirSync(t, { recursive: true });
   for (const [name, src] of Object.entries(guards)) writeFileSync(join(ci, name), src);
+  for (const [rel, body] of Object.entries(files)) {
+    const abs = join(root, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, body);
+  }
   // ⚠️ These must be REAL test declarations, not comments. This fixture used to
   // write `// <guard-name>` and pass — encoding the same blind spot the guard
   // itself had, so neither could see that a hollowed-out test file covers
@@ -68,10 +77,10 @@ function repo(guards, { testFiles = 4, mentionAll = true, hollow = false, commen
   return root;
 }
 
-/** 15 compliant guards — enough to clear the floor. */
-function compliant(extra = {}) {
+/** 35 compliant guards — enough to clear the floor (ratcheted 15 → 35, 2026-07-31). */
+function compliant(extra = {}, count = 35) {
   const g = {};
-  for (let i = 0; i < 15; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
+  for (let i = 0; i < count; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
   return { ...g, ...extra };
 }
 
@@ -81,7 +90,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /15 guard\(s\), all named in 4 test file\(s\)/);
+    assert.match(r.stdout, /35 guard\(s\), all named in 25 test file\(s\)/);
   });
 
   test('a guard no test mentions FAILS', () => {
@@ -146,5 +155,63 @@ describe('assert-guard-coverage', () => {
     const r = run(root);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /COVERAGE LOST/);
+  });
+
+  test('COVERAGE: ONE guard below the ratcheted floor FAILS — the floor tracks reality, not history', () => {
+    // The original floors froze at 15/4/140 while the tree grew to 37/27/533,
+    // so 22 guards could vanish from the scan without tripping anything
+    // (triage 2026-07-31, mutation-proven). This pins the ratchet at 35: when
+    // the tree grows again, ratchet the floor AND this fixture together.
+    const r = run(repo(compliant({}, 34)));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /COVERAGE LOST — found 34 guard\(s\)/);
+  });
+
+  test('COVERAGE: a .mjs moved into a subdirectory of tooling/ci FAILS loudly, naming it', () => {
+    // readdirSync(CI) is flat — pre-fix, a "tidy into tooling/ci/guards/"
+    // refactor dropped every moved guard from BOTH per-guard checks while the
+    // guard printed its intended pass message (triage 2026-07-31).
+    const root = repo(compliant());
+    const sub = join(root, 'tooling', 'ci', 'guards');
+    mkdirSync(sub, { recursive: true });
+    writeFileSync(join(sub, 'assert-hidden.mjs'), 'if (x) throw new Error("COVERAGE LOST");\n');
+    const r = run(root);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /COVERAGE LOST/);
+    assert.match(r.stderr, /tooling\/ci\/guards\/assert-hidden\.mjs/);
+  });
+
+  test('COVERAGE: a guard ci.yml invokes but the scan cannot find FAILS, naming it', () => {
+    // The floors are relationships now: ci.yml is the committed manifest of
+    // what CI actually runs, so an invoked guard the scan does not see means
+    // the two have diverged — deleting a wired-in guard must not pass clean.
+    const r = run(
+      repo(compliant(), {
+        files: {
+          '.github/workflows/ci.yml':
+            'jobs:\n  guards:\n    steps:\n' +
+            '      - run: node tooling/ci/assert-thing-0.mjs\n' +
+            '      - run: node tooling/ci/assert-vanished.mjs\n',
+        },
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /COVERAGE LOST — ci\.yml invokes 1 guard\(s\)/);
+    assert.match(r.stderr, /assert-vanished\.mjs/);
+  });
+
+  test('a ci.yml whose invocations are all found passes, and comments do not count as invocations', () => {
+    const r = run(
+      repo(compliant(), {
+        files: {
+          '.github/workflows/ci.yml':
+            'jobs:\n  guards:\n    steps:\n' +
+            '      # was: node tooling/ci/assert-retired.mjs\n' +
+            '      - run: node tooling/ci/assert-thing-0.mjs\n' +
+            '      - run: node --test "tooling/ci/test/*.test.mjs"\n',
+        },
+      }),
+    );
+    assert.equal(r.status, 0, r.stderr);
   });
 });

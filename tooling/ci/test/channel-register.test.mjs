@@ -50,8 +50,12 @@ const BUILD_WORKFLOW = '.github/workflows/build-platforms.yml';
 
 /** A lane workflow with one job, plus a decoy COMMENT naming a job that does not
  *  exist — so a guard that grepped prose instead of parsing jobs would resolve a
- *  lane against its own documentation. This repo has shipped that defect twice. */
-const laneWorkflow = `name: Deploy web
+ *  lane against its own documentation. This repo has shipped that defect twice.
+ *
+ *  `laneBuilds:false` strips the build step: section 3b then has no artifact to
+ *  compare the served row's formats against, which must be COVERAGE LOST rather
+ *  than a quiet pass. */
+const laneWorkflow = ({ laneBuilds = true } = {}) => `name: Deploy web
 # The aggregating job all_platforms and the job ghost-job are named here in a
 # comment only. Nothing below declares them.
 on:
@@ -61,7 +65,7 @@ jobs:
     name: Build & deploy
     runs-on: ubuntu-24.04
     steps:
-      - run: echo deploy
+      - run: ${laneBuilds ? 'flutter build web --release' : 'echo deploy'}
 `;
 
 /** A build workflow shaped like the real one: three platform jobs plus an
@@ -74,6 +78,10 @@ function buildWorkflow({
   verdictStyle = 'expr',
   exitOne = true,
   extraJob = '',
+  // What the `windows` platform job runs. Deferred rows are compared against
+  // whatever the tree already builds for their platform, so this is the knob
+  // that creates the real .apk-vs-.aab shape in a fixture.
+  windowsRun = 'echo windows',
 } = {}) {
   const tests = verdicts
     .map((v) => `[ "\${{ contains(needs.*.result, '${v}') }}" = "true" ]`)
@@ -100,7 +108,7 @@ function buildWorkflow({
     '  windows:',
     '    runs-on: windows-2025',
     '    steps:',
-    '      - run: echo windows',
+    `      - run: ${windowsRun}`,
     '  apple:',
     '    runs-on: macos-26',
     '    steps:',
@@ -171,6 +179,8 @@ function tree({
   verdictStyle = 'expr',
   exitOne = true,
   extraJob = '',
+  windowsRun = 'echo windows',
+  laneBuilds = true,
   adrLocked = true,
   adrOnDisk = true,
   // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
@@ -186,6 +196,17 @@ function tree({
 
   const register = {
     aggregatingJob: { workflow: BUILD_WORKFLOW, job: 'all_platforms' },
+    // ⚠️ REQUIRED IN THE FIXTURE. The guard derives its signing-key vocabulary
+    // from here rather than carrying a second copy ([pipeline F-2]), so a
+    // fixture without `keyKinds` is COVERAGE LOST — which is the point.
+    keyKinds: {
+      none: 'the channel signs for us — nothing of ours can be lost',
+      'upload-key': 'we sign the upload; the store holds the real app signing key',
+      'app-signing-key': "we hold the key end users' installs are bound to",
+      'distribution-certificate': 'an Apple distribution certificate + provisioning profile',
+      'code-signing-certificate': 'a CA-issued certificate chaining to a trusted root',
+      'own-signing-key': 'our own detached signature, no gatekeeper verifying it',
+    },
     channels: [servedWeb(), deferredWindowsStore()],
     disqualified: [
       {
@@ -204,8 +225,8 @@ function tree({
 
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
-  write(LANE_WORKFLOW, laneWorkflow);
-  write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob }));
+  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds }));
+  write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob, windowsRun }));
   if (harnessPresent) {
     // The harness root exists even when the cited ADR does not — that is the
     // distinction the guard turns on, and the case a blanket existsSync() skip
@@ -548,5 +569,166 @@ describe('assert-channel-register — schema, stores and disqualified channels',
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
     assert.match(out, /DISQUALIFIED: flathub/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Review 2026-07-31, medium/low triage. Each case below is a mutation that was
+// run against the REAL tree first and exited 0 "ok" before these fixes landed —
+// the fixtures pin what the tree-level proof established, in that order.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — the key vocabulary is the REGISTER\'s', () => {
+  test('FAILS COVERAGE LOST when the register declares no keyKinds', () => {
+    const { code, out } = run(tree({ mutate: (r) => { delete r.keyKinds; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /no `keyKinds` vocabulary/);
+  });
+
+  test('FAILS COVERAGE LOST when the keyKinds dictionary is emptied', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.keyKinds = {}; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  // The drift direction, which deletion alone does not cover: the dictionary is
+  // renamed while rows keep the old name, so rows validate against a vocabulary
+  // the register no longer documents.
+  test('FAILS when a row uses a keyKind the register no longer defines', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => {
+          r.keyKinds['self-managed-key'] = r.keyKinds['app-signing-key'];
+          delete r.keyKinds['app-signing-key'];
+          r.channels[1].signing.keyKind = 'app-signing-key';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /signing\.keyKind is "app-signing-key"/);
+    assert.match(out, /self-managed-key/); // the enum printed is the register's
+  });
+
+  test('FAILS when a keyKind definition is emptied — the loss consequence IS the field', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.keyKinds['upload-key'] = ''; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /keyKinds\."upload-key" has no definition text/);
+  });
+});
+
+describe('assert-channel-register — array ELEMENTS, not just arrays', () => {
+  test('FAILS when artifactFormats carries a non-string element', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[0].artifactFormats = [null]; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares artifactFormat null, which is not a non-empty string/);
+  });
+
+  test('FAILS when artifactFormats carries an empty string', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].artifactFormats = ['']; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares artifactFormat "", which is not a non-empty string/);
+  });
+
+  test('FAILS when minimumToolchain carries a non-string element', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[0].minimumToolchain = ['flutter', null]; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names toolchain key null, which is not a non-empty string/);
+  });
+});
+
+describe('assert-channel-register — the lane\'s output vs the formats its channel accepts', () => {
+  test('FAILS when a SERVED row accepts nothing its lane emits', () => {
+    // The lane builds web (a static bundle); the row says it accepts .apk.
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[0].artifactFormats = ['.apk']; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is SERVED and accepts "\.apk", but its lane/);
+    assert.match(out, /emits "static-bundle"/);
+  });
+
+  test('PASSES when the served row accepts what its lane actually builds', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /is SERVED and accepts/);
+  });
+
+  // The .aab-vs-.apk shape: deferred, so it PRINTS. Failing here would block all
+  // CI on owner-gated store work ([pipeline C-6]); silence would make it permanent.
+  test('PRINTS rather than fails when a DEFERRED row\'s platform is built in another format', () => {
+    const { code, out } = run(tree({ windowsRun: 'flutter build windows --release' }));
+    assert.equal(code, 0, out);
+    assert.match(out, /FORMAT GAP \(deferred\): channel "windows-store" accepts "\.msix"/);
+    assert.match(out, /builds "\.exe" for "windows"/);
+  });
+
+  test('does NOT print a format gap for a deferred row nothing builds yet', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /FORMAT GAP/);
+  });
+
+  test('reads the format gap from an upload-artifact path glob, not only the build verb', () => {
+    const upload = [
+      '      - uses: actions/upload-artifact@v4',
+      '        with:',
+      '          path: |',
+      '            apps/subly/build/app/outputs/flutter-apk/*.apk',
+    ].join('\n');
+    const { code, out } = run(
+      tree({
+        windowsRun: `echo windows\n${upload}`,
+        mutate: (r) => { r.channels[1].platforms = ['android']; r.channels[1].artifactFormats = ['.aab']; },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /FORMAT GAP \(deferred\): channel "windows-store" accepts "\.aab"/);
+    assert.match(out, /builds "\.apk" for "android"/);
+  });
+
+  // The comparison's own coverage self-check: a lane it can no longer read makes
+  // every format comparison range over an empty set and pass.
+  test('FAILS COVERAGE LOST when no served lane yields a readable artifact', () => {
+    const { code, out } = run(tree({ laneBuilds: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /NOT ONE yielded a readable artifact/);
+  });
+
+  test('PRINTS an unmapped `flutter build` target rather than comparing against nothing', () => {
+    const { code, out } = run(tree({ windowsRun: 'flutter build fuchsia --release' }));
+    assert.equal(code, 0, out);
+    assert.match(out, /UNMAPPED BUILD TARGET\(S\): "fuchsia"/);
+  });
+});
+
+describe('assert-channel-register — [10]D-4\'s store/ownerQueue mapping, shape only', () => {
+  test('FAILS when a store row carries no ownerQueue id', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].ownerQueue = null; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is a store channel with no `ownerQueue` id/);
+    assert.match(out, /\[10\]D-4/);
+  });
+
+  test('FAILS when a store row\'s ownerQueue is an empty string', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].ownerQueue = '   '; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `ownerQueue` id/);
+  });
+
+  test('does NOT require an ownerQueue on a non-store row', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[0].ownerQueue = null; } }));
+    assert.equal(code, 0, out);
+  });
+});
+
+describe('assert-channel-register — direction B is PER PLATFORM (pins PR #83)', () => {
+  // The defect #83 closed: the check fired only when EVERY platform of a served
+  // row was orphaned, so adding a second platform to the already-claimed web row
+  // passed clean. The assertion that pins it is the NEGATIVE half — "web" must
+  // NOT be named, or an all-or-nothing implementation could satisfy the match.
+  test('FAILS naming ONLY the unclaimed platform when a claimed served row grows one', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[0].platforms = ['web', 'linux']; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /channel "web" is SERVED and declares platform "linux", which no app/);
+    assert.doesNotMatch(out, /declares platform "web", which no app/);
   });
 });
