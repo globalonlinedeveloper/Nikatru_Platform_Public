@@ -54,13 +54,27 @@ const DEPLOY_STEP = '      - run: npx wrangler pages deploy build/web';
  * three YAML spellings — the scalar one is the shape deploy-workers.yml uses and
  * the one the first version could not read.
  */
-function buildWorkflow({ gateJob = true, needsForm = 'scalar', gateInBuildJob = null } = {}) {
-  const needs =
-    needsForm === 'none' ? '' : needsForm === 'flow' ? '    needs: [gate]\n' : needsForm === 'block' ? '    needs:\n      - gate\n' : '    needs: gate\n';
-  const gate = gateJob ? `  gate:\n    runs-on: ubuntu-24.04\n    steps:\n${GATE_STEP}\n\n` : '';
+function buildWorkflow({ gateJob = true, needsForm = 'scalar', gateInBuildJob = null, buildIf = null, gateCoe = false } = {}) {
+  // The quoted spellings joined the map for the 2026-07-31 triage: every one is
+  // YAML GitHub runs, and the unquoted-only parser turned `needs: ["gate"]`
+  // into a false red on a correctly-gated workflow.
+  const NEEDS = {
+    none: '',
+    scalar: '    needs: gate\n',
+    'scalar-quoted': "    needs: 'gate'\n",
+    flow: '    needs: [gate]\n',
+    'flow-quoted': '    needs: ["gate"]\n',
+    block: '    needs:\n      - gate\n',
+    'block-quoted': '    needs:\n      - "gate"\n',
+    bogus: '    needs: [nope]\n',
+  };
+  const needs = NEEDS[needsForm];
+  const gateSteps = gateCoe ? `${GATE_STEP}\n        continue-on-error: true` : GATE_STEP;
+  const gate = gateJob ? `  gate:\n    runs-on: ubuntu-24.04\n    steps:\n${gateSteps}\n\n` : '';
+  const ifLine = buildIf === null ? '' : `    if: ${buildIf}\n`;
   const inJob =
     gateInBuildJob === 'before' ? `${GATE_STEP}\n${BUILD_STEP}\n` : gateInBuildJob === 'after' ? `${BUILD_STEP}\n${GATE_STEP}\n` : BUILD_STEP + '\n';
-  return `name: Build\non:\n  workflow_dispatch:\njobs:\n${gate}  build:\n    runs-on: ubuntu-24.04\n${needs}    steps:\n${inJob}`;
+  return `name: Build\non:\n  workflow_dispatch:\njobs:\n${gate}  build:\n    runs-on: ubuntu-24.04\n${ifLine}${needs}    steps:\n${inJob}`;
 }
 
 function deployWorkflow({ gate = true, marker = true, markerBeforeDeploy = false, dryRun = false } = {}) {
@@ -84,7 +98,10 @@ function tree({
   };
   write('.github/workflows/build.yml', build);
   write('.github/workflows/deploy.yml', deploy);
-  if (!omitGateScript) write('tooling/ci/assert-gate-passed.mjs', '// stub\n');
+  // The stub carries the real script's `GATE` declaration on purpose: the
+  // guard DERIVES the gate check name from assert-gate-passed.mjs (single
+  // declaration, [pipeline F-2]) and goes COVERAGE LOST when it cannot.
+  if (!omitGateScript) write('tooling/ci/assert-gate-passed.mjs', "const GATE = 'ci-gate'; // stub\n");
   if (!omitMarkerScript) write('tooling/ci/record-deployment.mjs', '// stub\n');
   write(
     'tooling/channel-register.json',
@@ -240,7 +257,7 @@ describe('assert-release-provenance — coverage self-checks', () => {
     const noReleaseDeploy = deployWorkflow();
     const { code, out } = run(tree({ build: noRelease, deploy: noReleaseDeploy }));
     assert.equal(code, 1, out);
-    assert.match(out, /ZERO jobs .* run a `flutter build … --release`/);
+    assert.match(out, /ZERO jobs .* run a `flutter build` in release mode/);
   });
 
   test('FAILS COVERAGE LOST when no publish step exists anywhere', () => {
@@ -267,5 +284,151 @@ describe('assert-release-provenance — coverage self-checks', () => {
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /is the lane for a SERVED channel/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Triage 2026-07-31 — five mutation-proven detection defects, each pinned below.
+// Every one was first proven against a copy of the REAL tree (harness verified
+// its own restores) before these fixtures were written.
+
+describe('assert-release-provenance — release is the DEFAULT build mode (triage 2026-07-31)', () => {
+  test('an ungated `flutter build appbundle` with no --release flag FAILS', () => {
+    // Release is Flutter's default; the flag is decoration. The old regex made
+    // the very next Play lane anyone writes an invisible release build.
+    const aab = `name: M1\non:\n  workflow_dispatch:\njobs:\n  build_aab:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build appbundle\n`;
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/aab.yml'), aab);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /aab\.yml: job "build_aab" runs 1 release build\(s\)/);
+    assert.match(out, /neither it nor any job it `needs` calls/);
+  });
+
+  test('`flutter build apk --debug` is NOT a release build', () => {
+    const dbg = `name: Dbg\non:\n  workflow_dispatch:\njobs:\n  build_dbg:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build apk --debug\n`;
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/dbg.yml'), dbg);
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /dbg\.yml/);
+  });
+
+  test('a folded `run: >` build with --release on a continuation line IS seen', () => {
+    // deploy-web.yml folds its real build exactly this way; the line-anchored
+    // regex saw `flutter build web` and `--release` on different lines and
+    // matched neither.
+    const folded = `name: F\non:\n  workflow_dispatch:\njobs:\n  folded:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: >\n          flutter build web\n          --release --pwa-strategy=none\n`;
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/folded.yml'), folded);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /folded\.yml: job "folded"/);
+  });
+
+  test('a bare `flutter build` inside the gate workflow itself is gated by construction', () => {
+    // ci.yml's stamped-probe build: a job the ci-gate verdict `needs` cannot go
+    // red without the gate going red, and the gate cannot poll itself for the
+    // verdict it is busy producing.
+    const gateWf = `name: CI\non:\n  push:\njobs:\n  probe:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build web --pwa-strategy=none\n  verdict:\n    name: ci-gate\n    runs-on: ubuntu-24.04\n    needs: [probe]\n    if: always()\n    steps:\n      - run: echo aggregate\n`;
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/gatewf.yml'), gateWf);
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /gatewf\.yml/);
+  });
+});
+
+describe('assert-release-provenance — dry-run exclusion is per command SEGMENT', () => {
+  // The lone-dry-run green case (the five-false-failures lesson) is pinned
+  // above ('a --dry-run is NOT a publish'); this is the other half: the same
+  // token must not exonerate a real deploy chained after it.
+  test('`wrangler deploy --dry-run && wrangler deploy` IS a publish', () => {
+    const chain = `name: C\non:\n  workflow_dispatch:\njobs:\n  validate_then_ship:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: npx wrangler deploy --dry-run && npx wrangler deploy\n`;
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/chain.yml'), chain);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /chain\.yml: job "validate_then_ship" performs a Cloudflare deploy at :\d+ and never calls/);
+    assert.match(out, /chain\.yml: job "validate_then_ship" performs a Cloudflare deploy without any/);
+  });
+});
+
+describe('assert-release-provenance — wrangler-action is classified from its command:', () => {
+  const action = (cmd, { gated = false } = {}) => {
+    const gate = gated ? `${GATE_STEP}\n` : '';
+    const withCmd = cmd === null ? '' : `          command: ${cmd}\n`;
+    return `name: W\non:\n  workflow_dispatch:\njobs:\n  worker:\n    runs-on: ubuntu-24.04\n    steps:\n${gate}      - uses: cloudflare/wrangler-action@abc\n        with:\n          apiToken: x\n${withCmd}`;
+  };
+
+  test('a gated `command: deploy --dry-run` is NOT a publish — no marker demanded', () => {
+    // The false fail that pressured a fabricated ledger entry: classification
+    // from the `uses:` line could never see the verb.
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/action.yml'), action('deploy --dry-run', { gated: true }));
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /action\.yml/);
+  });
+
+  test('`command: d1 migrations apply` is NOT a publish', () => {
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/action.yml'), action('d1 migrations apply APP_DB --remote', { gated: true }));
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /action\.yml/);
+  });
+
+  test('an ungated `command: deploy` still FAILS both limbs', () => {
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/action.yml'), action('deploy'));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /action\.yml: job "worker" performs a Cloudflare deploy action at :\d+ and never calls/);
+    assert.match(out, /action\.yml: job "worker" performs a Cloudflare deploy action without any/);
+  });
+
+  test('no `command:` key at all is the action DEFAULT — deploy — and counts', () => {
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/action.yml'), action(null));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /action\.yml: job "worker" performs a Cloudflare deploy action/);
+  });
+});
+
+describe('assert-release-provenance — a disarmed needs edge is not a gate', () => {
+  test('FAILS when the gated build job carries `if: always()` — mutation A1', () => {
+    const { code, out } = run(tree({ build: buildWorkflow({ buildIf: 'always()' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is neutralized: job "build" has a job-level `if:` at :\d+ containing `always\(\)`\/`failure\(\)`/);
+  });
+
+  test('FAILS when the gate job swallows its own failure with continue-on-error — mutation A2', () => {
+    const { code, out } = run(tree({ build: buildWorkflow({ gateCoe: true }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /gate job "gate" carries `continue-on-error: true` at :\d+/);
+  });
+
+  test('an ordinary job-level `if:` is NOT flagged', () => {
+    // Only always()/failure() disarm a needs edge; a ref condition narrows when
+    // the job runs, never whether a failed gate can be outrun.
+    const { code, out } = run(tree({ build: buildWorkflow({ buildIf: "github.ref == 'refs/heads/main'" }) }));
+    assert.equal(code, 0, out);
+  });
+});
+
+describe('assert-release-provenance — quoted needs forms are the same edge', () => {
+  for (const form of ['flow-quoted', 'scalar-quoted', 'block-quoted']) {
+    test(`a correctly-gated workflow written as ${form} needs PASSES`, () => {
+      const { code, out } = run(tree({ build: buildWorkflow({ needsForm: form }) }));
+      assert.equal(code, 0, out);
+    });
+  }
+
+  test('an unquoted bogus dep still FAILS — quote-stripping did not widen the graph', () => {
+    const { code, out } = run(tree({ build: buildWorkflow({ needsForm: 'bogus' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /neither it nor any job it `needs` calls/);
   });
 });
