@@ -341,7 +341,7 @@ var PROJECTS=[
   if(!PROJECTS.length)return;
   var sec=document.getElementById("projects"),grid=document.getElementById("projects-grid"),nav=document.getElementById("navProjects");
   if(!sec||!grid)return;
-  var LABELS={ios:"App Store",android:"Google Play",windows:"Microsoft Store",macos:"Mac App Store",linux:"Snap / Flathub",web:"Web App"};
+  var LABELS={ios:"App Store",android:"Google Play",windows:"Microsoft Store",macos:"Mac App Store",linux:"Snap / AppImage",web:"Web App"};
   grid.innerHTML=PROJECTS.map(function(p){
     var links=p.links||{};
     var btns=Object.keys(LABELS).filter(function(k){return links[k];}).map(function(k){

@@ -1,0 +1,242 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// channel-claims.test.mjs — assert-channel-claims.mjs must be able to FAIL.
+//
+// [pipeline D-1] limb (ii) · no surface advertises an unserved channel
+// [pipeline D-7] the sites half · the dead channel's tells are purged
+//
+// ⚠️ SECOND LINE OF EVIDENCE, NOT THE FIRST. 15 mutations were run against the
+// REAL tree first, with a harness that re-asserts a green baseline after every
+// restore and ABORTS if it cannot — because the previous guard's first mutation
+// run reported 14/14 caught while restoring nothing, and every result after the
+// first was a leftover. Two of those 15 changed the design rather than passing:
+//   · six placeholder store URLs inside the `/* … */` example blocks failed the
+//     first version. Crying wolf, and the fix a reader reaches for is
+//     comment-stripping — which would silently kill D-7's limb, whose payload IS
+//     a comment. Hence destination-vs-placeholder, not comment-vs-code.
+//   · a surface reading "install the flatpak from your distro store" passed
+//     clean, because `flatpak` is the package format and `flathub` is the
+//     channel id. Hence the register's `tells` array.
+// Neither would have been found by a fixture I wrote to match the guard I wrote.
+//
+// Run:  node --test "tooling/ci/test/*.test.mjs"
+// ─────────────────────────────────────────────────────────────────────────────
+import { test, describe, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const GUARD = join(CI_DIR, 'assert-channel-claims.mjs');
+
+let TMP;
+before(() => {
+  TMP = mkdtempSync(join(tmpdir(), 'nikatru-claims-'));
+});
+after(() => {
+  rmSync(TMP, { recursive: true, force: true });
+});
+
+let seq = 0;
+
+/** The affordance floor needs at least one store link to exist, or the guard
+ *  correctly reports COVERAGE LOST. Every fixture therefore ships the same
+ *  placeholder template the real sites carry. */
+const TEMPLATE_BLOCK = `
+<script>
+/* Example — add one object per published app.
+   links: {
+     ios:     "https://apps.apple.com/app/id0000000000",
+     android: "https://play.google.com/store/apps/details?id=com.nikatru.XXXXXXXX",
+     windows: "https://apps.microsoft.com/detail/XXXXXXXX"
+   }
+*/
+const APPS = [];
+</script>
+`;
+
+function tree({
+  nikatruBody = '',
+  rajaBody = '',
+  platforms = ['web'],
+  minSites = 2,
+  siblingConst = 'MIN_SITES',
+  roots = ['nikatru', 'rajasekarselvam'],
+  disqualified = [{ id: 'flathub', adr: 'knowledge/decisions/015-linux.md', date: '2026-07-25', tells: ['flathub', 'flatpak'] }],
+  omitRegister = false,
+} = {}) {
+  const root = join(TMP, `r${seq++}`);
+  const write = (rel, body) => {
+    const p = join(root, rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, body);
+  };
+
+  for (const r of roots) {
+    const body = r === 'nikatru' ? nikatruBody : rajaBody;
+    write(`sites/${r}/index.html`, `<!doctype html><html><body>${body}${TEMPLATE_BLOCK}</body></html>`);
+  }
+  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
+  write(`tooling/ci/check-site-integrity.mjs`, `const ${siblingConst} = ${minSites};\n`);
+  if (!omitRegister) {
+    write('tooling/channel-register.json', JSON.stringify({ channels: [], disqualified }, null, 2));
+  }
+  return root;
+}
+
+function run(root) {
+  const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-claims — [D-7] the dead channel has no honest mention', () => {
+  test('PASSES a tree whose tells are purged', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /assert-channel-claims: ok/);
+  });
+
+  // D-7's own recorded failing case: "delete :474 and re-add it".
+  test('FAILS on the bare label "Snap / Flathub" — no domain, still an advert', () => {
+    const { code, out } = run(tree({ nikatruBody: '<script>var L={linux:"Snap / Flathub"};</script>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /advertises "Flathub"/);
+  });
+
+  test('FAILS on a flathub.org link INSIDE a comment — the house rule inverts here', () => {
+    const { code, out } = run(tree({ nikatruBody: '<script>/* linux: "https://flathub.org/apps/x" */</script>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /advertises "flathub"/);
+  });
+
+  test('FAILS on the [FLATHUB/SNAP URL] placeholder — a placeholder is still a tell', () => {
+    // Explicitly asserts the D-1 placeholder exemption does NOT leak into D-7.
+    const { code, out } = run(tree({ nikatruBody: '<a href="[FLATHUB/SNAP URL]">Linux</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /advertises "FLATHUB"/);
+  });
+
+  test('FAILS on "flatpak" alone — the format, not the channel id', () => {
+    const { code, out } = run(tree({ rajaBody: '<p>Install the flatpak from your distro store.</p>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /advertises "flatpak" — a tell of "flathub"/);
+  });
+
+  test('FAILS when a tells list is narrowed to drop its own id', () => {
+    const { code, out } = run(
+      tree({ disqualified: [{ id: 'flathub', adr: 'a/b.md', tells: ['flatpak'] }] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /do not include its own id/);
+  });
+
+  test('FAILS on a direct GitHub-release download button ([ADR 015] §4)', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="https://github.com/x/y/releases/latest">Download</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /Releases is the artifact ORIGIN/);
+  });
+});
+
+describe('assert-channel-claims — [D-1] an affordance is a promise only if real', () => {
+  test('FAILS on a REAL App Store URL while no app claims ios', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871">iOS</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /offers an App Store link for platform "ios"/);
+    assert.match(out, /The destination is REAL, not a placeholder/);
+  });
+
+  test('FAILS on a REAL Play URL — the com.nikatru.notes shape that shipped', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="https://play.google.com/store/apps/details?id=com.nikatru.notes">Android</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /offers a Google Play link/);
+  });
+
+  test('FAILS on an .apk offered for download', () => {
+    const { code, out } = run(tree({ rajaBody: '<a href="/dl/subly-1.0.75.apk">Get the APK</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /an Android artifact/);
+  });
+
+  test('FAILS on a snapcraft.io link while no app claims linux', () => {
+    const { code, out } = run(tree({ rajaBody: '<a href="https://snapcraft.io/subly">Linux</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /a Snap Store link/);
+  });
+
+  // The distinction the design turns on.
+  test('PASSES the same store links when they are template placeholders', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="https://apps.apple.com/app/id0000000000">iOS</a>' }));
+    assert.equal(code, 0, out);
+    assert.match(out, /template placeholders/);
+  });
+
+  test('PASSES a REAL store link once an app actually claims that platform', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871">iOS</a>', platforms: ['web', 'ios'] }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('PRINTS platform-count prose rather than failing — site copy is the owner\'s voice', () => {
+    const { code, out } = run(tree({ nikatruBody: '<p>One codebase, six platforms.</p>' }));
+    assert.equal(code, 0, out);
+    assert.match(out, /platform-count claim/);
+    assert.match(out, /six platforms/);
+  });
+});
+
+describe('assert-channel-claims — coverage is a relationship, not a number', () => {
+  test('FAILS COVERAGE LOST when fewer deploy roots exist than the sibling floor', () => {
+    const { code, out } = run(tree({ roots: ['nikatru'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /requires at least 2/);
+  });
+
+  test('FAILS COVERAGE LOST when MIN_SITES can no longer be read from the sibling', () => {
+    const { code, out } = run(tree({ siblingConst: 'MIN_SITE_ROOTS' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /could not read MIN_SITES/);
+    assert.match(out, /do not reintroduce a local number/);
+  });
+
+  test('tracks the sibling UPWARD — raising MIN_SITES raises this floor too', () => {
+    const { code, out } = run(tree({ minSites: 3 }));
+    assert.equal(code, 1, out);
+    assert.match(out, /requires at least 3/);
+  });
+
+  test('FAILS COVERAGE LOST when apps.json claims no platforms', () => {
+    const { code, out } = run(tree({ platforms: [] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /ZERO platforms/);
+  });
+
+  test('FAILS COVERAGE LOST when the register lists no disqualified channels', () => {
+    const { code, out } = run(tree({ disqualified: [] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /ZERO disqualified channels/);
+  });
+
+  test('FAILS COVERAGE LOST when the register is absent entirely', () => {
+    const { code, out } = run(tree({ omitRegister: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('FAILS COVERAGE LOST when no store affordance matches anywhere', () => {
+    // The pattern set silently ceasing to match is indistinguishable from a
+    // clean tree, and the real sites always carry the app-card template.
+    const root = tree();
+    writeFileSync(join(root, 'sites/nikatru/index.html'), '<!doctype html><p>nothing here</p>');
+    writeFileSync(join(root, 'sites/rajasekarselvam/index.html'), '<!doctype html><p>nor here</p>');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /ZERO store or artifact affordances/);
+  });
+});
