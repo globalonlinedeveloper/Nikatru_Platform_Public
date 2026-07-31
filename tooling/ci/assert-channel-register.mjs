@@ -23,10 +23,17 @@
 //   1. COVERAGE self-check — the register exists, is non-empty, and something in
 //      it is SERVED. D-1 requires the missing-register case to be the LOUD one,
 //      because it is the case that was true for the whole life of the spec.
-//   2. schema — every row is complete enough to be quantified over
+//   2. schema — every row is complete enough to be quantified over, ELEMENT
+//      types included, against the key vocabulary the REGISTER declares (never a
+//      second copy in here), and a store row names the OWNER_QUEUE id [10]D-4
+//      maps it to
 //   3. SERVED rows carry what R-3/R-4/R-6/D-9 need: an artifact format, an
 //      identity with a restore drill, a lane resolving to a real workflow JOB,
 //      a deployment-environment template, and a pinned toolchain floor
+//   3b. the lane's OUTPUT is compared to the formats its channel accepts —
+//      served rows FAIL a mismatch, deferred rows PRINT one, which is how the
+//      recorded ".aab required, `flutter build apk` shipped" gap becomes visible
+//      on every run instead of living in a note
 //   4. direction A — every apps.json `platforms` value resolves to a SERVED row
 //   5. direction B — every SERVED row is claimed by a real app. Without this the
 //      way to pass is to declare channels nobody ships to, which is cut 5's
@@ -86,14 +93,11 @@ function coverageLost(lines) {
   process.exit(1);
 }
 
-const KEY_KINDS = new Set([
-  'none',
-  'upload-key',
-  'app-signing-key',
-  'distribution-certificate',
-  'code-signing-certificate',
-  'own-signing-key',
-]);
+/** The signing-key vocabulary is DERIVED from the register below, never declared
+ *  here. It used to be a private literal in this file listing the same six kinds
+ *  the register declares with their loss consequences one directory away — the
+ *  second declaration [pipeline F-2] exists to forbid. Assigned after the parse. */
+let KEY_KINDS;
 const KINDS = new Set(['web', 'store', 'direct']);
 /** Flutter's platform names — the vocabulary apps.json `platforms` speaks. A
  *  register row claiming a value outside this set can never be resolved against
@@ -138,6 +142,38 @@ if (served.length === 0) {
     'The factory would be declaring that it releases nowhere, while apps.json claims a live platform.',
     'If a channel is genuinely being retired, retire the app claim in the same increment.',
   ]);
+}
+
+// 🔴 THE SIGNING-KEY VOCABULARY IS THE REGISTER'S, NOT THIS GUARD'S.
+// Review 2026-07-31 (mutation-proven): the six key kinds were a private literal
+// in this file while `keyKinds` sat in the register declaring the same six with
+// their loss consequences, read by nothing. Deleting the whole dictionary exited
+// 0 "ok", and so did renaming `app-signing-key` out from under the eight rows
+// still using that name — rows validating against a vocabulary the register no
+// longer documents is exactly the drift [pipeline F-2] exists to prevent, in the
+// file whose own prose says a second declaration is the first to drift.
+const keyKindDefs = register.keyKinds;
+if (
+  keyKindDefs === null ||
+  typeof keyKindDefs !== 'object' ||
+  Array.isArray(keyKindDefs) ||
+  Object.keys(keyKindDefs).length === 0
+) {
+  coverageLost([
+    `${REGISTER} declares no \`keyKinds\` vocabulary.`,
+    'Every signing check below asks whether a row\'s keyKind is IN that vocabulary, and the vocabulary is',
+    'this file. With the dictionary gone the question ranges over an empty set: it would reject every row',
+    'for the wrong reason, and a permissive rewrite would accept every typo. [9]R-3 quantifies over signing',
+    'identities — the dictionary that names their kinds cannot be optional.',
+  ]);
+}
+KEY_KINDS = new Set(Object.keys(keyKindDefs));
+for (const [k, v] of Object.entries(keyKindDefs)) {
+  if (typeof v !== 'string' || v.trim() === '') {
+    problems.push(
+      `${REGISTER} keyKinds."${k}" has no definition text. An emptied definition still satisfies every \`KEY_KINDS.has(...)\` check while telling a reader nothing — and the difference between the kinds IS the loss consequence, which is the only reason the field exists.`,
+    );
+  }
 }
 
 const appsRaw = read(APPS);
@@ -243,10 +279,25 @@ for (const c of channels) {
   req(KINDS.has(c.kind), `has kind "${c.kind}"; expected one of ${[...KINDS].join(', ')}.`);
   req(typeof c.served === 'boolean', 'has no boolean `served` flag — the published/unpublished flag [9]R-3 and [9]R-4 both read.');
   req(typeof c.submittable === 'boolean', 'has no boolean `submittable` flag ([10]D-10 quantifies over it).');
-  req(
+  const formatsOk = req(
     Array.isArray(c.artifactFormats) && c.artifactFormats.length > 0,
-    'declares no `artifactFormats`. [9]R-3 fails a lane that emits a format its channel refuses, and [9]R-4 compares a release asset set to it — both need this field to be non-empty.',
+    'declares no `artifactFormats`. [9]R-4 compares a release asset set to it, and the lane-vs-format comparison in section 3b below reads it to decide whether the lane emits anything this channel accepts — both need this field to be non-empty.',
   );
+  // 🔴 ELEMENT TYPES, not just the array. Review 2026-07-31 (mutation-proven):
+  // `[null]` satisfies Array.isArray + length > 0, so the served web row could
+  // declare a format that is not a format and this guard printed ok. Worse since
+  // #83 made assert-channel-claims.mjs DERIVE its public-surface scan patterns
+  // from this same field: a non-string element reached `fmt.startsWith('.')` and
+  // CRASHED that guard with a raw TypeError, which is not a complaint. Same
+  // element treatment `platforms` already gets above.
+  if (formatsOk) {
+    for (const f of c.artifactFormats) {
+      req(
+        typeof f === 'string' && f.trim() !== '',
+        `declares artifactFormat ${JSON.stringify(f)}, which is not a non-empty string. A format that is not a string cannot be compared to a lane's output, cannot be turned into a scan pattern, and satisfies a length check while meaning nothing.`,
+      );
+    }
+  }
   const signingOk = req(c.signing !== null && typeof c.signing === 'object', 'has no `signing` block.');
   if (signingOk) {
     req(KEY_KINDS.has(c.signing.keyKind), `signing.keyKind is "${c.signing.keyKind}"; expected one of ${[...KEY_KINDS].join(', ')}. An upload key and an app signing key have different loss consequences and the register must say which it holds.`);
@@ -255,7 +306,21 @@ for (const c of channels) {
       'has no `signing.restoreDrill` record. [9]R-3 requires a DATED restore drill per published channel.',
     );
   }
-  req(Array.isArray(c.minimumToolchain), 'has no `minimumToolchain` array (names tooling/versions.json KEYS, never values — [pipeline F-2]).');
+  const toolchainOk = req(
+    Array.isArray(c.minimumToolchain),
+    'has no `minimumToolchain` array (names tooling/versions.json KEYS, never values — [pipeline F-2]).',
+  );
+  // Same element-type gap as artifactFormats: a non-string key can never be
+  // pinned in versions.json, so the isPinned() check below would compare it to
+  // nothing and the row would look like it carried a floor.
+  if (toolchainOk) {
+    for (const k of c.minimumToolchain) {
+      req(
+        typeof k === 'string' && k.trim() !== '',
+        `names toolchain key ${JSON.stringify(k)}, which is not a non-empty string. ${VERSIONS} can never pin it, so the floor this row claims to have is unresolvable by construction.`,
+      );
+    }
+  }
   req(
     c.storeMetadataDir === null || typeof c.storeMetadataDir === 'string',
     '`storeMetadataDir` must be a path template or null ([10]D-5 reads it).',
@@ -266,6 +331,18 @@ for (const c of channels) {
       'is a store channel with no `storeMetadataDir` template. [10]D-5 requires one metadata directory per declared channel, per app.',
     );
     req(c.submittable === true, 'is a store channel but is not `submittable`. A store you cannot submit to is not a store channel.');
+    // [10]D-4 "every store channel has a publisher account" is mapped by the
+    // register's own _readme onto `kind=store + ownerQueue`. The id's CONTENTS
+    // stay uncheckable in CI by design (company/ is gitignored, and the _readme
+    // says so) — but its PRESENCE needs nothing private, and without this check
+    // the mapping was decorative: found 2026-07-31 with linux-snap already
+    // shipping `kind: "store"` + `ownerQueue: null`, and nulling the ids on ALL
+    // FIVE store rows still exited 0 "ok". A shape check is the half of D-4 that
+    // is implementable here, so it is the half that must actually run.
+    req(
+      typeof c.ownerQueue === 'string' && c.ownerQueue.trim() !== '',
+      'is a store channel with no `ownerQueue` id. [10]D-4 maps "every store channel has a publisher account" onto kind=store + ownerQueue; a store row naming no queue row is an account nobody is accountable for opening, and CI cannot read the queue itself to notice.',
+    );
   }
 
   // ── what SERVED additionally means ────────────────────────────────────────
@@ -347,6 +424,183 @@ for (const c of channels) {
       prints.push(`${where} (deferred) needs a pinned ${unpinned.map((k) => `\`${k}\``).join(', ')} and ${VERSIONS} has no such key.`);
     }
   }
+}
+
+// ── 3b. what the lane EMITS vs what the channel ACCEPTS ──────────────────────
+// 🔴 THE FIELD WAS ASSERTED NON-EMPTY AND NOTHING MORE. Review 2026-07-31
+// (mutation-proven): no line in this guard read `artifactFormats` past the
+// length check, so android-play could declare `.banana` and every run printed
+// ok — while the register's own notes recorded, in prose, that Play requires
+// .aab and the only android lane in the tree runs `flutter build apk`. A
+// contradiction the register KNOWS about and no build can fail on is a note,
+// not a guard.
+//
+// SERVED rows FAIL a mismatch. DEFERRED rows PRINT it — the standing rule for
+// owner-gated work ([pipeline C-6]): Play submission is deferred by 39-CHASSIS
+// §4 cut 5, so failing here would block all CI on work nobody has licensed,
+// while staying silent would make the gap permanent. Everything read here is
+// .github/, which is in the public repo, so there is no company/ mode to handle.
+//
+// What a target leaves on disk, per platform. Deliberately conservative: only
+// PACKAGED FILE artifacts are listed, because those are the things a channel
+// accepts or refuses. `flutter build linux` produces a bundle DIRECTORY and the
+// Linux rows are packaged from it by design ([ADR 015] §3: snap "ingests the
+// prebuilt CI artifact via `plugin: dump`"), so claiming a gap there would be
+// crying wolf — it contributes no format and therefore no comparison.
+const BUILD_TARGETS = new Map([
+  ['web', { platform: 'web', formats: ['static-bundle'] }],
+  ['apk', { platform: 'android', formats: ['.apk'] }],
+  ['appbundle', { platform: 'android', formats: ['.aab'] }],
+  ['ios', { platform: 'ios', formats: ['.app'] }],
+  ['ipa', { platform: 'ios', formats: ['.ipa'] }],
+  ['macos', { platform: 'macos', formats: ['.app'] }],
+  ['windows', { platform: 'windows', formats: ['.exe'] }],
+  ['linux', { platform: 'linux', formats: [] }],
+]);
+/** Flutter's output layout, which is how an upload glob names its platform. */
+const PATH_PLATFORM = [
+  [/build\/app\/outputs|flutter-apk|build\/app\/intermediates/, 'android'],
+  [/build\/ios\b/, 'ios'],
+  [/build\/macos\b/, 'macos'],
+  [/build\/windows\b/, 'windows'],
+  [/build\/linux\b/, 'linux'],
+  [/build\/web\b/, 'web'],
+];
+const unknownTargets = new Set();
+
+/** `path:` values of a job's upload steps, scalar and block-scalar forms. */
+function uploadPaths(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)path:\s*(.*)$/);
+    if (!m) continue;
+    const indent = m[1].length;
+    const rest = m[2].trim();
+    if (rest !== '' && !rest.startsWith('|') && !rest.startsWith('>')) {
+      out.push(rest.replace(/^['"]|['"]$/g, ''));
+      continue;
+    }
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') continue;
+      if (lines[j].search(/\S/) <= indent) break;
+      out.push(lines[j].trim().replace(/^['"]|['"]$/g, ''));
+    }
+  }
+  return out;
+}
+
+/** platform -> { formats:Set, where:Set } for one job body. */
+function jobEmits(lines, label) {
+  const out = new Map();
+  const add = (p, f) => {
+    if (!PLATFORMS.has(p)) return;
+    if (!out.has(p)) out.set(p, { formats: new Set(), where: new Set() });
+    out.get(p).formats.add(f);
+    out.get(p).where.add(label);
+  };
+  for (const m of lines.join('\n').matchAll(/flutter\s+build\s+([a-z]+)/g)) {
+    const t = BUILD_TARGETS.get(m[1]);
+    if (!t) {
+      unknownTargets.add(m[1]);
+      continue;
+    }
+    for (const f of t.formats) add(t.platform, f);
+  }
+  for (const p of uploadPaths(lines)) {
+    const ext = p.match(/(\.[A-Za-z][A-Za-z0-9]*)$/);
+    if (!ext) continue;
+    const hit = PATH_PLATFORM.find(([re]) => re.test(p));
+    if (hit) add(hit[1], ext[1]);
+  }
+  return out;
+}
+
+const emitCache = new Map();
+function emitsFor(wfRel, jobName) {
+  const key = `${wfRel}::${jobName}`;
+  if (!emitCache.has(key)) {
+    const wf = workflow(wfRel);
+    const lines = wf?.jobs.get(jobName) ?? [];
+    emitCache.set(key, jobEmits(lines, `${wfRel}:${jobName}`));
+  }
+  return emitCache.get(key);
+}
+
+/** Every job of every workflow the register names — the domain a DEFERRED row's
+ *  platform is looked up in ("does anything in this tree already build it?"). */
+const allEmits = new Map();
+const registerWorkflows = new Set(
+  [register.aggregatingJob?.workflow, ...channels.map((c) => c.lane?.workflow)].filter((w) => typeof w === 'string'),
+);
+for (const rel of registerWorkflows) {
+  const wf = workflow(rel);
+  if (!wf) continue;
+  for (const [jobName] of wf.jobs) {
+    for (const [p, e] of emitsFor(rel, jobName)) {
+      if (!allEmits.has(p)) allEmits.set(p, { formats: new Set(), where: new Set() });
+      for (const f of e.formats) allEmits.get(p).formats.add(f);
+      for (const w of e.where) allEmits.get(p).where.add(w);
+    }
+  }
+}
+
+const fmtList = (xs) => [...xs].map((f) => `"${f}"`).join(', ');
+let servedLanesChecked = 0;
+let servedLanesDetermined = 0;
+for (const c of channels) {
+  const declared = (c.artifactFormats ?? []).filter((f) => typeof f === 'string' && f.trim() !== '');
+  if (declared.length === 0) continue; // already a schema failure above
+
+  if (c.served === true) {
+    const lane = c.lane;
+    if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
+    const wf = workflow(lane.workflow);
+    if (wf === null || !wf.jobs.has(lane.job)) continue; // already a failure above
+    servedLanesChecked++;
+    const emits = emitsFor(lane.workflow, lane.job);
+    const seen = new Set();
+    for (const p of c.platforms ?? []) for (const f of emits.get(p)?.formats ?? []) seen.add(f);
+    if (seen.size === 0) {
+      prints.push(
+        `LANE ARTIFACTS UNDETERMINED: channel "${c.id}" is SERVED, accepts ${fmtList(declared)}, and its lane ${lane.workflow}:${lane.job} shows no recognisable build step or upload path for ${fmtList(c.platforms ?? [])}. The comparison had nothing to compare — which is a stated gap, not a pass.`,
+      );
+      continue;
+    }
+    servedLanesDetermined++;
+    if (!declared.some((f) => seen.has(f))) {
+      problems.push(
+        `channel "${c.id}" is SERVED and accepts ${fmtList(declared)}, but its lane ${lane.workflow}:${lane.job} emits ${fmtList(seen)}. [9]R-3: a lane that emits a format its channel refuses is a green build over an artifact the channel rejects — the same shape as the .apk/.aab gap this register records for Play, except on a channel that is actually live.`,
+      );
+    }
+  } else {
+    const seen = new Set();
+    const where = new Set();
+    for (const p of c.platforms ?? []) {
+      const e = allEmits.get(p);
+      if (!e) continue;
+      for (const f of e.formats) seen.add(f);
+      for (const w of e.where) where.add(w);
+    }
+    if (seen.size === 0) continue; // nothing in the tree builds this platform yet
+    if (declared.some((f) => seen.has(f))) continue;
+    prints.push(
+      `FORMAT GAP (deferred): channel "${c.id}" accepts ${fmtList(declared)} and ${[...where].join(', ')} builds ${fmtList(seen)} for ${fmtList(c.platforms ?? [])}. The green "it builds" tick is a proof about an artifact this channel does not take.`,
+    );
+  }
+}
+// A comparison that can no longer read ANY lane is the failure mode this guard
+// keeps meeting: it still prints ok while checking nothing.
+if (servedLanesChecked > 0 && servedLanesDetermined === 0) {
+  coverageLost([
+    `${servedLanesChecked} served channel(s) resolve to a real lane job and NOT ONE yielded a readable artifact.`,
+    'The build-step and upload-path extraction has stopped reaching the workflows, so every format',
+    'comparison above compared a declared format to an empty set and passed by having nothing to check.',
+  ]);
+}
+if (unknownTargets.size) {
+  prints.push(
+    `UNMAPPED BUILD TARGET(S): ${fmtList(unknownTargets)} — a \`flutter build\` target this guard has no artifact mapping for, so any channel accepting its output is compared against nothing. Add it to BUILD_TARGETS.`,
+  );
 }
 
 // ── 4. direction A: every claim resolves to a SERVED row ─────────────────────

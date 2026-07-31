@@ -229,6 +229,16 @@ function artifactAffordances(register) {
   const uncovered = [];
   for (const c of register.channels ?? []) {
     for (const fmt of c.artifactFormats ?? []) {
+      // A non-string element is a SCHEMA fault and assert-channel-register.mjs
+      // owns that complaint — but it must not CRASH this guard on the way past.
+      // Review 2026-07-31 (mutation-proven): `artifactFormats: [null]` reached
+      // `fmt.startsWith('.')` and threw a raw TypeError, and a crash is not a
+      // catch. Route it into the same COVERAGE-LOST path an unresolvable format
+      // takes, so the register's schema failure and this one say the same thing.
+      if (typeof fmt !== 'string' || fmt === '') {
+        uncovered.push(`${c.id}: ${JSON.stringify(fmt)} (not a non-empty string)`);
+        continue;
+      }
       if (NON_FILE_FORMATS.has(fmt)) continue;
       if (!fmt.startsWith('.')) {
         uncovered.push(`${c.id}: "${fmt}"`);
