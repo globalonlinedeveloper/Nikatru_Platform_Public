@@ -69,7 +69,7 @@ jobs:
         if: steps.pre.outputs.run == 'true'
         with:
           channel: stable
-          flutter-version: 3.44.8
+          flutter-version: 3.44.7
 
       - name: Set up ChromeDriver
         if: steps.pre.outputs.run == 'true'
