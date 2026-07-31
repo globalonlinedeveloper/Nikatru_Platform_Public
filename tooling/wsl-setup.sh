@@ -35,6 +35,11 @@ APT_SDK="/usr/lib/android-sdk"
 log() { printf '\n\033[36m==> %s\033[0m\n' "$1"; }
 
 # ── 1. System packages ───────────────────────────────────────────────────────
+# libcurl4-openssl-dev is here for the same reason, added 2026-07-31: sentry_flutter
+# vendors sentry-native (C), which runs its own find_package(CURL) and fails the
+# Linux build with "Could NOT find CURL" — a message naming sentry rather than the
+# missing package. Kept in lockstep with build-platforms.yml's deps step.
+#
 # libsecret-1-dev + libjsoncpp-dev are NOT optional: flutter_secure_storage
 # (our SecureStore, ADR 005) binds a NATIVE secure-storage library on every
 # desktop platform. Without them CMake fails with `libsecret-1>=0.18.4 not
@@ -46,7 +51,8 @@ sudo apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   openjdk-17-jdk-headless \
   clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
-  libsecret-1-dev libjsoncpp-dev libstdc++-12-dev xz-utils git curl unzip
+  libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev libstdc++-12-dev \
+  xz-utils git curl unzip
 
 # Android SDK from apt rather than a hand-rolled download: signed, versioned,
 # reproducible — and it does not trip the repo's bash-guard, which blocks raw
