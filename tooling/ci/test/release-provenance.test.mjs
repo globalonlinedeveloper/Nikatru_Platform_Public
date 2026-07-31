@@ -168,6 +168,28 @@ describe('assert-release-provenance — a publish must record what shipped', () 
     assert.match(out, /without any `tooling\/ci\/assert-gate-passed\.mjs` call/);
   });
 
+  // Review 2026-07-31 (mutation-proven): limb 2 checked only that a gate call
+  // EXISTED — a same-job gate placed after the publish passed, and publish-only
+  // jobs are exactly the ones limb 1's ordering never sees.
+  test('FAILS when a publish-only job gates AFTER publishing', () => {
+    const gateAfter = `name: Ship\non:\n  push:\njobs:\n  deploy:\n    runs-on: ubuntu-24.04\n    steps:\n${DEPLOY_STEP}\n${GATE_STEP}\n${MARKER_STEP}\n`;
+    const { code, out } = run(tree({ deploy: gateAfter }));
+    assert.equal(code, 1, out);
+    assert.match(out, /AFTER its first publish/);
+  });
+
+  // Review 2026-07-31: `gh release upload` is the register's own locked
+  // AppImage flow (Releases as artifact origin) and the PUBLISH list missed it.
+  test('gh release upload IS a publish and needs a gate + marker', () => {
+    const uploader = `name: Ship\non:\n  push:\njobs:\n  upload:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: gh release upload subly-v1 app.AppImage\n`;
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/upload.yml'), uploader);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /upload\.yml/);
+    assert.match(out, /GitHub Release publish/);
+  });
+
   // The false-positive that cost the first version three failures on ci.yml.
   test('a --dry-run is NOT a publish and needs no marker', () => {
     // Deploy workflow is dry-run only; the build workflow keeps the domain non-empty.
