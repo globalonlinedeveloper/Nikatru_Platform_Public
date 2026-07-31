@@ -75,6 +75,13 @@ function tree({
     { id: 'web', platforms: ['web'], artifactFormats: ['static-bundle'] },
   ],
   omitRegister = false,
+  // The guard's REQUIRED_COVERAGE (review 2026-07-31) demands the walk still
+  // reach site.webmanifest and both sitemaps, so every fixture ships them —
+  // same reason every fixture ships TEMPLATE_BLOCK for the affordance floor.
+  webmanifestDescription = 'Apps.',
+  sitemapExtra = '',
+  redirectsBody = null,
+  omitWebmanifest = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -86,7 +93,12 @@ function tree({
   for (const r of roots) {
     const body = r === 'nikatru' ? nikatruBody : rajaBody;
     write(`sites/${r}/index.html`, `<!doctype html><html><body>${body}${TEMPLATE_BLOCK}</body></html>`);
+    write(`sites/${r}/sitemap.xml`, `<?xml version="1.0"?><urlset><url><loc>https://${r}.example.org/</loc></url>${r === 'nikatru' ? sitemapExtra : ''}</urlset>`);
+    if (r === 'nikatru' && !omitWebmanifest) {
+      write(`sites/${r}/site.webmanifest`, JSON.stringify({ name: 'NIKATRU', description: webmanifestDescription }));
+    }
   }
+  if (redirectsBody !== null) write('sites/nikatru/_redirects', redirectsBody);
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write(`tooling/ci/check-site-integrity.mjs`, `const ${siblingConst} = ${minSites};\n`);
   if (!omitRegister) {
@@ -197,8 +209,11 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
   });
 
   test('PASSES a REAL store link once an app actually claims that platform', () => {
+    // BOTH Apple platforms — an ambiguous apps.apple.com link is all-of since
+    // the 2026-07-31 triage; the all-of/disambiguation cases have their own
+    // describe below.
     const { code, out } = run(
-      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871">iOS</a>', platforms: ['web', 'ios'] }),
+      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871">iOS</a>', platforms: ['web', 'ios', 'macos'] }),
     );
     assert.equal(code, 0, out);
   });
@@ -216,7 +231,9 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
     const { code, out } = run(tree({ nikatruBody: '<a href="/dl/Subly-Setup.exe">Windows</a>' }));
     assert.equal(code, 1, out);
     assert.match(out, /a \.exe artifact \(register: windows-direct\)/);
-    test('FAILS COVERAGE LOST when a register format cannot resolve to a pattern', () => {
+  });
+
+  test('FAILS COVERAGE LOST when a register format cannot resolve to a pattern', () => {
     const { code, out } = run(
       tree({ channels: [{ id: 'android-play', platforms: ['android'], artifactFormats: ['aab-bundle'] }] }),
     );
@@ -236,8 +253,6 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
     const { code, out } = run(tree({ nikatruBody: '<a href="[SNAP OR dl.nikatru.com APPIMAGE URL]">Linux</a>' }));
     assert.equal(code, 0, out);
   });
-});
-
 });
 
 describe('assert-channel-claims — coverage is a relationship, not a number', () => {
@@ -290,5 +305,152 @@ describe('assert-channel-claims — coverage is a relationship, not a number', (
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /ZERO store or artifact affordances/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-07-31 medium/low triage — the four scan-hardening defects, each
+// mutation-proven against a scratch copy of the REAL tree before these
+// fixtures were written (a fixture I wrote encodes the same misunderstanding
+// as the guard I wrote; the real-tree mutation is the proof of record).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-claims — the walk reaches every public surface', () => {
+  test('FAILS on a flathub tell inside site.webmanifest — the file that already carried the claim', () => {
+    const { code, out } = run(tree({ webmanifestDescription: 'Apps. Also on Flathub.' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /site\.webmanifest:\d+ advertises "Flathub"/);
+  });
+
+  test('FAILS on a _redirects line 302-ing to a real store URL', () => {
+    const { code, out } = run(
+      tree({ redirectsBody: '/android https://play.google.com/store/apps/details?id=com.nikatru.subly 302\n' }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /_redirects:1 offers a Google Play link/);
+  });
+
+  test('FAILS on a flathub <loc> inside sitemap.xml', () => {
+    const { code, out } = run(
+      tree({ sitemapExtra: '<url><loc>https://flathub.org/apps/com.nikatru.subly</loc></url>' }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /sitemap\.xml:1 advertises "flathub"/);
+  });
+
+  test('FAILS COVERAGE LOST when the walk stops reaching site.webmanifest — re-narrowing is loud', () => {
+    const { code, out } = run(tree({ omitWebmanifest: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /no longer reaches: sites\/nikatru\/site\.webmanifest/);
+  });
+});
+
+describe('assert-channel-claims — the Apple domain fronts TWO stores (all-of)', () => {
+  test('FAILS an ambiguous apps.apple.com link when ios is claimed but macos is not — naming macos', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871">Get it</a>', platforms: ['web', 'ios'] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /offers an App Store link for platform\(s\) "ios"\/"macos"/);
+    assert.match(out, /"macos" is claimed by no app/);
+  });
+
+  test('PASSES the same ambiguous link once BOTH Apple platforms are claimed', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871">Get it</a>', platforms: ['web', 'ios', 'macos'] }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('PASSES an mt=8 destination with only ios claimed — the URL disambiguates to the iOS store', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871?mt=8">Get it</a>', platforms: ['web', 'ios'] }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('PASSES an itunes.apple.com destination with only ios claimed', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://itunes.apple.com/app/id6503219871">Get it</a>', platforms: ['web', 'ios'] }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('PASSES an mt=12 destination with only macos claimed — the Mac store', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871?mt=12">Get it</a>', platforms: ['web', 'macos'] }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS an mt=12 destination when macos is not claimed, even with ios claimed', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6503219871?mt=12">Get it</a>', platforms: ['web', 'ios'] }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /for platform\(s\) "macos"/);
+  });
+
+  test('PASSES dl.nikatru.com with only windows claimed — ANY-OF is preserved where it is honest', () => {
+    const { code, out } = run(
+      tree({ rajaBody: '<a href="https://dl.nikatru.com/subly/latest">Get it</a>', platforms: ['web', 'windows'] }),
+    );
+    assert.equal(code, 0, out);
+  });
+});
+
+describe('assert-channel-claims — every exemption is printed, every cue anchored', () => {
+  test('the template id0000000000 stays exempt AND appears in the printed exemption list with its cue', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="https://apps.apple.com/app/id0000000000">iOS</a>' }));
+    assert.equal(code, 0, out);
+    assert.match(out, /placeholder-exempted destination\(s\)/);
+    assert.match(out, /id0000000000" \(cue: zero-run id\)/);
+  });
+
+  test('FAILS a real-shaped id6500001234 — four zeros INSIDE an id are not a placeholder', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="https://apps.apple.com/app/id6500001234">iOS</a>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /The destination is REAL, not a placeholder: "https:\/\/apps\.apple\.com\/app\/id6500001234"/);
+  });
+
+  test('FAILS a com.your-apps Play package — YOUR- inside a package name is not a slot', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<a href="https://play.google.com/store/apps/details?id=com.your-apps.subly">Get</a>' }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /offers a Google Play link/);
+    assert.match(out, /REAL, not a placeholder/);
+  });
+
+  test('PASSES a YOUR_ slot at a path-segment boundary — still scaffolding, still printed', () => {
+    const { code, out } = run(tree({ nikatruBody: '<a href="https://apps.apple.com/app/YOUR_APP_ID">iOS</a>' }));
+    assert.equal(code, 0, out);
+    assert.match(out, /\(cue: YOUR- slot\)/);
+  });
+});
+
+describe('assert-channel-claims — enumeration claims join the every-run print', () => {
+  test('PRINTS the six-name enumeration — the same claim without the magic word', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<p>Apps for every screen - iOS, Android, Windows, macOS, Linux and Web.</p>' }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /platform-count claim/);
+    assert.match(out, /iOS, Android, Windows, macOS, Linux and Web/);
+  });
+
+  test('does NOT print ordinary prose naming only two platforms', () => {
+    const { code, out } = run(tree({ nikatruBody: '<p>Now on Android and Windows phones near you.</p>' }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /Android and Windows phones/);
+  });
+
+  test('still PRINTS the classic "six platforms" wording alongside', () => {
+    const { code, out } = run(
+      tree({ nikatruBody: '<p>One codebase, six platforms: iOS, Android, Windows, macOS, Linux, Web.</p>' }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /"six platforms"/);
+    assert.match(out, /iOS, Android, Windows, macOS, Linux, Web/);
   });
 });
