@@ -22,8 +22,11 @@ dependencies:
   # (commit 55eafe4a is still green today). The same dependency separately broke
   # the Linux lane — sentry-native needs libcurl (PR #78). One package, two
   # platforms.
-  # ⚠️ If macOS is still red on 9.26.0, this bump is NOT the fix — read
-  # tooling/versions.json $flutter_comment before re-deriving any of the above.
+  # 🔴 TESTED 2026-07-31, run 30629403417: macOS is STILL RED on 9.26.0, so this
+  # bump is NOT the fix — it is kept only because it is the newest release of the
+  # package now known to be responsible. The DIAGNOSIS above stands and is proven;
+  # only the remedy is open. Read tooling/versions.json $flutter_comment before
+  # re-deriving any of it, and do not re-try a Flutter rollback.
   # sentry_flutter 9.x requires Dart >=3.5.0 / Flutter >=3.24.0. Data classes are
   # mutable in 9.x (beforeSend mutates in place).
   sentry_flutter: ^9.26.0

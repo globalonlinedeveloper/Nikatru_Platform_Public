@@ -43,7 +43,10 @@
     "needs libcurl, fixed in PR #78). One dependency took out two of six platforms, and neither was",
     "noticed for five days because build-platforms.yml runs only on dispatch, a tag, or a weekly cron.",
     "",
-    "So the fix belongs in packages/telemetry, not here. See company/PROJECT_STATE.md."
+    "So the fix belongs in packages/telemetry, not here. See company/PROJECT_STATE.md.",
+    "",
+    "⬜ OPEN: bumping sentry_flutter 9.25.0 -> 9.26.0 (its newest release) was tried on 2026-07-31",
+    "and macOS is STILL RED (run 30629403417). The diagnosis is proven; the REMEDY is not found."
   ],
   "flutter": "3.44.8",
   "node": "24",
