@@ -202,9 +202,21 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # ⚠️ TEMPORARY DIAGNOSTIC (2026-07-31). `flutter build macos --release` aborts
+      # with `AOT snapshotter exited with code -6` (SIGABRT) and NO message —
+      # gen_snapshot's stderr is not surfaced without --verbose, and neither
+      # `gh run view --log-failed` nor the step log carries the assertion.
+      # Printing the toolchain first because the last GREEN macOS build ran
+      # Flutter 3.44.7 and this has never been green on 3.44.8.
+      # Remove both once the cause is known.
+      - name: Toolchain under test
+        run: |
+          sw_vers
+          xcodebuild -version
+          flutter --version
       - name: Build macos
         working-directory: apps/subly
-        run: flutter build macos --release
+        run: flutter build macos --release --verbose
       # --no-codesign: this proves the code COMPILES for iOS without needing an
       # Apple Developer account or provisioning profile. Signing is a separate,
       # owner-gated step and must not block build verification.
