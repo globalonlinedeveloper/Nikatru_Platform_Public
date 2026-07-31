@@ -48,6 +48,10 @@ const RULES = [
   // identical commit builds, with no diff in the repo. Matched per-OS so the
   // error can name the expected label rather than just "not pinned".
   { key: 'wrangler', label: 'Wrangler', re: /wranglerVersion:\s*'?([0-9][^\s'"#]*)'?/g },
+  // A dependency SPEC, not a workflow input. `^` is captured deliberately so a
+  // caret reads as the version `4.0.0` and fails against the declared 4.114.0 —
+  // a float is exactly what this rule exists to catch, not something to tolerate.
+  { key: 'wrangler', label: 'Wrangler (brick dep)', re: /"wrangler":\s*"\^?([0-9][^"]*)"/g },
   { key: 'runner_ubuntu', label: 'Ubuntu runner', re: /runs-on:\s*(ubuntu-[^\s'"#]+)/g },
   { key: 'runner_windows', label: 'Windows runner', re: /runs-on:\s*(windows-[^\s'"#]+)/g },
   { key: 'runner_macos', label: 'macOS runner', re: /runs-on:\s*(macos-[^\s'"#]+)/g },
@@ -62,6 +66,18 @@ if (existsSync(wfDir)) {
   }
 }
 for (const f of ['tooling/wsl-setup.sh']) {
+  if (existsSync(join(repoRoot, f))) TARGETS.push(f);
+}
+// 🔴 THE BRICK'S STAMPED SERVICE, added 2026-07-31 after it took `main` red.
+// Every real service here has a COMMITTED package-lock.json and is therefore
+// immune to a bad upstream release. A STAMPED service has none by construction —
+// it is generated in CI and `npm install`s fresh every run — so its `^4.0.0`
+// floated onto wrangler 4.117.0, which depends on `miniflare@5.20260730.0-alpha`,
+// and the install died with `notarget`. The repo pinned wrangler everywhere the
+// guard looked and nowhere the factory's own product looked.
+// Pinning it EXACTLY (no caret) is the point: a stamped app must resolve the same
+// way tomorrow, and this rule is what stops the caret coming back.
+for (const f of ['tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/package.json']) {
   if (existsSync(join(repoRoot, f))) TARGETS.push(f);
 }
 
