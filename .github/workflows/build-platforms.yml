@@ -119,12 +119,27 @@ jobs:
       # libmpv/libasound are NOT needed today (ADR 013 keeps media_kit off
       # Linux) — add them the moment a Linux media build is attempted, or CMake
       # fails on PkgConfig::mpv with an equally misleading message.
+      # libcurl4-openssl-dev is the THIRD instance of the same lesson, found
+      # 2026-07-31 by dispatching this workflow after touching it: `sentry_flutter`
+      # (packages/telemetry, [pipeline G3]) vendors **sentry-native**, which is C
+      # and does its own `find_package(CURL)`. Without the dev headers CMake dies
+      # with `Could NOT find CURL (missing: CURL_LIBRARY CURL_INCLUDE_DIR)` from
+      # `_deps/sentry-native-src/CMakeLists.txt:501`, and the failure names sentry,
+      # not Flutter, so it reads as a telemetry bug rather than a missing package.
+      #
+      # 🔴 THE LANE HAD BEEN RED SINCE THE TELEMETRY WORK LANDED AND NOTHING SAID
+      # SO: this workflow runs only on dispatch, a release tag, and a weekly cron,
+      # so a break here is invisible until someone looks. Last green was 2026-07-26.
+      # `assert-platform-proof-fresh.mjs` would have turned it into a ci-gate
+      # failure around 2026-08-09 — 14 days after that green — which is precisely
+      # the "silence is not a signal" job it was built for, working as designed but
+      # nine days slower than a human dispatching the workflow once.
       - name: Linux build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
-            libsecret-1-dev libjsoncpp-dev
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
       # apps/subly is a pub WORKSPACE member: resolution happens at the repo
       # root, not in the app directory.
       - name: Resolve the workspace
