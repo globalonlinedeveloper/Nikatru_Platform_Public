@@ -2,6 +2,11 @@
 // Shared types for the platform Worker. Keep Env in sync with wrangler.jsonc.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** The shape of a Cloudflare Rate Limiting binding, as this Worker uses it. */
+export interface RateLimiterBinding {
+  limit(opts: { key: string }): Promise<{ success: boolean }>;
+}
+
 /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
 export interface Env {
   // SHARED entitlements DB (platform is the sole migrations applier).
@@ -19,7 +24,17 @@ export interface Env {
    * it through. Optional so a local/dev deploy without it still runs — absence
    * fails OPEN.
    */
-  EVENTS_LIMITER?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
+  EVENTS_LIMITER?: RateLimiterBinding;
+
+  /**
+   * The SERVER-DERIVED half of the same breaker, on its own namespace so it does
+   * not share the per-install budget. Keyed on `request.cf` colo+asn — values the
+   * caller cannot choose — because EVENTS_LIMITER's key is composed entirely from
+   * the request body on a route that is unauthenticated by design, so a caller
+   * rotating `anon_id` per request gets a fresh bucket every time and the ceiling
+   * bounds nothing. Optional for the same reason as above: absence fails OPEN.
+   */
+  EVENTS_CEILING_LIMITER?: RateLimiterBinding;
 
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
