@@ -1,0 +1,67 @@
+name: Snap Store submission path (dry run)
+
+# [pipeline D-10] limb (i) — "a submission script exists AND RESOLVES TO A STEP
+# IN A WORKFLOW, parsed not grepped". This workflow is the step it resolves to.
+# tooling/channel-register.json's linux-snap row names this file and this job in
+# its `submission` block, so deleting either is a register that points at nothing
+# rather than an unnoticed loss.
+#
+# 🔴 DISPATCH-ONLY, AND THAT IS THE CORRECT SHAPE WHILE `served: false`.
+# The channel is deferred by [ADR 015] until there is revenue — the web build
+# already serves Linux users at $0 — and the one owner action it needs
+# (OWNER_QUEUE A-6) is claiming the global snap name.
+#
+# ⚠️ THIS JOB DOES NOT BUILD A .snap, AND THAT IS NOT A SHORTCUT.
+# There is no `snapcraft.yaml` in this repository. `submit-snap.mjs` PRINTS that
+# gap on every run rather than failing, because writing the recipe is deferred
+# work and not a regression — but it does mean there is nothing to build, so a
+# build step here would be a step that builds nothing while looking like
+# coverage. When the recipe lands, add the build to THIS job and drop
+# `--allow-missing-artifact` from the step below, in the same increment.
+#
+# What this proves on demand is the half that exists: the listing tree is
+# complete and derived from the spec, the snap name is a single usable value that
+# was decided in a reviewed diff rather than at a terminal prompt, and the
+# credential wiring is in place for the day A-6 completes.
+#
+# Nothing here contacts the Snap Store. `--dry-run` has no network path at all,
+# and `--submit` refuses with UNVERIFIED — which matters more on this channel
+# than any other, because Snap auto-updates SILENTLY: a guessed `release` verb
+# does not fail cleanly, it puts the wrong revision on real machines.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+
+jobs:
+  # No `gate` job here, and the difference from submit-appstore.yml is
+  # deliberate: [pipeline R-6] is about RELEASE BUILDS from ungated commits, and
+  # this workflow runs none — there is no snapcraft recipe, so it compiles
+  # nothing. Add the gate in the same increment that adds the build.
+  dry-run:
+    name: Validate the submission path
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      # The credential does not exist yet — OWNER_QUEUE A-6 — and the script
+      # reports its ABSENCE as a printed gap rather than a failure. It is wired
+      # now so that the day it exists, nothing about this job changes. `secrets`
+      # are empty strings when unset, which is what the presence check reads.
+      - name: Dry-run the Snap Store submission
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: node tooling/release/submit-snap.mjs --dry-run --app subly --allow-missing-artifact

@@ -225,9 +225,17 @@ let treesChecked = 0;
 let filesChecked = 0;
 let derivedChecked = 0;
 
+/** A declared `max` with no citation. Enforcing it would risk rejecting correct
+ *  input on an invented number; ignoring it would leave the register claiming a
+ *  constraint that does nothing. Fail, and say which. */
+function unsourced(register, channelId, block, file) {
+  return `${register} storeMetadataContract.perChannel["${channelId}"].${block}["${file}"] declares a numeric limit with NO \`source\`. An invented limit fires on CORRECT input — a made-up "120 characters or fewer" once rejected this repo's own fixture at 129 — so this guard will not enforce a number nobody sourced, and will not let the register pretend to constrain a field it does not. Add the URL and the date, or remove the limit.`;
+}
+
 for (const { row, app, dir } of expected) {
   const extraFiles = (contract.perChannel?.[row.id]?.additionalFiles ?? []).filter((f) => typeof f === 'string');
   const maxLines = contract.perChannel?.[row.id]?.maxLines ?? {};
+  const maxChars = contract.perChannel?.[row.id]?.maxChars ?? {};
 
   if (!isDir(dir)) {
     if (row.served === true) {
@@ -267,12 +275,44 @@ for (const { row, app, dir } of expected) {
       }
     }
 
-    // The ONE numeric limit, and it arrives from the register with its citation.
+    // ── the numeric limits, and every one arrives with its citation ─────────
+    // 🔴 A LIMIT WITHOUT A `source` IS NOT ENFORCED, IT IS REPORTED. An invented
+    // limit fires on CORRECT input — a made-up "120 characters or fewer" once
+    // rejected this repo's own fixture at 129 — so the only way to make the
+    // guard reject a field is to write the citation next to the number. Skipping
+    // silently would be worse than either: the register would look like it
+    // constrained a field it did not.
     const limit = maxLines[rel];
     if (limit && Number.isInteger(limit.max)) {
-      const entries = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
-      if (entries.length > limit.max) {
-        problems.push(`${p} has ${entries.length} entries and the limit is ${limit.max}. Source: ${limit.source ?? '(no source recorded — a limit without one must not be enforced)'}`);
+      if (typeof limit.source !== 'string' || limit.source.trim() === '') {
+        problems.push(unsourced(REGISTER, row.id, 'maxLines', rel));
+      } else {
+        const entries = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+        if (entries.length > limit.max) {
+          problems.push(`${p} has ${entries.length} entries and the limit is ${limit.max}. Source: ${limit.source}`);
+        }
+      }
+    }
+
+    // CHARACTERS, not entries — Apple's App Name and Subtitle are the only two
+    // store field limits this repo has a primary source for. Everything else on
+    // every Apple listing (keywords, description, promotional text) is recorded
+    // as COULD-NOT-ESTABLISH in the tree README and carries no number here.
+    const chars = maxChars[rel];
+    if (chars && (Number.isInteger(chars.max) || Number.isInteger(chars.min))) {
+      if (typeof chars.source !== 'string' || chars.source.trim() === '') {
+        problems.push(unsourced(REGISTER, row.id, 'maxChars', rel));
+      } else {
+        // Trimmed, because the trailing newline every one of these files ends
+        // with is a text-file convention, not a character of the listing. A
+        // guard that counted it would reject a field at exactly the limit.
+        const n = text.trim().length;
+        if (Number.isInteger(chars.max) && n > chars.max) {
+          problems.push(`${p} is ${n} characters and the limit is ${chars.max}. Source: ${chars.source}`);
+        }
+        if (Number.isInteger(chars.min) && n < chars.min) {
+          problems.push(`${p} is ${n} characters and the minimum is ${chars.min}. Source: ${chars.source}`);
+        }
       }
     }
 

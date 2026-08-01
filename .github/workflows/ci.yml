@@ -267,6 +267,31 @@ jobs:
       - name: The Microsoft Store submission path still walks (dry run)
         working-directory: ${{ github.workspace }}
         run: node tooling/release/submit-windows-store.mjs --dry-run --app subly --allow-missing-artifact
+      # The same reasoning for the two Apple channels, and one extra reason to
+      # run them HERE rather than only on dispatch: submit-appstore.yml needs a
+      # macos-26 runner, which is the most expensive runner in the fleet. This
+      # step validates the listing tree and the bundle identifier on the ubuntu
+      # runner that is already up — no Apple hardware, no toolchain, no network.
+      # `--allow-missing-artifact` because an .ipa/.pkg cannot exist anywhere
+      # until OWNER_QUEUE A-4 issues a distribution certificate; the flag makes
+      # the script SAY it validated the listing and not the package.
+      # TWO steps, because iOS and macOS are two App Store Connect records with
+      # independent review outcomes — one step would make one failure look like
+      # two broken channels, and one pass look like two validated ones.
+      - name: The App Store submission path still walks — iOS (dry run)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app subly --allow-missing-artifact
+      - name: The App Store submission path still walks — macOS (dry run)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app subly --allow-missing-artifact
+      # And the Snap channel. This one has no dispatch-time superset at all yet:
+      # there is no snapcraft.yaml, so submit-snap.yml cannot build a .snap
+      # either and runs exactly this command. That makes this step the ONLY thing
+      # keeping the Snap path from rotting, which is precisely why it is on every
+      # push. Nothing contacts the Snap Store; `--submit` refuses first.
+      - name: The Snap Store submission path still walks (dry run)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/release/submit-snap.mjs --dry-run --app subly --allow-missing-artifact
       # Both mechanisms this asserts already exist and are VERIFIED (F-5b); what
       # was missing was CALL SITES. R-6's own criterion ranged over "the release
       # lane", which referred to nothing — so the set is derived from what a lane

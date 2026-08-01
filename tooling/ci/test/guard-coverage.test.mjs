@@ -34,13 +34,13 @@ let seq = 0;
  * Build a fake repo.
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
- * ⚠️ testFiles defaults to 29 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29
- * (2026-07-31, twice on 2026-08-01) — a fixture below the floor would make every green
- * case here red for a reason that has nothing to do with the behaviour under
+ * ⚠️ testFiles defaults to 31 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
+ * (2026-07-31, three times on 2026-08-01) — a fixture below the floor would make every
+ * green case here red for a reason that has nothing to do with the behaviour under
  * test. Ratchet the floor and this default together, always.
  * `files` writes extra files at the fixture root (e.g. a ci.yml manifest).
  */
-function repo(guards, { testFiles = 29, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
+function repo(guards, { testFiles = 31, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
   const root = join(TMP, `r${seq++}`);
   const ci = join(root, 'tooling', 'ci');
   const t = join(ci, 'test');
@@ -92,7 +92,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /38 guard\(s\), all named in 29 test file\(s\)/);
+    assert.match(r.stdout, /38 guard\(s\), all named in 31 test file\(s\)/);
   });
 
   test('a guard no test mentions FAILS', () => {

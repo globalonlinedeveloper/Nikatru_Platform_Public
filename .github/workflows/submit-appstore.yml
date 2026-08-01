@@ -1,0 +1,121 @@
+name: Apple App Store submission path (dry run)
+
+# [pipeline D-10] limb (i) — "a submission script exists AND RESOLVES TO A STEP
+# IN A WORKFLOW, parsed not grepped". This workflow is the step it resolves to.
+# tooling/channel-register.json's ios-appstore and macos-appstore rows both name
+# this file and this job in their `submission` block, so deleting either is a
+# register that points at nothing rather than an unnoticed loss.
+#
+# 🔴 DISPATCH-ONLY, AND THAT IS THE CORRECT SHAPE WHILE `served: false`.
+# Both rows are owner-deferred behind OWNER_QUEUE A-4 (Apple Developer Program,
+# $99/yr, plus an Apple device). There is no account to submit TO, so there is
+# nothing for a push trigger to do that ci.yml's per-push dry run does not
+# already do more cheaply.
+#
+# ⚠️ IT BUILDS WHAT CAN BE BUILT WITHOUT A CERTIFICATE, AND SAYS SO.
+# This is the one place this workflow deliberately differs from
+# submit-windows-store.yml. Microsoft re-signs the MSIX, so that job packages a
+# real, submittable artifact. Apple does not: a `.ipa` and a Mac App Store `.pkg`
+# require a distribution certificate and a provisioning profile that OWNER_QUEUE
+# A-4 gates, and NO SIGNING IS WIRED ANYWHERE IN THIS REPO. So the job builds
+# UNSIGNED — `flutter build ios --no-codesign` and `flutter build macos` — which
+# proves the Apple toolchain path still compiles this app, and then runs the dry
+# run with `--allow-missing-artifact`, which makes the script SAY it validated
+# the listing and the bundle identifier and NOT the package. A job that claimed
+# to validate an artifact it cannot produce would be the more dangerous shape.
+#
+# Nothing here contacts Apple. `--dry-run` has no network path at all, and the
+# script's `--submit` mode refuses with UNVERIFIED rather than guessing at App
+# Store Connect's endpoints.
+#
+# 🔴 SOURCED FLOOR THIS JOB DOES NOT YET MEET: uploads to App Store Connect
+# "must be built with Xcode 26 or later" (developer.apple.com/news/upcoming-requirements/,
+# in force 28 April 2026). `macos-26` pins the runner IMAGE LABEL, which names an
+# image family and not an immutable toolchain, and tooling/versions.json has no
+# `xcode` key. submit-appstore.mjs PRINTS that gap on every run.
+# Also sourced: the macos-26 runner is arm64-only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+
+jobs:
+  # Same shape and same reason as build-platforms.yml's gate job: this workflow
+  # runs `flutter build --release`, and a release build from an ungated commit is
+  # [pipeline R-6]'s whole subject. assert-release-provenance.mjs walks the
+  # `needs` graph, so gating once here covers the job below.
+  gate:
+    name: Require ci-gate to have passed
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Require ci-gate to have passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+
+  dry-run:
+    name: Validate the submission path
+    runs-on: macos-26
+    needs: gate
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      # The same three lines build-platforms.yml carries, for the same reason:
+      # nothing pins Xcode, and when an Apple build breaks the first question is
+      # "what toolchain was this?" — unrecoverable after the fact without this.
+      - name: Toolchain under test
+        run: |
+          sw_vers
+          xcodebuild -version
+          uname -m
+      # UNSIGNED on purpose — see the header. This proves the app still compiles
+      # for both Apple platforms; it does not produce a submittable artifact and
+      # nothing here pretends it does.
+      - name: Build iOS (unsigned — no distribution certificate exists)
+        working-directory: apps/subly
+        run: flutter build ios --release --no-codesign
+      - name: Build macOS (unsigned — no distribution certificate exists)
+        working-directory: apps/subly
+        run: flutter build macos --release
+      # The credentials do not exist yet — OWNER_QUEUE A-4 creates the Apple
+      # Developer account that issues the App Store Connect API key — and the
+      # script reports their ABSENCE as a printed gap rather than a failure. They
+      # are wired now so that the day they exist, nothing about this job changes.
+      # `secrets` are empty strings when unset, which is what the script's
+      # presence check reads. The .p8 key is never read by the script, only
+      # tested for presence.
+      - name: Dry-run the App Store submission (iOS)
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_IOS_APP_ID }}
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app subly --allow-missing-artifact
+      # A SEPARATE step and a SEPARATE secret for the app id, because these are
+      # two App Store Connect records with independent review outcomes. Running
+      # them as one step would make one failure look like two channels broken,
+      # and one pass look like two channels validated.
+      - name: Dry-run the App Store submission (macOS)
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          APP_STORE_CONNECT_APP_ID: ${{ secrets.APP_STORE_CONNECT_MACOS_APP_ID }}
+        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app subly --allow-missing-artifact
