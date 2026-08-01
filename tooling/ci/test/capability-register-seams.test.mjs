@@ -126,7 +126,90 @@ describe('[C-1 · decision item 12] a seam METHOD must really exist', () => {
     assert.equal(code, 1);
     // Naming a seam method is only useful if it is checked — that is the whole
     // content of decision item 12.
-    assert.match(out, /has method `onTapped`, which does not appear in/);
+    assert.match(out, /has method `onTapped`, which is not declared in that class/);
+  });
+
+  // 🔴 THE MUTATION THAT SURVIVED THE RAW-SOURCE VERSION. Proven on a copy of the
+  // real tree 2026-08-01: a complete, compile-clean rename of `scheduleDaily` to
+  // `scheduleReminder` in packages/core/.../notification_service.dart that left
+  // the old name in ONE house-style doc comment kept this guard at exit 0, still
+  // printing "seam symbol(s) verified in place" for a method the interface no
+  // longer had. Deleting that single comment line was the entire difference.
+  test('a doc comment naming the method is NOT the method', () => {
+    const { code, out } = run(tree({
+      symbol: 'S',
+      methods: ['init', 'scheduleDaily'],
+      seamSrc:
+        'abstract interface class S {\n' +
+        '  Future<void> init();\n' +
+        '  /// Renamed 2026-08-01: scheduleDaily(DailyReminder) is now scheduleReminder().\n' +
+        '  Future<void> scheduleReminder();\n' +
+        '}\n',
+    }));
+    assert.equal(code, 1, 'the comment is the only place the old name survives');
+    assert.match(out, /has method `scheduleDaily`, which is not declared in that class/);
+  });
+
+  test('a string literal naming the method is NOT the method', () => {
+    const { code, out } = run(tree({
+      symbol: 'S',
+      methods: ['init', 'scheduleDaily'],
+      seamSrc:
+        'abstract interface class S {\n' +
+        '  Future<void> init();\n' +
+        "  static const migrationNote = 'scheduleDaily(r) was removed';\n" +
+        '}\n',
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /has method `scheduleDaily`, which is not declared in that class/);
+  });
+
+  // The method claim is about THAT INTERFACE — the register's own _readme says
+  // so. An unanchored `\bname\s*\(` let any sibling class in the same file, or
+  // any call site, stand in for the contract.
+  test('a sibling class in the same file does NOT satisfy the interface’s claim', () => {
+    const { code, out } = run(tree({
+      symbol: 'S',
+      methods: ['init', 'scheduleDaily'],
+      seamSrc:
+        'abstract interface class S {\n  Future<void> init();\n}\n\n' +
+        'class NoOpS implements S {\n' +
+        '  @override\n  Future<void> init() async {}\n' +
+        '  Future<void> scheduleDaily() async {}\n' +
+        '}\n',
+    }));
+    assert.equal(code, 1, 'the NoOp keeping the method does not mean the interface has it');
+    assert.match(out, /has method `scheduleDaily`, which is not declared in that class/);
+  });
+
+  test('a mere CALL of the method elsewhere in the file does not satisfy it either', () => {
+    const { code, out } = run(tree({
+      symbol: 'S',
+      methods: ['init', 'scheduleDaily'],
+      seamSrc:
+        'abstract interface class S {\n  Future<void> init();\n}\n\n' +
+        'Future<void> warmUp(dynamic s) async {\n  await s.scheduleDaily();\n}\n',
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /has method `scheduleDaily`, which is not declared in that class/);
+  });
+
+  // …and the legitimate shapes must stay green, or the tightening is the bug.
+  test('passes on real declarations with annotations and generic return types', () => {
+    const { code, out } = run(tree({
+      symbol: 'S',
+      methods: ['init', 'scheduleDaily', 'pending'],
+      seamSrc:
+        'abstract interface class S {\n' +
+        '  /// One-time setup.\n' +
+        '  Future<void> init();\n' +
+        '  @protected\n' +
+        '  Future<void> scheduleDaily(DailyReminder reminder);\n' +
+        '  Future<List<Map<String, int>>> pending();\n' +
+        '}\n',
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /seam symbol\(s\) verified in place/);
   });
 
   test('a missingMethods entry is PRINTED on a passing run, never silently held', () => {
@@ -168,6 +251,18 @@ describe('[C-3 widened] a registered seam may not be implemented in an app', () 
     assert.equal(code, 1);
     assert.match(out, /declares `class NotificationService`, which is a seam registered to/);
     assert.match(out, /may not be implemented in an app/);
+  });
+
+  // Same stripping rule as check 3, pointed the other way: here matching prose
+  // would falsely ACCUSE an app file of forking a seam it merely talks about.
+  test('does NOT accuse an app file whose only `class NotificationService` is commented out', () => {
+    // The declaration is at column 0 inside a block comment, so it satisfies the
+    // line-anchored fork regex on RAW source — the triage edit that gets left in
+    // a file for a week. Only stripping tells it apart from a real fork.
+    const { code, out } = run(tree({
+      forkSrc: `/*\n${FORK}*/\nvoid nothing() {}\n`,
+    }));
+    assert.equal(code, 0, out);
   });
 
   test('passes when the fork is DECLARED, and prints it every run', () => {

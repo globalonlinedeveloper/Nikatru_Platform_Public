@@ -107,9 +107,16 @@ describe('assert-workspace-coverage', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('check-migrations', () => {
   const ADDITIVE = 'CREATE TABLE IF NOT EXISTS t (id TEXT);\nALTER TABLE t ADD COLUMN x TEXT;\n';
+  // 🔴 THE FIXTURE MUST MIRROR THE REAL TREE, OR IT ENCODES THE SAME BLIND SPOT.
+  // Until 2026-08-01 this builder wrote ONLY services/platform + the brick and
+  // asserted exit 0 — so "a tree with zero services/subly-api coverage" was
+  // literally the suite's definition of clean, and the guard's REQUIRED_COVERAGE
+  // omitted subly-api to match. A passing fixture that is missing what the real
+  // tree has cannot ever notice the omission.
   const build = (name, platformSql, brickSql = ADDITIVE, extra = {}) =>
     fixture(name, {
       'services/platform/migrations/0001_init.sql': platformSql,
+      'services/subly-api/migrations/0001_init.sql': ADDITIVE,
       'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': brickSql,
       ...extra,
     });
@@ -142,6 +149,118 @@ describe('check-migrations', () => {
     const { code, out } = run('check-migrations.mjs', { cwd: dir });
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/i);
+  });
+
+  // 🔴 THE MIGRATION DIRECTORY THAT MOVES. This is not hypothetical: the brick's
+  // move once shrank the scan 5 → 4 and reported PASS, which is what founded
+  // REQUIRED_COVERAGE in the first place — and subly-api was then left out of it.
+  // Mutation-proven on a copy of the real tree 2026-08-01: renaming
+  // services/subly-api/migrations made the guard scan 4 files instead of 6 and
+  // still print "clean", exit 0.
+  test("FAILS when subly-api's migrations move out from under the glob", () => {
+    const dir = fixture('mig-cov-sublyapi', {
+      'services/platform/migrations/0001_init.sql': ADDITIVE,
+      'services/subly-api/db-migrations/0001_init.sql': ADDITIVE, // renamed
+      'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': ADDITIVE,
+    });
+    const { code, out } = run('check-migrations.mjs', { cwd: dir });
+    assert.equal(code, 1, 'the files did not become safe; the guard stopped looking at them');
+    assert.match(out, /COVERAGE LOST/i);
+    assert.match(out, /services\/subly-api/);
+  });
+
+  // ── the destructive DML class ─────────────────────────────────────────────
+  // Added 2026-08-01. Mutation-proven first: a migration containing
+  // `DELETE FROM events;` + `UPDATE events SET app_id = NULL;` dropped into the
+  // real services/platform/migrations produced
+  // "check-migrations: 7 migration file(s) clean — additive-only holds.", exit 0.
+  // deploy-workers.yml applies migrations --remote with no human in the loop.
+  for (const [label, sql, needle] of [
+    ['an unfiltered DELETE', 'DELETE FROM t;\n', /DELETE without WHERE/i],
+    ['an unfiltered UPDATE that nulls a column', 'UPDATE t SET x = NULL;\n', /UPDATE .* without WHERE/i],
+    ['a multi-line unfiltered UPDATE', 'UPDATE t\n   SET x = NULL;\n', /UPDATE .* without WHERE/i],
+    ['TRUNCATE', 'TRUNCATE TABLE t;\n', /TRUNCATE/i],
+    ['DROP DATABASE', 'DROP DATABASE app;\n', /DROP DATABASE/i],
+    ['INSERT OR REPLACE', "INSERT OR REPLACE INTO t (id) VALUES ('a');\n", /INSERT OR REPLACE/i],
+    ['REPLACE INTO', "REPLACE INTO t (id) VALUES ('a');\n", /REPLACE/i],
+  ]) {
+    test(`FAILS on ${label}`, () => {
+      const { code, out } = run('check-migrations.mjs', {
+        cwd: build(`mig-dml-${label.replace(/\W+/g, '')}`, `${ADDITIVE}${sql}`),
+      });
+      assert.equal(code, 1);
+      assert.match(out, needle);
+    });
+  }
+
+  // ── the shapes that must STAY green, or the rule gets weakened within a week ─
+  test('does NOT trip on a WHERE-narrowed backfill — the shape the real tree already ships', () => {
+    // services/subly-api/migrations/0002_schema_debt.sql carries two of these,
+    // applied --remote. A blanket UPDATE ban would fail HEAD.
+    const sql = `${ADDITIVE}UPDATE t\n   SET x = lower(hex(randomblob(16)))\n WHERE x IS NULL OR x = '';\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-backfill', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  test('does NOT trip on a WHERE-narrowed DELETE', () => {
+    const sql = `${ADDITIVE}DELETE FROM t WHERE id = 'stale';\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-delwhere', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  test('does NOT trip on DELETE/TRUNCATE written in a comment', () => {
+    const sql = `-- no DELETE FROM and no TRUNCATE here, ever\n${ADDITIVE}`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-comment', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  test('does NOT trip on the words inside a string literal', () => {
+    const sql = `${ADDITIVE}INSERT INTO t (id) VALUES ('DELETE FROM t; TRUNCATE t;');\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-string', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  // ── the reviewed escape hatch ─────────────────────────────────────────────
+  test('an approved unfiltered DELETE passes AND is printed, never silently waved through', () => {
+    const sql =
+      `${ADDITIVE}-- migration:destructive-approved ADR-999 drop the dry-run rows\nDELETE FROM t;\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approved', sql) });
+    assert.equal(code, 0, out);
+    assert.match(out, /destructive statements running under an explicit approval marker/i);
+    assert.match(out, /ADR-999 drop the dry-run rows/);
+  });
+
+  test('the marker on the statement’s own line also counts', () => {
+    const sql = `${ADDITIVE}TRUNCATE t; -- migration:destructive-approved ADR-999 same repair\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approved-inline', sql) });
+    assert.equal(code, 0, out);
+    assert.match(out, /TRUNCATE — approved: ADR-999 same repair/);
+  });
+
+  // The hatch must annotate ONE statement, not open a season. A marker parked at
+  // the top of the file cannot bless everything below it.
+  test('an approval marker does NOT travel past intervening SQL', () => {
+    const sql =
+      `-- migration:destructive-approved ADR-999 the one below only\nDELETE FROM t;\n\n` +
+      `-- an unrelated note\nUPDATE t SET x = NULL;\n${ADDITIVE}`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approval-scope', sql) });
+    assert.equal(code, 1);
+    assert.match(out, /BANNED UPDATE .* without WHERE/i);
+    assert.doesNotMatch(out, /BANNED DELETE without WHERE/i);
+  });
+
+  test('a bare marker with no justification does not approve anything', () => {
+    const sql = `${ADDITIVE}-- migration:destructive-approved\nDELETE FROM t;\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approval-bare', sql) });
+    assert.equal(code, 1, 'the marker must carry a reason a reviewer can read');
+    assert.match(out, /BANNED DELETE without WHERE/i);
+  });
+
+  test('the DDL bans have NO escape hatch — only the DML class is approvable', () => {
+    const sql = `-- migration:destructive-approved ADR-999 please\nDROP TABLE t;\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-ddl-no-hatch', sql) });
+    assert.equal(code, 1, 'there is no additive reading of a DROP TABLE');
+    assert.match(out, /BANNED DROP TABLE/i);
   });
 });
 
