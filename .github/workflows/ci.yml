@@ -292,6 +292,21 @@ jobs:
       - name: The Snap Store submission path still walks (dry run)
         working-directory: ${{ github.workspace }}
         run: node tooling/release/submit-snap.mjs --dry-run --app subly --allow-missing-artifact
+      # The android-play half of the same [pipeline D-10] limb (i), and exercised
+      # on EVERY push for the same reason: a release script nobody runs rots
+      # exactly like a guard nobody feeds bad input to. `--allow-missing-artifact`
+      # because no .aab is built in this job — that flag makes the script SAY it
+      # validated the listing, the package name and the signing posture and NOT
+      # the bundle, which is the difference between a scoped check and a silent
+      # one. The full version, with a real .aab, is submit-play.yml.
+      #
+      # ⚠️ THE ONE THING THIS CATCHES THAT NOTHING ELSE DOES: Play binds the
+      # package name at the FIRST upload and it can never be changed. This step
+      # is where a hand-edited applicationId stops being shippable.
+      # Nothing here contacts Google; `--submit` refuses before it does anything.
+      - name: The Google Play submission path still walks (dry run)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/release/submit-play.mjs --dry-run --app subly --allow-missing-artifact
       # Both mechanisms this asserts already exist and are VERIFIED (F-5b); what
       # was missing was CALL SITES. R-6's own criterion ranged over "the release
       # lane", which referred to nothing — so the set is derived from what a lane
