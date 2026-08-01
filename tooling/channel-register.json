@@ -26,8 +26,9 @@
     "      { kind:\"store\" rows } x { apps }, the per-tree file list is `storeMetadataContract`, and",
     "      the MSIX identity a row declares is compared to what apps/*/pubspec.yaml packages with.",
     "  tooling/release/submit-windows-store.mjs    [10]D-10 — the same contract, read by the release",
-    "      path rather than by CI. It re-checks independently on purpose: a release path that trusts",
-    "      a check it did not run is not a release path.",
+    "  tooling/release/submit-play.mjs             [10]D-10 — path rather than by CI. They re-check",
+    "      independently on purpose: a release path that trusts a check it did not run is not a release",
+    "      path. Each reads only ITS OWN row, so neither can be made to pass by the other's channel.",
     "",
     "🔴 THE ONE RULE THAT MAKES THIS FILE MEAN ANYTHING: `served` IS THE GATE, NOT MEMBERSHIP.",
     "A row here is NOT a claim that the factory ships to that channel. Rows exist for channels that are",
@@ -136,7 +137,17 @@
         "",
         "Two limit kinds, because two different things are being counted:",
         "  `maxLines` — countable ENTRIES, one per non-blank line (MS Store search terms).",
-        "  `maxChars` — CHARACTERS of the trimmed field (Apple's app name and subtitle)."
+        "  `maxChars` — CHARACTERS of the trimmed field (Apple's name and subtitle; Play's name,",
+        "               short description and full description).",
+        "",
+        "⚠️ `maxChars` COUNTS UNICODE CODE POINTS of the trimmed file, not UTF-16 units and not bytes.",
+        "Neither Apple nor Google publishes the counting RULE — Google says only that 'Character limits",
+        "apply to both full-width and half-width characters' — so code points are the closest defensible",
+        "reading: a byte count would reject correct UTF-8 prose, and a UTF-16 length would score one",
+        "astral character as two and reject copy the store accepts. A correct limit counted the wrong way",
+        "fires on correct input exactly like an invented one. Whether a newline inside a description",
+        "counts is UNVERIFIED, so newlines ARE counted — the strict direction, which can only reject copy",
+        "already sitting on a limit we did not set."
       ],
       "windows-store": {
         "additionalFiles": ["search-terms.txt"],
@@ -213,6 +224,39 @@
           "`license.txt` is the SPDX identifier the store listing shows."
         ],
         "additionalFiles": ["snap-name.txt", "license.txt"]
+      },
+      "android-play": {
+        "_why": [
+          "Google Play publishes its three listing limits plainly, which is why this row carries numbers",
+          "where windows-store carries UNVERIFIED marks. All three are from the SAME page, fetched",
+          "2026-07-29 and recorded in [10]D-5's limits table:",
+          "support.google.com/googleplay/android-developer/answer/9859152 — app name 30, short description",
+          "80, full description 4000, with the note 'Character limits apply to both full-width and",
+          "half-width characters'.",
+          "",
+          "🔴 THE 30-CHARACTER TITLE IS THE ONE THAT ACTUALLY BITES. title.txt is DERIVED from",
+          "apps.json `name`, so the day an app is stamped with a name longer than 30 characters this",
+          "limit fails the build instead of the Play Console rejecting it after a human has already",
+          "filled in a submission form. That is the entire value of putting the number here.",
+          "",
+          "No `additionalFiles`: Play has no search-terms field. Keywords on Play come from the title and",
+          "descriptions themselves, which is a different mechanism from Microsoft's explicit term list —",
+          "recording an empty file for it would invent a field the console does not have."
+        ],
+        "maxChars": {
+          "title.txt": {
+            "max": 30,
+            "source": "support.google.com/googleplay/android-developer/answer/9859152 (fetched 2026-07-29) — app name, 30 characters"
+          },
+          "short-description.txt": {
+            "max": 80,
+            "source": "support.google.com/googleplay/android-developer/answer/9859152 (fetched 2026-07-29) — short description, 80 characters"
+          },
+          "long-description.txt": {
+            "max": 4000,
+            "source": "support.google.com/googleplay/android-developer/answer/9859152 (fetched 2026-07-29) — full description, 4000 characters"
+          }
+        }
       }
     }
   },
@@ -281,21 +325,84 @@
         }
       },
       "minimumToolchain": ["flutter", "java"],
-      "lane": null,
+      "lane": {
+        "workflow": ".github/workflows/build-platforms.yml",
+        "job": "linux_web_android",
+        "_why": [
+          "The row's lane is the job that EMITS the format the row accepts. That job now runs",
+          "`flutter build appbundle --release` alongside the existing `flutter build apk --release` and",
+          "uploads BOTH — so section 3b's lane-vs-format comparison has a real answer for this row",
+          "instead of the FORMAT GAP it printed while the only android artifact in the tree was a .apk.",
+          "",
+          "⚠️ THE .apk IS KEPT ON PURPOSE, not left behind. Play takes the .aab and only the .aab, but an",
+          "app bundle is not installable: it is a publishing format Google re-splits per device. The .apk",
+          "is the only artifact anybody can sideload onto a real handset to check the build, and this box",
+          "cannot build Android at all (CLAUDE.md: Selector.open() is broken Windows-socket-wide), so CI's",
+          "artifact is the ONLY way a human touches an Android build today. Dropping it to 'clean up' would",
+          "trade a real capability for a tidier YAML.",
+          "",
+          "⚠️ `served` is still false and stays false: a lane that BUILDS the artifact is not a channel",
+          "that SHIPS it. Serving needs OWNER_QUEUE A-3 (the publisher account), the 12-tester closed",
+          "test, and a real upload key."
+        ]
+      },
       "deploymentEnvironment": "{app}-android-play",
       "storeMetadataDir": "apps/{app}/store/android-play",
       "ownerQueue": "A-3",
+      "submission": {
+        "_why": [
+          "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
+          "parsed rather than grepped. Limb (ii) is the runbook below — company/ is gitignored so no CI",
+          "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
+          "is in one place a guard could reach if company/ ever ships. Limb (iii) — a submission record",
+          "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
+        ],
+        "script": "tooling/release/submit-play.mjs",
+        "workflow": ".github/workflows/submit-play.yml",
+        "job": "dry-run",
+        "runbook": "company/runbooks/store-submission-android.md"
+      },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — native store work is deferred until an app proves it converts strangers.",
         "alsoBlockedBy": "Play Organization needs a D-U-N-S (OWNER_QUEUE A-3, waiting by choice). Play Individual needs none but costs the 12-tester / 14-day closed-testing window."
       },
       "notes": [
-        "🔴 TWO INDEPENDENT REASONS PLAY REFUSES WHAT CI BUILDS TODAY, and the register records both.",
-        "FORMAT: developer.android.com/guide/app-bundle — 'From August 2021, new apps are required to",
-        "publish with the Android App Bundle on Google Play.' build-platforms.yml runs `flutter build apk`.",
-        "SIGNING: apps/subly/android/app/build.gradle.kts resolves `release` to signingConfigs debug.",
-        "So the green 'Android builds' tick is a proof about an artifact Play rejects twice over.",
-        "The key we hold is an UPLOAD key, not the app signing key — different loss consequences."
+        "🔴 TWO INDEPENDENT REASONS PLAY REFUSED WHAT CI BUILT, and the register recorded both. ONE IS",
+        "NOW CLOSED AND ONE IS DELIBERATELY NOT.",
+        "",
+        "✅ FORMAT — CLOSED. developer.android.com/guide/app-bundle: 'From August 2021, new apps are",
+        "required to publish with the Android App Bundle on Google Play.' The lane above now emits a .aab,",
+        "so the register's own lane-vs-format comparison stopped printing a gap for this row. It printed",
+        "one from 2026-07-31 (when [pipeline F-2]'s hardening taught the guard to READ artifactFormats)",
+        "until the .aab lane landed — a contradiction this file recorded in prose long before any build",
+        "could fail on it.",
+        "",
+        "🔒 SIGNING — OPEN BY OWNER DECISION, NOT BY OVERSIGHT. apps/{app}/android/app/build.gradle.kts",
+        "still resolves `release` to `signingConfigs.getByName(\"debug\")` when no keystore is supplied, and",
+        "that is a RECORDED owner decision — a debug-signed BUILD PROOF is exactly what this lane is for,",
+        "and the review fleet has already refuted 'debug-signed Android' as a defect. What changed is only",
+        "the SHAPE: the release block now reads a keystore from `android/key.properties` or from the",
+        "environment WHEN PRESENT and falls back to today's behaviour when absent, so the owner supplies",
+        "secrets later without a code change. Half a keystore FAILS the build rather than silently",
+        "falling back — a partially-configured signing config is the one state that produces an artifact",
+        "nobody can explain.",
+        "🔴 THE UPLOAD KEY IS NOT THE APP SIGNING KEY. With Play App Signing, Google holds the key end",
+        "users' installs are bound to and we hold only the key that authenticates an upload; losing ours",
+        "is a reset-and-continue, not the unrecoverable event `app-signing-key` describes. That asymmetry",
+        "is the whole reason `keyKind` distinguishes the two.",
+        "",
+        "⬜ THE 12-TESTER / 14-DAY CLOSED TEST IS A CALENDAR, NOT A TASK. Google, verbatim: 'at least 12",
+        "testers must be opted-in to your closed test when you apply for production access' and they",
+        "'must have been opted-in for the last 14 days continuously'",
+        "(support.google.com/googleplay/android-developer/answer/14151465, fetched 2026-07-29). Scope is",
+        "'developers with personal accounts created after November 13, 2023'. Nothing in this repo can",
+        "shorten it and nothing here should pretend to: it is OWNER_QUEUE A-3's, recorded in",
+        "company/runbooks/store-submission-android.md.",
+        "",
+        "🟢 THE ENGINEERING PATH IS BUILT (everything except the account and the tester window). `lane`",
+        "emits the .aab, `storeMetadataDir` carries a real tree checked by tooling/ci/",
+        "assert-store-metadata.mjs [10]D-5, and `submission.script` dry-runs end to end without contacting",
+        "Google [10]D-10 limb (i). `served` stays FALSE and MUST."
       ]
     },
     {
