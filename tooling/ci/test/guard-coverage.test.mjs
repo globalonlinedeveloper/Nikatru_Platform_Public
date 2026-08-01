@@ -8,18 +8,48 @@
 // Fake trees, because the real tree is (by design) always compliant — which is
 // exactly the blind spot F-10 exists to remove.
 //
+// 🔴 READ THIS BEFORE EDITING THE FIXTURES. Until 2026-08-01 the helpers below
+// carried `testFiles = 37` and `compliant(…, 42)` — numbers that had to be
+// ratcheted in lockstep with MIN_TEST_FILES and MIN_GUARDS in the guard, because
+// a fixture under the floor turned every green case red for a reason that had
+// nothing to do with the behaviour under test. That coupling is GONE with the
+// floors: the fixtures now build FOUR guards and THREE test files and will never
+// need touching as the real tree grows. If you ever find yourself raising a
+// number here to make a test pass, something has regressed to the old shape.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, unlinkSync, statSync, appendFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-guard-coverage.mjs');
+const MANIFEST_REL = join('tooling', 'ci', 'test', 'coverage-manifest.json');
+
+/** The paths NO_NEGATIVE_TEST_NEEDED excuses, READ OUT OF THE GUARD rather than
+ *  copied here — for two reasons, and the second one is not obvious.
+ *
+ *  1. A hardcoded copy drifts. Deriving it means a real-mode fixture always
+ *     models the exemption list that actually exists.
+ *  2. 🔴 WRITING THOSE PATHS OUT AS LITERALS IN THIS FILE BREAKS THE GUARD IT
+ *     TESTS. "Is this script named anywhere in the suite?" is how the guard
+ *     decides an outside script HAS a negative test, and the corpus is every
+ *     file in test/ — including this one. A literal `'tooling/e2e/purge.mjs'`
+ *     here made the real repository report all three e2e scripts as COVERED,
+ *     silently emptying the exemption list and overstating coverage. Caught on
+ *     the first real run after the fixtures were written. Keep this derived;
+ *     do not paste the paths back in. */
+const EXCUSED = (() => {
+  const src = readFileSync(GUARD, 'utf8');
+  const block = src.match(/NO_NEGATIVE_TEST_NEEDED = new Map\(\[([\s\S]*?)\n\]\);/);
+  assert.ok(block, 'could not find NO_NEGATIVE_TEST_NEEDED in the guard — the fixtures cannot model it');
+  return [...block[1].matchAll(/'(tooling\/[^']+\.mjs)'/g)].map((m) => m[1]);
+})();
 
 let TMP;
 before(() => {
@@ -32,59 +62,90 @@ after(() => {
 let seq = 0;
 /**
  * Build a fake repo.
+ *
  * @param guards  map of filename -> source text
- * @param tests   number of test files that mention every guard (0 = mention none)
- * ⚠️ testFiles defaults to 37 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
- * → 32 → 33 → 34 → 35 → 37 (2026-07-31, then eight times on 2026-08-01: the seventh
- * where stage 3 · THE STAMPER met stage 4 · B-1, the eighth where stage 8 · COMPLIANCE
- * & LEGAL met that result) — a fixture below the floor would make
- * every green case here red for a reason that has nothing to do with the behaviour
- * under test. Ratchet the floor and this default together, always.
- * ⚠️ THREE of those ratchets were MERGES, and the third settles it: every time, two
- * branches each ratcheted honestly against their own tree, and the merged tree had
- * more test files than either had ever seen. Neither branch's number was wrong and
- * neither was right — re-measure ON THE MERGE, and do not reach for the higher of the
- * two, which is the same mistake wearing a disguise.
- * `files` writes extra files at the fixture root (e.g. a ci.yml manifest).
+ * @param opts.testFiles      how many test files to write (each naming every guard)
+ * @param opts.mentionAll     false = the test files name nothing real
+ * @param opts.hollow         file 0 is present but declares no test
+ * @param opts.commentsOnly   every test file is comments only
+ * @param opts.files          extra files written at the fixture root
+ * @param opts.scripts        executables OUTSIDE tooling/ci, created on disk AND
+ *                            invoked by the generated workflow — the derived
+ *                            subject set that replaced the hand-written
+ *                            COVERED_SCRIPTS map
+ * @param opts.mentionScripts whether the test files name those scripts
+ * @param opts.workflow       replace the generated workflow entirely
+ * @param opts.invoke         override which guard filenames the workflow invokes
+ * @param opts.manifest       pre-seed tooling/ci/test/coverage-manifest.json
+ * @param opts.real           copy the REAL guard into the fixture so it can be
+ *                            invoked with no argv[2] — i.e. in the same
+ *                            "scanning the real repository" mode ci.yml uses
  */
 function repo(
   guards,
   {
-    testFiles = 37,
+    testFiles = 3,
     mentionAll = true,
     hollow = false,
     commentsOnly = false,
     files = {},
-    // [pipeline S-12r] The named executables OUTSIDE tooling/ci that must still
-    // carry a negative test. The fixture ships the real list by default because
-    // the guard now reads it: a fixture that omitted them would make every case
-    // here COVERAGE LOST, and "the fixture does not model the tree" is how a
-    // guard's tests end up encoding the guard's own blind spot.
     scripts = ['tooling/scripts/provision-backend.mjs'],
+    /** created on disk and invoked by the workflow, but deliberately NEVER named
+     *  by a test file — i.e. the shape NO_NEGATIVE_TEST_NEEDED excuses. */
+    excused = [],
     mentionScripts = true,
+    workflow,
+    invoke,
+    manifest,
+    real = false,
   } = {},
 ) {
   const root = join(TMP, `r${seq++}`);
   const ci = join(root, 'tooling', 'ci');
   const t = join(ci, 'test');
   mkdirSync(t, { recursive: true });
-  for (const [name, src] of Object.entries(guards)) writeFileSync(join(ci, name), src);
-  for (const rel of scripts) {
+
+  const all = { ...guards };
+  // The guard under test, copied in, so that invoking THE COPY with no argument
+  // puts it in real-repo mode against the fixture. Any other way of reaching
+  // those limbs would mean adding a "pretend this is the real repo" switch to a
+  // guard, and a switch that relaxes a guard is a switch someone will find.
+  if (real) all['assert-guard-coverage.mjs'] = readFileSync(GUARD, 'utf8');
+
+  for (const [name, src] of Object.entries(all)) writeFileSync(join(ci, name), src);
+  for (const rel of [...scripts, ...excused]) {
     const abs = join(root, rel);
     mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, '#!/usr/bin/env node\n// a named non-guard executable\n');
+    writeFileSync(abs, '#!/usr/bin/env node\n// an executable a workflow runs\n');
   }
+
+  // EVERY GUARD IS WIRED INTO A WORKFLOW BY DEFAULT, because that is now the
+  // property that pins the guard set. A fixture that skipped it would model a
+  // tree that cannot exist.
+  const invoked = invoke ?? Object.keys(all);
+  const generated =
+    'name: fixture\non: [push]\njobs:\n  guards:\n    runs-on: ubuntu-latest\n    steps:\n' +
+    invoked.map((g) => `      - run: node tooling/ci/${g}\n`).join('') +
+    [...scripts, ...excused].map((s) => `      - run: node ${s}\n`).join('') +
+    '      - run: node --test "tooling/ci/test/*.test.mjs"\n';
+  if (workflow !== null) {
+    const wf = join(root, '.github', 'workflows', 'ci.yml');
+    mkdirSync(dirname(wf), { recursive: true });
+    writeFileSync(wf, workflow ?? generated);
+  }
+
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(root, rel);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
   }
+
   // ⚠️ These must be REAL test declarations, not comments. This fixture used to
   // write `// <guard-name>` and pass — encoding the same blind spot the guard
   // itself had, so neither could see that a hollowed-out test file covers
   // nothing. Found 2026-07-27 while closing F-10.
   const covered = mentionAll
-    ? [...Object.keys(guards), ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
+    ? [...Object.keys(all), ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
     : ['nothing-real.mjs'];
   for (let i = 0; i < testFiles; i++) {
     // commentsOnly reproduces this fixture's ORIGINAL behaviour, kept so the fix
@@ -93,8 +154,8 @@ function repo(
       writeFileSync(join(t, `t${i}.test.mjs`), `// ${covered.join('\n// ')}\n`);
       continue;
     }
-    // hollow leaves file 0 present but declaring nothing — it still counts
-    // toward MIN_TEST_FILES while asserting exactly zero.
+    // hollow leaves file 0 present but declaring nothing — the ratchet would
+    // otherwise record a floor of zero for a file that asserts zero.
     if (hollow && i === 0) {
       writeFileSync(join(t, `t${i}.test.mjs`), `// ${covered.join('\n// ')}\n`);
       continue;
@@ -105,177 +166,462 @@ function repo(
       `import { test } from 'node:test';\nimport assert from 'node:assert/strict';\n${body}\n`,
     );
   }
+
+  if (manifest !== undefined) writeFileSync(join(root, MANIFEST_REL), `${JSON.stringify(manifest, null, 2)}\n`);
   return root;
 }
 
-/** 42 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39 →
- *  40 → 42, 2026-07-31, then six times on 2026-08-01 — the last on the merge where
- *  stage 8 · COMPLIANCE & LEGAL met stage 3 + stage 4, adding
- *  assert-repo-posture.mjs and assert-policy-archive.mjs to a 42-guard tree
- *  [8]K-12/K-4). Deliberately equal to MIN_GUARDS, not to the real tree's count:
- *  this fixture exists to sit exactly ON the floor so the case below can sit one
- *  under it. */
-function compliant(extra = {}, count = 42) {
+/** FOUR compliant guards. Deliberately a small constant with no relationship to
+ *  the real tree's size — proving the fixture no longer tracks a floor. */
+function compliant(extra = {}, count = 4) {
   const g = {};
   for (let i = 0; i < count; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
   return { ...g, ...extra };
 }
 
+/** FIXTURE MODE — the guard is pointed at a root it was told about. */
 const run = (root) => spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+
+/** REAL-REPO MODE — the COPY inside the fixture is invoked with no argument, so
+ *  `scanningRealRepo` is true and the limbs that only apply to the real tree
+ *  (the git workflow manifest, the ratchet's existence) actually run. */
+const runReal = (root) =>
+  spawnSync(process.execPath, [join(root, 'tooling', 'ci', 'assert-guard-coverage.mjs')], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+
+/** Make the fixture a real git repo, so `git ls-files -- .github/workflows`
+ *  answers, exactly as it does in CI. */
+function gitify(root) {
+  const g = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  g('init', '-q');
+  g('config', 'user.email', 'fixture@local');
+  g('config', 'user.name', 'fixture');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'fixture');
+}
+
+const readManifest = (root) => JSON.parse(readFileSync(join(root, MANIFEST_REL), 'utf8'));
 
 describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /42 guard\(s\), all named in 37 test file\(s\)/);
+    assert.match(r.stdout, /4 guard\(s\) in tooling\/ci, exactly the 4 the 1 workflow\(s\) invoke/);
+    assert.match(r.stdout, /all named in 3 test file\(s\)/);
   });
 
-  test('a guard no test mentions FAILS', () => {
-    const r = run(repo(compliant({ 'assert-lonely.mjs': 'COVERAGE LOST\n' }), { mentionAll: false }));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /no test file mentions it/);
-  });
+  // ── THE INVOCATION IDENTITY — what replaced MIN_GUARDS ────────────────────
+  // A floor could only say "not zero-ish"; MIN_GUARDS = 42 against 44 let TWO
+  // guards be deleted outright with nothing said, and never covered
+  // assert-gate-passed.mjs or record-deployment.mjs at all, because the old
+  // cross-check read ci.yml alone and those two are invoked by the deploy
+  // workflows. Both directions are checked now, so neither set can shrink alone.
+  describe('the invocation identity (replaces MIN_GUARDS)', () => {
+    test('a guard a workflow INVOKES but the scan cannot find FAILS, naming it', () => {
+      const r = run(repo(compliant(), { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs', 'assert-vanished.mjs'] }));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /invoke 1 guard\(s\) this scan did not find: assert-vanished\.mjs/);
+    });
 
-  test('a scanning guard with no coverage self-check FAILS', () => {
-    const r = run(repo(compliant({ 'assert-blind.mjs': 'console.log("ok, scanned everything");\n' })));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /no "COVERAGE LOST" self-check/);
-    // The message must offer the legitimate escape, or people invent a worse one.
-    assert.match(r.stderr, /NOT_A_SCANNER with a reason/);
-  });
+    test('a guard NO workflow invokes FAILS, naming it', () => {
+      // The half that never existed. A guard nothing runs cannot fail a build:
+      // it is covered on paper, inert in practice, and it inflates every count
+      // taken over this directory — which is how a floor drifts upward while
+      // real coverage stands still.
+      const r = run(repo(compliant({ 'assert-orphan.mjs': 'COVERAGE LOST\n' }), { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs'] }));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /1 guard\(s\) in tooling\/ci are invoked by NO workflow/);
+      assert.match(r.stderr, /assert-orphan\.mjs/);
+      assert.match(r.stderr, /cannot fail a build/);
+    });
 
-  test('a named non-scanner is exempt, and the exemption is counted out loud', () => {
-    const r = run(repo(compliant({ 'assert-gate-passed.mjs': 'const sha = process.argv[2];\n' })));
-    assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /1 exempt with a recorded reason/);
-  });
-
-  test('a test file that declares NO tests FAILS', () => {
-    // The file is present, so it still satisfies MIN_TEST_FILES — and it runs
-    // nothing. Counting files is not counting tests.
-    const r = run(repo(compliant(), { hollow: true }));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /declare no tests/);
-  });
-
-  test('a guard named only inside a COMMENT is not covered', () => {
-    // This is what this fixture used to write for every file, and the guard
-    // accepted it: `includes()` over raw text cannot tell code from prose.
-    const r = run(repo(compliant(), { commentsOnly: true }));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /declare no tests/);
-  });
-
-  test('an exempt guard that GROWS a scan loses the exemption', () => {
-    // Otherwise an exemption granted once quietly outlives the reason for it.
-    const r = run(repo(compliant({ 'record-deployment.mjs': 'if (!ok) throw new Error("COVERAGE LOST");\n' })));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /listed in NOT_A_SCANNER but now contains/);
-  });
-
-  test('COVERAGE: too few guards is "the scan is broken", not "all clear"', () => {
-    const r = run(repo({ 'assert-one.mjs': 'COVERAGE LOST\n' }));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST — found 1 guard\(s\)/);
-    assert.match(r.stderr, /reports perfect coverage/);
-  });
-
-  test('COVERAGE: too few test files is caught', () => {
-    const r = run(repo(compliant(), { testFiles: 1 }));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /found 1 test file\(s\)/);
-  });
-
-  test('COVERAGE: a missing tooling/ci is caught rather than reported clean', () => {
-    const root = join(TMP, 'bare');
-    mkdirSync(root, { recursive: true });
-    const r = run(root);
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST/);
-  });
-
-  test('COVERAGE: ONE guard below the ratcheted floor FAILS — the floor tracks reality, not history', () => {
-    // The original floors froze at 15/4/140 while the tree grew to 37/27/533,
-    // so 22 guards could vanish from the scan without tripping anything
-    // (triage 2026-07-31, mutation-proven). This pins the ratchet: when
-    // the tree grows again, ratchet the floor AND this fixture together.
-    // Ratcheted to 42 on 2026-08-01 with the stage-8 compliance guards ([8]K-12/K-4).
-    const r = run(repo(compliant({}, 41)));
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST — found 41 guard\(s\)/);
-  });
-
-  test('COVERAGE: a .mjs moved into a subdirectory of tooling/ci FAILS loudly, naming it', () => {
-    // readdirSync(CI) is flat — pre-fix, a "tidy into tooling/ci/guards/"
-    // refactor dropped every moved guard from BOTH per-guard checks while the
-    // guard printed its intended pass message (triage 2026-07-31).
-    const root = repo(compliant());
-    const sub = join(root, 'tooling', 'ci', 'guards');
-    mkdirSync(sub, { recursive: true });
-    writeFileSync(join(sub, 'assert-hidden.mjs'), 'if (x) throw new Error("COVERAGE LOST");\n');
-    const r = run(root);
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST/);
-    assert.match(r.stderr, /tooling\/ci\/guards\/assert-hidden\.mjs/);
-  });
-
-  test('COVERAGE: a guard ci.yml invokes but the scan cannot find FAILS, naming it', () => {
-    // The floors are relationships now: ci.yml is the committed manifest of
-    // what CI actually runs, so an invoked guard the scan does not see means
-    // the two have diverged — deleting a wired-in guard must not pass clean.
-    const r = run(
-      repo(compliant(), {
-        files: {
-          '.github/workflows/ci.yml':
+    test('a COMMENTED-OUT invocation does not count as wiring', () => {
+      // Otherwise `# - run: node tooling/ci/assert-x.mjs` would satisfy the
+      // identity for a guard nothing runs, which is worse than no check.
+      const r = run(
+        repo(compliant(), {
+          workflow:
             'jobs:\n  guards:\n    steps:\n' +
-            '      - run: node tooling/ci/assert-thing-0.mjs\n' +
-            '      - run: node tooling/ci/assert-vanished.mjs\n',
-        },
-      }),
-    );
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST — ci\.yml invokes 1 guard\(s\)/);
-    assert.match(r.stderr, /assert-vanished\.mjs/);
-  });
+            '      # - run: node tooling/ci/assert-thing-0.mjs\n' +
+            '      - run: node tooling/ci/assert-thing-1.mjs\n' +
+            '      - run: node tooling/ci/assert-thing-2.mjs\n' +
+            '      - run: node tooling/ci/assert-thing-3.mjs\n' +
+            '      - run: node tooling/scripts/provision-backend.mjs\n',
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /invoked by NO workflow/);
+      assert.match(r.stderr, /assert-thing-0\.mjs/);
+    });
 
-  // ── [pipeline S-12r] the NAMED non-guard executables ──────────────────────
-  // tooling/scripts/provision-backend.mjs had neither F-10 property — no CI
-  // invocation, no test — purely because it sits one directory outside the set
-  // this scan reads. A filing accident was deciding what got covered.
-  test('a named script under tooling/scripts with no test FAILS', () => {
-    const r = run(repo(compliant(), { mentionScripts: false }));
-    assert.equal(r.status, 1, r.stdout);
-    assert.match(r.stderr, /tooling\/scripts\/provision-backend\.mjs — no test file mentions it/);
-    assert.match(r.stderr, /required to have one because/);
-  });
-
-  // The self-check on the list itself: an entry pointing at a file that has been
-  // moved or deleted would sit here looking like coverage while covering
-  // nothing — this guard's own failure mode, applied to itself.
-  test('COVERAGE LOST when a NAMED script does not exist at all', () => {
-    const r = run(repo(compliant(), { scripts: [] }));
-    assert.equal(r.status, 1, r.stdout);
-    assert.match(r.stderr, /COVERAGE LOST — tooling\/scripts\/provision-backend\.mjs is named in COVERED_SCRIPTS but does not exist/);
-  });
-
-  test('the passing line reports how many named non-guard scripts were covered', () => {
-    const r = run(repo(compliant()));
-    assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /1 named non-guard script\(s\) outside tooling\/ci also covered/);
-  });
-
-  test('a ci.yml whose invocations are all found passes, and comments do not count as invocations', () => {
-    const r = run(
-      repo(compliant(), {
-        files: {
-          '.github/workflows/ci.yml':
+    test('a workflow invoking a NESTED tooling/ci path FAILS — this scan is flat', () => {
+      const r = run(
+        repo(compliant(), {
+          workflow:
             'jobs:\n  guards:\n    steps:\n' +
-            '      # was: node tooling/ci/assert-retired.mjs\n' +
-            '      - run: node tooling/ci/assert-thing-0.mjs\n' +
-            '      - run: node --test "tooling/ci/test/*.test.mjs"\n',
-        },
-      }),
-    );
-    assert.equal(r.status, 0, r.stderr);
+            ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs']
+              .map((g) => `      - run: node tooling/ci/${g}\n`)
+              .join('') +
+            '      - run: node tooling/ci/guards/assert-buried.mjs\n' +
+            '      - run: node tooling/scripts/provision-backend.mjs\n',
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /invoke a tooling\/ci path this FLAT scan cannot audit/);
+      assert.match(r.stderr, /tooling\/ci\/guards\/assert-buried\.mjs/);
+    });
+
+    test('no .github/workflows at all is COVERAGE LOST, not a clean pass', () => {
+      // The workflows ARE the anchor now. Losing them and passing would be the
+      // floors' failure mode with the numbers taken out.
+      const r = run(repo(compliant(), { workflow: null }));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /COVERAGE LOST/);
+      assert.match(r.stderr, /invocation identity ranged over nothing/);
+    });
+
+    test('a .mjs moved into a subdirectory of tooling/ci FAILS loudly, naming it', () => {
+      // readdirSync(CI) is flat — pre-fix, a "tidy into tooling/ci/guards/"
+      // refactor dropped every moved guard from BOTH per-guard checks while the
+      // guard printed its intended pass message (triage 2026-07-31).
+      const root = repo(compliant());
+      const sub = join(root, 'tooling', 'ci', 'guards');
+      mkdirSync(sub, { recursive: true });
+      writeFileSync(join(sub, 'assert-hidden.mjs'), 'if (x) throw new Error("COVERAGE LOST");\n');
+      const r = run(root);
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /COVERAGE LOST/);
+      assert.match(r.stderr, /tooling\/ci\/guards\/assert-hidden\.mjs/);
+    });
+
+    // 🔴 THE HEADLINE. This is the case the three hand-ratcheted floors could
+    // not satisfy: adding a guard and a test file used to require raising
+    // MIN_GUARDS, MIN_TEST_FILES and MIN_TEST_CASES and moving the fixtures in
+    // the same commit — a three-line shared mutable every parallel branch wrote
+    // to, which collided on PRs #112, #113 and #114 in a single day.
+    test('ADDING a guard and a test file passes with NO edit to any floor', () => {
+      const r = run(
+        repo(compliant({ 'assert-brand-new.mjs': 'if (n === 0) throw new Error("COVERAGE LOST");\n' }), {
+          testFiles: 4,
+        }),
+      );
+      assert.equal(r.status, 0, r.stderr + r.stdout);
+      assert.match(r.stdout, /5 guard\(s\) in tooling\/ci, exactly the 5 the 1 workflow\(s\) invoke/);
+      assert.match(r.stdout, /all named in 4 test file\(s\)/);
+    });
+  });
+
+  // ── THE RATCHET — what replaced MIN_TEST_FILES and MIN_TEST_CASES ─────────
+  describe('the per-file ratchet (replaces MIN_TEST_FILES and MIN_TEST_CASES)', () => {
+    test('a first run records every test file and passes', () => {
+      const root = repo(compliant());
+      const r = run(root);
+      assert.equal(r.status, 0, r.stderr);
+      const m = readManifest(root);
+      assert.deepEqual(Object.keys(m).sort(), ['t0.test.mjs', 't1.test.mjs', 't2.test.mjs']);
+      assert.ok(m['t0.test.mjs'] > 0);
+    });
+
+    test('a recorded test file that is GONE fails, and says a guard lost its failing case', () => {
+      // The mutation the old floors missed outright: deleting one test file took
+      // 39 → 38 against MIN_TEST_FILES = 37, and any guard it named was usually
+      // named by another file too.
+      const root = repo(compliant());
+      assert.equal(run(root).status, 0);
+      unlinkSync(join(root, 'tooling', 'ci', 'test', 't1.test.mjs'));
+      const r = run(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /ratchet went BACKWARDS/);
+      assert.match(r.stderr, /t1\.test\.mjs — recorded with \d+ test case\(s\) and the file is GONE/);
+    });
+
+    test('ONE case deleted from ONE file fails, naming the delta', () => {
+      // Strictly stronger than the total ever was: under MIN_TEST_CASES = 1068
+      // against 1106, thirty-eight cases could leave one file unremarked.
+      const root = repo(compliant(), { manifest: { 't0.test.mjs': 99 } });
+      const r = run(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /t0\.test\.mjs — 99 test case\(s\) recorded, 5 found\. 94 case\(s\) left the suite\./);
+    });
+
+    test('MORE cases than recorded RISES the ratchet and passes — no hand edit', () => {
+      const root = repo(compliant(), { manifest: { 't0.test.mjs': 1 } });
+      const r = run(root);
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /ratchet raised in/);
+      assert.match(r.stdout, /↑ t0\.test\.mjs 1 → 5/);
+      assert.equal(readManifest(root)['t0.test.mjs'], 5);
+    });
+
+    test('a brand-new test file is recorded automatically, not rejected', () => {
+      const root = repo(compliant(), { manifest: { 't0.test.mjs': 5, 't1.test.mjs': 5 } });
+      const r = run(root);
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /\+ t2\.test\.mjs \(5\)/);
+      assert.equal(readManifest(root)['t2.test.mjs'], 5);
+    });
+
+    test('an unchanged tree does NOT rewrite the manifest — not even byte-identically', () => {
+      // Otherwise every run touches a committed file, and a guard that always
+      // dirties the tree trains people to `git checkout --` the manifest, which
+      // discards real ratchet rises with the noise.
+      //
+      // 🔴 ASSERT ON mtime, NOT ON CONTENT. Comparing the bytes cannot fail:
+      // rewriting the same value produces the same bytes, so the first version
+      // of this test stayed green with the write made unconditional. Found by
+      // reverting the limb (2026-08-01) — an assertion that cannot fail is
+      // worse than none.
+      const root = repo(compliant());
+      const p = join(root, MANIFEST_REL);
+      assert.equal(run(root).status, 0);
+      const before = { body: readFileSync(p, 'utf8'), at: statSync(p).mtimeMs };
+      assert.equal(run(root).status, 0);
+      assert.equal(readFileSync(p, 'utf8'), before.body);
+      assert.equal(statSync(p).mtimeMs, before.at, 'a clean run must not touch the manifest at all');
+    });
+
+    test('an unparseable manifest is COVERAGE LOST, not an empty ratchet', () => {
+      const root = repo(compliant());
+      writeFileSync(join(root, MANIFEST_REL), '{ not json');
+      const r = run(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /COVERAGE LOST/);
+      assert.match(r.stderr, /could not be parsed/);
+    });
+
+    test('a manifest that is not an object is COVERAGE LOST', () => {
+      const root = repo(compliant());
+      writeFileSync(join(root, MANIFEST_REL), '[1,2,3]');
+      const r = run(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /is not a JSON object/);
+    });
+
+    test('a test file that declares NO tests FAILS before the ratchet records a zero', () => {
+      const r = run(repo(compliant(), { hollow: true }));
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /declare no tests/);
+    });
+
+    test('a guard named only inside a COMMENT is not covered', () => {
+      // This is what this fixture used to write for every file, and the guard
+      // accepted it: `includes()` over raw text cannot tell code from prose.
+      const r = run(repo(compliant(), { commentsOnly: true }));
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /declare no tests/);
+    });
+  });
+
+  // ── limbs that only apply to the REAL repository ──────────────────────────
+  // Reached by invoking the COPY of the guard inside the fixture with no
+  // argument, which is exactly how ci.yml calls it.
+  describe('real-repo mode', () => {
+    /** Real mode REFUSES to create the ratchet from nothing — that is the point
+     *  of it. So a real-mode fixture is seeded by one fixture-mode run first,
+     *  exactly as the real repository's manifest was bootstrapped. It also ships
+     *  every EXCUSED path, because in real mode that map's own self-check runs
+     *  and a fixture that did not model it would fail for a reason unrelated to
+     *  the behaviour under test. */
+    const seeded = (opts) => {
+      const root = repo(compliant(), { real: true, excused: EXCUSED, ...opts });
+      const seed = run(root);
+      assert.equal(seed.status, 0, `fixture-mode seed failed: ${seed.stderr}`);
+      gitify(root);
+      return root;
+    };
+
+    test('a git-tracked, workflow-wired fixture passes in real mode', () => {
+      const r = runReal(seeded());
+      assert.equal(r.status, 0, r.stderr + r.stdout);
+    });
+
+    test('a DELETED ratchet manifest is COVERAGE LOST on the real repo', () => {
+      const root = seeded();
+      assert.equal(runReal(root).status, 0);
+      unlinkSync(join(root, MANIFEST_REL));
+      const r = runReal(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /coverage-manifest\.json does not exist/);
+      assert.match(r.stderr, /resets every/);
+    });
+
+    test('an EMPTIED ratchet manifest is COVERAGE LOST — the one reset that would be silent', () => {
+      const root = seeded();
+      assert.equal(runReal(root).status, 0);
+      writeFileSync(join(root, MANIFEST_REL), '{}\n');
+      const r = runReal(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /coverage-manifest\.json is empty/);
+      assert.match(r.stderr, /deleting the floor, not resetting a cache/);
+    });
+
+    test('no git manifest for the workflows is COVERAGE LOST on the real repo', () => {
+      // Without it, "did I see every workflow" cannot be answered — and there is
+      // deliberately no fallback number left to answer it with.
+      const root = repo(compliant(), { real: true });
+      const r = runReal(root); // NOT gitified
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /returned no tracked workflow/);
+    });
+
+    test('a workflow git TRACKS but the scan never opened is COVERAGE LOST', () => {
+      // A workflow that vanishes from the scan takes its guard invocations with
+      // it, shrinking the identity's right-hand side without a word.
+      const root = repo(compliant(), { real: true });
+      writeFileSync(join(root, '.github', 'workflows', 'extra.yml'), 'name: extra\njobs: {}\n');
+      gitify(root);
+      unlinkSync(join(root, '.github', 'workflows', 'extra.yml'));
+      const r = runReal(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /never saw: extra\.yml/);
+    });
+
+    test('an excused outside script no workflow invokes is caught on the real repo', () => {
+      // NO_NEGATIVE_TEST_NEEDED's own self-check: an exception for something
+      // that is not there reports judgement over nothing. Only meaningful in
+      // real-repo mode, since the map names this repository's own paths.
+      const pass = runReal(seeded());
+      assert.equal(pass.status, 0, `every excused script invoked → passes\n${pass.stderr}`);
+      assert.match(pass.stdout, new RegExp(`${EXCUSED.length} excused`));
+
+      // Drop the LAST excused path from the workflow: the file is still there,
+      // but nothing runs it, so the exception now excuses a subject that is not
+      // a subject. (Derived, never pasted — see the note on EXCUSED.)
+      const dropped = EXCUSED[EXCUSED.length - 1];
+      const root2 = seeded({
+        workflow:
+          'jobs:\n  guards:\n    steps:\n' +
+          ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs', 'assert-guard-coverage.mjs']
+            .map((g) => `      - run: node tooling/ci/${g}\n`)
+            .join('') +
+          '      - run: node tooling/scripts/provision-backend.mjs\n' +
+          EXCUSED.slice(0, -1).map((s) => `      - run: node ${s}\n`).join(''),
+      });
+      const r = runReal(root2);
+      assert.equal(r.status, 1, r.stdout);
+      assert.ok(
+        r.stderr.includes(`${dropped} is excused in NO_NEGATIVE_TEST_NEEDED but no workflow invokes it`),
+        r.stderr,
+      );
+    });
+  });
+
+  // ── the two per-guard properties F-10 is actually about ───────────────────
+  describe('the per-guard properties', () => {
+    test('a guard no test mentions FAILS', () => {
+      const r = run(repo(compliant({ 'assert-lonely.mjs': 'COVERAGE LOST\n' }), { mentionAll: false }));
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /no test file mentions it/);
+    });
+
+    test('a guard named ONLY inside a comment, in an otherwise real test file, is NOT covered', () => {
+      // `includes()` over raw text cannot tell code from prose, so a test file
+      // could be gutted to its header and still "cover" every guard it names.
+      //
+      // 🔴 THE commentsOnly CASE DOES NOT COVER THIS LIMB. That fixture makes
+      // EVERY file comments-only, so the hollow check fires first and the corpus
+      // stripping is never reached — reverting the stripping left the suite
+      // green (found 2026-08-01 by reverting it). This case keeps the file's
+      // real declarations and moves only the NAME into a comment, which is the
+      // shape that actually reaches the limb.
+      const names = Object.keys(compliant());
+      const root = repo(compliant(), { invoke: [...names, 'assert-comment-only.mjs'] });
+      writeFileSync(join(root, 'tooling', 'ci', 'assert-comment-only.mjs'), 'if (n === 0) throw new Error("COVERAGE LOST");\n');
+      appendFileSync(join(root, 'tooling', 'ci', 'test', 't0.test.mjs'), '\n// exercises assert-comment-only.mjs\n');
+      const r = run(root);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /assert-comment-only\.mjs — no test file mentions it/);
+    });
+
+    test('a scanning guard with no coverage self-check FAILS', () => {
+      const r = run(repo(compliant({ 'assert-blind.mjs': 'console.log("ok, scanned everything");\n' })));
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /no "COVERAGE LOST" self-check/);
+      // The message must offer the legitimate escape, or people invent a worse one.
+      assert.match(r.stderr, /NOT_A_SCANNER with a reason/);
+    });
+
+    test('a named non-scanner is exempt, and the exemption is counted out loud', () => {
+      const r = run(repo(compliant({ 'assert-gate-passed.mjs': 'const sha = process.argv[2];\n' })));
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /1 exempt with a recorded reason/);
+    });
+
+    test('an exempt guard that GROWS a scan loses the exemption', () => {
+      // Otherwise an exemption granted once quietly outlives the reason for it.
+      const r = run(repo(compliant({ 'record-deployment.mjs': 'if (!ok) throw new Error("COVERAGE LOST");\n' })));
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /listed in NOT_A_SCANNER but now contains/);
+    });
+
+    test('COVERAGE: a missing tooling/ci is caught rather than reported clean', () => {
+      const root = join(TMP, 'bare');
+      mkdirSync(root, { recursive: true });
+      const r = run(root);
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /COVERAGE LOST/);
+    });
+  });
+
+  // ── [pipeline S-12r] executables OUTSIDE tooling/ci that a workflow runs ───
+  // DERIVED from the workflows now, not a hand-written list. tooling/scripts/
+  // provision-backend.mjs — the one command the stamp's printed checklist tells
+  // the owner to run — had neither F-10 property purely because it sits one
+  // directory outside the set this scan reads. A filing accident was deciding
+  // what got covered.
+  describe('workflow-invoked executables outside tooling/ci', () => {
+    test('one with no negative test FAILS', () => {
+      const r = run(repo(compliant(), { mentionScripts: false }));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/scripts\/provision-backend\.mjs — a workflow runs it and no test file mentions it/);
+      assert.match(r.stderr, /NO_NEGATIVE_TEST_NEEDED with a reason/);
+    });
+
+    test('one a workflow invokes but that does NOT EXIST fails', () => {
+      // The self-check on the derived set: CI running a path that is not there
+      // fails for a reason nobody reads as coverage loss.
+      const r = run(
+        repo(compliant(), {
+          scripts: [],
+          workflow:
+            'jobs:\n  guards:\n    steps:\n' +
+            ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs']
+              .map((g) => `      - run: node tooling/ci/${g}\n`)
+              .join('') +
+            '      - run: node tooling/release/submit-nowhere.mjs\n',
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/submit-nowhere\.mjs, which does not exist/);
+    });
+
+    test('a NEW workflow-invoked script acquires the requirement automatically', () => {
+      // The point of deriving the set: wiring a script into a workflow is what
+      // makes it a subject, not somebody remembering a map exists.
+      const r = run(
+        repo(compliant(), { scripts: ['tooling/scripts/provision-backend.mjs', 'tooling/release/submit-newthing.mjs'], mentionScripts: false }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/submit-newthing\.mjs — a workflow runs it and no test file mentions it/);
+    });
+
+    test('an EXCUSED script a test file happens to name is simply counted as covered', () => {
+      // NOT a contradiction, deliberately — see the long comment at that spot in
+      // the guard. "The basename appears in the suite" is a weak proxy read as
+      // POSITIVE evidence everywhere else; inverting it for excused scripts made
+      // the check fire on this very file, which has to name those paths to model
+      // the exemption list at all.
+      const r = run(repo(compliant(), { scripts: [EXCUSED[0]], mentionScripts: true }));
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /1 workflow-invoked script\(s\) outside tooling\/ci also covered, 0 excused/);
+    });
+
+    test('the passing line reports how many outside scripts were covered and excused', () => {
+      const r = run(repo(compliant()));
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /1 workflow-invoked script\(s\) outside tooling\/ci also covered, 0 excused/);
+    });
   });
 });

@@ -117,6 +117,17 @@ jobs:
       # idea — every unit claimed by a lane — applied to the guards themselves.
       # The two guards that scan nothing are exempt BY NAME AND REASON in the
       # script, never by silent omission. [pipeline F-10]
+      #
+      # ⚠️ THIS FILE IS PART OF THE CHECK, not just the thing that runs it. Since
+      # 2026-08-01 the guard set is pinned by an IDENTITY rather than by a hand-
+      # ratcheted floor: every `.mjs` in tooling/ci must be invoked by one of the
+      # tracked workflows, and every tooling/ci invocation in a workflow must
+      # name a file that is there. So DELETING A GUARD FROM tooling/ci WITHOUT
+      # DELETING ITS `run:` LINE HERE FAILS, and adding one needs no number
+      # raised anywhere — only this wiring. The three floors it replaced
+      # (MIN_GUARDS/MIN_TEST_FILES/MIN_TEST_CASES) collided on three consecutive
+      # merges in one day, because they were a shared mutable every parallel
+      # branch had to write to.
       - name: Every guard is tested and self-checking
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-guard-coverage.mjs

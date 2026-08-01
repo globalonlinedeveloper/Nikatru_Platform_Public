@@ -31,110 +31,89 @@
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 2026-08-01 — THE THREE HAND-RATCHETED FLOORS ARE GONE. THIS FILE NO LONGER
+//    CONTAINS A SINGLE HAND-MAINTAINED NUMBER.
+//
+// What was here: `MIN_GUARDS = 42`, `MIN_TEST_FILES = 37`, `MIN_TEST_CASES =
+// 1068`, against a tree measuring 44/39/1106. Every increment that added a guard
+// or a test file had to raise all three AND move its own fixtures in the same
+// commit, so the floors were a THREE-LINE SHARED MUTABLE that every branch wrote
+// to. With several agents working in parallel that is a guaranteed collision, and
+// it collided on PR #112, #113 and #114 — three consecutive merges in one day.
+//
+// Each time, both branches had ratcheted HONESTLY against their own tree, and
+// neither number described the merged result, because neither branch could see
+// the other's new test files. The correct resolution was always "re-measure the
+// merged tree"; the tempting one — take the higher of the two — is the same
+// mistake wearing a disguise, and it was a manual step a human had to remember.
+// A rule that depends on remembering will eventually be resolved wrongly, and
+// the wrong resolution here is SILENT: a floor set too low guards nothing and
+// still prints ok.
+//
+// The header used to record an honest limitation: "nothing but a directory
+// listing can derive a directory listing's size". That is true of an ABSOLUTE
+// COUNT, so this file no longer tries to derive one. It derives the
+// RELATIONSHIPS instead — the same repair already made in
+// `assert-vendor-portability.mjs` (every `services/*` dir must contribute ≥1
+// wrangler surface) and `assert-workflow-hardening.mjs` (the scanned set must
+// equal what `git ls-files` tracks, plus an accounting identity between two
+// deliberately different `uses:` matchers).
+//
+//   ┌ WHAT REPLACED WHAT ────────────────────────────────────────────────────┐
+//   │ MIN_GUARDS       →  THE INVOCATION IDENTITY (R1 + R2 below).           │
+//   │                     The set of `.mjs` in tooling/ci must EQUAL the set │
+//   │                     of tooling/ci guards the tracked workflows invoke. │
+//   │                     Deleting a guard leaves the workflow naming a file │
+//   │                     that is gone → fail. Adding a guard is fine the    │
+//   │                     moment it is wired into a workflow, which is what  │
+//   │                     "a guard exists" was always supposed to mean.      │
+//   │                     Both directions, so neither set can shrink alone.  │
+//   │                                                                        │
+//   │ MIN_TEST_FILES   →  THE RATCHET MANIFEST'S KEY SET (R6).               │
+//   │ MIN_TEST_CASES   →  THE RATCHET MANIFEST'S VALUES (R6).                │
+//   │                     `tooling/ci/test/coverage-manifest.json` records   │
+//   │                     the measured declaration count PER TEST FILE. A    │
+//   │                     DROP — a file gone, or fewer cases in it — FAILS.  │
+//   │                     A RISE rewrites the manifest and never fails.      │
+//   └────────────────────────────────────────────────────────────────────────┘
+//
+// WHY PER-FILE IS THE WHOLE TRICK, AND NOT JUST "ONE NUMBER IN A FILE INSTEAD OF
+// IN THE SOURCE": a single total is one line that every branch must write, which
+// is exactly the collision being removed. Keyed by test file, two branches adding
+// two different test files touch two different lines and git merges them without
+// a word. And a per-file floor is STRICTLY STRONGER than the total ever was —
+// under `MIN_TEST_CASES = 1068` against 1106, thirty-eight cases could be deleted
+// from one file with nothing said; under the ratchet, one can not.
+//
+// THE LIMIT, STATED PLAINLY RATHER THAN PAPERED OVER: a ratchet has state, and
+// state can be reset. Emptying or deleting the manifest is caught (both are
+// COVERAGE LOST on the real repo), but LOWERING one recorded value by hand is
+// not distinguishable from a test file that legitimately shrank. That exposure
+// is not new — it is exactly what `MIN_TEST_CASES = 1068` already had — except
+// that it is now one line per file in a diff instead of one line for the whole
+// suite, and every automatic rise is PRINTED, so a reviewer sees the ratchet move.
+// ─────────────────────────────────────────────────────────────────────────────
+//
 // Usage:  node tooling/ci/assert-guard-coverage.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI = join(ROOT, 'tooling', 'ci');
 const TESTS = join(CI, 'test');
+const WORKFLOWS = join(ROOT, '.github', 'workflows');
+/** The ratchet's state. Committed, because a floor nobody can see is not a floor. */
+const MANIFEST = join(TESTS, 'coverage-manifest.json');
+const MANIFEST_REL = 'tooling/ci/test/coverage-manifest.json';
 
-// Floors, RATCHETED to just under reality instead of frozen at birth. 🔴 The
-// original values (15/4/140) were written when the tree carried 18 guards and
-// never moved again — triage 2026-07-31 (mutation-proven): with 37 guards on
-// disk, MOVING 22 OF THEM into a subfolder still reported "ok 15 guard(s)",
-// because a floor at ~40% of reality guards against nothing that can actually
-// happen. Measured at the 2026-07-31 ratchet: 37 guards, 27 test files, 533
-// test declarations. When the tree grows, ratchet these UP behind it; a count
-// below any floor means this scan broke, not that the guards vanished.
-// The floors are also backed by a RELATIONSHIP below: every guard ci.yml
-// invokes must be a file this scan found, so the manifest CI actually runs is
-// what anchors the set, not just a number that goes stale.
-// Re-measured at the 2026-08-01 ratchet (assert-green-means-ran.mjs landing):
-// 38 guards, 28 test files, 614 test declarations — floors moved up behind it.
-// Re-measured again 2026-08-01 (assert-store-metadata.mjs landing, [10]D-5):
-// 40 guards, 31 test files, 710 test declarations.
-// Re-measured again 2026-08-01 (the Apple + Snap channels landing, [10]D-5/D-10):
-// 40 guards, 33 test files, 830 test declarations. Guard count is UNCHANGED and
-// that is correct — submit-appstore.mjs and submit-snap.mjs live in
-// tooling/release/, which this scan deliberately does not cover: they are
-// release paths, not guards. Their negative tests are in tooling/ci/test/ all
-// the same, so the two new test FILES do move that floor.
-// Re-measured ONCE MORE 2026-08-01, on the merged tree (the android-play channel
-// path landing on top of the above). Still 40 guards — submit-play.mjs is also a
-// release path, and assert-store-metadata.mjs / assert-channel-register.mjs were
-// EXTENDED rather than duplicated. ⚠️ These numbers were RE-MEASURED against the
-// merged result rather than taking the higher of the two branches' figures: two
-// branches that each ratcheted honestly still produce a wrong floor when merged,
-// because neither one ever saw the other's test files. Merged reality, measured:
-// 40 guards, 34 test files, 871 test declarations.
-// Re-measured 2026-08-01 (assert-deploy-triggers.mjs landing, corpus triage #30):
-// 41 guards, 35 test files, 907 test declarations.
-// Re-measured 2026-08-01 (brick stamp correctness, corpus triage #11/#24/#25):
-// 41 guards, 35 test files, 938 test declarations. Guard count and file count are
-// UNCHANGED and that is correct — assert-stamp-text-fidelity.mjs was EXTENDED to
-// cover the release id and the catalogue name rather than duplicated into two new
-// guards, so only the declaration floor moves. It moves to 900, which is 38 BELOW
-// the measured 938: a floor pinned AT reality goes red on the next honest merge
-// and teaches everyone to raise floors reflexively, which is how 15/4/140 came to
-// sit at ~40% of the tree.
-// Re-measured 2026-08-01 (guard-coverage-and-scanner-args, corpus triage
-// #27/#28/#29/#39): 41 guards, 35 test files, 993 test declarations. Guard and
-// file counts are UNCHANGED and that is correct — every fix EXTENDED an existing
-// guard (assert-vendor-portability, assert-workflow-hardening, the two scanners)
-// or added a section to one (assert-green-means-ran §C), so only the declaration
-// floor moves: to 950, 43 below the measurement. ⚠️ THE SAME PR RETIRED TWO
-// FLOORS OF THIS SHAPE ELSEWHERE — assert-workflow-hardening's 3/10 against 9/57
-// and assert-vendor-portability's wrangler 5 against 11 — replacing them with
-// relationships derived from the tree. These three survive because no
-// relationship exists for them: the guard set is a directory listing, and the
-// only thing that could derive its expected size is the listing itself. What
-// backs them instead is the ci.yml invoked-guard cross-check below, which is a
-// relationship; the numbers are the second line, not the first.
-// Re-measured 2026-08-01 (assert-platform-register.mjs landing, [4]B-1/B-18/B-13):
-// 42 guards, 36 test files, 1018 test declarations. All three move this time,
-// because this change adds a whole guard and a whole test file rather than
-// extending existing ones. Floors go to 40/34/980 — 2, 2 and 38 below the
-// measurement, the same gaps the previous ratchet chose, for the same reason: a
-// floor pinned AT reality goes red on the next honest merge and teaches everyone
-// to raise floors reflexively, which is how 15/4/140 came to sit at ~40% of the
-// tree.
-//
-// 🔴 RE-MEASURED ONCE MORE ON THE MERGE ITSELF (stage 3 · THE STAMPER meeting
-// stage 4 · B-1). THIS IS THE CASE THE COMMENT SIX PARAGRAPHS UP WARNS ABOUT,
-// arriving for the second time: BOTH branches independently ratcheted
-// MIN_TEST_FILES to 34 against their own honest measurement of 36, and neither
-// could see the other's new test file. Taking either side — or the higher of the
-// two, which is the tempting shortcut — would have left the floor describing a
-// tree that never existed. Stage 3 EXTENDED four guards and added no scanner, so
-// the guard count is stage 4's alone; the test files and declarations are the
-// union of both.
-// Merged reality, MEASURED on the resolved tree (not predicted from either
-// branch): 42 guards, 37 test files, 1060 test declarations. Floors 40/35/1000 —
-// 2, 2 and 60 below.
-//
-// 🔴 AND A THIRD TIME, ON THE VERY NEXT MERGE (stage 8 · COMPLIANCE & LEGAL
-// meeting the above). Stage 8 measured 44/38/1071 against ITS base and ratcheted
-// honestly to 42/36/1033; the tree it merged into had already moved to
-// 42/37/1060. Neither set is the merged tree's. Adding two guards
-// (assert-repo-posture.mjs, assert-policy-archive.mjs) and two test files to a
-// 42/37 base, plus stage 3's declarations this branch never saw, MEASURED on the
-// resolved tree: 44 guards, 39 test files, 1106 test declarations.
-// Floors 42/37/1068 — 2, 2 and 38 below. Three merges in a row have now produced
-// a number neither branch could have predicted; this comment is the third
-// consecutive piece of evidence that the rule is "measure after resolving", and
-// that "take the higher one" is the same mistake wearing a disguise.
-const MIN_GUARDS = 42;
-const MIN_TEST_FILES = 37;
-// ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
-// comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
-// exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
-// — so the suite can be hollowed out or moved out from under its own glob while
-// ci.yml's "The guards must be able to fail" step still reports success. Counting
-// the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 1068;
+/** No argument means CI's own invocation — the real repository, where the git
+ *  manifest and the ratchet state MUST both be readable. A caller pointing this
+ *  at a fixture root is a different, weaker situation and says so out loud. */
+const scanningRealRepo = process.argv[2] === undefined;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing
@@ -155,38 +134,57 @@ const NOT_A_SCANNER = new Map([
   ],
 ]);
 
-/** [pipeline S-12r] EXECUTABLE PATHS OUTSIDE tooling/ci THAT STILL NEED A
- *  NEGATIVE TEST — named individually, never globbed.
+/** [pipeline S-12r] EXECUTABLES OUTSIDE tooling/ci THAT A WORKFLOW RUNS, and
+ *  which are NOT required to carry a negative test — with the reason.
  *
- *  Why named: this guard's whole subject set is "the .mjs files in tooling/ci",
- *  and widening it to `tooling/**` would sweep in the release scripts, whose
- *  coverage story is different (they are dry-run exercised in ci.yml, and their
- *  tests are already here). A glob would also silently acquire new subjects,
- *  which is how a list stops being reasoned. Adding to this map should feel as
- *  expensive as adding to NOT_A_SCANNER above, and for the same reason.
+ *  🔴 This used to be the opposite list: `COVERED_SCRIPTS`, a hand-written map
+ *  naming the ONE script outside tooling/ci that had to have a test. A hand list
+ *  of things to cover only ever covers what somebody remembered to add, which is
+ *  the same shape as a hand-ratcheted floor — so the subject set is now DERIVED
+ *  (every `tooling/**` script the tracked workflows actually invoke) and this map
+ *  holds the exceptions instead. A new release script acquires the requirement by
+ *  being wired into a workflow, not by somebody remembering this file exists.
  *
- *  Why this entry: `tooling/scripts/provision-backend.mjs` is the ONE command
- *  the stamp's printed checklist tells the owner to run, and it had neither
- *  property F-10 requires — `grep -rn provision-backend .github/` returned zero
- *  and no test named it — purely because it sits one directory away from the set
- *  this scan reads. That is a filing accident deciding what gets covered. */
-const COVERED_SCRIPTS = new Map([
+ *  The three entries are the e2e harness itself. They are exercised end-to-end
+ *  every night by e2e.yml against a live Supabase — a stronger signal than a
+ *  fixture, and the reason their absence from test/ is a recorded exception
+ *  rather than an oversight. Naming them here is what makes the gap VISIBLE; the
+ *  passing line counts them out loud. */
+const NO_NEGATIVE_TEST_NEEDED = new Map([
   [
-    'tooling/scripts/provision-backend.mjs',
-    "the stamp's checklist names it as the one command that provisions a backend; its config surgery rewrites a uuid in a JSONC file and is scoped so the SHARED PLATFORM_DB binding is never the one rewritten.",
+    'tooling/e2e/provision_user.mjs',
+    'is the e2e harness, not a guard: e2e.yml runs it nightly against a live Supabase, so it is exercised against the real system rather than a fixture.',
+  ],
+  [
+    'tooling/e2e/verify_row.mjs',
+    'is the e2e harness, not a guard: its whole purpose is the live assertion, which e2e.yml performs nightly against real data.',
+  ],
+  [
+    'tooling/e2e/purge.mjs',
+    'is the e2e harness teardown, run nightly by e2e.yml against the live project; a fixture cannot model the thing it exists to clean up.',
   ],
 ]);
 
 const problems = [];
+const notes = [];
+
+/** Structural failure — the scan itself is broken, so nothing below it means
+ *  anything. Exits immediately rather than joining the problem list. */
+const coverageLost = (lines) => {
+  console.error(`✗ COVERAGE LOST — ${lines[0]}`);
+  for (const l of lines.slice(1)) console.error(`  ${l}`);
+  process.exit(1);
+};
 
 if (!existsSync(CI) || !existsSync(TESTS)) {
-  console.error(`✗ COVERAGE LOST — expected ${CI} and ${TESTS} to exist. The scan is broken, not the tree.`);
-  process.exit(1);
+  coverageLost([
+    `expected ${CI} and ${TESTS} to exist.`,
+    'The scan is broken, not the tree.',
+  ]);
 }
 
 const guards = readdirSync(CI).filter((f) => f.endsWith('.mjs')).sort();
 const testFiles = readdirSync(TESTS).filter((f) => f.endsWith('.test.mjs')).sort();
-const scanningRealRepo = process.argv[2] === undefined;
 
 // ── the scan is FLAT by design, so a subfolder must be LOUD, not a leak ──────
 // readdirSync(CI) does not recurse. Triage 2026-07-31 (mutation-proven): a
@@ -214,43 +212,123 @@ if (strayMjs.length) {
   process.exit(1);
 }
 
-// ── self-check first: this guard must still be finding guards ────────────────
-if (guards.length < MIN_GUARDS) {
-  console.error(`✗ COVERAGE LOST — found ${guards.length} guard(s) in ${CI}, expected at least ${MIN_GUARDS}.`);
-  console.error('  A guard-coverage check that finds no guards reports perfect coverage.');
-  process.exit(1);
-}
-if (testFiles.length < MIN_TEST_FILES) {
-  console.error(`✗ COVERAGE LOST — found ${testFiles.length} test file(s), expected at least ${MIN_TEST_FILES}.`);
-  process.exit(1);
+// ─────────────────────────────────────────────────────────────────────────────
+// THE INVOCATION IDENTITY — what replaced MIN_GUARDS.
+//
+// A floor could only ever say "not zero-ish", and it said it against a number
+// somebody had to keep raising. What is actually TRUE, and stays true at any
+// size of tree, is that a guard exists in order to be RUN: every `.mjs` under
+// tooling/ci is invoked by a workflow, and every tooling/ci invocation in a
+// workflow names a file that is there. Two set inclusions, computed from the
+// tree on every run, which together pin the guard set exactly.
+//
+// This is strictly stronger than the floor it replaces. Under `MIN_GUARDS = 42`
+// against 44 guards, TWO guards could be deleted outright with nothing said —
+// and `assert-gate-passed.mjs` and `record-deployment.mjs` were not even
+// anchored, because the old cross-check read ci.yml alone and those two are
+// invoked by the deploy workflows. Under the identity, deleting any one of the
+// forty-four fails, and the two deploy-only guards are anchored like the rest.
+// ─────────────────────────────────────────────────────────────────────────────
+if (!existsSync(WORKFLOWS)) {
+  coverageLost([
+    `${WORKFLOWS} does not exist, so the invocation identity ranged over nothing.`,
+    'The workflows are the committed manifest of what CI actually runs — they are what anchors the',
+    'guard set now that the floors are gone. Without them every guard below could vanish unremarked.',
+  ]);
 }
 
-// ── the RELATIONSHIP behind the floors: ci.yml is the committed manifest ─────
-// A floor is a number and numbers go stale — the 15/4/140 set proved it. What
-// cannot go stale is the workflow that actually runs the guards: every
-// `node tooling/ci/<guard>.mjs` invocation in ci.yml names a file CI depends
-// on, so any invoked guard this scan cannot find means the scan and the
-// pipeline have diverged — the scan is looking at the wrong tree, or a guard
-// CI runs was deleted/moved without ci.yml following. Either way: not clean.
-// (Fixture roots carry no ci.yml, so the cross-check applies when the manifest
-// exists — and its ABSENCE on the real repo is itself coverage lost.)
-const ciYml = join(ROOT, '.github', 'workflows', 'ci.yml');
-if (existsSync(ciYml)) {
-  const yml = readFileSync(ciYml, 'utf8')
+const workflowFiles = readdirSync(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f)).sort();
+
+// (i) SCAN vs MANIFEST, the assert-workflow-hardening pattern. `git ls-files` is
+//     the committed truth about which workflows exist; `workflowFiles` is what
+//     this scan opened. If a workflow the repo tracks never got read, its
+//     invocations are invisible and the identity below silently shrinks.
+const ls = spawnSync('git', ['-C', ROOT, 'ls-files', '--', '.github/workflows'], { encoding: 'utf8' });
+const trackedWorkflows =
+  ls.status === 0
+    ? [...new Set(ls.stdout.split('\n').map((l) => l.trim()).filter((l) => /\.ya?ml$/.test(l)).map((l) => l.split('/').pop()))]
+    : [];
+if (trackedWorkflows.length === 0) {
+  if (scanningRealRepo) {
+    coverageLost([
+      `\`git ls-files -- .github/workflows\` returned no tracked workflow under ${ROOT}.`,
+      'The manifest that anchors the guard set is unreadable, so "did I see every workflow" cannot be',
+      'answered — and there is no floor left to fall back on, deliberately.',
+    ]);
+  }
+} else {
+  const unseen = trackedWorkflows.filter((t) => !workflowFiles.includes(t));
+  if (unseen.length) {
+    coverageLost([
+      `git tracks ${trackedWorkflows.length} workflow(s) and this scan opened ${workflowFiles.length}; it never saw: ${unseen.join(', ')}.`,
+      'Every unseen workflow takes its guard invocations with it, so the identity below would be computed',
+      'over a smaller set and still print ok — which is the exact shape of the floors this replaced.',
+    ]);
+  }
+}
+
+// Comment lines are stripped so a commented-out step is not read as a live
+// invocation — the same reason assert-workflow-hardening anchors its matcher.
+const invokedGuards = new Set();
+const invokedOutside = new Set();
+const nestedInvocations = [];
+for (const wf of workflowFiles) {
+  const text = readFileSync(join(WORKFLOWS, wf), 'utf8')
     .split('\n')
     .filter((l) => !l.trim().startsWith('#'))
     .join('\n');
-  const invoked = [...new Set([...yml.matchAll(/tooling\/ci\/([A-Za-z0-9._-]+\.mjs)/g)].map((m) => m[1]))].sort();
-  const unfound = invoked.filter((g) => !guards.includes(g));
-  if (unfound.length) {
-    console.error(`✗ COVERAGE LOST — ci.yml invokes ${unfound.length} guard(s) this scan did not find: ${unfound.join(', ')}`);
-    console.error('  The manifest CI runs and the set this guard audits have diverged. Either the guard');
-    console.error('  was deleted/moved while ci.yml still calls it, or this scan reads the wrong directory.');
-    process.exit(1);
+  // Deliberately broad — `/` is inside the class — so a nested invocation is
+  // SEEN and reported rather than quietly failing to match. (`node --test
+  // "tooling/ci/test/*.test.mjs"` cannot match: `*` is outside the class.)
+  for (const m of text.matchAll(/tooling\/([A-Za-z0-9._/-]+\.mjs)/g)) {
+    const rel = `tooling/${m[1]}`;
+    if (rel.startsWith('tooling/ci/')) {
+      const tail = rel.slice('tooling/ci/'.length);
+      if (tail.includes('/')) nestedInvocations.push(`${wf} → ${rel}`);
+      else invokedGuards.add(tail);
+    } else {
+      invokedOutside.add(rel);
+    }
   }
-} else if (scanningRealRepo) {
-  console.error('✗ COVERAGE LOST — .github/workflows/ci.yml not found, so the invoked-guard cross-check ran over nothing.');
-  console.error('  The floors alone cannot anchor the guard set; the manifest must exist to be checked against.');
+}
+if (nestedInvocations.length) {
+  coverageLost([
+    `${nestedInvocations.length} workflow step(s) invoke a tooling/ci path this FLAT scan cannot audit:`,
+    ...nestedInvocations.map((n) => `    ${n}`),
+    'Guards live flat in tooling/ci so both per-guard checks reach them. A nested one is run by CI and',
+    'audited by nobody.',
+  ]);
+}
+
+// (ii) R1 — INVOKED ⊆ FOUND. A workflow naming a guard this scan cannot find
+//      means the two have diverged: the guard was deleted or moved while CI
+//      still calls it, or this scan is reading the wrong directory.
+const unfound = [...invokedGuards].filter((g) => !guards.includes(g)).sort();
+if (unfound.length) {
+  coverageLost([
+    `the workflows invoke ${unfound.length} guard(s) this scan did not find: ${unfound.join(', ')}.`,
+    'The manifest CI runs and the set this guard audits have diverged. Either the guard was',
+    'deleted/moved while a workflow still calls it, or this scan reads the wrong directory.',
+  ]);
+}
+
+// (iii) R2 — FOUND ⊆ INVOKED. The other half, and the half that never existed
+//       before. A guard nothing runs is a guard that cannot fail a build; it is
+//       covered on paper and inert in practice.
+//
+//       THERE IS NO EXEMPTION LIST HERE ON PURPOSE. All forty-four guards are
+//       invoked today, so an exemption map would be an unreachable branch —
+//       and by this repo's own rule an assertion that cannot fail is worse than
+//       none, because it inflates apparent coverage. If a guard ever genuinely
+//       needs to exist unrun, the mechanism gets added THEN, with a reason and a
+//       failing case of its own.
+const uninvoked = guards.filter((g) => !invokedGuards.has(g));
+if (uninvoked.length) {
+  console.error(`✗ COVERAGE LOST — ${uninvoked.length} guard(s) in tooling/ci are invoked by NO workflow:`);
+  for (const g of uninvoked) console.error(`    ${g}`);
+  console.error('  A guard nothing runs cannot fail a build. It is covered on paper and inert in practice,');
+  console.error('  and it inflates every count taken over this directory.');
+  console.error('  Wire it into a workflow in the same change, or delete it.');
   process.exit(1);
 }
 
@@ -259,36 +337,122 @@ const rawCorpus = testFiles.map((f) => readFileSync(join(TESTS, f), 'utf8')).joi
 // Only EXECUTABLE lines count as evidence. `includes()` over the raw text was
 // satisfied by a guard's name sitting in a comment — so a test file could be
 // gutted down to its header comment and still "cover" every guard it names.
-const testCorpus = rawCorpus
-  .split('\n')
-  .filter((line) => {
-    const t = line.trim();
-    return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
-  })
-  .join('\n');
+const executable = (text) =>
+  text
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+    })
+    .join('\n');
 
+const testCorpus = executable(rawCorpus);
 const countCases = (text) => (text.match(/^\s*(test|it)\s*\(/gm) ?? []).length;
 
-// (a) PER FILE — applies to any tree, so a fixture can prove this fires. A test
-//     file carrying no declaration is a file that runs nothing while still
-//     counting toward MIN_TEST_FILES.
-const hollow = testFiles.filter((f) => countCases(readFileSync(join(TESTS, f), 'utf8')) === 0);
+// A test file carrying no declaration is a file that runs nothing while still
+// holding a manifest entry, so it must be caught before the ratchet records it.
+const perFile = new Map(
+  testFiles.map((f) => [f, countCases(executable(readFileSync(join(TESTS, f), 'utf8')))]),
+);
+const hollow = [...perFile.entries()].filter(([, n]) => n === 0).map(([f]) => f);
 if (hollow.length) {
   console.error(`✗ COVERAGE LOST — ${hollow.length} test file(s) declare no tests: ${hollow.join(', ')}`);
-  console.error('  The file is present so it still counts toward the file floor, and it asserts nothing.');
+  console.error('  The file is present so the ratchet would record a floor of zero for it, and it asserts nothing.');
   process.exit(1);
 }
 
-// (b) WHOLE SUITE — only meaningful against the real repository, so it is skipped
-//     when a caller points this guard at a fixture root. This is the one that
-//     catches the suite being moved out from under ci.yml's glob: `node --test`
-//     exits 0 on a pattern matching nothing (verified, node v24, 2026-07-27).
-const testCases = countCases(testCorpus);
-if (scanningRealRepo && testCases < MIN_TEST_CASES) {
-  console.error(`✗ COVERAGE LOST — found ${testCases} test declaration(s), expected at least ${MIN_TEST_CASES}.`);
-  console.error('  Every requirement in all fourteen stages rests on these guards being exercised.');
+// ─────────────────────────────────────────────────────────────────────────────
+// THE RATCHET — what replaced MIN_TEST_FILES and MIN_TEST_CASES.
+//
+// One number per test file, kept in a committed manifest THIS GUARD MAINTAINS.
+//   · a recorded file that is gone      → FAIL (the test file was deleted)
+//   · measured < recorded               → FAIL (cases were deleted from it)
+//   · measured > recorded, or a new key → rewrite the manifest, print, PASS
+//
+// The asymmetry is the entire point. A rise is what an honest increment does, so
+// it must never cost anything and must never need a hand edit; a drop is
+// coverage leaving the tree, so it must be loud. Because the state is keyed by
+// file, two branches that each add a test file write two different lines and
+// merge without conflict — which is what the single shared MIN_TEST_CASES line
+// could not do, and what cost three merges in one day.
+// ─────────────────────────────────────────────────────────────────────────────
+let recorded = {};
+if (existsSync(MANIFEST)) {
+  const text = readFileSync(MANIFEST, 'utf8');
+  try {
+    recorded = JSON.parse(text);
+  } catch (e) {
+    coverageLost([
+      `${MANIFEST_REL} could not be parsed (${e.message}).`,
+      'This file is the ratchet: unreadable means every per-file floor is gone at once, which would',
+      'otherwise look exactly like a tree that had never recorded one.',
+    ]);
+  }
+  if (typeof recorded !== 'object' || recorded === null || Array.isArray(recorded)) {
+    coverageLost([`${MANIFEST_REL} is not a JSON object of "<test file>": <count>.`]);
+  }
+} else if (scanningRealRepo) {
+  coverageLost([
+    `${MANIFEST_REL} does not exist.`,
+    'It is the ratchet state that replaced MIN_TEST_FILES and MIN_TEST_CASES — deleting it resets every',
+    'per-file floor to nothing at once. On a fixture root this guard creates it; on the real repository',
+    'its absence is the floor being removed, which is precisely what must not pass quietly.',
+  ]);
+}
+if (scanningRealRepo && Object.keys(recorded).length === 0 && existsSync(MANIFEST)) {
+  coverageLost([
+    `${MANIFEST_REL} is empty.`,
+    'An empty ratchet accepts any suite at all, including none — every file below would read as new and',
+    'be recorded without complaint. Emptying it is deleting the floor, not resetting a cache.',
+  ]);
+}
+
+const dropped = [];
+for (const [f, was] of Object.entries(recorded)) {
+  if (!perFile.has(f)) {
+    dropped.push(`${f} — recorded with ${was} test case(s) and the file is GONE. Deleting a test file deletes a guard's only recorded failing case; if the retirement is deliberate, remove its entry here in the same change.`);
+    continue;
+  }
+  const now = perFile.get(f);
+  if (now < was) {
+    dropped.push(`${f} — ${was} test case(s) recorded, ${now} found. ${was - now} case(s) left the suite.`);
+  }
+}
+if (dropped.length) {
+  console.error(`✗ COVERAGE LOST — the test-coverage ratchet went BACKWARDS in ${dropped.length} place(s):`);
+  for (const d of dropped) console.error(`    ${d}`);
+  console.error('');
+  console.error(`  ${MANIFEST_REL} records the measured declaration count per test file. It rises by itself`);
+  console.error('  and never needs a hand edit; it only ever fails when coverage LEAVES the tree, which is');
+  console.error('  the one direction a floor was ever for.');
   process.exit(1);
 }
+
+// Rises and new files: rewrite, print, never fail. Written only when the bytes
+// actually change, so an unchanged tree is never dirtied by running this guard.
+const ratcheted = [];
+const next = {};
+for (const f of testFiles) {
+  const now = perFile.get(f);
+  const was = Object.prototype.hasOwnProperty.call(recorded, f) ? recorded[f] : null;
+  if (was === null) ratcheted.push(`+ ${f} (${now})`);
+  else if (now > was) ratcheted.push(`↑ ${f} ${was} → ${now}`);
+  next[f] = now;
+}
+const serialised = `${JSON.stringify(Object.fromEntries(Object.keys(next).sort().map((k) => [k, next[k]])), null, 2)}\n`;
+if (!existsSync(MANIFEST) || readFileSync(MANIFEST, 'utf8') !== serialised) {
+  try {
+    writeFileSync(MANIFEST, serialised);
+    if (ratcheted.length) {
+      notes.push(`ratchet raised in ${MANIFEST_REL} — commit it with this change:`);
+      for (const r of ratcheted) notes.push(`    ${r}`);
+    }
+  } catch (e) {
+    notes.push(`could-not-establish — ${MANIFEST_REL} is not writable (${e.message}), so the ratchet could not rise. The floors it already records still hold.`);
+  }
+}
+
+const totalCases = [...perFile.values()].reduce((a, b) => a + b, 0);
 
 let scanners = 0;
 let exempt = 0;
@@ -326,29 +490,66 @@ for (const guard of guards) {
   }
 }
 
-// ── [pipeline S-12r] the named non-guard executables ────────────────────────
-// Each must EXIST and be named by an executable line in the suite. The
-// existence half is the self-check: a map entry pointing at a file that has been
-// moved or deleted would otherwise sit here looking like coverage while
-// covering nothing, which is this guard's own failure mode applied to itself.
+// ── [pipeline S-12r] the workflow-invoked executables OUTSIDE tooling/ci ─────
+// DERIVED, not hand-listed: whatever the tracked workflows run under tooling/
+// that is not a guard must still carry a negative test, or appear in
+// NO_NEGATIVE_TEST_NEEDED with a reason. `tooling/scripts/provision-backend.mjs`
+// — the one command the stamp's printed checklist tells the owner to run — had
+// neither F-10 property purely because it sits one directory away from the set
+// this scan reads. A filing accident was deciding what got covered.
 let covered = 0;
-for (const [rel, reason] of COVERED_SCRIPTS) {
+const scriptExempt = [];
+for (const rel of [...invokedOutside].sort()) {
   if (!existsSync(join(ROOT, rel))) {
     problems.push(
-      `COVERAGE LOST — ${rel} is named in COVERED_SCRIPTS but does not exist. Either it moved and ` +
-        'this entry was not updated, or it was deleted and the entry should have gone with it. A map ' +
-        'entry pointing at nothing reports coverage over nothing.',
+      `COVERAGE LOST — a workflow invokes ${rel}, which does not exist. CI runs a path that is not there, ` +
+        'so the step either never runs or fails for a reason nobody reads as coverage loss.',
     );
     continue;
   }
+  const reason = NO_NEGATIVE_TEST_NEEDED.get(rel);
   const base = rel.split('/').pop();
-  if (!testCorpus.includes(base)) {
-    problems.push(
-      `${rel} — no test file mentions it, though it is required to have one because ${reason} ` +
-        'It has only ever run against valid input, so nothing exercises its failing path.',
-    );
-  } else {
+  // ⚠️ THERE IS DELIBERATELY NO "excused but a test names it after all" CHECK
+  // here, though NOT_A_SCANNER carries the equivalent contradiction check above
+  // and the symmetry is tempting. The signal is not strong enough to invert:
+  // "the basename appears somewhere in the suite" is a WEAK proxy read as
+  // positive evidence everywhere else in this file, and reading the same proxy
+  // as negative evidence makes it fire on the one file that must name these
+  // paths — THIS guard's own test, which has to model the exemption list to
+  // test anything about it. Written, it failed immediately on its first real
+  // run, and the only ways to satisfy it were to obfuscate the fixture or to
+  // stop modelling the tree. An assertion that cannot tell its failure from a
+  // false positive is worse than none, for the same reason as one that cannot
+  // fail at all. The exemption is still self-checked below, against the DERIVED
+  // signal — a workflow either invokes the script or it does not.
+  if (testCorpus.includes(base)) {
     covered++;
+  } else if (reason) {
+    scriptExempt.push(`${rel} — ${reason}`);
+  } else {
+    problems.push(
+      `${rel} — a workflow runs it and no test file mentions it. It has only ever run against valid ` +
+        'input, so nothing exercises its failing path. Give it a negative test, or record an exception ' +
+        'in NO_NEGATIVE_TEST_NEEDED with a reason that survives being read aloud.',
+    );
+  }
+}
+// The exemption map's own self-check: an entry naming a script no workflow runs
+// any more sits there looking like a considered exception while covering
+// nothing — this guard's failure mode applied to itself.
+//
+// REAL-REPO ONLY, because the map names THIS repository's paths: a fixture root
+// legitimately has none of them, and firing there would mean every fixture had
+// to model the e2e harness to say anything about anything else. Its own failing
+// case is in `describe('real-repo mode')`, reached by invoking a copy of this
+// guard inside a fixture with no argument — the same way ci.yml calls it.
+for (const rel of scanningRealRepo ? NO_NEGATIVE_TEST_NEEDED.keys() : []) {
+  if (!invokedOutside.has(rel)) {
+    problems.push(
+      `${rel} is excused in NO_NEGATIVE_TEST_NEEDED but no workflow invokes it. Either it moved and the ` +
+        'entry did not follow, or it is retired and the entry should have gone with it. An exception ' +
+        'for something that is not there reports judgement over nothing.',
+    );
   }
 }
 
@@ -362,8 +563,19 @@ if (problems.length) {
   process.exit(1);
 }
 
+if (scriptExempt.length) {
+  console.log('⬜ workflow-invoked scripts outside tooling/ci with a recorded exception, printed not hidden:');
+  for (const s of scriptExempt) console.log(`    ${s}`);
+}
+if (notes.length) {
+  console.log('⬜ notes:');
+  for (const n of notes) console.log(`    ${n}`);
+}
+
 console.log(
-  `ok  guard coverage — ${guards.length} guard(s), all named in ${testFiles.length} test file(s); ` +
-    `${scanners} carry a coverage self-check, ${exempt} exempt with a recorded reason; ` +
-    `${covered} named non-guard script(s) outside tooling/ci also covered`,
+  `ok  guard coverage — ${guards.length} guard(s) in tooling/ci, exactly the ${invokedGuards.size} the ` +
+    `${workflowFiles.length} workflow(s) invoke (identity holds, no floor involved); all named in ` +
+    `${testFiles.length} test file(s); ${scanners} carry a coverage self-check, ${exempt} exempt with a ` +
+    `recorded reason; ${covered} workflow-invoked script(s) outside tooling/ci also covered, ` +
+    `${scriptExempt.length} excused; ratchet holds at ${totalCases} test case(s) across ${testFiles.length} file(s)`,
 );
