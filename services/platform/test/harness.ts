@@ -40,6 +40,7 @@ import entitlements0001 from '../migrations/0001_entitlements.sql?raw';
 import analytics0002 from '../migrations/0002_analytics.sql?raw';
 import cronHeartbeat0003 from '../migrations/0003_cron_heartbeat.sql?raw';
 import moneyRail0004 from '../migrations/0004_money_rail.sql?raw';
+import cancellations0005 from '../migrations/0005_cancellation_requests.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -57,6 +58,7 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   analytics0002,
   cronHeartbeat0003,
   moneyRail0004,
+  cancellations0005,
 ];
 
 /**
@@ -75,6 +77,10 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   entitlements0001,
   analytics0002,
   cronHeartbeat0003,
+  // 0005 is CREATE TABLE / CREATE INDEX IF NOT EXISTS throughout — it replays.
+  // Listed here rather than assumed: the classifier in migrations-replay.test.ts
+  // proves the claim, and this list is what it replays to prove it.
+  cancellations0005,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

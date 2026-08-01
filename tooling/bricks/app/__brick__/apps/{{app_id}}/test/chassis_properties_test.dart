@@ -37,6 +37,8 @@ import 'package:{{app_id.snakeCase()}}/l10n/app_localizations.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/core/router.dart';
 import 'package:{{app_id.snakeCase()}}/features/firstrun/onboarding_screen.dart';
+import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:{{app_id.snakeCase()}}/state/money_providers.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
 
 /// In-memory store: `PrefsKeyValueStore` needs a platform channel that does not
@@ -213,6 +215,95 @@ Future<void> _turnsAndSettleRoute(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 500));
   await _turns(tester, 4);
 }
+
+/// An in-memory [core.SecureStore] — the real one needs a platform channel a
+/// widget test has not got, which is exactly why `secureStoreProvider` sat in
+/// this guard's UNASSERTED list until the money rail gave it a reason to be
+/// driven.
+class _MemSecureStore implements core.SecureStore {
+  final Map<String, String> data = <String, String>{};
+  @override
+  Future<void> delete(String key) async => data.remove(key);
+  @override
+  Future<void> deleteAll() async => data.clear();
+  @override
+  Future<String?> read(String key) async => data[key];
+  @override
+  Future<void> write(String key, String value) async => data[key] = value;
+}
+
+/// Answers the entitlement read with whatever the test wants the SERVER to say.
+///
+/// 🔴 A FAKE SERVER, NOT A FAKE GATE. The property under test is that a real
+/// answer travels from the transport, through the cache, into the lock decision
+/// and out to `PaywallGate`. Overriding `paywallLockedProvider` directly would
+/// assert that a boolean makes a widget change, which was never in doubt — and
+/// is precisely how `PaywallGate` came to exist for months with zero consumers.
+class _FakeEntitlements implements core.EntitlementTransport {
+  _FakeEntitlements({this.pro = false});
+  bool pro;
+  /// Set by a test to make the SERVER unreachable mid-flight.
+  bool fail = false;
+  int calls = 0;
+
+  @override
+  Future<core.Result<core.Entitlements>> fetch({
+    required String appId,
+    required String? accessToken,
+  }) async {
+    calls++;
+    if (fail) {
+      return const core.Result<core.Entitlements>.err(core.Failure('offline'));
+    }
+    return core.Result<core.Entitlements>.ok(
+      core.Entitlements(
+        appId: appId,
+        isPro: pro,
+        items: const <core.Entitlement>[],
+      ),
+    );
+  }
+}
+
+ProviderContainer _moneyContainer({
+  required _MemStore store,
+  required _FakeEntitlements server,
+  _MemSecureStore? secure,
+  bool paywallEnabled = true,
+}) => ProviderContainer(
+  overrides: <Override>[
+    keyValueStoreProvider.overrideWith((_) async => store),
+    secureStoreProvider.overrideWithValue(secure ?? _MemSecureStore()),
+    entitlementTransportProvider.overrideWithValue(server),
+    // The paywall's on-switch is CFG-1 config, and a freshly stamped app is
+    // born with it OFF — so the open path has to be opened deliberately, the
+    // same shape `analyticsEnabledProvider` uses for the analytics rail.
+    appConfigProvider.overrideWith(
+      (_) async => core.AppConfig(
+        appId: AppConfig.appId,
+        apiBaseUrl: AppConfig.apiBaseUrl,
+        features: const <String, bool>{},
+        paywall: core.PaywallConfig(
+          enabled: paywallEnabled,
+          extra: const <String, Object?>{
+            'offerings': <Object?>[
+              <String, Object?>{
+                'product_id': 'pro_monthly',
+                'amount_minor': 499,
+                'currency_code': 'USD',
+                'term': 'month',
+                'trial_days': 30,
+              },
+            ],
+          },
+        ),
+        contentPack: null,
+        copy: const <String, String>{},
+        minSupportedVersion: '1.0.0',
+      ),
+    ),
+  ],
+);
 
 /// Records what the review seam was actually asked to do — [pipeline C-13].
 ///
@@ -1871,6 +1962,167 @@ void main() {
   // [pipeline C-6] defect: every piece worked, and nothing was wired to the
   // button. Asserted against the REAL app root, so deleting AnalyticsGate from
   // app.dart turns this red instead of turning production silent.
+  // ═══════════════════════════════════════════════════════════════════════
+  // [pipeline 5]M-5 · M-8 · M-11 — THE MONEY RAIL, PROVEN ON A STAMPED APP.
+  //
+  // 🔴 THIS IS THE PROPERTY THAT DID NOT EXIST. `EntitlementCache` and
+  // `PaywallGate` both shipped, both were tested, and NOTHING in the repo had
+  // ever asked the server whether anybody had paid — a fail-closed seam with no
+  // proven open path, which is the [pipeline C-6] shape in its purest form. No
+  // test went red, because refusing is correct when nobody has paid.
+  //
+  // So the assertions here drive the WHOLE chain — fake server, real cache, real
+  // lock decision, real widget — and never override the decision itself.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('property: paywall-gate-driven-by-server', () {
+    test('a SERVER "no" locks the gate, and a server "yes" opens it', () async {
+      final _FakeEntitlements server = _FakeEntitlements();
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: server,
+      );
+      addTearDown(c.dispose);
+
+      // The config must be RESOLVED first: paywallLockedProvider reads it, and
+      // nothing else in this chain starts it. Without this the provider takes
+      // its documented not-yet-known branch and the test measures that instead.
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+      expect(
+        c.read(paywallLockedProvider),
+        isTrue,
+        reason: 'the server says this user has not paid',
+      );
+      // The fetch really happened — a lock decision reached without asking is
+      // the dead capability this property exists to rule out.
+      expect(server.calls, greaterThan(0));
+
+      server.pro = true;
+      c.invalidate(entitlementsProvider);
+      await c.read(entitlementsProvider.future);
+      expect(c.read(paywallLockedProvider), isFalse);
+    });
+
+    test('the paywall is OFF by default, so a fresh stamp gates nothing', () async {
+      // `paywall.enabled` is the outer switch and a stamped app is born with it
+      // false. Without this, being born with the gate would cost every new app
+      // a wall it never asked for.
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: _FakeEntitlements(),
+        paywallEnabled: false,
+      );
+      addTearDown(c.dispose);
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+      expect(c.read(paywallLockedProvider), isFalse);
+    });
+
+    test('[5]M-8 · a stale answer RE-LOCKS when online, and HOLDS when offline', () async {
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: _FakeEntitlements(pro: true),
+      );
+      addTearDown(c.dispose);
+
+      // The config must be RESOLVED first: paywallLockedProvider reads it, and
+      // nothing else in this chain starts it. Without this the provider takes
+      // its documented not-yet-known branch and the test measures that instead.
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+      expect(c.read(paywallLockedProvider), isFalse);
+
+      // The cache now holds a verified grant. Move the clock past the ceiling.
+      final core.EntitlementCache cache = c.read(entitlementCacheProvider);
+      final DateTime far = DateTime.now().add(
+        cache.stalenessCeiling + const Duration(days: 1),
+      );
+      expect(
+        (await cache.readValid(now: far)).isPro,
+        isFalse,
+        reason: 'online and unverified past the ceiling ⇒ access stops',
+      );
+      // 🔴 BOTH DIRECTIONS. Without the second, a client that ALWAYS locks
+      // passes — and always-locking is the fail-closed-and-dead shape this
+      // stage exists to stop.
+      expect(
+        (await cache.readValid(now: far, connectivityAvailable: false)).isPro,
+        isTrue,
+        reason:
+            'offline it is HELD — a deliberate loss, written down: locking a '
+            'paying user out for being in a tunnel is the larger harm',
+      );
+    });
+
+    test('a failed fetch keeps the cached answer — a flat network is not a refund', () async {
+      final _FakeEntitlements server = _FakeEntitlements(pro: true);
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: server,
+      );
+      addTearDown(c.dispose);
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+
+      server.fail = true;
+      c.invalidate(entitlementsProvider);
+      expect((await c.read(entitlementsProvider.future)).isPro, isTrue);
+    });
+
+    test('[5]M-11 · the price comes from the RAIL CONFIG, formatted', () async {
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: _FakeEntitlements(),
+      );
+      addTearDown(c.dispose);
+      await c.read(appConfigProvider.future);
+
+      final PurchaseRail rail = c.read(purchaseRailProvider);
+      expect(rail.offerings, hasLength(1));
+      // 499 + USD, DERIVED. There is no price literal anywhere in the chassis;
+      // `assert-no-price-literals.mjs` fails the build if one appears.
+      expect(rail.offerings.single.formattedPrice, r'$4.99');
+      // …and NOT sellable, because no checkout template is configured. That is
+      // the honest state today (OWNER_QUEUE A-1) and the paywall says so.
+      expect(rail.canStartCheckout, isFalse);
+    });
+
+    testWidgets('the GATE really covers the premium surface', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: _FakeEntitlements(),
+      );
+      addTearDown(c.dispose);
+      // SIGNED IN, or the router's redirect guard sends this straight to
+      // /sign-in and the test measures the auth gate instead of the paywall.
+      await c
+          .read(authRepositoryProvider)
+          .signInWithEmail(email: 'a@b.com', password: 'pw');
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      // Tab 0 is not gated: a paywall a user meets before they have seen
+      // anything is a wall, not a paywall.
+      expect(find.byType(PaywallGate), findsOneWidget);
+      expect(find.text('Unlock the full experience'), findsNothing);
+
+      // Tab 1 IS. Explore is the chassis's premium surface.
+      await tester.tap(find.text('Explore'));
+      await _turnsAndSettleRoute(tester);
+      expect(find.text('Unlock the full experience'), findsOneWidget);
+    });
+  });
+
   group('property: analytics-on-switch-mounted', () {
     testWidgets('the app root asks for consent, and Allow opens the rail', (
       WidgetTester tester,

@@ -46,7 +46,17 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 
 let seq = 0;
 
-const ADAPTERS = ['api_client', 'auth_supabase', 'notifications', 'platform_storage', 'telemetry'];
+// SIX since 2026-08-01: `purchases` joined on url_launcher when [pipeline 5]M-13
+// moved the money rail out of apps/subly. The list has to track the guard's
+// MIN_ADAPTERS floor, or every case below runs against a COVERAGE LOST.
+const ADAPTERS = [
+  'api_client',
+  'auth_supabase',
+  'notifications',
+  'platform_storage',
+  'purchases',
+  'telemetry',
+];
 
 /** A capability source covering all six platforms, taking the platform as a param. */
 const capsSrc = (symbol, { dropLinux = false, hostOnly = false } = {}) => `
@@ -177,7 +187,7 @@ describe('assert-adapter-capabilities', () => {
     assert.equal(code, 0);
     assert.match(
       out,
-      /6 adapter matrix\/matrices exercised per-platform/,
+      /7 adapter matrix\/matrices exercised per-platform/,
       'the second capability on the same owner was not examined — it reports as covered while nothing checks it',
     );
   });
@@ -185,8 +195,8 @@ describe('assert-adapter-capabilities', () => {
   test('passes when every adapter declares and proves its matrix', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /5 adapter\(s\) derived from the tree/);
-    assert.match(out, /5 adapter matrix\/matrices exercised per-platform/);
+    assert.match(out, /6 adapter\(s\) derived from the tree/);
+    assert.match(out, /6 adapter matrix\/matrices exercised per-platform/);
     // The gaps must PRINT — a platform gap nobody sees becomes a support ticket.
     assert.match(out, /Where each adapter DEGRADES/);
   });
@@ -322,7 +332,7 @@ describe('assert-adapter-capabilities', () => {
       testOverride: { telemetry: helperTestSrc('TelemetryCapabilities') },
     }));
     assert.equal(code, 0, out);
-    assert.match(out, /5 adapter matrix\/matrices exercised per-platform/);
+    assert.match(out, /6 adapter matrix\/matrices exercised per-platform/);
   });
 
   test('FAILS when the named capability file does not exist', () => {

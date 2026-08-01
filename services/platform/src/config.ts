@@ -17,7 +17,35 @@ export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = {
     api_base_url: 'https://api.nikatru.com/v1',
     features: { renewals: true, budgets: true, exports: true },
     flags: {},
-    paywall: { enabled: false },
+    // ── THE RAIL CONFIG — [pipeline 5]M-11 ────────────────────────────────
+    //
+    // 🔴 THE PRICE LIVES HERE, NOT IN THE APP. It used to live in
+    // `apps/subly/lib/services/purchases/purchases_service.dart` as the literals
+    // `$2.99` and `$24.99` — compiled into a binary, shipped to a store, and
+    // ALREADY WRONG: the owner decided $4.99/mo + $19.99/yr with a 30-day trial
+    // on 2026-07-27, and nothing could have told us, because a hardcoded string
+    // is consistent with itself forever. Serving it means a price change is a
+    // config edit rather than six store releases.
+    //
+    // An AMOUNT and a CURRENCY, never a display string: the client formats it
+    // from ICU data, so the number the buyer reads and the number they are
+    // charged cannot disagree.
+    //
+    // ⚠️ `checkout_url_template` IS DELIBERATELY ABSENT, and its absence is the
+    // honest state rather than an omission. The merchant of record's
+    // hosted-checkout URL shape is an UNVERIFIED vendor fact — the only note
+    // carrying one is dated 2026-07-28 and has never been re-fetched, and no
+    // seller account exists to check it against (OWNER_QUEUE A-1, PENDING).
+    // Encoding a guessed shape would ship a button that opens a 404 for the
+    // first real buyer. With it absent, `RailConfig.canCheckout` is false and
+    // the paywall says purchases are unavailable, which is true.
+    paywall: {
+      enabled: false,
+      offerings: [
+        { product_id: 'pro_monthly', amount_minor: 499, currency_code: 'USD', term: 'month', trial_days: 30 },
+        { product_id: 'pro_yearly', amount_minor: 1999, currency_code: 'USD', term: 'year', trial_days: 30 },
+      ],
+    },
     content_pack: null,
     copy: {},
     min_supported_version: '1.0.0',

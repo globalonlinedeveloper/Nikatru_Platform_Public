@@ -3,6 +3,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
@@ -160,6 +161,39 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           const Divider(),
+
+          // ── SUBSCRIPTION ([pipeline 5]M-6 · M-9) ──────────────────────────
+          //
+          // 🔴 THE TWO ENTRY POINTS SIT SIDE BY SIDE ON PURPOSE. ROSCA's rule
+          // is that cancelling must be no harder than subscribing, and the
+          // cheapest way to be sure of that is to reach both from the same
+          // place, one tap each. A cancel path buried a level deeper than the
+          // upgrade path is the specific pattern the rule exists to stop.
+          //
+          // Gated on a session because both terminate in a call keyed to an
+          // account: offering "manage your subscription" to a signed-out user
+          // is an offer the app cannot honour, the same reason the profile and
+          // deletion entries are gated.
+          if (ref.watch(authRepositoryProvider).currentUser != null) ...<Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                l10n.plan,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.workspace_premium_outlined),
+              title: Text(l10n.paywallUpgrade),
+              onTap: () => context.go('/paywall'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: Text(l10n.managePlanTitle),
+              onTap: () => context.go('/manage-plan'),
+            ),
+            const Divider(),
+          ],
 
           // ── LEGAL. Both stores require these to be reachable IN-APP, not
           //    only from a store listing. [pipeline C-13]

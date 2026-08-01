@@ -179,7 +179,7 @@ describe('platform_db migrations re-apply cleanly', () => {
     // empty array is exactly what a broken `?raw` import produces. The floor is a
     // RELATIONSHIP, not a tuned number: one entry per .sql file the applier would
     // apply, and every entry non-empty DDL.
-    expect(PLATFORM_MIGRATIONS.length).toBeGreaterThanOrEqual(4);
+    expect(PLATFORM_MIGRATIONS.length).toBeGreaterThanOrEqual(5);
     for (const [i, sql] of PLATFORM_MIGRATIONS.entries()) {
       expect(sql.length, `migration #${i} is empty — the ?raw import resolved to nothing`).toBeGreaterThan(100);
     }
@@ -194,6 +194,7 @@ describe('platform_db migrations re-apply cleanly', () => {
       .rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
       .map((r) => String(r.name));
     expect(tables).toEqual([
+      'cancellation_requests',
       'consent_artifacts',
       'cron_heartbeat',
       'entitlements',

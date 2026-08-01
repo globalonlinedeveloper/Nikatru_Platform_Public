@@ -202,7 +202,11 @@ if (existsSync(pkgRoot)) {
 
 // The coverage self-check the lock demands, stated as a floor rather than a
 // "> 0" so that silently losing most of the set is caught too.
-const MIN_WRAPPED = 7;
+// RATCHETED 7 → 8 on 2026-08-01, when `packages/purchases` joined the adapter
+// set with `url_launcher` ([pipeline 5]M-13). The real tree derives nine; the
+// floor stays one below so a single legitimate removal does not turn the guard
+// into a blocker, while losing two is still caught.
+const MIN_WRAPPED = 8;
 if (WRAPPED.size < MIN_WRAPPED) {
   problems.push(
     `COVERAGE LOST — derived only ${WRAPPED.size} wrapped vendor(s) from the adapter packages, expected >= ${MIN_WRAPPED}. Limb (c) would range over an almost-empty set and pass everything. Either the adapters stopped declaring their SDKs, or this derivation has stopped working.`,
@@ -226,6 +230,28 @@ const KNOWN_BYPASSES = {
     '2026-07-28 · NOT A NEW BYPASS — the same import that has always been there, reclassified the moment [2]C-15 created `packages/auth_supabase` to wrap it. Before that no adapter existed, so there was nothing to go around. Subly is frozen by 39-CHASSIS cut 1; moving it reverses an agreed cut. This entry appearing IS the guard working: build the shared home, and the app copy becomes visible as a bypass the same hour.',
   'apps/subly|dio':
     '2026-07-28 · Subly DOES depend on nikatru_api_client (it imports ApiException from it) but supplies its own DioApiClient transport. Narrower than the other two: the seam types are used, the transport is duplicated.',
+  // 🔴 THE `supabase_flutter` SHAPE, EXACTLY, AND A SECOND TIME. These are not
+  // new bypasses: `url_launcher` has been imported directly by the brick and by
+  // Subly since long before any adapter wrapped it, because none did. It was
+  // reclassified the moment [5]M-13 created `packages/purchases`, which declares
+  // it to open a hosted checkout.
+  //
+  // AND THE RECLASSIFICATION IS ONLY PARTLY TRUE, which is why these are dated
+  // bypasses rather than a silent exemption. `packages/purchases` wraps
+  // url_launcher for ONE job — `CheckoutLauncher`, which refuses anything that
+  // is not absolute https, because a payment page must render in the user's own
+  // browser with its own address bar. The callers below open a support `mailto:`
+  // and the legal pages. Routing those through a checkout launcher would be
+  // wrong on both sides: it would reject `mailto:` and it would make a money
+  // seam responsible for the privacy policy.
+  //
+  // The honest reading is that GENERAL external-URL opening has no shared home —
+  // the same [2]C-15-shaped gap auth had before `packages/auth_supabase` existed.
+  // Recorded here so it is visible on every CI run instead of being argued away.
+  'apps/subly|url_launcher':
+    '2026-08-01 · NOT A NEW BYPASS — reclassified when [5]M-13 created `packages/purchases`, which declares url_launcher for `CheckoutLauncher` (https-only, checkout pages). Subly opens legal pages and a support mailto:, which that seam is not for and would reject. General external-URL opening has no shared home; giving it one is a [2]C-3-shaped work item, and Subly is frozen by 39-CHASSIS cut 1 either way.',
+  'brick|url_launcher':
+    "2026-08-01 · same reclassification, same reason: the template opens `AppConfig.privacyUrl`, `AppConfig.termsUrl` and a support `mailto:`. `CheckoutLauncher` refuses non-https by design, so it cannot serve them. THIS ONE IS THE REAL WORK ITEM — it is the chassis, so every stamped app inherits it: the gap is a shared `ExternalLinkLauncher` seam, not a change to the money rail.",
 };
 
 const appRoots = [];

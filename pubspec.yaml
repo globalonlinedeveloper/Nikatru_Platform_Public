@@ -22,8 +22,10 @@ workspace:
   - packages/design_system
   - packages/notifications
   - packages/platform_storage
+  - packages/purchases
   - packages/telemetry
   - apps/subly
+  - apps/probe
 
 dev_dependencies:
   melos: ^8.2.2

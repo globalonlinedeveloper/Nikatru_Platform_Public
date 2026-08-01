@@ -89,9 +89,12 @@ dependencies:
   # Open external URLs (nikatru.com legal pages + company site) on all 6 platforms.
   url_launcher: ^6.3.0
 
-  # RevenueCat is STUBBED (see lib/services/purchases/). To wire the real SDK,
-  # uncomment and implement RevenueCatPurchasesService:
-  #   purchases_flutter: ^8.0.0
+  # 🪦 THE REVENUECAT LINE THAT USED TO SIT HERE IS GONE — [ADR 026], [ADR 004].
+  # RevenueCat is an aggregator over Apple/Google in-app purchase, and native IAP
+  # is deferred by 39-CHASSIS §4 cut 5; the merchant of record is locked to
+  # Paddle / Lemon Squeezy. The client rail lives in `packages/purchases` and is
+  # inherited by every stamped app. Subly stays frozen and simply has no purchase
+  # path, which is honest — it had none before either, it just looked like it did.
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.

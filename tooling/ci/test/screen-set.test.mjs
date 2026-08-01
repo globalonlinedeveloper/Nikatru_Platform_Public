@@ -45,7 +45,8 @@ let seq = 0;
 
 const WIDGETS = 'packages/design_system/lib/src/widgets/system_screens.dart';
 const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
-const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
+const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+const BRICK_LIB = `${BRICK}/lib`;
 
 /**
  * A register at or above the floor of 16 — a thinner one fails for a reason
@@ -76,25 +77,33 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
     },
   ];
   // Padding to clear the floor without inventing meaning.
-  const padding = Array.from({ length: 16 }, (_, i) => ({
+  // 17 since 2026-08-01: MIN_SCREENS went 22 -> 23 when the money rail added
+  // monetization.manage-plan to the register.
+  const padding = Array.from({ length: 17 }, (_, i) => ({
     id: `todo.pad${i}`,
     what: 'not yet built',
     status: 'todo',
     declaredOn: '2026-07-28',
   }));
+  // 🔴 RE-POINTED 2026-08-01 FROM "stage 5 (money rail)" TO app_links, and the
+  // reason IS the guard working: stage 5 shipped, so its predicate now returns
+  // false and ANY entry still claiming to be blocked by it fails. A fixture that
+  // kept the old blocker would be red on every case for a reason unrelated to
+  // the one under test — and would be asserting that a shipped excuse still
+  // works, which is the opposite of what this guard is for.
   const blocked = [
     {
-      id: 'monetization.paywall',
-      what: 'paywall',
+      id: 'auth.callbacks',
+      what: 'oauth callback screens',
       status: 'blocked',
-      blockedBy: 'stage 5 (money rail)',
+      blockedBy: 'app_links (deep-link handling)',
       declaredOn: '2026-07-28',
     },
     {
-      id: 'monetization.states',
-      what: 'purchase states',
+      id: 'auth.callback-error',
+      what: 'oauth callback failure',
       status: 'blocked',
-      blockedBy: 'stage 5 (money rail)',
+      blockedBy: 'app_links (deep-link handling)',
       declaredOn: '2026-07-28',
     },
   ];
@@ -122,9 +131,25 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
     [ROUTER]:
       router ??
       'final router = GoRouter(\n  errorBuilder: (c, s) => const NotFoundScreen(),\n  routes: [],\n);\nfinal x = SegmentedButton<ThemeMode>(segments: []);\n',
-    // The brick lib the blocker check reads — no PaywallGate consumer, so
-    // "blocked by stage 5" is still true.
+    // The brick lib the purchase-path invariant reads.
+    //
+    // 🔴 ALL FIVE LIMBS PLUS THE GATE, and it has to be all-or-nothing: since
+    // 2026-08-01 the guard asserts BOTH directions — a `PaywallGate(` with no
+    // purchase path is a promise every stamped app makes and none can keep, and
+    // a purchase path with no gate is a rail that charges and unlocks nothing.
+    // A fixture carrying some-but-not-all would fail every case for a reason
+    // unrelated to the one under test. (Before that date this file said "no
+    // PaywallGate consumer, so blocked by stage 5 is still true" — the blocker
+    // predicate it referred to has shipped.)
     [`${BRICK_LIB}/app.dart`]: 'class App extends StatelessWidget {}\n',
+    [`${BRICK_LIB}/features/home/home_screen.dart`]:
+      'Widget build(BuildContext c) => PaywallGate(\n  locked: ref.watch(paywallLockedProvider),\n  child: const SizedBox.shrink(),\n);\n',
+    [`${BRICK_LIB}/state/money_providers.dart`]:
+      'final entitlementsProvider = FutureProvider((ref) async => x);\n',
+    [`${BRICK_LIB}/features/monetization/paywall_screen.dart`]:
+      'await rail.startCheckout(o);\nawait c.awaitUnlock(appId: a);\nawait funnel.onPurchaseSuccess(o.productId);\n',
+    [`${BRICK_LIB}/features/monetization/manage_plan_screen.dart`]:
+      'await rail.requestCancellation();\n',
   };
 
   for (const [f, body] of Object.entries(files)) {
@@ -144,11 +169,11 @@ describe('assert-screen-set', () => {
   test('passes when every declared screen is present and reachable', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /22 screen\(s\) declared/);
+    assert.match(out, /23 screen\(s\) declared/);
     assert.match(out, /3 screen\(s\) present and anchored/);
     // Blocked and todo must PRINT — a gap nobody sees is a gap that grows.
     assert.match(out, /2 BLOCKED/);
-    assert.match(out, /16 TODO/);
+    assert.match(out, /17 TODO/);
   });
 
   // ── present vs reachable — the distinction that keeps catching real bugs ──
@@ -192,11 +217,17 @@ describe('assert-screen-set', () => {
   // ── blocked entries cannot rot ───────────────────────────────────────────
   test('FAILS when a blocker has already shipped', () => {
     const root = tree();
-    // A PaywallGate consumer is the signal that stage 5 landed.
-    writeFileSync(
-      join(root, BRICK_LIB, 'app.dart'),
-      'class App extends StatelessWidget {\n  build() => PaywallGate(child: x);\n}\n',
-    );
+    // `app_links` becoming a real dependency is the signal that the callback
+    // screens are buildable — so the excuse must stop working the same hour.
+    //
+    // (This used to plant a `PaywallGate` consumer to signal that stage 5 had
+    // landed. Stage 5 HAS landed, so a PaywallGate in the template is now the
+    // tree's normal state, and that blocker's predicate returns false
+    // unconditionally — which is itself asserted by the fixture no longer being
+    // able to use it.)
+    const pubspec = join(root, BRICK, 'pubspec.yaml');
+    mkdirSync(dirname(pubspec), { recursive: true });
+    writeFileSync(pubspec, 'dependencies:\n  flutter:\n    sdk: flutter\n  app_links: ^6.0.0\n');
     const { code, out } = run(root);
     assert.equal(code, 1);
     assert.match(out, /but that blocker has SHIPPED/);
@@ -205,7 +236,7 @@ describe('assert-screen-set', () => {
   test('FAILS when a block is undated', () => {
     const { code, out } = run(tree({
       mutate: (r) => {
-        delete r.screens.find((s) => s.id === 'monetization.paywall').declaredOn;
+        delete r.screens.find((s) => s.id === 'auth.callbacks').declaredOn;
         return r;
       },
     }));
@@ -216,7 +247,7 @@ describe('assert-screen-set', () => {
   test('FAILS when a block names no blocker', () => {
     const { code, out } = run(tree({
       mutate: (r) => {
-        delete r.screens.find((s) => s.id === 'monetization.paywall').blockedBy;
+        delete r.screens.find((s) => s.id === 'auth.callbacks').blockedBy;
         return r;
       },
     }));

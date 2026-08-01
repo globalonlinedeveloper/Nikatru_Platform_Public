@@ -158,9 +158,10 @@ if (existsSync(pkgRoot)) {
   }
 }
 
-// Coverage self-check. Five adapters today; a scan that finds one or two reads
-// exactly like "every adapter is compliant".
-const MIN_ADAPTERS = 5;
+// Coverage self-check. SIX adapters since 2026-08-01 (packages/purchases joined
+// on url_launcher); a scan that finds one or two reads exactly like "every
+// adapter is compliant".
+const MIN_ADAPTERS = 6;
 if (adapters.length < MIN_ADAPTERS) {
   problems.push(
     `COVERAGE LOST — derived only ${adapters.length} adapter(s), expected >= ${MIN_ADAPTERS}. Either adapters were deleted or this derivation has stopped working, and the checks below would range over almost nothing.`,

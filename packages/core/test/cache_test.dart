@@ -185,9 +185,16 @@ void main() {
     test('lifetime entitlement stays Pro offline indefinitely', () async {
       final EntitlementCache cache =
           EntitlementCache(store: InMemorySecureStore());
-      await cache.save(lifetime());
-      final Entitlements v =
-          await cache.readValid(now: DateTime.utc(2099, 1, 1));
+      // ⚠️ `saveVerified`, and OFFLINE. [pipeline 5]M-8 gave this cache a
+      // staleness ceiling, so "indefinitely" is now conditional on the client
+      // being unable to re-verify — which is exactly what an OFFLINE user is.
+      // The same call with connectivity available re-locks after the ceiling,
+      // and that is asserted in the M-8 group below.
+      await cache.saveVerified(lifetime(), now: DateTime.utc(2026, 8, 1));
+      final Entitlements v = await cache.readValid(
+        now: DateTime.utc(2099, 1, 1),
+        connectivityAvailable: false,
+      );
       expect(v.isPro, isTrue);
     });
 
@@ -197,9 +204,12 @@ void main() {
         store: InMemorySecureStore(),
         grace: const Duration(days: 3),
       );
-      // Expired yesterday, but inside the 3-day grace.
-      await cache
-          .save(subscriptionExpiring(now.subtract(const Duration(days: 1))));
+      // Expired yesterday, but inside the 3-day grace — and verified today, so
+      // the M-8 staleness ceiling is not what this test is measuring.
+      await cache.saveVerified(
+        subscriptionExpiring(now.subtract(const Duration(days: 1))),
+        now: now,
+      );
       final Entitlements v = await cache.readValid(now: now);
       expect(v.isPro, isTrue);
     });
@@ -531,6 +541,163 @@ void main() {
       });
       expect(e.unreadableExpiry, isNull);
       expect(e.toJson()['expires_at'], '2026-08-01T00:00:00.000Z');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // [pipeline 5]M-8 — THE REVOCATION BOUND
+  //
+  // A refund revokes on the SERVER. This client learns of it only by asking. So
+  // "revoked within N" is not a property of the server at all — it is a property
+  // of how long this client keeps honouring an answer it has not re-checked.
+  //
+  // 🔴 BOTH DIRECTIONS ARE TESTED, and the second one is the load-bearing half.
+  // Without a test that the gate is STILL UNLOCKED just inside the bound, a
+  // client that always locks passes every assertion here — and always-locking is
+  // the fail-closed-and-dead shape this whole stage exists to stop.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('[5]M-8 · the staleness ceiling', () {
+    final DateTime verified = DateTime.utc(2026, 8, 1, 12);
+    const Duration ceiling = Duration(days: 7);
+
+    Future<EntitlementCache> cacheWithVerifiedPro({DateTime? at}) async {
+      final EntitlementCache c = EntitlementCache(
+        store: InMemorySecureStore(),
+        stalenessCeiling: ceiling,
+      );
+      await c.saveVerified(
+        const Entitlements(
+          appId: 'probe',
+          isPro: true,
+          items: <Entitlement>[],
+        ),
+        now: at ?? verified,
+      );
+      return c;
+    }
+
+    test('the constant is the shipped default, not something a test invented',
+        () {
+      // If the default drifted, every assertion below would be about a number
+      // no app uses. `assert-purchase-path.mjs` compares this same constant
+      // against the trial length and the shortest billing period.
+      expect(kEntitlementStalenessCeiling, const Duration(days: 7));
+      expect(
+        EntitlementCache(store: InMemorySecureStore()).stalenessCeiling,
+        kEntitlementStalenessCeiling,
+      );
+    });
+
+    test('bound − 1s, online ⇒ STILL UNLOCKED', () async {
+      final EntitlementCache c = await cacheWithVerifiedPro();
+      final Entitlements e = await c.readValid(
+        now: verified.add(ceiling - const Duration(seconds: 1)),
+      );
+      expect(e.isPro, isTrue);
+    });
+
+    test('bound + 1s, online ⇒ RE-LOCKS', () async {
+      final EntitlementCache c = await cacheWithVerifiedPro();
+      final Entitlements e = await c.readValid(
+        now: verified.add(ceiling + const Duration(seconds: 1)),
+      );
+      expect(e.isPro, isFalse);
+      // The appId survives the downgrade so the caller still knows which app it
+      // is talking about.
+      expect(e.appId, 'probe');
+    });
+
+    test('bound + a YEAR, OFFLINE ⇒ still unlocked — the loss taken on purpose',
+        () async {
+      // WRITTEN DOWN RATHER THAN DISCOVERED: a user who is refunded and then
+      // never reconnects keeps access indefinitely. Locking a paying user out
+      // because their train went into a tunnel is the larger harm, and it is the
+      // one that happens thousands of times more often.
+      final EntitlementCache c = await cacheWithVerifiedPro();
+      final Entitlements e = await c.readValid(
+        now: verified.add(const Duration(days: 372)),
+        connectivityAvailable: false,
+      );
+      expect(e.isPro, isTrue);
+    });
+
+    test(
+        'the DEFAULT is the locking side — a caller who has not thought about it fails closed',
+        () async {
+      final EntitlementCache c = await cacheWithVerifiedPro();
+      expect(
+        (await c.readValid(now: verified.add(const Duration(days: 30)))).isPro,
+        isFalse,
+      );
+    });
+
+    test('an ABSENT verified_at is infinitely stale, never freshly verified',
+        () async {
+      // The shape of a cache written before the field existed, and the shape of
+      // a corrupt one. Defaulting it to "now" would make every read look freshly
+      // verified, so the ceiling could never be crossed and M-8 would be a
+      // constant nothing consults.
+      final EntitlementCache c = EntitlementCache(
+        store: InMemorySecureStore(),
+        stalenessCeiling: ceiling,
+      );
+      await c.save(
+        const Entitlements(appId: 'probe', isPro: true, items: <Entitlement>[]),
+      );
+      expect((await c.readRaw())!.verifiedAt, isNull);
+      expect((await c.readValid(now: verified)).isPro, isFalse);
+    });
+
+    test('an UNREADABLE verified_at is also infinitely stale', () async {
+      final SecureStore s = InMemorySecureStore(<String, String>{
+        'nikatru.entitlements': jsonEncode(<String, Object?>{
+          'app_id': 'probe',
+          'is_pro': true,
+          'entitlements': <Object?>[],
+          'verified_at': 'not a date',
+        }),
+      });
+      final EntitlementCache c = EntitlementCache(
+        store: s,
+        stalenessCeiling: ceiling,
+      );
+      expect((await c.readRaw())!.verifiedAt, isNull);
+      expect((await c.readValid(now: verified)).isPro, isFalse);
+    });
+
+    test('verified_at ROUND-TRIPS through the cache as UTC', () async {
+      final EntitlementCache c = await cacheWithVerifiedPro();
+      final Entitlements? back = await c.readRaw();
+      expect(back!.verifiedAt, verified);
+      expect(back.verifiedAt!.isUtc, isTrue);
+    });
+
+    test(
+        'a LOCAL-time verified_at normalizes, so a timezone change cannot age the answer',
+        () async {
+      final DateTime local = DateTime.utc(2026, 8, 1, 12).toLocal();
+      final EntitlementCache c = await cacheWithVerifiedPro(at: local);
+      expect((await c.readRaw())!.verifiedAt, DateTime.utc(2026, 8, 1, 12));
+    });
+
+    test(
+        '🔒 `save` CANNOT refresh the verification age — only `saveVerified` can',
+        () async {
+      // If a plain write could stamp itself fresh, any cache-writing code path
+      // would reset the clock and the ceiling would be unreachable.
+      final EntitlementCache c = await cacheWithVerifiedPro();
+      final Entitlements stale = (await c.readRaw())!;
+      await c.save(stale);
+      expect((await c.readRaw())!.verifiedAt, verified);
+    });
+
+    test(
+        'isStaleAt is exposed, so the decision is inspectable rather than implied',
+        () async {
+      final EntitlementCache c = await cacheWithVerifiedPro();
+      final Entitlements e = (await c.readRaw())!;
+      expect(c.isStaleAt(e, verified.add(const Duration(days: 6))), isFalse);
+      expect(c.isStaleAt(e, verified.add(const Duration(days: 8))), isTrue);
     });
   });
 }

@@ -26,7 +26,8 @@
   ],
   "consumerRoots": [
     "apps/subly",
-    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+    "tooling/bricks/app/__brick__/apps/{{app_id}}",
+    "packages/purchases"
   ],
   "vendors": {
     "_why": [
@@ -150,7 +151,7 @@
         "alternative": "Paddle (the locked MoR, ADR 004) or direct store IAP, behind the same entitlement adapter",
         "swapCost": "Medium — a new adapter and a webhook, but no app data migration, because we own the record."
       },
-      "note": "⬜ NOT YET LIVE. Nobody can pay NIKATRU today; stage 5 owns the money rail. Recorded now because the surfaces already exist in the tree, and a vendor whose keys are wired before its checklist is exactly the adoption-without-review this requirement stops."
+      "note": "⬜ NOT YET LIVE. Nobody can pay NIKATRU today; stage 5 owns the money rail. ⚠️ 2026-08-01: the CLIENT rail now exists too (packages/purchases + the brick wiring), so what remains is the seller account itself (A-1), not any code. Recorded now because the surfaces already exist in the tree, and a vendor whose keys are wired before its checklist is exactly the adoption-without-review this requirement stops."
     },
     "paddle": {
       "surface": "MERCHANT OF RECORD for web/desktop — the legal seller, which remits global VAT/GST on our behalf. The surface in this repo is ONE value: the per-destination webhook notification secret.",
@@ -228,7 +229,8 @@
     "APP_STORE_ID": "OUR OWN listing's numeric id on Apple's App Store — an identifier of a thing we publish, not a credential and not a service we call. `in_app_review` needs it to open the listing on iOS/macOS (ArgumentError.checkNotNull, in release), and it does not EXIST until the app is registered, which is why it is a define with an empty default rather than a stamped constant. Empty reads as StoreListingOutcome.notConfigured, never as success. Added 2026-08-01.",
     "MICROSOFT_STORE_ID": "OUR OWN Microsoft Store ProductId — see APP_STORE_ID. Windows has NO inline review prompt, so the listing is its only route to a store, and without this id that route threw inside the plugin and was swallowed. Added 2026-08-01.",
     "MONEY_ENVIRONMENT": "OUR OWN declaration of which money world a deploy is — exactly `live` or `sandbox`, [pipeline 5]M-12. No external system is behind it: it exists because NEITHER the notification payload NOR the destination secret distinguishes sandbox from live (developer.paddle.com documents one `pdl_ntfset_` prefix for both), so the deploy has to say. POST /v1/money/:provider answers 503 when it is absent or unrecognised — a default in either direction would silently honour sandbox money as real, or silently stop honouring real money. Added 2026-08-01.",
-    "MONEY_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on. Added 2026-08-01."
+    "MONEY_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on. Added 2026-08-01.",
+    "CHECKOUT_RETURN_URL": "OUR OWN return address for a hosted checkout — the page the merchant of record sends the buyer back to. Not a vendor surface: it is a URL WE host and WE choose, and it carries no credential. It exists as a define rather than a constant because the web case is a full-page navigation AWAY from a canvas-rendered Flutter app, so the returning session is a cold start that has to land somewhere that knows a purchase was in flight (G-43's fragment-vs-query lesson, for auth, is the same shape). Added 2026-08-01, [pipeline 5]M-6."
   },
   "packageEarnReasons": {
     "_why": [
@@ -309,6 +311,13 @@
       "reason": "GRANDFATHERED",
       "declaredOn": "2026-07-28",
       "detail": "A lint ruleset -- config, not code, and flutter_lints is not a native payload. It is nonetheless the one grandfathered package with a clear reason to stay separate: [2]C-12 made it the single convention set that every package, every app and the brick template inherits, so one rule edit reaches every app the factory will ever stamp. (Until 2026-07-28 it had ZERO consumers and its own include sat commented out, which is why this entry originally read 'delivers nothing'.)"
+    },
+    "packages/purchases": {
+      "reason": "native-binary",
+      "evidence": {
+        "dependency": "url_launcher"
+      },
+      "detail": "A hosted checkout is an external URL, and opening one is a per-platform native call with real gaps -- which is why PurchaseCapabilities exists. It also has to be a package rather than app code for three requirements to be enforceable at all: assert-adapter-capabilities.mjs derives its domain from packages/ with a third-party dep, assert-no-seam-forks.mjs forbids a registered seam under apps/, and assert-no-price-literals.mjs needs the price to live behind a model. Leaving the adapter in apps/subly satisfied none of them while appearing to satisfy M-15 -- see [ADR 026]."
     }
   },
   "capabilities": [
@@ -377,6 +386,14 @@
         {
           "file": "packages/core/lib/src/review/review_prompter.dart",
           "symbol": "ReviewPrompter"
+        },
+        {
+          "file": "packages/core/lib/src/entitlement_transport.dart",
+          "symbol": "EntitlementTransport"
+        },
+        {
+          "file": "packages/core/lib/src/cancellation_transport.dart",
+          "symbol": "CancellationTransport"
         }
       ],
       "consumers": [
@@ -567,20 +584,52 @@
       }
     },
     {
+      "id": "purchases",
+      "capability": "The CLIENT half of the money rail: offerings priced by the rail config, a hosted checkout owned by the merchant of record, the bounded convergence wait that turns an async webhook into an unlock, the ROSCA cancel request, and the four money funnel events. [pipeline 5]M-5/M-6/M-9/M-10/M-11/M-13/M-15/M-16.",
+      "owner": "packages/purchases",
+      "package": "nikatru_purchases",
+      "seams": [
+        {
+          "file": "packages/purchases/lib/src/purchase_rail.dart",
+          "symbol": "PurchaseRail"
+        },
+        {
+          "file": "packages/purchases/lib/src/checkout_launcher.dart",
+          "symbol": "CheckoutLauncher"
+        }
+      ],
+      "implementsSeams": [
+        "EntitlementTransport",
+        "CancellationTransport"
+      ],
+      "consumers": [
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "note": "⬜ THE RAIL IS BUILT AND CANNOT YET TAKE MONEY, and the gap is one signup. `RailConfig.checkoutUrlTemplate` is ABSENT because the merchant of record's hosted-checkout URL shape is an UNVERIFIED vendor fact and no seller account exists to check it against (OWNER_QUEUE A-1, PENDING). With it absent `canCheckout` is false and the paywall says purchases are unavailable, which is true. Deliberately NOT given to apps/subly, which 39-CHASSIS cut 1 froze — see [ADR 026] for why its RevenueCat stub was deleted rather than moved.",
+      "capabilityMatrix": {
+        "file": "packages/purchases/lib/src/purchase_capabilities.dart",
+        "symbol": "PurchaseCapabilities",
+        "test": "packages/purchases/test/purchase_capabilities_test.dart",
+        "pinnedTo": "url_launcher 6.x, and store commerce policy as read on 2026-08-01 — re-review on any dependency bump AND whenever a channel changes its policy",
+        "degradesOn": "TWO FIELDS PER ROW, and the distinction is what makes this a compliance artifact rather than a table of booleans: `technicallySupported` is url_launcher's question (yes on all six targets) and `channelPermitted` is a store-policy question (no on the mobile stores no matter how well the code works). A one-boolean matrix has to pick a lie -- 'we cannot take payment on iOS' (false: the code works) or 'we can' (false in the way that gets an app rejected). FORBIDDEN: ios-appstore + macos-appstore (App Store Review Guideline 3.1.1 requires IAP for digital content; an external checkout is a documented rejection cause), android-play (Play Billing required; 39-CHASSIS S4 cut 5 defers a native IAP rail so nothing is sold there), windows-store (UNVERIFIED -- Microsoft Store commerce policy has never been read against a primary source in this repo, and undecidable means denied). PERMITTED: web, windows-direct, linux-snap, linux-appimage. `forPlatform` takes the RESTRICTIVE answer where a platform ships through more than one channel, because a build cannot tell at runtime which channel installed it."
+      }
+    },
+    {
       "id": "analytics_funnel",
       "capability": "The portfolio-wide conversion funnel: launch, activation, paywall viewed, checkout started, purchase success/failed, notification opened. Entirely app-neutral — it names no Subly concept.",
       "owner": "packages/core",
       "package": "nikatru_core",
       "seams": [],
       "consumers": [
-        "apps/subly"
+        "apps/subly",
+        "packages/purchases"
       ],
       "violations": [
         {
           "path": "apps/subly/lib/state/analytics_funnel.dart",
           "kind": "capability-implemented-in-app",
           "symbol": "AnalyticsFunnel",
-          "detail": "Lives inside an app despite being app-neutral, so no other app or stamped brick can emit the funnel. [5]M-16 already records that four of its methods (onPaywallViewed, onCheckoutStarted, onPurchaseSuccess, onPurchaseFailed) have ZERO callers — the analytics rail emits everything except the money.",
+          "detail": "Lives inside an app despite being app-neutral, so no other app or stamped brick can emit the funnel. [5]M-16 already records that four of its methods (onPaywallViewed, onCheckoutStarted, onPurchaseSuccess, onPurchaseFailed) have ZERO callers — the analytics rail emits everything except the money. ⚠️ UPDATED 2026-08-01: the four money methods now have real callers, but NOT these four -- [5]M-16 was satisfied by moving the money half into `packages/purchases/lib/src/money_funnel.dart` (MoneyFunnel), which the brick calls, so every stamped app is born measuring its own conversion. THIS declaration is still stranded inside apps/subly and still has zero callers for its money methods; [2]C-3 now has less to move.",
           "declaredOn": "2026-07-28",
           "fixOwner": "00-RECONCILIATION-DECISIONS.md PART 2.2 item 15 — \"C-1 assigns an owning package\". Assigned here to packages/core, beside the Analytics seam it wraps.",
           "blockedBy": "Moving it edits apps/subly, frozen by 39-CHASSIS cut 1. Owner decided 2026-07-28 to declare the assignment now and move it in [2]C-3's increment."
@@ -597,7 +646,8 @@
       "seam": "packages/analysis/lib/analysis_options.yaml",
       "consumers": [
         "apps/subly",
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+        "tooling/bricks/app/__brick__/apps/{{app_id}}",
+        "packages/purchases"
       ],
       "note": "✅ [2]C-12 WIRED IT 2026-07-28. It previously had ZERO consumers — including its own analysis_options.yaml, where the include sat inside a COMMENT, so the package's only mention of the mechanism it exists to provide was not code. Score was 0 of 10: every analysis_options.yaml in the tree included flutter_lints or lints directly. All eight non-exempt files now inherit it, each with the dev_dependency that makes the include resolve. The two exempt files are the shared set itself and the package's own self-apply, which uses a relative include so the lint package can analyze itself before the workspace resolves. Enforced by tooling/ci/assert-lint-inheritance.mjs — which also asserts the set still ESCALATES a rule to `error`, because inheritance at default severity prints and ships (measured: analyze exits 0)."
     },

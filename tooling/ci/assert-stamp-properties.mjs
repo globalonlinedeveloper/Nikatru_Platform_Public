@@ -34,16 +34,23 @@
 // invisible here. Adding a new provider to the real template changed nothing.
 // (The original example was `onboardingSeenProvider`, which has since been built
 // for real and is classified below — so the fixture that stands in for "a
-// behaviour nobody classified" now uses a name that is not a real capability.) So "every" now has a TRACKED DOMAIN (see DOMAIN_FILE below): the
+// behaviour nobody classified" now uses a name that is not a real capability.) So "every" now has a TRACKED DOMAIN (see DOMAIN_FILES below): the
 // chassis behaviours are read out of the template itself, and each one must be
 // classified — either covered by a named property, or listed as a dated,
 // reasoned gap. A behaviour in neither FAILS THE BUILD. That is what makes the
 // word "every" mean something a person cannot quietly shrink.
 //
-// The domain is deliberately ONE file, `lib/state/providers.dart` — the surface
-// every stamped app inherits its capabilities through. It does NOT cover widgets
-// in app.dart or features/; those are anchored individually by `source` above.
+// The domain is the PROVIDERS FILES — `lib/state/providers.dart` and, since
+// [pipeline 5]M-13, `lib/state/money_providers.dart` — the surfaces every
+// stamped app inherits its capabilities through. It does NOT cover widgets in
+// app.dart or features/; those are anchored individually by `source` above.
 // Naming the limit here so nobody reads this guard as broader than it is.
+//
+// ⚠️ AND `DOMAIN_FILES` IS A LIST FOR A REASON. It was a single constant, so
+// when the money rail arrived in a NEW providers file the whole capability had
+// no obligation to be classified at all — hole 2 above, arriving through a file
+// rather than through a provider. Add a providers file to the list the same day
+// you create it.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -59,6 +66,11 @@ const PROVIDERS = `${BRICK}/lib/state/providers.dart`;
 const SETTINGS = `${BRICK}/lib/features/settings/settings_screen.dart`;
 const ROUTER = `${BRICK}/lib/core/router.dart`;
 const MAIN = `${BRICK}/lib/main.dart`;
+const HOME = `${BRICK}/lib/features/home/home_screen.dart`;
+// [pipeline 5]M-13's wiring. A SECOND providers file, so the domain scan below
+// reads both — a new providers file with no coverage requirement is a hole the
+// size of a whole capability.
+const MONEY_PROVIDERS = `${BRICK}/lib/state/money_providers.dart`;
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 // The stamped Worker's half of G2. Only present on a needs_backend stamp; the
 // mustache section IS the directory name on disk, so this path resolves in the
@@ -106,6 +118,26 @@ const REQUIRED_COVERAGE = [
       { file: 'packages/design_system/lib/src/theme/app_theme_x.dart', re: /factory\s+AppThemeX\.fromScheme/, what: 'brand tokens must be DERIVED from the scheme — a const AppThemeX makes every stamp share one gradient and one ramp' },
     ],
     why: 'identical-looking apps are treated as spam by both stores, and Play enforcement reaches related accounts',
+  },
+  {
+    key: 'paywall-gate-driven-by-server',
+    group: /group\(\s*'property: paywall-gate-driven-by-server'/,
+    // 🔴 THE PROPERTY THAT COULD NOT EXIST UNTIL [5]M-5 LANDED. `PaywallGate`
+    // and `EntitlementCache` both shipped, both were tested, and no code path in
+    // this repo had ever asked the server whether anybody had paid. Nothing went
+    // red, because refusing is correct when nobody has paid.
+    //
+    // FIVE anchors, because deleting any one of them re-breaks the chain while
+    // leaving the other four looking healthy — and a chain is exactly what this
+    // property is about.
+    sources: [
+      { file: MONEY_PROVIDERS, re: /\.fetch\(\s*\n?\s*appId:/, what: 'the chassis must actually ASK the server — a lock decision reached without asking is the dead capability C-6 exists to catch' },
+      { file: MONEY_PROVIDERS, re: /cache\.saveVerified\(/, what: 'a server answer must be written through as VERIFIED, or the M-8 staleness ceiling can never be crossed' },
+      { file: MONEY_PROVIDERS, re: /paywallLockedProvider/, what: 'the answer must reach a LOCK DECISION — a fetch nothing consults is the same dead capability wearing a network call' },
+      { file: HOME, re: /PaywallGate\(\s*\n?\s*locked:/, what: 'the lock must reach the GATE in the stamped chassis, or PaywallGate goes back to having zero consumers' },
+      { file: 'packages/core/lib/src/entitlement_cache.dart', re: /kEntitlementStalenessCeiling\s*=\s*Duration\(/, what: 'M-8 needs a NAMED bound; "within the declared bound" with nothing declared cannot fail' },
+    ],
+    why: 'a paywall that is not driven by a real server answer is either a wall nobody paid past or a product given away',
   },
   {
     key: 'ui-invariants-inherited',
@@ -286,7 +318,12 @@ const REQUIRED_COVERAGE = [
 // grows. Every top-level `*Provider` in this file is a capability a stamped app
 // inherits; each must appear in COVERED_BY or UNASSERTED below, or the build
 // fails with the provider's name in the message.
-const DOMAIN_FILE = PROVIDERS;
+// 🔴 BOTH PROVIDER FILES. [pipeline 5]M-13 landed `money_providers.dart`, and a
+// single-file domain would have let a whole capability — the money rail —
+// arrive with no obligation to be asserted about at all. That is the failure
+// this guard's own header describes, arriving through a new file rather than
+// through a new provider.
+const DOMAIN_FILES = [PROVIDERS, MONEY_PROVIDERS];
 // Parens are in the class because a provider's TYPE can contain them —
 // `Provider<Future<String?> Function()>` is the token getter C-15 wires into the
 // REST client. Without them this scan silently skipped every function-typed
@@ -298,7 +335,7 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 32;
+const MIN_DOMAIN = 40;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -337,6 +374,22 @@ const COVERED_BY = {
   consentTransportProvider: 'analytics-consent-gated',
   eventTransportProvider: 'analytics-consent-gated',
   analyticsProvider: 'analytics-consent-gated',
+  // ── [pipeline 5] THE MONEY RAIL. Every one of these is DRIVEN by the
+  //    property, not merely constructed: it fakes the SERVER, lets the real
+  //    cache and the real lock decision run, and asserts the gate follows.
+  //
+  //    `entitlementCacheProvider` and `secureStoreProvider` were both UNASSERTED
+  //    until 2026-08-01 — the first "BLOCKED, the paid path is stage 5", the
+  //    second "needs a platform channel a widget test has not got". Stage 5
+  //    landed and the second turned out to need an in-memory SecureStore, which
+  //    is four methods. An admitted gap is not a permanent one.
+  entitlementCacheProvider: 'paywall-gate-driven-by-server',
+  secureStoreProvider: 'paywall-gate-driven-by-server',
+  railConfigProvider: 'paywall-gate-driven-by-server',
+  entitlementTransportProvider: 'paywall-gate-driven-by-server',
+  entitlementsProvider: 'paywall-gate-driven-by-server',
+  paywallLockedProvider: 'paywall-gate-driven-by-server',
+  purchaseRailProvider: 'paywall-gate-driven-by-server',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what
@@ -344,14 +397,18 @@ const COVERED_BY = {
 // it stays uncomfortable. Per the C-16 lock, new properties arrive WITH their
 // features; nothing here is to be invented to empty the list.
 const UNASSERTED = {
+  // The money rail's remaining gaps. Each is exercised in packages/purchases'
+  // own suite; what is missing is a STAMPED-APP assertion, which is a different
+  // and stronger claim.
+  cancellationTransportProvider: '2026-08-01 · the ROSCA cancel call. Driven end-to-end in packages/purchases/test/hosted_checkout_rail_test.dart and against a real SQL engine in services/platform/test/cancellation.test.ts; a stamped-app property would need the manage screen pumped with a fake host, which is a widget test worth writing and is not written',
+  entitlementConvergenceProvider: '2026-08-01 · the bounded post-checkout wait. Fully exercised in packages/purchases/test/entitlement_convergence_test.dart (backoff, exhaustion, could-not-ask); no stamped-app property because a checkout cannot be opened in a widget test',
+  moneyFunnelProvider: '2026-08-01 · the four money events. Their CALLERS are enforced by tooling/ci/assert-pseudonymity-firewall.mjs, which resolves them by SYMBOL, and the funnel itself is unit-tested — but no stamped-app property watches an event reach a transport from the paywall',
   configTransportProvider: '2026-07-28 · CFG-1 config resolution has no stamped-app property; a stamp cannot prove network → last-good → default actually degrades in that order',
   configLoaderProvider: '2026-07-28 · as above — the fallback chain is unit-tested in core, never asserted on a stamped app',
   appConfigProvider: '2026-07-28 · as above',
   packageVersionProvider: '2026-07-28 · force-update input; returns null in widget tests by design, so a stamped-app assertion needs a seam that does not exist yet',
   mustForceUpdateProvider: '2026-07-28 · the force-update kill-switch. NOTHING proves the update wall appears on a stamped app — and this is the switch that was inert for 55 builds',
-  secureStoreProvider: '2026-07-28 · no stamped-app property; the secure store needs a platform channel a widget test has not got',
   featureFlagsProvider: '2026-07-28 · rollout bucketing is unasserted in the stamp; core tests the maths, nothing tests that a stamped app buckets',
-  entitlementCacheProvider: '2026-07-28 · BLOCKED — the paid path is stage 5. C-6 routed the entitlement instance there rather than half-build it',
   analyticsConsentProvider: '2026-07-28 · the UI-facing read; consentDecidedProvider is the limb the property test drives, and it is the one that decides whether to prompt',
 };
 
@@ -482,18 +539,21 @@ for (const p of REQUIRED_COVERAGE) {
 
 // ── "EVERY" — the domain check. ─────────────────────────────────────────────
 let domainSrc = '';
-try {
-  domainSrc = readFileSync(join(repo, DOMAIN_FILE), 'utf8');
-} catch {
-  fail(`${DOMAIN_FILE} could not be read — the tracked domain of chassis behaviours is unreadable, so "every property" ranges over nothing`);
+for (const f of DOMAIN_FILES) {
+  try {
+    domainSrc += `
+${readFileSync(join(repo, f), 'utf8')}`;
+  } catch {
+    fail(`${f} could not be read — the tracked domain of chassis behaviours is unreadable, so "every property" ranges over nothing`);
+  }
 }
 
 if (domainSrc) {
   const domain = [...domainSrc.matchAll(DOMAIN_RE)].map((m) => m[1]);
   if (domain.length < MIN_DOMAIN) {
-    fail(`COVERAGE LOST — the domain parse found ${domain.length} chassis behaviour(s) in ${DOMAIN_FILE}, expected >= ${MIN_DOMAIN}. Either capabilities were deleted, or this guard has stopped seeing them. A scanner that quietly matches less is the failure this repo keeps re-learning.`);
+    fail(`COVERAGE LOST — the domain parse found ${domain.length} chassis behaviour(s) in ${DOMAIN_FILES.join(' + ')}, expected >= ${MIN_DOMAIN}. Either capabilities were deleted, or this guard has stopped seeing them. A scanner that quietly matches less is the failure this repo keeps re-learning.`);
   } else {
-    ok(`tracked domain: ${domain.length} chassis behaviour(s) in ${DOMAIN_FILE}`);
+    ok(`tracked domain: ${domain.length} chassis behaviour(s) in ${DOMAIN_FILES.length} providers file(s)`);
   }
 
   const known = new Set([...Object.keys(COVERED_BY), ...Object.keys(UNASSERTED)]);
@@ -508,7 +568,7 @@ if (domainSrc) {
     }
     if (UNASSERTED[name]) continue;
     fail(
-      `NEW CHASSIS BEHAVIOUR '${name}' is in ${DOMAIN_FILE} but classified nowhere. ` +
+      `NEW CHASSIS BEHAVIOUR '${name}' is in ${DOMAIN_FILES.join(' / ')} but classified nowhere. ` +
         `Every capability a stamped app inherits must either be exercised by a property assertion ` +
         `(add it to COVERED_BY) or be an admitted, dated gap (add it to UNASSERTED with a reason). ` +
         `Shipping it unclassified is how "the lane asserts every property" quietly stopped being true.`,
@@ -521,7 +581,7 @@ if (domainSrc) {
   const present = new Set(domain);
   for (const name of known) {
     if (!present.has(name)) {
-      fail(`'${name}' is classified in this guard but no longer exists in ${DOMAIN_FILE}. Remove the stale entry — a list that has drifted from the tree stops meaning anything.`);
+      fail(`'${name}' is classified in this guard but no longer exists in ${DOMAIN_FILES.join(' / ')}. Remove the stale entry — a list that has drifted from the tree stops meaning anything.`);
     }
   }
 

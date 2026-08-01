@@ -5,7 +5,20 @@
     "tagline": "Track every subscription in one place",
     "url": "https://subly.nikatru.com",
     "api": "https://api.nikatru.com",
-    "platforms": ["web"],
+    "platforms": [
+      "web"
+    ],
     "status": "live"
+  },
+  {
+    "slug": "probe",
+    "name": "Probe's E-Book & Co",
+    "tagline": "Throwaway app stamped in CI to prove the brick compiles + analyzes: & ' / \" survive.",
+    "url": "https://probe.nikatru.com",
+    "api": "",
+    "platforms": [
+      "web"
+    ],
+    "status": "preview"
   }
 ]

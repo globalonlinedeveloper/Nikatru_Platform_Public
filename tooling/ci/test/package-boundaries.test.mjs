@@ -101,6 +101,15 @@ function tree({
     'nikatru_telemetry',
     '  flutter:\n    sdk: flutter\n  sentry_flutter: ^9.24.0\n',
   );
+  // [pipeline 5]M-13's money rail, added 2026-08-01. It declares url_launcher
+  // for ONE job — the hosted-checkout launcher — and that declaration is what
+  // reclassified the brick's and Subly's long-standing direct imports as
+  // bypasses. Without this pubspec here, url_launcher is not a wrapped vendor
+  // and the two grandfathered entries read as stale.
+  files[join(root, 'packages/purchases/pubspec.yaml')] = spec(
+    'nikatru_purchases',
+    '  flutter:\n    sdk: flutter\n  nikatru_core:\n    path: ../core\n  url_launcher: ^6.3.0\n',
+  );
   // A lint-config package. It declares a third-party dep like an adapter does,
   // but a lint ruleset is config, not a wrapped SDK — nobody imports it in code.
   // Present so the "is it excluded?" question is answered by the fixture too.
@@ -114,8 +123,16 @@ function tree({
     "import 'package:supabase_flutter/supabase_flutter.dart' as sb;\n";
   files[join(root, 'apps/subly/lib/data/api/dio_api_client.dart')] =
     "import 'package:dio/dio.dart';\nimport 'package:nikatru_api_client/nikatru_api_client.dart';\n";
+  // …and the FOURTH, added 2026-08-01: `packages/purchases` declares
+  // url_launcher for its checkout launcher, which reclassified Subly's
+  // long-standing direct import as a bypass. It has to be here, or the guard's
+  // stale-entry check fires on a KNOWN_BYPASSES row whose import is absent.
+  files[join(root, 'apps/subly/lib/features/shared/widgets.dart')] =
+    "import 'package:url_launcher/url_launcher.dart';\n";
 
   files[join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart')] = brickImports;
+  files[join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart')] =
+    "import 'package:url_launcher/url_launcher.dart';\n";
 
   for (const [rel, body] of Object.entries(extra)) files[join(root, rel)] = body;
 
@@ -135,11 +152,11 @@ describe('assert-package-boundaries', () => {
   test('passes on a tree shaped like the real repository', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /derived 7 wrapped vendor\(s\) from 5 adapter\(s\)/);
+    assert.match(out, /derived 8 wrapped vendor\(s\) from 6 adapter\(s\)/);
     // flutter_lints must NOT be treated as a wrapped vendor.
     assert.doesNotMatch(out, /flutter_lints/);
     // The real debt is printed, every run.
-    assert.match(out, /4 grandfathered adapter bypass\(es\)/);
+    assert.match(out, /6 grandfathered adapter bypass\(es\)/);
   });
 
   // ── A · core stays pure Dart ───────────────────────────────────────────────
@@ -273,7 +290,7 @@ describe('assert-package-boundaries', () => {
     test('FAILS rather than passing everything when the vendor set shrinks', () => {
       const { code, out } = run(tree({ apiClientDeps: '  nikatru_core:\n    path: ../core\n' }));
       assert.equal(code, 1);
-      assert.match(out, /COVERAGE LOST — derived only 6 wrapped vendor\(s\)/);
+      assert.match(out, /COVERAGE LOST — derived only 7 wrapped vendor\(s\)/);
       assert.match(out, /would range over an almost-empty set and pass everything/);
     });
 

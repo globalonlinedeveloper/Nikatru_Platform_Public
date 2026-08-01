@@ -45,7 +45,7 @@ try {
 const screens = reg.screens ?? [];
 // A floor, not `> 0`: the register has held 16 since it was written, and a list
 // somebody trims to three would otherwise read as a clean pass.
-const MIN_SCREENS = 22;
+const MIN_SCREENS = 23;
 if (screens.length < MIN_SCREENS) {
   problems.push(
     `COVERAGE LOST — the register declares only ${screens.length} screen(s), expected >= ${MIN_SCREENS}. DoD §4-A names the full set; a register somebody has trimmed asserts less while looking identical.`,
@@ -57,14 +57,23 @@ if (screens.length < MIN_SCREENS) {
 // Blockers that have already shipped. Checked so an excuse cannot outlive its
 // reason.
 const BLOCKERS_STILL_REAL = {
-  'stage 5 (money rail)': () =>
-    // Real the moment nothing can take a payment. `PaywallGate` having a
-    // consumer would be the signal that this changed.
-    !/PaywallGate\(/.test(
-      existsSync(join(ROOT, 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib'))
-        ? readAll('tooling/bricks/app/__brick__/apps/{{app_id}}/lib')
-        : '',
-    ),
+  // 🪦 SHIPPED 2026-08-01. This used to be `!/PaywallGate\(/.test(brick)` — a
+  // deliberate tripwire that turned CI red the moment a real `PaywallGate`
+  // consumer reached the template, because a paywall in the stamped chassis
+  // without the rest of the purchase path is a promise the app cannot keep.
+  // It fired exactly as designed and the increment that trips it has landed.
+  //
+  // It is not deleted, and it is not left pointing at its old predicate. Either
+  // would be wrong in a different way: deleting the key makes a stray
+  // `"blockedBy": "stage 5 (money rail)"` fall through with NO predicate and
+  // pass silently, and keeping the old predicate makes it fail forever for a
+  // reason that is no longer true. Returning `false` means the blocker has
+  // shipped, so ANY remaining claim to be blocked by it fails loudly with the
+  // "build the screen or restate the block" message below. The invariant the
+  // tripwire actually protected has moved to `checkPurchasePathIsWhole()`, which
+  // runs on EVERY invocation rather than only when something claims to be
+  // blocked — see the section below.
+  'stage 5 (money rail)': () => false,
   // Real until app_links is an actual dependency. The moment it is, the
   // callback screens are buildable and this excuse must stop working.
   'app_links (deep-link handling)': () =>
@@ -87,6 +96,68 @@ function readAll(dir) {
   try { walk(join(ROOT, dir)); } catch { /* absent */ }
   return out;
 }
+
+// ── THE TRIPWIRE, RE-POINTED AT THE INVARIANT IT WAS ALWAYS ABOUT ───────────
+//
+// The old form was a BLOCKER predicate, so it only ran while some register entry
+// still claimed to be blocked by stage 5. That made it a one-shot: the day the
+// two `monetization.*` rows flipped to `present`, the check that had been
+// guarding "no paywall without a purchase path" stopped running altogether —
+// which is this repo's most expensive recurring shape (a check that silently
+// stops checking) arriving by way of its own success.
+//
+// So the invariant is stated directly and checked EVERY RUN, in both directions:
+//
+//   · a `PaywallGate(` in the stamped chassis with no purchase path is a
+//     promise the app cannot keep — the original tripwire, preserved;
+//   · a purchase path with no `PaywallGate(` is a rail that can take money and
+//     unlocks nothing — the mirror defect, which the old form could not see.
+//
+// Each limb is matched as a CALL and excludes the file that declares it, for the
+// reason assert-seams-wired.mjs carries a scar about: `foo(` finds a declaration
+// as readily as a call, so a "does anything use this?" check that ignores
+// declarations passes with every real caller deleted.
+function checkPurchasePathIsWhole() {
+  const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
+  if (!existsSync(join(ROOT, BRICK_LIB))) {
+    problems.push(
+      `COVERAGE LOST — ${BRICK_LIB} does not exist, so the paywall/purchase-path invariant ranged over nothing.`,
+    );
+    return;
+  }
+  const src = readAll(BRICK_LIB).replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  const gate = /PaywallGate\(/.test(src);
+  // The limbs a paywall is a promise WITHOUT. Each is the call site, in the
+  // template, not the declaration (which lives in packages/purchases).
+  const LIMBS = [
+    { re: /\.startCheckout\(/, what: 'a checkout launch (PurchaseRail.startCheckout)' },
+    { re: /\.awaitUnlock\(/, what: 'the bounded convergence wait after a checkout returns' },
+    { re: /\.requestCancellation\(/, what: 'the ROSCA cancel call ([5]M-9)' },
+    { re: /entitlementsProvider/, what: 'the SERVER entitlement read that decides the lock' },
+    { re: /\.onPurchaseSuccess\(/, what: 'the money funnel ([5]M-16)' },
+  ];
+  const missing = LIMBS.filter((l) => !l.re.test(src));
+
+  if (gate && missing.length > 0) {
+    problems.push(
+      `PAYWALL WITHOUT A PURCHASE PATH — the stamped chassis uses \`PaywallGate(\` but is missing ${missing
+        .map((m) => m.what)
+        .join('; ')}. A gate in the template with no way to pay past it is a promise every stamped app makes and none can keep. Land the path or take the gate out.`,
+    );
+  } else if (!gate && missing.length < LIMBS.length) {
+    problems.push(
+      `A PURCHASE PATH WITH NOTHING TO UNLOCK — the stamped chassis can take money (${LIMBS.length - missing.length}/${LIMBS.length} limb(s) present) but no \`PaywallGate(\` gates anything. A rail that charges and unlocks nothing is worse than no rail.`,
+    );
+  } else if (gate) {
+    ok(`purchase path whole — PaywallGate plus all ${LIMBS.length} limbs present in the stamped chassis`);
+  } else {
+    // Neither: a chassis with no money rail at all. Legitimate, and reported so
+    // the state cannot become invisible.
+    notes.push('⬜ the stamped chassis carries NO money rail (no PaywallGate and no purchase path).');
+  }
+}
+checkPurchasePathIsWhole();
 
 let present = 0;
 let reachableChecked = 0;

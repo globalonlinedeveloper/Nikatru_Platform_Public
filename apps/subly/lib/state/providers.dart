@@ -12,7 +12,6 @@ import '../data/auth/mock_auth_repository.dart';
 import '../data/auth/supabase_auth_repository.dart';
 import '../data/subscriptions/subscription_repository.dart';
 import '../services/notifications/notification_service.dart';
-import '../services/purchases/purchases_service.dart';
 
 /// Auth: real Supabase when configured, else the in-memory mock (demo mode).
 final Provider<AuthRepository> authRepositoryProvider =
@@ -110,5 +109,16 @@ final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
 final Provider<NotificationService> notificationServiceProvider =
     Provider<NotificationService>((ref) => NotificationService.instance);
 
-final Provider<PurchasesService> purchasesServiceProvider =
-    Provider<PurchasesService>((ref) => PurchasesService.create());
+// ── `purchasesServiceProvider` WAS HERE, AND IT IS GONE ON PURPOSE ──────────
+// [pipeline 5]M-11/M-13/M-15, [ADR 026]. `lib/services/purchases/` held a
+// RevenueCat-shaped stub: a `PurchasesService` whose `purchase()` returned
+// `success: false`, whose `restore()` returned `false`, and whose offerings were
+// the hardcoded literals `$2.99` and `$24.99` — prices the owner replaced on
+// 2026-07-27 and which nothing could contradict, because a hardcoded string is
+// consistent with itself forever. The provider had zero consumers.
+//
+// It was REPLACED, not extended: its `PurchaseResult{isPro}` shape hands the
+// unlock decision to the client, and this rail's whole design is that only the
+// server grants. The real path now lives in `packages/purchases` and is wired by
+// the brick, so every stamped app inherits it. See knowledge/decisions/
+// 026-purchases-adapter-replaces-revenuecat-stub.md.
