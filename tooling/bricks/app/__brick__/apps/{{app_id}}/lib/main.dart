@@ -14,9 +14,15 @@ Future<void> main() async {
   // Telemetry chassis: no DSN -> NoOp client (appRunner runs directly);
   // a GLITCHTIP_DSN via --dart-define enables GlitchTip/Sentry with PII
   // scrubbing. sentry_flutter is isolated inside packages/telemetry.
+  //
+  // `release` is AppConfig.telemetryRelease — `<this app's id>@<this build's
+  // version>` — and NOT a literal. A literal here is right for at most one of
+  // fifty apps: this line used to carry the CI throwaway probe's own id and a
+  // frozen 0.1.0, which every stamped app then reported to the ONE shared
+  // GlitchTip project as though the crash were the probe's.
   const TelemetryConfig config = TelemetryConfig(
     dsn: String.fromEnvironment('GLITCHTIP_DSN'),
-    release: 'probe@0.1.0',
+    release: AppConfig.telemetryRelease,
     environment: String.fromEnvironment('APP_ENV', defaultValue: 'dev'),
   );
 

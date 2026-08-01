@@ -72,6 +72,14 @@ const TESTS = join(CI, 'test');
 // 40 guards, 34 test files, 871 test declarations.
 // Re-measured 2026-08-01 (assert-deploy-triggers.mjs landing, corpus triage #30):
 // 41 guards, 35 test files, 907 test declarations.
+// Re-measured 2026-08-01 (brick stamp correctness, corpus triage #11/#24/#25):
+// 41 guards, 35 test files, 938 test declarations. Guard count and file count are
+// UNCHANGED and that is correct — assert-stamp-text-fidelity.mjs was EXTENDED to
+// cover the release id and the catalogue name rather than duplicated into two new
+// guards, so only the declaration floor moves. It moves to 900, which is 38 BELOW
+// the measured 938: a floor pinned AT reality goes red on the next honest merge
+// and teaches everyone to raise floors reflexively, which is how 15/4/140 came to
+// sit at ~40% of the tree.
 const MIN_GUARDS = 39;
 const MIN_TEST_FILES = 33;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
@@ -80,7 +88,7 @@ const MIN_TEST_FILES = 33;
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 870;
+const MIN_TEST_CASES = 900;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing

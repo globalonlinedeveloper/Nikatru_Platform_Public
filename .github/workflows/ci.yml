@@ -658,6 +658,28 @@ jobs:
         run: |
           SEED=$(node -p "require('./tooling/bricks/app/_probe_vars.json').seed_hex")
           node tooling/ci/assert-stamp-brand-assets.mjs apps/probe --seed "$SEED"
+      # 🔴 THE STAMP CAN BE GREEN AND STILL SHIP THE WRONG TEXT. mason renders
+      # every DOUBLE stache HTML-escaped (& < > " ' /), so a display name with
+      # an apostrophe stamped `Probe&#x27;s` into the Dart appName const, the ARB
+      # app title, the PWA install name and the pubspec — output that compiles,
+      # analyzes, formats and tests clean while the OS window title is corrupt.
+      # And a BLANK `subdomain`/`api_domain` — the input pre_gen documents as
+      # normal ("or empty to derive") — was interpolated as nothing, stamping
+      # `"https://"` into ALLOWED_ORIGINS and _phApiBase.
+      #
+      # Both probe vars files now carry `& ' / "` in their free text, leave a
+      # derivable host BLANK, and name the app with a hyphen inside a word; the
+      # guard refuses to run (COVERAGE LOST) if a future edit takes any of the
+      # three away — an escape-free probe is precisely why this lane could not
+      # catch the defect before.
+      #
+      # 🔴 ORDERING IS LOAD-BEARING, same shape as the brand-asset step above:
+      # this guard reads the catalogue ROW the stamp just appended, and the
+      # SHOW-1 step below reverts sites/_shared/_data/apps.json to keep the tree
+      # clean. Run after it and there is no row left to read — the guard exits
+      # COVERAGE LOST rather than passing, so the order enforces itself.
+      - name: Stamped text is the spec's, its release id is its own, and blank hosts were DERIVED
+        run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_vars.json
       - name: SHOW-1 — probe is in apps.json, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -677,21 +699,6 @@ jobs:
       # config is parsed, not grepped) — see the script header for why.
       - name: Default stamp claims NO Worker, NO D1 and NO R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe
-      # 🔴 THE STAMP CAN BE GREEN AND STILL SHIP THE WRONG TEXT. mason renders
-      # every DOUBLE stache HTML-escaped (& < > " ' /), so a display name with
-      # an apostrophe stamped `Probe&#x27;s` into the Dart appName const, the ARB
-      # app title, the PWA install name and the pubspec — output that compiles,
-      # analyzes, formats and tests clean while the OS window title is corrupt.
-      # And a BLANK `subdomain`/`api_domain` — the input pre_gen documents as
-      # normal ("or empty to derive") — was interpolated as nothing, stamping
-      # `"https://"` into ALLOWED_ORIGINS and _phApiBase.
-      #
-      # Both probe vars files now carry `& ' / "` in their free text and leave a
-      # derivable host BLANK, and the guard refuses to run (COVERAGE LOST) if a
-      # future edit takes either away — an escape-free probe is precisely why
-      # this lane could not catch the defect before.
-      - name: Stamped text is the spec's, and blank hosts were DERIVED
-        run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_vars.json
       # A stamped app must be born `dart format`-clean. Every app in the
       # portfolio starts as a copy of this output, so template dirt is dirt in
       # all of them at once — and it makes adding a repo-wide format gate
@@ -738,7 +745,6 @@ jobs:
           export PATH="$PATH:$HOME/.pub-cache/bin"
           export NIKATRU_ALLOW_OVERWRITE=1
           mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
-          git checkout -- sites/_shared/_data/apps.json
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
       # The backend probe stamps with BOTH hosts blank, so this is the run that
@@ -747,8 +753,15 @@ jobs:
       # matching nothing, which `cors.ts` cannot even fall back from because
       # "https://" is not empty. It fails as a browser CORS error with no
       # server-side trace, so nothing downstream would ever have reported it.
-      - name: Backend stamp derived its own web origin and API host
+      #
+      # It is ALSO the run that proves the telemetry release id is per-app: a
+      # release literal is right for at most one app, and this is the second one.
+      # The catalogue revert therefore moved OUT of the stamp step above and into
+      # its own step below — this guard reads the row the stamp just appended.
+      - name: Backend stamp derived its own web origin, API host and release id
         run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_backend_vars.json --service services/probeapi-api
+      - name: Revert the catalogue — both probes are throwaway
+        run: git checkout -- sites/_shared/_data/apps.json
       - name: Stamped backend app is dart format-clean
         run: dart format --output=none --set-exit-if-changed apps/probeapi
       - name: Analyze the stamped backend app

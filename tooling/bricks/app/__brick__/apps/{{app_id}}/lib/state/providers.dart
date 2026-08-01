@@ -287,12 +287,12 @@ const String kPlatformBaseUrl = String.fromEnvironment(
 /// consent decision. It also resolves on web, where the force-update path's
 /// [packageVersionProvider] can legitimately return null.
 ///
-/// ONE source for both, deliberately: two would let a consent record and the
-/// events it authorises disagree about which build produced them.
-const String kAnalyticsAppVersion = String.fromEnvironment(
-  'APP_VERSION',
-  defaultValue: 'dev',
-);
+/// ONE source for all THREE, deliberately: two would let a consent record, the
+/// events it authorises, and the crash report they accompany disagree about
+/// which build produced them. It is an alias for [AppConfig.appVersion] rather
+/// than a second `String.fromEnvironment('APP_VERSION')` for the same reason —
+/// two spellings of the same define is one rename away from two values.
+const String kAnalyticsAppVersion = AppConfig.appVersion;
 
 /// Which of the six platforms this build runs on, for the analytics envelope.
 String analyticsPlatformName() {

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-stamp-text-fidelity.mjs — what the owner typed is what the app ships,
-// and a blank optional var is DERIVED rather than interpolated as nothing.
+// the app ships under ITS OWN NAME, and a blank optional var is DERIVED rather
+// than interpolated as nothing.
 //
-// Two defects, one lane, because both are the same failure: a stamp that
+// Four defects, one lane, because they are all the same failure: a stamp that
 // produces syntactically valid, analyzable, green output carrying the WRONG
 // TEXT. Nothing downstream can catch that — `flutter analyze` has no opinion on
 // whether the OS window title says "Traveler&#x27;s Guide".
@@ -32,12 +33,37 @@
 // build, at deploy — it surfaces as a browser CORS failure with no server-side
 // error.
 //
+// ── 3 · EVERY STAMPED APP REPORTED THE SAME RELEASE ID ──────────────────────
+// `main.dart` handed the telemetry chassis a hard-coded literal naming the CI
+// throwaway probe and a frozen 0.1.0. A literal survives stamping unchanged, so
+// all fifty apps would report ONE identity into the ONE shared GlitchTip
+// project: the moment app #2 crashed there would be nothing in the event saying
+// whose crash it was. Invisible from inside any single app — it compiles, it
+// reports, it is simply signed with somebody else's name. So the release is
+// RESOLVED here through the stamped constants and required to be
+// `<this app's id>@<something that moves between builds>`.
+//
+// ── 4 · A HYPHEN IN A DISPLAY NAME TRUNCATED THE CATALOGUE ENTRY ────────────
+// `post_gen`'s short-name split used `RegExp(r'[—-]')` — inside a character
+// class a trailing `-` is a LITERAL hyphen — so "E-Book Reader" was published to
+// the public catalogue as "E". The split is meant to drop a subtitle after a
+// dash SURROUNDED BY WHITESPACE ("Lingo — Offline Phrasebook" → "Lingo"); the
+// whitespace is the whole signal. Checked against the catalogue row the stamp
+// actually wrote, not against the hook's source.
+//
+// 🔴 ORDERING IS LOAD-BEARING for check 4: `ci.yml` reverts
+// sites/_shared/_data/apps.json after each variant to keep the tree clean, so
+// this guard must run BEFORE that revert. It exits COVERAGE LOST rather than
+// passing when the row is absent, which is what makes the ordering enforce
+// itself instead of living in a comment.
+//
 // 🔴 THE ASSERTION IS ONLY WORTH ITS RUNTIME IF THE PROBE CAN TRIGGER IT.
 // Both probe vars files used to hold escape-free names and explicit non-blank
 // hosts, so this lane could never have caught either defect no matter how many
 // checks it ran. So the FIXTURE is audited first: the vars file must carry a
-// character from mason's escape set, and must leave a derivable var blank.
-// Neither condition holds ⇒ COVERAGE LOST, not "ok".
+// character from mason's escape set, must leave a derivable var blank, and must
+// name the app with a hyphen inside a word. Any one missing ⇒ COVERAGE LOST,
+// not "ok".
 //
 // Everything is compared against PARSED STRUCTURE — JSON.parse, JSONC parse, the
 // Dart literal decoded through its own escape rules — never a grep for prose. A
@@ -47,8 +73,9 @@
 //   node tooling/ci/assert-stamp-text-fidelity.mjs --vars <probe-vars.json>
 //                                                  [--service services/<id>-api]
 //                                                  [repoRoot]
-// Exit 0 = the stamp is faithful, 1 = corrupted text, missing derivation, or a
-// probe that cannot detect either.
+// Exit 0 = the stamp is faithful, 1 = corrupted text, a borrowed release id, a
+// truncated catalogue name, a missing derivation, or a probe that cannot detect
+// any of them.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
@@ -122,7 +149,22 @@ if (!blankSub && !blankApi) {
       'derive" path — the documented-normal input — is never stamped and this check cannot fail.',
   );
 }
-ok(`probe spec can trigger both checks (escape set present; ${blankSub ? 'subdomain' : 'api_domain'} left blank to derive)`);
+// ── the catalogue split: the separator is WHITESPACE-DELIMITED ───────────────
+// "<name> <dash> <tagline>" is what the split drops the tail of. A hyphen INSIDE
+// a word is not a separator, and that distinction is the entire defect — so the
+// probe's name must carry an intra-word hyphen in the part that has to SURVIVE,
+// or this check passes against a brick that truncates at the first hyphen.
+const SEPARATOR = /\s+[—–-]\s+/;
+const sepAt = SEPARATOR.exec(displayName);
+const leadingSegment = (sepAt ? displayName.slice(0, sepAt.index) : displayName).trim();
+if (!/\S-\S/.test(leadingSegment)) {
+  lost(
+    `${varsPath} display_name ("${displayName}") carries no hyphen inside a word before its subtitle ` +
+      `separator — the surviving part is "${leadingSegment}". A probe named without one cannot tell a ` +
+      'separator from a hyphen, which is exactly how "E-Book Reader" reached the public catalogue as "E".',
+  );
+}
+ok(`probe spec can trigger every check (escape set present; ${blankSub ? 'subdomain' : 'api_domain'} left blank to derive; "${leadingSegment}" holds an intra-word hyphen)`);
 
 const appDir = join(ROOT, 'apps', appId);
 if (!existsSync(appDir)) lost(`apps/${appId} was not stamped, so there is no output to check.`);
@@ -328,6 +370,196 @@ if (servicePath) {
   }
 }
 
+// ── 3 · the crash reports are signed with THIS app's name ────────────────────
+// Resolved through the stamped constants rather than pattern-matched, so the
+// check is about the VALUE that reaches GlitchTip and not about one spelling of
+// the expression that produces it.
+
+/** Marks a value that comes from a --dart-define, i.e. one that MOVES between
+ *  builds. A release whose version half cannot move cannot separate two
+ *  releases of the same app, which is half of what a release id is for. */
+const DERIVED = '\u0000APP_VERSION\u0000';
+const show = (s) => s.replaceAll(DERIVED, '<APP_VERSION>');
+
+/** `static const String x = <expr>;` → Map(name → expr). Stops at the first `;`,
+ *  which is the declaration terminator for every form used here. */
+function dartStringConsts(src) {
+  const out = new Map();
+  for (const m of src.matchAll(/static\s+const\s+String\s+(\w+)\s*=\s*([\s\S]*?);/g)) {
+    out.set(m[1], m[2].trim());
+  }
+  return out;
+}
+
+/** Evaluate a Dart const string expression to its text, with [DERIVED] standing
+ *  in for anything read from the environment. Returns null when the expression
+ *  is something this guard was never taught — which is reported, never ignored. */
+function evalDartString(expr, consts, seen = new Set()) {
+  const e = String(expr).trim();
+  if (/^String\.fromEnvironment\b/.test(e)) return DERIVED;
+  const ref = /^(?:[A-Za-z_]\w*\.)?([A-Za-z_]\w*)$/.exec(e);
+  if (ref) {
+    const name = ref[1];
+    if (seen.has(name) || !consts.has(name)) return null;
+    return evalDartString(consts.get(name), consts, new Set([...seen, name]));
+  }
+  const lit = /^'((?:[^'\\]|\\.)*)'$/.exec(e) ?? /^"((?:[^"\\]|\\.)*)"$/.exec(e);
+  if (!lit) return null;
+  const body = lit[1];
+  let out = '';
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === '\\') {
+      out += body[i + 1] ?? '';
+      i++;
+      continue;
+    }
+    if (body[i] === '$') {
+      const rest = body.slice(i);
+      const m = /^\$\{([^}]+)\}/.exec(rest) ?? /^\$([A-Za-z_]\w*)/.exec(rest);
+      if (!m) return null;
+      const sub = evalDartString(m[1], consts, new Set(seen));
+      if (sub === null) return null;
+      out += sub;
+      i += m[0].length - 1;
+      continue;
+    }
+    out += body[i];
+  }
+  return out;
+}
+
+/** The value passed to `<ctor>(… <arg>: HERE …)`. Brackets are balanced and
+ *  string literals + `//` comments are skipped, so a comma or a paren inside
+ *  either cannot split an argument. */
+function namedArg(src, ctor, arg) {
+  const at = src.indexOf(`${ctor}(`);
+  if (at === -1) return null;
+  let i = at + ctor.length + 1;
+  let depth = 1;
+  let cur = '';
+  const parts = [];
+  while (i < src.length && depth > 0) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < src.length && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      const q = c;
+      cur += src[i++];
+      while (i < src.length && src[i] !== q) {
+        if (src[i] === '\\') cur += src[i++];
+        cur += src[i++];
+      }
+      cur += src[i++] ?? '';
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      depth--;
+      if (depth === 0) break;
+    } else if (c === ',' && depth === 1) {
+      parts.push(cur);
+      cur = '';
+      i++;
+      continue;
+    }
+    cur += c;
+    i++;
+  }
+  parts.push(cur);
+  for (const p of parts) {
+    const m = /^\s*([A-Za-z_]\w*)\s*:\s*([\s\S]+?)\s*$/.exec(p);
+    if (m && m[1] === arg) return m[2];
+  }
+  return null;
+}
+
+const mainDart = readIf(join('lib', 'main.dart'));
+if (mainDart === null) {
+  lost(`apps/${appId}/lib/main.dart is missing, so the telemetry release cannot be checked.`);
+}
+const releaseExpr = namedArg(mainDart, 'TelemetryConfig', 'release');
+if (releaseExpr === null) {
+  lost(
+    `apps/${appId}/lib/main.dart passes no \`release:\` to TelemetryConfig that this guard can read. ` +
+      'Every crash the app reports is grouped by that value; a scan that cannot find it reports "ok" forever.',
+  );
+}
+{
+  const consts = config === null ? new Map() : dartStringConsts(config);
+  const resolved = evalDartString(releaseExpr, consts);
+  if (resolved === null) {
+    fail(
+      `the telemetry release \`${releaseExpr}\` could not be resolved from apps/${appId}/lib/core/app_config.dart. ` +
+        'Teach this guard the new spelling in the same change — an unreadable release is an unchecked one.',
+    );
+  } else if (!resolved.includes('@')) {
+    fail(
+      `the telemetry release resolves to "${show(resolved)}", which has no \`<app_id>@<version>\` shape. ` +
+        'GlitchTip groups by this string; without an id half, fifty apps share one bucket.',
+    );
+  } else {
+    const at = resolved.indexOf('@');
+    const idHalf = resolved.slice(0, at);
+    const versionHalf = resolved.slice(at + 1);
+    if (idHalf !== appId) {
+      fail(
+        `the telemetry release resolves to "${show(resolved)}" — it names "${idHalf}", but this app is ` +
+          `"${appId}". Every crash from this app would triage as that one, and nothing inside the app ` +
+          'can show it: the report is delivered successfully, under somebody else\'s name.',
+      );
+    } else if (!versionHalf.includes(DERIVED)) {
+      fail(
+        `the telemetry release resolves to "${show(resolved)}" — its version half "${versionHalf}" is a ` +
+          'frozen literal, so every release of this app reports the same string and no regression can be ' +
+          'pinned to a build. Compose it from the APP_VERSION define.',
+      );
+    } else {
+      ok(`telemetry release is this app's own identity (${show(resolved)})`);
+    }
+  }
+}
+
+// ── 4 · the public catalogue got the app's NAME, not a fragment of it ────────
+const catalogPath = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+if (!existsSync(catalogPath)) {
+  lost(`sites/_shared/_data/apps.json is missing, so the catalogue entry the stamp wrote cannot be checked.`);
+}
+let catalog;
+try {
+  catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
+} catch (e) {
+  lost(`sites/_shared/_data/apps.json is not parseable JSON (${e.message}).`);
+}
+const row = Array.isArray(catalog) ? catalog.find((r) => r && r.slug === appId) : null;
+if (!row) {
+  lost(
+    `sites/_shared/_data/apps.json holds no row for "${appId}". post_gen appends it on every stamp, so ` +
+      'either the SHOW-1 append broke or this guard ran AFTER the lane reverted the catalogue — check ' +
+      "ci.yml's step order. Either way nothing about the published name was checked.",
+  );
+}
+{
+  const published = String(row.name ?? '');
+  if (published === '') {
+    fail(`apps.json row for "${appId}" publishes an empty name.`);
+  } else if (published === leadingSegment) {
+    ok(`apps.json publishes "${published}" — the display name up to its subtitle separator, whole`);
+  } else if (displayName.startsWith(published) && published.length < leadingSegment.length) {
+    fail(
+      `apps.json publishes "${published}" but the app is called "${leadingSegment}" — the name was cut ` +
+        `mid-word at "${displayName.slice(published.length, published.length + 1)}". The short-name split ` +
+        'must fire on a dash SURROUNDED BY WHITESPACE; a hyphen inside a word is part of the name.',
+    );
+  } else {
+    fail(
+      `apps.json publishes "${published}" but the display name "${displayName}" reduces to "${leadingSegment}" ` +
+        '(everything before the first whitespace-delimited dash).',
+    );
+  }
+}
+
 /** JSONC → object. Comments stripped OUTSIDE string literals, so a `//` inside a
  *  URL survives. Same shape as assert-clone-contract.mjs, kept local so this
  *  guard has no dependency that could be edited out from under it. */
@@ -361,4 +593,7 @@ if (problems.length) {
   console.error(`\nassert-stamp-text-fidelity: FAILED (${problems.length} problem(s)) for apps/${appId}`);
   process.exit(1);
 }
-console.log(`\nassert-stamp-text-fidelity: ok — apps/${appId} ships the spec's text and derived every blank host`);
+console.log(
+  `\nassert-stamp-text-fidelity: ok — apps/${appId} ships the spec's text, reports under its own release id, ` +
+    'publishes its whole name and derived every blank host',
+);

@@ -129,10 +129,29 @@ void _registerInWorkspace(HookContext context, {required String id}) {
   context.logger.success('pubspec.yaml: added "apps/$id" to the workspace.');
 }
 
-/// "Lingo — Offline Phrasebook" -> "Lingo".
+/// "Lingo — Offline Phrasebook" -> "Lingo". "E-Book Reader" -> "E-Book Reader".
+///
+/// 🔴 THE SPLIT IS ON A SUBTITLE SEPARATOR, NOT ON "A DASH". `brick.yaml`'s own
+/// example is `Lingo — Offline Phrasebook`: the catalogue wants the NAME and the
+/// display name carries `<name> <separator> <tagline>`. The separator is a dash
+/// **surrounded by whitespace** — that whitespace is the entire signal, and it
+/// is what tells a separator apart from a hyphen inside a word.
+///
+/// The previous spelling was `indexOf(RegExp(r'[—-]'))`. Inside a character
+/// class a trailing `-` is a literal, so that matched an ordinary hyphen too,
+/// anywhere — and "E-Book Reader" entered the public catalogue as **"E"**. Not a
+/// contrived name: hyphens are ordinary in product names (E-Book, Wi-Fi, To-Do,
+/// Co-op, Multi-Timer), and the corruption is silent everywhere except the
+/// catalogue page a visitor reads.
+///
+/// En dash is accepted alongside em dash and hyphen because a `–` between spaces
+/// is the same authorial gesture; nothing in the input contract prefers one.
 String _shortName(String displayName) {
-  final dash = displayName.indexOf(RegExp(r'[—-]'));
-  final base = dash > 0 ? displayName.substring(0, dash) : displayName;
+  final trimmed = displayName.trim();
+  final separator = RegExp(r'\s+[—–-]\s+').firstMatch(trimmed);
+  final base = (separator != null && separator.start > 0)
+      ? trimmed.substring(0, separator.start)
+      : trimmed;
   return base.trim();
 }
 
@@ -198,6 +217,7 @@ void _writeBrandAssets(
       'brand assets: generated ${written.length} icon(s) for "$id" from seed #$seedHex.',
     );
   } catch (e) {
-    context.logger.warn('brand assets: generation failed ($e); icons NOT written.');
+    context.logger
+        .warn('brand assets: generation failed ($e); icons NOT written.');
   }
 }
