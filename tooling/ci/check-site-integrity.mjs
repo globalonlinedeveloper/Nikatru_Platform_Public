@@ -69,6 +69,41 @@ const LEGAL_PAGES = ['privacy.html', 'terms.html', 'refund.html'];
  *  stub detector, not an editorial constraint on how long a policy may be. */
 const MIN_LEGAL_TEXT_CHARS = 1000;
 
+/** WHO IS SELLING. NIKATRU is a trading name; the legal person behind every
+ *  published app and every payment is a sole proprietor, and a terms page that
+ *  names only the brand tells a buyer nothing about who they contracted with —
+ *  the thing a store reviewer, a payment processor's seller verification and a
+ *  refund dispute all turn on. Already true at the time this limb was written,
+ *  and true in three separate hand-written documents, which is exactly why it
+ *  needed asserting: nothing would have noticed a rewrite dropping it.
+ *
+ *  ⚠️ THIS CONSTANT IS A DECLARED FACT, and a declared fact inside a guard is a
+ *  second source of truth. That is why it is checked against TWO independently
+ *  authored pages below rather than one: a wrong value here fails loudly on both
+ *  instead of quietly agreeing with the single page it was copied from. The
+ *  business SSoT that would otherwise own it lives outside this (public)
+ *  repository, so there is no in-tree file to derive it from. [pipeline K-2a] */
+const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
+const MUST_NAME_SELLER = ['terms.html', 'privacy.html'];
+
+/** Pages an app-facing root owes that CANNOT be a build failure yet, each with
+ *  the owner item that unblocks it. The split is [pipeline C-6]'s and this file
+ *  already uses it for the unannounced-app case: adding `pricing.html` to
+ *  LEGAL_PAGES today would fail every CI run on copy only the owner can write
+ *  and prices only the owner can publish — and a guard that cries wolf is one
+ *  somebody switches off.
+ *
+ *  When the page lands, this prints the promotion instead, and the flip into
+ *  LEGAL_PAGES is a one-line change after which the 1000-character floor, the
+ *  <h1> check and the navigation walker all apply unchanged. */
+const PRINTED_LEGAL_GAPS = new Map([
+  [
+    'pricing.html',
+    'a published price list. A store reviewer and a payment processor\'s seller verification both look for one, ' +
+      'and the prices are already decided — only the copy and the go-live are outstanding (OWNER_QUEUE O-3).',
+  ],
+]);
+
 /** Deploy roots that MUST be treated as app-facing, named rather than sniffed.
  *  The heuristics below (an apps/ directory, a relative link to a legal page)
  *  exist to catch a NEW site nobody added here — they are not trusted to keep
@@ -215,12 +250,14 @@ function legalDuties(root) {
     for (const p of linked) if (!duties.has(p)) duties.set(p, 'a same-site link points at it');
   }
 
-  return { name, duties, reasons };
+  return { name, duties, reasons, appFacing: appFacing.length > 0 };
 }
 
 const boundRoots = [];
+const appFacingRoots = [];
 for (const root of siteRoots) {
-  const { name, duties, reasons } = legalDuties(root);
+  const { name, duties, reasons, appFacing } = legalDuties(root);
+  if (appFacing) appFacingRoots.push({ root, name });
   if (!duties.size) continue;
   boundRoots.push({ name, count: duties.size, reasons });
 
@@ -241,6 +278,60 @@ for (const root of siteRoots) {
     const h1 = stripInert(raw).match(/<h1\b[^>]*>([\s\S]*?)<\/h1\s*>/i);
     if (!h1 || !h1[1].replace(/<[^>]*>/g, '').trim()) {
       problems.push(`${rel} has no rendered <h1> — it is not a readable policy page`);
+    }
+  }
+}
+
+// ── the commercial surface names a legal person, not just a brand ────────────
+// [pipeline K-2a]. Two limbs, deliberately of different severities.
+//
+// Scoped to THIS repository, the same way REQUIRED_LEGAL_ROOTS is: both the
+// proprietor's name and the pricing-page gap are facts about NIKATRU, and
+// demanding them of a synthetic guard fixture would be this file asserting its
+// own author's business details onto somebody else's tree. A fixture that
+// deliberately models this repository (the self-hosted mode in
+// site-integrity.test.mjs) carries them, which is the same bargain every other
+// coverage floor here strikes.
+let sellerNameChecks = 0;
+/** The DOMAIN this limb quantifies over: app-facing roots × the pages that owe
+ *  the name. Counted separately from the checks actually performed, because a
+ *  page that is MISSING is already a reported problem — treating that as lost
+ *  coverage would report the scan broken when the tree is broken, and send the
+ *  fix to the wrong file. What can genuinely empty out is the domain. */
+let sellerNameDomain = 0;
+for (const { root, name } of SCANNING_OWN_REPO ? appFacingRoots : []) {
+  for (const page of MUST_NAME_SELLER) {
+    sellerNameDomain++;
+    const abs = join(root, page);
+    if (!existsSync(abs)) continue; // already reported as a missing legal page
+    sellerNameChecks++;
+    if (!visibleText(readFileSync(abs, 'utf8')).includes(SELLER_LEGAL_NAME)) {
+      problems.push(
+        `sites/${name}/${page} does not name ${JSON.stringify(SELLER_LEGAL_NAME)} anywhere in its visible text. ` +
+          'NIKATRU is a trading name; a buyer, a store reviewer and a payment processor\'s seller verification all ' +
+          'need the legal person behind the sale, and "who did I contract with" is the first question a refund ' +
+          'dispute asks. (If the proprietor\'s registered name has changed, SELLER_LEGAL_NAME in this file changes ' +
+          'with the pages, in the same commit.)',
+      );
+    }
+  }
+  // The owner-gated half: named, dated to an owner item, and printed EVERY run
+  // so it cannot become permanent by being invisible.
+  for (const [page, why] of PRINTED_LEGAL_GAPS) {
+    const abs = join(root, page);
+    if (!existsSync(abs)) {
+      prints.push(
+        `MISSING (owner-gated): sites/${name}/${page} — ${why} ` +
+          'PRINTED, NOT FAILED: adding it to LEGAL_PAGES today would fail every CI run on work only the owner can ' +
+          'do. Nothing else in this repo is blocked by it — a store submission accepts a screenshot where a live ' +
+          'page is not yet available.',
+      );
+    } else {
+      prints.push(
+        `PROMOTE ME: sites/${name}/${page} now exists, so it no longer needs the owner-gated exemption. Move ` +
+          `${JSON.stringify(page)} from PRINTED_LEGAL_GAPS into LEGAL_PAGES in this file — a one-line change, after ` +
+          'which the visible-text floor, the <h1> check and the navigation walker all apply to it unchanged.',
+      );
     }
   }
 }
@@ -704,6 +795,13 @@ if (SCANNING_OWN_REPO) {
   if (promiseMarkers === 0) {
     lost.push('NO Pages Function carries a `SITE PROMISE: "…"` marker, so no code-held promise was checked against the copy the site actually serves.');
   }
+  if (sellerNameDomain === 0) {
+    lost.push(
+      `NO app-facing page was in scope for the seller's legal name, so the "${MUST_NAME_SELLER.join(' and ')} name a ` +
+        'legal person" limb ranged over nothing. sites/nikatru owes both pages; if the app-facing classification ' +
+        'stopped matching, that is what broke.',
+    );
+  }
   if (lost.length) {
     console.error(`✗ COVERAGE LOST — ${lost.length} check(s) below ran over an empty set and would report clean forever:`);
     for (const l of lost) console.error(`    ${l}`);
@@ -728,6 +826,9 @@ console.log(
 for (const b of boundRoots) console.log(`      sites/${b.name} — ${b.count} page(s): ${b.reasons.join('; ')}`);
 console.log(
   `    one canonical URL form on ${urlFormRoots} root(s); ${policyVersionsChecked} policy version(s) vs sitemap lastmod, ${storeUrlsChecked} store listing URL(s) matched to a page we serve`,
+);
+console.log(
+  `    ${sellerNameChecks} commercial page(s) name the seller's legal person, not just the brand`,
 );
 // The secret is OWNER work — it lives in the Cloudflare dashboard, not the repo —
 // so its NAME is printed every run. A guard that silently requires a secret

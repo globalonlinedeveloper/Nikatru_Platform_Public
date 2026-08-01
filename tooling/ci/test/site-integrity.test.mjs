@@ -84,6 +84,12 @@ function run(dir, { from = join(CI_DIR, GUARD) } = {}) {
 const FIXTURE_ORIGIN = 'https://fixture.test/';
 const FIXTURE_VERSION = '2026-01-02';
 const FIXTURE_PROMISE = 'We keep only what this fixture says we keep.';
+/** Must equal SELLER_LEGAL_NAME in check-site-integrity.mjs. Duplicated rather
+ *  than imported because that file is a script that runs its whole scan on
+ *  import — and duplicated ON PURPOSE as a second reader of the same fact: if
+ *  the guard's constant changes without these fixtures following, the
+ *  self-hosted cases go red instead of the requirement quietly relaxing. */
+const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
 
 function selfHosted(dir, { root = 'a' } = {}) {
   const to = join(dir, 'tooling', 'ci', GUARD);
@@ -97,7 +103,15 @@ function selfHosted(dir, { root = 'a' } = {}) {
   for (const f of readdirSync(site, { withFileTypes: true })) {
     if (!f.isFile() || !f.name.endsWith('.html') || f.name === 'index.html') continue;
     const abs = join(site, f.name);
-    writeFileSync(abs, readFileSync(abs, 'utf8').replace('<html', '<meta name="robots" content="noindex"><html'));
+    let html = readFileSync(abs, 'utf8').replace('<html', '<meta name="robots" content="noindex"><html');
+    // The seller's legal person, on the two pages that owe it [pipeline K-2a].
+    // Same bargain as the coverage floors above: a fixture claiming to BE this
+    // repository has to carry what this repository is required to carry, or the
+    // requirement can be deleted to make a test pass.
+    if (f.name === 'terms.html' || f.name === 'privacy.html') {
+      html = html.replace('</main>', `<p>NIKATRU is a proprietorship of ${SELLER_LEGAL_NAME}.</p></main>`);
+    }
+    writeFileSync(abs, html);
   }
   writeFileSync(
     join(site, 'index.html'),
@@ -697,6 +711,73 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
   test('the scaffolded fixture passes, so every case below is a one-edit difference', () => {
     const clean = afterEdit('cf-clean', () => {});
     assert.equal(clean.code, 0, clean.out);
+  });
+
+  // ── [pipeline K-2a] the commercial surface names a legal person ───────────
+  // Mutation-proven against the real tree as well (6/6): removing the name from
+  // terms.html, from privacy.html, burying it in an HTML comment, and emptying
+  // MUST_NAME_SELLER each turn the real run red.
+  test('terms.html that names only the brand FAILS', () => {
+    const r = afterEdit('cf-noseller-terms', (d) =>
+      patch(d, 'sites/nikatru/terms.html', `proprietorship of ${SELLER_LEGAL_NAME}`, 'proprietorship'),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /terms\.html does not name "Rajasekar Selvam"/);
+    assert.match(r.out, /NIKATRU is a trading name/);
+  });
+
+  test('privacy.html that names only the brand FAILS — two pages, not one', () => {
+    // Two independently authored documents, because the name lives in a constant
+    // in the guard and a constant in a guard is a second source of truth. A wrong
+    // value has to fail on both, not quietly agree with the one it was copied from.
+    const r = afterEdit('cf-noseller-priv', (d) =>
+      patch(d, 'sites/nikatru/privacy.html', `proprietorship of ${SELLER_LEGAL_NAME}`, 'proprietorship'),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /privacy\.html does not name "Rajasekar Selvam"/);
+  });
+
+  test('the name surviving only inside an HTML comment does NOT count', () => {
+    const r = afterEdit('cf-seller-comment', (d) =>
+      patch(d, 'sites/nikatru/terms.html', `proprietorship of ${SELLER_LEGAL_NAME}.`, `proprietorship of <!-- ${SELLER_LEGAL_NAME} --> the publisher.`),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /terms\.html does not name/);
+  });
+
+  test('COVERAGE LOST when the seller-name limb has no pages left in scope', () => {
+    const r = afterEdit('cf-seller-empty', (d) =>
+      patch(
+        d,
+        join('tooling', 'ci', GUARD),
+        "const MUST_NAME_SELLER = ['terms.html', 'privacy.html'];",
+        'const MUST_NAME_SELLER = [];',
+      ),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /NO app-facing page was in scope for the seller's legal name/);
+  });
+
+  // ── the owner-gated half: printed, never failed ───────────────────────────
+  test('the missing pricing page is PRINTED on an otherwise green run, keyed to the owner item', () => {
+    // Failing on it would block every CI run on copy only the owner can write —
+    // the rule this repo already applies to the unannounced-app case.
+    const r = afterEdit('cf-pricing-gap', () => {});
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /MISSING \(owner-gated\): sites\/nikatru\/pricing\.html/);
+    assert.match(r.out, /OWNER_QUEUE O-3/);
+  });
+
+  test('once pricing.html exists the print flips to PROMOTE ME, so the exemption cannot outlive its reason', () => {
+    const r = afterEdit('cf-pricing-landed', (d) =>
+      writeFileSync(
+        join(d, 'sites', 'nikatru', 'pricing.html'),
+        '<html><head><meta name="robots" content="noindex"></head><body><h1>Pricing</h1></body></html>\n',
+      ),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /PROMOTE ME: sites\/nikatru\/pricing\.html now exists/);
+    assert.match(r.out, /into LEGAL_PAGES/);
   });
 
   test('COVERAGE LOST when no root declares a homepage canonical', () => {

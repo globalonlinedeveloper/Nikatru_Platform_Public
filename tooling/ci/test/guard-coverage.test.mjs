@@ -34,9 +34,10 @@ let seq = 0;
  * Build a fake repo.
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
- * ⚠️ testFiles defaults to 34 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
- * → 32 → 33 → 34 (2026-07-31, six times on 2026-08-01, the last with
- * assert-platform-register.mjs) — a fixture below the floor would make
+ * ⚠️ testFiles defaults to 36 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
+ * → 32 → 33 → 34 → 36 (2026-07-31, then seven times on 2026-08-01, the last with the
+ * stage-8 compliance guards assert-repo-posture.mjs + assert-policy-archive.mjs) — a
+ * fixture below the floor would make
  * every green case here red for a reason that has nothing to do with the behaviour
  * under test. Ratchet the floor and this default together, always.
  * ⚠️ The last of those ratchets was a MERGE: two branches each ratcheted honestly to
@@ -44,7 +45,7 @@ let seq = 0;
  * neither was right — re-measure after a merge rather than taking the higher one.
  * `files` writes extra files at the fixture root (e.g. a ci.yml manifest).
  */
-function repo(guards, { testFiles = 34, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
+function repo(guards, { testFiles = 36, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
   const root = join(TMP, `r${seq++}`);
   const ci = join(root, 'tooling', 'ci');
   const t = join(ci, 'test');
@@ -82,10 +83,10 @@ function repo(guards, { testFiles = 34, mentionAll = true, hollow = false, comme
   return root;
 }
 
-/** 40 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39 →
- *  40, 2026-07-31, then four times on 2026-08-01 — the last with
- *  assert-platform-register.mjs, [4]B-1). */
-function compliant(extra = {}, count = 40) {
+/** 42 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39 →
+ *  40 → 42, 2026-07-31, then five times on 2026-08-01 — the last with the stage-8
+ *  compliance guards assert-repo-posture.mjs + assert-policy-archive.mjs, [8]K-12/K-4). */
+function compliant(extra = {}, count = 42) {
   const g = {};
   for (let i = 0; i < count; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
   return { ...g, ...extra };
@@ -97,7 +98,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /40 guard\(s\), all named in 34 test file\(s\)/);
+    assert.match(r.stdout, /42 guard\(s\), all named in 36 test file\(s\)/);
   });
 
   test('a guard no test mentions FAILS', () => {
@@ -169,10 +170,10 @@ describe('assert-guard-coverage', () => {
     // so 22 guards could vanish from the scan without tripping anything
     // (triage 2026-07-31, mutation-proven). This pins the ratchet: when
     // the tree grows again, ratchet the floor AND this fixture together.
-    // Ratcheted to 40 on 2026-08-01 with assert-platform-register.mjs ([4]B-1).
-    const r = run(repo(compliant({}, 39)));
+    // Ratcheted to 42 on 2026-08-01 with the stage-8 compliance guards ([8]K-12/K-4).
+    const r = run(repo(compliant({}, 41)));
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST — found 39 guard\(s\)/);
+    assert.match(r.stderr, /COVERAGE LOST — found 41 guard\(s\)/);
   });
 
   test('COVERAGE: a .mjs moved into a subdirectory of tooling/ci FAILS loudly, naming it', () => {
