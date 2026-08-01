@@ -1,6 +1,6 @@
 {
   "app_id": "{{app_id.snakeCase()}}",
-  "api_base_url": "https://{{api_domain}}",
+  "api_base_url": "{{{api_base_url}}}",
   "content_pack": "",
   "environment": "dev"
 }

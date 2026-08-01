@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:mason/mason.dart';
@@ -89,7 +90,9 @@ void run(HookContext context) {
 
   // ── api_domain ────────────────────────────────────────────────────────────
   final String apiDomain = v('api_domain');
-  if (appIdOk && apiDomain.isNotEmpty && apiDomain != 'api-$appId.nikatru.com') {
+  if (appIdOk &&
+      apiDomain.isNotEmpty &&
+      apiDomain != 'api-$appId.nikatru.com') {
     problems.add(
       'api_domain must be "api-$appId.nikatru.com" or empty to derive — got '
       '"$apiDomain".',
@@ -182,5 +185,83 @@ void run(HookContext context) {
     throw Exception('invalid app spec: ${problems.length} problem(s)');
   }
 
+  // ── NORMALISE, so the templates are dumb ──────────────────────────────────
+  // 🔴 THE "EMPTY MEANS DERIVE" CONTRACT IS IMPLEMENTED HERE, AND ONLY HERE.
+  // The rules above bless a blank `subdomain`/`api_domain` — "or empty to
+  // derive" — and `brick.yaml` defaults both to "". But nothing derived them
+  // for the STAMP: `post_gen` derived only for the apps.json row and the
+  // printed checklist, while every template interpolated the raw var. The
+  // documented-normal input therefore stamped `"ALLOWED_ORIGINS": "https://"`
+  // into the app's own Worker (an allowlist matching no origin at all, which
+  // `cors.ts` cannot even fall back from because "https://" is non-empty),
+  // `_phApiBase = 'https://'`, and the same into config/defaults.json. Silent
+  // at analyze, at build and at deploy.
+  //
+  // Derivation lives in the hook rather than in mustache inverted sections
+  // because the templates then hold ONE spelling of each value and cannot
+  // disagree with post_gen. mason feeds `updatedVars ?? vars` to BOTH
+  // generation and post_gen (mason_cli 0.1.3, make.dart:194/211), so a write
+  // here reaches every consumer.
+  vars['subdomain'] = subdomain.isEmpty ? '$appId.nikatru.com' : subdomain;
+  // A client-only app has NO API host of its own, so this stays empty on
+  // purpose — deriving `api-<id>.nikatru.com` would stamp a hostname that will
+  // never resolve. `api_base_url` below is what such an app actually calls.
+  final String resolvedApiDomain = !needsBackend
+      ? ''
+      : (apiDomain.isEmpty ? 'api-$appId.nikatru.com' : apiDomain);
+  vars['api_domain'] = resolvedApiDomain;
+  vars['api_base_url'] = needsBackend
+      ? 'https://$resolvedApiDomain'
+      : 'https://platform.nikatru.com/v1';
+
+  // ── ESCAPE, per destination LANGUAGE ──────────────────────────────────────
+  // 🔴 mason renders with mustache's HTML escaping ON (mason 0.1.2 builds
+  // `Template(lenient: true)` without `htmlEscapeValues: false`, and
+  // mustache_template defaults it to true), and its escape map covers
+  // & < > " ' AND '/'. So a double-stached `{{display_name}}` stamps
+  // "Traveler&#x27;s Guide &amp; Notes 24&#x2F;7" into the Dart `appName`
+  // const, the ARB app title, the PWA install name and the pubspec — all of
+  // which are read as TEXT, never as HTML. It compiles and analyzes clean, so
+  // every gate stayed green while the OS window title shipped corrupted.
+  //
+  // The templates now triple-stache those sites. Triple-staching ALONE is not
+  // enough, though: raw text is not a valid Dart or JSON string body, and an
+  // apostrophe in `'{{{display_name}}}'` is a Dart SYNTAX ERROR. So each
+  // destination gets a value escaped for ITS language, computed once here.
+  //
+  // `web/index.html` deliberately keeps its DOUBLE stache: there the value
+  // really is HTML (an attribute value and the <title> text), and `&#x27;`
+  // renders as an apostrophe while a raw `"` would end the attribute early.
+  vars['display_name'] = displayName;
+  vars['description'] = description;
+  vars['display_name_dart'] = _dartSingleQuoted(displayName);
+  vars['display_name_json'] = _jsonBody(displayName);
+  vars['description_json'] = _jsonBody(description);
+
   context.logger.info('Stamping $displayName ($appId)…');
+}
+
+/// Escape [s] for use inside a Dart SINGLE-quoted string literal.
+///
+/// Backslash first, or the escapes we add would themselves be re-escaped.
+/// `$` matters as much as `'`: `'50$ a month'` is a compile error, and
+/// `'{{{display_name}}}'` is exactly where a display name lands. The control
+/// characters are here for completeness rather than taste — a raw newline
+/// inside a single-quoted literal is also a compile error, and nothing in the
+/// input contract forbids one in `display_name`.
+String _dartSingleQuoted(String s) => s
+    .replaceAll(r'\', r'\\')
+    .replaceAll(r'$', r'\$')
+    .replaceAll("'", r"\'")
+    .replaceAll('\r', r'\r')
+    .replaceAll('\n', r'\n')
+    .replaceAll('\t', r'\t');
+
+/// Escape [s] for use inside a JSON string, WITHOUT the surrounding quotes.
+///
+/// Also correct inside a YAML double-quoted scalar (pubspec `description:`):
+/// YAML 1.2's double-quoted escapes are a superset of JSON's.
+String _jsonBody(String s) {
+  final String encoded = jsonEncode(s);
+  return encoded.substring(1, encoded.length - 1);
 }

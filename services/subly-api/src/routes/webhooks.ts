@@ -28,7 +28,40 @@ interface RevenueCatEvent {
   };
 }
 
-// Events that mean "entitlement is (or stays) active" vs "revoked".
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTITLEMENT LIFECYCLE — derive ACCESS from state, never from the event NAME.
+//
+// RevenueCat's event names describe what happened to the SUBSCRIPTION, not what
+// happened to the user's ACCESS, and conflating the two revokes a paying
+// customer mid-period:
+//
+//   · CANCELLATION  — auto-renew was turned OFF. The user has already paid
+//     through `expiration_at_ms` and keeps access until then. It is ALSO the
+//     event RevenueCat sends for a refund, in which case `expiration_at_ms` is
+//     in the PAST: one event name, two opposite access outcomes, distinguishable
+//     only by the date.
+//   · BILLING_ISSUE — a charge failed and the store's grace/retry window has
+//     begun. Access continues until the store gives up; that deadline is again
+//     `expiration_at_ms`.
+//   · EXPIRATION    — access has actually ended. The only event that revokes on
+//     its own authority.
+//
+// So the two grace-class events are RESOLVED AGAINST THE PAID-THROUGH DATE
+// rather than mapped to is_active = 0. Before this, toggling auto-renew off (or
+// a single card blip) dropped the user off Pro on the very next read, because
+// /v1/entitlements short-circuits on `is_active !== 1` before it ever reaches
+// the `expires_at > now` check. [pipeline 5]M-8 — "do not revoke on
+// cancel-at-period-end".
+//
+// ⚠️ KNOWN GAP, deliberately not fixed here: RevenueCat gives NO ordering
+// guarantee, and the UPSERT below overwrites unconditionally, so a delayed
+// retry of an older event can still clobber a newer state. Rejecting that needs
+// the event's own clock persisted alongside the row — an `event_ts` column on
+// the SHARED platform_db, i.e. a migration owned by services/platform. It is
+// its own change; do not fake it with `updated_at`, which is receipt time.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Access is granted outright. */
 const ACTIVE_TYPES = new Set([
   'INITIAL_PURCHASE',
   'RENEWAL',
@@ -37,7 +70,41 @@ const ACTIVE_TYPES = new Set([
   'NON_RENEWING_PURCHASE',
   'SUBSCRIPTION_EXTENDED',
 ]);
-const INACTIVE_TYPES = new Set(['EXPIRATION', 'CANCELLATION', 'BILLING_ISSUE']);
+/** Access is revoked outright — the subscription is over. */
+const INACTIVE_TYPES = new Set(['EXPIRATION']);
+/** Access is decided by the paid-through date carried on the event itself. */
+const GRACE_TYPES = new Set(['CANCELLATION', 'BILLING_ISSUE']);
+
+/**
+ * Resolve a handled event type to is_active (0/1).
+ *
+ * `expiresAtMs` is the event's `expiration_at_ms`. A null/absent date on a
+ * grace-class event means "no known end" — the same reading /v1/entitlements
+ * already applies to a null `expires_at` — so it keeps access rather than
+ * silently revoking. A date in the past (the refund shape of CANCELLATION)
+ * revokes immediately.
+ */
+export function resolveIsActive(
+  type: string,
+  expiresAtMs: number | null | undefined,
+  nowMs: number,
+): 0 | 1 {
+  if (ACTIVE_TYPES.has(type)) return 1;
+  if (INACTIVE_TYPES.has(type)) return 0;
+  if (GRACE_TYPES.has(type)) {
+    if (typeof expiresAtMs !== 'number' || Number.isNaN(expiresAtMs)) return 1;
+    return expiresAtMs > nowMs ? 1 : 0;
+  }
+  // Unreachable: callers gate on isHandledType first.
+  return 0;
+}
+
+/** Types this handler acts on. Everything else is an ack-and-ignore no-op. */
+export function isHandledType(type: string): boolean {
+  return (
+    ACTIVE_TYPES.has(type) || INACTIVE_TYPES.has(type) || GRACE_TYPES.has(type)
+  );
+}
 
 // POST /revenuecat
 /** Constant-time string comparison (length leak only — unavoidable). */
@@ -83,11 +150,11 @@ app.post('/revenuecat', async (c) => {
   const appId = c.env.APP_ID;
   const type = ev.type ?? '';
   // Unknown event types are a NO-OP (ack + ignore) — never silently revoke.
-  if (!ACTIVE_TYPES.has(type) && !INACTIVE_TYPES.has(type)) {
+  if (!isHandledType(type)) {
     console.warn(`[webhooks/revenuecat] ignoring unhandled event type: ${type}`);
     return c.json({ ok: true, ignored: type });
   }
-  const isActive = ACTIVE_TYPES.has(type) ? 1 : 0;
+  const isActive = resolveIsActive(type, ev.expiration_at_ms, Date.now());
   const expiresAt =
     typeof ev.expiration_at_ms === 'number'
       ? new Date(ev.expiration_at_ms).toISOString()

@@ -1,6 +1,6 @@
 {
   "@@locale": "ta",
-  "appTitle": "{{display_name}}",
+  "appTitle": "{{{display_name_json}}}",
   "settingsTitle": "அமைப்புகள்",
   "contactSupport": "ஆதரவைத் தொடர்பு கொள்ளவும்",
   "deleteAccount": "கணக்கை நீக்கு",

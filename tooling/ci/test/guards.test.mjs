@@ -265,38 +265,132 @@ describe('check-migrations', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔴 REGRESSION CONTEXT. This guard read ONE hardcoded file
+// (services/platform/wrangler.jsonc) while tooling/capability-register.json
+// claimed it guarded ALLOWED_ORIGINS generally. Emptying services/subly-api's
+// allowlist produced byte-identical output and exit 0 — a live user-data API
+// could go permissive with CI fully green. Every test below that names
+// subly-api would have PASSED against the old guard, which is exactly why they
+// are here: the fork must not be able to come back silently.
+//
+// The extension was mutation-proven against a scratch COPY of the real tree
+// before these tests existed (a fixture I write encodes the same
+// misunderstanding as the guard I write): 8 mutations, each failing with its
+// intended message and each restoring to green.
 describe('assert-cors-allowlist', () => {
-  const ALL = [
+  const PLATFORM = [
     'https://subly.nikatru.com',
     'https://subly-9cp.pages.dev',
     'http://localhost:3000',
   ];
-  const build = (name, body) =>
-    fixture(name, { 'services/platform/wrangler.jsonc': body });
-  const config = (origins, trailer = '') =>
-    `{\n  // the shared platform Worker\n  "vars": { "ALLOWED_ORIGINS": "${origins.join(',')}" }${trailer}\n}\n`;
+  // No localhost here: the per-app Worker allows it by regex (recorded trade).
+  const SUBLY = ['https://subly.nikatru.com', 'https://subly-9cp.pages.dev'];
 
-  test('PASSES when every required origin is listed', () => {
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-ok', config(ALL)) });
+  const config = (origins) =>
+    `{\n  // a Worker\n  "vars": { "ALLOWED_ORIGINS": "${origins.join(',')}" }\n}\n`;
+
+  /** Both Workers, each overridable. Anything less is not a valid tree — the
+   *  guard is supposed to insist that every service it knows about is present. */
+  const build = (name, { platform = config(PLATFORM), subly = config(SUBLY), extra = {} } = {}) =>
+    fixture(name, {
+      'services/platform/wrangler.jsonc': platform,
+      'services/subly-api/wrangler.jsonc': subly,
+      ...extra,
+    });
+
+  test('PASSES when every required origin is listed for BOTH Workers', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: build('cors-ok') });
     assert.equal(code, 0);
+    // The tally must show it read two configs, not one — a guard that checked
+    // half the tree and said "ok" is the defect this replaced.
+    assert.match(out, /2 Worker config\(s\) checked/);
   });
 
-  test('FAILS when a required origin is dropped, and names it', () => {
-    const dir = build('cors-missing', config(ALL.slice(0, 2)));
+  test('FAILS when a required PLATFORM origin is dropped, and names it', () => {
+    const dir = build('cors-missing-platform', { platform: config(PLATFORM.slice(0, 2)) });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
     assert.match(out, /localhost:3000/);
+    assert.match(out, /services\/platform/);
   });
 
-  test('FAILS on an empty allowlist — which would deny every browser origin', () => {
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-empty', config([])) });
+  test('FAILS when a required SUBLY-API origin is dropped — the old guard could not see this', () => {
+    const dir = build('cors-missing-subly', { subly: config(SUBLY.slice(0, 1)) });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
+    assert.match(out, /services\/subly-api/);
+    assert.match(out, /subly-9cp\.pages\.dev/);
+  });
+
+  test('FAILS on an empty PLATFORM allowlist', () => {
+    const { code } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-empty-platform', { platform: config([]) }),
+    });
+    assert.equal(code, 1);
+  });
+
+  test('FAILS on an empty SUBLY-API allowlist — the exact mutation that shipped green', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-empty-subly', { subly: config([]) }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /services\/subly-api/);
+    assert.match(out, /EMPTY/);
+  });
+
+  test('FAILS when ALLOWED_ORIGINS is absent from a Worker entirely', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-absent-subly', { subly: '{ "name": "subly-api" }\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /ALLOWED_ORIGINS is missing/);
   });
 
   test('is STRUCTURAL — an origin mentioned only in a comment does not satisfy it', () => {
-    const body = `{\n  // https://subly-9cp.pages.dev and http://localhost:3000 used to be here\n  "vars": { "ALLOWED_ORIGINS": "https://subly.nikatru.com" }\n}\n`;
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-comment', body) });
+    const subly = `{\n  // https://subly-9cp.pages.dev used to be here\n  "vars": { "ALLOWED_ORIGINS": "https://subly.nikatru.com" }\n}\n`;
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-comment', { subly }),
+    });
     assert.equal(code, 1);
+    assert.match(out, /subly-9cp\.pages\.dev/);
+  });
+
+  test('FAILS on a Worker it was never TAUGHT about — a new service is untaught scope, not out of scope', () => {
+    const dir = build('cors-untaught', {
+      extra: { 'services/newthing/wrangler.jsonc': config(['https://x.test']) },
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /never been taught about services\/newthing/);
+  });
+
+  test('FAILS its own coverage check when a Worker POLICY names is not on disk', () => {
+    // The rename case: services/subly-api moves and the guard keeps printing a
+    // healthy tally over whatever is left.
+    const dir = fixture('cors-renamed', {
+      'services/platform/wrangler.jsonc': config(PLATFORM),
+      'services/subly-backend/wrangler.jsonc': config(SUBLY),
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /services\/subly-api/);
+  });
+
+  test('FAILS its own coverage check when fewer Workers than expected are found', () => {
+    const dir = fixture('cors-one-worker', {
+      'services/platform/wrangler.jsonc': config(PLATFORM),
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('a directory under services/ with no Worker config is skipped, not failed', () => {
+    const dir = build('cors-nonworker', {
+      extra: { 'services/_notes/README.md': 'not a Worker\n' },
+    });
+    assert.equal(run('assert-cors-allowlist.mjs', { cwd: dir }).code, 0);
   });
 });
 
@@ -412,6 +506,66 @@ describe('assert-lane-coverage', () => {
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
   });
+
+  // ── 🔴 A COMMENT IS NOT A LANE (2026-08-01 full-corpus review) ──────────────
+  // isClaimed() was a raw substring match over the concatenated workflow text,
+  // so any mention counted. That was not hypothetical: `sites/nikatru` and
+  // `sites/rajasekarselvam` appeared in .github/workflows ONLY inside the prose
+  // comment above the Site-integrity step, so gutting that step to `echo
+  // skipped` left the Pages Function with its live KV binding checked by
+  // nothing while this guard printed "all claimed". Reproduced on the real tree
+  // both directions: gutted-step-plus-comment -> exit 0; comment reworded with
+  // the real checks untouched -> exit 1. The claimable text is now
+  // comment-stripped, `paths-ignore:` blocks are blanked, and the two sites'
+  // claim became structural (ci.yml passes them as arguments to
+  // check-site-integrity.mjs, which fails if a claimed root is not scanned).
+  const commentWorkflow = (paths) =>
+    `name: CI\njobs:\n  a:\n    steps:\n${paths.map((p) => `      # ${p} is deployed by Cloudflare's own Git integration\n`).join('')}      - run: echo skipped\n`;
+
+  test('FAILS when a unit is named ONLY in a workflow comment', () => {
+    const dir = build('lc-comment', { sites: ['sites/nikatru'], named: [] });
+    writeFileSync(join(dir, '.github/workflows/ci.yml'), commentWorkflow(['sites/nikatru']));
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1, 'prose describing a lane is not a lane');
+    assert.match(out, /sites\/nikatru/);
+    assert.match(out, /claimed by no CI lane/);
+  });
+
+  test('FAILS when a unit appears only under paths-ignore — a path named so CI will NOT run', () => {
+    const dir = build('lc-pathsignore', { workers: ['services/w'], named: [] });
+    writeFileSync(
+      join(dir, '.github/workflows/ci.yml'),
+      "name: CI\non:\n  pull_request:\n    paths-ignore:\n      - 'services/w/**'\njobs:\n  a:\n    steps:\n      - run: echo hi\n",
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1, 'an exclusion is the opposite of a claim');
+    assert.match(out, /services\/w/);
+  });
+
+  // The false-alarm side: stripping comments must not strip the real claim, and
+  // a path that is BOTH commented and genuinely run is still claimed.
+  test('a real run line still claims the unit even when a comment repeats it', () => {
+    const dir = build('lc-both', { sites: ['sites/nikatru'], named: [] });
+    writeFileSync(
+      join(dir, '.github/workflows/ci.yml'),
+      "name: CI\njobs:\n  a:\n    steps:\n      # sites/nikatru is deployed by Cloudflare\n      - run: node tooling/ci/check-site-integrity.mjs . sites/nikatru\n",
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /all claimed/);
+  });
+
+  // paths-ignore blanking is indentation-scoped: the block ends at the first
+  // line that dedents, so a `paths:` claim after it must survive intact.
+  test('paths-ignore blanking stops at the end of its own block', () => {
+    const dir = build('lc-pathsignore-scope', { workers: ['services/w'], named: [] });
+    writeFileSync(
+      join(dir, '.github/workflows/ci.yml'),
+      "name: CI\non:\n  pull_request:\n    paths-ignore:\n      - 'docs/**'\n    paths:\n      - 'services/w/**'\njobs:\n  a:\n    steps:\n      - run: echo hi\n",
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -464,6 +618,45 @@ describe('check-site-integrity', () => {
     const { code, out } = run('check-site-integrity.mjs', { args: [build('si-nofn', { fnCount: 0 })] });
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
+  });
+
+  // ── claimed roots (2026-08-01) ─────────────────────────────────────────────
+  // The Cloudflare-Git sites had no structural claim to CI coverage at all —
+  // assert-lane-coverage.mjs was accepting a workflow COMMENT as proof. ci.yml
+  // now names them as ARGUMENTS here, which makes the claim load-bearing at
+  // both ends: it is the text the lane guard matches, and this script fails if
+  // a claimed root is not really among the deploy roots it scans. Without this
+  // check the argument would be decoration again — a claim that outlives the
+  // thing it claims.
+  test('PASSES when every claimed root is really a scanned deploy root', () => {
+    const dir = build('si-claim-ok');
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/b'] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when a claimed root is not a deploy root at all', () => {
+    const dir = build('si-claim-ghost');
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/ghost'] });
+    assert.equal(code, 1, 'the caller promises coverage the scan does not deliver');
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /sites\/ghost/);
+  });
+
+  // Checked against the DISCOVERED roots, not the filesystem: a directory that
+  // still exists but lost its index.html is exactly a site this script has
+  // stopped checking, and is the shape the real mutation took.
+  test('FAILS when a claimed directory survives but stops being a deploy root', () => {
+    const dir = build('si-claim-noindex', { omit: { site: 'b', file: 'index.html' } });
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/b'] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /sites\/b/);
+  });
+
+  test('a trailing slash on a claimed root is not a false alarm', () => {
+    const dir = build('si-claim-slash');
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a/', 'sites/b'] });
+    assert.equal(code, 0, out);
   });
 });
 
@@ -1020,6 +1213,49 @@ Future<void> recordAnalyticsConsent(
     });
     assert.equal(code, 1);
     assert.match(out, /no longer reads/);
+  });
+
+  // ── 🔴 A DEFINE BEHIND A `#` IS PROSE (2026-08-01 full-corpus review) ───────
+  // The check read the RAW workflow, so commenting the define out — one
+  // character, the exact edit somebody makes while debugging build flags — still
+  // counted as "supplied". Mutation-proven on the real deploy-web.yml: the
+  // shipped guard printed `ok   crash sink wired` over a build that would have
+  // initialised the NoOp client. Worse than a plain comment: the define sits in
+  // a `run: >` folded scalar, where that `#` is a SHELL comment that ALSO
+  // swallows the `--dart-define=APP_ENV=production` on the next folded line.
+  test('FAILS when the DSN define is commented out rather than removed', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-commented', {
+        deploy:
+          'run: >\n  flutter build web --release\n  # --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n  --dart-define=APP_ENV=production\n',
+      }),
+    });
+    assert.equal(code, 1, 'a flag behind a comment marker is not a flag');
+    assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  test('FAILS when the whole build line is commented out', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-line-commented', {
+        deploy: '# run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\nrun: echo skipped\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  // The false-alarm side: only a `#` BEFORE the define disqualifies it. A real
+  // define that happens to carry a trailing comment is still a real define, and
+  // comments elsewhere in the file are none of this check's business.
+  test('a comment AFTER the define, or anywhere else, is not a false alarm', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-trailing-comment', {
+        deploy:
+          '# build the web bundle\nrun: >\n  flutter build web --release\n  --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}  # crash sink\n',
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /crash sink wired/);
   });
 
   test('FAILS when the record() call is deleted — the original defect', () => {
@@ -1582,6 +1818,55 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
     assert.equal(code, 1);
     assert.match(out, /'theme-mode-persisted' is NOT asserted/);
+  });
+
+  // ── 🔴 COMMENTED OUT IS EMPTIED (2026-08-01 full-corpus review) ─────────────
+  // The header promises the build fails if this file is "deleted, emptied, or
+  // stops covering a declared property". It was false on "emptied": the source
+  // was scanned RAW, so `// testWidgets(` counted toward the block floor and
+  // every `group('property: …')` regex matched inside a comment. Mutation-proven
+  // on the real brick template — the whole file commented out plus a stub `void
+  // main() {}` (so the app_brick lane still compiles and trivially passes) left
+  // the shipped guard printing `ok — 14 property/properties enforced`.
+  test('FAILS when the whole property test is commented out line by line', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-slashed', {
+        propTest: goodTest.split('\n').map((l) => `// ${l}`).join('\n') + '\nvoid main() {}\n',
+      }),
+    });
+    assert.equal(code, 1, 'a commented-out assertion asserts nothing');
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  // The realistic triage edit: /* */ around ONE flaky group while chasing a red
+  // lane. Nothing else in the file moves, so only the property-level check can
+  // notice — which is precisely what this guard exists to make loud.
+  test('FAILS when a single property group is wrapped in a block comment', () => {
+    const marker = "group('property: locale-actually-switches', () {";
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-blocked', {
+        propTest: goodTest.replace(
+          marker,
+          `/* quarantined 2026-08-01 — flaky\n${marker}`,
+        ).replace("  testWidgets('ii', (t) async {});\n});", "  testWidgets('ii', (t) async {});\n});\n*/"),
+      }),
+    });
+    assert.equal(code, 1, 'a quarantined group is a property that stopped being enforced');
+    assert.match(out, /'locale-actually-switches' is NOT asserted/);
+  });
+
+  // The false-alarm side, and the reason the stripper is hand-rolled rather than
+  // the sibling guard's strip-comments-AND-strings scanner: the group markers
+  // this guard matches ARE string literals, so blanking strings would erase the
+  // very evidence being looked for. A `//` inside a string must survive.
+  test('a `//` inside a string literal is not a comment', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-url-string', {
+        propTest: `const docs = 'https://nikatru.com/chassis#properties';\n${goodTest}`,
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /theme-mode-persisted' asserted/);
   });
 
   // The hollow-test case: the assertion is still there but the thing it asserts

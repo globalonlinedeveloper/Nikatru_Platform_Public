@@ -45,16 +45,23 @@ vars:
     prompt: Display name
   subdomain:
     type: string
-    description: Web subdomain, e.g. lingo.nikatru.com
-    prompt: Web subdomain
+    description: >-
+      Web subdomain, e.g. lingo.nikatru.com. LEAVE IT BLANK and it is derived as
+      `<app_id>.nikatru.com` — that is the normal input, and pre_gen refuses any
+      value that disagrees with the convention. Derivation happens in
+      hooks/pre_gen.dart, which writes the resolved value back into the vars
+      mason then hands to the templates; blank used to reach them untouched and
+      stamp `"ALLOWED_ORIGINS": "https://"` into the app's own Worker.
+    prompt: Web subdomain (blank = derive <app_id>.nikatru.com)
     default: ""
   api_domain:
     type: string
     description: >-
       API host (single-label standard), e.g. api-lingo.nikatru.com. ONLY used
       when needs_backend=true — a client-only app calls the shared platform
-      Worker and never has a host of its own, so this value is ignored.
-    prompt: API domain (ignored unless needs_backend=true)
+      Worker and never has a host of its own, so this value is ignored. Blank is
+      the normal input and derives `api-<app_id>.nikatru.com` (see `subdomain`).
+    prompt: API domain (blank = derive; ignored unless needs_backend=true)
     default: ""
   seed_hex:
     type: string
