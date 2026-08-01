@@ -15,7 +15,7 @@ import 'package:nikatru_api_client/nikatru_api_client.dart';
 /// that equality a consent artifact proves someone tapped a button but not what
 /// they were shown, which is the one thing the record exists to establish —
 /// so `tooling/ci/assert-seams-wired.mjs` fails the build if the two drift.
-const String kPrivacyPolicyVersion = '2026-07-26';
+const String kPrivacyPolicyVersion = '2026-08-01';
 
 /// G-12 first-party analytics wiring ([ADR 011]).
 ///

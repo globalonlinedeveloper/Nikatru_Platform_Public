@@ -29,7 +29,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -64,11 +64,66 @@ function run(dir, { from = join(CI_DIR, GUARD) } = {}) {
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
-/** Drop a copy of the guard inside the fixture so it scans "its own repo". */
-function selfHosted(dir) {
+/**
+ * Drop a copy of the guard inside the fixture so it scans "its own repo", AND
+ * give the fixture the minimum a real repository has.
+ *
+ * Both halves belong together. In self-hosted mode the guard enforces coverage
+ * floors — a homepage canonical, a `data-policy-version`, a store listing URL,
+ * the APPS array, a Function that reads the client IP, a SITE PROMISE marker —
+ * each of which exists because the limb above it would otherwise range over an
+ * empty set and print "ok" forever. A fixture that claims to be the repository
+ * while carrying none of them is not modelling the repository, and satisfying
+ * the floors here is what keeps them from being quietly deleted to make a test
+ * pass.
+ *
+ * Scaffolding lands on the FIRST deploy root the fixture already has, never on a
+ * root of its own: the `lp-cov-lost` case works by there being no sites/nikatru,
+ * and a helper that conjured one would delete the test.
+ */
+const FIXTURE_ORIGIN = 'https://fixture.test/';
+const FIXTURE_VERSION = '2026-01-02';
+const FIXTURE_PROMISE = 'We keep only what this fixture says we keep.';
+
+function selfHosted(dir, { root = 'a' } = {}) {
   const to = join(dir, 'tooling', 'ci', GUARD);
   mkdirSync(dirname(to), { recursive: true });
   copyFileSync(join(CI_DIR, GUARD), to);
+
+  const site = join(dir, 'sites', root);
+  // Only the homepage is indexable; every other page declares noindex, so the
+  // canonical/sitemap relationship stays a one-line fact and these tests keep
+  // testing the legal-pages half they were written for.
+  for (const f of readdirSync(site, { withFileTypes: true })) {
+    if (!f.isFile() || !f.name.endsWith('.html') || f.name === 'index.html') continue;
+    const abs = join(site, f.name);
+    writeFileSync(abs, readFileSync(abs, 'utf8').replace('<html', '<meta name="robots" content="noindex"><html'));
+  }
+  writeFileSync(
+    join(site, 'index.html'),
+    `<html><head><link rel="canonical" href="${FIXTURE_ORIGIN}"></head><body>` +
+      `<p data-policy-version="${FIXTURE_VERSION}">${FIXTURE_PROMISE}</p>` +
+      '<script>const APPS = [\n];</script></body></html>\n',
+  );
+  writeFileSync(
+    join(site, 'sitemap.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset><url><loc>${FIXTURE_ORIGIN}</loc><lastmod>${FIXTURE_VERSION}</lastmod></url></urlset>\n`,
+  );
+  const fn = join(site, 'functions', 'api', 'probe.js');
+  mkdirSync(dirname(fn), { recursive: true });
+  writeFileSync(
+    fn,
+    `// SITE PROMISE: "${FIXTURE_PROMISE}"\n` +
+      'export async function onRequestPost({ request, env }) {\n' +
+      '  const ip = request.headers.get("cf-connecting-ip") || "";\n' +
+      '  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.FIXTURE_SALT || ""), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);\n' +
+      '  await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(ip));\n' +
+      '  return new Response("ok");\n' +
+      '}\n',
+  );
+  const url = join(dir, 'apps', 'demo', 'store', 'fixture-store', 'privacy-policy-url.txt');
+  mkdirSync(dirname(url), { recursive: true });
+  writeFileSync(url, `${FIXTURE_ORIGIN}\n`);
   return to;
 }
 
@@ -213,13 +268,13 @@ describe('check-site-integrity · legal pages', () => {
       // The heuristics are for sites nobody added to the list. They are not
       // trusted to keep covering the one we already know about.
       const dir = build('lp-cov-named', { sites: ['nikatru', 'b'] });
-      const missing = run(dir, { from: selfHosted(dir) });
+      const missing = run(dir, { from: selfHosted(dir, { root: 'nikatru' }) });
       assert.equal(missing.code, 1);
       assert.match(missing.out, /missing .*privacy\.html/);
       assert.match(missing.out, /named in REQUIRED_LEGAL_ROOTS/);
 
       const dir2 = build('lp-cov-ok', { sites: ['nikatru', 'b'], legal: allThree('nikatru') });
-      const ok = run(dir2, { from: selfHosted(dir2) });
+      const ok = run(dir2, { from: selfHosted(dir2, { root: 'nikatru' }) });
       assert.equal(ok.code, 0, ok.out);
       assert.match(ok.out, /sites\/nikatru — 3 page\(s\)/);
     });
@@ -239,5 +294,463 @@ describe('check-site-integrity · legal pages', () => {
     const b = run(build('lp-legacy-syntax', { extra: { 'sites/a/functions/api/handler.js': 'export async function x( {\n' } }));
     assert.equal(b.code, 1);
     assert.match(b.out, /does not parse/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-08-01 — the limbs added because the public sites contradicted their own
+// SSoT, their own privacy policy and their own served URLs.
+//
+// 🔴 EVERY CASE BELOW WAS RUN AGAINST A COPY OF THE REAL TREE FIRST, and only
+// then written here. The order matters and is not ceremony: on 2026-07-26 a
+// guard in this repo shipped with all six of its fixture tests green and its
+// real-tree behaviour broken, because the fixture encoded the same
+// misunderstanding as the guard. The 16 real-tree mutations (revert the
+// canonical to the extensionless form · make a link document-relative · point a
+// store listing at a URL we do not serve · put the sitemap lastmod back to
+// 2026-07-18 · revert the IP fingerprint to sha256(ip) · rename `const APPS`…)
+// each failed with the message named here, from a green baseline, and the tree
+// went green again on restore. These fixtures pin those behaviours; they did not
+// discover them.
+//
+// Run non-self-hosted on purpose: the coverage FLOORS are the real repository's
+// business (exercised above), and these tests are about whether each limb can
+// fail on the input that should fail it.
+// ─────────────────────────────────────────────────────────────────────────────
+const ORIGIN = 'https://one.test/';
+
+/** An indexable page that names itself in the one canonical form. */
+const page = (url, body = '', head = '') =>
+  `<html><head><link rel="canonical" href="${url}">${head}</head><body><h1>Page</h1>${body}</body></html>\n`;
+
+/** The homepage links /privacy.html, which binds this root to a REAL privacy
+ *  page under the pre-existing legal-pages limb. Padding it keeps these tests
+ *  failing for the reason each one names, instead of tripping the stub floor. */
+const POLICY_BODY = `<p data-policy-version="2026-03-04">${'policy sentence. '.repeat(80)}</p>`;
+
+const sitemap = (entries) =>
+  '<?xml version="1.0" encoding="UTF-8"?>\n<urlset>\n' +
+  entries.map(([loc, lastmod]) => `  <url><loc>${loc}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}</url>\n`).join('') +
+  '</urlset>\n';
+
+/** A Function that fingerprints the client IP the way the requirement demands. */
+const KEYED_FN =
+  'export async function onRequestPost({ request, env }) {\n' +
+  '  const ip = request.headers.get("cf-connecting-ip") || "";\n' +
+  '  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.PROBE_SALT || ""), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);\n' +
+  '  await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(ip));\n' +
+  '  return new Response("ok");\n' +
+  '}\n';
+
+/**
+ * A consistent one-root tree: `nikatru` carries the canonical set (named so the
+ * apps.json limb, which is about that homepage, is reachable), `b` is a second
+ * root that claims no canonical at all and is therefore out of the URL-form
+ * limb's scope — which is itself the behaviour that keeps sites/rajasekarselvam
+ * from being dragged into a form it never adopted.
+ */
+function urlTree(name, over = {}) {
+  const files = {
+    'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy.html">Privacy</a>', '<script>const APPS = [\n];</script>'),
+    'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, POLICY_BODY),
+    'sites/nikatru/404.html': '<meta name="robots" content="noindex"><html><body>gone</body></html>\n',
+    'sites/nikatru/robots.txt': 'x\n',
+    'sites/nikatru/_headers': 'x\n',
+    'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-03-04']]),
+    'sites/nikatru/functions/api/probe.js': KEYED_FN,
+    'sites/b/index.html': '<html><body>brochure</body></html>\n',
+    'sites/b/404.html': '<html></html>\n',
+    'sites/b/robots.txt': 'x\n',
+    'sites/b/_headers': 'x\n',
+    'sites/_shared/_data/apps.json': '[]\n',
+  };
+  return fixture(name, { ...files, ...over });
+}
+
+describe('check-site-integrity · one canonical URL form', () => {
+  test('PASSES on a root whose canonicals, sitemap and links all agree', () => {
+    const { code, out } = run(urlTree('uf-ok'));
+    assert.equal(code, 0, out);
+    assert.match(out, /one canonical URL form on 1 root\(s\)/);
+  });
+
+  test('FAILS when a canonical is written in a second form', () => {
+    const { code, out } = run(
+      urlTree('uf-form', { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy`, POLICY_BODY) }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /canonical is "https:\/\/one\.test\/privacy", and the one form this site uses makes it "https:\/\/one\.test\/privacy\.html"/);
+  });
+
+  test('FAILS when an indexable page declares no canonical at all', () => {
+    const { code, out } = run(urlTree('uf-none', { 'sites/nikatru/privacy.html': '<html><h1>P</h1></html>\n' }));
+    assert.equal(code, 1);
+    assert.match(out, /declares no <link rel="canonical"> and is not noindex/);
+  });
+
+  test('FAILS when the homepage canonical is not the bare origin', () => {
+    // Everything else is derived from it, so a wrong one would move every
+    // expected URL in lockstep and the whole limb would agree with itself.
+    const { code, out } = run(urlTree('uf-origin', { 'sites/nikatru/index.html': page(`${ORIGIN}index.html`) }));
+    assert.equal(code, 1);
+    assert.match(out, /it must be the bare origin with a trailing slash/);
+  });
+
+  test('FAILS on a document-relative page link, and on the extensionless one', () => {
+    const rel = run(urlTree('uf-rel', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="privacy.html">P</a>', '<script>const APPS = [\n];</script>') }));
+    assert.equal(rel.code, 1);
+    assert.match(rel.out, /links "privacy\.html" document-relative/);
+
+    const ext = run(urlTree('uf-ext', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy">P</a>', '<script>const APPS = [\n];</script>') }));
+    assert.equal(ext.code, 1);
+    assert.match(ext.out, /the extensionless form of \/privacy\.html/);
+  });
+
+  test('FAILS on a root-relative link to a page that does not exist', () => {
+    const { code, out } = run(urlTree('uf-dangling', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="/nope.html">N</a>', '<script>const APPS = [\n];</script>') }));
+    assert.equal(code, 1);
+    assert.match(out, /no such file exists on this deploy root/);
+  });
+
+  test('FAILS both ways when the sitemap and the pages disagree', () => {
+    const missing = run(urlTree('uf-sm-missing', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01']]) }));
+    assert.equal(missing.code, 1);
+    assert.match(missing.out, /does not list https:\/\/one\.test\/privacy\.html/);
+
+    const extra = run(
+      urlTree('uf-sm-extra', {
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-03-04'], [`${ORIGIN}ghost.html`, '2026-01-01']]),
+      }),
+    );
+    assert.equal(extra.code, 1);
+    assert.match(extra.out, /lists https:\/\/one\.test\/ghost\.html, which is not the canonical URL of any indexable page/);
+  });
+
+  test('FAILS when og:url disagrees with the canonical on the same page', () => {
+    const { code, out } = run(
+      urlTree('uf-og', {
+        'sites/nikatru/index.html': page(ORIGIN, '', '<meta property="og:url" content="https://one.test/home"><script>const APPS = [\n];</script>'),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /og:url is "https:\/\/one\.test\/home" but its canonical/);
+  });
+
+  test('a noindex page owes no canonical and must not appear in the sitemap', () => {
+    // This is what exempts sites/nikatru/apps/_template.html and both 404s —
+    // by their own declaration, not by a filename list that would rot.
+    const ok = run(urlTree('uf-noindex-ok', { 'sites/nikatru/draft.html': '<meta name="robots" content="noindex, nofollow"><html><body>draft</body></html>\n' }));
+    assert.equal(ok.code, 0, ok.out);
+
+    const listed = run(
+      urlTree('uf-noindex-listed', {
+        'sites/nikatru/draft.html': '<meta name="robots" content="noindex"><html><body>draft</body></html>\n',
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-03-04'], [`${ORIGIN}draft.html`, '2026-01-01']]),
+      }),
+    );
+    assert.equal(listed.code, 1);
+    assert.match(listed.out, /lists https:\/\/one\.test\/draft\.html/);
+  });
+
+  test('a root that claims no canonical at all is out of scope, not failed', () => {
+    // sites/rajasekarselvam has one page with a canonical and one deliberate
+    // noindex template. A limb that demanded the whole relationship of every
+    // root would fail honest brochure sites until somebody deleted it.
+    const { code, out } = run(urlTree('uf-scope'));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /sites\/b\//);
+  });
+});
+
+describe('check-site-integrity · policy version vs sitemap lastmod', () => {
+  test('FAILS when the sitemap date drifts from the declared policy version', () => {
+    // The real defect: privacy.html said version 2026-07-26 while the sitemap
+    // said the page last changed 2026-07-18.
+    const { code, out } = run(
+      urlTree('pv-drift', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-01-01']]) }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /declares data-policy-version="2026-03-04" and .*lastmod 2026-01-01/);
+  });
+
+  test('FAILS when the sitemap gives a policy page no lastmod at all', () => {
+    const { code, out } = run(
+      urlTree('pv-none', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, null]]) }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /lastmod \(none\)/);
+  });
+
+  test('a page with no policy version is not held to a date', () => {
+    const { code, out } = run(urlTree('pv-exempt', { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, '<p>' + 'policy sentence. '.repeat(80) + '</p>') }));
+    assert.equal(code, 0, out);
+    assert.match(out, /0 policy version\(s\) vs sitemap lastmod/);
+  });
+});
+
+describe('check-site-integrity · store listings point at pages we serve', () => {
+  const withStore = (name, url) =>
+    urlTree(name, { 'apps/demo/store/ios-appstore/privacy-policy-url.txt': `${url}\n` });
+
+  test('PASSES when the store URL is a canonical URL of an indexable page', () => {
+    const { code, out } = run(withStore('st-ok', `${ORIGIN}privacy.html`));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 store listing URL\(s\) matched to a page we serve/);
+  });
+
+  test('FAILS when the store URL is a second spelling of a real page', () => {
+    const { code, out } = run(withStore('st-form', `${ORIGIN}privacy`));
+    assert.equal(code, 1);
+    assert.match(out, /points a store listing at https:\/\/one\.test\/privacy, which is not the canonical URL/);
+  });
+
+  test('FAILS when the store URL points at a page this repo does not ship', () => {
+    const { code, out } = run(withStore('st-gone', `${ORIGIN}legal.html`));
+    assert.equal(code, 1);
+    assert.match(out, /not the canonical URL of any indexable page this repo deploys/);
+  });
+
+  test('a URL on a host we do not deploy is left alone', () => {
+    // Resolving a foreign host would need a host map this guard has no business
+    // owning — the same line check-site-integrity already draws for links.
+    const { code, out } = run(withStore('st-foreign', 'https://example.org/privacy'));
+    assert.equal(code, 0, out);
+    assert.match(out, /0 store listing URL\(s\)/);
+  });
+});
+
+describe('check-site-integrity · what a Function does with a visitor IP', () => {
+  const fn = (name, body) => urlTree(name, { 'sites/nikatru/functions/api/probe.js': body });
+
+  test('FAILS on an UNKEYED digest of the client IP', () => {
+    // The shipped defect: `sha256(ip)` as a rate-limit key. IPv4 is 2^32 values.
+    const { code, out } = run(
+      fn(
+        'ip-unkeyed',
+        'export async function onRequestPost({ request, env }) {\n' +
+          '  const ip = request.headers.get("cf-connecting-ip") || "";\n' +
+          '  const salt = env.PROBE_SALT;\n' +
+          '  await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip + salt));\n' +
+          '  return new Response("ok");\n' +
+          '}\n',
+      ),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /never calls crypto\.subtle\.sign with HMAC/);
+  });
+
+  test('FAILS when the key material is in the repo instead of the environment', () => {
+    const { code, out } = run(fn('ip-nosalt', KEYED_FN.replace('env.PROBE_SALT || ""', '"hardcoded-pepper"')));
+    assert.equal(code, 1);
+    assert.match(out, /reads no salt\/secret\/key from `env`/);
+  });
+
+  test('a Function that never touches the IP is not asked for a secret', () => {
+    const { code, out } = run(
+      urlTree('ip-none', {
+        'sites/nikatru/functions/api/probe.js': KEYED_FN,
+        'sites/nikatru/functions/api/other.js': 'export async function onRequestGet() { return new Response("ok"); }\n',
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('the env secret name is PRINTED on every clean run', () => {
+    // It is set in the Cloudflare dashboard, not the repo. A guard that silently
+    // requires a secret nobody was told to set ships a disabled feature.
+    const { code, out } = run(urlTree('ip-print'));
+    assert.equal(code, 0, out);
+    assert.match(out, /must be set in Cloudflare: PROBE_SALT/);
+  });
+});
+
+describe('check-site-integrity · a promise the code quotes is a promise the site makes', () => {
+  const PROMISE = 'We store your email address and the time you signed up, and nothing else.';
+
+  test('PASSES while the page still carries the quoted sentence', () => {
+    const { code, out } = run(
+      urlTree('sp-ok', {
+        'sites/nikatru/functions/api/probe.js': `// SITE PROMISE: "${PROMISE}"\n${KEYED_FN}`,
+        'sites/nikatru/index.html': page(ORIGIN, `<p>${PROMISE}</p>`, '<script>const APPS = [\n];</script>'),
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS the moment the copy changes underneath it', () => {
+    const { code, out } = run(
+      urlTree('sp-drift', {
+        'sites/nikatru/functions/api/probe.js': `// SITE PROMISE: "${PROMISE}"\n${KEYED_FN}`,
+        'sites/nikatru/index.html': page(ORIGIN, '<p>We store your email. Nothing else, ever.</p>', '<script>const APPS = [\n];</script>'),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /quotes a SITE PROMISE that no page under sites\/nikatru makes/);
+  });
+
+  test('the promise must live on the SAME deploy root as the Function', () => {
+    const { code, out } = run(
+      urlTree('sp-wrongroot', {
+        'sites/nikatru/functions/api/probe.js': `// SITE PROMISE: "${PROMISE}"\n${KEYED_FN}`,
+        'sites/b/index.html': `<html><body>${PROMISE}</body></html>\n`,
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /no page under sites\/nikatru makes/);
+  });
+});
+
+describe('check-site-integrity · the site app list vs apps.json', () => {
+  const registry = (status) => `[{ "slug": "subly", "name": "Subly", "url": "https://subly.test", "status": "${status}" }]\n`;
+  const withApps = (name, body, status) =>
+    urlTree(name, {
+      'sites/nikatru/index.html': page(ORIGIN, '', `<script>const APPS = [${body}];</script>`),
+      'sites/_shared/_data/apps.json': registry(status),
+    });
+
+  test('FAILS when the homepage lists an app the registry does not mark live', () => {
+    // This direction is a promise made to a stranger, and an agent can fix it.
+    const { code, out } = run(withApps('aj-unbacked', '{ name: "Drift" }', 'live'));
+    assert.equal(code, 1);
+    assert.match(out, /lists an app "drift" in its APPS array/);
+  });
+
+  test('PRINTS, and does not fail, when the registry says live and the site is silent', () => {
+    // 🔴 The limb must NOT presuppose the answer. Whether a live app is publicly
+    // announced is a launch decision the owner makes; failing here would block
+    // every build on owner-only work, which is [pipeline C-6]'s recorded rule.
+    const { code, out } = run(withApps('aj-unannounced', '\n', 'live'));
+    assert.equal(code, 0, out);
+    assert.match(out, /UNANNOUNCED: .*marks "Subly" status "live"/);
+    assert.match(out, /WHICH ONE IS RIGHT IS AN OWNER DECISION/);
+  });
+
+  test('either resolution silences it — and the guard says which without choosing', () => {
+    // Resolution A: the registry stops claiming live.
+    const registryMoved = run(withApps('aj-not-live', '\n', 'beta'));
+    assert.equal(registryMoved.code, 0, registryMoved.out);
+    assert.doesNotMatch(registryMoved.out, /UNANNOUNCED/);
+
+    // Resolution B: the site announces it. Both are accepted, which is exactly
+    // what "decidable without knowing which is right" means.
+    const siteMoved = run(withApps('aj-announced', '{ name: "Subly" }', 'live'));
+    assert.equal(siteMoved.code, 0, siteMoved.out);
+    assert.doesNotMatch(siteMoved.out, /UNANNOUNCED/);
+  });
+
+  test('the array is read RAW — stripping <script> would find nothing at all', () => {
+    // The APPS array lives inside a <script>, which stripInert() removes. Every
+    // other limb here reads the stripped text; this one must not, and the way to
+    // notice it started to is that the array becomes invisible and the limb goes
+    // vacuously quiet rather than loud.
+    const { code, out } = run(withApps('aj-raw', '{ name: "Ghost" }', 'beta'));
+    assert.equal(code, 1);
+    assert.match(out, /lists an app "ghost"/);
+  });
+
+  test('the instructional comment above the array is NOT read as a listed app', () => {
+    // sites/nikatru/index.html carries a worked example — `name: "My Notes App"`
+    // and five store URLs — in the comment a human copies from. A scan that
+    // started at the file rather than at the array would report it as an app.
+    const { code, out } = run(
+      urlTree('aj-comment', {
+        'sites/nikatru/index.html': page(
+          ORIGIN,
+          '',
+          '<script>/* Example:\n{ name: "My Notes App", links: { ios: "..." } }\n*/\nconst APPS = [\n  // add your first app here\n];</script>',
+        ),
+        'sites/_shared/_data/apps.json': registry('beta'),
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /My Notes App/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The floors themselves. Every limb above ranges over something a single edit
+// can empty — an attribute, an array name, a header string, a marker — and an
+// empty domain is not a clean tree, it is a check that stopped checking and kept
+// printing "ok". Real-repository mode only, because these are claims about THIS
+// repository; the synthetic fixtures above legitimately have none of them.
+//
+// The scaffolding selfHosted() writes is what makes each case a ONE-EDIT
+// difference from a passing tree, which is the only way to tell a floor that
+// fires from a fixture that was never going to pass anyway.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('check-site-integrity · the new limbs cannot go vacuously quiet', () => {
+  /** A self-hosted fixture that PASSES, then one edit that empties one limb. */
+  function afterEdit(name, edit) {
+    const dir = build(name, { sites: ['nikatru', 'b'], legal: allThree('nikatru') });
+    const from = selfHosted(dir, { root: 'nikatru' });
+    edit(dir);
+    return run(dir, { from });
+  }
+
+  const patch = (dir, rel, from, to) => {
+    const abs = join(dir, rel);
+    const text = readFileSync(abs, 'utf8');
+    assert.ok(text.includes(from), `fixture no longer contains ${from} — the scaffolding moved`);
+    writeFileSync(abs, text.replace(from, to));
+  };
+
+  test('the scaffolded fixture passes, so every case below is a one-edit difference', () => {
+    const clean = afterEdit('cf-clean', () => {});
+    assert.equal(clean.code, 0, clean.out);
+  });
+
+  test('COVERAGE LOST when no root declares a homepage canonical', () => {
+    const r = afterEdit('cf-nocanon', (d) => patch(d, 'sites/nikatru/index.html', 'rel="canonical"', 'rel="alternate"'));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /ZERO deploy roots declared a homepage canonical/);
+  });
+
+  test('COVERAGE LOST when the policy-version attribute is gone', () => {
+    const r = afterEdit('cf-nover', (d) => patch(d, 'sites/nikatru/index.html', ` data-policy-version="${FIXTURE_VERSION}"`, ''));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /NO page carries a `data-policy-version`/);
+  });
+
+  test('COVERAGE LOST when no store listing resolves to a host we deploy', () => {
+    const r = afterEdit('cf-nostore', (d) =>
+      patch(d, 'apps/demo/store/fixture-store/privacy-policy-url.txt', FIXTURE_ORIGIN, 'https://elsewhere.test/privacy.html'),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /NO apps\/\*\/store\/\*\/\*-url\.txt resolved to a host this repo deploys/);
+  });
+
+  test('COVERAGE LOST when the APPS array is renamed out from under the check', () => {
+    // The exact edit that would silently retire the apps.json comparison — and
+    // the reason it is a floor and not a comment.
+    const r = afterEdit('cf-noapps', (d) => patch(d, 'sites/nikatru/index.html', 'const APPS = [', 'const NIKATRU_APPS = ['));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /`const APPS = \[` was not found/);
+  });
+
+  test('COVERAGE LOST when no Function reads the client IP header any more', () => {
+    const r = afterEdit('cf-noip', (d) =>
+      patch(d, 'sites/nikatru/functions/api/probe.js', 'cf-connecting-ip', 'x-forwarded-for'),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /NO Pages Function reads the cf-connecting-ip header/);
+  });
+
+  test('COVERAGE LOST when the last SITE PROMISE marker is deleted', () => {
+    const r = afterEdit('cf-nopromise', (d) =>
+      patch(d, 'sites/nikatru/functions/api/probe.js', `// SITE PROMISE: "${FIXTURE_PROMISE}"`, '// (no promise)'),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /NO Pages Function carries a `SITE PROMISE/);
+  });
+
+  test('the OLDER floor still wins when the named legal root is gone', () => {
+    // Ordering, asserted rather than assumed: sites/nikatru disappearing is the
+    // oldest and most specific claim this file makes, and a tree that has lost
+    // it must hear about THAT, not about a policy-version attribute.
+    const dir = build('cf-order', { sites: ['a', 'b'] });
+    const r = run(dir, { from: selfHosted(dir, { root: 'a' }) });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /sites\/nikatru is no longer scanned for legal pages/);
   });
 });

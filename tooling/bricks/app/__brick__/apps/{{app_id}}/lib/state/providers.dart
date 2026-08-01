@@ -264,7 +264,7 @@ final Provider<core.EntitlementCache> entitlementCacheProvider =
 /// MUST equal `data-policy-version` on `sites/nikatru/privacy.html`. Without
 /// that equality a consent artifact proves someone tapped a button but not what
 /// they were shown, which is the one thing the record exists to establish.
-const String kPrivacyPolicyVersion = '2026-07-26';
+const String kPrivacyPolicyVersion = '2026-08-01';
 
 /// The SHARED platform Worker: analytics ingest + the consent artifact ([ADR 020]).
 ///
