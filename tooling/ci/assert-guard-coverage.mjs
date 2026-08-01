@@ -56,6 +56,7 @@ const TESTS = join(CI, 'test');
 // 38 guards, 28 test files, 614 test declarations — floors moved up behind it.
 // Re-measured again 2026-08-01 (assert-store-metadata.mjs landing, [10]D-5):
 // 40 guards, 31 test files, 710 test declarations.
+<<<<<<< HEAD
 // Re-measured again 2026-08-01 (the Apple + Snap channels landing, [10]D-5/D-10):
 // 40 guards, 33 test files, 830 test declarations. Guard count is UNCHANGED and
 // that is correct — submit-appstore.mjs and submit-snap.mjs live in

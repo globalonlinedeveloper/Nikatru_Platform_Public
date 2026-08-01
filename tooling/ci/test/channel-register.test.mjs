@@ -165,6 +165,28 @@ const deferredWindowsStore = () => ({
   ownerQueue: 'A-2',
 });
 
+/** [10]D-10 limb (i)'s fixture: a submission workflow whose `dry-run` job really
+ *  runs the script, plus a `gate` job that really does not. The second one is
+ *  what makes "the job never invokes that script" a case that can be written. */
+const SUBMIT_WORKFLOW = '.github/workflows/submit-thing.yml';
+const SUBMIT_SCRIPT = 'tooling/release/submit-thing.mjs';
+const submitWorkflow = ({ jobRunsScript = true } = {}) =>
+  [
+    'name: Submit',
+    'on:',
+    '  workflow_dispatch:',
+    'jobs:',
+    '  gate:',
+    '    runs-on: ubuntu-24.04',
+    '    steps:',
+    '      - run: node tooling/ci/assert-gate-passed.mjs',
+    '  dry-run:',
+    '    runs-on: ubuntu-24.04',
+    '    steps:',
+    `      - run: ${jobRunsScript ? `node ${SUBMIT_SCRIPT} --dry-run` : 'echo nothing'}`,
+    '',
+  ].join('\n');
+
 /**
  * Build a fixture repo. Everything is valid unless a knob says otherwise.
  * `mutate(register)` breaks exactly one thing, so a failure is attributable.
@@ -186,6 +208,12 @@ function tree({
   // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
   // check is decided by this ROOT, never by the individual file — see the guard.
   harnessPresent = true,
+  // [10]D-10 limb (i). Off by default so every existing case keeps its exact
+  // output; the submission suite turns it on.
+  withSubmission = false,
+  submissionScriptOnDisk = true,
+  submissionWorkflowOnDisk = true,
+  jobRunsScript = true,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -221,6 +249,14 @@ function tree({
     ],
     nonChannelSigningIdentities: [],
   };
+  if (withSubmission) {
+    register.channels[1].submission = {
+      script: SUBMIT_SCRIPT,
+      workflow: SUBMIT_WORKFLOW,
+      job: 'dry-run',
+      runbook: 'company/runbooks/store-submission-thing.md',
+    };
+  }
   if (mutate) mutate(register);
 
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
@@ -235,6 +271,10 @@ function tree({
     if (adrOnDisk) {
       write('knowledge/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
     }
+  }
+  if (withSubmission) {
+    if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, '// the submission path\n');
+    if (submissionWorkflowOnDisk) write(SUBMIT_WORKFLOW, submitWorkflow({ jobRunsScript }));
   }
   if (!omitRegister) {
     write('tooling/channel-register.json', registerRaw ?? JSON.stringify(register, null, 2));
@@ -726,6 +766,79 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     );
     assert.equal(closed.code, 0, closed.out);
     assert.doesNotMatch(closed.out, /FORMAT GAP/, closed.out);
+  });
+
+  // ── [10]D-10 limb (i): the submission block must RESOLVE ──────────────────
+  // 🔴 THIS WHOLE GROUP EXISTS BECAUSE THE LIMB WAS PROSE. Until 2026-08-01 both
+  // `submission` blocks in the real register documented, in their own `_why`,
+  // that the path was "parsed rather than grepped" — and no line of any guard
+  // read the field. A requirement that describes its own enforcement and is not
+  // enforced is exactly what D-10's replacement acceptance was written to remove.
+  test('PASSES when a submission block resolves script → workflow → job that runs it', () => {
+    const { code, out } = run(tree({ withSubmission: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 submission path\(s\) resolve to a workflow job that runs the named script/);
+  });
+
+  test('FAILS when the submission script is not on disk', () => {
+    const { code, out } = run(tree({ withSubmission: true, submissionScriptOnDisk: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names submission script "tooling\/release\/submit-thing\.mjs", which does not exist/);
+  });
+
+  test('FAILS when the submission workflow does not exist', () => {
+    const { code, out } = run(tree({ withSubmission: true, submissionWorkflowOnDisk: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names submission workflow .*submit-thing\.yml, which does not exist/);
+  });
+
+  test('FAILS when the submission names a job the workflow does not declare', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: (r) => { r.channels[1].submission.job = 'ghost'; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /claims submission job "ghost"/);
+  });
+
+  // 🔴 THE CASE THAT MAKES THE OTHER THREE MEAN SOMETHING. A real script and a
+  // real job that have nothing to do with each other pass every existence check
+  // and are not a wired submission path.
+  test('FAILS when the named job exists but never invokes the named script', () => {
+    const { code, out } = run(tree({ withSubmission: true, jobRunsScript: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /that job never invokes that script/);
+  });
+
+  test('FAILS when the submission block names no script at all', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: (r) => { delete r.channels[1].submission.script; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares a `submission` with no `script`/);
+  });
+
+  test('FAILS when the submission block names no workflow/job', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: (r) => { delete r.channels[1].submission.workflow; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares a `submission` with no \{workflow, job\}/);
+  });
+
+  // ── the asymmetry, one level up ───────────────────────────────────────────
+  // BUILDING a submission path is owner-gated, so a submittable store row with
+  // no block and no script PRINTS. KEEPING one is not owner-gated: abandon the
+  // block and the script it left behind must FAIL, or it sits in the release
+  // directory looking maintained and wired to nothing.
+  test('PRINTS, and does not fail, for a submittable store row with no submission path at all', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /NO SUBMISSION PATH: channel "windows-store"/);
+  });
+
+  test('FAILS on a release script no row names — the abandoned-block case', () => {
+    const { code, out } = run(tree({ withSubmission: true, mutate: (r) => { delete r.channels[1].submission; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /submit-thing\.mjs is a release script that NO channel row names/);
+  });
+
+  test('a declared script is NOT reported as an orphan', () => {
+    const { out } = run(tree({ withSubmission: true }));
+    assert.doesNotMatch(out, /is a release script that NO channel row names/);
   });
 
   test('reads the format gap from an upload-artifact path glob, not only the build verb', () => {
