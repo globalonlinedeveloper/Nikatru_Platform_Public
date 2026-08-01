@@ -1,0 +1,48 @@
+name: nikatru_purchases
+description: >-
+  The CLIENT half of the NIKATRU money rail ([pipeline 5]M-5/M-6/M-9/M-11/M-13/
+  M-15/M-16). One inherited purchase path for every stamped app: offerings come
+  from the rail config (never from app code), checkout is a hosted page the
+  merchant of record owns, the unlock is a SERVER read the client converges on,
+  and cancellation is an in-app request to our own host. Ships no vendor SDK —
+  the merchant of record ([ADR 004]) is reached over HTTPS and holds no record
+  the apps depend on.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Project_Cross_Platform_Apps
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_core:
+    path: ../core
+
+  # THE ONLY THIRD-PARTY DEPENDENCY, and it is what makes this an adapter rather
+  # than a model package: a hosted checkout is an external URL, and opening one
+  # is a per-platform capability with real gaps (see PurchaseCapabilities).
+  # Pinned to 6.x — the matrix in purchase_capabilities.dart is tied to that
+  # major and must be re-reviewed on a bump.
+  url_launcher: ^6.3.0
+
+  # ⚠️ `intl` WAS HERE AND WAS REMOVED, and the reason is a real architectural
+  # claim rather than dependency hygiene. `assert-package-boundaries.mjs` treats
+  # every third-party dependency of an adapter package as WRAPPED BY IT — so
+  # declaring `intl` here would assert that this package is the portfolio's home
+  # for number formatting, and would instantly reclassify
+  # `apps/subly/lib/core/format/currency.dart` as a bypass of a seam that does
+  # not exist. It is not true: this package formats one thing, a price, and
+  # `Offering.formattedPrice` does it from an amount and an ISO code with a
+  # symbol table it owns.
+
+dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

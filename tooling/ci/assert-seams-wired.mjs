@@ -186,11 +186,54 @@ const REQUIRED_COVERAGE = [
   },
   {
     id: 'entitlements',
-    what: 'entitlement fetch — PaywallGate has nothing real to gate',
-    wired: false,
-    deferred: 'stage 5, money rail (owner decision 2026-07-26)',
+    what: 'entitlement fetch — the answer PaywallGate gates on',
+    wired: true,
+    // 🔴 WIRED 2026-08-01. This row read `wired: false, deferred: "stage 5"`
+    // and had NO `needs` array at all — which is the shape the whole guard is
+    // about, one level up: a seam that is honestly declared dead asserts
+    // nothing, and the moment somebody flips the boolean without adding needs,
+    // `liveSeams` increments, ZERO assertions run, and a dead seam is certified
+    // live. That is strictly worse than the honest `false` it replaced, which is
+    // why MIN_NEEDS below exists.
+    //
+    // THREE needs, not one, because the seam has three separable halves and
+    // deleting any one of them silently re-breaks the rail:
+    //   · the FETCH happens at all (the thing that had never existed);
+    //   · the answer REACHES A GATE (a fetch nothing consults is the same dead
+    //     capability wearing a network call);
+    //   · the CHECKOUT can be started (a gate with no way past it is a promise
+    //     the app cannot keep).
+    needs: [
+      {
+        re: /\.fetch\(\s*\n?\s*appId:/,
+        // packages/ is outside SCAN_ROOTS so the interface's own declaration is
+        // not in scope — but an anchor that would match a declaration if the
+        // scan ever widened is an anchor that stops meaning anything.
+        declares: /Future<Result<Entitlements>>\s+fetch\(/,
+        scope: BRICK_APP,
+        label: 'a real EntitlementTransport.fetch call in the stamped chassis',
+      },
+      {
+        re: /PaywallGate\(\s*\n?\s*locked:/,
+        scope: BRICK_APP,
+        label: 'a PaywallGate whose lock comes from that answer',
+      },
+      {
+        re: /\.startCheckout\(/,
+        declares: /Future<CheckoutStart>\s+startCheckout\(/,
+        scope: BRICK_APP,
+        label: 'a checkout the gate can be got past',
+      },
+    ],
   },
 ];
+
+// 🔒 THE FLOOR THAT STOPS A DEAD SEAM BEING CERTIFIED LIVE.
+// `wired: true, needs: []` passes every loop below by iterating nothing, and it
+// increments `liveSeams`, so the coverage self-check at the bottom is satisfied
+// too. Two is the minimum that can express "the thing exists AND something
+// reaches it", which is the distinction this entire guard was written for.
+const MIN_NEEDS = 2;
 
 let liveSeams = 0;
 for (const seam of REQUIRED_COVERAGE) {
@@ -199,6 +242,12 @@ for (const seam of REQUIRED_COVERAGE) {
     continue;
   }
   liveSeams++;
+  if ((seam.needs?.length ?? 0) < MIN_NEEDS) {
+    fail(
+      `COVERAGE LOST — seam \`${seam.id}\` is marked wired but declares ${seam.needs?.length ?? 0} need(s), fewer than ${MIN_NEEDS}. A wired seam with no needs iterates zero assertions and certifies itself live, which is strictly worse than an honest \`wired: false\`.`,
+    );
+    continue;
+  }
   for (const need of seam.needs) {
     const found = hits(need.re, need.declares, need.scope);
     if (found.length === 0) {

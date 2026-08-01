@@ -76,19 +76,19 @@ class Entitlement {
   /// Snake_case JSON that round-trips through [Entitlement.fromJson] — used to
   /// persist the entitlement cache (so a paid user stays unlocked offline).
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'entitlement': entitlement,
-        'product_id': productId,
-        'store': store,
-        'is_active': isActive,
-        // Normalize to UTC so a local DateTime round-trips to the same instant
-        // regardless of any device-timezone change between write and read.
-        //
-        // An UNREADABLE expiry is written back VERBATIM. Emitting null for it
-        // would spell "lifetime" on the way back in, so the cache would launder
-        // a refusal into a permanent grant one restart later — the very
-        // fail-open this class was fixed for, taking the long way round.
-        'expires_at': unreadableExpiry ?? expiresAt?.toUtc().toIso8601String(),
-      };
+    'entitlement': entitlement,
+    'product_id': productId,
+    'store': store,
+    'is_active': isActive,
+    // Normalize to UTC so a local DateTime round-trips to the same instant
+    // regardless of any device-timezone change between write and read.
+    //
+    // An UNREADABLE expiry is written back VERBATIM. Emitting null for it
+    // would spell "lifetime" on the way back in, so the cache would launder
+    // a refusal into a permanent grant one restart later — the very
+    // fail-open this class was fixed for, taking the long way round.
+    'expires_at': unreadableExpiry ?? expiresAt?.toUtc().toIso8601String(),
+  };
 
   /// Whether this entitlement should still be honoured offline at [now], given a
   /// [grace] window after expiry. A lifetime entitlement (no [expiresAt]) never
@@ -107,11 +107,38 @@ class Entitlements {
     required this.appId,
     required this.isPro,
     required this.items,
+    this.verifiedAt,
   });
 
   final String appId;
   final bool isPro;
   final List<Entitlement> items;
+
+  /// When the SERVER last confirmed this answer — [pipeline 5]M-8.
+  ///
+  /// ## Why a revocation bound has to be a relationship, not a number
+  /// A refund, a chargeback or a failed final payment revokes access on the
+  /// server. The client only finds out when it asks. So "revoked within N" is
+  /// not a property of the server at all — it is a property of how long this
+  /// client is willing to keep honouring an answer it has not re-checked.
+  ///
+  /// Null means UNVERIFIED: a cache written before this field existed, or a
+  /// value that could not be read. That is undecidable, and an undecidable
+  /// verification age is treated as infinitely old — see
+  /// [EntitlementCache.readValid]. It cannot fail open, because the one thing
+  /// this field exists to bound is exactly the case where we have stopped
+  /// hearing from the server.
+  final DateTime? verifiedAt;
+
+  /// The same answer, stamped as verified at [at]. Called on the success path of
+  /// a server read and nowhere else — a cache write must never be able to
+  /// refresh its own verification age, which would make the ceiling unreachable.
+  Entitlements verifiedAtNow(DateTime at) => Entitlements(
+    appId: appId,
+    isPro: isPro,
+    items: items,
+    verifiedAt: at.toUtc(),
+  );
 
   /// An entitlement that exists but grants nothing — the placeholder for a line
   /// item, or a whole list, that could not be read.
@@ -132,9 +159,11 @@ class Entitlements {
     final List<Entitlement> items = <Entitlement>[];
     if (raw is List) {
       for (final Object? e in raw) {
-        items.add(e is Map
-            ? Entitlement.fromJson(e.cast<String, dynamic>())
-            : unreadable);
+        items.add(
+          e is Map
+              ? Entitlement.fromJson(e.cast<String, dynamic>())
+              : unreadable,
+        );
       }
     } else if (raw != null) {
       // PRESENT BUT NOT A LIST. The first version of this rewrite left `items`
@@ -146,20 +175,36 @@ class Entitlements {
       // One unreadable item keeps the list non-empty, so the answer is no.
       items.add(unreadable);
     }
+    // 🔴 UNREADABLE ⇒ NULL, NEVER "now". The tempting shortcut — default a
+    // missing/corrupt `verified_at` to the current time — makes every cache read
+    // look freshly verified, so the staleness ceiling can never be crossed and
+    // [pipeline 5]M-8 becomes a constant that nothing consults. Null is the
+    // undecidable state and [EntitlementCache.readValid] treats it as
+    // infinitely stale.
+    final Object? rawVerified = j['verified_at'];
+    final DateTime? verifiedAt = rawVerified is String
+        ? DateTime.tryParse(rawVerified)
+        : null;
+
     return Entitlements(
       appId: j['app_id'] is String ? j['app_id'] as String : '',
       isPro: j['is_pro'] == true || j['is_pro'] == 1,
       items: items,
+      verifiedAt: verifiedAt,
     );
   }
 
   /// Snake_case JSON that round-trips through [Entitlements.fromJson] — the
   /// serialized shape the entitlement cache persists to a [SecureStore].
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'app_id': appId,
-        'is_pro': isPro,
-        'entitlements': items.map((Entitlement e) => e.toJson()).toList(),
-      };
+    'app_id': appId,
+    'is_pro': isPro,
+    'entitlements': items.map((Entitlement e) => e.toJson()).toList(),
+    // Normalized to UTC for the same reason `expires_at` is: a device that
+    // changes timezone between write and read must not change how old the
+    // answer looks.
+    'verified_at': verifiedAt?.toUtc().toIso8601String(),
+  };
 
   /// Whether the user should be treated as Pro at [now] offline: the server said
   /// Pro AND either there are no dated line items (a lifetime grant) or at least
@@ -170,6 +215,9 @@ class Entitlements {
       (items.isEmpty ||
           items.any((Entitlement e) => e.isValidAt(now, grace: grace)));
 
-  static const Entitlements none =
-      Entitlements(appId: '', isPro: false, items: <Entitlement>[]);
+  static const Entitlements none = Entitlements(
+    appId: '',
+    isPro: false,
+    items: <Entitlement>[],
+  );
 }

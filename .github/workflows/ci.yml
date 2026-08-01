@@ -689,6 +689,36 @@ jobs:
       - name: The inherited screen set is declared, present and reachable
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-screen-set.mjs
+      # ── THE CLIENT MONEY RAIL ([pipeline 5]M-6/M-8/M-9/M-10/M-15) ───────────
+      # Every limb here replaces an acceptance criterion that COULD NOT FAIL:
+      # M-15 was satisfied by six rows of `false` (a rail dead everywhere
+      # degrades perfectly), M-9's "cancel steps <= purchase steps" was
+      # VACUOUSLY TRUE at `0 <= 0` on an app with no purchase flow, M-8's
+      # "within the declared bound" passes at 365 days, and M-6's "a checkout is
+      # launched" is satisfied by a widget test of the poller on an app that
+      # cannot open one. The guard's header names each replacement beside its
+      # limb.
+      - name: The purchase path is whole, bounded, declared and cancellable
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-purchase-path.mjs
+      # [pipeline 5]M-11. The price the buyer READS is derived from the amount
+      # the rail CHARGES, so the two cannot disagree. The defect this is named
+      # after — `$2.99` compiled into a binary five days after the owner decided
+      # $4.99 — was invisible to every existing guard, because
+      # assert-no-hardcoded-strings.mjs excludes apps/subly, i.e. excludes the
+      # evidence file. This one has no such exclusion.
+      - name: No price is typed into app code
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-price-literals.mjs
+      # [pipeline 5]M-16 + [ADR 020]:21. The four money events have real callers,
+      # resolved BY SYMBOL (analytics_funnel.dart is scheduled to MOVE under
+      # [2]C-3, and a path-hardcoded guard passes trivially the day it does) —
+      # and nothing anywhere pairs the paying id with the pseudonymous one.
+      # That mapping is a ONE-WAY DOOR: made once, it reclassifies the whole
+      # analytics store as personal data under DPDP, for every app, forever.
+      - name: The money funnel is wired, and the pseudonymity firewall holds
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-pseudonymity-firewall.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any

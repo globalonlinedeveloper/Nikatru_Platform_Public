@@ -170,19 +170,51 @@
     },
     {
       "id": "monetization.paywall",
-      "what": "The paywall shell.",
-      "status": "blocked",
-      "blockedBy": "stage 5 (money rail)",
-      "detail": "PaywallGate exists in the design system with ZERO consumers. Wiring it before a payment can be taken would be a fail-closed seam with no proven open path — the [2]C-6 shape. Kept as a shell deliberately.",
-      "declaredOn": "2026-07-28"
+      "what": "The paywall: plans priced by the rail, a hosted checkout, and the honest refusal where a store forbids one.",
+      "status": "present",
+      "declaredOn": "2026-08-01",
+      "detail": "BUILT 2026-08-01 ([pipeline 5]M-6). It was blocked until the purchase path existed, and that was the right call — a paywall with no way to pay is a fail-closed seam with no proven open path. What unblocked it is the whole path landing at once: packages/purchases (offerings from the rail config, the hosted-checkout launcher, the bounded convergence poller), the shared entitlement read, and the ROSCA cancel call.",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart",
+        "symbol": "PaywallScreen"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart",
+        "pattern": "/paywall",
+        "why": "the screen is reached from the PaywallGate's upgrade button AND from Settings; the route is what makes either possible, and it is also the step-count source assert-purchase-path.mjs derives ROSCA from"
+      }
+    },
+    {
+      "id": "monetization.manage-plan",
+      "what": "See the plan's state, restore it on a new device, and cancel it — one tap from Settings.",
+      "status": "present",
+      "declaredOn": "2026-08-01",
+      "detail": "[pipeline 5]M-9 (ROSCA) and M-10 (restore). Cancelling reaches POST /v1/plan/cancel — a REAL server call that writes an append-only record of the request, not a mailto: link. The screen reports four distinct outcomes because `recorded` and `executed` are separately true, and collapsing them would have the app tell a user their subscription is over while the billing continues.",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/manage_plan_screen.dart",
+        "symbol": "ManagePlanScreen"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/manage_plan_screen.dart",
+        "pattern": ".requestCancellation()",
+        "why": "the account-deletion dialog's confirm button in this same chassis once called Navigator.pop and NOTHING else, which looks exactly like a button that worked. A cancel button that does not reach the rail is the same defect where it costs money"
+      }
     },
     {
       "id": "monetization.purchase-states",
-      "what": "In-progress / success / error / manage-subscription.",
-      "status": "blocked",
-      "blockedBy": "stage 5 (money rail)",
-      "detail": "Nothing can be purchased yet, so every one of these would be a screen no path reaches.",
-      "declaredOn": "2026-07-28"
+      "what": "Opening / PENDING / unlocked / refused — the four states a hosted checkout can leave the app in.",
+      "status": "present",
+      "declaredOn": "2026-08-01",
+      "detail": "🔴 PENDING IS THE ONE THAT MATTERS AND IT IS WHY THIS IS ITS OWN REGISTER ROW. A hosted checkout returns the buyer the instant they press pay; the merchant of record's notification reaches our server afterwards. So there is a real window in which the user HAS paid and the server does NOT know, and the two obvious answers are both wrong: unlocking on the return unlocks abandoned checkouts and declined cards, and showing 'purchase failed' tells a paying customer their money vanished. The client re-reads with BOUNDED backoff (kCheckoutConvergenceDelays — five attempts, a portfolio constraint, not a UX preference) and lands in a stated terminal state.",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart",
+        "symbol": "_PaywallPhase"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart",
+        "pattern": "_PaywallPhase.pending",
+        "why": "an enum of states nothing ever enters is a switch statement, not a screen. The pending branch is the one a user with money in flight actually sees"
+      }
     },
     {
       "id": "auth.credentials",

@@ -8,6 +8,8 @@ import '../features/auth/sign_in_screen.dart';
 import '../features/firstrun/onboarding_screen.dart';
 import '../features/auth/sign_up_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/monetization/manage_plan_screen.dart';
+import '../features/monetization/paywall_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../state/providers.dart';
 import '../features/settings/settings_screen.dart';
@@ -103,6 +105,24 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/settings',
         builder: (BuildContext context, GoRouterState state) =>
             const SettingsScreen(),
+      ),
+      // ── THE MONEY RAIL'S TWO SCREENS ([pipeline 5]M-6, M-9) ──────────────
+      //
+      // 🔴 BOTH ROUTES ARE THE STEP-COUNT SOURCE. `assert-purchase-path.mjs`
+      // derives the purchase step count and the cancel step count from THIS
+      // file, from the same navigation graph, so ROSCA's "cancelling is no
+      // harder than buying" is checked against the router rather than against
+      // somebody's description of it. Renaming a path here changes both counts
+      // together, which is the point.
+      GoRoute(
+        path: '/paywall',
+        builder: (BuildContext context, GoRouterState state) =>
+            const PaywallScreen(),
+      ),
+      GoRoute(
+        path: '/manage-plan',
+        builder: (BuildContext context, GoRouterState state) =>
+            const ManagePlanScreen(),
       ),
     ],
   );

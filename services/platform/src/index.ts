@@ -5,6 +5,7 @@
 //   PUBLIC  POST   /v1/events   — first-party analytics ingest (G-12).
 //   PUBLIC  POST   /v1/consent  — the DPDP consent artifact.
 //   AUTHED  DELETE /v1/account  — erasure ([4]B-5). ES256/JWKS only.
+//   AUTHED  POST   /v1/plan/cancel — the ROSCA cancel path ([5]M-9).
 //   SIGNED  POST   /v1/money/:provider — the merchant-of-record webhook ([5]M-1).
 //                                  HMAC over the raw body; no user session.
 //   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
@@ -18,6 +19,7 @@ import account from './routes/account';
 import config from './routes/config';
 import entitlements from './routes/entitlements';
 import events from './routes/events';
+import cancellation from './routes/cancellation';
 import money from './routes/money';
 import { scheduled } from './scheduled';
 
@@ -84,6 +86,18 @@ app.route('/v1', account);
 // Path-scoped for the same reason as /v1/account above.
 app.use('/v1/entitlements', platformAuth);
 app.route('/v1', entitlements);
+
+// AUTHENTICATED: the ROSCA cancel path ([5]M-9). Cancelling has to be a real
+// server call the user can make from inside the app, not a support email — and
+// the record it writes is the only evidence that they asked, in the window
+// between pressing cancel and the merchant of record acting.
+//
+// Path-scoped like the two above, and the path is `/v1/plan/cancel`
+// rather than something under `/v1/money`: `money` is mounted at `/v1/money`
+// with a `/:provider` route, so a sibling there would be matched as a provider
+// named "cancel" the moment somebody reordered the file.
+app.use('/v1/plan/*', platformAuth);
+app.route('/v1', cancellation);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {

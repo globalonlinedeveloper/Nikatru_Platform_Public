@@ -52,6 +52,13 @@ dependencies:
     path: ../../packages/auth_supabase
   nikatru_notifications:
     path: ../../packages/notifications
+  # [pipeline 5]M-13 THE MONEY RAIL IS INHERITED, NOT REBUILT PER APP. Every
+  # stamped app is born able to take a payment, show a price it did not invent,
+  # converge on the server's answer and let the user cancel — with zero purchase
+  # code of its own. The alternative is the shape this factory already paid for
+  # once: a capability that lives in one app and is hand-rebuilt for the second.
+  nikatru_purchases:
+    path: ../../packages/purchases
 
   # State (Riverpod 2.x-LTS, non-codegen — locked chassis choice) + routing.
   flutter_riverpod: ^2.5.0

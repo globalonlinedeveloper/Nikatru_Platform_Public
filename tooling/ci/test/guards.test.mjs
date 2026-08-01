@@ -1449,11 +1449,51 @@ Future<bool> applyReminderChoice({
 `;
   const BRICK_TOGGLE_CALLS = 'onChanged: (bool on) => c.applyReminderChoice(on: on),\n';
 
-  const brickFiles = ({ reminders = BRICK_SCHEDULES, toggle = BRICK_TOGGLE_CALLS } = {}) => ({
+  // [pipeline 5]M-5 — the ENTITLEMENTS seam, wired 2026-08-01. It had read
+  // `wired: false, deferred: 'stage 5'` with no `needs` array at all, and its
+  // three needs are scoped to the brick: the FETCH must happen, the answer must
+  // reach a GATE, and there must be a CHECKOUT the gate can be got past.
+  // Fixtured here for the same reason the reminder seam is — a fixture missing
+  // them fails for a reason unrelated to whatever each test is about.
+  const BRICK_MONEY = `
+final FutureProvider<core.Entitlements> entitlementsProvider =
+    FutureProvider<core.Entitlements>((ref) async {
+      final core.Result<core.Entitlements> fresh = await ref
+          .watch(entitlementTransportProvider)
+          .fetch(
+            appId: AppConfig.appId,
+            accessToken: await ref.read(authRepositoryProvider).currentAccessToken(),
+          );
+      return fresh.fold((core.Entitlements e) => e, (core.Failure _) => core.Entitlements.none);
+    });
+`;
+  const BRICK_GATE = `
+Widget build(BuildContext context) => PaywallGate(
+  locked: ref.watch(paywallLockedProvider),
+  child: const SizedBox.shrink(),
+);
+`;
+  const BRICK_CHECKOUT = `
+Future<void> _buy(Offering offering) async {
+  final CheckoutStart start = await rail.startCheckout(offering);
+}
+`;
+
+  const brickFiles = ({
+    reminders = BRICK_SCHEDULES,
+    toggle = BRICK_TOGGLE_CALLS,
+    money = BRICK_MONEY,
+    gate = BRICK_GATE,
+    checkout = BRICK_CHECKOUT,
+  } = {}) => ({
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
       `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}`,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
       toggle,
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart': money,
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart': gate,
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart':
+      checkout,
   });
 
   const PACK_FILES = {
@@ -1794,6 +1834,15 @@ class Ed25519PackVerifier implements PackVerifier {
       'onChanged: (bool on) => c.applyReminderChoice(on: on),\n',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart':
       'await initNikatruAuth(url: u, publishableKey: k, secureStore: FlutterSecureStore());\n',
+    // …and the ENTITLEMENTS seam ([pipeline 5]M-5, wired 2026-08-01), whose
+    // three needs are all scoped to the brick: the fetch, the gate that reads
+    // its answer, and the checkout the gate can be got past.
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart':
+      'final x = await ref.watch(entitlementTransportProvider).fetch(\n  appId: AppConfig.appId,\n  accessToken: t,\n);\n',
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart':
+      'Widget build(BuildContext c) => PaywallGate(\n  locked: ref.watch(paywallLockedProvider),\n  child: const SizedBox.shrink(),\n);\n',
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart':
+      'final CheckoutStart s = await rail.startCheckout(offering);\n',
   };
 
   const build = (name, { impl = REAL_IMPL, barrel = BARREL, keys = keysFile('') } = {}) =>
@@ -1865,6 +1914,11 @@ describe('assert-stamp-properties', () => {
   // A fixture thinner than the tree it stands for fails for reasons that have
   // nothing to do with the behaviour under test.
   const goodTest = `
+group('property: paywall-gate-driven-by-server', () {
+  test('m1', () {});
+  test('m2', () {});
+  testWidgets('m3', (t) async {});
+});
 group('property: theme-mode-persisted', () {
   test('a', () {});
   test('b', () {});
@@ -2270,6 +2324,38 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
 });
 `;
 
+  // [pipeline 5]M-13's SECOND providers file, and the two anchors the money
+  // property is fixed to outside it. The domain scan reads BOTH providers
+  // files since 2026-08-01 — a fixture with only the first one would fail here
+  // for a reason unrelated to whatever each test is about.
+  const MONEY_PROVIDERS = `${BRICK}/lib/state/money_providers.dart`;
+  const goodMoneyProviders = `
+final Provider<RailConfig> railConfigProvider = X();
+final Provider<core.EntitlementTransport> entitlementTransportProvider = X();
+final Provider<core.CancellationTransport> cancellationTransportProvider = X();
+final Provider<PurchaseRail> purchaseRailProvider = X();
+final Provider<EntitlementConvergence> entitlementConvergenceProvider = X();
+final FutureProvider<MoneyFunnel> moneyFunnelProvider = X();
+final FutureProvider<core.Entitlements> entitlementsProvider =
+    FutureProvider<core.Entitlements>((ref) async {
+      final core.Result<core.Entitlements> fresh = await ref
+          .watch(entitlementTransportProvider)
+          .fetch(appId: AppConfig.appId, accessToken: t);
+      await cache.saveVerified(server);
+      return server;
+    });
+final Provider<bool> paywallLockedProvider = X();
+`;
+  const HOME = `${BRICK}/lib/features/home/home_screen.dart`;
+  const goodHome = `
+Widget build(BuildContext context) => PaywallGate(
+  locked: ref.watch(paywallLockedProvider),
+  child: const SizedBox.shrink(),
+);
+`;
+  const CORE_CACHE = 'packages/core/lib/src/entitlement_cache.dart';
+  const goodCoreCache = 'const Duration kEntitlementStalenessCeiling = Duration(days: 7);\n';
+
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -2279,8 +2365,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, omitArbTa = false, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -2897,12 +2983,17 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      assert.match(out, /tracked domain: 32 chassis behaviour\(s\)/);
+      // 40 since 2026-08-01: the domain reads BOTH providers files, and
+      // [pipeline 5]M-13's money_providers.dart carries eight.
+      assert.match(out, /tracked domain: 40 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
-      // admitted-gap list when the reminder toggle started driving it.
-      assert.match(out, /9 chassis behaviour\(s\) a stamped app does NOT prove/);
+      // admitted-gap list when the reminder toggle started driving it. 10 since
+      // 2026-08-01: the money rail closed two gaps (entitlementCacheProvider and
+      // secureStoreProvider, both DRIVEN by the paywall property now) and
+      // admitted three of its own.
+      assert.match(out, /10 chassis behaviour\(s\) a stamped app does NOT prove/);
       assert.match(out, /mustForceUpdateProvider/);
     });
 
@@ -2931,14 +3022,19 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 31/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 39/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
     // repeatedly: a domain regex that matches nothing must not read as "clean".
     test('FAILS rather than reporting clean when the domain parse finds nothing', () => {
       const { code, out } = run('assert-stamp-properties.mjs', {
-        cwd: build('sp-blind', { providers: '// every provider declaration gone\n' }),
+        // BOTH providers files, or the surviving one carries the domain over
+        // the floor and the blindness this case is about stays invisible.
+        cwd: build('sp-blind', {
+          providers: '// every provider declaration gone\n',
+          moneyProviders: '// …and the money ones too\n',
+        }),
       });
       assert.equal(code, 1);
       assert.match(out, /COVERAGE LOST — the domain parse found 0/);

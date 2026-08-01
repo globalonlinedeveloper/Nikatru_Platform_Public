@@ -43,7 +43,6 @@
     "    guard FAILS when the probe stops matching — the gap is resolved, retire the row   [C-6 split]",
     "  · COVERAGE LOST on an empty register or zero route paths extracted                 [F-10]"
   ],
-
   "nonProviderRouteSegments": {
     "_why": [
       "🔴 THIS IS THE HALF THAT MAKES THE ROUTE LIMB UNFAKEABLE, and it is data rather than a list",
@@ -71,7 +70,9 @@
       "entitlements",
       "renewals",
       "account",
-      "money"
+      "money",
+      "plan",
+      "cancel"
     ],
     "_money": [
       "🟢 `money` WAS ADDED BECAUSE THIS LIMB CAUGHT IT — the second time in two days, on a change that",
@@ -99,9 +100,19 @@
       "nobody had classified as ours or as a provider's. It is ours — the erasure route — so it is claimed",
       "here rather than given a provider row. That is the limb working on a real, unplanned change on its",
       "first day, rather than on a fixture."
+    ],
+    "_plan": [
+      "🟢 `plan` AND `cancel` WERE ADDED BECAUSE THIS LIMB CAUGHT THEM — the third time in three days,",
+      "on a change that had already passed every other guard. services/platform/src/routes/cancellation.ts",
+      "mounts POST /v1/plan/cancel ([pipeline 5]M-9, the ROSCA cancel path) and CI went red naming two",
+      "segments nobody had classified.",
+      "",
+      "Both are OURS and neither is a vendor tell. `plan` is the thing the user bought, in the chassis's",
+      "own vocabulary — deliberately not \"subscription\", which [pipeline C-10] bans from shared code as",
+      "apps/subly's domain noun. `cancel` is the verb. No merchant of record is named in either, and none",
+      "can be: the route resolves the subscription from the verified session, never from the request."
     ]
   },
-
   "roles": {
     "_why": "The vocabulary rows are validated against, declared once HERE rather than inside the guard — the same reason keyKinds lives in tooling/channel-register.json. Renaming a role out from under the rows still using it fails.",
     "store_billing": "an app store that sells to the user and pays us. It is the seller of record for that sale and we never see the card.",
@@ -111,7 +122,6 @@
     "infrastructure": "runs or hosts the Services. Sees traffic and whatever the Services store, and is disclosed as a processor rather than as a seller.",
     "identity": "authenticates users and holds account credentials."
   },
-
   "providers": [
     {
       "id": "apple-app-store",
@@ -119,8 +129,13 @@
       "role": "store_billing",
       "status": "deferred",
       "reachableAt": null,
-      "tells": ["apple app store"],
-      "namedIn": ["privacy.html", "refund.html"],
+      "tells": [
+        "apple app store"
+      ],
+      "namedIn": [
+        "privacy.html",
+        "refund.html"
+      ],
       "privateRecord": "OWNER_QUEUE A-4 — the Apple Developer account. Deferred by the owner; no account exists.",
       "notes": [
         "Named by its full store name in privacy.html §3 and refund.html §1. ⚠️ NOT in terms.html: §4 says",
@@ -137,8 +152,13 @@
       "role": "store_billing",
       "status": "deferred",
       "reachableAt": null,
-      "tells": ["google play"],
-      "namedIn": ["privacy.html", "refund.html"],
+      "tells": [
+        "google play"
+      ],
+      "namedIn": [
+        "privacy.html",
+        "refund.html"
+      ],
       "privateRecord": "OWNER_QUEUE A-3 — the Play publisher account.",
       "notes": [
         "Named in privacy.html and refund.html; terms.html says only 'Google' in a parenthetical. No account",
@@ -151,8 +171,13 @@
       "role": "store_billing",
       "status": "deferred",
       "reachableAt": null,
-      "tells": ["microsoft store"],
-      "namedIn": ["privacy.html", "refund.html"],
+      "tells": [
+        "microsoft store"
+      ],
+      "namedIn": [
+        "privacy.html",
+        "refund.html"
+      ],
       "privateRecord": "OWNER_QUEUE A-2 — the Partner Center publisher account.",
       "notes": [
         "Named in privacy.html and refund.html; terms.html says only 'Microsoft' in a parenthetical.",
@@ -165,8 +190,12 @@
       "role": "infrastructure",
       "status": "live",
       "reachableAt": null,
-      "tells": ["cloudflare"],
-      "namedIn": ["privacy.html"],
+      "tells": [
+        "cloudflare"
+      ],
+      "namedIn": [
+        "privacy.html"
+      ],
       "privateRecord": null,
       "notes": [
         "The only LIVE provider in this register. Hosts both static sites (Git integration), both Workers,",
@@ -183,7 +212,9 @@
       "status": "not-yet-applied",
       "ownerItem": "A-1",
       "reachableAt": null,
-      "tells": ["paddle"],
+      "tells": [
+        "paddle"
+      ],
       "namedIn": [],
       "privateRecord": "OWNER_QUEUE A-1 — the Paddle seller application, KYC and payout account. [ADR 004] holds the decision itself.",
       "notes": [
@@ -203,7 +234,10 @@
       "role": "merchant_of_record",
       "status": "deferred",
       "reachableAt": null,
-      "tells": ["lemon squeezy", "lemonsqueezy"],
+      "tells": [
+        "lemon squeezy",
+        "lemonsqueezy"
+      ],
       "namedIn": [],
       "privateRecord": "OWNER_QUEUE A-1 — applied to in parallel with Paddle.",
       "notes": [
@@ -219,8 +253,13 @@
       "role": "payment_gateway",
       "status": "named-but-not-wired",
       "reachableAt": null,
-      "tells": ["razorpay"],
-      "namedIn": ["terms.html", "refund.html"],
+      "tells": [
+        "razorpay"
+      ],
+      "namedIn": [
+        "terms.html",
+        "refund.html"
+      ],
       "privateRecord": null,
       "notes": [
         "🔴 NAMED IN TWO PUBLISHED PAGES AND REACHABLE FROM NO CODE. terms.html §4 says website purchases",
@@ -239,7 +278,10 @@
       "role": "iap_aggregator",
       "status": "wired-not-live",
       "reachableAt": "/revenuecat",
-      "tells": ["revenuecat", "revenue cat"],
+      "tells": [
+        "revenuecat",
+        "revenue cat"
+      ],
       "namedIn": [],
       "privateRecord": null,
       "notes": [
@@ -259,7 +301,9 @@
       "role": "identity",
       "status": "wired-not-live",
       "reachableAt": null,
-      "tells": ["supabase"],
+      "tells": [
+        "supabase"
+      ],
       "namedIn": [],
       "privateRecord": null,
       "notes": [
@@ -280,7 +324,9 @@
       "role": "infrastructure",
       "status": "live",
       "reachableAt": null,
-      "tells": ["oracle"],
+      "tells": [
+        "oracle"
+      ],
       "namedIn": [],
       "privateRecord": "company/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
       "notes": [
@@ -292,7 +338,6 @@
       ]
     }
   ],
-
   "disclosureGaps": [
     {
       "id": "crash-reports-infrastructure",

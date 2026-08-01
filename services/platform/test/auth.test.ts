@@ -379,9 +379,15 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     // with no edit to the route. Dropping only `entitlements` therefore no longer
     // empties the set. EVERY user-owned table must be dropped for this case to
     // arise, so the assertion is still "an empty derivation is a refusal".
+    //
+    // ⚠️ AND IT GREW AGAIN with [5]M-9's `cancellation_requests`, which is the
+    // derivation working a second time: the table was added by a migration and
+    // spelled its column `user_id`, so the erasure route empties it with no edit
+    // to the route and this fixture is the only place that had to change.
     const db = realPlatformDb();
     db.db.exec('DROP TABLE entitlements;');
     db.db.exec('DROP TABLE provider_accounts;');
+    db.db.exec('DROP TABLE cancellation_requests;');
     const res = await harness({ db }).del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(503);
     expect(identityCalls).toHaveLength(0);
