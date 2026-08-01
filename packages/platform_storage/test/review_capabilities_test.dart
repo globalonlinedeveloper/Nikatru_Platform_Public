@@ -9,6 +9,7 @@
 import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:in_app_review/in_app_review.dart' as iar;
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 
 /// Records what reached the plugin. NOT a mock of the store — the assertion is
@@ -20,6 +21,15 @@ class _RecordingPlugin implements iar.InAppReview {
   int listingCalls = 0;
   bool available = true;
   bool throwOnEverything = false;
+
+  /// 🔴 RECORDED BECAUSE IGNORING THEM IS WHAT HID THE DEFECT. This fake used to
+  /// accept both ids and drop them, so `listingCalls == 1` passed against an
+  /// adapter calling `openStoreListing()` with no arguments at all — which the
+  /// real plugin answers with `ArgumentError.checkNotNull` in a release build on
+  /// iOS, macOS and Windows. A fixture that discards the very value under test
+  /// encodes the same misunderstanding as the code it is guarding.
+  String? lastAppStoreId;
+  String? lastMicrosoftStoreId;
 
   @override
   Future<bool> isAvailable() async {
@@ -40,9 +50,16 @@ class _RecordingPlugin implements iar.InAppReview {
     String? microsoftStoreId,
   }) async {
     listingCalls++;
+    lastAppStoreId = appStoreId;
+    lastMicrosoftStoreId = microsoftStoreId;
     if (throwOnEverything) throw Exception('no plugin on this platform');
   }
 }
+
+// Shapes only — neither is a real listing. `9NBLGGH4R32` is the shape of a
+// Microsoft Store ProductId and `123456789` the shape of Apple's numeric id.
+const String _kAppStoreId = '123456789';
+const String _kMicrosoftStoreId = '9NBLGGH4R32';
 
 ReviewCapabilities _caps(TargetPlatform p, {bool isWeb = false}) =>
     ReviewCapabilities.forPlatform(p, isWeb: isWeb);
@@ -135,18 +152,20 @@ void main() {
       expect(plugin.requestCalls, 0);
     });
 
-    // Windows: prompting is refused, but the listing MUST still go through.
+    // Windows: prompting is refused, but the listing MUST still go through —
+    // with the id it cannot work without.
     test('Windows refuses the prompt and still opens the listing', () async {
       final _RecordingPlugin plugin = _RecordingPlugin();
       final InAppReviewPrompter p = InAppReviewPrompter(
         plugin: plugin,
         capabilities: _caps(TargetPlatform.windows),
+        microsoftStoreId: _kMicrosoftStoreId,
       );
 
       await p.requestReview();
       expect(plugin.requestCalls, 0, reason: 'Windows has no inline prompt');
 
-      await p.openStoreListing();
+      expect(await p.openStoreListing(), core.StoreListingOutcome.opened);
       expect(
         plugin.listingCalls,
         1,
@@ -207,7 +226,145 @@ void main() {
       // Nothing here may throw: a failed pleasantry must never surface as an
       // error the user sees.
       await expectLater(p.requestReview(), completes);
-      await expectLater(p.openStoreListing(), completes);
+      expect(await p.openStoreListing(), core.StoreListingOutcome.failed);
+    });
+  });
+
+  // ── THE STORE IDS ACTUALLY ARRIVE ──────────────────────────────────────────
+  // 🔴 WHAT THIS GROUP EXISTS FOR. `openStoreListing()` was called with NO
+  // arguments, and the pinned `in_app_review_platform_interface` 2.0.5 answers
+  // that with `ArgumentError.checkNotNull(appStoreId, 'appStoreId')` on
+  // iOS/macOS and `checkNotNull(microsoftStoreId, …)` on Windows —
+  // `checkNotNull`, so it throws in RELEASE, not merely under an assert. The
+  // adapter's `catch (_) {}` swallowed it, so the one deliberate "rate us" tap a
+  // user ever makes did nothing at all on three of the four store platforms and
+  // reported success. Only Android was ever wired: it resolves the listing from
+  // the running package name and needs no id.
+  group('InAppReviewPrompter — the store ids reach the plugin', () {
+    test('Windows passes the Microsoft Store product id through', () async {
+      final _RecordingPlugin plugin = _RecordingPlugin();
+      final InAppReviewPrompter p = InAppReviewPrompter(
+        plugin: plugin,
+        capabilities: _caps(TargetPlatform.windows),
+        microsoftStoreId: _kMicrosoftStoreId,
+      );
+
+      expect(await p.openStoreListing(), core.StoreListingOutcome.opened);
+      expect(
+        plugin.lastMicrosoftStoreId,
+        _kMicrosoftStoreId,
+        reason: 'without this id the plugin throws before it ever reaches the '
+            'store, and Windows has no other route to one',
+      );
+    });
+
+    test('iOS and macOS pass the App Store id through', () async {
+      for (final TargetPlatform platform in <TargetPlatform>[
+        TargetPlatform.iOS,
+        TargetPlatform.macOS,
+      ]) {
+        final _RecordingPlugin plugin = _RecordingPlugin();
+        final InAppReviewPrompter p = InAppReviewPrompter(
+          plugin: plugin,
+          capabilities: _caps(platform),
+          appStoreId: _kAppStoreId,
+        );
+
+        expect(await p.openStoreListing(), core.StoreListingOutcome.opened);
+        expect(plugin.lastAppStoreId, _kAppStoreId, reason: '$platform');
+      }
+    });
+
+    // The open path for the one platform that needs nothing — so this group
+    // cannot pass by refusing everywhere. [pipeline C-6]
+    test('Android needs no id and still reaches the plugin', () async {
+      final _RecordingPlugin plugin = _RecordingPlugin();
+      final InAppReviewPrompter p = InAppReviewPrompter(
+        plugin: plugin,
+        capabilities: _caps(TargetPlatform.android),
+      );
+
+      expect(await p.openStoreListing(), core.StoreListingOutcome.opened);
+      expect(plugin.listingCalls, 1);
+    });
+
+    // A NO-OP IS FINE. A NO-OP THAT LOOKS LIKE SUCCESS IS NOT.
+    test(
+      'a build with no id declines VISIBLY and never reaches the plugin',
+      () async {
+        final Map<TargetPlatform, String> needsAnId = <TargetPlatform, String>{
+          TargetPlatform.windows: 'microsoftStoreId',
+          TargetPlatform.iOS: 'appStoreId',
+          TargetPlatform.macOS: 'appStoreId',
+        };
+        for (final MapEntry<TargetPlatform, String> e in needsAnId.entries) {
+          final _RecordingPlugin plugin = _RecordingPlugin();
+          final InAppReviewPrompter p = InAppReviewPrompter(
+            plugin: plugin,
+            capabilities: _caps(e.key),
+          );
+
+          expect(
+            await p.openStoreListing(),
+            core.StoreListingOutcome.notConfigured,
+            reason: '${e.key} needs ${e.value} and this build has none — the '
+                'caller must be able to tell that apart from a store that '
+                'opened',
+          );
+          expect(
+            plugin.listingCalls,
+            0,
+            reason: 'calling the plugin here is a guaranteed ArgumentError',
+          );
+        }
+      },
+    );
+
+    // The value arrives from a `--dart-define` whose default is the empty
+    // string, so '' and null must be the same state. Treating '' as configured
+    // hands the plugin a blank id and reproduces the original failure.
+    test('an EMPTY id counts as no id, not as a configured one', () async {
+      final _RecordingPlugin plugin = _RecordingPlugin();
+      final InAppReviewPrompter p = InAppReviewPrompter(
+        plugin: plugin,
+        capabilities: _caps(TargetPlatform.windows),
+        microsoftStoreId: '',
+      );
+      expect(
+        await p.openStoreListing(),
+        core.StoreListingOutcome.notConfigured,
+      );
+      expect(plugin.listingCalls, 0);
+    });
+
+    test('a platform with no store reports unavailable, not notConfigured',
+        () async {
+      final _RecordingPlugin plugin = _RecordingPlugin();
+      final InAppReviewPrompter p = InAppReviewPrompter(
+        plugin: plugin,
+        capabilities: _caps(TargetPlatform.linux),
+      );
+      expect(await p.openStoreListing(), core.StoreListingOutcome.unavailable);
+    });
+
+    test('the matrix names the id each platform needs', () {
+      expect(
+        _caps(TargetPlatform.windows).requiredStoreId,
+        StoreIdRequirement.microsoftStore,
+      );
+      expect(
+        _caps(TargetPlatform.iOS).requiredStoreId,
+        StoreIdRequirement.appStore,
+      );
+      expect(
+        _caps(TargetPlatform.macOS).requiredStoreId,
+        StoreIdRequirement.appStore,
+      );
+      expect(
+        _caps(TargetPlatform.android).requiredStoreId,
+        StoreIdRequirement.none,
+        reason: 'Play resolves the listing from the running package name',
+      );
     });
   });
 }

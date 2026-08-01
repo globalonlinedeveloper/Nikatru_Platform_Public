@@ -76,10 +76,20 @@ const rel = (f) => f.replace(repo + sep, '').replaceAll('\\', '/');
 // ignores declarations passes even when every real caller is deleted. That bug
 // was live in this guard and was caught only by mutating the real repo — the
 // fixture tests all passed. An assertion that cannot fail is worse than none.
-const hits = (re, declares) =>
+// `scope` narrows WHERE a caller counts. Without it, a seam the brick is
+// supposed to drive can be kept green by an unrelated caller in apps/ — which is
+// the same "assertion that cannot fail" in a wider costume: delete the brick's
+// call, some other tree still matches, the guard prints ok, and every stamped
+// app ships the dead capability.
+const hits = (re, declares, scope) =>
   [...bodies]
     .filter(([f, src]) => re.test(src) && !(declares && declares.test(src)))
-    .map(([f]) => rel(f));
+    .map(([f]) => rel(f))
+    .filter((r) => !scope || r.startsWith(scope));
+
+// The template every stamped app is born from — the scope for anything the
+// CHASSIS must carry, as opposed to anything some app happens to do.
+const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 
 // ── the seams ───────────────────────────────────────────────────────────────
 // REQUIRED_COVERAGE: every fail-closed seam this repo owns. `wired: false` means
@@ -129,6 +139,42 @@ const REQUIRED_COVERAGE = [
       },
     ],
   },
+  {
+    id: 'reminders',
+    what: 'NotificationService.scheduleDaily — the reminders toggle\'s only real effect',
+    wired: true,
+    // 🔴 ADDED 2026-08-01 AFTER THE SEAM WAS FOUND DEAD (full-corpus review).
+    // The brick's reminder switch called `requestPermission()` and persisted the
+    // answer; `scheduleDaily`, `showNow` and `init` had ZERO call sites in the
+    // whole template. So every app this factory stamps primed the user, spent
+    // the ONE OS permission prompt most platforms ever grant, showed the switch
+    // as ON — and never scheduled a notification. Nothing went red, because the
+    // flag it did persist was persisted correctly. This is precisely the
+    // fail-closed-with-no-open-path shape, and the seam was not on this list, so
+    // C-6 could not count it.
+    needs: [
+      {
+        re: /\.scheduleDaily\(/,
+        // The interface, the NoOp and the adapter all declare the name; only a
+        // CALL through a receiver counts. packages/ is outside SCAN_ROOTS, but
+        // an anchor that would match a declaration if the scan widened is an
+        // anchor that stops meaning anything.
+        declares: /Future<void>\s+scheduleDaily\(/,
+        // Scoped to the brick: this is the CHASSIS's reminder, inherited by
+        // every app the factory stamps. A caller in apps/ would say nothing
+        // about that and would keep this green with the template's own call
+        // deleted.
+        scope: BRICK_APP,
+        label: 'a real scheduleDaily call site in the stamped chassis',
+      },
+      {
+        re: /applyReminderChoice\(/,
+        declares: /Future<bool>\s+applyReminderChoice\(/,
+        scope: BRICK_APP,
+        label: 'a UI caller that turns the switch into a schedule',
+      },
+    ],
+  },
   // Checked by `checkPackVerifier()` below rather than by the caller scan: the
   // implementation lives in packages/core, which is not an app tree, and its
   // "on-switch" has two halves with different owners.
@@ -154,7 +200,7 @@ for (const seam of REQUIRED_COVERAGE) {
   }
   liveSeams++;
   for (const need of seam.needs) {
-    const found = hits(need.re, need.declares);
+    const found = hits(need.re, need.declares, need.scope);
     if (found.length === 0) {
       fail(`${seam.id} — ${need.label} NOT FOUND in any non-test file. ${seam.what}. A seam whose only caller is a test is a dead capability.`);
     } else {

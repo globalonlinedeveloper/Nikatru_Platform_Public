@@ -681,6 +681,13 @@ final Provider<AuthRefreshNotifier> authRefreshProvider =
 
 const String _remindersKey = 'nikatru.reminders_enabled';
 
+/// The id of the one daily reminder the chassis schedules.
+///
+/// STABLE ON PURPOSE: `scheduleDaily` replaces an existing notification with the
+/// same id, so re-arming it can never accumulate duplicates, and the OFF path
+/// has something specific to cancel.
+const int kDailyReminderId = 1;
+
 /// Whether the user has turned reminders on, persisted.
 ///
 /// [pipeline C-13] Separate from the OS permission on purpose. The OS can revoke
@@ -721,6 +728,57 @@ class RemindersEnabledController extends Notifier<bool> {
     } catch (_) {
       // Best-effort: a failed write only means the choice resets next launch.
     }
+  }
+
+  /// Apply the user's choice FOR REAL: the persisted intent AND the OS schedule.
+  ///
+  /// 🔴 THIS METHOD IS THE DEFECT THAT WAS FIXED. The toggle used to call
+  /// `requestPermission()` and store the answer, and nothing else — no `init()`,
+  /// no `scheduleDaily`, no call site for either anywhere in the template. So
+  /// every stamped app primed the user, spent the ONE OS permission prompt most
+  /// platforms ever grant, showed the switch as ON, and then never scheduled a
+  /// single notification. It was invisible to the suite because the tests
+  /// asserted flag persistence, which was working perfectly.
+  ///
+  /// [title] and [body] are parameters because the notification is USER-FACING
+  /// text and must come from `AppLocalizations`, which needs a `BuildContext`
+  /// this layer does not have.
+  ///
+  /// Returns what actually happened, which is NOT the same as what was asked
+  /// for: the OS can refuse permission, and the switch must then read OFF.
+  Future<bool> applyReminderChoice({
+    required bool on,
+    required String title,
+    required String body,
+  }) async {
+    final core.NotificationService svc = ref.read(notificationServiceProvider);
+    // `init()` first in BOTH directions: it loads the timezone database and
+    // initialises the plugin, and every other call — cancel included — is
+    // undefined without it. It is idempotent, so calling it twice costs nothing.
+    await svc.init();
+    if (!on) {
+      // cancelAll, not cancel(kDailyReminderId): "reminders off" is a promise
+      // about all of them, including any an app schedules on top of the chassis.
+      await svc.cancelAll();
+      await set(false);
+      return false;
+    }
+    final bool granted = await svc.requestPermission();
+    if (granted) {
+      await svc.scheduleDaily(
+        core.DailyReminder(
+          id: kDailyReminderId,
+          title: title,
+          body: body,
+          hour: AppConfig.reminderHour,
+          minute: AppConfig.reminderMinute,
+        ),
+      );
+    }
+    // The OS decides, not the switch. Storing `true` after a refusal is the
+    // toggle-lies-about-the-feature shape the class doc above is about.
+    await set(granted);
+    return granted;
   }
 }
 
@@ -806,8 +864,20 @@ const String _reviewStateKey = 'nikatru.review_gate';
 /// consults [ReviewCapabilities] before touching the plugin, because
 /// `in_app_review` has no Linux or web implementation and reaching it there
 /// throws.
+///
+/// 🔴 THE STORE IDS ARE NOT OPTIONAL DECORATION. Constructed bare, the listing
+/// call reaches `ArgumentError.checkNotNull` inside the plugin on iOS, macOS and
+/// Windows — in release, swallowed by the adapter's catch — so the only route to
+/// a store on Windows silently did nothing. Empty defines mean "not registered
+/// with that store yet" and the adapter reports that as
+/// `core.StoreListingOutcome.notConfigured`.
 final Provider<core.ReviewPrompter> reviewPrompterProvider =
-    Provider<core.ReviewPrompter>((ref) => InAppReviewPrompter());
+    Provider<core.ReviewPrompter>(
+      (ref) => InAppReviewPrompter(
+        appStoreId: AppConfig.appStoreId,
+        microsoftStoreId: AppConfig.microsoftStoreId,
+      ),
+    );
 
 /// The timing rule. A provider rather than a constant so a test can shorten the
 /// thresholds instead of simulating four months of calendar time.

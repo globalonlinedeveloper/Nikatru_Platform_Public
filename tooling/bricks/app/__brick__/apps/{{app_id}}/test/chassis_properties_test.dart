@@ -54,15 +54,57 @@ class _MemStore implements core.KeyValueStore {
   Future<void> write(String key, String value) async => data[key] = value;
 }
 
-ProviderContainer _container(_MemStore store, {core.AuthRepository? auth}) =>
-    ProviderContainer(
-      overrides: <Override>[
-        keyValueStoreProvider.overrideWith((_) async => store),
-        // Only when a test needs a session in a state the default cannot reach
-        // — an already-expired one, for instance.
-        if (auth != null) authRepositoryProvider.overrideWithValue(auth),
-      ],
-    );
+/// Records what the notification seam was actually asked to do.
+///
+/// 🔴 THE FAKE IS THE WHOLE POINT HERE. The reminder toggle used to call
+/// `requestPermission()` and store the answer and nothing else — no `init()` and
+/// no `scheduleDaily` anywhere in the template — so a stamped app spent the ONE
+/// OS permission prompt most platforms grant, showed the switch as ON, and never
+/// scheduled a notification. Every test passed, because they asserted the flag
+/// was persisted and it was. Only something that records what REACHED the
+/// service can tell those two states apart.
+class _FakeNotifications implements core.NotificationService {
+  int initCalls = 0;
+  int cancelAllCalls = 0;
+  bool permission = true;
+  final List<core.DailyReminder> scheduled = <core.DailyReminder>[];
+
+  @override
+  Future<void> init() async => initCalls++;
+
+  @override
+  Future<bool> requestPermission() async => permission;
+
+  @override
+  Future<void> showNow({required String title, required String body}) async {}
+
+  @override
+  Future<void> scheduleDaily(core.DailyReminder reminder) async =>
+      scheduled.add(reminder);
+
+  @override
+  Future<void> cancel(int id) async {}
+
+  @override
+  Future<void> cancelAll() async => cancelAllCalls++;
+}
+
+ProviderContainer _container(
+  _MemStore store, {
+  core.AuthRepository? auth,
+  core.NotificationService? notifications,
+}) => ProviderContainer(
+  overrides: <Override>[
+    keyValueStoreProvider.overrideWith((_) async => store),
+    // Only when a test needs a session in a state the default cannot reach
+    // — an already-expired one, for instance.
+    if (auth != null) authRepositoryProvider.overrideWithValue(auth),
+    // Same reason as `_MemStore`: the real service reaches a platform
+    // channel that does not exist in a widget test.
+    if (notifications != null)
+      notificationServiceProvider.overrideWithValue(notifications),
+  ],
+);
 
 /// A container that has already seen onboarding.
 ///
@@ -188,8 +230,15 @@ class _RecordingPrompter implements core.ReviewPrompter {
   @override
   Future<void> requestReview() async => requests++;
 
+  // The outcome is TYPED because a listing that could not open — no store on
+  // this platform, or no store id in this build — used to be indistinguishable
+  // from one that did. `notConfigured` is the state a stamped app is born in:
+  // neither store id exists until the app is registered.
   @override
-  Future<void> openStoreListing() async => listings++;
+  Future<core.StoreListingOutcome> openStoreListing() async {
+    listings++;
+    return core.StoreListingOutcome.opened;
+  }
 }
 
 /// A container with the review prompter faked, so the OPEN path is reachable.
@@ -1436,6 +1485,82 @@ void main() {
         isTrue,
         reason: 'without this the toggle resets at every launch',
       );
+    });
+
+    // ── THE HALF THAT WAS MISSING ────────────────────────────────────────────
+    // Persisting the intent is necessary and was never the feature. These four
+    // assert the OS was actually told.
+    test('turning reminders ON really SCHEDULES one', () async {
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = _container(_MemStore(), notifications: notes);
+      addTearDown(c.dispose);
+
+      final bool granted = await c
+          .read(remindersEnabledProvider.notifier)
+          .applyReminderChoice(on: true, title: 'T', body: 'B');
+
+      expect(granted, isTrue);
+      expect(
+        notes.initCalls,
+        greaterThan(0),
+        reason:
+            'without init() the timezone database and the plugin are never set '
+            'up, and nothing can be scheduled at all',
+      );
+      expect(
+        notes.scheduled,
+        hasLength(1),
+        reason:
+            'a toggle that primes the user, spends the one OS prompt and '
+            'schedules nothing is the C-6 shape in its purest form',
+      );
+      expect(notes.scheduled.single.id, kDailyReminderId);
+      expect(notes.scheduled.single.hour, AppConfig.reminderHour);
+      expect(notes.scheduled.single.minute, AppConfig.reminderMinute);
+      expect(notes.scheduled.single.title, 'T');
+      expect(c.read(remindersEnabledProvider), isTrue);
+    });
+
+    test(
+      'a REFUSED OS permission schedules nothing and leaves it OFF',
+      () async {
+        final _FakeNotifications notes = _FakeNotifications()
+          ..permission = false;
+        final ProviderContainer c = _container(
+          _MemStore(),
+          notifications: notes,
+        );
+        addTearDown(c.dispose);
+
+        final bool granted = await c
+            .read(remindersEnabledProvider.notifier)
+            .applyReminderChoice(on: true, title: 'T', body: 'B');
+
+        expect(granted, isFalse);
+        expect(notes.scheduled, isEmpty);
+        expect(
+          c.read(remindersEnabledProvider),
+          isFalse,
+          reason:
+              'the OS decides; a switch reading ON after a refusal is the '
+              'toggle lying about the feature',
+        );
+      },
+    );
+
+    test('turning reminders OFF cancels', () async {
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = _container(_MemStore(), notifications: notes);
+      addTearDown(c.dispose);
+
+      final RemindersEnabledController controller = c.read(
+        remindersEnabledProvider.notifier,
+      );
+      await controller.applyReminderChoice(on: true, title: 'T', body: 'B');
+      await controller.applyReminderChoice(on: false, title: 'T', body: 'B');
+
+      expect(notes.cancelAllCalls, 1);
+      expect(c.read(remindersEnabledProvider), isFalse);
     });
 
     test(

@@ -3,12 +3,28 @@ import 'package:flutter/foundation.dart' show TargetPlatform, immutable;
 /// Resolves the device's IANA timezone name (e.g. `Asia/Kolkata`) for
 /// timezone-correct daily scheduling.
 ///
-/// The app/brick layer injects a real resolver (e.g. backed by `flutter_timezone`);
-/// the package default returns `UTC` so scheduling stays portable and dependency
-/// -light, but daily reminders fire at the injected zone's local time only once a
-/// real resolver is supplied — mirroring the "concrete plugin lives at the edge"
-/// seam philosophy (ConfigTransport / PackVerifier).
+/// Optional, and what happens WITHOUT one is the part that matters. This used to
+/// default to returning the literal `'UTC'`, which `init()` then installed as
+/// `tz.local` — so a reminder the seam documents as *"a nudge at [hour]:[minute]
+/// local time"* was built at that hour in **UTC** and fired at 14:30 for a 09:00
+/// reminder in the owner's own market, or in the middle of the night across the
+/// Americas. Nothing in the tree injected a resolver, and every test injected
+/// `'UTC'` — the one value where the bug and the correct behaviour agree.
+///
+/// The default is now the DEVICE's own current UTC offset (see
+/// `deviceOffsetLocation`), which is exact for the reminder being scheduled and
+/// needs no plugin. Inject a real IANA resolver (e.g. backed by
+/// `flutter_timezone`) where full DST-rule correctness matters: a fixed offset
+/// cannot know that a zone shifts by an hour next month, so a schedule made
+/// before a DST transition fires an hour out until it is next re-armed.
 typedef LocalTimezoneResolver = Future<String> Function();
+
+/// Reads the running device's current UTC offset. Injectable ONLY so the
+/// local-vs-UTC difference can be asserted from a test: a test process cannot
+/// choose the offset `DateTime.now()` reports, so a test that used the real one
+/// would assert nothing on a UTC CI runner — which is exactly how the original
+/// defect stayed invisible.
+typedef DeviceUtcOffset = Duration Function();
 
 /// What a platform can do with local notifications — the portability seam that
 /// drives every runtime guard in the notification adapter.
