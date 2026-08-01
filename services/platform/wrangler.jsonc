@@ -19,6 +19,17 @@
     "APP_ID": "platform",
     "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
     "API_VERSION": "v1",
+    // WHICH MONEY WORLD THIS DEPLOY IS — [pipeline 5]M-12. Exactly "live" or
+    // "sandbox"; POST /v1/money/:provider answers 503 for anything else, because
+    // a default would either honour sandbox money as real or stop honouring real
+    // money, and neither is a safe guess.
+    //
+    // ⚠️ THIS IS THE DEPLOYED CONFIG, SO IT IS "live". A sandbox rail is a
+    // SEPARATE wrangler environment with its own secret, never this file with
+    // the value edited — tooling/ci/assert-money-config.mjs fails the build on a
+    // sandbox value or a sandbox base URL here, and that input is constructible,
+    // which is the whole point of the check.
+    "MONEY_ENVIRONMENT": "live",
     // ⚠️ EXACT allowlist — no pattern matching, and an EMPTY value now DENIES
     // every browser origin rather than falling back to '*'. This Worker is no
     // longer config-read-only: it serves /v1/events and /v1/consent, and will
@@ -120,6 +131,27 @@
       "name": "CONFIG_CEILING_LIMITER",
       "namespace_id": "1003",
       "simple": { "limit": 1200, "period": 60 }
+    },
+    {
+      // The SAME server-derived ceiling for POST /v1/money/:provider, keyed
+      // `edge:<colo>:<asn>` by the shared src/lib/edge-ceiling.ts.
+      //
+      // Its OWN namespace_id so a flood of forged notifications cannot exhaust
+      // the budget analytics ingest and config resolution depend on — and those
+      // two are on every app's launch path, so borrowing from them would let
+      // anyone who finds this URL degrade every app in the portfolio.
+      //
+      // 120/min per (colo, asn) is deliberately the tightest of the three. A
+      // merchant of record delivers ONE notification per money event and retries
+      // with exponential backoff (Paddle: 60 attempts over 3 days, first 20 in
+      // the first hour, 60s base × 1.1 — verified against developer.paddle.com
+      // 2026-08-01). Real traffic through one PoP is a handful per minute at the
+      // portfolio's eventual scale, so this is orders of magnitude above honest
+      // use while still bounding a forged flood. Same honest caveat as the other
+      // two: per-colo and eventually consistent, a BURST bound, not accounting.
+      "name": "MONEY_CEILING_LIMITER",
+      "namespace_id": "1004",
+      "simple": { "limit": 120, "period": 60 }
     }
   ],
   "triggers": {

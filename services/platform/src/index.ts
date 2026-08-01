@@ -5,6 +5,8 @@
 //   PUBLIC  POST   /v1/events   — first-party analytics ingest (G-12).
 //   PUBLIC  POST   /v1/consent  — the DPDP consent artifact.
 //   AUTHED  DELETE /v1/account  — erasure ([4]B-5). ES256/JWKS only.
+//   SIGNED  POST   /v1/money/:provider — the merchant-of-record webhook ([5]M-1).
+//                                  HMAC over the raw body; no user session.
 //   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
@@ -14,7 +16,9 @@ import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
 import account from './routes/account';
 import config from './routes/config';
+import entitlements from './routes/entitlements';
 import events from './routes/events';
+import money from './routes/money';
 import { scheduled } from './scheduled';
 
 const app = new Hono<AppEnv>();
@@ -47,6 +51,19 @@ app.route('/config', config);
 // ones (first_launch, paywall_viewed) happen before any login exists.
 app.route('/v1', events);
 
+// The MONEY RAIL ([ADR 004], [ADR 020]:18). Mounted on the SHARED host on
+// purpose: a per-app Worker must never see a webhook, so fifty stamped apps
+// inherit one verified rail instead of fifty copies of a signature check.
+//
+// ⚠️ IT IS **NOT** BEHIND `platformAuth`, AND THAT IS DELIBERATE. The sender is a
+// merchant of record, not a user — there is no Supabase session to present. Its
+// authentication is an HMAC-SHA256 over the RAW BODY, which is strictly stronger
+// than a bearer token for this purpose: a bearer secret proves the sender knows
+// a string, while a signature proves THIS BODY came from the holder of that
+// string. Mounted BEFORE the `/v1/account` auth `use` below so the path-scoped
+// middleware cannot reach it. [pipeline 5]M-1
+app.route('/v1/money', money);
+
 // AUTHENTICATED: erasure ([4]B-5). The ONLY route on this Worker behind
 // `platformAuth`, and the reason that middleware is not a dead file.
 //
@@ -59,6 +76,14 @@ app.route('/v1', events);
 // authenticate" and "every app is locked out of its own config".
 app.use('/v1/account', platformAuth);
 app.route('/v1', account);
+
+// AUTHENTICATED: the shared entitlement read ([5]M-4). The other half of what
+// [4]B-3's middleware lift was for — until this route existed, the only working
+// entitlement read in the repo was inside services/subly-api, so every
+// CLIENT-ONLY stamped app had no way to ask whether its user had paid.
+// Path-scoped for the same reason as /v1/account above.
+app.use('/v1/entitlements', platformAuth);
+app.route('/v1', entitlements);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {

@@ -64,8 +64,54 @@ export interface Env {
    */
   CONFIG_CEILING_LIMITER?: RateLimiterBinding;
 
+  /**
+   * The SAME server-derived ceiling for POST /v1/money/:provider — the third
+   * unauthenticated-in-the-Supabase-sense route on this Worker that does I/O.
+   * Its own namespace so a flood of forged notifications cannot exhaust the
+   * budget that analytics ingest and config resolution depend on.
+   *
+   * Optional, and absence fails OPEN, for the same reason as the other two: a
+   * local or dev deploy without the binding must still run. The money route's
+   * fail-CLOSED property is the signature check, not the limiter.
+   */
+  MONEY_CEILING_LIMITER?: RateLimiterBinding;
+
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
+
+  /**
+   * WHICH MONEY WORLD THIS DEPLOY IS. Exactly 'live' or 'sandbox' — [5]M-12.
+   *
+   * ⚠️ IT IS A VAR, NOT A DERIVED VALUE, AND IT HAS NO DEFAULT. No primary source
+   * establishes that a Paddle notification body identifies its own environment
+   * (services/platform/src/lib/mor/paddle.ts, U1), and the destination secret's
+   * documented prefix is the same in both worlds (U2) — so neither the payload
+   * nor the credential can be asked. The deploy declares it, the route refuses to
+   * serve when it is absent or unrecognised, and every entitlement row records
+   * the value that granted it.
+   *
+   * Optional in the TYPE and mandatory at RUNTIME on purpose: a required field
+   * here would make every existing test fixture construct a money environment it
+   * does not use, and `tsc` cannot enforce what a deployed var actually contains.
+   * `tooling/ci/assert-money-config.mjs` enforces the deployed value.
+   */
+  MONEY_ENVIRONMENT?: string;
+
+  /**
+   * Paddle's per-destination notification secret (`pdl_ntfset_…`), the key the
+   * `Paddle-Signature` HMAC is computed with.
+   *
+   * 🔴 OWNER-GATED AND ABSENT TODAY. It can only be generated in the Paddle
+   * seller console, which requires the seller account (OWNER_QUEUE A-1, PENDING).
+   * Optional so the Worker builds, typechecks and deploys without it; the route
+   * answers 503 rather than accepting anything, and
+   * `tooling/ci/assert-mor-adapters.mjs` PRINTS the gap on every CI run rather
+   * than failing the build over work only the owner can do.
+   *
+   * Set with `wrangler secret put PADDLE_NOTIFICATION_SECRET`. NEVER a committed
+   * var: `tooling/ci/scan-secrets.mjs` refuses the prefix in the tree.
+   */
+  PADDLE_NOTIFICATION_SECRET?: string;
   SUPABASE_URL: string;
   /**
    * OPTIONAL comma-separated list of Supabase project URLs the nightly cron keeps

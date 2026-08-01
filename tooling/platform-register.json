@@ -140,6 +140,26 @@
       "owningFile": "services/platform/src/routes/account.ts",
       "purpose": "G2 in-app account deletion ([4]B-5). THE FIRST `auth: required` ROUTE ON THIS WORKER, and the reason src/middleware/auth.ts is not a dead file. Three limbs: every user-owned table in platform_db (DERIVED from the schema — a `user_id` column is the selector — not from a literal array somebody must remember to extend), then the identity record itself. Refuses 501 while SUPABASE_SERVICE_ROLE_KEY is unset, so it ships honest rather than not at all.",
       "unconsumedReason": "⛔ THE CLIENT HALF IS BLOCKED ON STAGE 2, AND THIS IS THE HONEST STATE OF IT. packages/core/lib/src/auth/auth_repository.dart already carries the seam and says verbatim that `DELETE /v1/account` is stage 4's route and does not exist yet — that sentence is now false and the seam is what must change, in [2]C-13/[2]C-16, which own that file. Registering the route with zero clients and PRINTING the gap is the correct intermediate state: the alternative is either a fake client entry, or holding the server route back until the Flutter side lands, which is what left the brick's client-only stamps with no deletion path at all for months. [8]K-7's public deletion page is the other consumer, and it is stage 8's."
+    },
+    {
+      "id": "entitlements",
+      "method": "GET",
+      "path": "/v1/entitlements",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/entitlements.ts",
+      "purpose": "[pipeline 5]M-4 — ANY app reads ITS entitlement from the host every stamped app already has. The brick's DEFAULT stamp is CLIENT-ONLY ([ADR 020]), so until this route existed the only working entitlement read in the repo was inside services/subly-api — i.e. inside the one legacy app that happens to have a backend, while every app the factory stamps had no way to ask whether its user had paid. Scoped by BOTH user_id (from the verified token) AND app_id (a required query parameter that must name a registered app); the money boundary fails closed on every undecidable case, including a row whose money environment is not this deploy's ([5]M-12).",
+      "unconsumedReason": "⛔ NO DART CLIENT YET, AND THIS IS THE HONEST INTERMEDIATE STATE. `packages/core`'s entitlement model and `EntitlementCache` exist and `PaywallGate` exists, but nothing fetches — that is exactly the dead seam `tooling/ci/assert-seams-wired.mjs` records as `entitlements: wired: false`, and closing it is [5]M-5, a three-file increment across the brick, the seam register and `tooling/screen-register.json`'s two `monetization.*` entries. Registering the server route with zero clients and PRINTING the gap is the correct intermediate state: the alternative is holding the route back until the Flutter side lands, which is what left client-only stamps with no entitlement read at all.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Recorded anyway because the read is on a launch path and the 100k Worker-requests/day Free ceiling is ACCOUNT-WIDE across ~50 apps: this must never become a per-screen fetch, which is a client-side constraint the cache in packages/core exists to satisfy."
+    },
+    {
+      "id": "money-webhook",
+      "method": "POST",
+      "path": "/v1/money/:provider",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/money.ts",
+      "purpose": "[pipeline 5]M-1 — the ONE door a merchant of record knocks on. Verifies an HMAC-SHA256 signature over the RAW body with the rail's per-destination secret, records the notification verbatim exactly once, acks, then derives the entitlement. [ADR 020]:18 puts it on the SHARED host because a per-app Worker must never see a webhook: fifty stamped apps inherit one verified rail rather than fifty copies of a signature check. [ADR 004] fixes the merchant of record as Paddle / Lemon Squeezy; the adapter registry is what makes the choice a config change.",
+      "unconsumedReason": "NO CLIENT IN THIS REPO, BY CONSTRUCTION — the caller is the merchant of record's own delivery system, not any code we ship. This is the one route whose 'who calls it' answer is a vendor, and the honest state is zero in-tree clients. What replaces the client check for this route is tooling/ci/assert-mor-adapters.mjs, which asserts the verifier exists, is CALLED, and is the only path to an entitlements write across ALL of services/**.",
+      "noLimiterReason": "It DOES reach withinEdgeCeiling (MONEY_CEILING_LIMITER) — this field is present only to record why the ceiling is the server-derived one and not the fairness bucket: there is no per-install identity on a webhook to be fair between, and the only meaningful key is one the caller cannot choose."
     }
   ],
 
@@ -215,6 +235,13 @@
       "scope": "shared",
       "purpose": "The same server-derived ceiling for GET /config/:app — the other unauthenticated route on this Worker that does I/O. Its own namespace so config traffic and analytics traffic cannot exhaust each other.",
       "readers": ["services/platform/src/routes/config.ts"]
+    },
+    {
+      "binding": "MONEY_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "The server-derived ceiling for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Its OWN namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on — both of those are on every app's LAUNCH path, so borrowing from them would let anyone who finds this URL degrade the whole portfolio.",
+      "readers": ["services/platform/src/routes/money.ts"]
     }
   ]
 }

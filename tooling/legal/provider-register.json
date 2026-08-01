@@ -70,7 +70,27 @@
       "categories",
       "entitlements",
       "renewals",
-      "account"
+      "account",
+      "money"
+    ],
+    "_money": [
+      "🟢 `money` WAS ADDED BECAUSE THIS LIMB CAUGHT IT — the second time in two days, on a change that",
+      "had already passed every other guard. services/platform/src/routes/money.ts mounts",
+      "POST /v1/money/:provider ([pipeline 5]M-1, the merchant-of-record webhook) and CI went red naming",
+      "a segment nobody had classified. `money` is OURS: it is the door, not a vendor.",
+      "",
+      "⚠️ AND THE PROVIDER IS A `:param`, WHICH THIS LIMB DROPS BY DESIGN. So adding Lemon Squeezy's",
+      "adapter tomorrow adds NO new literal segment, and the K-5 property this limb exists for — 'a new",
+      "payment webhook cannot land without somebody writing its name down' — would not fire here. That",
+      "is not a hole, and it is not left to a comment either: the provider set is DATA in",
+      "`MOR_VERIFIERS` (services/platform/src/lib/mor/registry.ts), and tooling/ci/assert-mor-adapters.mjs",
+      "now FAILS when a registered rail has no row in THIS FILE. The obligation moved to the register",
+      "that actually knows the provider set, rather than being satisfied by a URL shape.",
+      "",
+      "Paddle's row keeps `reachableAt: null` deliberately: the reverse check requires the last segment",
+      "of `reachableAt` to appear as a LITERAL route segment somewhere in services/**, and `paddle` never",
+      "does — it is resolved from the registry at request time. Claiming `/v1/money/paddle` would make",
+      "this file assert something no route registration says."
     ],
     "_account": [
       "🟢 `account` WAS ADDED BECAUSE THIS LIMB CAUGHT IT, which is the whole point and worth recording.",

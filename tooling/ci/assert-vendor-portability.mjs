@@ -226,7 +226,19 @@ for (const [id, v] of Object.entries(vendors)) {
     const p = join(ROOT, v.seam.file);
     if (!existsSync(p)) {
       problems.push(`vendor \`${id}\` names seam file \`${v.seam.file}\`, which does not exist. A seam you cannot open is not a seam.`);
-    } else if (v.seam.symbol && !new RegExp(`\\b(?:abstract\\s+)?(?:interface\\s+)?class\\s+${v.seam.symbol}\\b`).test(readFileSync(p, 'utf8'))) {
+      // 🔴 `interface X` IS A SEAM DECLARATION TOO. This pattern was Dart-only
+      // (`class` / `abstract class` / `interface class`), which silently made
+      // part 2 unrecordable for any vendor whose seam is a TypeScript interface
+      // on a Worker — and the merchant-of-record seam ([ADR 004]'s
+      // `MoRWebhookVerifier`) is exactly that. The alternative was to cite some
+      // nearby Dart class instead, i.e. to record a seam that is not the seam.
+      // Widening the pattern keeps the assertion identical in kind: the named
+      // symbol must really be DECLARED in the named file.
+    } else if (
+      v.seam.symbol &&
+      !new RegExp(`\\b(?:abstract\\s+)?(?:interface\\s+)?class\\s+${v.seam.symbol}\\b`).test(readFileSync(p, 'utf8')) &&
+      !new RegExp(`\\binterface\\s+${v.seam.symbol}\\b`).test(readFileSync(p, 'utf8'))
+    ) {
       problems.push(`vendor \`${id}\` names seam symbol \`${v.seam.symbol}\` in \`${v.seam.file}\`, which does not declare it.`);
     }
   }

@@ -39,6 +39,7 @@ import type { DatabaseSync as DatabaseSyncCtor } from 'node:sqlite';
 import entitlements0001 from '../migrations/0001_entitlements.sql?raw';
 import analytics0002 from '../migrations/0002_analytics.sql?raw';
 import cronHeartbeat0003 from '../migrations/0003_cron_heartbeat.sql?raw';
+import moneyRail0004 from '../migrations/0004_money_rail.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -52,6 +53,25 @@ type SQLValue = string | number | bigint | null | Uint8Array;
  * forget to extend when 0004 lands.
  */
 export const PLATFORM_MIGRATIONS: readonly string[] = [
+  entitlements0001,
+  analytics0002,
+  cronHeartbeat0003,
+  moneyRail0004,
+];
+
+/**
+ * The subset of [PLATFORM_MIGRATIONS] that is safe to APPLY TWICE.
+ *
+ * SQLite has no `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, so 0004's entitlement
+ * contract is inherently once-only. D1's ledger records migration FILE NAMES, so
+ * wrangler applies each file exactly once and this is not a production hazard —
+ * but it does mean "the whole set re-applies" stopped being true on 2026-08-01
+ * and pretending otherwise would have meant weakening the replay test into
+ * something vacuous. migrations-replay.test.ts instead CLASSIFIES every statement
+ * in the whole set and proves that ALTER … ADD COLUMN is the ONLY non-replay-safe
+ * form present anywhere, then replays this subset in full.
+ */
+export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   entitlements0001,
   analytics0002,
   cronHeartbeat0003,
@@ -189,4 +209,41 @@ export class RealDb {
 /** platform_db with the real migrations applied, in order. */
 export function realPlatformDb(extraSchema: readonly string[] = []): RealDb {
   return new RealDb([...PLATFORM_MIGRATIONS, ...extraSchema]);
+}
+
+// ── one Workers-runtime API Node's WebCrypto does not have ───────────────────
+// `crypto.subtle.timingSafeEqual` is a Cloudflare Workers extension, and the MoR
+// signature comparison (src/lib/mor/paddle.ts) uses it. Without this shim the
+// money route THROWS in Node and every test reports a 500 — which is
+// indistinguishable from a request the handler deliberately rejected, i.e. the
+// suite would look like it was testing rejection while testing a crash. On a
+// money route that failure mode is worse than usual: "the tampered body was
+// refused" and "the tampered body crashed the Worker" print the same red, and
+// only one of them means the rail is safe.
+//
+// Ported verbatim from services/subly-api/test/harness.ts:180-208.
+// Constant-time-ness is a property of the deployed runtime, not of this shim;
+// what is being restored here is PRESENCE.
+{
+  const subtle = (
+    globalThis as unknown as {
+      crypto?: {
+        subtle?: {
+          timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean;
+        };
+      };
+    }
+  ).crypto?.subtle;
+  if (subtle && typeof subtle.timingSafeEqual !== 'function') {
+    subtle.timingSafeEqual = (a, b) => {
+      const x = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+      const y = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+      if (x.byteLength !== y.byteLength) {
+        throw new TypeError('timingSafeEqual: inputs must have the same length');
+      }
+      let diff = 0;
+      for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+      return diff === 0;
+    };
+  }
 }

@@ -371,8 +371,17 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     // 🔴 AN EMPTY SET IS A FAILURE, NOT A FAST PATH. Without this the route
     // would delete nothing, answer ok:true, and then delete the identity —
     // orphaning every row behind a login that no longer exists.
+    //
+    // ⚠️ THE SET GREW ON 2026-08-01 and this fixture had to grow with it — which
+    // is the derivation working, not a test getting harder. [pipeline 5]M-7's
+    // `provider_accounts` (the (provider, subscription) -> account link) carries
+    // a `user_id`, so it is user-owned by definition and the route now erases it
+    // with no edit to the route. Dropping only `entitlements` therefore no longer
+    // empties the set. EVERY user-owned table must be dropped for this case to
+    // arise, so the assertion is still "an empty derivation is a refusal".
     const db = realPlatformDb();
     db.db.exec('DROP TABLE entitlements;');
+    db.db.exec('DROP TABLE provider_accounts;');
     const res = await harness({ db }).del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(503);
     expect(identityCalls).toHaveLength(0);
