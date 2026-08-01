@@ -1,5 +1,5 @@
 name: {{app_id.snakeCase()}}
-description: "{{display_name}} — a NIKATRU Cross Platform App."
+description: "{{{display_name_json}}} — a NIKATRU Cross Platform App."
 publish_to: "none"
 version: 0.1.0+1
 

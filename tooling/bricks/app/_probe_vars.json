@@ -1,10 +1,10 @@
 {
   "app_id": "probe",
-  "display_name": "Probe — Brick Smoke Test",
+  "display_name": "Probe's & Co — 24/7 Smoke",
   "subdomain": "probe.nikatru.com",
   "api_domain": "",
   "seed_hex": "6459F5",
   "category": "productivity",
-  "description": "Throwaway app stamped in CI to prove the brick compiles + analyzes.",
+  "description": "Throwaway app stamped in CI to prove the brick compiles + analyzes: & ' / \" survive.",
   "needs_backend": false
 }
