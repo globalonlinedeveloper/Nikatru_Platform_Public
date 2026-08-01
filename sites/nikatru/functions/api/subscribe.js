@@ -1,10 +1,44 @@
 // Cloudflare Pages Function: POST /api/subscribe
 // Stores launch-notify signups in a Cloudflare KV namespace.
 //
-// Privacy: we store ONLY the email address and a timestamp — nothing else.
-// This matches the promise shown on the site ("your email only ... nothing else, ever").
-// For abuse protection we rate-limit per IP, but the IP is hashed (SHA-256) and the
-// counter auto-expires; the raw IP is never written to storage.
+// SITE PROMISE: "We store your email address and the time you signed up, and nothing else."
+//
+// That marker is load-bearing, not decoration: check-site-integrity.mjs requires the
+// quoted sentence to appear VERBATIM on a page of the same deploy root. Change what
+// this file stores and the site copy has to move with it, or the build fails — the
+// promise and the code cannot drift apart quietly.
+//
+// ── WHY THE RATE-LIMIT KEY IS AN HMAC AND NOT sha256(ip) ─────────────────────
+// This endpoint used to key its per-IP counter on a bare `sha256(ip)`. An unsalted
+// hash of an IP address is NOT pseudonymisation: the whole IPv4 space is 2^32
+// values, so an attacker (or anyone who obtains a KV export) recovers the exact
+// address by hashing all of them — minutes on a laptop, and the search space for a
+// /24 is 256. On a page whose own privacy policy promises we do not retain network
+// identifiers, a reversible one is a re-identification risk, not an abuse guard.
+//
+// The key is now HMAC-SHA-256 over the address under a secret the attacker does not
+// have, so the exhaustive search is not available. See SETUP step 4.
+//
+// ── WHY THE COUNTER IS A KEY SET AND NOT AN INTEGER ──────────────────────────
+// Workers KV has no compare-and-swap and no atomic increment. The previous
+// read-parse-increment-write was a LOST-UPDATE race with an unbounded consequence:
+// under sustained concurrency every in-flight request reads the same `h` and writes
+// `h+1`, so the stored count can sit at `h+1` forever while thousands of requests
+// pass — the limit never actually engages.
+//
+// Instead each attempt writes its OWN key under a per-fingerprint prefix and the
+// count is the size of that prefix. Nothing is read-modify-written, so no attempt
+// can erase another's, and every attempt is counted exactly once.
+//
+// ACCEPTED, BOUNDED RACE: requests already in flight when the threshold is crossed
+// can still get through, so the effective ceiling is RATE_LIMIT + (concurrent
+// in-flight requests for that one fingerprint) rather than exactly RATE_LIMIT.
+// KV list is also eventually consistent (up to ~60s), which widens that window.
+// The consequence is bounded and cheap: the overshoot is per-fingerprint, every
+// key expires within the hour, and a repeated signup for an address already on the
+// list writes nothing at all (see the dedup below). Removing the race entirely
+// needs a Durable Object — a coordination primitive this site does not otherwise
+// need, for a soft anti-spam counter.
 //
 // SETUP (one time, in the Cloudflare dashboard):
 //   1. Workers & Pages -> KV -> Create namespace, e.g. "nikatru-signups".
@@ -14,6 +48,16 @@
 //         KV namespace:  nikatru-signups
 //      (Add it for Production, and Preview if you want.)
 //   3. Redeploy (any push) so the binding takes effect.
+//   4. 🔑 OWNER ACTION — Settings -> Environment variables and secrets -> Add,
+//      as an ENCRYPTED secret (not a plaintext variable):
+//         Variable name: SUBSCRIBE_RATE_LIMIT_SALT
+//         Value:         32+ random bytes, e.g. `openssl rand -hex 32`
+//      Add it for Production AND Preview. Rotating it simply resets the live
+//      counters (every key expires within an hour anyway).
+//      🔴 WITHOUT THIS SECRET THE PER-IP RATE LIMIT IS OFF — deliberately.
+//      The alternative is storing a reversible fingerprint of a visitor's network
+//      address, and a weaker anti-spam guard is a smaller harm than that. The
+//      honeypot, the address validation and the per-address dedup all still apply.
 //
 // Read signups later: dashboard KV browser (keys prefixed "sub:"), or
 //   `wrangler kv key list --binding SIGNUPS`.
@@ -32,13 +76,32 @@ const isEmail = (e) =>
   e.length <= 254 &&
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-// Hash a value so it is never stored in plaintext (used for the rate-limit key).
-async function sha256(text) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+/** Keyed one-way fingerprint of `text` under `secret`.
+ *
+ *  HMAC-SHA-256, not a bare digest: the input (an IP address) is drawn from a
+ *  space small enough to enumerate, so without a secret the "hash" is a lookup
+ *  table away from the plaintext. Truncated to 128 bits because this value is
+ *  only ever a KV key prefix — collision resistance at that width is far beyond
+ *  what a per-hour abuse counter needs, and a shorter key is a smaller thing to
+ *  leak. */
+async function fingerprint(secret, text) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, enc.encode(text));
+  return [...new Uint8Array(mac)]
+    .slice(0, 16)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-const RATE_LIMIT = 12; // max signups per IP per hour
+const RATE_LIMIT = 12; // max signups per fingerprint per hour
+const RATE_WINDOW_SECONDS = 3600;
 
 export async function onRequestPost({ request, env }) {
   let email = "";
@@ -74,17 +137,26 @@ export async function onRequestPost({ request, env }) {
     );
   }
 
-  // --- Abuse guard: soft per-IP rate limit, IP hashed and never persisted raw. ---
+  // --- Abuse guard: soft per-fingerprint rate limit. -------------------------
+  // The address is never stored, hashed or otherwise, without the secret; see the
+  // header for why an unsalted digest of an IP is not pseudonymous, and why this
+  // limb switches OFF rather than degrade to one.
   const ip = request.headers.get("cf-connecting-ip") || "";
-  if (ip) {
+  const salt = (env.SUBSCRIBE_RATE_LIMIT_SALT || "").toString();
+  if (ip && salt) {
     try {
-      const rlKey = "rl:" + (await sha256(ip));
-      const hits = parseInt((await env.SIGNUPS.get(rlKey)) || "0", 10);
-      if (hits >= RATE_LIMIT) {
+      const bucket = "rl:" + (await fingerprint(salt, ip)) + ":";
+      // `limit` caps the read: we only ever need to know whether the count has
+      // reached the ceiling, never how far past it a flood went.
+      const seen = await env.SIGNUPS.list({ prefix: bucket, limit: RATE_LIMIT + 1 });
+      if (seen.keys.length >= RATE_LIMIT) {
         return json({ ok: false, error: "Too many attempts. Please try again later." }, 429);
       }
-      // Counter expires after 1 hour so nothing lingers.
-      await env.SIGNUPS.put(rlKey, String(hits + 1), { expirationTtl: 3600 });
+      // One key per attempt: an independent write, so no attempt can overwrite
+      // another's. Expires within the window, so nothing lingers.
+      await env.SIGNUPS.put(bucket + crypto.randomUUID(), "1", {
+        expirationTtl: RATE_WINDOW_SECONDS,
+      });
     } catch (_) {
       // If the rate-limit check fails, don't block a real signup.
     }
