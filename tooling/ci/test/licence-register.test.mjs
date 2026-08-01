@@ -112,6 +112,7 @@ function fixture({
   appLib = 'void main() {}\n',
   brickLib = "Widget b() => AboutListTile(applicationName: 'x');\n",
   incompatible = { prefixes: ['CC-BY-NC', 'CC-BY-SA'] },
+  generatedFiles = { 'AssetManifest.bin': 'the build\'s own index', NOTICES: 'the attribution surface itself' },
   patterns = ['AboutListTile\\s*\\(', 'showLicensePage\\s*\\(', 'LicenseRegistry\\.addLicense\\s*\\('],
 } = {}) {
   const root = join(TMP, `f${seq++}`);
@@ -122,6 +123,7 @@ function fixture({
     JSON.stringify(
       {
         derivation: { ...DERIVATION, ...derivation },
+        generatedBundleFiles: { files: generatedFiles },
         incompatibleLicences: incompatible,
         licenceSurfaceCalls: { patterns },
         licenceSurfaceGaps: gaps,
@@ -404,6 +406,95 @@ describe('coverage self-checks', () => {
     const r = run(root, '--bundle', bundle);
     assert.equal(r.status, 0, out(r));
     assert.match(out(r), /BUNDLE mode/);
+  });
+
+  // ── what the FIRST REAL CI RUN of the bundle step taught ──────────────────
+  // The DECLARED mode reads pubspecs and can only ever see what a manifest
+  // declares. The first --bundle run against a real `flutter build web` failed
+  // naming SIX files no manifest mentions: four the build emits to describe
+  // itself, and two Flutter engine shaders that are genuinely shipped material.
+  // Both findings are the two modes doing exactly what they exist to do.
+  describe('BUNDLE mode sees what no manifest declares', () => {
+    const bundle = (...names) => {
+      const dir = join(TMP, `b${seq++}`);
+      mkdirSync(join(dir, 'assets'), { recursive: true });
+      for (const n of names) writeFileSync(join(dir, 'assets', n), 'x');
+      return dir;
+    };
+
+    test('a build-generated file named in the register is not an unlicensed asset', () => {
+      const root = fixture();
+      const r = run(root, '--bundle', bundle('logo.png', 'icon.png', 'MaterialIcons-Regular.otf', 'AssetManifest.bin', 'NOTICES'));
+      assert.equal(r.status, 0, out(r));
+      assert.match(out(r), /2 build-generated \(named, with reasons\)/);
+    });
+
+    test('a build-generated file NOT named in the register still FAILS — no suffix rule', () => {
+      // A `*.json`-shaped exclusion would swallow a third-party data file the
+      // day one arrives. Every generated filename is written down individually.
+      const root = fixture();
+      const r = run(root, '--bundle', bundle('logo.png', 'icon.png', 'MaterialIcons-Regular.otf', 'FontManifest.json'));
+      assert.equal(r.status, 1, out(r));
+      assert.match(out(r), /FontManifest\.json/);
+      assert.match(out(r), /generatedBundleFiles/);
+    });
+
+    test('an EMPTY generated list is COVERAGE LOST in bundle mode, not a red build on a correct tree', () => {
+      const root = fixture({ generatedFiles: {} });
+      const r = run(root, '--bundle', bundle('logo.png', 'icon.png', 'MaterialIcons-Regular.otf'));
+      assert.equal(r.status, 1, out(r));
+      assert.match(out(r), /COVERAGE LOST/);
+      assert.match(out(r), /a step that cries wolf is one somebody deletes/);
+    });
+
+    test('a bundleOnly row does NOT trip the reverse direction in DECLARED mode', () => {
+      // Nothing declares an engine shader in a pubspec, so the manifest walk
+      // cannot witness it and must not claim the row is orphaned.
+      const assets = structuredClone(DEFAULT_ASSETS);
+      assets.push({
+        id: 'engine-shader',
+        path: 'ink_sparkle.frag',
+        bundleOnly: true,
+        name: 'ink_sparkle.frag',
+        origin: 'third-party',
+        licence: 'UNVERIFIED',
+        source: { note: 'emitted by the toolchain, declared in no manifest here' },
+        wouldNeed: 'the engine LICENSE at the pinned version',
+      });
+      const r = run(fixture({ assets }));
+      assert.equal(r.status, 0, out(r));
+    });
+
+    test('a bundleOnly row the build STOPPED emitting FAILS in bundle mode', () => {
+      // The bundle walk is the ONLY thing that can ever notice: no manifest
+      // declares the file, so nothing else would miss it.
+      const assets = structuredClone(DEFAULT_ASSETS);
+      assets.push({
+        id: 'engine-shader',
+        path: 'ink_sparkle.frag',
+        bundleOnly: true,
+        name: 'ink_sparkle.frag',
+        origin: 'third-party',
+        licence: 'UNVERIFIED',
+        source: { note: 'emitted by the toolchain' },
+        wouldNeed: 'the engine LICENSE',
+      });
+      const r = run(fixture({ assets }), '--bundle', bundle('logo.png', 'icon.png', 'MaterialIcons-Regular.otf'));
+      assert.equal(r.status, 1, out(r));
+      assert.match(out(r), /bundleOnly row/);
+      assert.match(out(r), /the build did NOT emit it/);
+    });
+
+    test("a bundle of ONE app does not report ANOTHER app's rows as orphaned", () => {
+      // The recorded CI failure: the lane walks apps/probe (a throwaway stamp
+      // with no brand assets) and the guard reported all three of apps/subly's
+      // brand rows as "no such asset is shipped". They ARE shipped — by a
+      // different app. A single bundle has no standing to say a row is orphaned.
+      const root = fixture();
+      const r = run(root, '--bundle', bundle('MaterialIcons-Regular.otf', 'AssetManifest.bin'));
+      assert.equal(r.status, 0, out(r));
+      assert.ok(!out(r).includes('no such asset is shipped'));
+    });
   });
 
   test('--bundle over a bundle with an UNREGISTERED asset FAILS', () => {

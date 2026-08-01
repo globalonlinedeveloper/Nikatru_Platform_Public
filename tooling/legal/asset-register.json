@@ -58,6 +58,28 @@
     "minApps": 2
   },
 
+  "generatedBundleFiles": {
+    "_why": [
+      "🔴 FILES THE BUILD ITSELF EMITS INTO THE BUNDLE, WHICH ARE NOT MATERIAL WE SHIPPED FROM ANYWHERE.",
+      "Every one is named individually and given a reason. This is NOT a pattern and NOT a suffix rule: a",
+      "NEW filename appearing in a real bundle still FAILS until somebody writes it down, which is the",
+      "whole value. An `*.json`-shaped exclusion would have swallowed a third-party data file the day one",
+      "arrived.",
+      "",
+      "They were found the honest way. The DECLARED-mode walk reads pubspec manifests and could never see",
+      "any of them; the first run of the --bundle mode against a real `flutter build web` output failed",
+      "naming six files. That is the two modes doing exactly what they exist to do — intent and output",
+      "differ, and the difference is only visible against a build."
+    ],
+    "files": {
+      "AssetManifest.bin": "the build's own index of which assets it packaged, in binary form. Generated from the pubspecs at build time; it describes assets rather than being one.",
+      "AssetManifest.bin.json": "the same index, JSON-wrapped for the web loader.",
+      "AssetManifest.json": "the legacy JSON form of the same index, still emitted by some toolchain versions.",
+      "FontManifest.json": "the build's index of which font families it packaged. Generated, and it describes fonts rather than containing one.",
+      "NOTICES": "🔴 THE ATTRIBUTION SURFACE ITSELF, not an asset needing one. Flutter concatenates the licence texts of everything linked into the build and ships them here; the framework's LicensePage reads it. It is what an `attributionRequired` row would POINT AT, so requiring it to carry its own licence row would be circular."
+    }
+  },
+
   "incompatibleLicences": {
     "_why": [
       "Refused outright rather than flagged. Both prefixes below are incompatible with how this factory",
@@ -110,6 +132,37 @@
       "wouldNeed": "The LICENSE file in Google's material-design-icons repository, at the revision Flutter vendors, read directly. Also open: whether a release build ships the whole font or a tree-shaken subset — a subset and a whole font are different artefacts with the same filename (see the flutter-icon-tree-shaking-scope row in tooling/legal/duty-matrix.json).",
       "shippedIn": "every build of every app: apps/subly/pubspec.yaml and the brick's app pubspec both declare uses-material-design: true, so this font is in 100% of what we publish.",
       "note": "🔴 THE ROW EXISTS EVEN THOUGH THE LICENCE DOES NOT. That is the point: the register's job is to make the SET complete and the uncertainty visible. A missing row would read as 'nothing to declare'; UNVERIFIED reads as 'somebody has to open this before the first submission', which is true."
+    },
+    {
+      "id": "flutter-ink-sparkle-shader",
+      "path": "ink_sparkle.frag",
+      "bundleOnly": true,
+      "name": "ink_sparkle.frag — the Material ink-splash shader the Flutter engine bundles",
+      "origin": "third-party",
+      "licence": "UNVERIFIED",
+      "attributionRequired": null,
+      "attributedIn": null,
+      "source": {
+        "note": "NOT ESTABLISHED IN THIS ENVIRONMENT. The file is emitted into every web bundle by the Flutter toolchain and appears in no pubspec, so nothing in this repository declares where it came from or under what terms."
+      },
+      "wouldNeed": "The LICENSE file of the Flutter engine at the version tooling/versions.json pins, read directly. The bundle's own NOTICES file is the other place to look — it is generated from exactly those licence texts.",
+      "shippedIn": "every web build. Found by the --bundle walk against apps/probe/build/web/assets; the DECLARED-mode walk over pubspecs could not see it.",
+      "note": "🔴 THIS ROW EXISTS BECAUSE THE BUNDLE MODE FOUND IT AND THE DECLARED MODE COULD NOT. It is the concrete answer to 'why two modes' — a manifest walk reads what we INTEND to ship, and the toolchain ships more than that."
+    },
+    {
+      "id": "flutter-stretch-effect-shader",
+      "path": "stretch_effect.frag",
+      "bundleOnly": true,
+      "name": "stretch_effect.frag — the overscroll stretch shader the Flutter engine bundles",
+      "origin": "third-party",
+      "licence": "UNVERIFIED",
+      "attributionRequired": null,
+      "attributedIn": null,
+      "source": {
+        "note": "NOT ESTABLISHED IN THIS ENVIRONMENT, for the same reason as ink_sparkle.frag: emitted by the toolchain, declared in no manifest here."
+      },
+      "wouldNeed": "The Flutter engine LICENSE at the pinned version, read directly; and the bundle's own NOTICES file, which is generated from those licence texts.",
+      "shippedIn": "every web build, found by the --bundle walk."
     },
     {
       "id": "brand-nikatru-icon",

@@ -268,26 +268,70 @@ const matchKey = (shippedId, shippedName) => {
   return null;
 };
 
+/** Files the BUILD emits to describe or license the bundle. Named individually
+ *  in the register — never a suffix rule, so a new one still fails until
+ *  somebody writes it down. Empty is COVERAGE LOST in bundle mode: with no list,
+ *  every generated file would be reported as an unlicensed asset and the step
+ *  would be red forever, which is a step somebody deletes. */
+const generated = new Set(Object.keys(register.generatedBundleFiles?.files ?? {}));
+if (bundleDir !== null && generated.size === 0) {
+  coverageLost(
+    'the register declares no `generatedBundleFiles.files`, and this is BUNDLE mode.',
+    'Every build emits manifests and a NOTICES file. With no list they are all reported as unlicensed',
+    'assets, the step is red on a correct tree, and a step that cries wolf is one somebody deletes.',
+  );
+}
+
 const matched = new Set();
+let generatedSeen = 0;
 for (const [id, s] of shipped) {
+  if (generated.has(s.name)) {
+    generatedSeen++;
+    continue;
+  }
   const row = matchKey(id, s.name);
   if (!row) {
     problems.push(
       `${s.name} ships (${[...new Set(s.where)].join(', ')}) and has NO row in tooling/legal/asset-register.json. ` +
         'A store can ask for evidence of rights to it, and the answer would be a search rather than a file. Add the ' +
-        'row — including when the answer is "our own work, all rights reserved".',
+        'row — including when the answer is "our own work, all rights reserved", or (if the BUILD emitted it to ' +
+        'describe the bundle rather than to ship material) name it in `generatedBundleFiles` with a reason.',
     );
     continue;
   }
   matched.add(keyOf(row));
 }
-for (const a of assets) {
-  if (matched.has(keyOf(a))) continue;
-  problems.push(
-    `the asset register carries a row for ${JSON.stringify(a.id)} (${keyOf(a)}) and no such asset is shipped. ` +
-      'Either it was removed and the row outlived it, or it moved and the row still points at the old path. A ' +
-      'register describing assets nobody ships is a register nobody trusts about the ones they do.',
-  );
+
+// ── the reverse direction, and WHICH MODE MAY ASSERT IT ─────────────────────
+// 🔴 A SINGLE APP'S BUNDLE CANNOT WITNESS THE WHOLE WORKSPACE, and the first CI
+// run of the bundle step proved it: the lane walks apps/probe (a throwaway stamp
+// with no brand assets) and the guard reported all three of apps/subly's brand
+// rows as "no such asset is shipped". They ARE shipped — by a different app.
+//
+// So the row-with-no-asset direction belongs to DECLARED mode, which reads every
+// manifest in the workspace and therefore has the standing to say a row is
+// orphaned. BUNDLE mode asserts the direction it CAN: every row marked
+// `bundleOnly` — material the toolchain injects, which no manifest declares —
+// must actually be in the bundle. Neither mode is given a claim it cannot back.
+if (bundleDir === null) {
+  for (const a of assets) {
+    if (a.bundleOnly) continue; // declared by no manifest; the bundle mode owns it
+    if (matched.has(keyOf(a))) continue;
+    problems.push(
+      `the asset register carries a row for ${JSON.stringify(a.id)} (${keyOf(a)}) and no such asset is shipped. ` +
+        'Either it was removed and the row outlived it, or it moved and the row still points at the old path. A ' +
+        'register describing assets nobody ships is a register nobody trusts about the ones they do.',
+    );
+  }
+} else {
+  for (const a of assets) {
+    if (!a.bundleOnly || matched.has(keyOf(a))) continue;
+    problems.push(
+      `the asset register carries a bundleOnly row for ${JSON.stringify(a.id)} (${keyOf(a)}) and the build did NOT ` +
+        'emit it. A bundleOnly row exists precisely because no manifest declares the file, so this walk is the only ' +
+        'thing that can ever notice it has gone — retire the row, or find out what stopped shipping it.',
+    );
+  }
 }
 
 // ── per-row obligations ─────────────────────────────────────────────────────
@@ -475,8 +519,10 @@ if (problems.length) {
 }
 
 console.log(
-  `ok  licence register — ${shipped.size} shipped asset(s) enumerated in ${bundleDir === null ? 'DECLARED' : 'BUNDLE'} ` +
-    `mode, each with a row and each row with an asset; ${sourced} licence claim(s) carry their evidence`,
+  `ok  licence register — ${shipped.size} file(s) enumerated in ${bundleDir === null ? 'DECLARED' : 'BUNDLE'} mode, ` +
+    `${shipped.size - generatedSeen} of them shipped material with a row` +
+    (generatedSeen > 0 ? ` and ${generatedSeen} build-generated (named, with reasons)` : '') +
+    `; ${sourced} licence claim(s) carry their evidence`,
 );
 console.log(
   `    ${appsWithSurface}/${appDirs.length} app(s) construct a real licences surface; ` +

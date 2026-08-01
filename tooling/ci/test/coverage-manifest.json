@@ -17,7 +17,7 @@
   "guards.test.mjs": 217,
   "input-contract.test.mjs": 20,
   "legal-tripwires.test.mjs": 26,
-  "licence-register.test.mjs": 33,
+  "licence-register.test.mjs": 39,
   "lint-inheritance.test.mjs": 12,
   "no-clone-tells.test.mjs": 16,
   "no-hardcoded-strings.test.mjs": 12,
