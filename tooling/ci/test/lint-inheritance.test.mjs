@@ -150,6 +150,50 @@ describe('assert-lint-inheritance', () => {
       assert.match(out, /does not include `package:nikatru_lints/);
     });
 
+    // 🔴 THE DEFECT THIS GUARD SHIPPED WITH, mutation-proven against the real
+    // brick 2026-08-01. Stripping FULL-LINE comments and then substring-matching
+    // the whole file left a TRAILING comment scoring as compliance: the guard
+    // printed `ok 9 file(s) inherit the shared set` while the brick had reverted
+    // to flutter_lints. It is the same trap the test above records, one line to
+    // the right. Reverting includeValues() to `code.includes(INCLUDE)` turns
+    // this red.
+    test('FAILS when the include is named only in a TRAILING comment', () => {
+      const { code, out } = run(tree({
+        overrides: {
+          [BRICK]: 'include: flutter_lints/flutter.yaml  # was package:nikatru_lints/analysis_options.yaml\n',
+        },
+      }));
+      assert.equal(code, 1, 'a trailing comment is prose, not an include');
+      assert.match(out, /its `include:` names `flutter_lints\/flutter\.yaml` instead/);
+    });
+
+    test('FAILS when the file declares no include directive at all', () => {
+      const { code, out } = run(tree({
+        overrides: { [BRICK]: 'linter:\n  rules:\n    avoid_print: true\n' },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /it declares no `include:` directive at all/);
+    });
+
+    // ── the false-alarm side. Reading the directive as STRUCTURE must still
+    //    accept every shape the analyzer itself accepts, or the fix trades a
+    //    silent pass for a build nobody can green.
+    for (const [shape, body] of [
+      ['a correct include carrying its own trailing comment',
+        'include: package:nikatru_lints/analysis_options.yaml  # [C-12] one set, 50 apps\n'],
+      ['a quoted scalar',
+        'include: "package:nikatru_lints/analysis_options.yaml"\n'],
+      ['a flow sequence',
+        'include: [package:nikatru_lints/analysis_options.yaml]\n'],
+      ['a block sequence',
+        'include:\n  - package:nikatru_lints/analysis_options.yaml\n'],
+    ]) {
+      test(`passes on ${shape}`, () => {
+        const { code, out } = run(tree({ overrides: { [BRICK]: body } }));
+        assert.equal(code, 0, out);
+      });
+    }
+
     // The include cannot resolve without the dependency, so every rule in it
     // silently stops applying to that package.
     test('FAILS when the include is kept but the dependency is dropped', () => {

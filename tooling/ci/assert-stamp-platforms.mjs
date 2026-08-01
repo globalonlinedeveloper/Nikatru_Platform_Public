@@ -27,6 +27,7 @@ const ROOT = process.cwd();
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const POST_GEN = 'tooling/bricks/app/hooks/post_gen.dart';
 const CI = '.github/workflows/ci.yml';
+const PROBE_VARS = 'tooling/bricks/app/_probe_vars.json';
 const problems = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
@@ -56,12 +57,50 @@ const postGen = read(POST_GEN);
 const ciRaw = read(CI);
 const ci = ciRaw === null ? null : ciRaw.replace(/^\s*#.*$/gm, '');
 
-/** The command text of every `run:` scalar in a workflow, comments stripped.
- *  Handles the three shapes this repo's workflows use: a plain one-line scalar
- *  (YAML trailing ` #comment` removed), and `|`/`>` block scalars (each body
- *  line collected until dedent — a `#` there is SHELL syntax, handled later). */
-function runBlocks(yaml) {
-  const lines = yaml.split('\n');
+/** The workflow split into STEPS — each the line range from its `- ` marker to
+ *  the next marker at the same indent (or a dedent). Needed because a step is
+ *  the unit that carries `working-directory:`, and a `run:` command means
+ *  nothing until you know which directory it runs in. Block-scalar bodies are
+ *  indented deeper than the marker, so a shell line beginning `- ` cannot be
+ *  mistaken for the next step. */
+function workflowSteps(yaml) {
+  const out = [];
+  let cur = null;
+  for (const line of yaml.split('\n')) {
+    const dash = line.match(/^(\s*)-\s+\S/);
+    if (dash && (cur === null || dash[1].length <= cur.indent)) {
+      if (cur) out.push(cur);
+      cur = { indent: dash[1].length, lines: [line] };
+      continue;
+    }
+    if (cur === null) continue;
+    if (line.trim() === '') { cur.lines.push(line); continue; }
+    if (line.match(/^\s*/)[0].length <= cur.indent) { out.push(cur); cur = null; continue; }
+    cur.lines.push(line);
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/** A step's `working-directory:`, read at the step's own mapping indent so a
+ *  string inside a block scalar cannot supply one. `null` = the repo root. */
+function stepWorkdir(step) {
+  const re = new RegExp(`^\\s{${step.indent + 2}}working-directory:\\s*(.+)$`);
+  for (const line of step.lines) {
+    const m = line.match(re);
+    if (m) {
+      return m[1].replace(/\s#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2').replace(/\/+$/, '');
+    }
+  }
+  return null;
+}
+
+/** The command text of every `run:` scalar in a set of workflow lines, comments
+ *  stripped. Handles the three shapes this repo's workflows use: a plain
+ *  one-line scalar (YAML trailing ` #comment` removed), and `|`/`>` block
+ *  scalars (each body line collected until dedent — a `#` there is SHELL
+ *  syntax, handled later). */
+function runBlocks(lines) {
   const blocks = [];
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
@@ -84,21 +123,64 @@ function runBlocks(yaml) {
   return blocks;
 }
 
-/** Does any run block actually INVOKE `flutter build <p>` — in command position,
- *  not inside a quoted string, a shell comment, or an argument to `echo`? */
-function ciRunsBuild(yaml, p) {
+/** Every place CI actually INVOKES `flutter build <p>` — in command position,
+ *  not inside a quoted string, a shell comment, or an argument to `echo` —
+ *  paired with the directory that invocation runs in.
+ *
+ *  🔴 AND THE DIRECTORY IS THE POINT (2026-08-01 corpus triage). Scoping the
+ *  match to command position was still only half the check: the guard asked
+ *  WHETHER the command exists and never WHICH APP it builds. Mutation-proven on
+ *  the real workflow — flipping this step's `working-directory` from the freshly
+ *  stamped probe to `apps/subly` left the guard printing `ok every claimed
+ *  platform is stamped and built in CI`, while the thing being built was the
+ *  hand-maintained legacy app that has compiled for a year. "A fresh stamp
+ *  really builds" was then proven by building something that was never stamped. */
+function buildInvocations(yaml, p) {
   const invoke = new RegExp(`^\\s*flutter\\s+build\\s+${p}\\b`);
-  return runBlocks(yaml).some((block) =>
-    block
-      .replace(/'[^'\n]*'/g, ' ')      // quoted prose is not a command
-      .replace(/"[^"\n]*"/g, ' ')
-      .replace(/(^|\s)#.*$/gm, '$1')   // a shell comment is not a command
-      .split(/\n|&&|\|\||;|\|/)        // one command per segment
-      .some((seg) => invoke.test(seg)),
-  );
+  const found = [];
+  for (const step of workflowSteps(yaml)) {
+    const workdir = stepWorkdir(step);
+    for (const block of runBlocks(step.lines)) {
+      const segments = block
+        .replace(/'[^'\n]*'/g, ' ')      // quoted prose is not a command
+        .replace(/"[^"\n]*"/g, ' ')
+        .replace(/(^|\s)#.*$/gm, '$1')   // a shell comment is not a command
+        .split(/\n|&&|\|\||;|\|/);       // one command per segment
+      if (segments.some((seg) => invoke.test(seg))) found.push({ workdir, segments });
+    }
+  }
+  return found;
+}
+
+/** Is this invocation anchored to the stamped app? Either the step declares it
+ *  as its `working-directory`, or the same command chain `cd`s there first —
+ *  both are shapes this repo's workflows legitimately use. */
+function anchoredTo(inv, dir) {
+  if (inv.workdir === dir) return true;
+  const cd = new RegExp(`^\\s*cd\\s+\\.?/?${dir}/?\\s*$`);
+  return inv.segments.some((seg) => cd.test(seg));
 }
 if (postGen === null) problems.push(`${POST_GEN} is missing — nothing writes the platform claim.`);
 if (ciRaw === null) problems.push(`${CI} is missing — nothing builds a stamp.`);
+
+// The directory a stamped-app build has to run in, DERIVED from the vars file
+// the stamp lane actually feeds mason — never typed here. Rename the probe and
+// the anchor follows it; there is no constant to go stale. If it cannot be
+// derived the anchor test would silently become vacuous, so that is a coverage
+// failure rather than a skip.
+let stampDir = null;
+const probeVars = read(PROBE_VARS);
+if (probeVars !== null) {
+  try {
+    const id = JSON.parse(probeVars).app_id;
+    if (typeof id === 'string' && id.trim()) stampDir = `apps/${id.trim()}`;
+  } catch { /* reported immediately below */ }
+}
+if (stampDir === null) {
+  problems.push(
+    `COVERAGE LOST — ${PROBE_VARS} yields no \`app_id\`, so there is no directory to anchor "CI builds the STAMPED app" to. Without it the build check credits \`flutter build\` run against any app in the tree, including one that was never stamped.`,
+  );
+}
 
 if (postGen !== null && ci !== null) {
   // ── the CLAIM ─────────────────────────────────────────────────────────────
@@ -133,9 +215,15 @@ if (postGen !== null && ci !== null) {
         `the stamp CLAIMS "${p}" but the brick stamps no \`${p}/\` folder. \`flutter build ${p}\` fails immediately on a fresh stamp, and its error suggests \`flutter create . --platforms ${p}\` — the hand-repair a stamper exists to make unnecessary.`,
       );
     }
-    if (!ciRunsBuild(ci, p)) {
+    const builds = buildInvocations(ci, p);
+    if (builds.length === 0) {
       problems.push(
         `the stamp CLAIMS "${p}" but ${CI} never runs \`flutter build ${p}\` against a stamped app. A claim nothing builds is a promise made to a public catalogue and never kept.`,
+      );
+    } else if (stampDir !== null && !builds.some((b) => anchoredTo(b, stampDir))) {
+      const where = builds.map((b) => `\`${b.workdir ?? '<repo root>'}\``).join(', ');
+      problems.push(
+        `${CI} runs \`flutter build ${p}\`, but not in \`${stampDir}\` — it runs in ${where}. The claim is about a FRESH STAMP: building an app that a human has maintained for a year proves the toolchain works, not that the brick produces a buildable app. Point the step's \`working-directory\` at the stamped app.`,
       );
     }
   }

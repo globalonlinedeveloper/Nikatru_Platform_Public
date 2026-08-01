@@ -164,8 +164,19 @@ const RULES = [
   },
   {
     name: 'ADD COLUMN … NOT NULL without DEFAULT',
-    // Match a single ADD COLUMN clause up to its terminating ';'.
-    re: /\bADD\s+(?:COLUMN\s+)?[^;]*?\bNOT\s+NULL\b[^;]*?;/gi,
+    // Match a single ADD COLUMN clause up to its terminating ';' — OR to the end
+    // of the file.
+    //
+    // 🔴 THE `;` USED TO BE MANDATORY, and that made the LAST statement in every
+    // migration unscannable (2026-08-01 corpus triage). Mutation-proven:
+    // `ALTER TABLE events ADD COLUMN tenant TEXT NOT NULL` with no trailing
+    // semicolon printed "7 migration file(s) clean"; add the `;` and the same
+    // statement failed the build. A trailing semicolon is optional in SQL and
+    // every migration has a final statement, so the one place a hand-written
+    // file most often omits it was the one place this rule could not look.
+    // wrangler applies the statement either way — the guard was the only thing
+    // that cared about the punctuation.
+    re: /\bADD\s+(?:COLUMN\s+)?[^;]*?\bNOT\s+NULL\b[^;]*?(?:;|$)/gi,
     why: 'SQLite cannot add a NOT NULL column without a constant DEFAULT',
     skip: (m) => /\bDEFAULT\b/i.test(m),
   },
