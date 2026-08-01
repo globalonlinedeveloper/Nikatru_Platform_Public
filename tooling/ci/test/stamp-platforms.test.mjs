@@ -23,6 +23,23 @@
 // M5 is the repo's own recorded rule — strip comments before scanning — being
 // broken by the person writing it down. All three are fixed and re-verified.
 //
+// ⚠️ AND M5 WAS ONLY HALF FIXED (2026-08-01 full-corpus review). Stripping
+// FULL-LINE comments and then testing bare presence anywhere in the file left
+// three more prose shapes satisfying "CI builds this platform". Re-mutated
+// against the REAL tree (a scratch git worktree, restore byte-verified), all
+// three of which the shipped guard printed `ok` for:
+//
+//   M5b `run: echo skip  # flutter build web disabled while debugging`
+//                                            -> MISSED (trailing comment)
+//   M5c `run: echo "flutter build web"`      -> MISSED (quoted string)
+//   M5d the phrase moved into the step `name:`, run gutted
+//                                            -> MISSED (step name)
+//
+// The check now ranges over run-block STRUCTURE — the command text of `run:`
+// scalars only, shell comments and quoted strings removed, phrase required in
+// COMMAND position. All three now fail; the legitimate block-scalar and
+// `&&`-chained shapes below are the false-alarm side of the same fix.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -179,6 +196,79 @@ describe('assert-stamp-platforms', () => {
     }));
     assert.equal(code, 1, 'void _registerInWorkspace(...) is still declared');
     assert.match(out, /never adds the app to the root `workspace:` list/);
+  });
+
+  // ── 🔴 M5b/c/d — the three prose shapes the half-fix still accepted. Each was
+  //    reproduced against the real tree first and the shipped guard printed
+  //    `ok   every claimed platform is stamped and built in CI` for all three.
+  test('FAILS when the phrase survives only as a TRAILING comment on the run line', () => {
+    // The realistic edit: someone disables a slow build while debugging and
+    // leaves a note saying what used to be there. `^\s*#` never sees it.
+    const { code, out } = run(tree({
+      ci: goodCi.replace(
+        'run: flutter build web --pwa-strategy=none',
+        'run: echo skip  # flutter build web disabled while debugging',
+      ),
+    }));
+    assert.equal(code, 1, 'a trailing comment is prose, not a build');
+    assert.match(out, /never runs `flutter build web`/);
+  });
+
+  test('FAILS when the phrase appears only inside a quoted string', () => {
+    const { code, out } = run(tree({
+      ci: goodCi.replace('run: flutter build web --pwa-strategy=none', 'run: echo "flutter build web"'),
+    }));
+    assert.equal(code, 1, 'echoing the words is not running the command');
+    assert.match(out, /never runs `flutter build web`/);
+  });
+
+  test('FAILS when the phrase appears only in the step name', () => {
+    const { code, out } = run(tree({
+      ci: goodCi
+        .replace('- name: A fresh stamp really builds for every platform it claims', '- name: flutter build web')
+        .replace('run: flutter build web --pwa-strategy=none', 'run: echo skip'),
+    }));
+    assert.equal(code, 1, 'a step name is a label, not a command');
+    assert.match(out, /never runs `flutter build web`/);
+  });
+
+  // ── the false-alarm side. Scoping the match to command position must not
+  //    reject the legitimate shapes this repo's workflows actually use, or the
+  //    fix trades a silent pass for a build nobody can green.
+  test('passes when the build lives in a `|` block scalar', () => {
+    const { code, out } = run(tree({
+      ci: `
+jobs:
+  app_brick:
+    steps:
+      - name: A fresh stamp really builds for every platform it claims
+        working-directory: apps/probe
+        run: |
+          echo building
+          flutter build web --pwa-strategy=none
+`,
+    }));
+    assert.equal(code, 0, out);
+  });
+
+  test('passes when the build is one link in an && chain', () => {
+    const { code, out } = run(tree({
+      ci: goodCi.replace(
+        'run: flutter build web --pwa-strategy=none',
+        'run: cd apps/probe && flutter build web --pwa-strategy=none',
+      ),
+    }));
+    assert.equal(code, 0, out);
+  });
+
+  test('passes when a real build line also carries a trailing comment', () => {
+    const { code, out } = run(tree({
+      ci: goodCi.replace(
+        'run: flutter build web --pwa-strategy=none',
+        'run: flutter build web --pwa-strategy=none  # PWA off: [ADR 006]',
+      ),
+    }));
+    assert.equal(code, 0, out);
   });
 
   // 🔴 M4 — scoped to the right function. `_appendToAppsJson` keeps the phrase.
