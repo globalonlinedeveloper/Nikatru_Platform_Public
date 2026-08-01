@@ -51,9 +51,16 @@ import { spawnSync } from 'node:child_process';
 
 const MIN_SEVERITY = 'medium';
 const MIN_CONFIDENCE = 'high';
-// The real tree carries five workflows. A scan pointed at the wrong directory
-// finds nothing and exits 0, which is indistinguishable from a clean repo — so
-// the count is asserted before any result is believed. [pipeline F-10]
+// A scan pointed at the wrong directory finds nothing and exits 0, which is
+// indistinguishable from a clean repo — so the count is asserted before any
+// result is believed. [pipeline F-10] The tree carried five workflows when this
+// was written and carries NINE as of 2026-08-01; the floor deliberately keeps
+// headroom below the measurement rather than being re-pinned at reality, which
+// is the shape that teaches people to raise floors reflexively. What actually
+// anchors "the scan reached the right tree" is that this number is a FLOOR on a
+// directory the fixtures can also produce — the real repository's reach is
+// additionally proven by assert-workflow-hardening.mjs, which cross-checks the
+// scanned set against `git ls-files`.
 /** RULES BLOCKED REGARDLESS OF CONFIDENCE.
  *
  *  The severity/confidence gate above is a blunt instrument, and relying on it
@@ -78,7 +85,19 @@ const FINDINGS_EXIT = 14;
 const args = process.argv.slice(2);
 const zIdx = args.indexOf('--zizmor');
 const zizmor = zIdx >= 0 ? args[zIdx + 1] : 'zizmor';
-const positional = args.filter((a, i) => !a.startsWith('--') && i !== zIdx + 1);
+// 🔴 `i !== zIdx + 1` ALONE EATS THE FIRST POSITIONAL WHEN THE FLAG IS ABSENT.
+// indexOf returns -1 when `--zizmor` is not passed, and -1 + 1 is 0 — which is
+// exactly the index the documented no-flag form `node scan-workflows.mjs
+// <repoRoot>` puts repoRoot at. So that form silently fell back to
+// process.cwd(): pointed at an empty directory it scanned the repo it happened
+// to be standing in, printed "9 workflow(s)" for a root that has 2, and exited
+// 0. Not a crash — a confident, wrong, PASSING answer, which is this repo's
+// signature failure. Corpus triage 2026-08-01 (#28); scan-secrets.mjs carried
+// the identical line. The flag's value index is only excluded when there IS a
+// flag. Negative-tested: with the -1 restored, the no-flag case reports on the
+// wrong tree again.
+const flagValueIdx = zIdx >= 0 ? zIdx + 1 : -1;
+const positional = args.filter((a, i) => !a.startsWith('--') && i !== flagValueIdx);
 const repoRoot = positional[0] ?? process.cwd();
 
 /** TESTABILITY SEAM, and the only reason it exists: the behaviour that matters
@@ -121,7 +140,26 @@ const CANARY = [
   '      - run: echo second job',
 ].join('\n');
 
-// ── 0. the scanner must exist at all ─────────────────────────────────────────
+// ── 0. COVERAGE: the scan must actually reach the workflows ──────────────────
+// MOVED AHEAD OF THE BINARY CHECK on 2026-08-01. "You are not pointed at a
+// workflow directory" is the most basic failure here and the only one checkable
+// without a scanner at all — which is what makes the argument handling
+// negative-testable in a CI job that installs no binary. The corpus-triage
+// defect (#28) was exactly that `<repoRoot>` was silently dropped in the no-flag
+// form, and nothing could reach far enough into this file to observe it.
+const wfDir = join(repoRoot, '.github', 'workflows');
+if (!existsSync(wfDir)) {
+  console.error(`✗ COVERAGE LOST — ${wfDir} does not exist. zizmor would scan nothing and exit 0.`);
+  process.exit(1);
+}
+const workflows = readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f));
+if (workflows.length < MIN_WORKFLOWS) {
+  console.error(`✗ COVERAGE LOST — found ${workflows.length} workflow(s), expected at least ${MIN_WORKFLOWS}.`);
+  console.error('  The scan is broken, not the tree. An empty scan reports clean.');
+  process.exit(1);
+}
+
+// ── 1. the scanner must exist at all ─────────────────────────────────────────
 const version = spawnSync(exe, [...lead, '--version'], { encoding: 'utf8' });
 if (version.error || version.status !== 0) {
   console.error(`✗ zizmor not runnable at "${zizmor}" — ${version.error?.message ?? `exit ${version.status}`}`);
@@ -130,7 +168,7 @@ if (version.error || version.status !== 0) {
 }
 console.log((version.stdout ?? '').trim());
 
-// ── 1. SELF-TEST: prove the scanner still detects, at the gate's threshold ────
+// ── 2. SELF-TEST: prove the scanner still detects, at the gate's threshold ────
 const canaryRoot = mkdtempSync(join(tmpdir(), 'nikatru-wf-canary-'));
 const canaryDir = join(canaryRoot, '.github', 'workflows');
 try {
@@ -148,19 +186,6 @@ try {
   console.log('ok  self-test — a deliberately vulnerable workflow is still detected');
 } finally {
   rmSync(canaryRoot, { recursive: true, force: true });
-}
-
-// ── 2. COVERAGE: the scan must actually reach the workflows ──────────────────
-const wfDir = join(repoRoot, '.github', 'workflows');
-if (!existsSync(wfDir)) {
-  console.error(`✗ COVERAGE LOST — ${wfDir} does not exist. zizmor would scan nothing and exit 0.`);
-  process.exit(1);
-}
-const workflows = readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f));
-if (workflows.length < MIN_WORKFLOWS) {
-  console.error(`✗ COVERAGE LOST — found ${workflows.length} workflow(s), expected at least ${MIN_WORKFLOWS}.`);
-  console.error('  The scan is broken, not the tree. An empty scan reports clean.');
-  process.exit(1);
 }
 
 // ── 3. VISIBILITY: print everything, including what the gate lets through ────

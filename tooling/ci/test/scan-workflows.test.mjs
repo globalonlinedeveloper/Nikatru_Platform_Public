@@ -141,6 +141,33 @@ describe('scan-workflows wrapper', () => {
     assert.match(r.stdout, /below the gate \(reported, not blocking\).*9 findings/);
   });
 
+  // 🔴 CORPUS TRIAGE 2026-08-01 (#28). `positional` excluded index `zIdx + 1`
+  // unconditionally; with no `--zizmor` flag indexOf returns -1 and -1 + 1 is 0,
+  // which is the repoRoot's own index. So the documented no-flag form scanned
+  // process.cwd() instead and, run from the repository, reported "9 workflow(s)"
+  // for a root holding 2 — a confident, wrong, PASSING answer.
+  //
+  // This is testable at all only because the coverage check now runs BEFORE the
+  // binary check: no zizmor is installed in the guards lane, and against the
+  // broken parsing this case reports on the wrong tree (or dies at "not
+  // runnable"), never on the two workflows it was handed.
+  test('the positional repoRoot is honoured with NO --zizmor flag', () => {
+    const root = fakeRepo('argbare', 2);
+    const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+    const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    assert.equal(r.status, 1, out);
+    assert.match(out, /COVERAGE LOST — found 2 workflow\(s\)/, out);
+  });
+
+  test('…and both invocation forms reach the same root', () => {
+    const root = fakeRepo('argsame', 2);
+    const bare = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+    const flagged = spawnSync(process.execPath, [GUARD, root, '--zizmor', stub('argsame.mjs')], { encoding: 'utf8' });
+    const norm = (r) => `${r.stdout ?? ''}${r.stderr ?? ''}`.split('\n').find((l) => l.includes('COVERAGE LOST'));
+    assert.equal(norm(bare), norm(flagged));
+    assert.match(String(norm(bare)), /found 2 workflow\(s\)/);
+  });
+
   test('when nothing matches, it says what WAS there instead of shrugging', () => {
     const path = join(TMP, 'silent.mjs');
     writeFileSync(
