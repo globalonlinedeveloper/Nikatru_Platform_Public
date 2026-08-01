@@ -1,0 +1,251 @@
+{
+  "_readme": [
+    "THE PERSONAL-DATA INVENTORY — [pipeline K-8] company/pipeline/08-compliance-legal.md",
+    "",
+    "One row for every place this factory can put data: every table any migration creates, every D1",
+    "database, KV namespace and R2 bucket any wrangler config binds, and every KV binding a Cloudflare",
+    "Pages Function reaches. What each holds, how long it is kept, what code writes it, and — where it",
+    "holds anything about a person — the SENTENCE ON THE PUBLISHED PAGE that discloses it.",
+    "",
+    "🔴 THE ROW SET MUST EQUAL THE DERIVED STORE SET, BOTH DIRECTIONS, and the second direction is the",
+    "one that matters. `a store with no row` catches data arriving undisclosed. `a row with no store`",
+    "is what stops this file becoming a wish-list: without it, a table could be renamed, the row would",
+    "keep describing the old name, and the inventory would go on looking complete while describing a",
+    "schema that no longer exists.",
+    "",
+    "DERIVED, NOT LISTED. The right-hand side is computed from the tree on every run:",
+    "  · every CREATE TABLE in services/*/migrations/*.sql, with COMMENTS AND STRING LITERALS STRIPPED",
+    "    first — a table name inside a comment is not a table, and this repo has already shipped a guard",
+    "    that matched the comment explaining why a binding did NOT exist;",
+    "  · every d1_databases / kv_namespaces / r2_buckets entry in EVERY wrangler config in the repo,",
+    "    PARSED as JSONC rather than grepped. ⚠️ Repo-wide on purpose: assert-clone-contract.mjs reads",
+    "    only services/<app>-api/wrangler.jsonc, so services/subly-api is invisible to it. Borrowing",
+    "    that walk would have inherited the blind spot and reported full coverage of a subset;",
+    "  · every KV binding a Pages Function calls (`env.SIGNUPS.put(...)`). These are bound in the",
+    "    Cloudflare dashboard and appear in NO wrangler config, so a wrangler-only walk would miss the",
+    "    one store in this repository that holds a plain email address.",
+    "",
+    "⚠️ WHAT IS PUBLIC HERE. This is a public repository and this file describes SHAPE, never CONTENT: a",
+    "store exists, it holds this CATEGORY of data, it is written by this file, it is kept for this long.",
+    "No row contains a person's data, an identifier, a key, or a database id. See tooling/legal/README.md.",
+    "",
+    "RETENTION IS A DECLARATION, AND `undecided` IS AN HONEST ONE. Every row carries `retention`.",
+    "`ttl` states the bound and the code that sets it. `keep` requires a written reason. `undecided`",
+    "requires an ownerItem and PRINTS on every run — because choosing how long to keep a real person's",
+    "data is a legal and business decision, not something an agent should quietly pick a number for. The",
+    "guard fails a row with NO retention field at all; it never invents one.",
+    "",
+    "Enforced by tooling/ci/assert-data-inventory.mjs. COVERAGE LOST when any of the three walks",
+    "under-reaches the floors in `derivation` below."
+  ],
+
+  "derivation": {
+    "_why": [
+      "THE FLOORS ARE A RELATIONSHIP, NOT A GUESS. Each is the count measured on the tree the day this",
+      "file landed, and a walk that finds FEWER has broken rather than shrunk — a migration directory",
+      "that stops being found makes every 'is this table declared?' question vacuously true.",
+      "They are also the mutation targets: deleting one migration file is COVERAGE LOST, not a pass."
+    ],
+    "migrationRoots": ["services"],
+    "minMigrationFiles": 5,
+    "wranglerRoots": ["services", "tooling/bricks"],
+    "minWranglerConfigs": 3,
+    "pagesFunctionRoots": ["sites/nikatru/functions"],
+    "minPagesFunctionFiles": 1,
+    "minPagesKvBindings": 1
+  },
+
+  "retentionKinds": {
+    "_why": "The vocabulary rows are validated against, declared in the register rather than in the guard so that renaming a kind out from under the rows using it fails.",
+    "ttl": "the store expires the record itself, and the row names the code that sets the expiry.",
+    "keep": "kept until deliberately deleted. Requires a written reason — 'we might want it' is not one.",
+    "undecided": "nobody has decided yet. Requires an ownerItem, and PRINTS every run so it cannot become permanent by being invisible.",
+    "derived": "holds no record of its own; its lifetime is the lifetime of the rows inside it (a database, not a table)."
+  },
+
+  "stores": [
+    {
+      "id": "d1:platform_db",
+      "kind": "d1-database",
+      "name": "platform_db",
+      "personalData": false,
+      "holds": "The shared portfolio database. Holds no rows of its own; its tables do.",
+      "retention": { "kind": "derived", "reason": "A database is a container. Every table in it carries its own row below." },
+      "writtenBy": ["services/platform/wrangler.jsonc"],
+      "note": "🔴 ONE DATABASE FOR THE WHOLE PORTFOLIO. services/platform is its sole migrations applier, which is why check-migrations.mjs treats a destructive statement here as a portfolio-wide outage rather than one app's problem."
+    },
+    {
+      "id": "d1:subly_db",
+      "kind": "d1-database",
+      "name": "subly_db",
+      "personalData": false,
+      "holds": "Subly's own database. Holds no rows of its own; its tables do.",
+      "retention": { "kind": "derived", "reason": "A container. See the table rows below." },
+      "writtenBy": ["services/subly-api/wrangler.jsonc"]
+    },
+    {
+      "id": "d1:{{app_id}}_db",
+      "kind": "d1-database",
+      "name": "{{app_id}}_db",
+      "personalData": false,
+      "holds": "The per-app database a BACKEND stamp creates. A template, not a live store — the name is a mustache placeholder and resolves per stamped app.",
+      "retention": { "kind": "derived", "reason": "A container, and a template of one. Each stamped app inherits the table rows its own migrations create." },
+      "writtenBy": ["tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc"],
+      "note": "Included deliberately rather than filtered out as 'just a template'. It is the binding every future app will have, and an inventory that skips the brick is an inventory that is wrong the day app number two ships."
+    },
+
+    {
+      "id": "table:platform_db.entitlements",
+      "kind": "d1-table",
+      "name": "entitlements",
+      "personalData": true,
+      "holds": "One row per (user, app, entitlement): what a person has paid for. Keyed on a store/aggregator user id, not on a name or an email.",
+      "retention": {
+        "kind": "keep",
+        "reason": "An entitlement is the record of what somebody bought and is entitled to keep using. Deleting it deletes their purchase. It is retained for as long as the account exists; erasure is [pipeline K-7]'s route, which is BLOCKED on [4]B-5 (there is no DELETE /v1/account in the shared Worker yet)."
+      },
+      "writtenBy": ["services/platform/migrations/0001_entitlements.sql", "services/subly-api/src/routes/webhooks.ts"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
+      "id": "table:platform_db.events",
+      "kind": "d1-table",
+      "name": "events",
+      "personalData": true,
+      "holds": "Usage-statistics events, collected only after consent. Each row carries the client's install id (anon_id), the app, platform, version and a coarse geo derived at the network edge.",
+      "retention": {
+        "kind": "undecided",
+        "ownerItem": "O-3",
+        "reason": "privacy.html promises information is kept 'only for as long as necessary'. No bound is set on this table and none is invented here: how long usage statistics are useful is a product and legal judgement, and an agent picking a number would be inventing a retention period that then looks authoritative. What IS decided is that the row exists and the gap is printed on every run."
+      },
+      "writtenBy": ["services/platform/migrations/0002_analytics.sql", "services/platform/src/routes/events.ts"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you agree when asked, we record which features of an app are used and when"
+      },
+      "note": "🔴 KEYED ON anon_id, NOT ON A USER. That is deliberate (nothing writes an anon_id → user_id mapping, and the route's own header says nothing ever may) and it has a consequence stage 8 records rather than hides: 'delete my account' provably cannot purge these rows, because there is nothing in them that identifies the account. Either the erasure promise narrows or the client sends its anon_id on erasure — a wording decision, and it belongs in the same version bump as the other O-3 corrections."
+    },
+    {
+      "id": "table:platform_db.consent_artifacts",
+      "kind": "d1-table",
+      "name": "consent_artifacts",
+      "personalData": true,
+      "holds": "Append-only record that a consent decision was made: which install, when, granted or withdrawn, and WHICH POLICY VERSION was shown. No IP address, no device fingerprint.",
+      "retention": {
+        "kind": "keep",
+        "reason": "The artifact IS the evidence that the choice was the user's. Deleting it destroys the only proof that consent was obtained, which is the opposite of what a retention limit is for. Append-only: a withdrawal is a NEW row, never an edit of the old one."
+      },
+      "writtenBy": ["services/platform/migrations/0002_analytics.sql", "services/platform/src/routes/events.ts"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "We keep a record of each consent decision"
+      },
+      "note": "The policy version in this table is what tooling/ci/assert-policy-archive.mjs exists to keep resolvable: a record citing 2026-07-26 is worth exactly our ability to still serve the 2026-07-26 bytes."
+    },
+    {
+      "id": "table:platform_db.cron_heartbeat",
+      "kind": "d1-table",
+      "name": "cron_heartbeat",
+      "personalData": false,
+      "holds": "One row per scheduled run: proof the nightly cron actually fired. No user data of any kind.",
+      "retention": { "kind": "keep", "reason": "Operational evidence, and tiny. It is how a silently-dead scheduler is noticed at all." },
+      "writtenBy": ["services/platform/migrations/0003_cron_heartbeat.sql"]
+    },
+    {
+      "id": "table:subly_db.subscriptions",
+      "kind": "d1-table",
+      "name": "subscriptions",
+      "personalData": true,
+      "holds": "The subscriptions a Subly user tracks — service name, cost, renewal date. USER-ENTERED CONTENT about the person's own finances, keyed on their user id.",
+      "retention": {
+        "kind": "keep",
+        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists and is asserted (the `account-deletion-works` coverage key); the SERVER-side erasure route does not — [pipeline K-7] conjunct (c), BLOCKED on [4]B-5."
+      },
+      "writtenBy": ["services/subly-api/migrations/0001_init.sql", "services/subly-api/src/routes/subscriptions.ts"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:subly_db.budgets",
+      "kind": "d1-table",
+      "name": "budgets",
+      "personalData": true,
+      "holds": "A user's monthly budget figure. User-entered, keyed on their user id.",
+      "retention": { "kind": "keep", "reason": "The user's own data, kept until they delete it. Same erasure position as subscriptions." },
+      "writtenBy": ["services/subly-api/migrations/0001_init.sql", "services/subly-api/src/routes/budget.ts"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:subly_db.budget_categories",
+      "kind": "d1-table",
+      "name": "budget_categories",
+      "personalData": true,
+      "holds": "Per-category budget allocations. User-entered, keyed on their user id.",
+      "retention": { "kind": "keep", "reason": "The user's own data, kept until they delete it." },
+      "writtenBy": ["services/subly-api/migrations/0001_init.sql", "services/subly-api/src/routes/budget.ts"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:subly_db.payment_history",
+      "kind": "d1-table",
+      "name": "payment_history",
+      "personalData": true,
+      "holds": "Dates and amounts a user recorded against their own subscriptions. ⚠️ A record OF payments, not a payment instrument: no card, bank or account number is stored, which is the claim tooling/legal/policy-claims.json asserts against every migration in the tree.",
+      "retention": { "kind": "keep", "reason": "The user's own history, kept until they delete it." },
+      "writtenBy": ["services/subly-api/migrations/0001_init.sql", "services/subly-api/src/routes/subscriptions.ts"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "do not collect"
+      }
+    },
+
+    {
+      "id": "kv:33e4e58abb644d0e917a159227c6c134",
+      "kind": "kv-namespace",
+      "name": "CONFIG_KV",
+      "personalData": false,
+      "holds": "Per-app configuration overrides, keyed `config:<app>`. DATA and flags, never anything about a person.",
+      "retention": { "kind": "keep", "reason": "Configuration. It is the current value or it is nothing." },
+      "writtenBy": ["services/platform/wrangler.jsonc"]
+    },
+    {
+      "id": "kv:bcfcb1618d1a4bfd8d02f87d3d21010d",
+      "kind": "kv-namespace",
+      "name": "JWKS_CACHE",
+      "personalData": false,
+      "holds": "A cache of the identity provider's public signing keys. Public key material, nothing user-specific.",
+      "retention": { "kind": "keep", "reason": "A cache of public keys, refreshed on rotation. Nothing here identifies anyone." },
+      "writtenBy": ["services/subly-api/wrangler.jsonc"],
+      "note": "The brick's backend variant binds the SAME namespace id, so this row covers both. Deduplicated by id, not by binding name — two Workers sharing a cache is one store."
+    },
+    {
+      "id": "kv:nikatru-signups",
+      "kind": "kv-namespace-pages",
+      "name": "SIGNUPS",
+      "personalData": true,
+      "holds": "Launch-notification signups: `sub:<email>` → { email, ts }. AND, under a separate `rl:` prefix, a short-lived per-fingerprint rate-limit counter. The email address is stored in plain text and is the only directly-identifying value anywhere in this repository.",
+      "retention": {
+        "kind": "undecided",
+        "ownerItem": "O-3",
+        "reason": "🔴 THE SHARPEST GAP IN THIS FILE. sites/nikatru/functions/api/subscribe.js writes the SIGNUP record with no expirationTtl, while the rate-limit key beside it correctly carries one — against privacy.html's promise to keep information 'only for as long as necessary'. It is NOT fixed here on purpose: setting a TTL on this namespace silently deletes the owner's real launch list after whatever number an agent picks, and no number is derivable from anything in this tree. What is needed is a decision (a period, or a written 'kept until launch, then deleted'), not a guess."
+      },
+      "writtenBy": ["sites/nikatru/functions/api/subscribe.js"],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "email address and the time you signed up"
+      },
+      "note": "Bound in the Cloudflare Pages dashboard and declared in NO wrangler config, which is exactly why the Pages-Function walk exists: a wrangler-only inventory would report full coverage while missing the one store holding a plain email address."
+    }
+  ]
+}

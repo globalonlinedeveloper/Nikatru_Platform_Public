@@ -158,6 +158,74 @@ jobs:
       - name: Every policy version a user consented to is still retrievable
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-policy-archive.mjs
+      # Every EMPHASISED claim on the three published legal pages is paired to
+      # what makes it true — and the domain is the <b> spans in the served HTML,
+      # so it cannot be shrunk without editing a document a human publishes. The
+      # subset that can be checked against code IS checked: the signup record is
+      # {email, ts} and nothing else; the IP fingerprint is keyed, not a digest;
+      # no advertising SDK appears in any pubspec in the tree; no migration
+      # declares a card or bank column.
+      #
+      # ⚠️ ONLY `code` ROWS CARRY AN ASSERTION. This does not prove the pages
+      # true and its own header says so. Four things ARE wrong on those pages
+      # today — the crash-report host, the Razorpay/merchant-of-record
+      # contradiction, the unnamed seller and the unnamed identity provider —
+      # and every one is fixed by publishing copy only the owner can approve
+      # (OWNER_QUEUE O-3). They PRINT every run and cannot be silently exempted:
+      # each declares the sentence that must still be on the page, and the guard
+      # goes RED when that sentence is corrected, demanding the row be retired.
+      # [pipeline K-3, K-5]
+      - name: Every published legal claim is paired, and the payment path is named
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-policy-claims.mjs
+      # Every place data can go — every table any migration creates, every D1 /
+      # KV / R2 binding any wrangler config declares, and every KV binding a
+      # Pages Function reaches — has exactly one inventory row, and every row has
+      # a store. The second direction is what stops the inventory becoming a
+      # wish-list: rename a table and the row describing the old name fails.
+      #
+      # The Pages-Function walk is not decoration: SIGNUPS is bound in the
+      # Cloudflare dashboard and appears in no config in this repository, and it
+      # holds the only plain email address we store. A wrangler-only walk would
+      # have reported full coverage while missing it.
+      #
+      # ⚠️ Two rows declare retention `undecided` and PRINT every run. An agent
+      # picking "90 days" for a real signup list would be inventing a number that
+      # then looks authoritative and silently deletes somebody's data.
+      # [pipeline K-8]
+      - name: Every store that holds data is inventoried and disclosed
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-data-inventory.mjs
+      # The duty matrix, checked against itself: every declared requirement has a
+      # row and every row names a declared requirement; every tripwire states the
+      # condition that makes it bite; a review date in the PAST fails.
+      #
+      # 🔴 AND THE SOURCE-HOST ALLOWLIST, which is four lines of code and the
+      # highest-value rule in the file: a duty's source must be the body that
+      # WROTE the rule or the platform that ENFORCES it. A law firm's client
+      # alert or a compliance vendor's blog fails the row — roughly thirty dead
+      # claims entered this project's corpus from exactly that shape, each
+      # reading as authoritative. A row marked COULD-NOT-ESTABLISH may not carry
+      # a URL at all: the mark means nobody has read the primary text, and a
+      # plausible link beside it is a false citation.
+      # Its own step, not the sites lane. [pipeline K-13]
+      - name: The per-market duty matrix cannot silently rot
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-legal-tripwires.mjs
+      # Rights evidence for everything shipped, in DECLARED mode — what the
+      # manifests intend to ship, so it runs here with no Flutter toolchain. The
+      # app_brick lane runs the same guard with --bundle against a real build.
+      #
+      # Every row carries a SOURCE for its licence claim and the guard refuses a
+      # row without one. The stage document states Flutter's bundled icon font is
+      # CC-BY 4.0; upstream has published under Apache-2.0 since 2016. Both are
+      # plausible, one is wrong, and the row says UNVERIFIED rather than picking.
+      # CC-BY-NC and CC-BY-SA are refused outright: the first excludes commercial
+      # distribution, the second's anti-ETM term is refuted by the Ed25519
+      # signature on our content packs. [pipeline K-10, K-11]
+      - name: Every shipped asset has rights evidence, and every app shows it
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-licence-register.mjs
       # Additive-only schema guard. Lives in this lane (no new lane) but scans
       # EVERY migration set in the repo — one shared platform_db means one
       # destructive migration is a portfolio-wide outage. Runs before the build
@@ -835,6 +903,16 @@ jobs:
       - name: A fresh stamp really builds for every platform it claims
         working-directory: apps/probe
         run: flutter build web --pwa-strategy=none
+      # [pipeline K-10] The STRONGER half of the licence register: the guards
+      # lane runs this in DECLARED mode (what the manifests intend to ship);
+      # here, against a bundle that actually exists, it enumerates what the
+      # build really emitted. That is where intent and output can be seen to
+      # differ — a font the toolchain injects, an asset a transitive package
+      # brings with it. A store can ask for evidence of rights to any of it
+      # without warning, and the answer has to be a file rather than a search.
+      # A step, not a reorder: this lane is stage 3's.
+      - name: Every asset the build actually shipped has a licence row
+        run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets
 
       # ── Variant 2: the OPT-IN backend stamp (needs_backend=true). Rarer, but
       # it still has to typecheck and deploy-dry-run.

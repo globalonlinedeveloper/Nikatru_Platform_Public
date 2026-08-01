@@ -1,0 +1,431 @@
+{
+  "_readme": [
+    "THE DUTY MATRIX — [pipeline K-13] company/pipeline/08-compliance-legal.md",
+    "",
+    "One row per compliance duty this factory has taken on: what it is, whether it is implemented, WHAT",
+    "WOULD TRIGGER IT if it is not, and where the claim came from. A tripwire with no stateable trigger is",
+    "decoration; a duty with no source is somebody's memory.",
+    "",
+    "🔴 NOBODY HERE IS A LAWYER, AND THIS FILE DOES NOT PRETEND OTHERWISE. Rows record what can be",
+    "OBSERVED — which artefact exists, which guard runs, which page publishes what — and, where a duty",
+    "rests on an external rule, the PRIMARY SOURCE it was read from and the date it was read. Where a rule",
+    "could not be read from a primary source in this environment, the row says COULD-NOT-ESTABLISH and",
+    "names what would have to be read. It is NEVER given a plausible-looking number or a plausible URL.",
+    "An invented figure in a compliance rule fires on CORRECT input while looking authoritative — a",
+    "made-up '120 characters or fewer' once rejected this repo's own fixture at 129, and the fix was to",
+    "delete the number, not to adjust it.",
+    "",
+    "🔴 THE SOURCE-HOST ALLOWLIST IS THE HIGHEST-VALUE RULE IN THIS FILE, and it is four lines of code.",
+    "A row's source URL must be a REGULATOR, a LEGISLATURE or a STORE/PLATFORM's own documentation. A",
+    "law-firm page, a compliance vendor's blog, a summary site or a news article FAILS THE ROW. Roughly",
+    "thirty dead claims entered this project's corpus because a compliance-vendor blog said so, and every",
+    "one of them read as authoritative. See `sourceHosts` below for the list and the reasoning.",
+    "",
+    "⚠️ THE COVERAGE SET IS THE REQUIREMENT LIST BELOW, AND IT IS INCOMPLETE BY CONSTRUCTION. K-13's",
+    "acceptance asks for the stage's 16 requirement ids PLUS its 14 written cuts. The written cuts live in",
+    "company/pipeline/08-compliance-legal.md, and company/ is gitignored — CI cannot read it, and a row",
+    "set derived from a file no guard can open would be a coverage claim over nothing (the exact defect",
+    "that stopped the previous increment). So the declared set here is the requirement ids, in-tree, and",
+    "this limitation is written down rather than papered over. See tooling/legal/README.md.",
+    "",
+    "Enforced by tooling/ci/assert-legal-tripwires.mjs:",
+    "  · every declared requirement has at least one row; every row names a declared requirement  [K-13.1]",
+    "  · every source URL's host is on the allowlist                                              [K-13.2]",
+    "  · every row carries a status from the declared vocabulary AND a stateable trigger          [K-13.3]",
+    "  · a PASSED reviewBy date FAILS; owner-gated rows PRINT rather than fail                    [K-13.4]",
+    "  · a COULD-NOT-ESTABLISH row may NOT carry a source URL — that is what the mark MEANS       [risk 6]",
+    "  · a row claiming `implemented` names an artefact that must EXIST in the tree               [K-13.1]",
+    "  · COVERAGE LOST on an empty matrix or an empty requirement list                            [F-10]"
+  ],
+
+  "sourceHosts": {
+    "_why": [
+      "REGULATORS, LEGISLATURES AND THE PLATFORM'S OWN DOCUMENTATION. Nothing else.",
+      "",
+      "The test each host passes: it is the body that WROTE the rule, or the platform that ENFORCES it.",
+      "A law firm's client alert, a compliance SaaS blog, a 'GDPR checklist' site and a news report all",
+      "fail it — not because they are always wrong, but because a claim sourced to one cannot be",
+      "re-verified, and a compliance corpus is only as good as its ability to be re-checked later.",
+      "",
+      "developer.android.com and partner.microsoft.com are here on the same footing as",
+      "developer.apple.com and support.google.com: they are the store's own publication of its own rule,",
+      "which is the enforcing body speaking. A store's requirement is not a law, and rows sourced to one",
+      "say so in their `duty` text rather than borrowing the authority of a statute."
+    ],
+    "allowed": [
+      "eur-lex.europa.eu",
+      "indiacode.nic.in",
+      "meity.gov.in",
+      "oag.ca.gov",
+      "ftc.gov",
+      "developer.apple.com",
+      "support.google.com",
+      "developer.android.com",
+      "learn.microsoft.com",
+      "partner.microsoft.com",
+      "paddle.com"
+    ]
+  },
+
+  "statuses": {
+    "_why": "The vocabulary rows are validated against, in the register rather than in the guard so that renaming one out from under the rows using it fails.",
+    "implemented": "an artefact in this tree discharges it, and the row names that artefact.",
+    "partial": "some limbs are built and the row says which are not.",
+    "not-started": "nothing built. The row's trigger is what makes it surface at the right moment.",
+    "owner-gated": "blocked on a decision or an account only the owner can supply. PRINTS every run, never fails the build.",
+    "watching": "no duty today; the row exists so the trigger is written down instead of remembered."
+  },
+
+  "verificationKinds": {
+    "primary-source": "read from the body that wrote or enforces the rule. Requires `source.url` on the allowlist and a `fetched` date.",
+    "in-tree": "verifiable inside this repository — a guard, a file, a workflow step. No external source applies.",
+    "decision": "settled by a decision record of ours. `decisionRecord` names it; CI cannot open it (knowledge/ is gitignored), so it is a pointer, not an assertion.",
+    "COULD-NOT-ESTABLISH": "the rule could not be read from a primary source in this environment. MUST NOT carry a source URL. `wouldNeed` says what would have to be read."
+  },
+
+  "requirements": {
+    "_why": [
+      "The declared coverage set. A duty with no row FAILS and a row naming no duty FAILS, so this is a",
+      "RELATIONSHIP rather than a count somebody lowers — deleting an id here is deleting the duty, which",
+      "is a visible act, and adding one immediately demands a row."
+    ],
+    "K-1": "Every app declares the markets it is offered in",
+    "K-2": "The legal document set is published and cannot vanish silently",
+    "K-2a": "A pricing page exists, is navigation-linked, and terms names the seller",
+    "K-3": "Every published legal claim is asserted true of the code",
+    "K-4": "The exact text a user consented to is retrievable forever",
+    "K-5": "The commercial surface names the actual seller and payment path",
+    "K-6": "Every app links its own legal surface in-app",
+    "K-7": "The erasure path is published, reachable and not orphaned",
+    "K-8": "One declared personal-data inventory behind every disclosure",
+    "K-9": "A rights complaint is actionable in hours without a store release",
+    "K-10": "Rights evidence for every third-party asset shipped",
+    "K-11": "The in-app licences surface covers what the app ships",
+    "K-12": "The repository's own legal posture is stated",
+    "K-13": "The per-market duty matrix cannot silently rot",
+    "K-14": "The notice is intelligible in the user's language, on demand",
+    "K-15": "Web builds honour the Global Privacy Control signal",
+    "K-16": "No kids app without the children's surface"
+  },
+
+  "duties": [
+    {
+      "id": "markets-declared-per-app",
+      "requirement": "K-1",
+      "duty": "A stamped app declares which markets it is offered in, so a per-market duty can be resolved mechanically rather than remembered.",
+      "status": "not-started",
+      "trigger": "The day a second app is stamped. A market field added after five apps exist is five retrofits plus notices already published without it.",
+      "verification": "in-tree",
+      "note": "tooling/ci/assert-input-contract.mjs already computes the declared-var ↔ rejection-path relation, so declaring the var MECHANICALLY forces its validation rule. The work is [8]INC-9 and it touches tooling/bricks/app/brick.yaml and hooks/pre_gen.dart, which are stage 3's primary files — deliberately not done in this change."
+    },
+    {
+      "id": "legal-page-set-published",
+      "requirement": "K-2",
+      "duty": "privacy, terms and refund resolve on the site that fronts every published app, and cannot be deleted silently.",
+      "status": "implemented",
+      "artefact": "tooling/ci/check-site-integrity.mjs",
+      "trigger": "Already live. The tripwire is the guard itself: deleting a page fails the build instead of surfacing as a store takedown.",
+      "verification": "in-tree"
+    },
+    {
+      "id": "store-requires-a-privacy-policy-url",
+      "requirement": "K-2",
+      "duty": "Every store channel requires a reachable privacy-policy URL in its console before a product that touches personal information can be published. This is a STORE requirement, not a statute.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-store-metadata.mjs",
+      "trigger": "Already in force for any channel we submit to. apps/*/store/*/privacy-policy-url.txt carries the URL and check-site-integrity.mjs proves it resolves to a page this repo serves.",
+      "verification": "primary-source",
+      "source": {
+        "url": "https://learn.microsoft.com/en-us/windows/apps/publish/store-policies",
+        "fetched": "2026-07-29",
+        "quote": "Microsoft Store Policies §10.5.1 — a privacy policy URL is required in Partner Center for any product that accesses personal information. Recorded in company/pipeline/10-distribution-store.md against that fetch."
+      }
+    },
+    {
+      "id": "pricing-page-published",
+      "requirement": "K-2a",
+      "duty": "A published price list, which a store reviewer and a merchant-of-record seller verification both look for.",
+      "status": "owner-gated",
+      "ownerItem": "O-3",
+      "trigger": "Before the first paid product goes live, or before a merchant-of-record application is submitted.",
+      "verification": "in-tree",
+      "note": "The prices are already decided; only the copy and the go-live are outstanding. check-site-integrity.mjs PRINTS the missing page every run and flips to a 'PROMOTE ME' notice the moment it lands."
+    },
+    {
+      "id": "claims-paired-to-the-tree",
+      "requirement": "K-3",
+      "duty": "Every emphasised claim on a published legal page is paired to what makes it true, and the ones that can be checked against code are.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-policy-claims.mjs",
+      "trigger": "Already live. Publishing a new emphasised sentence fails the build until it is paired.",
+      "verification": "in-tree"
+    },
+    {
+      "id": "consented-text-retrievable",
+      "requirement": "K-4",
+      "duty": "For every policy version that has ever been in force, the exact bytes a user consented to are still servable at a stable URL.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-policy-archive.mjs",
+      "trigger": "Every version bump. The archive snapshot lands in the SAME commit as the bump — recovering the bytes only gets harder.",
+      "verification": "in-tree"
+    },
+    {
+      "id": "seller-and-payment-path-named",
+      "requirement": "K-5",
+      "duty": "The pages a buyer reads name the actual seller and the actual payment path, and agree with each other.",
+      "status": "owner-gated",
+      "ownerItem": "O-3",
+      "trigger": "Before the first website sale. Today terms.html and refund.html name a payment gateway for purchases privacy.html says do not happen.",
+      "verification": "in-tree",
+      "note": "The guard is built and the four gaps print every run (tooling/legal/provider-register.json disclosureGaps). The remaining work is published wording plus one decision — which rails a buyer is offered."
+    },
+    {
+      "id": "in-app-legal-links",
+      "requirement": "K-6",
+      "duty": "Every app links its own privacy, terms and refund surface from inside the app, reachable rather than merely declared.",
+      "status": "partial",
+      "trigger": "Every new stamped app. The brick ships two of the three links; nothing asserts they are reachable from a real screen.",
+      "verification": "in-tree",
+      "note": "The property test that pumps the settings screen and taps the tile is [8]INC-5, whose files (assert-stamp-properties.mjs, settings_screen.dart, chassis_properties_test.dart) are stage 2/3 primaries — deliberately not touched in this change."
+    },
+    {
+      "id": "erasure-path-reachable",
+      "requirement": "K-7",
+      "duty": "A user can ask for their data to be erased, from inside the app and from the public web, and the request reaches something that can act on it.",
+      "status": "partial",
+      "artefact": "services/platform/src/routes/account.ts",
+      "trigger": "🔴 BEFORE the first app that creates an account ships to a store. The in-app control exists and the server route now exists; there is still no PUBLIC WEB deletion page, which is what a store reviewer and a non-user look for.",
+      "verification": "in-tree",
+      "blockedBy": null,
+      "unblocked": "🟢 [4]B-5 LANDED ON MAIN WHILE THIS MATRIX WAS BEING WRITTEN (services/platform/src/routes/account.ts, DELETE /v1/account). The stage-8 plan records this duty as BLOCKED on it and that is no longer true — recorded here rather than left standing, because a stale blocker is exactly the rot K-13 exists to catch, and 'we are blocked' is the most comfortable thing in a compliance matrix to be wrong about. What remains for K-7 is limb (b), the published web page, plus the no-orphaned-claim assertion — [8]INC-12, not built here.",
+      "note": "🔴 AND A NARROWER PROBLEM THE PROMISE DOES NOT ACKNOWLEDGE: `events` and `consent_artifacts` are keyed on anon_id, so 'delete my account' provably cannot purge them. Either the published promise narrows or the client sends its anon_id on erasure. A wording decision, O-3, in the same version bump as the other corrections."
+    },
+    {
+      "id": "personal-data-inventory",
+      "requirement": "K-8",
+      "duty": "Every place data can be stored is enumerated, has a declared retention, and — where it holds anything about a person — quotes the published sentence that discloses it.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-data-inventory.mjs",
+      "trigger": "Every new table, binding or Pages-Function store. A store with no row fails the build.",
+      "verification": "in-tree",
+      "note": "Two rows declare retention `undecided` and print every run: platform_db.events and the nikatru-signups KV. Both need a decision, not a guess."
+    },
+    {
+      "id": "rights-complaint-actionable",
+      "requirement": "K-9",
+      "duty": "A rights complaint about shipped content can be acted on in hours, without waiting for a store release.",
+      "status": "not-started",
+      "trigger": "The day the first content pack ships to a real user. Until then there is nothing to take down.",
+      "verification": "in-tree",
+      "note": "The content-pack chassis is wired but `contentPack: null` in both the brick and the one shipping app, so the emergency path has never been exercised. Making that assertion non-vacuous is [8]INC-11, whose files are stage 2/3 primaries. The DRILL itself needs the pack keypair (OWNER_QUEUE S-3) and a published pack."
+    },
+    {
+      "id": "bundled-asset-rights",
+      "requirement": "K-10",
+      "duty": "Every asset that ships inside a build has a recorded licence, and that licence claim carries a source and a date.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-licence-register.mjs",
+      "trigger": "Every asset added to a pubspec or dropped into an assets directory. A shipped asset with no row fails the build.",
+      "verification": "in-tree"
+    },
+    {
+      "id": "material-icons-licence",
+      "requirement": "K-10",
+      "duty": "The icon font Flutter bundles into every build under `uses-material-design: true` has a licence we can point at.",
+      "status": "not-started",
+      "trigger": "Before the first store submission that ships the bundled icon font — which is every submission.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The LICENSE file in Google's material-design-icons repository, read directly, at the revision Flutter vendors. The stage document states CC-BY 4.0 as a headline fact; that licence was the project's EARLIER one and the repository has published under Apache-2.0 since 2016. Neither could be confirmed from a primary source in this environment, so NEITHER is recorded as the answer, and tooling/legal/asset-register.json carries the row as UNVERIFIED rather than guessing.",
+      "note": "🔴 THE GUARD DESIGN SURVIVES EITHER ANSWER, which is why this is a row and not a blocker: 'fail on any bundled asset with no register row' is licence-agnostic, and the register refuses a row whose licence claim has no source."
+    },
+    {
+      "id": "in-app-licences-surface",
+      "requirement": "K-11",
+      "duty": "Every app shows the licences of what it ships, from a real screen.",
+      "status": "partial",
+      "artefact": "tooling/ci/assert-licence-register.mjs",
+      "trigger": "Every new app. The brick ships an AboutListTile; apps/subly ships none, and that gap is printed every run.",
+      "verification": "in-tree",
+      "note": "Closing it means editing apps/subly's settings screen, which is [8]INC-5's file and stage 2/3 territory."
+    },
+    {
+      "id": "repository-legal-posture",
+      "requirement": "K-12",
+      "duty": "The repository states what it is: source-visible, not open-source, with no licence grant.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-repo-posture.mjs",
+      "trigger": "Already live. A LICENSE file appearing at the root fails the build — the only irreversible thing in this matrix, because a grant cannot be un-granted.",
+      "verification": "decision",
+      "decisionRecord": "company/requirements/master-requirements.md — 'Repo stays PUBLIC, no LICENSE (DECIDED 5)'"
+    },
+    {
+      "id": "duty-matrix-cannot-rot",
+      "requirement": "K-13",
+      "duty": "The duty matrix itself is checked: every duty has a row, every row has a duty, every source is primary, every tripwire has a trigger, and no review date is in the past.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-legal-tripwires.mjs",
+      "trigger": "Already live. This row is the one that makes the file self-referential on purpose — a matrix that does not cover itself is the first row to go stale.",
+      "verification": "in-tree",
+      "reviewBy": "2027-08-01"
+    },
+    {
+      "id": "notice-per-supported-locale",
+      "requirement": "K-14",
+      "duty": "A user is shown the notice in a language they can read, at a stable URL, for every locale the app itself supports.",
+      "status": "owner-gated",
+      "ownerItem": "O-4",
+      "trigger": "The day a locale is added to the app. The brick already ships two (en, ta) and only one notice exists.",
+      "verification": "in-tree",
+      "note": "🔴 THE OWNER-GATED PART IS THE TRANSLATION, NOT THE MACHINERY. An unreviewed machine translation of a statutory notice is itself a legal-accuracy exposure, so the missing Tamil notice PRINTS (assert-policy-archive.mjs) rather than failing CI. Propose O-4: native review of the Tamil privacy notice."
+    },
+    {
+      "id": "global-privacy-control",
+      "requirement": "K-15",
+      "duty": "Decide whether web builds listen for the Global Privacy Control signal, or record the cut with a trigger.",
+      "status": "owner-gated",
+      "ownerItem": "K-15 decision",
+      "trigger": "🔴 THE DAY ANY APP SERVES ADS OR SHARES DATA WITH A THIRD PARTY. GPC attaches to sale or sharing; we do neither, and the code still agrees — zero advertising SDKs repo-wide, asserted by tooling/legal/policy-claims.json over every pubspec in the tree.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "oag.ca.gov's own text on what GPC obliges and when. Recorded as needing a DECISION rather than more research: the stage document's own conclusion is that nothing new will be learned by researching it again. Either build the listener or take the cut — either way this row carries the trigger."
+    },
+    {
+      "id": "children-surface-before-a-kids-app",
+      "requirement": "K-16",
+      "duty": "No app is offered to children without the surface a children's audience requires.",
+      "status": "not-started",
+      "trigger": "The day an app is scheduled with a children's audience, or the day a store listing selects a children's category. Both are declarations somebody makes; neither happens by accident.",
+      "verification": "in-tree",
+      "note": "privacy.html today states a bare 'under the age of 13 (or the minimum age required in your country)'. Whether that number is right for a declared market depends on the market's own threshold, and the guard must assert CONSISTENCY WITH THE DECLARED MARKET ROW rather than hardcode a number — see the COULD-NOT-ESTABLISH row below. The audience var itself is [8]INC-9, in stage 3's files."
+    },
+    {
+      "id": "dpdp-childrens-age-threshold",
+      "requirement": "K-16",
+      "duty": "The age below which a user counts as a child under India's data-protection law, and what that then requires.",
+      "status": "watching",
+      "trigger": "The day a market row declares India AND an app declares a children's audience.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The Digital Personal Data Protection Act text on indiacode.nic.in, sections 2(f) and 9, read directly. NOT a summary, and NOT a compliance-vendor page — the whole reason for the source allowlist. ⚠️ NO NUMBER IS RECORDED HERE and none may be until the section is read: privacy.html's '13' is the number that is currently published, and asserting a different one from an unread statute would fire on correct input while looking authoritative."
+    },
+    {
+      "id": "dpdp-notice-content",
+      "requirement": "K-8",
+      "duty": "What a data-protection notice must contain, and in which languages it must be available, under India's data-protection law.",
+      "status": "watching",
+      "trigger": "The day a user in India creates an account, or the day the first paid sale is made to an Indian buyer.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The DPDP Act's notice provision (section 5) on indiacode.nic.in, read directly. The current notice was written to be plain and complete rather than to a checklist nobody here has read."
+    },
+    {
+      "id": "dpdp-2025-rules-commencement",
+      "requirement": "K-13",
+      "duty": "When the rules made under India's data-protection Act actually commence, which is what turns several of these watching rows into duties.",
+      "status": "watching",
+      "trigger": "This row IS the trigger for several others. It is reviewed on the date below rather than when somebody remembers.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The commencement notification on meity.gov.in. Multiple dates circulate in secondary sources and none was confirmable here; recording any of them would be recording a rumour with a citation.",
+      "reviewBy": "2027-02-01"
+    },
+    {
+      "id": "eu-ai-act-marking-grace",
+      "requirement": "K-13",
+      "duty": "The transparency marking obligation for AI-generated content, and the date from which it bites.",
+      "status": "partial",
+      "trigger": "Already partly discharged and the trigger is generation, not publication: every generated asset keeps its provenance marking intact and is logged with model, date and prompt.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The Regulation's own text on eur-lex.europa.eu, Article 50 and its transitional provisions, read directly. The GRACE PERIOD specifically could not be established, so no date is recorded.",
+      "note": "What IS in force here regardless of the date: [ADR 019] requires the generator's own watermark to be kept intact and a PROVENANCE.json entry per asset. That is our own decision and does not depend on establishing the statutory date."
+    },
+    {
+      "id": "play-ai-content-declaration",
+      "requirement": "K-13",
+      "duty": "Google Play's declaration requirement for apps that generate AI content, and the date it takes effect.",
+      "status": "watching",
+      "trigger": "The day an app generates content at runtime (as opposed to shipping content generated once and banked), or the day a Play submission is prepared.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "Google Play's own policy page on support.google.com for the AI-generated-content declaration and its effective date. The effective date could not be read here."
+    },
+    {
+      "id": "store-evidence-of-rights-on-demand",
+      "requirement": "K-10",
+      "duty": "Both major stores may ask for evidence of rights to material an app ships, and a review can be held or an app removed while that evidence is produced.",
+      "status": "partial",
+      "artefact": "tooling/legal/asset-register.json",
+      "trigger": "🔴 A DEMAND ARRIVES WITHOUT WARNING AND IS ANSWERED IN HOURS OR NOT AT ALL. The register exists so the answer is a file rather than a search.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The exact wording and scope of Apple's App Review Guideline 5.2.2 and Google Play's intellectual-property policy, read from developer.apple.com and support.google.com. The general obligation is not in doubt; the precise 'evidence on demand' formulation could not be confirmed here, so no clause is quoted as if it had been."
+    },
+    {
+      "id": "flutter-icon-tree-shaking-scope",
+      "requirement": "K-10",
+      "duty": "Whether the icon font actually shipped in a release build is the whole font or a subset, which decides what the asset register must account for.",
+      "status": "watching",
+      "trigger": "The day the asset register's bundle-walking mode runs against a real release build and the enumerated set differs from the declared one.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "Flutter's own documentation of the icon tree-shaker's scope and when it is disabled. Recorded because the register's honesty depends on it: a subset font and a whole font are different artefacts with the same filename."
+    },
+    {
+      "id": "play-closed-testing-window",
+      "requirement": "K-13",
+      "duty": "A personal Play developer account created after a cut-off must run a closed test with a minimum number of opted-in testers for a minimum continuous period before production access is granted.",
+      "status": "owner-gated",
+      "ownerItem": "A-3",
+      "trigger": "🔴 IT IS A CALENDAR, NOT A TASK. Nothing in this repository can shorten it, so it starts the day the publisher account exists — not the day the build is ready.",
+      "verification": "primary-source",
+      "source": {
+        "url": "https://support.google.com/googleplay/android-developer/answer/14151465",
+        "fetched": "2026-07-29",
+        "quote": "at least 12 testers must be opted-in to your closed test when you apply for production access, and they must have been opted-in for the last 14 days continuously. Scope: developers with personal accounts created after November 13, 2023."
+      }
+    },
+    {
+      "id": "play-requires-an-app-bundle",
+      "requirement": "K-13",
+      "duty": "New apps published on Google Play must be uploaded as an Android App Bundle.",
+      "status": "implemented",
+      "artefact": ".github/workflows/build-platforms.yml",
+      "trigger": "Discharged and asserted: tooling/channel-register.json compares the android-play row's accepted formats to what its lane actually emits, so a lane that stops producing the .aab fails instead of surfacing at submission.",
+      "verification": "primary-source",
+      "source": {
+        "url": "https://developer.android.com/guide/app-bundle",
+        "fetched": "2026-07-29",
+        "quote": "From August 2021, new apps are required to publish with the Android App Bundle on Google Play."
+      }
+    },
+    {
+      "id": "apple-toolchain-floor",
+      "requirement": "K-13",
+      "duty": "Apps uploaded to App Store Connect must be built with a minimum Xcode version.",
+      "status": "owner-gated",
+      "ownerItem": "A-4",
+      "trigger": "Already in force, and it bites at UPLOAD — the first submission, not the first build. build-platforms.yml pins no Xcode and tooling/versions.json has no xcode key; tooling/channel-register.json prints that gap every run rather than failing CI on an owner-deferred channel.",
+      "verification": "primary-source",
+      "source": {
+        "url": "https://developer.apple.com/news/upcoming-requirements/",
+        "fetched": "2026-07-29",
+        "quote": "apps uploaded to App Store Connect must be built with Xcode 26 or later — effective 28 April 2026."
+      }
+    },
+    {
+      "id": "merchant-of-record-seller-verification",
+      "requirement": "K-5",
+      "duty": "A merchant-of-record provider verifies the seller and the product before accepting them, and an incomplete or empty store is the main cause of a hold or rejection.",
+      "status": "owner-gated",
+      "ownerItem": "A-1",
+      "trigger": "The application itself. Applying before the product, the paywall and the legal pages are live is what causes a rejection, so the trigger is 'the product is complete', not 'we want revenue'.",
+      "verification": "decision",
+      "decisionRecord": "knowledge/decisions/004-mor-provider.md — LOCKED 2026-07-23: build the complete product first, then apply.",
+      "note": "Recorded as a `decision` rather than `primary-source` on purpose. The provider's published requirements were read when that record was written; what is asserted HERE is our own sequencing lock, and CI cannot open knowledge/ (gitignored) to check the record itself. The pointer is data, not an assertion — the same split tooling/channel-register.json uses for ownerQueue ids."
+    },
+    {
+      "id": "breach-response-has-no-owner",
+      "requirement": "K-13",
+      "duty": "If personal data held here were exposed, somebody has to notify somebody. No stage in this pipeline claims that duty.",
+      "status": "owner-gated",
+      "ownerItem": "O-3",
+      "trigger": "🔴 AN INCIDENT, WHICH ARRIVES WITHOUT NOTICE AND ON ITS OWN CLOCK. This row exists because the gap is real and unowned, not because it is scheduled.",
+      "verification": "COULD-NOT-ESTABLISH",
+      "wouldNeed": "The breach-notification rule that applies to us, read from meity.gov.in, and a decision about who is notified.",
+      "note": "⚠️ THE PSEUDONYMOUS DESIGN MAKES ONE HALF OF IT UNIMPLEMENTABLE AS WRITTEN: analytics rows are keyed on an install id with no path back to a person, so 'notify the affected individuals' has no mechanism for that store. One sentence from the owner settles whether this is a duty row or a written cut — and until it is settled the honest state is this row, printing."
+    }
+  ]
+}

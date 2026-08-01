@@ -132,9 +132,12 @@ const scanningRealRepo = process.argv[2] === undefined;
  *  convention rather than inventing a second one. */
 const COVERAGE_MARKER = 'COVERAGE LOST';
 
-/** Guards that do not scan a tree, with the reason. NOT a waiver list — each
- *  entry is a claim that the coverage question does not apply, and the reason
- *  has to survive being read aloud. */
+/** Files under tooling/ci that do not scan a tree, with the reason. NOT a waiver
+ *  list — each entry is a claim that the coverage question does not apply, and
+ *  the reason has to survive being read aloud. (Two shapes qualify: a guard that
+ *  calls an API instead of walking a tree, and a shared pure-function module
+ *  that every caller's own self-check already covers. Both still owe a negative
+ *  test, which limb 1 above enforces regardless of this map.) */
 const NOT_A_SCANNER = new Map([
   [
     'assert-gate-passed.mjs',
@@ -143,6 +146,10 @@ const NOT_A_SCANNER = new Map([
   [
     'record-deployment.mjs',
     'writes a GitHub Deployment record. It performs an action rather than scanning anything, so there is no scope for it to silently cover less.',
+  ],
+  [
+    'text-reductions.mjs',
+    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree, imported by check-site-integrity, assert-policy-archive, assert-policy-claims, assert-data-inventory and assert-licence-register. The coverage question belongs to those five — each carries its own COVERAGE LOST over what it reads — and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
 ]);
 
@@ -324,23 +331,66 @@ if (unfound.length) {
   ]);
 }
 
-// (iii) R2 — FOUND ⊆ INVOKED. The other half, and the half that never existed
+// (iii) R2 — FOUND ⊆ REACHED. The other half, and the half that never existed
 //       before. A guard nothing runs is a guard that cannot fail a build; it is
 //       covered on paper and inert in practice.
 //
-//       THERE IS NO EXEMPTION LIST HERE ON PURPOSE. All forty-four guards are
-//       invoked today, so an exemption map would be an unreachable branch —
-//       and by this repo's own rule an assertion that cannot fail is worse than
-//       none, because it inflates apparent coverage. If a guard ever genuinely
-//       needs to exist unrun, the mechanism gets added THEN, with a reason and a
-//       failing case of its own.
-const uninvoked = guards.filter((g) => !invokedGuards.has(g));
+//       🔴 "REACHED", NOT "INVOKED", AND THE DIFFERENCE IS A MECHANISM RATHER
+//       THAN AN EXEMPTION LIST. This check originally read FOUND ⊆ INVOKED and
+//       said so with a note: "there is no exemption list here on purpose… if a
+//       guard ever genuinely needs to exist unrun, the mechanism gets added
+//       THEN, with a reason and a failing case of its own." That case arrived
+//       one merge later, with `tooling/ci/text-reductions.mjs` — the single
+//       HTML→visible-text and source→code-without-comments reduction that five
+//       guards IMPORT and no workflow calls. It is not inert: every one of those
+//       five fails the moment it breaks.
+//
+//       An exemption map would have been the wrong repair, for exactly the
+//       reason this file's own header gives about hand-ratcheted floors: it is a
+//       hand-maintained list, and it grows by somebody remembering. So the
+//       relation is DERIVED instead. A file is reached if a workflow invokes it,
+//       or if something reached imports it — transitively, from the import
+//       statements in the tooling/ci sources themselves. Delete the last import
+//       of a shared module and it becomes unreached and FAILS, which is exactly
+//       when it has stopped being covered. Nothing can be added to a list to
+//       silence it; the only way to satisfy it is to be genuinely reachable.
+const importsOf = (file) => {
+  // Comments out first. A `// import { x } from './shared.mjs'` in a TODO must
+  // not make a module reachable — the same prose-satisfies-a-check rule the
+  // commented-out-invocation case above already enforces on the workflow side.
+  // Stripped inline rather than by importing tooling/ci/text-reductions.mjs:
+  // this is the guard that audits which modules are reachable, and having it
+  // depend on one of its own subjects is a circularity nobody should have to
+  // reason about at 2am.
+  const src = readFileSync(join(CI, file), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  const out = new Set();
+  // Static `import … from './x.mjs'` and dynamic `import('./x.mjs')`. Relative
+  // and flat: a nested path is already COVERAGE LOST above.
+  for (const m of src.matchAll(/from\s*['"]\.\/([A-Za-z0-9._-]+\.mjs)['"]/g)) out.add(m[1]);
+  for (const m of src.matchAll(/import\(\s*['"]\.\/([A-Za-z0-9._-]+\.mjs)['"]\s*\)/g)) out.add(m[1]);
+  return [...out];
+};
+const reached = new Set([...invokedGuards].filter((g) => guards.includes(g)));
+for (const queue = [...reached]; queue.length > 0; ) {
+  for (const dep of importsOf(queue.pop())) {
+    if (guards.includes(dep) && !reached.has(dep)) {
+      reached.add(dep);
+      queue.push(dep);
+    }
+  }
+}
+const uninvoked = guards.filter((g) => !reached.has(g));
 if (uninvoked.length) {
-  console.error(`✗ COVERAGE LOST — ${uninvoked.length} guard(s) in tooling/ci are invoked by NO workflow:`);
+  console.error(
+    `✗ COVERAGE LOST — ${uninvoked.length} file(s) in tooling/ci are neither invoked by a workflow nor imported by one that is:`,
+  );
   for (const g of uninvoked) console.error(`    ${g}`);
   console.error('  A guard nothing runs cannot fail a build. It is covered on paper and inert in practice,');
   console.error('  and it inflates every count taken over this directory.');
-  console.error('  Wire it into a workflow in the same change, or delete it.');
+  console.error('  Wire it into a workflow in the same change, delete it, or — if it is a shared module —');
+  console.error('  make something a workflow DOES run import it. Reachability is derived, not declared.');
   process.exit(1);
 }
 
@@ -585,8 +635,9 @@ if (notes.length) {
 }
 
 console.log(
-  `ok  guard coverage — ${guards.length} guard(s) in tooling/ci, exactly the ${invokedGuards.size} the ` +
-    `${workflowFiles.length} workflow(s) invoke (identity holds, no floor involved); all named in ` +
+  `ok  guard coverage — ${guards.length} file(s) in tooling/ci, all reached: ${invokedGuards.size} invoked by ` +
+    `${workflowFiles.length} workflow(s) and ${guards.length - invokedGuards.size} imported by one that is ` +
+    '(identity holds, no floor involved); all named in ' +
     `${testFiles.length} test file(s); ${scanners} carry a coverage self-check, ${exempt} exempt with a ` +
     `recorded reason; ${covered} workflow-invoked script(s) outside tooling/ci also covered, ` +
     `${scriptExempt.length} excused; ratchet holds at ${totalCases} test case(s) across ${testFiles.length} file(s)`,

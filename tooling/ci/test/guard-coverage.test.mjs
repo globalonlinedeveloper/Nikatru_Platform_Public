@@ -202,13 +202,23 @@ function gitify(root) {
   g('commit', '-q', '-m', 'fixture');
 }
 
+/** A fixture stand-in for a shared module. It carries a real self-check line
+ *  rather than the bare marker string, because a comment mentioning the marker
+ *  would be exactly the prose-satisfies-a-check pattern these guards exist to
+ *  refuse — even in a fixture. */
+const SHARED_MODULE = [
+  'export const x = 1;',
+  "if (x === 0) { console.error('COVERAGE LOST — nothing to reduce'); process.exit(1); }",
+  '',
+].join('\n');
+
 const readManifest = (root) => JSON.parse(readFileSync(join(root, MANIFEST_REL), 'utf8'));
 
 describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /4 guard\(s\) in tooling\/ci, exactly the 4 the 1 workflow\(s\) invoke/);
+    assert.match(r.stdout, /4 file\(s\) in tooling\/ci, all reached: 4 invoked by 1 workflow\(s\) and 0 imported/);
     assert.match(r.stdout, /all named in 3 test file\(s\)/);
   });
 
@@ -232,9 +242,62 @@ describe('assert-guard-coverage', () => {
       // real coverage stands still.
       const r = run(repo(compliant({ 'assert-orphan.mjs': 'COVERAGE LOST\n' }), { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs'] }));
       assert.equal(r.status, 1, r.stdout);
-      assert.match(r.stderr, /1 guard\(s\) in tooling\/ci are invoked by NO workflow/);
+      assert.match(r.stderr, /1 file\(s\) in tooling\/ci are neither invoked by a workflow nor imported by one that is/);
       assert.match(r.stderr, /assert-orphan\.mjs/);
       assert.match(r.stderr, /cannot fail a build/);
+    });
+
+    // ── REACHED, not merely INVOKED ────────────────────────────────────────
+    // R2 originally read FOUND ⊆ INVOKED and carried a note: "there is no
+    // exemption list here on purpose… if a guard ever genuinely needs to exist
+    // unrun, the mechanism gets added THEN, with a reason and a failing case of
+    // its own." The case arrived one merge later — a shared reduction module
+    // five guards IMPORT and no workflow calls. An exemption map would have
+    // been the same hand-maintained shape this file deleted its floors to
+    // escape, so reachability is DERIVED from the imports instead. These two
+    // tests are that mechanism's failing case and its passing one.
+    test('a shared module IMPORTED by an invoked guard is reached, and passes', () => {
+      const r = run(
+        repo(
+          {
+            ...compliant(),
+            'assert-thing-0.mjs': "import { x } from './shared-thing.mjs';\n// COVERAGE LOST\nconsole.log(x);\n",
+            'shared-thing.mjs': SHARED_MODULE,
+          },
+          { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs'] },
+        ),
+      );
+      assert.equal(r.status, 0, r.stderr);
+    });
+
+    test('a shared module whose LAST import is deleted becomes unreached and FAILS', () => {
+      // Nothing can be added to a list to silence this: the only way to satisfy
+      // it is for something a workflow actually runs to import the file. That
+      // is exactly the moment the module stops being covered.
+      const r = run(
+        repo(
+          { ...compliant(), 'shared-thing.mjs': 'export const x = 1;\n' },
+          { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs'] },
+        ),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /neither invoked by a workflow nor imported/);
+      assert.match(r.stderr, /shared-thing\.mjs/);
+    });
+
+    test('an import inside a COMMENT does not make a module reached', () => {
+      const r = run(
+        repo(
+          {
+            ...compliant(),
+            'assert-thing-0.mjs': "// import { x } from './shared-thing.mjs';\n// COVERAGE LOST\n",
+            'shared-thing.mjs': SHARED_MODULE,
+          },
+          { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs'] },
+        ),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /shared-thing\.mjs/);
     });
 
     test('a COMMENTED-OUT invocation does not count as wiring', () => {
@@ -252,7 +315,7 @@ describe('assert-guard-coverage', () => {
         }),
       );
       assert.equal(r.status, 1, r.stdout);
-      assert.match(r.stderr, /invoked by NO workflow/);
+      assert.match(r.stderr, /neither invoked by a workflow nor imported/);
       assert.match(r.stderr, /assert-thing-0\.mjs/);
     });
 
@@ -308,7 +371,7 @@ describe('assert-guard-coverage', () => {
         }),
       );
       assert.equal(r.status, 0, r.stderr + r.stdout);
-      assert.match(r.stdout, /5 guard\(s\) in tooling\/ci, exactly the 5 the 1 workflow\(s\) invoke/);
+      assert.match(r.stdout, /5 file\(s\) in tooling\/ci, all reached: 5 invoked by 1 workflow\(s\) and 0 imported/);
       assert.match(r.stdout, /all named in 4 test file\(s\)/);
     });
   });

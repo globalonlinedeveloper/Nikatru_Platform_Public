@@ -48,6 +48,9 @@ import { join, relative, resolve, dirname, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+// ONE reading of "what a person saw on this page", shared with the archive and
+// claims guards. See tooling/ci/text-reductions.mjs for why it is not four copies.
+import { stripInert, visibleText } from './text-reductions.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 const claimedRoots = process.argv.slice(3);
@@ -181,22 +184,11 @@ for (const root of siteRoots) {
 }
 
 // ── legally-required pages on app-facing deploy roots ────────────────────────
-/** Blank out comments, <script> and <style> so a commented-out link cannot bind
- *  a site to a policy it never promised, and script source cannot be counted as
- *  page text. Replaced with a space rather than deleted — nothing here needs
- *  byte offsets, but keeping words apart keeps the text measure honest. */
-function stripInert(html) {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ');
-}
-
-function visibleText(html) {
-  return stripInert(html)
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// `stripInert` / `visibleText` are imported from tooling/ci/text-reductions.mjs
+// (top of file). They used to be declared here, and three later guards needed
+// the same reduction — a second copy of "what a reader actually saw" is a second
+// answer to the question the 1000-character floor, the archive comparison and
+// the claims register all ask.
 
 /** Legal pages this document links to with a SAME-SITE relative href
  *  (`privacy.html`, `./privacy.html`, `/privacy.html`). An absolute URL is

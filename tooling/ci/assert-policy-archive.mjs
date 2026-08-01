@@ -44,6 +44,7 @@
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { visibleText } from './text-reductions.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 
@@ -67,6 +68,10 @@ const VERSION_SOURCES = [
 ];
 
 const problems = [];
+/** Owner-gated gaps: printed every run, never a build failure. [pipeline C-6] */
+const prints = [];
+/** The K-14 locale line, printed with the summary rather than mid-scan. */
+let localeSummary = null;
 const rel = (p) => relative(repoRoot, p).split(sep).join('/');
 const read = (p) => {
   try {
@@ -78,25 +83,18 @@ const read = (p) => {
 const git = (args) =>
   spawnSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 
-/** Comments, <script> and <style> out, then tags. The comparison below is on
- *  VISIBLE TEXT rather than bytes, and that is deliberate. An archived copy
- *  differs from the published page in three places, none of which is text a
- *  reader saw (see sites/nikatru/legal/README.md):
- *    · robots → noindex,
- *    · no <link rel="canonical"> — one would tell a crawler the archive IS the
- *      current policy,
- *    · same-site .html links rewritten to the root-relative form, because a
- *      document-relative footer link resolves under /legal/<version>/<locale>/
- *      and 404s — a dead link in the one document that has to still work.
- *  What has to be identical is the thing a person read and agreed to, so that is
- *  what is compared. A byte comparison would have to forbid all three. */
-const visibleText = (html) =>
-  html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+// `visibleText` is imported from tooling/ci/text-reductions.mjs (top of file). The
+// comparison below is on VISIBLE TEXT rather than bytes, and that is deliberate.
+// An archived copy differs from the published page in three places, none of
+// which is text a reader saw (see sites/nikatru/legal/README.md):
+//   · robots → noindex,
+//   · no <link rel="canonical"> — one would tell a crawler the archive IS the
+//     current policy,
+//   · same-site .html links rewritten to the root-relative form, because a
+//     document-relative footer link resolves under /legal/<version>/<locale>/
+//     and 404s — a dead link in the one document that has to still work.
+// What has to be identical is the thing a person read and agreed to, so that is
+// what is compared. A byte comparison would have to forbid all three.
 
 const coverageLost = (msg, ...detail) => {
   console.error(`✗ COVERAGE LOST — ${msg}`);
@@ -328,6 +326,91 @@ if (archived.size === 0) {
   );
 }
 
+// ── LIMB 3 · [pipeline K-14] a notice per locale the app already supports ───
+//
+// The apps ship in more than one language. The notice ships in one. A user shown
+// a consent prompt in Tamil is consenting to a document they were never offered
+// in a language they read, and their consent artifact resolves to English bytes.
+//
+// 🔴 THIS LIMB EXISTS BECAUSE THE SCHEMA MADE IT CHEAP. The archive key is
+// `<version>/<locale>` (see the header), decided in the increment BEFORE this
+// one precisely so that the first Tamil notice could land without migrating
+// every existing consent record. Keyed on version alone, this limb would have
+// been unbuildable without a schema change.
+//
+// ⚠️ IT PRINTS, IT DOES NOT FAIL, and that is not timidity. An unreviewed
+// machine translation of a statutory notice is itself a legal-accuracy exposure,
+// so the missing document needs a native review (propose OWNER_QUEUE O-4) — work
+// only the owner can commission. Failing CI on it would block every other lane
+// for weeks, and a guard that cries wolf is one somebody switches off. It flips
+// to a real comparison the moment the document lands: a notice whose
+// data-policy-version disagrees with the English one FAILS, because that is a
+// translation of a document that is no longer current, which is worse than none.
+//
+// ⚠️ NOT A RE-IMPORT OF THE 22-LANGUAGE APP-UI PROGRAMME that this project
+// deliberately cut. The domain is the locale list the app ALREADY has — adding a
+// notice for a language we already ship, not adding languages.
+{
+  const L10N_DIR = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n';
+  const l10nAbs = join(repoRoot, ...L10N_DIR.split('/'));
+  let locales = [];
+  if (existsSync(l10nAbs)) {
+    locales = readdirSync(l10nAbs)
+      .map((f) => f.match(/^app_([A-Za-z0-9_-]+)\.arb$/)?.[1])
+      .filter((v) => typeof v === 'string')
+      .map((v) => v.replace(/_/g, '-'))
+      .sort();
+  }
+  // Gated on `problems.length === 0` like the other coverage checks added in
+  // this pass: coverageLost exits immediately, so firing it while a specific
+  // fault is already recorded replaces the precise message with a vague one and
+  // sends the fix to the wrong file. Caught by its own regression test, where a
+  // broken version-history walk was reported as a missing locale list.
+  if (locales.length === 0 && problems.length === 0) {
+    coverageLost(
+      `no locale resolved from ${L10N_DIR}/app_<locale>.arb.`,
+      'The app\'s own locale list IS the domain of this limb — it cannot be shrunk without deleting a',
+      "locale, and deleting one fails the brick's own supportedLocales.length >= 2 property test. Zero",
+      'locales means the derivation broke, and "every supported language has a notice" would then be',
+      'vacuously true forever.',
+    );
+  }
+  const current = archived.get(published) ?? new Map();
+  const missing = locales.filter((l) => !current.has(l));
+  for (const locale of locales) {
+    const snap = current.get(locale);
+    if (!snap) continue;
+    if (snap.declared !== published) {
+      problems.push(
+        `${ARCHIVE_ROOT}/${published}/${locale}/${DOC} declares version ${snap.declared ?? '(none)'} while the ` +
+          `English notice in force is ${published}. A translation of a superseded document, served as the current ` +
+          'notice, is worse than no translation: the reader believes they have read the policy, and they have read ' +
+          'a different one.',
+      );
+    }
+  }
+  if (missing.length) {
+    prints.push(
+      `NO NOTICE IN ${missing.join(', ')} (owner-gated, propose O-4) — the brick ships ${locales.length} locale(s) ` +
+        `(${locales.join(', ')}) and version ${published} of the notice exists in ${[...current.keys()].sort().join(', ') || 'none'}. ` +
+        `A reader whose app is in ${missing[0]} is asked to consent to a document they were never offered in a ` +
+        'language they read. PRINTED, NOT FAILED: an unreviewed machine translation of a statutory notice is itself ' +
+        `a legal-accuracy exposure, so the missing document needs native review before it is published. Put it at ` +
+        `${ARCHIVE_ROOT}/${published}/<locale>/${DOC} — the archive key is already <version>/<locale>, so nothing ` +
+        'has to migrate — and this limb becomes a version comparison that can fail.',
+    );
+  } else {
+    prints.push(
+      `PROMOTE ME: every locale the brick supports (${locales.join(', ')}) now has a notice for version ` +
+        `${published}. The owner-gated print in this limb has nothing left to report — turn the missing-notice ` +
+        'case into a build failure, so a NEW locale cannot ship without one.',
+    );
+  }
+  localeSummary =
+    `    notice locales — ${locales.length} supported (${locales.join(', ')}), ` +
+    `${current.size} notice(s) at version ${published} [pipeline K-14]`;
+}
+
 // ── report ──────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ policy archive — ${problems.length} problem(s):`);
@@ -341,3 +424,9 @@ console.log(
   `ok  policy archive — ${archived.size} version(s) snapshotted (${[...archived.keys()].sort().join(', ')}), ` +
     `covering every one of the ${historical.size} version(s) ever in force; ${published} matches ${LIVE_POLICY}`,
 );
+if (localeSummary) console.log(localeSummary);
+if (prints.length) {
+  console.log('');
+  console.log('   ── printed, not failed (a statutory notice needs a human translator; a guard cannot supply one) ──');
+  for (const p of prints) console.log(`   ⬜ ${p}`);
+}

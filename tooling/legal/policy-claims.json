@@ -1,0 +1,271 @@
+{
+  "_readme": [
+    "THE PUBLISHED-CLAIMS REGISTER — [pipeline K-3] company/pipeline/08-compliance-legal.md",
+    "",
+    "One row for every EMPHASISED claim in the visible text of the three published legal pages, paired to",
+    "whatever in this tree makes it true — or, where nothing does, to the owner item that will.",
+    "",
+    "🔴 WHAT MAKES THIS UNFAKEABLE, AND IT IS THE ONLY REASON THE FILE IS WORTH HAVING.",
+    "The domain is not this file. The domain is the set of <b>/<strong> spans in the visible text of",
+    "sites/nikatru/{privacy,terms,refund}.html, extracted by tooling/ci/text-reductions.mjs. The guard requires",
+    "the two sets to be EQUAL, both directions:",
+    "  · a span with no row FAILS — you cannot publish a new emphasised promise without recording it;",
+    "  · a row with no span FAILS — you cannot keep a row for a sentence the site no longer makes.",
+    "Neither side can be shrunk without editing a published document, which is a visible change a human",
+    "reviews. A register that listed only its own rows would be a list somebody trims when it is",
+    "inconvenient; this one cannot be.",
+    "",
+    "⚠️ HONEST LIMITATION, AND THE GUARD'S HEADER SAYS THE SAME THING. Only rows typed `code` carry a",
+    "mechanical assertion. A `descriptive` row proves that somebody looked at the sentence and wrote it",
+    "down — nothing more. THIS FILE DOES NOT PROVE THE PAGES ARE TRUE. It proves that every emphasised",
+    "claim is accounted for, and that the specific claims we CAN check against code still hold.",
+    "",
+    "Row types:",
+    "  code        an assertion below runs against real files and can fail. This is the load-bearing kind.",
+    "  provider    the claim names a third party; it must resolve to a row in provider-register.json.",
+    "  descriptive the claim is a statement of intent, a defined term, or a commitment with no code",
+    "              consequence (a refund window, a heading, the trading name). Paired, not proven.",
+    "  known-gap   the claim is WRONG or contradicted today, and fixing it means editing published legal",
+    "              copy — owner work. Carries an ownerItem and PRINTS on every run.",
+    "",
+    "Enforced by tooling/ci/assert-policy-claims.mjs. COVERAGE LOST if zero spans are extracted from any",
+    "page: an emphasis-stripping rewrite must be loud, not silently satisfying.",
+    "",
+    "⚠️ `claim` IS THE NORMALISED SPAN TEXT (entities decoded, whitespace collapsed, curly quotes and",
+    "dashes folded onto ASCII — see html-text.mjs normaliseForMatch). It is compared to the page, not",
+    "typed from memory; if a row here does not match, the page is what is right."
+  ],
+
+  "pages": ["privacy.html", "terms.html", "refund.html"],
+  "siteRoot": "sites/nikatru",
+
+  "claims": [
+    {
+      "page": "privacy.html",
+      "claim": "NIKATRU",
+      "type": "descriptive",
+      "why": "The trading name, defined here for the rest of the document. check-site-integrity.mjs separately asserts the LEGAL person behind it is named in visible text on this page."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Information you give us",
+      "type": "descriptive",
+      "why": "A section heading introducing the category. The stores that hold it are enumerated in tooling/legal/data-inventory.json, which is where the checkable claim lives."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Information collected automatically",
+      "type": "descriptive",
+      "why": "A section heading. Same as above — the inventory carries the store-level facts."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Usage statistics, only if you allow them",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": ["tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart"],
+        "pattern": "if \\(!ref\\.watch\\(analyticsEnabledProvider\\)\\)",
+        "why": "'only if you allow them' is a claim about a gate, and this is the gate: the analytics transport and the analytics sink both resolve to a no-op while consent is not granted. Deleting the check makes the page a lie, and this row goes red with it."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "pseudonymous, not anonymous",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": ["services/platform/src/routes/events.ts"],
+        "pattern": "anon_id",
+        "why": "The page describes a stable per-install identifier and says plainly that records carrying it are pseudonymous rather than anonymous. `anon_id` is that identifier, and it is the column the events table is keyed on. If the server stopped carrying it the page would be over-disclosing rather than under-disclosing, which is still a page that does not describe the system."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "We do not collect or store your IP address",
+      "type": "code",
+      "assert": {
+        "kind": "absent",
+        "files": ["services/platform/src/routes/events.ts"],
+        "pattern": "(?i)cf-connecting-ip",
+        "why": "The strongest available reading of 'we do not collect or store your IP address' on the analytics path: the route that writes the events table never reads the header that carries it. The geo fields it does write come from `request.cf`, which Cloudflare derives at the edge. ⚠️ This asserts the header is not READ by this route — it is not a dataflow proof, and it says so rather than implying more reach than it has."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Launch-notification signups",
+      "type": "descriptive",
+      "why": "A section heading. The store it describes (nikatru-signups) has a row in tooling/legal/data-inventory.json, and that row carries the retention question this heading's paragraph raises."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "email address and the time you signed up",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": ["sites/nikatru/functions/api/subscribe.js"],
+        "pattern": "const record = \\{ email, ts:",
+        "why": "'and nothing else' is the claim, and this is the whole record. The moment somebody adds a third field to that object literal this row goes red, which is exactly when the page stops being true. This is the most precise pairing in the file: one published sentence, one line of code."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "salted, one-way fingerprint",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": ["sites/nikatru/functions/api/subscribe.js"],
+        "pattern": "crypto\\.subtle\\.sign",
+        "why": "A KEYED construction, not a digest: an unsalted sha256 of an IPv4 address is reversible by exhausting 2^32 values, so it would be the address wearing a hash and the page would be wrong. check-site-integrity.mjs enforces the same property from the code side; this row is what ties it to the published sentence."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Purchase information",
+      "type": "descriptive",
+      "why": "A section heading. The providers in the purchase path are enumerated in tooling/legal/provider-register.json."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "do not collect or store your full card or bank details.",
+      "type": "code",
+      "assert": {
+        "kind": "absent",
+        "walk": { "root": "services", "filenameRe": "\\.sql$", "minFiles": 5 },
+        "pattern": "(?i)\\b(card_number|cardnumber|cvv|cvc|pan_number|iban|account_number|routing_number|sort_code)\\b",
+        "why": "No schema in any Worker may declare a column that holds a payment instrument. Walked rather than listed so a NEW migration file is covered the day it lands, and floored at the 5 migration files that exist today so a walk that stops finding them is COVERAGE LOST rather than a pass. ⚠️ A column-name blocklist is a tripwire, not a proof: it catches the obvious spelling of a card column, not a card number stuffed into a `notes` field."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "not",
+      "type": "descriptive",
+      "why": "Two separate one-word emphases — 'We do NOT sell your personal information' (§1) and 'likewise NOT sent to a third-party analytics product' (§3). Both collapse to the same span text, so they share one row; the substantive claims they belong to are carried by the surrounding rows."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Apple App Store, Google Play and Microsoft Store",
+      "type": "provider",
+      "providers": ["apple-app-store", "google-play", "microsoft-store"]
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Cloudflare",
+      "type": "provider",
+      "providers": ["cloudflare"],
+      "note": "Two spans on this page carry this text. The first (hosting and the network edge) is true. The SECOND says crash reports run on Cloudflare infrastructure, and they run on Oracle Cloud — that is the `crash-reports-infrastructure` gap in provider-register.json, printed every run. A per-span row cannot distinguish them, and pretending it can would be worse than saying so here."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "merchant of record",
+      "type": "provider",
+      "providers": ["paddle"],
+      "note": "The page describes the ROLE without naming the provider, and commits to naming it before selling starts. [ADR 004] locked Paddle. The unnamed-provider gap is `merchant-of-record-unnamed`."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "We do not use advertising networks or advertising SDKs, we do not share data with data brokers, and no NIKATRU app carries advertising.",
+      "type": "code",
+      "assert": {
+        "kind": "absent",
+        "walk": { "root": ".", "filenameRe": "^pubspec\\.yaml$", "minFiles": 10 },
+        "pattern": "(?im)^\\s*(google_mobile_ads|firebase_admob|admob_flutter|applovin_max|unity_ads_plugin|facebook_audience_network|ironsource_mediation|appodeal_flutter|adjust_sdk|appsflyer_sdk|facebook_app_events)\\s*:",
+        "why": "The one claim on the page that a package manifest can refute outright: an advertising or attribution SDK cannot enter this workspace without appearing as a dependency. Walked over every pubspec.yaml in the tree (12 today, floored at 10) so a new package is covered the day it is created. ⚠️ A NAMED LIST IS NOT EXHAUSTIVE and this row does not claim otherwise — it is a tripwire on the SDKs that would plausibly arrive, and the duty row in tooling/legal/duty-matrix.json carries the standing trigger 'the day an ad SDK enters a pubspec'."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Usage statistics can be withdrawn without contacting us.",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": ["apps/subly/lib/features/settings/settings_screen.dart"],
+        "pattern": "recordAnalyticsConsent\\(",
+        "why": "The withdrawal path in the one shipping app, in the screen the page tells the user to open. It is the same call the first-run prompt makes with `granted` flipped, so withdrawal appends a new consent artifact rather than editing the old one. Delete the row from Settings and this claim goes red — which is the point: the sentence promises a control, not an intention."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Settings",
+      "type": "descriptive",
+      "why": "Names the screen the user is told to open. The control on it is the subject of the withdrawal row above; this span is the signpost."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Usage statistics",
+      "type": "descriptive",
+      "why": "The label of the control, quoted so the page and the app use one name for one thing. The brick's own no-hardcoded-strings guard owns whether that label is localised."
+    },
+
+    {
+      "page": "terms.html",
+      "claim": "NIKATRU",
+      "type": "descriptive",
+      "why": "The trading name. terms.html §preamble also names the sole proprietor, which check-site-integrity.mjs asserts."
+    },
+    {
+      "page": "terms.html",
+      "claim": "Razorpay",
+      "type": "known-gap",
+      "ownerItem": "O-3",
+      "providers": ["razorpay"],
+      "why": "terms.html §4 tells a buyer their website purchase is processed by Razorpay. There is no Razorpay integration in this repository, privacy.html says nothing is sold from the website today, and [ADR 004] locked a merchant of record — a different legal relationship, in which the provider is the seller and we are not. The correction is published copy: OWNER_QUEUE O-3, and it belongs in the same version bump as the other two.",
+      "stillTrue": "processed securely by Razorpay"
+    },
+    {
+      "page": "terms.html",
+      "claim": "\"as is\" and \"as available\"",
+      "type": "descriptive",
+      "why": "A warranty disclaimer. Its scope and enforceability are a question for a lawyer, not for a guard, and this register does not pretend otherwise."
+    },
+
+    {
+      "page": "refund.html",
+      "claim": "NIKATRU",
+      "type": "descriptive",
+      "why": "The trading name."
+    },
+    {
+      "page": "refund.html",
+      "claim": "Apple App Store, Google Play",
+      "type": "provider",
+      "providers": ["apple-app-store", "google-play"]
+    },
+    {
+      "page": "refund.html",
+      "claim": "Microsoft Store",
+      "type": "provider",
+      "providers": ["microsoft-store"]
+    },
+    {
+      "page": "refund.html",
+      "claim": "Digital delivery:",
+      "type": "descriptive",
+      "why": "A commitment about digital goods with no code consequence. Whether it is enforceable where a buyer lives is a legal question this register does not answer."
+    },
+    {
+      "page": "refund.html",
+      "claim": "We will provide a refund if:",
+      "type": "descriptive",
+      "why": "The refund conditions. No code path issues refunds today — every kind:store channel in tooling/channel-register.json is served:false and no payment provider is wired — so there is nothing to assert against."
+    },
+    {
+      "page": "refund.html",
+      "claim": "Subscriptions:",
+      "type": "descriptive",
+      "why": "Cancellation behaviour. Store-side today, and no website subscription exists to cancel."
+    },
+    {
+      "page": "refund.html",
+      "claim": "7 days",
+      "type": "descriptive",
+      "why": "The window for requesting a refund. A COMMITMENT WE CHOSE, not a statutory period — it is deliberately not described as one, and no guard here invents a legal minimum to compare it to."
+    },
+    {
+      "page": "refund.html",
+      "claim": "5-7 business days",
+      "type": "descriptive",
+      "why": "How long a refund takes to appear. Depends on the buyer's bank and the provider; not a promise any file in this tree can keep or break."
+    }
+  ]
+}
