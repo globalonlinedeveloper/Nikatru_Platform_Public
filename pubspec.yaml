@@ -25,7 +25,6 @@ workspace:
   - packages/purchases
   - packages/telemetry
   - apps/subly
-  - apps/probe
 
 dev_dependencies:
   melos: ^8.2.2
