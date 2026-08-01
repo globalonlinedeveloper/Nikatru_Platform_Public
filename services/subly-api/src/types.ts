@@ -15,8 +15,12 @@ export interface Env {
   // KV — caches the Supabase JWKS document
   JWKS_CACHE: KVNamespace;
 
-  // R2 — CSV exports / receipts
-  EXPORTS: R2Bucket;
+  // 🔴 `EXPORTS: R2Bucket` WAS HERE and was removed on 2026-08-01 with the
+  // binding it typed ([4]B-18). It is worth naming why the TYPE had to go too:
+  // assert-vendor-portability.mjs derives its surface set from the UNION of this
+  // interface and the wrangler configs, so leaving the field would have kept the
+  // R2 surface reporting as alive after the binding was deleted — a declaration
+  // standing in for a use, which is the same mistake in the other direction.
 
   // Non-secret vars (wrangler.jsonc vars)
   APP_ID: string;

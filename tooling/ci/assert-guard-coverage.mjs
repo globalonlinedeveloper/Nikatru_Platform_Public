@@ -93,25 +93,36 @@ const TESTS = join(CI, 'test');
 // only thing that could derive its expected size is the listing itself. What
 // backs them instead is the ci.yml invoked-guard cross-check below, which is a
 // relationship; the numbers are the second line, not the first.
-// Re-measured 2026-08-01 (stage 3 · THE STAMPER: S-4's workspace-resolution
-// limb, S-6's cron limb, S-12r's provisioner coverage): 41 guards, 36 test
-// files, 1022 test declarations. THE GUARD COUNT IS UNCHANGED AND THAT IS
-// CORRECT — S-4's and S-6's limbs EXTENDED assert-stamp-platforms.mjs and
-// assert-clone-contract.mjs rather than adding scanners, and S-12r's subject
-// (provision-backend.mjs) is not a guard at all: it lives in tooling/scripts and
-// is covered through COVERED_SCRIPTS below. Only the file and declaration floors
-// move, and both keep their headroom — 34 against 36, and 980 against 1022 —
-// because a floor pinned AT the measurement goes red on the next honest merge
-// and teaches everyone to raise floors reflexively.
-const MIN_GUARDS = 39;
-const MIN_TEST_FILES = 34;
+// Re-measured 2026-08-01 (assert-platform-register.mjs landing, [4]B-1/B-18/B-13):
+// 42 guards, 36 test files, 1018 test declarations. All three move this time,
+// because this change adds a whole guard and a whole test file rather than
+// extending existing ones. Floors go to 40/34/980 — 2, 2 and 38 below the
+// measurement, the same gaps the previous ratchet chose, for the same reason: a
+// floor pinned AT reality goes red on the next honest merge and teaches everyone
+// to raise floors reflexively, which is how 15/4/140 came to sit at ~40% of the
+// tree.
+//
+// 🔴 RE-MEASURED ONCE MORE ON THE MERGE ITSELF (stage 3 · THE STAMPER meeting
+// stage 4 · B-1). THIS IS THE CASE THE COMMENT SIX PARAGRAPHS UP WARNS ABOUT,
+// arriving for the second time: BOTH branches independently ratcheted
+// MIN_TEST_FILES to 34 against their own honest measurement of 36, and neither
+// could see the other's new test file. Taking either side — or the higher of the
+// two, which is the tempting shortcut — would have left the floor describing a
+// tree that never existed. Stage 3 EXTENDED four guards and added no scanner, so
+// the guard count is stage 4's alone; the test files and declarations are the
+// union of both.
+// Merged reality, MEASURED on the resolved tree (not predicted from either
+// branch): 42 guards, 37 test files, 1060 test declarations. Floors 40/35/1000 —
+// 2, 2 and 60 below.
+const MIN_GUARDS = 40;
+const MIN_TEST_FILES = 35;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 980;
+const MIN_TEST_CASES = 1000;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing

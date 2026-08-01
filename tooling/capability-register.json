@@ -92,7 +92,7 @@
       }
     },
     "cloudflare": {
-      "surface": "Workers runtime, D1 (platform_db, subly_db), KV (config, JWKS cache), R2 (exports), and the events rate-limiter.",
+      "surface": "Workers runtime, D1 (platform_db, subly_db), KV (config, JWKS cache), and the events/config rate-limiters. NO R2 surface as of 2026-08-01 — see exportPath.",
       "stickiness": "★★★ — portability-standard.md names KV/DO as a sticky point.",
       "surfaces": [
         "PLATFORM_DB",
@@ -100,7 +100,6 @@
         "APP_DB",
         "CONFIG_KV",
         "JWKS_CACHE",
-        "EXPORTS",
         "EVENTS_LIMITER",
         "EVENTS_CEILING_LIMITER",
         "CONFIG_CEILING_LIMITER",
@@ -118,7 +117,7 @@
       "ownTheRecord": "YES — D1 IS our record. The risk here is not losing the record to a vendor, it is the SQLite dialect and the KV semantics.",
       "exportPath": {
         "path": "services/platform/migrations",
-        "detail": "PUBLIC, CHECKABLE EVIDENCE: the D1 schema is plain SQL migrations in this repo — that IS the export shape, and it is why a D1 export lands in any SQLite or Postgres. R2 is S3-compatible so rclone moves it. KV has no bulk export primitive; the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record. ⬜ FINDING 2026-07-28: the subly-api `EXPORTS` R2 binding is declared in types.ts and referenced NOWHERE in the code — a bound bucket with no writer, the same fail-closed-with-no-open-path shape [2]C-6 exists to catch. Routed to stage 4."
+        "detail": "PUBLIC, CHECKABLE EVIDENCE: the D1 schema is plain SQL migrations in this repo — that IS the export shape, and it is why a D1 export lands in any SQLite or Postgres. R2 is S3-compatible so rclone moves it. KV has no bulk export primitive; the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record. ✅ CLOSED 2026-08-01: the FINDING of 2026-07-28 — the subly-api `EXPORTS` R2 binding declared in types.ts and referenced NOWHERE in the code, a bound bucket with no writer, the same fail-closed-with-no-open-path shape [2]C-6 exists to catch — was routed to stage 4 and executed there. The binding and its type declaration are gone ([4]B-18), and tooling/ci/assert-platform-register.mjs now fails on ANY binding in ANY wrangler config in the repo (brick template included) with no resolved reader, so this cannot recur silently. ⚠️ The BUCKET is still in the account: deleting it is destructive and is the owner's. There is therefore NO R2 surface in this list today, which is correct — the rule is ONE portfolio bucket bound in services/platform when object storage is genuinely needed, addressed by an `<app_id>/` prefix."
       },
       "exitPlan": {
         "alternative": "Postgres/Neon + S3 + any Node host behind the same Worker handlers",

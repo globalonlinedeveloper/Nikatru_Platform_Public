@@ -34,19 +34,23 @@ let seq = 0;
  * Build a fake repo.
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
- * ⚠️ testFiles defaults to 33 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
- * → 32 → 33 (2026-07-31, five times on 2026-08-01) — a fixture below the floor would make
+ * ⚠️ testFiles defaults to 35 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
+ * → 32 → 33 → 34 → 35 (2026-07-31, seven times on 2026-08-01, the last where stage 3 ·
+ * THE STAMPER met stage 4 · B-1) — a fixture below the floor would make
  * every green case here red for a reason that has nothing to do with the behaviour
  * under test. Ratchet the floor and this default together, always.
- * ⚠️ The last of those ratchets was a MERGE: two branches each ratcheted honestly to
- * 31, and the merged tree has 34 test files. Neither branch's number was wrong and
- * neither was right — re-measure after a merge rather than taking the higher one.
+ * ⚠️ TWO of those ratchets were MERGES, and the second proves the first was not a
+ * fluke: both times, two branches each ratcheted honestly to the same number against
+ * their own tree, and the merged tree had more test files than either had ever seen.
+ * Neither branch's number was wrong and neither was right — re-measure ON THE MERGE,
+ * and do not reach for the higher of the two, which is the same mistake wearing a
+ * disguise.
  * `files` writes extra files at the fixture root (e.g. a ci.yml manifest).
  */
 function repo(
   guards,
   {
-    testFiles = 34,
+    testFiles = 35,
     mentionAll = true,
     hollow = false,
     commentsOnly = false,
@@ -104,9 +108,10 @@ function repo(
   return root;
 }
 
-/** 39 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39,
- *  2026-07-31, then three times on 2026-08-01 — the last with assert-deploy-triggers.mjs. */
-function compliant(extra = {}, count = 39) {
+/** 40 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39 →
+ *  40, 2026-07-31, then four times on 2026-08-01 — the last with
+ *  assert-platform-register.mjs, [4]B-1). */
+function compliant(extra = {}, count = 40) {
   const g = {};
   for (let i = 0; i < count; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
   return { ...g, ...extra };
@@ -118,7 +123,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /39 guard\(s\), all named in 34 test file\(s\)/);
+    assert.match(r.stdout, /40 guard\(s\), all named in 35 test file\(s\)/);
   });
 
   test('a guard no test mentions FAILS', () => {
@@ -190,10 +195,10 @@ describe('assert-guard-coverage', () => {
     // so 22 guards could vanish from the scan without tripping anything
     // (triage 2026-07-31, mutation-proven). This pins the ratchet: when
     // the tree grows again, ratchet the floor AND this fixture together.
-    // Ratcheted to 39 on 2026-08-01 with assert-deploy-triggers.mjs (corpus #30).
-    const r = run(repo(compliant({}, 38)));
+    // Ratcheted to 40 on 2026-08-01 with assert-platform-register.mjs ([4]B-1).
+    const r = run(repo(compliant({}, 39)));
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST — found 38 guard\(s\)/);
+    assert.match(r.stderr, /COVERAGE LOST — found 39 guard\(s\)/);
   });
 
   test('COVERAGE: a .mjs moved into a subdirectory of tooling/ci FAILS loudly, naming it', () => {

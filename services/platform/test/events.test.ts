@@ -6,36 +6,22 @@ import events, {
   MAX_PARAM_COUNT,
 } from '../src/routes/events';
 import type { AppEnv } from '../src/types';
+import { realPlatformDb, type RealDb } from './harness';
 
-/** Records every prepared SQL string and the values bound to it. */
-class FakeDb {
-  sql: string[] = [];
-  bound: unknown[][] = [];
-  batched = 0;
-  throwOnBatch = false;
-
-  prepare(sql: string) {
-    this.sql.push(sql);
-    const self = this;
-    const mk = () => ({
-      bind(...args: unknown[]) {
-        self.bound.push(args);
-        return mk();
-      },
-      async run() {
-        if (self.throwOnBatch) throw new Error('d1 down');
-        return { meta: { changes: 1 } };
-      },
-    });
-    return mk();
-  }
-
-  async batch(rows: unknown[]) {
-    if (this.throwOnBatch) throw new Error('d1 down');
-    this.batched += rows.length;
-    return [];
-  }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 `class FakeDb` USED TO LIVE HERE. It was deleted on 2026-08-01
+// ([pipeline B-9]) and replaced by `realPlatformDb()` — node:sqlite with THE
+// REAL platform_db migrations applied. See test/harness.ts for the full
+// reasoning; the short version is that FakeDb answered `{ changes: 1 }` to every
+// statement, so this file could assert what SQL the route CHOSE and could not
+// assert a single thing about what LANDED. "Writes zero rows" was not merely
+// unproven against it, it was unprovable: the strongest available statement was
+// "the route did not call batch()", which is a different claim.
+//
+// Everything the old double recorded is still recorded — `db.sql`, `db.bound`,
+// `db.batched` are unchanged — so every assertion below grades the same request,
+// now executed against a real engine rather than swallowed by one.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * A limiter stub that RECORDS every key it is asked about.
@@ -60,12 +46,12 @@ function harness(
     allowRate?: boolean;
     /** The SERVER-DERIVED half. Independent of `allowRate` on purpose. */
     allowCeiling?: boolean;
-    db?: FakeDb;
+    db?: RealDb;
     /** Omit a binding entirely, to exercise the documented fail-OPEN. */
     omit?: Array<'EVENTS_LIMITER' | 'EVENTS_CEILING_LIMITER'>;
   } = {},
 ) {
-  const db = opts.db ?? new FakeDb();
+  const db = opts.db ?? realPlatformDb();
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
     c.set('requestId', 'test-rid');
@@ -248,11 +234,15 @@ describe('POST /v1/events — ingest', () => {
 
   it('a D1 failure returns 503 so the client KEEPS the batch', async () => {
     // Dedup on event_id makes the retry safe; a 200 here would lose the events.
-    const db = new FakeDb();
-    db.throwOnBatch = true;
+    const db = realPlatformDb();
+    db.throwOnWrite = true;
     const { post } = harness({ db });
     const res = await post('/v1/events', { app_id: 'subly', events: [ev()] });
     expect(res.status).toBe(503);
+    // NEW, and only sayable now: the 503 is honest. Nothing landed, so the
+    // client's retry cannot double-count. Against FakeDb this line could not be
+    // written at all.
+    expect(db.count('events')).toBe(0);
   });
 
   it('malformed JSON is a 400, not a crash', async () => {
@@ -675,6 +665,144 @@ describe('POST /v1/consent — the DPDP artifact', () => {
       const body = artifact();
       delete (body as Record<string, unknown>)[missing];
       expect((await post('/v1/consent', body)).status, missing).toBe(400);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHAT ONLY A REAL ENGINE CAN ANSWER — [pipeline B-9].
+//
+// Every assertion in this block is one that `class FakeDb` made IMPOSSIBLE, not
+// merely inconvenient. They are grouped so that deleting the harness deletes a
+// visible capability rather than quietly weakening assertions spread through the
+// file above.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the route is executed against platform_db, not asserted about', () => {
+  it('every column the INSERT names exists in the shipped migration', async () => {
+    // 🔴 THE MUTATION THIS FILE COULD NOT CATCH. Rename any column in the
+    // `INSERT INTO events (...)` list — `anon_id` to `anonymous_id`, say — and
+    // FakeDb answered `{ changes: 1 }` exactly as before: the whole suite stayed
+    // green against a Worker that could not write a single row to the real
+    // database. `tsc --noEmit` cannot see it either; SQL is a string.
+    const { db, post } = harness();
+    const res = await post('/v1/events', { app_id: 'subly', events: [ev()] });
+    expect(res.status).toBe(200);
+    const rows = db.rows('SELECT * FROM events');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      event_id: '11111111-1111-4111-8111-111111111111',
+      app_id: 'subly',
+      anon_id: 'install-1',
+      event: 'first_launch',
+      client_ts: '2026-07-25T10:00:00.000Z',
+    });
+  });
+
+  it('DEDUP IS A PROPERTY OF THE DATABASE, not of a substring in the SQL', async () => {
+    // Above, `expect(sql).toContain('ON CONFLICT(event_id) DO NOTHING')` is a
+    // grep over the statement text. It stays green if the UNIQUE INDEX the clause
+    // depends on is dropped from 0002_analytics.sql, which is the only thing that
+    // makes the clause mean anything. Two sends, one row, by query.
+    const { db, post } = harness();
+    await post('/v1/events', { app_id: 'subly', events: [ev()] });
+    await post('/v1/events', { app_id: 'subly', events: [ev({ event: 'second_send' })] });
+    expect(db.count('events')).toBe(1);
+    // …and it is the FIRST write that survives — DO NOTHING, not DO UPDATE.
+    expect(db.rows('SELECT event FROM events')[0].event).toBe('first_launch');
+  });
+
+  it('a batch is ONE transaction — a failing row takes the whole batch with it', async () => {
+    // D1's `batch()` is transactional and the route depends on that: it returns
+    // 503 so the client keeps and retries the batch, which is only safe if the
+    // batch is all-or-nothing. Against FakeDb, `batch()` incremented a counter.
+    // A DB-level abort the route cannot pre-empt, as subly-api's harness does it.
+    const db = realPlatformDb([
+      `CREATE TRIGGER reject_boom BEFORE INSERT ON events
+         WHEN NEW.event = 'boom'
+         BEGIN SELECT RAISE(ABORT, 'rejected by trigger'); END;`,
+    ]);
+    const { post } = harness({ db });
+    const res = await post('/v1/events', {
+      app_id: 'subly',
+      events: [
+        ev({ event_id: 'good-1' }),
+        ev({ event_id: 'bad-1', event: 'boom' }),
+        ev({ event_id: 'good-2' }),
+      ],
+    });
+    expect(res.status).toBe(503);
+    // The route ACCEPTED all three as well-formed and handed them to D1 as one
+    // batch; the engine rolled every one of them back. Zero, not two.
+    expect(db.batched).toBe(3);
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('a rejected request writes ZERO ROWS — the claim [4]B-4a is built on', async () => {
+    // Not "the route did not call batch()". A count, against the table.
+    const { db, post } = harness();
+    for (const body of [
+      { events: [ev()] }, // no app_id           → 400
+      { app_id: 'subly', events: [ev({ anon_id: undefined })] }, // → 400
+      { app_id: 'subly', events: Array.from({ length: 101 }, () => ev()) }, // → 413
+    ]) {
+      const res = await post('/v1/events', body);
+      expect(res.status).not.toBe(200);
+    }
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('🔴 RECORDED RED FOR [4]B-4a: an UNREGISTERED app_id writes a real row TODAY', async () => {
+    // This is not an aspiration, it is the current behaviour, asserted so that
+    // the increment which fixes it has a test to flip rather than a paragraph to
+    // remember. `services/platform/src/routes/events.ts` accepts any string of
+    // ≤64 chars as `app_id` and binds it straight into `events.app_id`, while
+    // `routes/config.ts` rejects an unknown app with 404 — the asymmetry is the
+    // defect. When the app registry lands, this expectation becomes `0` and the
+    // status becomes 4xx; until then the honest number is 1.
+    const { db, post } = harness();
+    const res = await post('/v1/events', {
+      app_id: 'zzz-not-a-real-app',
+      events: [ev()],
+    });
+    expect(res.status).toBe(200);
+    expect(db.count('events', "app_id = ?", 'zzz-not-a-real-app')).toBe(1);
+  });
+
+  it('the consent artifact lands, append-only and idempotent on consent_id', async () => {
+    const { db, post } = harness();
+    const artifact = {
+      consent_id: '22222222-2222-4222-8222-222222222222',
+      app_id: 'subly',
+      anon_id: 'install-1',
+      purpose: 'analytics',
+      granted: true,
+      policy_version: '2026-07-25',
+    };
+    expect((await post('/v1/consent', artifact)).status).toBe(200);
+    // A REPLAY of the same artifact with the decision flipped must not overwrite
+    // the record: DPDP §6(3) needs the trail, and the route uses DO NOTHING.
+    expect((await post('/v1/consent', { ...artifact, granted: false })).status).toBe(200);
+    const rows = db.rows('SELECT granted FROM consent_artifacts');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].granted).toBe(1);
+    // A WITHDRAWAL is a new artifact, with its own id — and that one does land.
+    await post('/v1/consent', {
+      ...artifact,
+      consent_id: '33333333-3333-4333-8333-333333333333',
+      granted: false,
+    });
+    expect(db.count('consent_artifacts')).toBe(2);
+  });
+
+  it('the shipped schema has NO ip column — the privacy invariant, at the table', async () => {
+    // events.test.ts asserted `expect(db.sql).not.toMatch(/\bip\b/)` — a property
+    // of the statement the route happened to write. This asserts it of the table
+    // the portfolio actually stores rows in, which is where it has to hold.
+    const db = realPlatformDb();
+    for (const table of ['events', 'consent_artifacts']) {
+      const cols = db.rows(`PRAGMA table_info(${table})`).map((c) => String(c.name));
+      expect(cols, table).not.toContain('ip');
+      expect(cols.join(','), table).not.toMatch(/(^|,)(ip_address|client_ip|remote_addr)(,|$)/);
     }
   });
 });
