@@ -37,16 +37,27 @@ class EntitlementCache {
   /// The raw cached entitlements exactly as last saved, or null when nothing is
   /// cached or the cached value is unreadable/corrupt (a corrupt cache can never
   /// take the app down — it is treated as absent).
+  ///
+  /// THE STORE READ IS INSIDE THE TRY. It used to sit above it, so the documented
+  /// failure path only covered a corrupt VALUE and not a failing STORE — and a
+  /// [SecureStore] is the one seam here that really throws: a locked Keychain, a
+  /// user who has not unlocked the device since boot, a Keystore key invalidated
+  /// by a biometric enrolment, a `PlatformException` from the plugin. All of
+  /// those escaped as an unhandled error out of what the doc comment promised
+  /// was a null-returning read, taking the paywall gate (and whatever called it
+  /// during startup) with them. A guarded catch that the guarded call is not
+  /// inside is not a guard.
   Future<Entitlements?> readRaw() async {
-    final String? raw = await _store.read(_key);
-    if (raw == null) return null;
     try {
+      final String? raw = await _store.read(_key);
+      if (raw == null) return null;
       final Object? decoded = jsonDecode(raw);
       if (decoded is Map) {
         return Entitlements.fromJson(decoded.cast<String, dynamic>());
       }
     } catch (_) {
-      // Malformed/tampered cache — fall through and report nothing cached.
+      // Unreadable store OR malformed/tampered value — both report "nothing
+      // cached", which downgrades to not-Pro rather than crashing.
     }
     return null;
   }
