@@ -93,15 +93,23 @@ const TESTS = join(CI, 'test');
 // only thing that could derive its expected size is the listing itself. What
 // backs them instead is the ci.yml invoked-guard cross-check below, which is a
 // relationship; the numbers are the second line, not the first.
-const MIN_GUARDS = 39;
-const MIN_TEST_FILES = 33;
+// Re-measured 2026-08-01 (assert-platform-register.mjs landing, [4]B-1/B-18/B-13):
+// 42 guards, 36 test files, 1018 test declarations. All three move this time,
+// because this change adds a whole guard and a whole test file rather than
+// extending existing ones. Floors go to 40/34/980 — 2, 2 and 38 below the
+// measurement, the same gaps the previous ratchet chose, for the same reason: a
+// floor pinned AT reality goes red on the next honest merge and teaches everyone
+// to raise floors reflexively, which is how 15/4/140 came to sit at ~40% of the
+// tree.
+const MIN_GUARDS = 40;
+const MIN_TEST_FILES = 34;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 950;
+const MIN_TEST_CASES = 980;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing
