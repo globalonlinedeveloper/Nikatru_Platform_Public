@@ -89,6 +89,23 @@ const storeRow = (over = {}) => ({
   ...over,
 });
 
+/** The android-play row. No `packageIdentity`: Play's package name is the
+ *  gradle `applicationId`, which is DERIVABLE (com.nikatru.<slug>) rather than
+ *  assigned by a console, so there is nothing to hold a sentinel for. The
+ *  release path checks it — tooling/release/submit-play.mjs. */
+const playRow = (over = {}) => ({
+  id: 'android-play',
+  name: 'Google Play',
+  platforms: ['android'],
+  kind: 'store',
+  served: false,
+  submittable: true,
+  artifactFormats: ['.aab'],
+  storeMetadataDir: 'apps/{app}/store/android-play',
+  ownerQueue: 'A-3',
+  ...over,
+});
+
 const contract = () => ({
   requiredFiles: [...REQUIRED],
   urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
@@ -104,6 +121,15 @@ const contract = () => ({
     'windows-store': {
       additionalFiles: ['search-terms.txt'],
       maxLines: { 'search-terms.txt': { max: 7, source: 'MS Store Policies v7.19 §10.1.3' } },
+    },
+    // Play's three published limits. Only consulted when a tree for this
+    // channel actually exists, which is what `withPlay` below builds.
+    'android-play': {
+      maxChars: {
+        'title.txt': { max: 30, source: 'support.google.com/.../9859152 (2026-07-29)' },
+        'short-description.txt': { max: 80, source: 'support.google.com/.../9859152 (2026-07-29)' },
+        'long-description.txt': { max: 4000, source: 'support.google.com/.../9859152 (2026-07-29)' },
+      },
     },
   },
 });
@@ -143,6 +169,10 @@ function tree({
   omitPubspec = false,
   pubspecOver = {},
   noMsixConfig = false,
+  withPlay = false,
+  playFields = {},
+  omitPlayFiles = [],
+  omitPlayTree = false,
   apps = [{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }],
 } = {}) {
   const root = join(TMP, `r${seq++}`);
@@ -159,6 +189,7 @@ function tree({
       storeRow(),
     ],
   };
+  if (withPlay) register.channels.push(playRow());
   if (mutateRegister) mutateRegister(register);
 
   write('sites/_shared/_data/apps.json', JSON.stringify(apps, null, 2));
@@ -175,6 +206,12 @@ function tree({
       write(`apps/${app.slug}/store/windows-store/${rel}`, fields[rel] ?? FIELD[rel]);
     }
     for (const d of extraDirs) write(`apps/${app.slug}/store/${d}/README.md`, 'orphan\n');
+    if (withPlay && !omitPlayTree) {
+      for (const rel of REQUIRED) {
+        if (omitPlayFiles.includes(rel)) continue;
+        write(`apps/${app.slug}/store/android-play/${rel}`, playFields[rel] ?? FIELD[rel]);
+      }
+    }
   }
   return root;
 }
@@ -555,5 +592,157 @@ describe('assert-store-metadata — maxChars, the Apple limit kind', () => {
     assert.equal(code, 1, out);
     assertComplained(out);
     assert.match(out, /subtitle\.txt is missing/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The android-play half of D-5. The guard is GENERIC over `kind: "store"` rows,
+// so the coverage relationship picked this channel up the moment the register
+// declared it — these cases prove that rather than assume it, and pin the one
+// thing that is genuinely new: SOURCED CHARACTER LIMITS.
+//
+// ⚠️ MUTATION-PROVEN FIRST, against a scratch COPY of the real tree (2026-08-01,
+// 25 mutations across this guard, assert-channel-register.mjs and
+// tooling/release/submit-play.mjs): 23 FAIL, 2 PRINT by design, restore
+// re-verified green before and after every case, no case "caught" by a crash.
+// These fixtures are the regression net, not the evidence.
+describe('assert-store-metadata — android-play (Google Play)', () => {
+  test('PASSES with two store trees and counts BOTH channels in the relationship', () => {
+    const { code, out } = run(tree({ withPlay: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /REQUIRED_COVERAGE — 2 store channel\(s\) × 1 app\(s\) = 2 expected tree\(s\); 2 present and complete/);
+  });
+
+  // 🔴 THE ASYMMETRY, BOTH HALVES. Creating a tree is owner-gated; KEEPING one
+  // is not. "PRINT everything" is how an owner-gated exemption eats the check.
+  test('PRINTS, and does not fail, when the deferred row has NO tree at all', () => {
+    const { code, out } = run(tree({ withPlay: true, omitPlayTree: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /NO TREE \(deferred\): apps\/subly\/store\/android-play/);
+    assert.match(out, /OWNER_QUEUE A-3/);
+  });
+
+  test('FAILS when a file is deleted from the android-play tree that EXISTS', () => {
+    const { code, out } = run(tree({ withPlay: true, omitPlayFiles: ['title.txt'] }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /apps\/subly\/store\/android-play\/title\.txt is missing/);
+  });
+
+  test('FAILS when the android-play screenshot slot README is deleted', () => {
+    const { code, out } = run(tree({ withPlay: true, omitPlayFiles: ['screenshots/README.md'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /android-play\/screenshots\/README\.md is missing/);
+  });
+
+  test('FAILS when an android-play field is emptied', () => {
+    const { code, out } = run(tree({ withPlay: true, playFields: { 'category.txt': '   \n' } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /android-play\/category\.txt is EMPTY/);
+  });
+
+  test('FAILS when android-play title.txt forks from apps.json name', () => {
+    const { code, out } = run(tree({ withPlay: true, playFields: { 'title.txt': 'Sublyx\n' } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /android-play\/title\.txt has forked from its spec source/);
+  });
+
+  // ── the sourced character limits ───────────────────────────────────────────
+  test('FAILS on an app name over Play’s 30-character cap', () => {
+    const name = 'A'.repeat(31);
+    const { code, out } = run(
+      tree({
+        withPlay: true,
+        playFields: { 'title.txt': `${name}\n` },
+        fields: { 'title.txt': `${name}\n` },
+        apps: [{ slug: 'subly', name, tagline: 'Track every subscription in one place', platforms: ['web'] }],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /android-play\/title\.txt is 31 characters and the limit is 30/);
+  });
+
+  test('FAILS on a short description over 80 characters', () => {
+    const tagline = 'b'.repeat(81);
+    const { code, out } = run(
+      tree({
+        withPlay: true,
+        playFields: { 'short-description.txt': `${tagline}\n` },
+        fields: { 'short-description.txt': `${tagline}\n` },
+        apps: [{ slug: 'subly', name: 'Subly', tagline, platforms: ['web'] }],
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /short-description\.txt is 81 characters and the limit is 80/);
+  });
+
+  test('FAILS on a full description over 4000 characters', () => {
+    const { code, out } = run(tree({ withPlay: true, playFields: { 'long-description.txt': `${'c'.repeat(4001)}\n` } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /long-description\.txt is 4001 characters and the limit is 4000/);
+  });
+
+  test('PASSES at exactly the limit — an off-by-one here rejects correct copy', () => {
+    const name = 'A'.repeat(30);
+    const { code, out } = run(
+      tree({
+        withPlay: true,
+        playFields: { 'title.txt': `${name}\n` },
+        fields: { 'title.txt': `${name}\n` },
+        apps: [{ slug: 'subly', name, tagline: 'Track every subscription in one place', platforms: ['web'] }],
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  // Counting UTF-16 units would score this 60 and reject copy Google accepts.
+  test('counts CODE POINTS, not UTF-16 units — 30 astral characters PASS', () => {
+    const name = '\u{1F600}'.repeat(30);
+    const { code, out } = run(
+      tree({
+        withPlay: true,
+        playFields: { 'title.txt': `${name}\n` },
+        fields: { 'title.txt': `${name}\n` },
+        apps: [{ slug: 'subly', name, tagline: 'Track every subscription in one place', platforms: ['web'] }],
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  // 🔴 A limit nobody can trace is a remembered number, and a remembered number
+  // fires on CORRECT input. This is the negative test for that rule.
+  test('FAILS on a declared limit with no `source` rather than enforcing it', () => {
+    const { code, out } = run(
+      tree({
+        withPlay: true,
+        mutateRegister: (r) => {
+          delete r.storeMetadataContract.perChannel['android-play'].maxChars['title.txt'].source;
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /maxChars\["title.txt"\] declares a numeric limit with NO `source`/);
+  });
+
+  test('COVERAGE LOST when limits are declared for a present tree and none is evaluated', () => {
+    const { code, out } = run(
+      tree({
+        withPlay: true,
+        mutateRegister: (r) => {
+          const per = r.storeMetadataContract.perChannel;
+          per['android-play'].maxChars = { 'nope.txt': { max: 30, source: 'x' } };
+          delete per['windows-store'].maxLines;
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /NOT ONE was evaluated/);
+  });
+
+  test('the summary line reports how many limits were actually measured', () => {
+    const { code, out } = run(tree({ withPlay: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /4 measured against a SOURCED store limit/);
   });
 });
