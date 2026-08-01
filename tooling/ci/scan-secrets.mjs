@@ -33,7 +33,19 @@ import { spawnSync } from 'node:child_process';
 const args = process.argv.slice(2);
 const glIdx = args.indexOf('--gitleaks');
 const gitleaks = glIdx >= 0 ? args[glIdx + 1] : 'gitleaks';
-const positional = args.filter((a, i) => !a.startsWith('--') && i !== glIdx + 1);
+// 🔴 SAME OFF-BY-ONE AS scan-workflows.mjs, and worse here. `i !== glIdx + 1`
+// alone drops args[0] whenever `--gitleaks` is absent, because indexOf returns
+// -1 and -1 + 1 is 0 — the positional repoRoot's own index. The documented
+// no-flag form `node scan-secrets.mjs <repoRoot>` therefore scanned
+// process.cwd() instead: aimed at an empty directory it cleared the §1 COVERAGE
+// LOST marker check against the repo it was standing in and printed "ok secret
+// scan — no findings in the working tree" about a tree it never opened. The
+// marker check exists precisely because gitleaks over the wrong directory looks
+// identical to a clean repo — and the argument bug was feeding it the right
+// directory by accident. Corpus triage 2026-08-01 (#28). Negative-tested with a
+// stub scanner: restoring the -1 makes the no-flag form pass over the empty root.
+const flagValueIdx = glIdx >= 0 ? glIdx + 1 : -1;
+const positional = args.filter((a, i) => !a.startsWith('--') && i !== flagValueIdx);
 const repoRoot = positional[0] ?? process.cwd();
 
 /** A PEM header trips gitleaks' `private-key` rule. Chosen over a fake cloud key
@@ -101,16 +113,7 @@ function runGitleaks(sourceDir, extra = []) {
   );
 }
 
-// ── 0. the scanner must exist at all ─────────────────────────────────────────
-const version = spawnSync(exe, [...lead, 'version'], { encoding: 'utf8' });
-if (version.error || version.status !== 0) {
-  console.error(`✗ gitleaks not runnable at "${gitleaks}" — ${version.error?.message ?? `exit ${version.status}`}`);
-  console.error('  Install it in the job, or pass --gitleaks <path>.');
-  process.exit(1);
-}
-console.log(`gitleaks ${(version.stdout ?? '').trim()}`);
-
-// ── 1. COVERAGE: the scan must actually reach the repository ─────────────────
+// ── 0. COVERAGE: the scan must actually reach the repository ─────────────────
 // [pipeline F-10] The self-test below proves the SCANNER still detects. It says
 // nothing about whether the scanner is pointed at anything. gitleaks over an
 // empty or wrong directory exits 0 and prints no findings, which is byte-for-byte
@@ -119,10 +122,14 @@ console.log(`gitleaks ${(version.stdout ?? '').trim()}`);
 // markers are the tree this repo actually has; their absence means the scan is
 // broken, not that the tree is clean.
 //
-// ORDER MATTERS: this runs BEFORE the rule-set and self-test checks, because
-// "you are not pointed at a repository" is a more basic failure than "this
-// repository's rules are wrong", and reporting the deeper one first would be
-// misleading.
+// ORDER MATTERS, and this moved AHEAD of the binary check on 2026-08-01: "you
+// are not pointed at a repository" is the most basic failure there is — more
+// basic than "the scanner is missing", let alone "this repository's rules are
+// wrong" — and it is the only one that can be checked without any scanner at
+// all. Which is also what makes the argument handling negative-testable in CI,
+// where no binary is installed: the corpus-triage defect (#28) was precisely
+// that `<repoRoot>` was being dropped, and no test could reach far enough into
+// this file to see it.
 if (!existsSync(repoRoot)) {
   console.error(`✗ repo root does not exist: ${repoRoot}`);
   process.exit(1);
@@ -135,6 +142,15 @@ if (absent.length) {
   console.error('  exits 0 with no findings, which is indistinguishable from a clean repo.');
   process.exit(1);
 }
+
+// ── 1. the scanner must exist at all ─────────────────────────────────────────
+const version = spawnSync(exe, [...lead, 'version'], { encoding: 'utf8' });
+if (version.error || version.status !== 0) {
+  console.error(`✗ gitleaks not runnable at "${gitleaks}" — ${version.error?.message ?? `exit ${version.status}`}`);
+  console.error('  Install it in the job, or pass --gitleaks <path>.');
+  process.exit(1);
+}
+console.log(`gitleaks ${(version.stdout ?? '').trim()}`);
 
 // ── 2. THE RULE SET MUST EXIST, and both runs must use the SAME one ──────────
 // 🔴 THE DEFECT THIS CLOSES. `--config` used to be applied ONLY to the real scan,

@@ -86,7 +86,11 @@ for (const f of dartFiles) {
 // (b) Worker Env interfaces.
 let envHits = 0;
 const svcRoot = join(ROOT, 'services');
-const services = existsSync(svcRoot) ? readdirSync(svcRoot) : [];
+// DIRECTORIES ONLY. `services` is the set every per-service relationship below
+// ranges over, so a stray file in services/ must not become a phantom member.
+const services = existsSync(svcRoot)
+  ? readdirSync(svcRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+  : [];
 for (const s of services) {
   const p = join(svcRoot, s, 'src/types.ts');
   if (!existsSync(p)) continue;
@@ -100,10 +104,19 @@ for (const s of services) {
 }
 
 // (c) + (d) wrangler bindings, ratelimit names, and cron schedules.
+//
+// THE ONE FILENAME THIS SCAN UNDERSTANDS. Named once, so the coverage check
+// below can say it out loud instead of leaving the reader to infer it.
+const WRANGLER = 'wrangler.jsonc';
 let bindingHits = 0;
+/** service → how many wrangler surfaces it contributed. The per-service split is
+ *  the whole point: a total cannot tell "one Worker's config went unreadable"
+ *  from "this Worker has fewer bindings than the other". */
+const wranglerPerService = new Map(services.map((s) => [s, 0]));
 for (const s of services) {
-  const p = join(svcRoot, s, 'wrangler.jsonc');
+  const p = join(svcRoot, s, WRANGLER);
   if (!existsSync(p)) continue;
+  const before = bindingHits;
   // Strip // comments so a commented-out binding is not counted as one.
   const src = readFileSync(p, 'utf8').replace(/^\s*\/\/.*$/gm, '');
   for (const m of src.matchAll(/"binding"\s*:\s*"([A-Za-z][A-Za-z0-9_]*)"/g)) {
@@ -122,23 +135,53 @@ for (const s of services) {
     derived.set('triggers.crons', derived.get('triggers.crons') ?? `wrangler-cron:${s}`);
     bindingHits++;
   }
+  wranglerPerService.set(s, bindingHits - before);
 }
 
 // Per-source coverage self-checks. A single total would let one source die
 // silently while the others carried the number — and each source exists
 // precisely because the others cannot see what it sees.
-const FLOORS = { 'dart-define': 10, 'worker-env': 15, 'wrangler': 5 };
+const FLOORS = { 'dart-define': 10, 'worker-env': 15 };
 if (dartHits < FLOORS['dart-define']) {
   problems.push(`COVERAGE LOST — source (a) found only ${dartHits} compile-time define(s), expected >= ${FLOORS['dart-define']}. A LINE-BASED scan finds 2 here; if this number collapsed toward 2, the multiline match has broken and nine defines including UPDATE_URL are invisible again.`);
 }
 if (envHits < FLOORS['worker-env']) {
   problems.push(`COVERAGE LOST — source (b) found only ${envHits} Worker Env key(s), expected >= ${FLOORS['worker-env']}. REVENUECAT_WEBHOOK_SECRET exists only here, so losing this source hides a whole vendor.`);
 }
-if (bindingHits < FLOORS.wrangler) {
-  problems.push(`COVERAGE LOST — source (c)/(d) found only ${bindingHits} wrangler surface(s), expected >= ${FLOORS.wrangler}. EVENTS_LIMITER is a ratelimits \`name\`, not a \`binding\`, so a partial scan silently drops it.`);
+
+// ── source (c)/(d) IS A RELATIONSHIP, NOT A NUMBER ───────────────────────────
+// 🔴 IT USED TO BE `bindingHits >= 5`, against a tree measuring 11. Corpus
+// triage 2026-08-01 (#39) mutated the real repository — `mv
+// services/subly-api/wrangler.jsonc wrangler.json` — and watched the total fall
+// 11 → 7 and the guard EXIT 0. Nothing else caught it either: the four lost
+// surfaces are D1/KV bindings that ALSO appear in that Worker's `interface Env`,
+// so source (b) kept them in `derived` and no vendor's claim went stale. One
+// Worker's entire wrangler surface — a cron, a ratelimit name, anything living
+// only in the config — could vanish behind a total the other Worker carried on
+// its own.
+//
+// A floor can only ever say "not zero-ish". What is actually true, and stays
+// true as services are added or removed, is a RELATIONSHIP: every directory
+// under services/ is a deployed Worker, and a deployed Worker is deployed BY a
+// wrangler config, so every one of them must contribute at least one surface.
+// That expectation is derived from the tree on each run — it cannot sit below
+// reality, because reality is what computes it.
+if (services.length === 0) {
+  problems.push(`COVERAGE LOST — no service directories under \`services/\`, so source (c)/(d) ranged over nothing. Every wrangler binding, ratelimit name and cron schedule in the repo would be invisible and this guard would still print ok.`);
+} else {
+  const blind = [...wranglerPerService.entries()].filter(([, n]) => n === 0).map(([s]) => s);
+  if (blind.length) {
+    problems.push(
+      `COVERAGE LOST — source (c)/(d) read ZERO wrangler surfaces from ${blind.length} of ${services.length} service(s): ${blind.map((s) => `services/${s}`).join(', ')}. ` +
+        `Each directory under \`services/\` is a deployed Worker and must contribute at least one binding, \`ratelimits[].name\` or cron. ` +
+        `This scan reads exactly one filename — \`${WRANGLER}\` — so a config renamed, moved or deleted takes that Worker's whole external surface with it while the remaining service carries the total. ` +
+        `If the layout genuinely changed, teach this scan the new one in the SAME change; do not let the count speak for it.`,
+    );
+  }
 }
 if (problems.length === 0) {
-  ok(`derived ${derived.size} external surface(s) — ${dartHits} dart-define hit(s), ${envHits} Worker Env key(s), ${bindingHits} wrangler surface(s)`);
+  const split = [...wranglerPerService.entries()].map(([s, n]) => `${s}:${n}`).join(', ');
+  ok(`derived ${derived.size} external surface(s) — ${dartHits} dart-define hit(s), ${envHits} Worker Env key(s), ${bindingHits} wrangler surface(s) across ${services.length} service(s) (${split})`);
 }
 
 // ── Every surface is claimed exactly once ────────────────────────────────────

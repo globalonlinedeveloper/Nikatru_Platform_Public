@@ -817,6 +817,141 @@ describe('assert-workflow-hardening', () => {
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
   });
+
+  // ── corpus triage 2026-08-01 (#29) ─────────────────────────────────────────
+  // 🔴 REPRODUCED ON THE REAL TREE FIRST. `MIN_WORKFLOWS = 3` / `MIN_USES = 10`
+  // stood against NINE workflows and FIFTY-SEVEN `uses:` references, so moving
+  // six workflows aside — every deploy and every store submission — printed
+  // `ok  workflow hardening — 3 workflow(s), 30 action(s) all SHA-pinned` and
+  // exited 0. The repair is not a bigger number (a floor at reality goes red on
+  // the next honest merge); it is two relationships computed from the tree.
+  describe('the coverage floors are relationships, not numbers', () => {
+    /** git init + add, so `git ls-files` has a manifest to disagree with. */
+    const gitFixture = (name, files) => {
+      const dir = fixture(name, files);
+      for (const a of [['init', '-q'], ['config', 'user.email', 't@t'], ['config', 'user.name', 't'], ['add', '-A']]) {
+        spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
+      }
+      return dir;
+    };
+
+    const three = () => {
+      const files = {};
+      for (const f of ['a', 'b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+      }
+      return files;
+    };
+
+    test('the manifest control: every tracked workflow scanned, and it says so', () => {
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [gitFixture('wh-git-ok', three())] });
+      assert.equal(code, 0, out);
+      assert.match(out, /all 3 git tracks/);
+    });
+
+    test('FAILS when a workflow git tracks was never opened by the scan', () => {
+      // The shape of the real mutation: files leave the directory while the
+      // committed manifest still lists them. A count floor cannot see this at
+      // all; scanned-vs-tracked names the missing file.
+      const dir = gitFixture('wh-git-thin', three());
+      rmSync(join(dir, '.github', 'workflows', 'c.yml'));
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — git tracks 3 workflow\(s\) and this scan opened 2; it never saw: c\.yml/);
+    });
+
+    test('FAILS when the strict `uses:` matcher under-reads what the loose one sees', () => {
+      // `uses : x` is YAML-legal and the strict matcher cannot read it. This is
+      // what replaces MIN_USES: it fires at ANY size of tree, where a floor only
+      // fires below a number — so `usesCount` can no longer drift toward zero
+      // while every action reads as pinned.
+      const files = three();
+      files['.github/workflows/b.yml'] = files['.github/workflows/b.yml'].replace(
+        `      - uses: actions/act0@${SHA}\n`,
+        `      - uses : actions/act0@${SHA}\n`,
+      );
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-uses-acct', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — 12 `uses:` line\(s\) are present but only 11 were accounted for/);
+    });
+
+    test('FAILS on a `uses:` reference it cannot parse, instead of ignoring it', () => {
+      const files = three();
+      files['.github/workflows/a.yml'] = files['.github/workflows/a.yml'].replace(
+        `actions/act0@${SHA}`,
+        `notanaction@${SHA}`,
+      );
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-uses-odd', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /is a reference this scan cannot parse, so it cannot be proven pinned/);
+    });
+
+    test('FAILS when not one `uses:` survives — a dead matcher, not an action-free CI', () => {
+      const files = {};
+      for (const f of ['a', 'b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = 'name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    steps:\n      - run: echo hi\n';
+      }
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-uses-none', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — not one `uses:` reference in 3 workflow\(s\)/);
+    });
+  });
+
+  // ── the permissions limb checks its CONTENT, not just its presence ─────────
+  // ci.yml's step is named "Workflows are SHA-pinned and least-privilege" while
+  // the check was `/^permissions:/m` — which `permissions: write-all`, the worst
+  // possible value, satisfies perfectly. Mutation-proven on the real ci.yml.
+  describe('permissions is read, not merely counted', () => {
+    const three = (over = {}) => {
+      const files = {};
+      for (const f of ['a', 'b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = over[f] ?? wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+      }
+      return files;
+    };
+
+    test('FAILS on workflow-level `permissions: write-all`', () => {
+      const files = three({
+        b: `name: X\non: push\npermissions: write-all\njobs:\n  j:\n    steps:\n` +
+          Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
+      });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-writeall', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /b\.yml sets `permissions: write-all` at the workflow level/);
+      assert.match(out, /b\.yml:3 `permissions: write-all` grants every scope/);
+    });
+
+    test('FAILS on JOB-level `permissions: write-all` too — the same blast radius, one indent in', () => {
+      const files = three({
+        c: `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    permissions: write-all\n    steps:\n` +
+          Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
+      });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-writeall-job', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /c\.yml:7 `permissions: write-all` grants every scope/);
+    });
+
+    test('`read-all` is least-privilege enough to pass', () => {
+      const files = three({
+        a: `name: X\non: push\npermissions: read-all\njobs:\n  j:\n    steps:\n` +
+          Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
+      });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-readall', files)] });
+      assert.equal(code, 0, out);
+    });
+
+    test('a workflow-level WRITE scope is PRINTED, not blocked — deploy-web.yml needs one today', () => {
+      // Printed rather than pretended-checked: blocking it would make the build
+      // red on arrival, and a rule added red gets deleted rather than fixed.
+      const files = three({
+        a: `name: X\non: push\npermissions:\n  contents: read\n  deployments: write\njobs:\n  j:\n    steps:\n` +
+          Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
+      });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-write-scope', files)] });
+      assert.equal(code, 0, out);
+      assert.match(out, /a\.yml grants `deployments: write` at the WORKFLOW level/);
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1108,6 +1243,26 @@ process.exit(0);
     const { code, out } = run('scan-secrets.mjs', { args: [repo, '--gitleaks', join(root, 'nope.mjs')] });
     assert.equal(code, 1);
     assert.match(out, /not runnable/);
+  });
+
+  // 🔴 CORPUS TRIAGE 2026-08-01 (#28), the same off-by-one as scan-workflows.mjs.
+  // `positional` excluded index `zIdx + 1` unconditionally; with no `--gitleaks`
+  // flag indexOf returns -1 and -1 + 1 is 0 — the repoRoot's own index — so the
+  // documented no-flag form scanned process.cwd() instead. Reproduced against a
+  // locally compiled gitleaks stub: aimed at an empty directory it cleared the
+  // marker check against the tree it was standing in and printed "ok secret scan
+  // — no findings in the working tree" about a tree it never opened.
+  //
+  // The assertion is on the PATH IN THE MESSAGE, deliberately. Asserting only
+  // "COVERAGE LOST" would pass against the broken version too, which reports the
+  // same failure about a different directory — the wrong answer for the wrong
+  // reason still looks like a catch.
+  test('the positional repoRoot is honoured with NO --gitleaks flag', () => {
+    const { root } = build('ss-argbare', HONEST);
+    const { code, out } = run('scan-secrets.mjs', { args: [join(root, 'bin')] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /bin" is missing/, out);
   });
 });
 

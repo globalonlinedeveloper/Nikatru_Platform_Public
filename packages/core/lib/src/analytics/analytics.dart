@@ -99,6 +99,16 @@ abstract interface class Analytics {
 
   /// Best-effort delivery of anything queued.
   Future<void> flush();
+
+  /// Drop everything collected but NOT yet delivered, and do not deliver it.
+  ///
+  /// This is the withdrawal half of consent, and it is on the facade rather than
+  /// on one implementation because it is not optional: DPDP §6(3) withdrawal has
+  /// to stop the transmission of what was already collected, not merely stop
+  /// collecting more. An implementation that buffers anything therefore owes the
+  /// user a way to drop that buffer; one that buffers nothing implements this as
+  /// the no-op it already is.
+  Future<void> purge();
 }
 
 /// The default. Discards everything.
@@ -114,6 +124,10 @@ class NoOpAnalytics implements Analytics {
 
   @override
   Future<void> flush() async {}
+
+  /// Nothing was ever kept, so there is nothing to drop.
+  @override
+  Future<void> purge() async {}
 }
 
 /// Seam for shipping a batch. The implementation lives in the app layer (dio on

@@ -131,6 +131,7 @@ Future<core.ConsentArtifact> applyConsentDecision({
   required String appId,
   required String anonId,
   required bool granted,
+  core.Analytics? analytics,
   String appVersion = AppConfig.appVersion,
   String? platform,
   DateTime? now,
@@ -144,6 +145,15 @@ Future<core.ConsentArtifact> applyConsentDecision({
     appVersion: appVersion,
     platform: platform ?? _platformName(),
   );
+  // 🔴 WITHDRAWAL DROPS WHAT IS ALREADY QUEUED (DPDP §6(3)). Recording the
+  // artifact above shuts new collection instantly — the recorder holds this same
+  // controller — but the outbox still contains everything gathered under the old
+  // grant, in memory AND on disk, and it would ship on the next flush. Stopping
+  // the enqueue is not withdrawal; dropping the payload is.
+  //
+  // Before the upload, not after: the user's right to have it dropped does not
+  // depend on the network being up.
+  if (!granted) await analytics?.purge();
   // Best-effort by contract. The decision already applies on-device, so an
   // upload failure must never make the user's choice look rejected.
   await transport.send(appId: appId, artifact: artifact);
@@ -174,6 +184,12 @@ Future<void> recordAnalyticsConsent(
     appId: AppConfig.appId,
     anonId: anonId,
     granted: granted,
+    // The LIVE recorder, read before the invalidate below disposes it. A
+    // `valueOrNull` miss (analytics still resolving) is survivable and not a
+    // hole: the rebuilt recorder's `hydrate` refuses to restore a queue under a
+    // denied decision and deletes the persisted copy, so the disk half dies
+    // either way.
+    analytics: ref.read(analyticsProvider).valueOrNull,
   );
   ref.invalidate(consentControllerProvider);
 }

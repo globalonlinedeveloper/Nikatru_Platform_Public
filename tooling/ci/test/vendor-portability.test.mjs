@@ -68,7 +68,7 @@ const VENDOR = (over = {}) => ({
  * Those floors exist precisely so a source cannot die silently, so a fixture
  * thinner than the floors would fail for the wrong reason.
  */
-function tree({ mutate = (r) => r, dart = '', env = '', wrangler = '', core = null, app = null } = {}) {
+function tree({ mutate = (r) => r, dart = '', env = '', wrangler = '', core = null, app = null, apiWranglerName = 'wrangler.jsonc' } = {}) {
   const root = join(TMP, `r${seq++}`);
 
   const DART_KEYS = ['API_BASE_URL', 'APP_ENV', 'APP_VERSION', 'CONFIG_BASE_URL', 'PLATFORM_BASE_URL', 'SKIP_REMOTE_CONFIG', 'APP_ID', 'API_VERSION'];
@@ -81,7 +81,7 @@ function tree({ mutate = (r) => r, dart = '', env = '', wrangler = '', core = nu
       _why: ['fixture'],
       supabase: VENDOR({ surfaces: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_JWT_SECRET'] }),
       glitchtip: VENDOR({ surfaces: ['GLITCHTIP_DSN'], configKeyed: { kind: 'compile-time', reason: 'a build reports as itself' } }),
-      cloudflare: VENDOR({ surfaces: ['PLATFORM_DB', 'CONFIG_KV', 'EXPORTS', 'EVENTS_LIMITER', 'triggers.crons'] }),
+      cloudflare: VENDOR({ surfaces: ['PLATFORM_DB', 'CONFIG_KV', 'EXPORTS', 'EVENTS_LIMITER', 'triggers.crons', 'SUBLY_DB'] }),
       revenuecat: VENDOR({ surfaces: ['REVENUECAT_KEY', 'REVENUECAT_WEBHOOK_SECRET'] }),
     },
     nonVendorSurfaces: {
@@ -107,6 +107,17 @@ function tree({ mutate = (r) => r, dart = '', env = '', wrangler = '', core = nu
     // defending against, and pretending it is would have widened the guard to
     // pass a situation that cannot happen.
     'services/platform/wrangler.jsonc': `{\n  "d1_databases": [{ "binding": "PLATFORM_DB" }],\n  "kv_namespaces": [{ "binding": "CONFIG_KV" }],\n  "r2_buckets": [{ "binding": "EXPORTS" }],\n  "ratelimits": [\n    {\n      "name": "EVENTS_LIMITER"\n    }${wrangler}\n  ],\n  "triggers": {\n    "crons": ["0 6 * * *"]\n  }\n}\n`,
+    // A SECOND Worker, because the real tree has two and the defect this shape
+    // exists to catch is one Worker's config going unreadable while the OTHER
+    // carries the total past a count floor. With one service in the fixture the
+    // old `bindingHits >= 5` and the per-service relationship are
+    // indistinguishable, and the test would prove nothing.
+    [`services/api/${apiWranglerName}`]: `{\n  "d1_databases": [{ "binding": "SUBLY_DB" }]\n}\n`,
+    // …and its binding ALSO appears in its own `interface Env`, exactly as the
+    // real subly-api's does. That overlap is why the real mutation was silent:
+    // source (b) kept every lost token in `derived`, so no vendor's claim went
+    // stale and the ONLY signal available was the per-service count.
+    'services/api/src/types.ts': 'export interface Env {\n  SUBLY_DB: D1Database;\n}\n',
     // The two RUNTIME_MIGRATIONS anchors, at the paths the guard hard-codes.
     'packages/core/lib/src/config/app_config.dart':
       core ?? "final x = AppConfig(\n  updateUrl: json['update_url'] is String ? json['update_url'] as String : null,\n);\n",
@@ -285,6 +296,31 @@ describe('assert-vendor-portability', () => {
       const { code, out } = run(tree({ mutate: (r) => ({ ...r, vendors: { _why: ['x'] } }) }));
       assert.equal(code, 1);
       assert.match(out, /declares no vendors at all/);
+    });
+
+    // 🔴 CORPUS TRIAGE 2026-08-01 (#39), REPRODUCED ON THE REAL TREE FIRST.
+    // `mv services/subly-api/wrangler.jsonc wrangler.json` dropped the wrangler
+    // total from 11 to 7 and the guard EXITED 0, because the floor was `>= 5`
+    // and the remaining Worker cleared it alone. Nothing else caught it either:
+    // every lost token also lives in that Worker's `interface Env`, so no claim
+    // went stale. The floor is now a RELATIONSHIP — every directory under
+    // services/ is a deployed Worker and must contribute at least one surface —
+    // which is computed from the tree and therefore cannot sit below it.
+    test('FAILS when ONE service contributes no wrangler surface, though the other clears the old floor', () => {
+      const { code, out } = run(tree({ apiWranglerName: 'wrangler.json' }));
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — source \(c\)\/\(d\) read ZERO wrangler surfaces from 1 of 2 service\(s\): services\/api/);
+      // …and the message must name the one filename this scan understands, or
+      // the reader cannot tell a rename from a deletion.
+      assert.match(out, /exactly one filename — `wrangler\.jsonc`/);
+    });
+
+    // The control for the case above: the surface it lost is still derived from
+    // source (b), so the staleness checks stay quiet. If this ever starts
+    // reporting a stale claim, the test above is passing for the wrong reason.
+    test('…and that mutation leaves NO stale-claim signal, which is why the count was the only guard', () => {
+      const { out } = run(tree({ apiWranglerName: 'wrangler.json' }));
+      assert.doesNotMatch(out, /claims surface `SUBLY_DB`/);
     });
   });
 });
