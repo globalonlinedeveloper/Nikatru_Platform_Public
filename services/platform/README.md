@@ -10,8 +10,16 @@ One Cloudflare Worker for the whole NIKATRU portfolio. Wrangler v4 / jsonc.
    is DATA/flags (`api_base_url`, `features.*`, `paywall`, `content_pack`,
    `copy.*`, `min_supported_version`, optional `theme`) — never server-driven UI.
    Apps also compile in their own fallback so they work if this host is down.
-   Unknown app ⇒ `404 {"error":"unknown_app"}`. Malformed KV JSON is ignored
-   (defaults win) so a bad override can never take an app down.
+   Unknown app ⇒ `404 {"error":"unknown_app"}`, decided from the compiled-in
+   registry **before any KV read** — an unregistered or malformed app id costs
+   zero I/O. (It used to read KV first and index the registry with the raw path
+   segment, so `/config/__proto__` answered `200 {}` and `/config/constructor`
+   answered 500, each after spending a free-tier KV read.) Malformed KV JSON is
+   ignored (defaults win) so a bad override can never take an app down. A known
+   app is behind `CONFIG_CEILING_LIMITER`, the same server-derived
+   (`edge:<colo>:<asn>`) ceiling `/v1/events` uses — the 5-minute edge cache does
+   not collapse cache-busting query strings, so without it an anonymous caller
+   can spend one KV read per request.
 2. **Consolidated nightly cron** (`0 6 * * *`) — ONE cron for the whole account
    (Free-tier caps at 5 cron triggers/account):
    - **keepAliveSupabase** — cheap daily GET to `${SUPABASE_URL}/auth/v1/health`
