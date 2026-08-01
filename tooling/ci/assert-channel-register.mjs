@@ -28,8 +28,10 @@
 //      second copy in here), and a store row names the OWNER_QUEUE id [10]D-4
 //      maps it to
 //   3. SERVED rows carry what R-3/R-4/R-6/D-9 need: an artifact format, an
-//      identity with a restore drill, a lane resolving to a real workflow JOB,
-//      a deployment-environment template, and a pinned toolchain floor
+//      identity with a restore drill, a lane, a deployment-environment template,
+//      and a pinned toolchain floor. HAVING a lane is served-only; a lane that IS
+//      named must resolve to a real workflow JOB whether the row is served or not
+//      — deferred rows build their lane before their account exists ([10]D-5/D-10)
 //   3b. the lane's OUTPUT is compared to the formats its channel accepts —
 //      served rows FAIL a mismatch, deferred rows PRINT one, which is how the
 //      recorded ".aab required, `flutter build apk` shipped" gap becomes visible
@@ -345,28 +347,50 @@ for (const c of channels) {
     );
   }
 
+  // ── a lane, WHENEVER ONE IS NAMED, resolves to a real workflow job ────────
+  // 🔴 NOT ONLY ON SERVED ROWS. Hardened 2026-08-01: lane resolution used to
+  // live entirely inside the `served === true` branch, so a DEFERRED row could
+  // name any workflow and any job at all and nothing looked. That was harmless
+  // while every deferred lane was `null` — and stopped being harmless the moment
+  // [10]D-5/D-10 started building a channel's path BEFORE its account exists,
+  // which is the whole point of those requirements: windows-store's lane emits
+  // the .msix today with `served: false`. A lane naming a job nobody wrote is a
+  // lane that runs nothing whether or not the channel ships, and the register's
+  // own §3b comparison silently reads an EMPTY job body for it and concludes
+  // "nothing to compare" — a gap that prints as a pass.
+  //
+  // The requirement to HAVE a lane stays served-only: a deferred channel with no
+  // lane yet is the correct, expected state (five of the eight rows).
+  const laneNamed = c.lane !== null && c.lane !== undefined;
+  const laneShaped =
+    laneNamed && typeof c.lane === 'object' && typeof c.lane.workflow === 'string' && typeof c.lane.job === 'string';
+  if (c.served === true && !laneShaped) {
+    problems.push(`${where} is SERVED but names no \`lane\` {workflow, job}. [9]R-6 resolves the gated commit from the lane, and [9]R-2 derives the version there — neither has a subject without it.`);
+  } else if (laneNamed && !laneShaped) {
+    problems.push(
+      `${where} names a \`lane\` that is not {workflow: string, job: string}. A malformed lane resolves to nothing and is skipped by every check that reads it, so it looks exactly like coverage.`,
+    );
+  } else if (laneShaped) {
+    const lane = c.lane;
+    const state = c.served === true ? 'SERVED' : 'deferred';
+    const wf = workflow(lane.workflow);
+    if (wf === null) {
+      problems.push(`${where} is ${state} and its lane names ${lane.workflow}, which does not exist.`);
+    } else if (wf.rawTopLevel > 0 && wf.jobs.size === 0) {
+      coverageLost([
+        `${lane.workflow} has ${wf.rawTopLevel} top-level key(s) and ZERO parsed jobs.`,
+        'The workflow parser has stopped reaching the file, so every "does this job exist" answer',
+        'below is being read off an empty map and would print ok.',
+      ]);
+    } else if (!wf.jobs.has(lane.job)) {
+      problems.push(
+        `${where} is ${state} and claims lane job "${lane.job}" in ${lane.workflow}, which declares [${[...wf.jobs.keys()].join(', ')}]. A lane naming a job that does not exist is a lane that runs nothing.`,
+      );
+    }
+  }
+
   // ── what SERVED additionally means ────────────────────────────────────────
   if (c.served === true) {
-    const lane = c.lane;
-    if (lane === null || typeof lane !== 'object' || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') {
-      problems.push(`${where} is SERVED but names no \`lane\` {workflow, job}. [9]R-6 resolves the gated commit from the lane, and [9]R-2 derives the version there — neither has a subject without it.`);
-    } else {
-      const wf = workflow(lane.workflow);
-      if (wf === null) {
-        problems.push(`${where} is SERVED and its lane names ${lane.workflow}, which does not exist.`);
-      } else if (wf.rawTopLevel > 0 && wf.jobs.size === 0) {
-        coverageLost([
-          `${lane.workflow} has ${wf.rawTopLevel} top-level key(s) and ZERO parsed jobs.`,
-          'The workflow parser has stopped reaching the file, so every "does this job exist" answer',
-          'below is being read off an empty map and would print ok.',
-        ]);
-      } else if (!wf.jobs.has(lane.job)) {
-        problems.push(
-          `${where} is SERVED and claims lane job "${lane.job}" in ${lane.workflow}, which declares [${[...wf.jobs.keys()].join(', ')}]. A lane naming a job that does not exist is a lane that runs nothing.`,
-        );
-      }
-    }
-
     if (typeof c.deploymentEnvironment !== 'string' || !c.deploymentEnvironment.includes('{app}')) {
       problems.push(
         `${where} is SERVED but has no \`deploymentEnvironment\` template containing {app}. [10]D-9 derives the required environment set from this register × apps.json, so without the template "what is live on which channel" has no query.`,

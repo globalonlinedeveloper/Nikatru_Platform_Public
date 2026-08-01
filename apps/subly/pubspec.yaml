@@ -87,6 +87,17 @@ dev_dependencies:
 
   flutter_lints: ^6.0.0
 
+  # MSIX packaging for the `windows-store` channel of tooling/channel-register.json.
+  # This is the Flutter-documented route for a Microsoft Store package
+  # (docs.flutter.dev/deployment/windows → "Packaging and publishing to the
+  # Microsoft Store"). A dev_dependency rather than `dart pub global activate`
+  # ON PURPOSE: the workspace lockfile is what makes the packaging step
+  # reproducible, and `flutter pub get --enforce-lockfile` (every CI lane) is
+  # what enforces it — a globally activated tool resolves whatever is newest
+  # that day, which is exactly the drift [pipeline F-8] exists to remove.
+  # Configured by the `msix_config:` block at the bottom of this file.
+  msix: ^3.18.0
+
 flutter:
   uses-material-design: true
 
@@ -148,3 +159,56 @@ flutter:
 #   android: true
 #   ios: true
 #   web: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MSIX PACKAGE IDENTITY — the `windows-store` channel's artifact
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 THE IDENTITY IS THE CHANNEL ROW'S FIELD, NOT STAGE 3's TRIPWIRE BUNDLE.
+# tooling/channel-register.json → channels[windows-store].packageIdentity is the
+# single declaration; the three values below MUST agree with it, and
+# tooling/ci/assert-store-metadata.mjs compares them. Two copies of an identity
+# is how the wrong one ships — [pipeline F-2].
+#
+# It has a real downstream consumer beyond packaging: [13]T-5's Windows
+# `cancelAll` is a NO-OP without a package identity, because the Windows
+# notification APIs key scheduled toasts on it.
+#
+# ⬜ ALL THREE ARE OWNER-GATED BEHIND OWNER_QUEUE A-2. Partner Center ASSIGNS
+# them (Product → Product identity → Package/Identity/Name,
+# Package/Properties/PublisherDisplayName, Package/Properties/Publisher) and
+# there is no way to derive or guess them. Until the account exists they carry
+# the sentinel `PARTNER-CENTER-PENDING`, which the guard recognises as
+# NOT-YET-CONFIGURED and PRINTS. A plausible-looking made-up value would
+# package and submit CLEANLY under the wrong identity, which is unrecoverable
+# once published — the sentinel is chosen so it cannot be mistaken for a real
+# one and so `msix` still runs locally (it satisfies the identity-name charset
+# rule ^[a-zA-Z0-9.-]{3,50}$, so packaging is provable before the account exists).
+#
+# ⬜ NO PER-APP STORE ICON EXISTS YET (see the STAGED block above): with no
+# `logo_path`, `msix` falls back to its own bundled default icons. That is fine
+# for a build proof and NOT fine for a submission — [10]D-6 requires a distinct
+# visual identity per app. Point `logo_path` at Subly's own mark before the
+# first submission; it is listed in apps/subly/store/windows-store/README.md.
+#
+# Package locally with:
+#   flutter build windows --release
+#   dart run msix:create
+msix_config:
+  display_name: Subly
+  publisher_display_name: PARTNER-CENTER-PENDING
+  identity_name: PARTNER-CENTER-PENDING
+  publisher: CN=PARTNER-CENTER-PENDING
+  # `store: true` is the keyKind "none" half of the register row made real: the
+  # Store re-signs the submitted package, so nothing here holds or needs a
+  # certificate, and `msix` skips signing entirely in this mode. Flipping it to
+  # false silently re-introduces a test certificate nobody owns.
+  store: true
+  # CI already ran `flutter build windows --release` in the step before this
+  # one; letting msix build again would double the runner time and package a
+  # DIFFERENT build from the one the upload proves.
+  build_windows: false
+  architecture: x64
+  languages: en-us
+  capabilities: internetClient
+  output_path: build/windows/msix
+  output_name: subly

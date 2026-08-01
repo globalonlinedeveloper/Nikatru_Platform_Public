@@ -16,9 +16,18 @@
     "  [9]R-6  every artifact names the gated commit it came from  -> lane.*",
     "  [10]D-1 no channel is claimed that is not served            -> platforms x served",
     "  [10]D-4 every store channel has a publisher account         -> kind=store + ownerQueue",
-    "  [10]D-5 store listing metadata generated from the spec      -> storeMetadataDir",
+    "  [10]D-5 store listing metadata generated from the spec      -> storeMetadataDir +",
+    "                                                                 storeMetadataContract",
     "  [10]D-9 what is live on which channel, machine-answerable   -> deploymentEnvironment",
-    "  [10]D-10 each store channel has a repeatable submission path -> submittable",
+    "  [10]D-10 each store channel has a repeatable submission path -> submittable + submission",
+    "",
+    "TWO OTHER GUARDS READ THIS FILE and are not listed above because they are not R-5's:",
+    "  tooling/ci/assert-store-metadata.mjs        [10]D-5  — the expected metadata-tree set is",
+    "      { kind:\"store\" rows } x { apps }, the per-tree file list is `storeMetadataContract`, and",
+    "      the MSIX identity a row declares is compared to what apps/*/pubspec.yaml packages with.",
+    "  tooling/release/submit-windows-store.mjs    [10]D-10 — the same contract, read by the release",
+    "      path rather than by CI. It re-checks independently on purpose: a release path that trusts",
+    "      a check it did not run is not a release path.",
     "",
     "🔴 THE ONE RULE THAT MAKES THIS FILE MEAN ANYTHING: `served` IS THE GATE, NOT MEMBERSHIP.",
     "A row here is NOT a claim that the factory ships to that channel. Rows exist for channels that are",
@@ -43,6 +52,10 @@
     "  · `keyKinds` below IS the vocabulary rows are validated against — the guard derives it from this",
     "    file instead of carrying its own copy, so deleting the dictionary or renaming an entry out from",
     "    under the rows still using it fails                                       [F-2]",
+    "  · a row's `lane`, when it has one, resolves to a real workflow JOB whether the row is served or",
+    "    not (hardened 2026-08-01): a DEFERRED row's lane is how [10]D-5/D-10 build the path BEFORE the",
+    "    account exists, and until this check a deferred lane could name a job nobody had written",
+    "                                                                              [R-6, D-5, D-10]",
     "  · every `kind: store` row names an `ownerQueue` id. SHAPE ONLY: CI cannot read OWNER_QUEUE.md",
     "    (see below), but a store row with no id at all is checkable here          [D-4]",
     "  · the aggregating job's `needs` equals every other job in its workflow — the 'never a partial",
@@ -72,6 +85,58 @@
     ],
     "workflow": ".github/workflows/build-platforms.yml",
     "job": "all_platforms"
+  },
+
+  "storeMetadataContract": {
+    "_why": [
+      "[10]D-5's REQUIRED_COVERAGE, expressed as a RELATIONSHIP rather than a number: every app that",
+      "could serve a `kind: store` row carries that row's `storeMetadataDir`, and every such directory",
+      "carries every file named here. It grows with the register — add a store channel and the coverage",
+      "requirement grows with it — so it cannot be a count somebody lowers.",
+      "",
+      "🔴 IT LIVES HERE AND NOT IN THE GUARD BECAUSE TWO THINGS READ IT: tooling/ci/",
+      "assert-store-metadata.mjs and tooling/release/submit-windows-store.mjs. A private copy in either",
+      "would be the second declaration and the first to drift — the same reasoning that moved `keyKinds`",
+      "out of assert-channel-register.mjs. Emptying `requiredFiles` is COVERAGE LOST, not a pass.",
+      "",
+      "⚠️ THE REPO-NATIVE TREE IS THE SOURCE OF TRUTH AND FASTLANE TREES ARE GENERATED FROM IT.",
+      "fastlane's `deliver` covers ios+mac and `supply` covers android — there is NO fastlane path for",
+      "Microsoft Store, Snap/AppImage or Web, and Microsoft is the first channel this factory can",
+      "actually register. A fastlane layout as the source of truth could only ever describe half the",
+      "portfolio, and the half it could not describe would get hand-typed into a console as the only",
+      "copy — the exact outcome [10]D-5 exists to prevent."
+    ],
+    "requiredFiles": [
+      "README.md",
+      "title.txt",
+      "short-description.txt",
+      "long-description.txt",
+      "category.txt",
+      "privacy-policy-url.txt",
+      "support-url.txt",
+      "screenshots/README.md"
+    ],
+    "urlFiles": ["privacy-policy-url.txt", "support-url.txt"],
+    "derivedFields": {
+      "_why": "GENERATED FROM THE SPEC is [10]D-5's headline, and a README saying so is not a mechanism. Each entry names the ONE place the value already lives, and the guard compares the file to it — so a listing edited in a console and pasted back here without touching the spec fails the build instead of quietly forking.",
+      "title.txt": { "source": "apps.json", "field": "name" },
+      "short-description.txt": { "source": "apps.json", "field": "tagline" },
+      "privacy-policy-url.txt": { "source": "appConfig", "field": "privacyUrl" },
+      "support-url.txt": { "source": "appConfig", "field": "contactUrl" }
+    },
+    "appConfigPath": "apps/{app}/lib/core/config/app_config.dart",
+    "perChannel": {
+      "windows-store": {
+        "additionalFiles": ["search-terms.txt"],
+        "maxLines": {
+          "_why": "THE ONLY NUMERIC LIMIT IN THIS FILE, AND IT CARRIES ITS CITATION. An invented limit fires on CORRECT input — a made-up '120 characters or fewer' once rejected this repo's own fixture at 129 — so every other MS Store field limit is recorded as UNVERIFIED in apps/{app}/store/windows-store/README.md instead of being guessed at here.",
+          "search-terms.txt": {
+            "max": 7,
+            "source": "Microsoft Store Policies v7.19 §10.1.3, verbatim: \"Not exceed seven unique terms or phrases.\""
+          }
+        }
+      }
+    }
   },
 
   "keyKinds": {
@@ -243,22 +308,79 @@
         }
       },
       "minimumToolchain": ["flutter"],
-      "lane": null,
+      "lane": {
+        "workflow": ".github/workflows/build-platforms.yml",
+        "job": "windows",
+        "_why": [
+          "The row's lane is the job that EMITS the format the row accepts. `windows` runs",
+          "`flutter build windows --release` and then `dart run msix:create`, and uploads the .msix —",
+          "so section 3b's lane-vs-format comparison now has a real answer for this row instead of the",
+          "FORMAT GAP it printed while the only windows artifact in the tree was a .exe.",
+          "⚠️ `served` is still false and stays false: a lane that BUILDS the artifact is not a channel",
+          "that SHIPS it. Serving needs OWNER_QUEUE A-2 (the publisher account) plus a real submission."
+        ]
+      },
       "deploymentEnvironment": "{app}-windows-store",
       "storeMetadataDir": "apps/{app}/store/windows-store",
       "ownerQueue": "A-2",
+      "packageIdentity": {
+        "_why": [
+          "🔴 THE SINGLE DECLARATION OF THE MSIX PACKAGE IDENTITY — this row's field, per the note",
+          "below, and not [9]R-7's tripwire bundle. apps/{app}/pubspec.yaml's `msix_config` block MUST",
+          "agree with these values and tooling/ci/assert-store-metadata.mjs compares them; two copies of",
+          "an identity is how the wrong one ships ([pipeline F-2]).",
+          "",
+          "⬜ ALL THREE ARE ASSIGNED BY PARTNER CENTER (Product → Product identity) and cannot be derived,",
+          "so until OWNER_QUEUE A-2 completes they carry the sentinel below. The guard treats the sentinel",
+          "as NOT-YET-CONFIGURED and PRINTS the gap on every run rather than failing CI on work only the",
+          "owner can do; the moment a real value lands on one side and not the other, it FAILS.",
+          "A plausible-looking invented value would package and submit cleanly under the WRONG identity,",
+          "which is unrecoverable once published — hence a sentinel that cannot be mistaken for a real one.",
+          "",
+          "`identityName` and `publisherDisplayName` are PER-APP (Partner Center issues one per product);",
+          "`publisher` is the account-wide certificate subject and is the same for every app we publish.",
+          "The {app} placeholder is deliberately absent: there is nothing to substitute INTO a sentinel."
+        ],
+        "notYetConfiguredSentinel": "PARTNER-CENTER-PENDING",
+        "identityName": "PARTNER-CENTER-PENDING",
+        "publisherDisplayName": "PARTNER-CENTER-PENDING",
+        "publisher": "CN=PARTNER-CENTER-PENDING",
+        "declaredIn": "apps/{app}/pubspec.yaml → msix_config",
+        "source": "https://partner.microsoft.com/dashboard → Product → Product identity → Package/Identity/Name · Package/Properties/PublisherDisplayName · Package/Properties/Publisher"
+      },
+      "submission": {
+        "_why": [
+          "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
+          "parsed rather than grepped. Limb (ii) is the runbook below — company/ is gitignored so no CI",
+          "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
+          "is in one place a guard could reach if company/ ever ships. Limb (iii) — a submission record",
+          "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
+        ],
+        "script": "tooling/release/submit-windows-store.mjs",
+        "workflow": ".github/workflows/submit-windows-store.yml",
+        "job": "dry-run",
+        "runbook": "company/runbooks/store-submission-windows.md"
+      },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — the SUBMISSION work is deferred. ⚠️ Account REGISTRATION is not deferred and is the fastest real channel: $0, no D-U-N-S required, 2–5 business days.",
         "alsoBlockedBy": "🔴 ONE-WAY DOOR — publishing as NIKATRU requires a COMPANY account and OWNER_QUEUE A-2 points at Individual. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid."
       },
       "notes": [
         "🔴 MSIX PACKAGE IDENTITY IS THIS ROW'S FIELD, not [9]R-7's (stage 3's tripwire bundle routes it",
-        "wrongly). It has a real downstream consumer: [13]T-5's Windows `cancelAll` is a NO-OP without it.",
+        "wrongly) — and as of this row's `packageIdentity` block above it IS this row's field in data, not",
+        "just in prose. It has a real downstream consumer: [13]T-5's Windows `cancelAll` is a NO-OP without it.",
         "Fee is $0 for both account types, but only via storedeveloper.microsoft.com — other entry points",
         "show the legacy paid flow. Company verification accepts a government business registration in",
         "place of a D-U-N-S (GST + Udyam are live), and needs a work email on our own domain.",
         "MS policy 10.5.1: a privacy policy URL is required in Partner Center for any product accessing",
-        "personal information — this channel carries its own stage-8 dependency, not just Play's."
+        "personal information — this channel carries its own stage-8 dependency, not just Play's.",
+        "",
+        "🟢 THE ENGINEERING PATH IS BUILT (everything except the account). `lane` emits the .msix,",
+        "`packageIdentity` declares the identity once, `storeMetadataDir` carries a real tree checked by",
+        "tooling/ci/assert-store-metadata.mjs [10]D-5, and `submission.script` dry-runs end to end without",
+        "contacting Microsoft [10]D-10 limb (i). `served` stays FALSE and MUST: everything left is",
+        "OWNER_QUEUE A-2 — the publisher account, the three Partner Center identity values, the reserved",
+        "product name, the age rating, and the privacy-policy URL entered in the console."
       ]
     },
     {

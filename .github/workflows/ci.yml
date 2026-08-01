@@ -228,6 +228,38 @@ jobs:
       - name: No public surface advertises an unserved or dead channel
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-channel-claims.mjs
+      # The third member of the same family, and the one that keeps the LISTING
+      # honest rather than the claim. D-5's own criterion ranged over "any app
+      # whose apps.json entry claims a store channel" — an antecedent no app can
+      # ever satisfy, because post_gen.dart writes platforms: ['web'] as a literal
+      # constant. Empty antecedent, vacuously true, forever. So the expected set
+      # is computed instead: { kind:"store" rows } × { apps }, a RELATIONSHIP that
+      # grows with the register and that nobody can lower by editing a number.
+      # Owner-gated gaps PRINT (four store channels have no account and no tree),
+      # but a tree that EXISTS must stay complete and stay derived from its spec
+      # source — deleting apps/subly/store/windows-store/title.txt, emptying a
+      # field, or forking a listing away from apps.json fails the build. Also
+      # compares the MSIX package identity the register declares to the one
+      # apps/*/pubspec.yaml actually packages with; two copies of an identity is
+      # how the wrong one ships, and an MSIX published under the wrong identity
+      # cannot be taken back. [pipeline D-5, feeding D-10]
+      - name: Every declared store channel has a complete, spec-derived listing
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-store-metadata.mjs
+      # [pipeline D-10] limb (i)'s script, exercised on EVERY push rather than
+      # only when somebody dispatches submit-windows-store.yml. A release script
+      # nobody runs rots exactly like a guard nobody feeds bad input to: it would
+      # sit in tooling/release/ satisfying "a submission script exists" while
+      # having stopped working, and the first person to find out would be the one
+      # submitting. `--allow-missing-artifact` because no .msix exists on an
+      # ubuntu runner — that flag makes the script SAY it validated the listing
+      # and not the package, which is the difference between a scoped check and a
+      # silent one. The full version, with a real .msix, is the windows job in
+      # submit-windows-store.yml. Nothing here contacts Microsoft; `--submit`
+      # refuses before it does anything at all.
+      - name: The Microsoft Store submission path still walks (dry run)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/release/submit-windows-store.mjs --dry-run --app subly --allow-missing-artifact
       # Both mechanisms this asserts already exist and are VERIFIED (F-5b); what
       # was missing was CALL SITES. R-6's own criterion ranged over "the release
       # lane", which referred to nothing — so the set is derived from what a lane
