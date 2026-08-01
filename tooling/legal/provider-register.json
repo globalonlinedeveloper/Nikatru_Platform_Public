@@ -69,7 +69,16 @@
       "budget",
       "categories",
       "entitlements",
-      "renewals"
+      "renewals",
+      "account"
+    ],
+    "_account": [
+      "🟢 `account` WAS ADDED BECAUSE THIS LIMB CAUGHT IT, which is the whole point and worth recording.",
+      "services/platform/src/routes/account.ts (DELETE /v1/account, [pipeline B-5]) landed on main WHILE",
+      "this register was being written. The guard went red on the next run naming the new segment: a route",
+      "nobody had classified as ours or as a provider's. It is ours — the erasure route — so it is claimed",
+      "here rather than given a provider row. That is the limb working on a real, unplanned change on its",
+      "first day, rather than on a fixture."
     ]
   },
 

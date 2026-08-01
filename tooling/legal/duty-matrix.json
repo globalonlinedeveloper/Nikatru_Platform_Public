@@ -193,9 +193,11 @@
       "requirement": "K-7",
       "duty": "A user can ask for their data to be erased, from inside the app and from the public web, and the request reaches something that can act on it.",
       "status": "partial",
-      "trigger": "🔴 BEFORE the first app that creates an account ships to a store. The in-app control exists; there is no public web deletion page and no server route.",
+      "artefact": "services/platform/src/routes/account.ts",
+      "trigger": "🔴 BEFORE the first app that creates an account ships to a store. The in-app control exists and the server route now exists; there is still no PUBLIC WEB deletion page, which is what a store reviewer and a non-user look for.",
       "verification": "in-tree",
-      "blockedBy": "[4]B-5 — there is no DELETE /v1/account in the shared platform Worker. services/platform/src/routes/ holds config.ts and events.ts only.",
+      "blockedBy": null,
+      "unblocked": "🟢 [4]B-5 LANDED ON MAIN WHILE THIS MATRIX WAS BEING WRITTEN (services/platform/src/routes/account.ts, DELETE /v1/account). The stage-8 plan records this duty as BLOCKED on it and that is no longer true — recorded here rather than left standing, because a stale blocker is exactly the rot K-13 exists to catch, and 'we are blocked' is the most comfortable thing in a compliance matrix to be wrong about. What remains for K-7 is limb (b), the published web page, plus the no-orphaned-claim assertion — [8]INC-12, not built here.",
       "note": "🔴 AND A NARROWER PROBLEM THE PROMISE DOES NOT ACKNOWLEDGE: `events` and `consent_artifacts` are keyed on anon_id, so 'delete my account' provably cannot purge them. Either the published promise narrows or the client sends its anon_id on erasure. A wording decision, O-3, in the same version bump as the other corrections."
     },
     {
