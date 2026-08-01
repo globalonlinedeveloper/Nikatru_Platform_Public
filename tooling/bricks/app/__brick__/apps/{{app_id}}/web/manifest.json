@@ -1,11 +1,11 @@
 {
-    "name": "{{display_name}}",
-    "short_name": "{{display_name}}",
+    "name": "{{{display_name_json}}}",
+    "short_name": "{{{display_name_json}}}",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#{{{seed_hex}}}",
     "theme_color": "#{{{seed_hex}}}",
-    "description": "{{description}}",
+    "description": "{{{description_json}}}",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
