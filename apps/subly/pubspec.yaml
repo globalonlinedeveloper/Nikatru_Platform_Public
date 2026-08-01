@@ -39,6 +39,14 @@ dependencies:
   # survive a restart, and the queue must survive being offline.
   nikatru_platform_storage:
     path: ../../packages/platform_storage
+  # [G-43] The identity adapter, taken for ONE reason: `initNikatruAuth` is what
+  # passes the SecureStore-backed session storage to the Supabase SDK. Without
+  # it main.dart called `Supabase.initialize` bare and the refresh token was
+  # written in plaintext — see the dated declared exception in lib/main.dart.
+  # Subly keeps its own frozen AuthRepository (39-CHASSIS cut 1); this is the
+  # initialisation call and nothing else.
+  nikatru_auth_supabase:
+    path: ../../packages/auth_supabase
   # [pipeline C-2] Until this line existed, the ONLY app in production had no
   # crash reporting at all — the package was declared by the brick template and by
   # nothing that ships. Subly is a frozen legacy rail-prover (cut list item 1) and

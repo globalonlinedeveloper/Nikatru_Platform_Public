@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   subly_api:
-    name: subly-api Worker (typecheck + dry-run)
+    name: subly-api Worker (typecheck + test + dry-run)
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -52,6 +52,13 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: npx tsc --noEmit
+      # This lane was typecheck + dry-run and NOTHING else, on a Worker with no
+      # test directory at all — so every security property it has was enforced by
+      # code review. Proven 2026-07-31: deleting `AND user_id = ?` from
+      # subscriptions.ts left BOTH steps green, i.e. the whole lane passed on a
+      # build where any authenticated user could read any other user's rows.
+      # `tsc` cannot see a WHERE clause and `--dry-run` never executes one.
+      - run: npm test
       - run: npx wrangler deploy --dry-run
 
   platform:

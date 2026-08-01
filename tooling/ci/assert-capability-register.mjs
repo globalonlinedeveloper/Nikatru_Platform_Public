@@ -26,8 +26,10 @@
 // Checks, in order:
 //   1. coverage self-check — the scan still finds packages
 //   2. every packages/* dir on disk is owned by some capability          [C-1]
-//   3. every path named exists; every declared seam SYMBOL really appears
-//      in the file claiming it; every declared METHOD really appears too  [C-1]
+//   3. every path named exists; every declared seam SYMBOL is really declared
+//      in the file claiming it; every declared METHOD is really declared on
+//      THAT class — matched against comment- and string-stripped source, so a
+//      doc comment cannot stand in for a contract                         [C-1]
 //   4. consumers verified in BOTH directions against real pubspecs        [C-1]
 //   5. no registered seam symbol is implemented under apps/ unless it is
 //      DECLARED as a violation, and a declared violation whose file has
@@ -46,6 +48,90 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/**
+ * Blank Dart comments and string literals, preserving offsets and newlines.
+ *
+ * A hand-rolled scanner rather than a regex: a regex cannot tell `//` inside a
+ * string from a comment, and getting that backwards is how a guard ends up
+ * matching its own documentation. It lives here rather than in a shared module
+ * because every `.mjs` directly under tooling/ci is a GUARD to
+ * assert-guard-coverage.mjs, and any `.mjs` in a subdirectory of tooling/ci is a
+ * hard COVERAGE LOST — there is nowhere shared to put it.
+ */
+function stripDart(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  const blank = (ch) => (ch === '\n' ? '\n' : ' ');
+  while (i < n) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '/' && c2 === '/') {
+      while (i < n && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      let depth = 0;
+      while (i < n) {
+        if (src[i] === '/' && src[i + 1] === '*') { depth++; out += '  '; i += 2; continue; }
+        if (src[i] === '*' && src[i + 1] === '/') { depth--; out += '  '; i += 2; if (depth === 0) break; continue; }
+        out += blank(src[i]); i++;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"' || (c === 'r' && (c2 === "'" || c2 === '"'))) {
+      const isRaw = c === 'r';
+      const q = isRaw ? c2 : c;
+      let j = isRaw ? i + 1 : i;
+      const triple = src[j] === q && src[j + 1] === q && src[j + 2] === q;
+      const closeLen = triple ? 3 : 1;
+      const start = i;
+      j += closeLen;
+      while (j < n) {
+        if (!isRaw && src[j] === '\\') { j += 2; continue; }
+        if (src[j] === q && (!triple || (src[j + 1] === q && src[j + 2] === q))) { j += closeLen; break; }
+        if (!triple && src[j] === '\n') break;
+        j++;
+      }
+      for (const ch of src.slice(start, j)) out += blank(ch);
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * The body of `class <symbol>` in already-stripped source, or null.
+ *
+ * Scoping matters as much as stripping: without it, ANY class, extension or call
+ * site in the same file satisfies the interface's method claim. Proven by
+ * mutation — deleting `scheduleDaily` from `abstract interface class
+ * NotificationService` while the sibling `NoOpNotificationService` in the same
+ * file kept its override left this guard reporting the method "verified in place".
+ */
+function classBody(code, symbol) {
+  const decl = new RegExp(`\\bclass\\s+${symbol}\\b`).exec(code);
+  if (!decl) return null;
+  const open = code.indexOf('{', decl.index);
+  if (open === -1) return null; // `class X = A with B;` — no body to scope to
+  let depth = 0;
+  for (let k = open; k < code.length; k++) {
+    if (code[k] === '{') depth++;
+    else if (code[k] === '}') { depth--; if (depth === 0) return code.slice(open, k + 1); }
+  }
+  return code.slice(open);
+}
+
+/** A member DECLARATION of `method`, not merely the name followed by a paren. */
+const declaresMethod = (body, method) =>
+  new RegExp(
+    `(?:^|[;{}])\\s*(?:@\\w+\\s+)*(?:(?:static|external|abstract|covariant)\\s+)*` +
+      `[A-Za-z_$][\\w<>,?\\[\\]$. ]*\\s+${method}\\s*\\(`,
+  ).test(body);
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
@@ -146,7 +232,19 @@ for (const cap of capabilities) {
       problems.push(`${label} — seam file \`${s.file ?? '<missing>'}\` does not exist on disk.`);
       continue;
     }
-    const src = readFileSync(join(ROOT, s.file), 'utf8');
+    // 🔴 STRIP COMMENTS AND STRING LITERALS FIRST. Both checks below used to run
+    // against the RAW file, so a doc comment satisfied them — the sibling
+    // assert-no-seam-forks.mjs already carried a warning that this repo had
+    // shipped exactly that bug ("the pattern had spanned out of a doc comment")
+    // and this guard never got the same treatment. Mutation-proven 2026-08-01: a
+    // complete, compile-clean rename of `scheduleDaily` to `scheduleReminder`
+    // that left the old name in ONE house-style doc comment
+    // (`/// Renamed 2026-08-01: scheduleDaily(...) is now scheduleReminder().`)
+    // kept this guard at exit 0, still printing "seam symbol(s) verified in
+    // place" for a method the interface no longer has. The register would have
+    // gone on describing a contract that no longer existed. Delete that one
+    // comment line and the guard fails — the comment was the entire difference.
+    const src = stripDart(readFileSync(join(ROOT, s.file), 'utf8'));
     if (!s.symbol) {
       problems.push(`${label} — seam in \`${s.file}\` names no \`symbol\`.`);
       continue;
@@ -160,11 +258,18 @@ for (const cap of capabilities) {
       continue;
     }
     seamSymbols.set(s.symbol, cap.id);
+    const body = classBody(src, s.symbol);
     for (const m of s.methods ?? []) {
-      if (!new RegExp(`\\b${m}\\s*\\(`).test(src)) {
+      // Scoped to the DECLARING CLASS and required to be a declaration, not any
+      // `name(` anywhere in the file. `tooling/capability-register.json`'s own
+      // _readme claims "every declared seam METHOD really appears in THAT
+      // INTERFACE"; a bare `\bname\s*\(` over the whole file made good on
+      // neither half of that sentence.
+      if (body === null || !declaresMethod(body, m)) {
         problems.push(
-          `${label} — register says \`${s.symbol}\` has method \`${m}\`, which does not appear in ` +
-            `\`${s.file}\`. [decision item 12] Naming a seam method is only useful if it is checked.`,
+          `${label} — register says \`${s.symbol}\` has method \`${m}\`, which is not declared in that ` +
+            `class in \`${s.file}\` (comments, string literals and other classes in the same file do not ` +
+            'count). [decision item 12] Naming a seam method is only useful if it is checked.',
         );
       }
     }
@@ -285,7 +390,10 @@ if (existsSync(APPS_DIR)) {
   }
 }
 for (const rel of appFiles) {
-  const src = readFileSync(join(ROOT, rel), 'utf8');
+  // Stripped for the same reason as check 3, pointed the other way: here a
+  // commented-out `class NotificationService` would falsely ACCUSE an app file
+  // of forking a seam. Same rule either way — assert on code, never on prose.
+  const src = stripDart(readFileSync(join(ROOT, rel), 'utf8'));
   for (const [symbol, capId] of seamSymbols) {
     // A concrete class of the same name as a registered seam, inside an app, is a
     // fork. `implements`/`extends` clauses are excluded: an app may legitimately

@@ -79,7 +79,27 @@ const testSrc = (symbol, { callsForPlatform = true } = {}) => `
 import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('matrix', () {
-    ${symbol}.${callsForPlatform ? 'forPlatform' : 'somethingElse'}(TargetPlatform.linux, isWeb: false);
+    final caps = ${symbol}.${callsForPlatform ? 'forPlatform' : 'somethingElse'}(TargetPlatform.linux, isWeb: false);
+    expect(caps.works, isFalse);
+  });
+}
+`;
+
+/** A test whose `forPlatform` call lives in a top-level helper the cases call —
+ *  the real review_capabilities_test.dart shape, which must stay GREEN. */
+const helperTestSrc = (symbol) => `
+import 'package:flutter_test/flutter_test.dart';
+
+${symbol} _caps(TargetPlatform p, {bool isWeb = false}) =>
+    ${symbol}.forPlatform(p, isWeb: isWeb);
+
+void main() {
+  group('${symbol}', () {
+    for (final p in TargetPlatform.values) {
+      test('row for \$p', () {
+        expect(_caps(p).note, isNotNull);
+      });
+    }
   });
 }
 `;
@@ -220,6 +240,89 @@ describe('assert-adapter-capabilities', () => {
     }));
     assert.equal(code, 1);
     assert.match(out, /never calls `forPlatform`/);
+  });
+
+  // ── 🔴 THE SEVENTH MUTATION: the test half was still grepping PROSE ────────
+  // Mutation 3 above taught this guard to strip comments and string literals
+  // before scanning the DESCRIPTOR. The TEST scan, eight lines further down, was
+  // left reading the raw file — for months, under a note explaining why that is
+  // wrong. Proven on a copy of the real tree 2026-08-01: replacing
+  // packages/telemetry/test/telemetry_capabilities_test.dart with three comment
+  // lines mentioning `TelemetryCapabilities` and `forPlatform(` plus
+  // `void main() {}` left the guard printing `ok 6 adapter matrix/matrices
+  // exercised per-platform by their own tests`, exit 0 — and `dart test` stays
+  // green too, because the file compiles and declares no failing case.
+  test('FAILS when the test is gutted to prose that merely MENTIONS the symbol', () => {
+    const { code, out } = run(tree({
+      testOverride: {
+        telemetry:
+          '// This file no longer exercises anything.\n' +
+          '// It merely mentions TelemetryCapabilities and forPlatform( in prose.\n' +
+          'void main() {}\n',
+      },
+    }));
+    assert.equal(code, 1, 'a comment is not a test');
+    assert.match(out, /never references `TelemetryCapabilities` in CODE/);
+  });
+
+  test('FAILS when the symbol survives only inside a string literal', () => {
+    const { code, out } = run(tree({
+      testOverride: {
+        telemetry:
+          "import 'package:flutter_test/flutter_test.dart';\n" +
+          "void main() {\n  test('placeholder', () {\n" +
+          "    expect('TelemetryCapabilities.forPlatform(…) is coming', isNotEmpty);\n" +
+          '  });\n}\n',
+      },
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /never references `TelemetryCapabilities` in CODE/);
+  });
+
+  test('FAILS when every case is commented out, leaving real code that asserts nothing', () => {
+    const { code, out } = run(tree({
+      testOverride: {
+        telemetry:
+          "import 'package:flutter_test/flutter_test.dart';\n\n" +
+          'TelemetryCapabilities _caps(TargetPlatform p) =>\n' +
+          '    TelemetryCapabilities.forPlatform(p, isWeb: false);\n\n' +
+          'void main() {\n' +
+          "  // test('rows', () {\n" +
+          '  //   expect(_caps(TargetPlatform.linux).works, isFalse);\n' +
+          '  // });\n' +
+          '  print(_caps(TargetPlatform.android));\n' +
+          '}\n',
+      },
+    }));
+    assert.equal(code, 1, 'the symbol and forPlatform are real code, but nothing runs');
+    assert.match(out, /declares no `test\(`\/`testWidgets\(` case at all/);
+  });
+
+  test('FAILS when the cases call forPlatform but assert nothing', () => {
+    const { code, out } = run(tree({
+      testOverride: {
+        telemetry:
+          "import 'package:flutter_test/flutter_test.dart';\n" +
+          "void main() {\n  test('matrix', () {\n" +
+          '    TelemetryCapabilities.forPlatform(TargetPlatform.linux, isWeb: false);\n' +
+          '  });\n}\n',
+      },
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /asserts nothing/);
+  });
+
+  // ⚠️ …and the legitimate shape the tightening could have broken. Requiring
+  // `forPlatform(` INSIDE a `test(` body was tried and REJECTED: the real
+  // review_capabilities_test.dart calls it from a top-level `_caps()` helper, so
+  // the strict version falsely accused a correct test — the guard would have
+  // been the thing that was wrong.
+  test('PASSES when forPlatform is called through a top-level helper', () => {
+    const { code, out } = run(tree({
+      testOverride: { telemetry: helperTestSrc('TelemetryCapabilities') },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /5 adapter matrix\/matrices exercised per-platform/);
   });
 
   test('FAILS when the named capability file does not exist', () => {

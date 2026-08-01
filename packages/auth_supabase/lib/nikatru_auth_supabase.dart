@@ -46,13 +46,36 @@ Future<void> initNikatruAuth({
   await sb.Supabase.initialize(
     url: url,
     publishableKey: publishableKey,
-    authOptions: sb.FlutterAuthClientOptions(
-      localStorage: SecureSessionStorage(store: secureStore),
+    authOptions: nikatruAuthOptions(
+      secureStore: secureStore,
       detectSessionInUri: detectSessionInUri,
-      // PKCE is the flow that survives a redirect on a public client — the
-      // implicit flow puts the token in the URL where history and referrers can
-      // see it.
-      authFlowType: sb.AuthFlowType.pkce,
     ),
+  );
+}
+
+/// The auth options [initNikatruAuth] hands to `Supabase.initialize`.
+///
+/// SPLIT OUT SO IT CAN BE TESTED. `Supabase.initialize` needs plugin channels a
+/// unit test has not got, so for as long as the storage override lived inside
+/// it the ONE line that keeps refresh tokens out of plaintext was unassertable —
+/// and the guard that stood in for a test matched the text of this file rather
+/// than any call site, which is how the shipping app came to persist its
+/// session in `shared_preferences` with CI green [G-43].
+///
+/// A test can build these options with a fake [core.SecureStore], call
+/// `options.localStorage!.persistSession(...)` and prove the write LANDS IN THE
+/// SECURE STORE. Drop the `localStorage:` argument below and that test fails,
+/// which is the whole point of it being reachable.
+sb.FlutterAuthClientOptions nikatruAuthOptions({
+  required core.SecureStore secureStore,
+  bool detectSessionInUri = true,
+}) {
+  return sb.FlutterAuthClientOptions(
+    localStorage: SecureSessionStorage(store: secureStore),
+    detectSessionInUri: detectSessionInUri,
+    // PKCE is the flow that survives a redirect on a public client — the
+    // implicit flow puts the token in the URL where history and referrers can
+    // see it.
+    authFlowType: sb.AuthFlowType.pkce,
   );
 }

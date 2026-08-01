@@ -107,9 +107,16 @@ describe('assert-workspace-coverage', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('check-migrations', () => {
   const ADDITIVE = 'CREATE TABLE IF NOT EXISTS t (id TEXT);\nALTER TABLE t ADD COLUMN x TEXT;\n';
+  // 🔴 THE FIXTURE MUST MIRROR THE REAL TREE, OR IT ENCODES THE SAME BLIND SPOT.
+  // Until 2026-08-01 this builder wrote ONLY services/platform + the brick and
+  // asserted exit 0 — so "a tree with zero services/subly-api coverage" was
+  // literally the suite's definition of clean, and the guard's REQUIRED_COVERAGE
+  // omitted subly-api to match. A passing fixture that is missing what the real
+  // tree has cannot ever notice the omission.
   const build = (name, platformSql, brickSql = ADDITIVE, extra = {}) =>
     fixture(name, {
       'services/platform/migrations/0001_init.sql': platformSql,
+      'services/subly-api/migrations/0001_init.sql': ADDITIVE,
       'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': brickSql,
       ...extra,
     });
@@ -143,41 +150,247 @@ describe('check-migrations', () => {
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/i);
   });
+
+  // 🔴 THE MIGRATION DIRECTORY THAT MOVES. This is not hypothetical: the brick's
+  // move once shrank the scan 5 → 4 and reported PASS, which is what founded
+  // REQUIRED_COVERAGE in the first place — and subly-api was then left out of it.
+  // Mutation-proven on a copy of the real tree 2026-08-01: renaming
+  // services/subly-api/migrations made the guard scan 4 files instead of 6 and
+  // still print "clean", exit 0.
+  test("FAILS when subly-api's migrations move out from under the glob", () => {
+    const dir = fixture('mig-cov-sublyapi', {
+      'services/platform/migrations/0001_init.sql': ADDITIVE,
+      'services/subly-api/db-migrations/0001_init.sql': ADDITIVE, // renamed
+      'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': ADDITIVE,
+    });
+    const { code, out } = run('check-migrations.mjs', { cwd: dir });
+    assert.equal(code, 1, 'the files did not become safe; the guard stopped looking at them');
+    assert.match(out, /COVERAGE LOST/i);
+    assert.match(out, /services\/subly-api/);
+  });
+
+  // ── the destructive DML class ─────────────────────────────────────────────
+  // Added 2026-08-01. Mutation-proven first: a migration containing
+  // `DELETE FROM events;` + `UPDATE events SET app_id = NULL;` dropped into the
+  // real services/platform/migrations produced
+  // "check-migrations: 7 migration file(s) clean — additive-only holds.", exit 0.
+  // deploy-workers.yml applies migrations --remote with no human in the loop.
+  for (const [label, sql, needle] of [
+    ['an unfiltered DELETE', 'DELETE FROM t;\n', /DELETE without WHERE/i],
+    ['an unfiltered UPDATE that nulls a column', 'UPDATE t SET x = NULL;\n', /UPDATE .* without WHERE/i],
+    ['a multi-line unfiltered UPDATE', 'UPDATE t\n   SET x = NULL;\n', /UPDATE .* without WHERE/i],
+    ['TRUNCATE', 'TRUNCATE TABLE t;\n', /TRUNCATE/i],
+    ['DROP DATABASE', 'DROP DATABASE app;\n', /DROP DATABASE/i],
+    ['INSERT OR REPLACE', "INSERT OR REPLACE INTO t (id) VALUES ('a');\n", /INSERT OR REPLACE/i],
+    ['REPLACE INTO', "REPLACE INTO t (id) VALUES ('a');\n", /REPLACE/i],
+  ]) {
+    test(`FAILS on ${label}`, () => {
+      const { code, out } = run('check-migrations.mjs', {
+        cwd: build(`mig-dml-${label.replace(/\W+/g, '')}`, `${ADDITIVE}${sql}`),
+      });
+      assert.equal(code, 1);
+      assert.match(out, needle);
+    });
+  }
+
+  // ── the shapes that must STAY green, or the rule gets weakened within a week ─
+  test('does NOT trip on a WHERE-narrowed backfill — the shape the real tree already ships', () => {
+    // services/subly-api/migrations/0002_schema_debt.sql carries two of these,
+    // applied --remote. A blanket UPDATE ban would fail HEAD.
+    const sql = `${ADDITIVE}UPDATE t\n   SET x = lower(hex(randomblob(16)))\n WHERE x IS NULL OR x = '';\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-backfill', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  test('does NOT trip on a WHERE-narrowed DELETE', () => {
+    const sql = `${ADDITIVE}DELETE FROM t WHERE id = 'stale';\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-delwhere', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  test('does NOT trip on DELETE/TRUNCATE written in a comment', () => {
+    const sql = `-- no DELETE FROM and no TRUNCATE here, ever\n${ADDITIVE}`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-comment', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  test('does NOT trip on the words inside a string literal', () => {
+    const sql = `${ADDITIVE}INSERT INTO t (id) VALUES ('DELETE FROM t; TRUNCATE t;');\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-string', sql) });
+    assert.equal(code, 0, out);
+  });
+
+  // ── the reviewed escape hatch ─────────────────────────────────────────────
+  test('an approved unfiltered DELETE passes AND is printed, never silently waved through', () => {
+    const sql =
+      `${ADDITIVE}-- migration:destructive-approved ADR-999 drop the dry-run rows\nDELETE FROM t;\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approved', sql) });
+    assert.equal(code, 0, out);
+    assert.match(out, /destructive statements running under an explicit approval marker/i);
+    assert.match(out, /ADR-999 drop the dry-run rows/);
+  });
+
+  test('the marker on the statement’s own line also counts', () => {
+    const sql = `${ADDITIVE}TRUNCATE t; -- migration:destructive-approved ADR-999 same repair\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approved-inline', sql) });
+    assert.equal(code, 0, out);
+    assert.match(out, /TRUNCATE — approved: ADR-999 same repair/);
+  });
+
+  // The hatch must annotate ONE statement, not open a season. A marker parked at
+  // the top of the file cannot bless everything below it.
+  test('an approval marker does NOT travel past intervening SQL', () => {
+    const sql =
+      `-- migration:destructive-approved ADR-999 the one below only\nDELETE FROM t;\n\n` +
+      `-- an unrelated note\nUPDATE t SET x = NULL;\n${ADDITIVE}`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approval-scope', sql) });
+    assert.equal(code, 1);
+    assert.match(out, /BANNED UPDATE .* without WHERE/i);
+    assert.doesNotMatch(out, /BANNED DELETE without WHERE/i);
+  });
+
+  test('a bare marker with no justification does not approve anything', () => {
+    const sql = `${ADDITIVE}-- migration:destructive-approved\nDELETE FROM t;\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-dml-approval-bare', sql) });
+    assert.equal(code, 1, 'the marker must carry a reason a reviewer can read');
+    assert.match(out, /BANNED DELETE without WHERE/i);
+  });
+
+  test('the DDL bans have NO escape hatch — only the DML class is approvable', () => {
+    const sql = `-- migration:destructive-approved ADR-999 please\nDROP TABLE t;\n`;
+    const { code, out } = run('check-migrations.mjs', { cwd: build('mig-ddl-no-hatch', sql) });
+    assert.equal(code, 1, 'there is no additive reading of a DROP TABLE');
+    assert.match(out, /BANNED DROP TABLE/i);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔴 REGRESSION CONTEXT. This guard read ONE hardcoded file
+// (services/platform/wrangler.jsonc) while tooling/capability-register.json
+// claimed it guarded ALLOWED_ORIGINS generally. Emptying services/subly-api's
+// allowlist produced byte-identical output and exit 0 — a live user-data API
+// could go permissive with CI fully green. Every test below that names
+// subly-api would have PASSED against the old guard, which is exactly why they
+// are here: the fork must not be able to come back silently.
+//
+// The extension was mutation-proven against a scratch COPY of the real tree
+// before these tests existed (a fixture I write encodes the same
+// misunderstanding as the guard I write): 8 mutations, each failing with its
+// intended message and each restoring to green.
 describe('assert-cors-allowlist', () => {
-  const ALL = [
+  const PLATFORM = [
     'https://subly.nikatru.com',
     'https://subly-9cp.pages.dev',
     'http://localhost:3000',
   ];
-  const build = (name, body) =>
-    fixture(name, { 'services/platform/wrangler.jsonc': body });
-  const config = (origins, trailer = '') =>
-    `{\n  // the shared platform Worker\n  "vars": { "ALLOWED_ORIGINS": "${origins.join(',')}" }${trailer}\n}\n`;
+  // No localhost here: the per-app Worker allows it by regex (recorded trade).
+  const SUBLY = ['https://subly.nikatru.com', 'https://subly-9cp.pages.dev'];
 
-  test('PASSES when every required origin is listed', () => {
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-ok', config(ALL)) });
+  const config = (origins) =>
+    `{\n  // a Worker\n  "vars": { "ALLOWED_ORIGINS": "${origins.join(',')}" }\n}\n`;
+
+  /** Both Workers, each overridable. Anything less is not a valid tree — the
+   *  guard is supposed to insist that every service it knows about is present. */
+  const build = (name, { platform = config(PLATFORM), subly = config(SUBLY), extra = {} } = {}) =>
+    fixture(name, {
+      'services/platform/wrangler.jsonc': platform,
+      'services/subly-api/wrangler.jsonc': subly,
+      ...extra,
+    });
+
+  test('PASSES when every required origin is listed for BOTH Workers', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: build('cors-ok') });
     assert.equal(code, 0);
+    // The tally must show it read two configs, not one — a guard that checked
+    // half the tree and said "ok" is the defect this replaced.
+    assert.match(out, /2 Worker config\(s\) checked/);
   });
 
-  test('FAILS when a required origin is dropped, and names it', () => {
-    const dir = build('cors-missing', config(ALL.slice(0, 2)));
+  test('FAILS when a required PLATFORM origin is dropped, and names it', () => {
+    const dir = build('cors-missing-platform', { platform: config(PLATFORM.slice(0, 2)) });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
     assert.match(out, /localhost:3000/);
+    assert.match(out, /services\/platform/);
   });
 
-  test('FAILS on an empty allowlist — which would deny every browser origin', () => {
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-empty', config([])) });
+  test('FAILS when a required SUBLY-API origin is dropped — the old guard could not see this', () => {
+    const dir = build('cors-missing-subly', { subly: config(SUBLY.slice(0, 1)) });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
+    assert.match(out, /services\/subly-api/);
+    assert.match(out, /subly-9cp\.pages\.dev/);
+  });
+
+  test('FAILS on an empty PLATFORM allowlist', () => {
+    const { code } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-empty-platform', { platform: config([]) }),
+    });
+    assert.equal(code, 1);
+  });
+
+  test('FAILS on an empty SUBLY-API allowlist — the exact mutation that shipped green', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-empty-subly', { subly: config([]) }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /services\/subly-api/);
+    assert.match(out, /EMPTY/);
+  });
+
+  test('FAILS when ALLOWED_ORIGINS is absent from a Worker entirely', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-absent-subly', { subly: '{ "name": "subly-api" }\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /ALLOWED_ORIGINS is missing/);
   });
 
   test('is STRUCTURAL — an origin mentioned only in a comment does not satisfy it', () => {
-    const body = `{\n  // https://subly-9cp.pages.dev and http://localhost:3000 used to be here\n  "vars": { "ALLOWED_ORIGINS": "https://subly.nikatru.com" }\n}\n`;
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-comment', body) });
+    const subly = `{\n  // https://subly-9cp.pages.dev used to be here\n  "vars": { "ALLOWED_ORIGINS": "https://subly.nikatru.com" }\n}\n`;
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-comment', { subly }),
+    });
     assert.equal(code, 1);
+    assert.match(out, /subly-9cp\.pages\.dev/);
+  });
+
+  test('FAILS on a Worker it was never TAUGHT about — a new service is untaught scope, not out of scope', () => {
+    const dir = build('cors-untaught', {
+      extra: { 'services/newthing/wrangler.jsonc': config(['https://x.test']) },
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /never been taught about services\/newthing/);
+  });
+
+  test('FAILS its own coverage check when a Worker POLICY names is not on disk', () => {
+    // The rename case: services/subly-api moves and the guard keeps printing a
+    // healthy tally over whatever is left.
+    const dir = fixture('cors-renamed', {
+      'services/platform/wrangler.jsonc': config(PLATFORM),
+      'services/subly-backend/wrangler.jsonc': config(SUBLY),
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /services\/subly-api/);
+  });
+
+  test('FAILS its own coverage check when fewer Workers than expected are found', () => {
+    const dir = fixture('cors-one-worker', {
+      'services/platform/wrangler.jsonc': config(PLATFORM),
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('a directory under services/ with no Worker config is skipped, not failed', () => {
+    const dir = build('cors-nonworker', {
+      extra: { 'services/_notes/README.md': 'not a Worker\n' },
+    });
+    assert.equal(run('assert-cors-allowlist.mjs', { cwd: dir }).code, 0);
   });
 });
 
@@ -951,6 +1164,23 @@ Future<void> recordAnalyticsConsent(
   const DEPLOY_WITH_DSN = 'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
   const MAIN_READS_DSN = "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n";
 
+  // [G-43] The secure-session seam. `initNikatruAuth` is the one call that keeps
+  // the refresh token out of plaintext, and it had ZERO callers tree-wide while
+  // this guard — whose entire subject is "does anything real call it" — did not
+  // list it at all. The fixture carries a real call site so the mutations below
+  // have something to remove.
+  const BRICK_MAIN_INITS_AUTH = `
+Future<void> main() async {
+  if (AppConfig.isBackendLive) {
+    await initNikatruAuth(
+      url: AppConfig.supabaseUrl,
+      publishableKey: AppConfig.supabaseAnonKey,
+      secureStore: FlutterSecureStore(),
+    );
+  }
+}
+`;
+
   const build = (
     name,
     {
@@ -962,6 +1192,7 @@ Future<void> recordAnalyticsConsent(
       fillerCount = 14,
       deploy = DEPLOY_WITH_DSN,
       mainDart = MAIN_READS_DSN,
+      brickMain = BRICK_MAIN_INITS_AUTH,
     } = {},
   ) =>
     fixture(name, {
@@ -974,6 +1205,7 @@ Future<void> recordAnalyticsConsent(
       'sites/nikatru/privacy.html': POLICY(htmlVersion),
       '.github/workflows/deploy-web.yml': deploy,
       'apps/subly/lib/main.dart': mainDart,
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': brickMain,
     });
 
   test('passes when the seam has a real call site and the policy matches', () => {
@@ -1061,6 +1293,52 @@ Future<void> recordAnalyticsConsent(
     assert.match(out, /a UI caller NOT FOUND/);
   });
 
+  // [G-43] The secure-session seam, which was the fifth dead capability nobody
+  // counted: `initNikatruAuth` shipped with zero callers while its own doc said
+  // "the brick calls this". It was absent from REQUIRED_COVERAGE, so the guard
+  // built to count dead capabilities could not see it.
+  test('FAILS when nothing calls initNikatruAuth — the session goes back to plaintext', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-authinit', { brickMain: '// the brick initialises no identity at all\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real caller \(not a test\) NOT FOUND/);
+  });
+
+  // 🔴 A LOCALLY STAMPED apps/probe MUST NOT SATISFY A SEAM. It is gitignored —
+  // present on a dev box, absent from a fresh CI checkout — so a guard that
+  // counts it answers a different question depending on who runs it. Found by
+  // mutation: with `initNikatruAuth` deleted from BOTH real call sites this
+  // guard still printed ok, held up entirely by a throwaway stamp.
+  test('a gitignored apps/probe stamp does NOT count as a caller', () => {
+    const dir = fixture('seams-probe-only', {
+      ...filler(14),
+      ...PACK_FILES,
+      ...BRICK_POLICY_FILE,
+      'apps/subly/lib/state/analytics_providers.dart':
+        `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
+      'apps/subly/lib/features/consent/consent_prompt.dart': UI_CALLER,
+      'sites/nikatru/privacy.html': POLICY('2026-07-26'),
+      '.github/workflows/deploy-web.yml': DEPLOY_WITH_DSN,
+      'apps/subly/lib/main.dart': MAIN_READS_DSN,
+      // The ONLY call site is inside the throwaway stamp.
+      'apps/probe/lib/main.dart': BRICK_MAIN_INITS_AUTH,
+    });
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /a real caller \(not a test\) NOT FOUND/);
+  });
+
+  test('FAILS when the caller passes no real platform secure store', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-securestore', {
+        brickMain: BRICK_MAIN_INITS_AUTH.replace('      secureStore: FlutterSecureStore(),\n', ''),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real platform secure store handed to it NOT FOUND/);
+  });
+
   // The regression test for the guard's own defect. A declaration is not a
   // caller; if this ever passes with no UI file, the caller check has stopped
   // discriminating and the rail can go dark with CI green.
@@ -1073,6 +1351,9 @@ Future<void> recordAnalyticsConsent(
         `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       // no consent_prompt.dart, no settings caller — nothing calls it at all
       'sites/nikatru/privacy.html': POLICY('2026-07-26'),
+      // Present so the ONLY thing missing is the consent caller: an unrelated
+      // failure would make this test pass for the wrong reason.
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': BRICK_MAIN_INITS_AUTH,
     });
     const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
     assert.equal(code, 1);
@@ -1151,6 +1432,9 @@ class Ed25519PackVerifier implements PackVerifier {
     'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
       "const String kPrivacyPolicyVersion = '2026-07-26';\n",
+    // …and the secure-session seam, for the same reason.
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart':
+      'await initNikatruAuth(url: u, publishableKey: k, secureStore: FlutterSecureStore());\n',
   };
 
   const build = (name, { impl = REAL_IMPL, barrel = BARREL, keys = keysFile('') } = {}) =>
@@ -1373,14 +1657,26 @@ final Provider<bool> consentDecidedProvider = X();
 final Provider<core.ConsentTransport> consentTransportProvider = X();
 final Provider<core.EventTransport> eventTransportProvider = X();
 final FutureProvider<core.Analytics> analyticsProvider = X();
-final Provider<core.AuthRepository> authRepositoryProvider = X();
+final Provider<core.AuthRepository> authRepositoryProvider = Provider<core.AuthRepository>((ref) {
+  if (!AppConfig.isBackendLive) return InMemoryAuthRepository();
+  return SupabaseAuthRepository(
+    requestServerDeletion: () => ref.read(restClientProvider).delete('/account'),
+  );
+});
 final Provider<Future<String?> Function()> authTokenProvider = X();
 final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: AppConfig.apiBaseUrl,
     tokenProvider: ref.watch(authTokenProvider),
+    onUnauthorized: () => signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
   ),
 );
+
+Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
+  if (await auth.currentAccessToken() == null) {
+    await auth.signOut();
+  }
+}
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
 final Provider<AuthRefreshNotifier> authRefreshProvider = X();
 final StreamProvider<core.AuthUser?> authUserProvider = X();
@@ -1515,6 +1811,47 @@ Future<void> _deleteAccount(...) async {
   const ARB_TA = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n/app_ta.arb';
   const goodArbTa = '{\n  "@@locale": "ta",\n  "settingsTitle": "x"\n}\n';
 
+  // 🔴 THE CALL SITE. Every anchor above lives in a file that DECLARES
+  // something; this one is about who calls it. `initNikatruAuth` had zero
+  // callers tree-wide while the property printed `ok`, so the stamped app both
+  // died at launch on an uninitialised `Supabase.instance` and — in the one app
+  // that did initialise — wrote its refresh token in plaintext.
+  const BRICK_MAIN = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart';
+  const goodMain = `
+Future<void> main() async {
+  await TelemetryBootstrap.init(config, appRunner: () async {
+    AppErrorScreen.install();
+    if (AppConfig.isBackendLive) {
+      await initNikatruAuth(
+        url: AppConfig.supabaseUrl,
+        publishableKey: AppConfig.supabaseAnonKey,
+        secureStore: FlutterSecureStore(),
+      );
+    }
+    runApp(const ProviderScope(child: ProbeApp()));
+  });
+}
+`;
+
+  // The SERVER half of G2. The client hook can be wired perfectly and the
+  // deletion still be a lie: this route used to purge the app's rows and the
+  // user's entitlements and leave the identity record alone, so the same
+  // password still logged in afterwards.
+  const ACCOUNT_ROUTE =
+    'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts';
+  const goodAccountRoute = `
+account.delete('/', async (c) => {
+  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) return c.json({ error: 'account_deletion_unconfigured' }, 501);
+  const identityRes = await fetch(
+    \`\${c.env.SUPABASE_URL}/auth/v1/admin/users/\${encodeURIComponent(userId)}\`,
+    { method: 'DELETE', headers: { apikey: serviceRoleKey } },
+  );
+  if (!identityRes.ok && identityRes.status !== 404) return c.json({ error: 'identity_delete_failed' }, 502);
+  return c.json({ ok: true, deleted });
+});
+`;
+
   // [pipeline C-13] The auth SEAM itself. The profile screen was refused on the
   // grounds that "there is no profile data model"; this method is the model, so
   // the property is anchored to its declaration and not only to the screen.
@@ -1567,8 +1904,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, omitArbTa = false, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -1769,7 +2106,12 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
   describe('the auth seam is wired into the stamp', () => {
     test('FAILS when the brick wires no AuthRepository', () => {
       const { code, out } = run('assert-stamp-properties.mjs', {
-        cwd: build('sp-noauth', { providers: goodProviders.replace('final Provider<core.AuthRepository> authRepositoryProvider = X();', '') }),
+        cwd: build('sp-noauth', {
+          providers: goodProviders.replace(
+            /final Provider<core\.AuthRepository> authRepositoryProvider = Provider<core\.AuthRepository>\(\(ref\) \{[\s\S]*?\n\}\);\n/,
+            '',
+          ),
+        }),
       });
       assert.equal(code, 1);
       assert.match(out, /must wire an AuthRepository/);
@@ -1791,6 +2133,64 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       });
       assert.equal(code, 1);
       assert.match(out, /session must go in the SECURE store/);
+    });
+
+    // 🔴 THE HOLE THIS PROPERTY SHIPPED WITH. The anchor above matches text
+    // inside `initNikatruAuth` — the DECLARATION — and that function had ZERO
+    // callers in the whole tree. HEAD already was the mutant the plaintext test
+    // above pretends to catch, and this guard printed `ok`. Both cases below
+    // mutate the CALL SITE, which is the only thing that could ever have said
+    // whether the SDK gets initialised at all.
+    test('FAILS when nothing calls initNikatruAuth — the defect that shipped', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noauthinit', {
+          brickMain: goodMain.replace(/      await initNikatruAuth\([\s\S]*?\);\n/, ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must CALL initNikatruAuth/);
+    });
+
+    // Initialising WITHOUT a real secure store is the plaintext defect with
+    // extra steps: the call is present, the session still lands on disk in the
+    // clear.
+    test('FAILS when the launch call is handed no platform secure store', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nosecurestore', {
+          brickMain: goodMain.replace('        secureStore: FlutterSecureStore(),\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /REAL platform secure store/);
+    });
+
+    // A 401 is not proof the session is gone. Signing out on ANY 401 turned the
+    // ordinary act of resuming the app — where the SDK's refresh ticker has been
+    // stopped and restarts asynchronously — into a forced logout.
+    test('FAILS when any 401 goes straight back to signing the user out', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-401logout', {
+          providers: goodProviders.replace(
+            'onUnauthorized: () => signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),',
+            'onUnauthorized: () => ref.read(authRepositoryProvider).signOut(),',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must go through signOutOnlyIfSessionIsGone/);
+    });
+
+    // The named function is only worth anything if it still ASKS. Gutting the
+    // check leaves an unconditional sign-out wearing a reassuring name — which
+    // the anchor above would happily pass.
+    test('FAILS when the named check stops consulting the seam', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-401nocheck', {
+          providers: goodProviders.replace('await auth.currentAccessToken() == null', 'true'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must ASK the seam for a token first/);
     });
   });
 
@@ -1823,6 +2223,47 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       });
       assert.equal(code, 1);
       assert.match(out, /must REAUTH first/);
+    });
+
+    // 🔴 THE THREE ABOVE ALL LIVE IN settings_screen.dart, and all three passed
+    // while providers.dart hard-coded `requestServerDeletion: null` — so the
+    // repository took the refusal branch on every press and the user was signed
+    // out without ever being deleted. Presence of a call chain says nothing
+    // about its terminal branch.
+    test('FAILS when the deletion request is hard-coded back to null', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nullhook', {
+          providers: goodProviders.replace(
+            "requestServerDeletion: () => ref.read(restClientProvider).delete('/account'),",
+            'requestServerDeletion: null,',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must be WIRED to the server route/);
+    });
+
+    // …and wiring it to a route that leaves the identity behind is WORSE than
+    // the refusal: the user is told they are deleted and their login still
+    // works, which is the one failure they can never detect.
+    test('FAILS when the server route stops deleting the identity record', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noidentity', {
+          accountRoute: goodAccountRoute.replace('/auth/v1/admin/users/', '/rest/v1/records/'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must delete the IDENTITY record too/);
+    });
+
+    test('FAILS when the route stops requiring the service-role credential', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nosvcrole', {
+          accountRoute: goodAccountRoute.replaceAll('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /needs the service-role credential/);
     });
   });
 
