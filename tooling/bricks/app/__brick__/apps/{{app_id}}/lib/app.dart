@@ -9,7 +9,7 @@ import 'core/router.dart';
 import 'l10n/app_localizations.dart';
 import 'state/providers.dart';
 
-/// Root widget for {{display_name}}.
+/// Root widget for {{{display_name}}}.
 class {{app_id.pascalCase()}}App extends ConsumerWidget {
   const {{app_id.pascalCase()}}App({super.key});
 

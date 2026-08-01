@@ -12,9 +12,34 @@
 //   ADD COLUMN … NOT NULL with no DEFAULT (SQLite refuses it at runtime anyway;
 //   failing here names the reason instead of a wrangler stack trace)
 //
+// 🔴 AND THE DESTRUCTIVE **DML** CLASS, added 2026-08-01. The rule list was five
+// patterns, ALL DDL — so `DELETE FROM entitlements;` in a committed migration was
+// scanned, found clean, and printed "additive-only holds". That is not a corner
+// case: deploy-workers.yml runs `d1 migrations apply … --remote` on every deploy
+// with no human in the loop, so a one-line unfiltered DELETE destroys production
+// rows portfolio-wide with ci-gate green. A DELETE is not an ADD; the guard was
+// under-enforcing its own stated invariant.
+//   DELETE FROM … with no WHERE · UPDATE … SET … with no WHERE (that is how a
+//   column gets nulled out wholesale) · TRUNCATE · DROP DATABASE/SCHEMA ·
+//   INSERT OR REPLACE / REPLACE INTO (a silent delete + re-insert that drops
+//   every column the statement does not name)
+//
+// ⚠️ SCOPED TO *UNFILTERED* STATEMENTS ON PURPOSE. Backfills are existing,
+// legitimate practice here — services/subly-api/migrations/0002_schema_debt.sql
+// carries two `UPDATE … SET … WHERE …` backfills that were applied --remote — so
+// a blanket ban would fail HEAD and be weakened within a week. A WHERE clause is
+// the difference between "repair these rows" and "wipe this column".
+//
 // Not banned: DROP INDEX (indexes carry no data and are rebuildable), and
 // DROP … IF EXISTS on a *temporary* object inside an explicit expand-contract
 // migration — which must be reviewed by a human, not waved through by a regex.
+//
+// THE ONE ESCAPE HATCH, and it is a reviewed marker rather than the guard's
+// silence: a statement genuinely needing an unfiltered destructive form must
+// carry `-- migration:destructive-approved <ADR or reason>` on its own line or on
+// the contiguous comment block directly above it. It shows up in the diff, it
+// needs a justification, and every approved statement is PRINTED on every run —
+// an exception nobody sees is how a ban becomes a formality.
 //
 // Usage:  node tooling/ci/check-migrations.mjs
 // Exit 0 = clean, 1 = violations (printed with file:line).
@@ -33,9 +58,17 @@ const PATTERNS = [
 ];
 
 /** Path fragments that MUST appear among the matched files. A guard whose
- *  coverage quietly shrinks is worse than no guard: it still reports "clean". */
+ *  coverage quietly shrinks is worse than no guard: it still reports "clean".
+ *
+ *  🔴 THE LIST IS WRITTEN OUT, NOT DERIVED FROM `services/*` ON DISK, and that is
+ *  the whole point: a derived list loses an entry at exactly the moment the
+ *  directory it names disappears, which is the failure this check exists to
+ *  catch. `services/subly-api` was MISSING here until 2026-08-01 — mutation-proven
+ *  by renaming `services/subly-api/migrations`, after which the guard scanned 4
+ *  files instead of 6 and still printed "clean". Its schema holds real user rows. */
 const REQUIRED_COVERAGE = [
   { fragment: 'services/platform', label: 'the shared platform_db migrations' },
+  { fragment: 'services/subly-api', label: "subly_db's own migrations — the flagship app's real user rows" },
   { fragment: 'tooling/bricks', label: "the brick's starter schema" },
 ];
 
@@ -69,6 +102,45 @@ function stripNonCode(sql) {
   return out;
 }
 
+/**
+ * The statement a match belongs to: from the match to its terminating `;`, or to
+ * end-of-file if there is none. Computed on the STRIPPED source, so neither a `;`
+ * inside a string literal nor one inside a comment can end a statement early and
+ * hide the rest of it from the WHERE test.
+ */
+function statementSpan(code, index) {
+  const end = code.indexOf(';', index);
+  return code.slice(index, end === -1 ? code.length : end + 1);
+}
+
+/** A destructive DML statement is banned only when NOTHING narrows it. */
+const noWhereClause = (code, m) => !/\bWHERE\b/i.test(statementSpan(code, m.index));
+
+/** `-- migration:destructive-approved <justification>` — the reviewed opt-in. */
+const APPROVAL_RE = /--\s*migration:destructive-approved\s+(\S.*)$/;
+
+/**
+ * Is this statement explicitly approved? The marker must sit on the statement's
+ * own first line, or in the contiguous run of comment/blank lines directly above
+ * it — so it reads as annotating THIS statement and cannot be parked once at the
+ * top of the file to bless everything below.
+ *
+ * Read from the RAW source deliberately: the marker IS a comment, so the stripped
+ * view the scanner uses has already blanked it.
+ */
+function approvalFor(rawLines, line) {
+  const own = rawLines[line - 1]?.match(APPROVAL_RE);
+  if (own) return own[1].trim();
+  for (let i = line - 2; i >= 0; i--) {
+    const text = rawLines[i] ?? '';
+    if (text.trim() === '') continue;
+    if (!text.trimStart().startsWith('--')) return null; // hit real SQL — stop
+    const m = text.match(APPROVAL_RE);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
 const RULES = [
   {
     name: 'DROP TABLE',
@@ -96,6 +168,43 @@ const RULES = [
     re: /\bADD\s+(?:COLUMN\s+)?[^;]*?\bNOT\s+NULL\b[^;]*?;/gi,
     why: 'SQLite cannot add a NOT NULL column without a constant DEFAULT',
     skip: (m) => /\bDEFAULT\b/i.test(m),
+  },
+
+  // ── the destructive DML class ─────────────────────────────────────────────
+  // Everything below is `approvable`: it has a legitimate — rare — use, so it
+  // gets the reviewed marker rather than a flat prohibition. The DDL rules above
+  // deliberately do NOT, because there is no additive reading of a DROP COLUMN.
+  {
+    name: 'DELETE without WHERE',
+    re: /\bDELETE\s+FROM\b/gi,
+    why: 'an unfiltered DELETE empties the table for every client still reading it — and deploy-workers.yml applies migrations --remote with no human in the loop',
+    when: noWhereClause,
+    approvable: true,
+  },
+  {
+    name: 'UPDATE … SET without WHERE',
+    re: /\bUPDATE\s+(?:OR\s+\w+\s+)?[\w."`[\]]+\s+SET\b/gi,
+    why: 'rewrites every row in the table — this is how a column gets nulled out wholesale; a backfill narrows itself with WHERE (see 0002_schema_debt.sql)',
+    when: noWhereClause,
+    approvable: true,
+  },
+  {
+    name: 'TRUNCATE',
+    re: /\bTRUNCATE\b/gi,
+    why: 'discards the whole table with no filter and no undo',
+    approvable: true,
+  },
+  {
+    name: 'DROP DATABASE/SCHEMA',
+    re: /\bDROP\s+(?:DATABASE|SCHEMA)\b/gi,
+    why: 'destroys the shared store every stamped app writes to',
+    approvable: true,
+  },
+  {
+    name: 'INSERT OR REPLACE / REPLACE INTO',
+    re: /\b(?:INSERT\s+OR\s+REPLACE|REPLACE\s+INTO)\b/gi,
+    why: 'a silent DELETE + re-INSERT: every column the statement does not name is reset to its default, so a released client\'s data disappears without an error',
+    approvable: true,
   },
 ];
 
@@ -128,22 +237,44 @@ for (const { fragment, label } of REQUIRED_COVERAGE) {
 }
 if (coverageMissing > 0) process.exit(1);
 
+const approved = [];
 for (const file of files) {
   const raw = readFileSync(file, 'utf8');
+  const rawLines = raw.split('\n');
   const code = stripNonCode(raw);
   for (const rule of RULES) {
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(code)) !== null) {
       if (rule.skip?.(m[0])) continue;
+      if (rule.when && !rule.when(code, m)) continue;
       const line = lineOf(code, m.index);
+      // The reviewed opt-in, and ONLY for the rules that declare one. An
+      // approved statement is not silently waved through: it is collected and
+      // printed on every run, pass or fail, so the exception stays visible.
+      if (rule.approvable) {
+        const why = approvalFor(rawLines, line);
+        if (why) {
+          approved.push(`${file}:${line}  ${rule.name} — approved: ${why}`);
+          continue;
+        }
+      }
       console.error(
         `${file}:${line}  BANNED ${rule.name} — ${rule.why}\n` +
-          `    ${raw.split('\n')[line - 1]?.trim() ?? ''}`,
+          `    ${rawLines[line - 1]?.trim() ?? ''}` +
+          (rule.approvable
+            ? '\n    If this is genuinely required, annotate the statement with' +
+              ' `-- migration:destructive-approved <ADR or reason>` so the exception is reviewed in the diff.'
+            : ''),
       );
       violations++;
     }
   }
+}
+
+if (approved.length) {
+  console.log('⚠  destructive statements running under an explicit approval marker:');
+  for (const a of approved) console.log(`    ${a}`);
 }
 
 if (violations > 0) {

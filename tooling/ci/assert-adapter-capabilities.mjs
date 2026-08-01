@@ -29,6 +29,82 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+/**
+ * Blank Dart comments and string literals, preserving offsets and newlines.
+ *
+ * A hand-rolled scanner rather than the regex pass this file used to carry: a
+ * regex cannot tell `//` inside a string from a comment. It lives here rather
+ * than in a shared module because every `.mjs` directly under tooling/ci is a
+ * GUARD to assert-guard-coverage.mjs, and any `.mjs` in a subdirectory of
+ * tooling/ci is a hard COVERAGE LOST — there is nowhere shared to put it.
+ */
+function stripDart(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  const blank = (ch) => (ch === '\n' ? '\n' : ' ');
+  while (i < n) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '/' && c2 === '/') {
+      while (i < n && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      let depth = 0;
+      while (i < n) {
+        if (src[i] === '/' && src[i + 1] === '*') { depth++; out += '  '; i += 2; continue; }
+        if (src[i] === '*' && src[i + 1] === '/') { depth--; out += '  '; i += 2; if (depth === 0) break; continue; }
+        out += blank(src[i]); i++;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"' || (c === 'r' && (c2 === "'" || c2 === '"'))) {
+      const isRaw = c === 'r';
+      const q = isRaw ? c2 : c;
+      let j = isRaw ? i + 1 : i;
+      const triple = src[j] === q && src[j + 1] === q && src[j + 2] === q;
+      const closeLen = triple ? 3 : 1;
+      const start = i;
+      j += closeLen;
+      while (j < n) {
+        if (!isRaw && src[j] === '\\') { j += 2; continue; }
+        if (src[j] === q && (!triple || (src[j + 1] === q && src[j + 2] === q))) { j += closeLen; break; }
+        if (!triple && src[j] === '\n') break;
+        j++;
+      }
+      for (const ch of src.slice(start, j)) out += blank(ch);
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Character spans covered by the argument list of a `test(…)` / `testWidgets(…)`
+ * call. Something written outside every one of these spans does not run when the
+ * suite runs — which is the difference between a test file and a file of prose
+ * that happens to compile.
+ */
+function testCallSpans(code) {
+  const spans = [];
+  for (const m of code.matchAll(/\b(?:test|testWidgets)\s*\(/g)) {
+    const open = m.index + m[0].length - 1;
+    let depth = 0;
+    for (let k = open; k < code.length; k++) {
+      if (code[k] === '(') depth++;
+      else if (code[k] === ')') { depth--; if (depth === 0) { spans.push([open, k]); break; } }
+    }
+  }
+  return spans;
+}
+const insideSome = (spans, idx) => spans.some(([a, b]) => idx > a && idx < b);
+const occursInATest = (code, spans, re) =>
+  [...code.matchAll(re)].some((m) => insideSome(spans, m.index));
+
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
 const problems = [];
@@ -166,11 +242,7 @@ for (const { pkg, cap } of matrixJobs) {
   // note naming its platforms, which makes this failure mode certain rather than
   // unlucky. This is the repo's own recorded rule: assert on structure, never by
   // grepping prose.
-  const code = src
-    .replace(/^\s*\/\/.*$/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
-    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
+  const code = stripDart(src);
   const missing = REQUIRED_PLATFORMS.filter((p) => {
     // Web is expressed as the `isWeb` PARAMETER, not as an enum case — a web
     // build still reports a host TargetPlatform, so it cannot be a switch arm.
@@ -199,11 +271,42 @@ for (const { pkg, cap } of matrixJobs) {
   if (!m.test || !existsSync(testPath)) {
     problems.push(`\`${pkg}\` names test \`${m.test}\`, which does not exist. C-7's acceptance is that a TEST asserts the unsupported path returns the declared fallback.`);
   } else {
-    const t = readFileSync(testPath, 'utf8');
-    if (!t.includes(m.symbol)) {
-      problems.push(`\`${m.test}\` never references \`${m.symbol}\` — it cannot be exercising the matrix it claims to test.`);
+    // 🔴 THE TEST HALF NEVER GOT THE TREATMENT THE DESCRIPTOR HALF DID. Until
+    // 2026-08-01 these two checks ran against the RAW test file, eight lines
+    // below the note above explaining why that is wrong. Mutation-proven:
+    // replacing packages/telemetry/test/telemetry_capabilities_test.dart with
+    // three comment lines mentioning `TelemetryCapabilities` and `forPlatform(`
+    // plus `void main() {}` left this guard printing `ok 6 adapter
+    // matrix/matrices exercised per-platform by their own tests`, exit 0 — and
+    // `dart test` stays green too, because the file compiles and declares no
+    // failing case. The suite could not backstop it: every adapter package
+    // carries a second test file, so gutting the capabilities one never empties
+    // a suite.
+    //
+    // Three things are required now, and none is an arbitrary threshold — a
+    // per-platform `expect(` count was considered and REJECTED, because
+    // review_capabilities_test.dart has 22 expects behind ONE literal
+    // `forPlatform(`, so counting would encode a style rather than a property.
+    // What is asserted instead: the symbol and `forPlatform(` appear in CODE,
+    // and at least one `expect(` sits inside a `test(` body — i.e. the file
+    // actually runs an assertion when the suite runs. Prose, a commented-out
+    // body and a file of bare top-level declarations all fail that.
+    //
+    // ⚠️ `forPlatform(` is NOT required to be inside the `test(` body itself.
+    // Tried, and it falsely accused review_capabilities_test.dart, whose
+    // `forPlatform` call lives in a top-level `_caps()` helper the tests call —
+    // a legitimate shape, and the guard would have been the thing that was wrong.
+    const t = stripDart(readFileSync(testPath, 'utf8'));
+    const spans = testCallSpans(t);
+    const symbolRe = new RegExp(`\\b${m.symbol}\\b`, 'g');
+    if (!symbolRe.test(t)) {
+      problems.push(`\`${m.test}\` never references \`${m.symbol}\` in CODE (comments and string literals do not count) — it cannot be exercising the matrix it claims to test.`);
+    } else if (spans.length === 0) {
+      problems.push(`\`${m.test}\` declares no \`test(\`/\`testWidgets(\` case at all — nothing in it runs, so it asserts nothing about \`${m.symbol}\`.`);
     } else if (!/\bforPlatform\s*\(/.test(t)) {
-      problems.push(`\`${m.test}\` never calls \`forPlatform\` — it is not exercising the per-platform rows, which is the whole point.`);
+      problems.push(`\`${m.test}\` never calls \`forPlatform\` in CODE — it is not exercising the per-platform rows, which is the whole point.`);
+    } else if (!occursInATest(t, spans, /\bexpect\s*\(/g)) {
+      problems.push(`\`${m.test}\` calls \`forPlatform\` but asserts nothing (\`expect(\` appears in no \`test(\` body). C-7's acceptance is that a TEST asserts the unsupported path returns the declared fallback.`);
     } else {
       checked++;
     }

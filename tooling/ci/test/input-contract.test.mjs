@@ -21,6 +21,22 @@
 // written to prevent it. A var now counts as ruled only if the hook READS IT OUT
 // OF THE SPEC (`v('name')` / `vars['name']`), which prose cannot satisfy.
 //
+// 🔴 …AND M2 WAS ONLY HALF-FIXED, WHICH THE FIXTURE HID FOR MONTHS. The rewrite
+// checked the READ and stopped there, while the guard's own comment said "READS
+// it and can REJECT on it. Reading alone is not a rule". The fixture below
+// mutated by removing the READ (`goodPreGen(VARS.filter(v => v !== 'category'))`)
+// — the one thing the broken guard *did* catch — so it passed against the broken
+// version: the fixture encoded the same misunderstanding as the guard.
+//
+// Re-proven on a copy of the REAL tree 2026-08-01, before any of the tests below
+// were written: replacing the whole `category` rule in pre_gen.dart with
+// `context.logger.info('category: $category')` (read kept, rejection deleted)
+// left the guard printing `ok every one of the 8 declared var(s) is named by a
+// rule`, exit 0 — and the aggregate `problems.add(` floor could not see it
+// either, because the hook raises 11 against a floor of 8. Same for `seed_hex`.
+// A rejection is now bound TO THE VAR: see the two "READ but nothing can REJECT"
+// tests, and the false-alarm shapes beside them.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -96,18 +112,18 @@ const run = (cwd) => {
 };
 
 describe('assert-input-contract', () => {
-  test('passes when every declared var is read and refusal throws', () => {
+  test('passes when every declared var is read, rejectable, and refusal throws', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
     assert.match(out, /8 declared var\(s\)/);
-    assert.match(out, /every one of the 8 declared var\(s\) is named by a rule/);
+    assert.match(out, /every one of the 8 declared var\(s\) is read AND can be rejected on/);
   });
 
   // ── "every" must not be able to shrink ───────────────────────────────────
   test('FAILS when a NEW var arrives with no rule', () => {
     const { code, out } = run(tree({ yaml: goodYaml([...VARS, 'tagline']) }));
     assert.equal(code, 1);
-    assert.match(out, /NO rule in .*pre_gen\.dart: tagline/);
+    assert.match(out, /NEVER READ in .*pre_gen\.dart: tagline/);
   });
 
   // 🔴 M2, the mutation that survived the first version of this guard.
@@ -121,7 +137,99 @@ describe('assert-input-contract', () => {
         "void run(HookContext context) {");
     const { code, out } = run(tree({ pre: gutted }));
     assert.equal(code, 1, 'the word category survives in prose; only the READ was removed');
-    assert.match(out, /NO rule in .*pre_gen\.dart: category/);
+    assert.match(out, /NEVER READ in .*pre_gen\.dart: category/);
+  });
+
+  // ── 🔴 THE HALF OF M2 THAT WAS NEVER IMPLEMENTED: read ≠ rule ─────────────
+  test('FAILS when the rule is gutted to a read-and-print, keeping the READ', () => {
+    // This is the real-tree mutation verbatim: `v('category')` is still read, the
+    // value is still used — but nothing can reject on it, so a free-text category
+    // stamps an app that a store will bounce months later.
+    const gutted = goodPreGen().replace(
+      "  final category_x = v('category');\n  if (category_x == 'no') { problems.add('category is bad'); }",
+      "  final category_x = v('category');\n  context.logger.info('category: $category_x');",
+    );
+    assert.notEqual(gutted, goodPreGen(), 'the mutation must actually land — good != bad');
+    const { code, out } = run(tree({ pre: gutted }));
+    assert.equal(code, 1, 'reading a var to print it is not a rule');
+    assert.match(out, /READ but nothing can REJECT on them/);
+    assert.match(out, /category \(read into `category_x`\)/);
+  });
+
+  test('the aggregate problems.add floor alone cannot see it — the per-var bind is what catches it', () => {
+    // Two rules gutted, and FOUR spare rejections added so the aggregate count
+    // stays comfortably above MIN_VARS. On the real tree the slack was three:
+    // the hook raises 11 against a floor of 8.
+    let pre = goodPreGen();
+    for (const v of ['category', 'seed_hex']) {
+      pre = pre.replace(
+        `  final ${v}_x = v('${v}');\n  if (${v}_x == 'no') { problems.add('${v} is bad'); }`,
+        `  final ${v}_x = v('${v}');\n  context.logger.info('${v}: $${v}_x');`,
+      );
+    }
+    pre = pre.replace(
+      '  if (problems.isNotEmpty) {',
+      '  final spare = context.vars["unrelated"];\n' +
+        '  if (spare == 1) { problems.add("a"); }\n' +
+        '  if (spare == 2) { problems.add("b"); }\n' +
+        '  if (spare == 3) { problems.add("c"); }\n' +
+        '  if (spare == 4) { problems.add("d"); }\n' +
+        '  if (problems.isNotEmpty) {',
+    );
+    const { code, out } = run(tree({ pre }));
+    assert.equal(code, 1);
+    assert.doesNotMatch(out, /raises only \d+ problem\(s\)/, 'the aggregate floor is satisfied — it is blind to this');
+    assert.match(out, /READ but nothing can REJECT on them/);
+    assert.match(out, /category/);
+    assert.match(out, /seed_hex/);
+  });
+
+  test('the rejection must be a CONDITION — the error message reciting the var name does not count', () => {
+    // Every message in the real hook names its own var. Matching strings would
+    // make each message satisfy the rule it is describing.
+    const gutted = goodPreGen().replace(
+      "  final category_x = v('category');\n  if (category_x == 'no') { problems.add('category is bad'); }",
+      "  final category_x = v('category');\n  if (somethingElse) { problems.add('category must be one of the known categories'); }",
+    );
+    const { code, out } = run(tree({ pre: gutted }));
+    assert.equal(code, 1);
+    assert.match(out, /READ but nothing can REJECT on them/);
+  });
+
+  // ⚠️ …and the legitimate shapes, or the tightening is the bug.
+  test('PASSES when the read is inlined straight into the condition', () => {
+    const inlined = goodPreGen().replace(
+      "  final category_x = v('category');\n  if (category_x == 'no') { problems.add('category is bad'); }",
+      "  if (v('category').isEmpty) { problems.add('category is bad'); }",
+    );
+    const { code, out } = run(tree({ pre: inlined }));
+    assert.equal(code, 0, out);
+  });
+
+  // The walker must climb the WHOLE enclosing chain, not just the innermost
+  // block: here only the OUTER condition names the var, and that is still a
+  // rejection bound to it. Checking one level would falsely accuse this.
+  test('PASSES when only an OUTER enclosing if names the var', () => {
+    const nested = goodPreGen().replace(
+      "  final category_x = v('category');\n  if (category_x == 'no') { problems.add('category is bad'); }",
+      "  final category_x = v('category');\n" +
+        '  if (category_x.isNotEmpty) {\n' +
+        "    if (strict) { problems.add('category is bad'); }\n" +
+        '  }',
+    );
+    const { code, out } = run(tree({ pre: nested }));
+    assert.equal(code, 0, out);
+  });
+
+  test('a `for`/`while` header is not a rejection rule', () => {
+    const looped = goodPreGen().replace(
+      "  final category_x = v('category');\n  if (category_x == 'no') { problems.add('category is bad'); }",
+      "  final category_x = v('category');\n" +
+        '  for (final c in category_x.split(",")) { problems.add(c); }',
+    );
+    const { code, out } = run(tree({ pre: looped }));
+    assert.equal(code, 1, 'a loop that always pushes is not a rule that can reject on the value');
+    assert.match(out, /READ but nothing can REJECT on them/);
   });
 
   test('FAILS when the parser stops seeing the vars block', () => {

@@ -15,6 +15,12 @@
 // fails until it has a rule. That is what makes the word "every" mean something
 // a person cannot quietly shrink.
 //
+// A "rule" is TWO things, and for a long time only the first was checked: the
+// hook must READ the var out of the spec, AND be able to REJECT on the value it
+// read. See the 🔴 note at the check itself for the mutation that proved the
+// difference — deleting a whole validation rule while keeping the read left this
+// guard reporting full coverage.
+//
 // ── 2 · NO INSTRUCTION MAY NAME A FILE THAT DOES NOT EXIST ─────────────────
 // The brick told its user four times to edit `apps/<id>/app.yaml`. That file has
 // never existed. A runbook naming a phantom file is worse than one saying
@@ -27,6 +33,126 @@
 // any that neither exists nor is allowlisted. Catch the class, not the instance.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+
+// ── two views of the hook, both offset-preserving ────────────────────────────
+// Blanked spans keep their newlines and their width, so an index in one view is
+// the same index in the other and in the raw source.
+//
+// ⚠️ THE TWO VIEWS ARE NOT INTERCHANGEABLE, and picking the wrong one silently
+// inverts this guard:
+//   · `withStrings` keeps string literals, because the READ this guard looks for
+//     IS a string — `v('app_id')`. Blank the literals and every var's read looks
+//     identical, which is the caveat PR #92 recorded when the sibling guard's
+//     exported stripper would have erased the very evidence it needed.
+//   · `code` blanks them, because the REJECTION must be proven by a CONDITION,
+//     and every error message in the hook recites the var's own name in prose.
+//     Match against strings and the message satisfies the rule it is describing.
+// A hand-rolled scanner rather than a regex: a regex cannot tell `//` inside a
+// string from a comment. It lives here rather than being imported because every
+// .mjs directly under tooling/ci is a GUARD to assert-guard-coverage.mjs (needing
+// its own negative test and coverage marker) and a subdirectory is a hard
+// COVERAGE LOST — so there is nowhere shared to put it that does not cost more
+// than it saves.
+function stripDart(src, { keepStrings = false } = {}) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  const blank = (ch) => (ch === '\n' ? '\n' : ' ');
+  while (i < n) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '/' && c2 === '/') {
+      while (i < n && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      let depth = 0;
+      while (i < n) {
+        if (src[i] === '/' && src[i + 1] === '*') { depth++; out += '  '; i += 2; continue; }
+        if (src[i] === '*' && src[i + 1] === '/') { depth--; out += '  '; i += 2; if (depth === 0) break; continue; }
+        out += blank(src[i]); i++;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"' || (c === 'r' && (c2 === "'" || c2 === '"'))) {
+      const isRaw = c === 'r';
+      const q = isRaw ? c2 : c;
+      let j = isRaw ? i + 1 : i;
+      const triple = src[j] === q && src[j + 1] === q && src[j + 2] === q;
+      const closeLen = triple ? 3 : 1;
+      const start = i;
+      j += closeLen;
+      while (j < n) {
+        if (!isRaw && src[j] === '\\') { j += 2; continue; }
+        if (src[j] === q && (!triple || (src[j + 1] === q && src[j + 2] === q))) { j += closeLen; break; }
+        if (!triple && src[j] === '\n') break;
+        j++;
+      }
+      const literal = src.slice(start, j);
+      out += keepStrings ? literal : [...literal].map(blank).join('');
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * OFFSET RANGES of every `if (…)` condition that lexically ENCLOSES a rejection.
+ *
+ * Walks the brace structure of the stripped hook, recording, for each
+ * `problems.add(`, the condition of every `if` whose block contains it. That is
+ * the "lexical region that reads it" the fix calls for, computed rather than
+ * assumed — and it is FAIL-CLOSED: if this walker ever stops understanding the
+ * hook's shape it returns nothing, every var reads as unrejectable, and the build
+ * goes red instead of quietly reporting full coverage.
+ *
+ * RANGES, not text, because the caller needs to read the SAME span out of both
+ * views: local identifiers out of the string-blanked one (so an error message
+ * cannot satisfy the rule it describes), and an inlined `v('name')` read out of
+ * the string-keeping one (where the read IS a literal). One view alone gets one
+ * of those two wrong.
+ */
+function rejectionConditions(code) {
+  const conditions = [];
+  const stack = [];
+  const rejections = [];
+  for (let i = 0; i < code.length; i++) {
+    if (code[i] === '{') stack.push(i);
+    else if (code[i] === '}') stack.pop();
+    else if (code.startsWith('problems.add(', i)) rejections.push([...stack]);
+  }
+  /** The `if (…)` condition whose block opens at `brace`, or null. */
+  const conditionAt = (brace) => {
+    let close = brace - 1;
+    while (close >= 0 && /\s/.test(code[close])) close--;
+    if (code[close] !== ')') return null; // not `… ) {` — e.g. a plain block or a lambda
+    let depth = 0;
+    let open = -1;
+    for (let k = close; k >= 0; k--) {
+      if (code[k] === ')') depth++;
+      else if (code[k] === '(') { depth--; if (depth === 0) { open = k; break; } }
+    }
+    if (open === -1) return null;
+    let j = open - 1;
+    while (j >= 0 && /\s/.test(code[j])) j--;
+    // `if (…)` or `else if (…)` — a `for`/`while` header is not a rejection rule.
+    if (!/\bif$/.test(code.slice(Math.max(0, j - 2), j + 1))) return null;
+    return [open + 1, close];
+  };
+  const seen = new Set();
+  for (const braces of rejections) {
+    for (const b of braces) {
+      if (seen.has(b)) continue;
+      seen.add(b);
+      const range = conditionAt(b);
+      if (range) conditions.push(range);
+    }
+  }
+  return conditions;
+}
 
 const ROOT = process.cwd();
 const BRICK = 'tooling/bricks/app';
@@ -43,6 +169,9 @@ if (brickYaml === null) problems.push(`${YAML} is missing — the input contract
 if (preGen === null) problems.push(`${PRE_GEN} is missing — nothing validates the spec at all.`);
 
 if (brickYaml !== null && preGen !== null) {
+  const preGenWithStrings = stripDart(preGen, { keepStrings: true }); // reads live in strings
+  const preGenCode = stripDart(preGen); // conditions must be code, never prose
+
   // ── the declared set ──────────────────────────────────────────────────────
   // `vars:` is top-level; each var is a 2-space key beneath it. Parsed
   // structurally rather than grepped, because a grep for `\w+:` also matches
@@ -75,7 +204,7 @@ if (brickYaml !== null && preGen !== null) {
   // ── the implemented set ───────────────────────────────────────────────────
   // A var counts as ruled when pre_gen READS it and can REJECT on it. Reading
   // alone is not a rule: the old hook read display_name to print it.
-  const problemsPushed = [...preGen.matchAll(/problems\.add\(/g)].length;
+  const problemsPushed = [...preGenCode.matchAll(/problems\.add\(/g)].length;
   if (problemsPushed < MIN_VARS) {
     problems.push(
       `${PRE_GEN} raises only ${problemsPushed} problem(s); with ${declared.length} declared vars there must be at least one rejection path per var.`,
@@ -91,23 +220,89 @@ if (brickYaml !== null && preGen !== null) {
   // A var is ruled only if the hook actually READS IT OUT OF THE SPEC —
   // `v('name')` or `vars['name']`. Prose cannot satisfy that, and neither can a
   // variable that merely happens to share the name.
-  const unruled = declared.filter((name) => {
-    const read = new RegExp(`(?:\\bv\\(|\\bvars\\[)\\s*'${name}'`).test(preGen);
-    return !read;
-  });
-  if (unruled.length) {
-    problems.push(
-      `these declared var(s) have NO rule in ${PRE_GEN}: ${unruled.join(', ')}. "Every load-bearing var is validated" was satisfied by validating 2 of 8 for exactly this reason — the set was never computed.`,
+  //
+  // 🔴 …AND REQUIRE THE REJECTION, NOT JUST THE READ. Triage 2026-08-01,
+  // mutation-proven: the comment three lines above has ALWAYS said "READS it and
+  // can REJECT on it. Reading alone is not a rule" — and only the read was
+  // implemented. Replacing the whole `category` rule with
+  // `context.logger.info('category: $category')` (read kept, rejection deleted)
+  // left this guard printing `ok every one of the 8 declared var(s) is named by a
+  // rule`, exit 0. The aggregate `problems.add(` floor below could not see it
+  // either: the hook raises 11 and the floor is 8, so THREE rules could be
+  // deleted before anything noticed — including both rules on `app_id`, the one
+  // var whose derivations the hook itself records as IRREVERSIBLE.
+  //
+  // So the rejection is bound TO THE VAR: the value read out of the spec (or the
+  // local it is assigned to) must appear in the CONDITION of an `if` that
+  // encloses a `problems.add(`. A read-and-print cannot satisfy that, and neither
+  // can the error message — conditions are matched against the string-blanked
+  // view precisely because every message recites its own var's name.
+  //
+  // ⚠️ WHAT THIS DOES **NOT** CLAIM, stated so nobody reads more into it than it
+  // proves: it asserts each var HAS a rejection path, not how many. Gutting both
+  // `app_id` format rules is correctly NOT flagged here, because S-13's
+  // `if (problems.isEmpty && appId.isNotEmpty)` re-stamp refusal is a genuine
+  // rejection bound to that value. Counting rules per var would need a per-var
+  // floor, and "a floor that needs tuning is a floor somebody lowers". The
+  // aggregate `problems.add(` floor below stays as the (weaker) count check.
+  const READ_OF = (name) => new RegExp(`(?:\\bv\\(|\\bvars\\[)\\s*'${name}'`, 'g');
+  const conditions = rejectionConditions(preGenCode);
+  const unread = [];
+  const unrejected = [];
+  for (const name of declared) {
+    const reads = [...preGenWithStrings.matchAll(READ_OF(name))];
+    if (reads.length === 0) { unread.push(name); continue; }
+    // Tokens that stand for this var's VALUE: the read expression itself, plus
+    // any local it is assigned to (`final String appId = v('app_id');`).
+    const inlineReads = new Set(); // `v('x'` — only visible with strings kept
+    const locals = new Set(); // `appId` — only trustworthy with strings blanked
+    for (const r of reads) {
+      inlineReads.add(r[0]);
+      const before = preGenWithStrings.slice(Math.max(0, r.index - 80), r.index);
+      const assign = before.match(/([A-Za-z_$][\w$]*)\s*=\s*$/);
+      if (assign) locals.add(assign[1]);
+    }
+    const holds = (haystack, needles) =>
+      [...needles].some((t) =>
+        new RegExp(`(?:^|[^\\w$])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w$])`).test(haystack),
+      );
+    const bound = conditions.some(
+      ([a, b]) =>
+        holds(preGenCode.slice(a, b), locals) ||
+        holds(preGenWithStrings.slice(a, b), inlineReads),
     );
-  } else if (declared.length) {
-    ok(`every one of the ${declared.length} declared var(s) is named by a rule`);
+    if (!bound) unrejected.push(locals.size ? `${name} (read into \`${[...locals].join('`, `')}\`)` : name);
+  }
+  if (unread.length) {
+    problems.push(
+      `these declared var(s) are NEVER READ in ${PRE_GEN}: ${unread.join(', ')}. "Every load-bearing var is validated" was satisfied by validating 2 of 8 for exactly this reason — the set was never computed.`,
+    );
+  }
+  if (unrejected.length) {
+    problems.push(
+      `these declared var(s) are READ but nothing can REJECT on them in ${PRE_GEN}: ${unrejected.join('; ')}. ` +
+        'No `problems.add(` sits inside an `if` whose condition tests that value, so a bad spec for it stamps an app anyway. ' +
+        'Reading a var to print it is not a rule — that is the exact defect this check was written to prevent, and the aggregate floor below cannot see it.',
+    );
+  }
+  if (!unread.length && !unrejected.length && declared.length) {
+    ok(`every one of the ${declared.length} declared var(s) is read AND can be rejected on`);
+  }
+  // COVERAGE SELF-CHECK for the walker itself. It is already fail-closed (a
+  // walker that understands nothing marks every var unrejected), but a count of
+  // zero conditions over a hook that clearly rejects is worth naming rather than
+  // leaving to be inferred from a wall of per-var failures.
+  if (declared.length && conditions.length === 0) {
+    problems.push(
+      `COVERAGE LOST — parsed 0 rejection conditions out of ${PRE_GEN}. Either the hook stopped guarding its \`problems.add(\` calls with \`if\`, or this walker has stopped understanding its shape.`,
+    );
   }
 
   // ── refusal must be atomic ────────────────────────────────────────────────
   // A hook that logs and continues stamps the app anyway. mason exits 64 on a
   // throw, having written nothing — that is the whole safety property behind
   // [pipeline S-13]'s refusal.
-  if (!/throw\s+Exception\(/.test(preGen)) {
+  if (!/throw\s+Exception\(/.test(preGenCode)) {
     problems.push(
       `${PRE_GEN} never throws. A hook that only logs lets the stamp proceed, so a rejected spec would be written to disk anyway — and S-13's refusal would eat the app it declined to overwrite.`,
     );
@@ -116,7 +311,9 @@ if (brickYaml !== null && preGen !== null) {
   }
 
   // ── [pipeline S-13] the existence check ───────────────────────────────────
-  if (!/Directory\(['"`]apps\//.test(preGen) || !/existsSync\(\)/.test(preGen)) {
+  // `preGenWithStrings`, not `preGenCode`: the path IS a string literal, so the
+  // string-blanked view would erase the evidence. Comments are gone either way.
+  if (!/Directory\(['"`]apps\//.test(preGenWithStrings) || !/existsSync\(\)/.test(preGenCode)) {
     problems.push(
       `${PRE_GEN} does not check whether apps/<app_id> already exists. Re-stamping an existing id silently replaces that app with an empty template.`,
     );

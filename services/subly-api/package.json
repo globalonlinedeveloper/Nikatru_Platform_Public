@@ -7,6 +7,7 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "dry-run": "wrangler deploy --dry-run",
+    "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply APP_DB --local",
     "db:migrate": "wrangler d1 migrations apply APP_DB --remote"
   },
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",
     "typescript": "^5.6.0",
+    "vitest": "^2.1.9",
     "wrangler": "^4.0.0"
   }
 }

@@ -347,9 +347,81 @@ const UNASSERTED = {
   analyticsConsentProvider: '2026-07-28 · the UI-facing read; consentDecidedProvider is the limb the property test drives, and it is the one that decides whether to prompt',
 };
 
+// ── strip Dart comments (STRINGS KEPT) before scanning the test file ─────────
+// 🔴 2026-08-01 full-corpus review: the test source was scanned RAW, so the
+// header's promise — "deleted, emptied, or stops covering a property → the build
+// fails" — was false on "emptied". Commenting the ENTIRE file out (the realistic
+// form: somebody /* */-ing one flaky property group during triage, or the whole
+// file while chasing a red lane) left every `group(...)` regex matching inside
+// the comment and `// testWidgets(` still counting toward the block floor:
+// mutation-proven, "14 property/properties enforced" over a file that asserts
+// nothing. Same prose-vs-structure class as the sibling guards' comment traps.
+//
+// A comment-ONLY stripper, hand-rolled and string-aware, because the group
+// markers this guard matches ARE string literals (`group('property: …')`) — the
+// blank-strings scanner the wiring guard exports would erase the very evidence
+// being looked for. String contents pass through verbatim; comment spans are
+// blanked with their newlines kept.
+function stripDartComments(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  const blank = (ch) => (ch === '\n' ? '\n' : ' ');
+  while (i < n) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    // line comment
+    if (c === '/' && c2 === '/') {
+      while (i < n && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    // block comment — Dart allows nesting
+    if (c === '/' && c2 === '*') {
+      let depth = 0;
+      while (i < n) {
+        if (src[i] === '/' && src[i + 1] === '*') { depth++; out += '  '; i += 2; continue; }
+        if (src[i] === '*' && src[i + 1] === '/') {
+          depth--; out += '  '; i += 2;
+          if (depth === 0) break;
+          continue;
+        }
+        out += blank(src[i]); i++;
+      }
+      continue;
+    }
+    // string literal (raw / triple / either quote) — copied through UNCHANGED,
+    // so a `//` inside a URL string is not mistaken for a comment.
+    if (c === "'" || c === '"' || (c === 'r' && (c2 === "'" || c2 === '"'))) {
+      const isRaw = c === 'r';
+      const q = isRaw ? c2 : c;
+      let j = isRaw ? i + 1 : i;
+      const triple = src[j] === q && src[j + 1] === q && src[j + 2] === q;
+      const closeLen = triple ? 3 : 1;
+      out += src.slice(i, j + closeLen);
+      j += closeLen;
+      while (j < n) {
+        if (!isRaw && src[j] === '\\') { out += src.slice(j, j + 2); j += 2; continue; }
+        if (src[j] === q && (!triple || (src[j + 1] === q && src[j + 2] === q))) {
+          out += src.slice(j, j + closeLen);
+          j += closeLen;
+          break;
+        }
+        // an unterminated single-quoted string cannot cross a line
+        if (!triple && src[j] === '\n') { out += '\n'; j++; break; }
+        out += src[j]; j++;
+      }
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 let test;
 try {
-  test = readFileSync(join(repo, PROP_TEST), 'utf8');
+  test = stripDartComments(readFileSync(join(repo, PROP_TEST), 'utf8'));
 } catch {
   fail(`${PROP_TEST} is MISSING. Every stamped app inherits its property assertions from this file; without it a stamped app asserts nothing about its own behaviour.`);
   console.error('\nassert-stamp-properties: FAILED');
@@ -359,6 +431,7 @@ try {
 // COVERAGE SELF-CHECK. A file that still exists but has been emptied of tests
 // would satisfy every `group` regex below only if they were also removed — but a
 // file gutted down to one token would otherwise pass the "exists" check alone.
+// Counted over the COMMENT-STRIPPED source: `// testWidgets(` is not a test.
 const blocks = (test.match(/\b(?:test|testWidgets)\(/g) ?? []).length;
 const MIN_BLOCKS = 12;
 if (blocks < MIN_BLOCKS) {

@@ -1,4 +1,4 @@
-/// Runtime configuration for {{display_name}}.
+/// Runtime configuration for {{{display_name}}}.
 ///
 /// Secrets arrive via --dart-define at build time; nothing sensitive is
 /// committed. Left at placeholders, the app runs in demo mode.
@@ -6,7 +6,7 @@ class AppConfig {
   AppConfig._();
 
   static const String appId = '{{app_id.snakeCase()}}';
-  static const String appName = '{{display_name}}';
+  static const String appName = '{{{display_name_dart}}}';
   static const String category = '{{category}}';
 
   // Shared NIKATRU identity (all apps inherit).
@@ -26,7 +26,7 @@ class AppConfig {
   // straight at the ONE shared platform Worker. That is the default on purpose
   // — D1 Free allows 10 databases per ACCOUNT in total, so a per-app database
   // is a scarce resource, not a default.
-{{/needs_backend}}  static const String _phApiBase = {{#needs_backend}}'https://{{api_domain}}'{{/needs_backend}}{{^needs_backend}}'https://platform.nikatru.com/v1'{{/needs_backend}};
+{{/needs_backend}}  static const String _phApiBase = '{{{api_base_url}}}';
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _phApiBase,

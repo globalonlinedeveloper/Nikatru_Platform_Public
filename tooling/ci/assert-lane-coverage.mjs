@@ -68,11 +68,45 @@ for (const d of dirs('packages')) {
 }
 
 // ── what covers each type ────────────────────────────────────────────────────
+// 🔴 COMMENTS AND EXCLUSIONS ARE NOT CLAIMS (2026-08-01 full-corpus review).
+// isClaimed() was a raw substring match over the concatenated workflow text, so
+// a unit named only in a `#` comment counted as covered — and that was not
+// hypothetical: the two Cloudflare-Git sites' ENTIRE claim was the prose comment
+// above the Site-integrity step, so gutting that step to `echo skipped` left the
+// Pages Function with a live KV binding checked by nothing while this guard
+// printed "all claimed". The signal was prose in BOTH directions: rewording the
+// comment failed the build with the real checks untouched. A `paths-ignore:`
+// entry — a path named precisely because CI must NOT run for it — counted as a
+// claim too. So the claimable text is now comment-stripped and has every
+// `paths-ignore:` block blanked before any path is looked for; the sites' claim
+// itself became structural (ci.yml passes them as ARGUMENTS to
+// check-site-integrity.mjs, which fails if a claimed root is not really scanned).
+function claimableText(raw) {
+  const lines = raw.split('\n');
+  const out = [];
+  let ignoreIndent = -1;
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*$/, '');
+    if (ignoreIndent >= 0) {
+      const indent = line.match(/^\s*/)[0].length;
+      if (line.trim() === '' || indent > ignoreIndent) { out.push(''); continue; }
+      ignoreIndent = -1;
+    }
+    if (/^\s*(['"]?)paths-ignore\1\s*:/.test(line)) {
+      ignoreIndent = line.match(/^\s*/)[0].length;
+      out.push('');
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
 const wfDir = join(repoRoot, '.github', 'workflows');
 const workflowText = existsSync(wfDir)
   ? readdirSync(wfDir)
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
-      .map((f) => readFileSync(join(wfDir, f), 'utf8'))
+      .map((f) => claimableText(readFileSync(join(wfDir, f), 'utf8')))
       .join('\n')
   : '';
 

@@ -222,6 +222,34 @@ describe('assert-stamp-wiring', () => {
     assert.match(out, /Struck as brick-declared: InAppReviewPrompter/);
   });
 
+  // ── 🔴 QUOTE STYLE (2026-08-01, found alongside the same defect in
+  //    assert-package-boundaries.mjs). The import-prefix regex hardcoded `'` at
+  //    BOTH delimiters, so a double-quoted `import "package:x/x.dart" as y;`
+  //    derived no prefix and every `y.Symbol(` call went unseen — the guard
+  //    would then accuse a correctly wired stamp of never calling its
+  //    dependency. Dart accepts both quotes and `prefer_single_quotes` is a
+  //    non-fatal info here, so nothing else would have contradicted it.
+  const DQ_LIB = GOOD_LIB.replace(
+    "import 'package:nikatru_core/seams.dart' as core;",
+    'import "package:nikatru_core/seams.dart" as core;',
+  );
+
+  test('a DOUBLE-quoted prefixed import still derives the prefix', () => {
+    const { code, out } = run(tree({ lib: DQ_LIB }));
+    assert.equal(code, 0, out);
+    assert.match(out, /core → NoOpAnalytics/, 'core.NoOpAnalytics() is the only proof core is wired');
+  });
+
+  // The control that keeps the test above from being vacuous: same double
+  // quotes, prefixed call removed — the guard must still be able to fail.
+  test('...and still FAILS when that prefixed call is the only proof and it goes', () => {
+    const { code, out } = run(tree({
+      lib: DQ_LIB.replace('final analytics = const core.NoOpAnalytics();', ''),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /core — the stamp DEPENDS/);
+  });
+
   // ── the anti-vacuity family: a scan that stopped scanning ──────────────────
   test('COVERAGE LOST when the brick consumerRoot does not resolve', () => {
     const { code, out } = run(tree({ consumerRoots: ['apps/subly', `${BRICK}_BROKEN`] }));
