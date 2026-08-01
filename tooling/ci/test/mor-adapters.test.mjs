@@ -38,7 +38,17 @@
 //                                                                platformAuth"
 //   MOR16 the shared entitlement route re-pointed at a file   -> caught: "is ABSENT"
 //         that does not exist
+//   MOR17 the REAL legal register's Paddle row retired (id     -> caught: "registered rail
+//         AND tells) while the rail stays registered             `paddle` has NO row"
+//   MOR18 `money` un-claimed in the REAL legal register        -> caught BY THE OTHER GUARD
+//         (assert-policy-claims.mjs, the K-5 limb)               ("neither a provider's tell")
 //   None crashed; every one exited 1 with the intended message.
+//
+// ⚠️ MOR17'S FIRST ATTEMPT WAS INSUFFICIENT AND SAID SO. Renaming only the row's
+// `id` left `"tells": ["paddle"]` behind, the rail still matched, and the guard
+// correctly printed ok. The mutation had to retire the WHOLE row. That is the
+// harness earning its keep: a mutation that does not remove the property is not
+// evidence the guard is blind.
 //
 // ⚠️ MOR14–MOR16 EXIST BECAUSE [5]M-4 STOPPED BEING BLOCKED MID-INCREMENT. This
 // guard originally PRINTED "M-4 is blocked on stage 4 [4]B-3" — correct when
@@ -200,6 +210,16 @@ function run(o = {}) {
   write(root, 'services/platform/wrangler.jsonc', o.wrangler ?? '{ "name": "platform", "vars": { "MONEY_ENVIRONMENT": "live" } }');
   write(root, 'services/subly-api/src/routes/webhooks.ts', o.legacy ?? LEGACY_WEBHOOK_TS);
   write(root, BRICK_ACCOUNT, o.brickAccount ?? BRICK_ACCOUNT_TS);
+  if (o.legalRegister !== null) {
+    write(
+      root,
+      'tooling/legal/provider-register.json',
+      o.legalRegister ??
+        JSON.stringify({
+          providers: [{ id: 'paddle', name: 'Paddle', role: 'merchant_of_record', tells: ['paddle'] }],
+        }),
+    );
+  }
   if (o.extra) for (const [rel, body] of Object.entries(o.extra)) write(root, rel, body);
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, root };
@@ -395,6 +415,47 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
     const r = run({ moneyTest: MONEY_TEST_TS.replace("it('A TAMPERED BODY IS REJECTED'", "it.skip('A TAMPERED BODY IS REJECTED'") });
     assert.equal(r.code, 1);
     assert.match(r.out, /NO SINGLE test block both alters a signed body and expects 401/);
+  });
+
+  test('FAILS when a registered rail has NO row in the legal provider register', () => {
+    // 🔴 THE LIMB THAT REPLACES A K-5 CHECK THIS ROUTE SHAPE DEFEATS.
+    // assert-policy-claims.mjs turns the build red when a payment webhook lands
+    // as a LITERAL route segment (`/paddle`, `/stripe`). This rail is mounted at
+    // `/v1/money/:provider` and that check drops `:param` segments by design, so
+    // a second rail would add no segment and K-5 could not see it. The provider
+    // set is data HERE, so the obligation moved here rather than being noted in
+    // a comment.
+    const r = run({
+      registry: REGISTRY_TS.replace('[paddleVerifier]', '[paddleVerifier, lemonsqueezyVerifier]'),
+      extra: {
+        'services/platform/src/lib/mor/lemonsqueezy.ts':
+          "export const lemonsqueezyVerifier = { provider: 'lemonsqueezy', secretEnvVar: 'LS_SECRET', async verify() {}, parse() {} };\n",
+      },
+    });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /registered rail `lemonsqueezy` has NO row in tooling\/legal\/provider-register\.json/);
+    assert.match(r.out, /LEGAL SELLER/);
+  });
+
+  test('a rail matched by a `tells` entry rather than by `id` still counts', () => {
+    const r = run({
+      legalRegister: JSON.stringify({
+        providers: [{ id: 'paddle-billing', name: 'Paddle', tells: ['paddle', 'paddle billing'] }],
+      }),
+    });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('COVERAGE LOST when the legal provider register is gone', () => {
+    const r = run({ legalRegister: null });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST — tooling\/legal\/provider-register\.json does not exist/);
+  });
+
+  test('COVERAGE LOST when the legal register declares zero providers', () => {
+    const r = run({ legalRegister: JSON.stringify({ providers: [] }) });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST — .* declares zero providers/);
   });
 
   test('COVERAGE LOST when the provider registry is empty', () => {

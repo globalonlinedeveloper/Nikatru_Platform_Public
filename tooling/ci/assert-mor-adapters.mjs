@@ -305,6 +305,60 @@ if (testCorpus.size === 0) {
   fail(`COVERAGE LOST — no test files under ${TEST_DIR}, so "every registered provider has a passing tampered-body test" ranges over nothing.`);
 }
 
+// ── LIMB 2b · every registered rail has a LEGAL row ─────────────────────────
+// 🔴 THIS LIMB EXISTS BECAUSE THE MONEY ROUTE IS PARAMETERISED. [8]K-5's
+// route-segment check in tooling/ci/assert-policy-claims.mjs turns the build red
+// when a NEW payment webhook lands as a literal path segment — `/paddle`,
+// `/stripe`, `/lemonsqueezy`. This rail mounts `POST /v1/money/:provider`, and
+// that check drops `:param` segments by design, so adding a second rail tomorrow
+// would add no literal segment and K-5 would not fire.
+//
+// That is not a hole to be noted in a comment; it is an obligation to be moved.
+// The provider set is DATA here, in MOR_VERIFIERS, so the guard that owns that
+// set is the one that can enforce it: a merchant of record is the LEGAL SELLER,
+// and a rail this repo can verify a signature from, with no row in the legal
+// register, is a seller nobody has decided how to disclose.
+const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
+{
+  const legalPath = join(ROOT, LEGAL_REGISTER);
+  if (!existsSync(legalPath)) {
+    fail(
+      `COVERAGE LOST — ${LEGAL_REGISTER} does not exist, so "every registered rail has a legal row" ranges over ` +
+        'nothing. The disclosure obligation for a merchant of record would be enforced by neither guard.',
+    );
+  } else {
+    let legal;
+    try {
+      legal = JSON.parse(readFileSync(legalPath, 'utf8'));
+    } catch (err) {
+      fail(`COVERAGE LOST — ${LEGAL_REGISTER} is not valid JSON (${err.message}), so no row could be matched.`);
+      legal = { providers: [] };
+    }
+    const rows = Array.isArray(legal.providers) ? legal.providers : [];
+    if (rows.length === 0 && providers.length > 0) {
+      fail(`COVERAGE LOST — ${LEGAL_REGISTER} declares zero providers, so every membership check below passes over an empty set.`);
+    }
+    const known = new Set();
+    for (const row of rows) {
+      if (typeof row?.id === 'string') known.add(row.id.replace(/[^a-z0-9]/gi, '').toLowerCase());
+      for (const t of row?.tells ?? []) {
+        if (typeof t === 'string') known.add(t.replace(/[^a-z0-9]/gi, '').toLowerCase());
+      }
+    }
+    for (const p of providers) {
+      if (!known.has(p.replace(/[^a-z0-9]/gi, '').toLowerCase())) {
+        fail(
+          `registered rail \`${p}\` has NO row in ${LEGAL_REGISTER}. A merchant of record is the LEGAL SELLER of ` +
+            'every purchase it processes, and terms/refund/privacy have to name it. [8]K-5 catches a new payment ' +
+            'webhook that arrives as a literal route segment; this rail is mounted at /v1/money/:provider, so a new ' +
+            'provider adds no segment and that check cannot see it. Add the row — including a disclosure gap if the ' +
+            'pages do not name it yet.',
+        );
+      }
+    }
+  }
+}
+
 for (const p of providers) {
   const adapter = `services/platform/src/lib/mor/${p}.ts`;
   if (!existsSync(join(ROOT, adapter))) {

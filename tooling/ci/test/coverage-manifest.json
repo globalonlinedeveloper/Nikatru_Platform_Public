@@ -21,7 +21,7 @@
   "licence-register.test.mjs": 39,
   "lint-inheritance.test.mjs": 12,
   "money-config.test.mjs": 20,
-  "mor-adapters.test.mjs": 30,
+  "mor-adapters.test.mjs": 34,
   "no-clone-tells.test.mjs": 16,
   "no-hardcoded-strings.test.mjs": 12,
   "no-seam-forks.test.mjs": 13,

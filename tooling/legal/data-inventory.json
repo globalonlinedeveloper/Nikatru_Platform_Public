@@ -111,6 +111,78 @@
       }
     },
     {
+      "id": "table:platform_db.provider_notifications",
+      "kind": "d1-table",
+      "name": "provider_notifications",
+      "personalData": true,
+      "holds": "🔴 THE ONE TABLE IN platform_db THAT IS NOT PSEUDONYMOUS, and it is named as such rather than discovered. Every merchant-of-record notification, stored VERBATIM — byte for byte, exactly as it arrived and exactly as it was signed. Whatever the provider put in it is therefore in it, which for a subscription event includes the buyer's name, email address and billing country. That is inherent in 'recorded verbatim' ([pipeline 5]M-2): a re-serialised or redacted copy is a different byte string and can never be re-verified against the signature that came with it, so a redacted store is a store that cannot prove what it received. It carries NO anon_id, so no code path can pair a payer with a pseudonymous install ([ADR 020]:21).",
+      "retention": {
+        "kind": "undecided",
+        "ownerItem": "O-3",
+        "reason": "This is the audit trail behind every entitlement decision and the only thing that can resolve a payment dispute from our side — and it is also the most personal store in the database. How long a solo founder should keep a payment notification is a question with a tax answer, a consumer-law answer and a DPDP answer, and they may not agree. An agent picking a number here would be inventing a retention period that then looks authoritative. What IS decided is that the row exists, that the table is named as personal data, and that the gap prints on every run. NOTHING WRITES TO THIS TABLE TODAY — no seller account exists (OWNER_QUEUE A-1) — so the decision is due before the first payment, not after."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0004_money_rail.sql",
+        "services/platform/src/lib/mor/store.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      },
+      "note": "⚠️ THE PUBLISHED SENTENCE QUOTED ABOVE IS TRUE AND INCOMPLETE. It tells a reader the transaction is processed by a payment processor; it does not tell them we KEEP A COPY of what that processor sent us about them. That is a wording correction and it belongs in the same O-3 version bump as the merchant-of-record naming — recorded here rather than fixed by editing a published page from a code change."
+    },
+    {
+      "id": "table:platform_db.provider_accounts",
+      "kind": "d1-table",
+      "name": "provider_accounts",
+      "personalData": true,
+      "holds": "The link between a provider's subscription id and one of our account ids, written once, on the first notification that provably carries both ([pipeline 5]M-7). Four columns and two timestamps; no name, no email, no payment detail. It exists because whether checkout metadata propagates onto RENEWAL transactions is a vendor fact this repo could not establish from a primary source, and a renewal that cannot be attributed is a paying customer who silently loses access.",
+      "retention": {
+        "kind": "keep",
+        "reason": "It is the answer to 'why do we believe this subscription belongs to this account', and it is needed for as long as the subscription can renew, lapse or be refunded — i.e. for the life of the account. It is ERASED WITH THE ACCOUNT and needs no special handling to be: the shared erasure route derives its table set from the schema (every table carrying a `user_id` column), so this table joined that set the moment it was created, with no edit to the route."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0004_money_rail.sql",
+        "services/platform/src/lib/mor/store.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
+      "id": "table:platform_db.unclaimed_payments",
+      "kind": "d1-table",
+      "name": "unclaimed_payments",
+      "personalData": true,
+      "holds": "Money that arrived and could not be attributed to an account ([pipeline 5]M-7) — the alternative to the legacy route's acknowledge-and-discard, which left the payer's only record with the provider. The buyer's email is stored as a SHA-256 HEX DIGEST, never as an address: the claim-on-first-signin lookup is an exact match, which a hash serves exactly as well, so the queryable column is not a list of customers' email addresses. Also the provider's own ids, for a support lookup in their dashboard.",
+      "retention": {
+        "kind": "undecided",
+        "ownerItem": "O-3",
+        "reason": "A row here is the evidence that somebody paid and we could not find them; deleting it destroys the only thing that could ever resolve their support ticket, and keeping it forever means holding a pseudonymised identifier for a person who may never appear. ⚠️ IT ALSO DOES NOT JOIN THE ERASURE SET, deliberately: the claim column is named `claimed_user_id`, not `user_id`, so the shared erasure route's schema-derived table set does not include it. Whether an erasure should NULL the claim link is a compliance judgement, not a column-naming accident, and it is recorded here and in the migration rather than silently decided either way."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0004_money_rail.sql",
+        "services/platform/src/lib/mor/store.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
+      "id": "table:platform_db.revocation_reasons",
+      "kind": "d1-table",
+      "name": "revocation_reasons",
+      "personalData": false,
+      "holds": "NOTHING ABOUT A PERSON. Eight seeded rows naming why access can end or be restored — refund_approved, chargeback, chargeback_reversed, subscription_expired, trial_expired, payment_failed_final, cancelled_at_period_end, subscription_paused — each with a flag for whether it RESTORES access and an English sentence saying what it means. It is a lookup table, and it is a table rather than a CHECK constraint or a comment precisely so that the set is machine-readable and can be extended additively ([pipeline 5]M-3).",
+      "retention": {
+        "kind": "keep",
+        "reason": "Reference data seeded by the migration itself. Deleting it would leave every `revocation_reason` value in `entitlements` unresolvable — the rows would still say why access ended, and nothing would be able to say what those words mean."
+      },
+      "writtenBy": ["services/platform/migrations/0004_money_rail.sql"]
+    },
+    {
       "id": "table:platform_db.events",
       "kind": "d1-table",
       "name": "events",
