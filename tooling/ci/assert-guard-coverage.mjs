@@ -62,6 +62,13 @@ const TESTS = join(CI, 'test');
 // tooling/release/, which this scan deliberately does not cover: they are
 // release paths, not guards. Their negative tests are in tooling/ci/test/ all
 // the same, so the two new test FILES do move that floor.
+// Re-measured ONCE MORE 2026-08-01, on the merged tree (the android-play channel
+// path landing on top of the above). Still 40 guards — submit-play.mjs is also a
+// release path, and assert-store-metadata.mjs / assert-channel-register.mjs were
+// EXTENDED rather than duplicated. ⚠️ These numbers were RE-MEASURED against the
+// merged result rather than taking the higher of the two branches' figures: two
+// branches that each ratcheted honestly still produce a wrong floor when merged,
+// because neither one ever saw the other's test files.
 const MIN_GUARDS = 38;
 const MIN_TEST_FILES = 31;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but

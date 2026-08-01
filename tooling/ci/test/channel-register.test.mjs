@@ -703,6 +703,31 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
     assert.doesNotMatch(out, /FORMAT GAP/);
   });
 
+  // 🔴 THE CLOSING HALF OF THE .aab GAP, and the reason it is a separate test:
+  // "no FORMAT GAP printed" is also what a comparison that STOPPED READING looks
+  // like. This asserts the gap goes away because `flutter build appbundle` is
+  // there, on the same fixture that prints one without it — so the silence is
+  // attributable. [10]D-10 / build-platforms.yml's android lane.
+  test('a DEFERRED row prints NO format gap once its lane emits the accepted format', () => {
+    const withGap = run(
+      tree({
+        windowsRun: 'flutter build apk --release',
+        mutate: (r) => { r.channels[1].platforms = ['android']; r.channels[1].artifactFormats = ['.aab']; },
+      }),
+    );
+    assert.equal(withGap.code, 0, withGap.out);
+    assert.match(withGap.out, /FORMAT GAP \(deferred\)[\s\S]*builds "\.apk" for "android"/);
+
+    const closed = run(
+      tree({
+        windowsRun: 'flutter build apk --release\n      - run: flutter build appbundle --release',
+        mutate: (r) => { r.channels[1].platforms = ['android']; r.channels[1].artifactFormats = ['.aab']; },
+      }),
+    );
+    assert.equal(closed.code, 0, closed.out);
+    assert.doesNotMatch(closed.out, /FORMAT GAP/, closed.out);
+  });
+
   test('reads the format gap from an upload-artifact path glob, not only the build verb', () => {
     const upload = [
       '      - uses: actions/upload-artifact@v4',

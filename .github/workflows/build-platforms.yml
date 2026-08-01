@@ -150,16 +150,44 @@ jobs:
       - name: Build linux
         working-directory: apps/subly
         run: flutter build linux --release
-      # Release APK with no key.properties falls back to debug signing — fine
-      # for a BUILD check. Real signing arrives with the release keystore.
-      - name: Build android (apk)
+      # Release APK with no keystore falls back to debug signing — fine for a
+      # BUILD check, and a RECORDED owner decision rather than an unfinished
+      # edge. See the `android-play` row's notes in tooling/channel-register.json:
+      # apps/subly/android/app/build.gradle.kts now reads a real keystore from
+      # android/key.properties or the environment WHEN one is supplied, and only
+      # falls back to debug when none is. Nothing in CI supplies one yet.
+      #
+      # ⚠️ THE .apk IS NOT THE PLAY ARTIFACT AND IS KEPT ANYWAY. An .aab is a
+      # publishing format — Google re-splits it per device and you cannot install
+      # one on a handset. The .apk is the only artifact a human can sideload to
+      # look at the build, and Android cannot be built on the owner's box at all
+      # (CLAUDE.md: java.nio Selector.open() is broken Windows-socket-wide), so
+      # this upload is the ONLY way an Android build gets touched today.
+      - name: Build android (apk — sideloadable build proof)
         working-directory: apps/subly
         run: flutter build apk --release
+      # ── the android-play channel's artifact ─────────────────────────────────
+      # THIS JOB IS THE `lane` OF tooling/channel-register.json's `android-play`
+      # row, and this step is why. Before it, the register printed a FORMAT GAP
+      # on every guard run — the row accepts ".aab" and the only Android artifact
+      # the tree produced was a ".apk", so the green "Android builds" tick was a
+      # proof about an artifact Google Play does not take.
+      # developer.android.com/guide/app-bundle: "From August 2021, new apps are
+      # required to publish with the Android App Bundle on Google Play."
+      #
+      # The register recorded that contradiction IN PROSE from the day it was
+      # written; it became something a build could fail on when [pipeline F-2]'s
+      # hardening taught assert-channel-register.mjs to compare a row's
+      # artifactFormats to what its lane emits, and it is closed here.
+      - name: Build android (aab — the Google Play artifact)
+        working-directory: apps/subly
+        run: flutter build appbundle --release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: subly-linux-web-android
           path: |
             apps/subly/build/app/outputs/flutter-apk/*.apk
+            apps/subly/build/app/outputs/bundle/release/*.aab
             apps/subly/build/linux/x64/release/bundle
           retention-days: 7
           if-no-files-found: error
