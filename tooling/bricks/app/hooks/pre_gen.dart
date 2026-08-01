@@ -27,14 +27,25 @@ void run(HookContext context) {
   // derivations are IRREVERSIBLE: the analytics `app_id` column keys every
   // historical row, and a store bundle id is immutable after first submission.
   // A rename is not a rename; it is an orphaning.
+  //
+  // `appIdValid` tracks THIS var, and nothing else. It used to be recomputed
+  // further down as `problems.isEmpty`, which conflates "app_id is usable" with
+  // "nothing anywhere is wrong": a bad `needs_backend` or an unsourced category
+  // — checked in between — suppressed the subdomain/api_domain rules entirely,
+  // so a spec with two real problems reported one and looked fixed after one
+  // edit. Diagnostics only (no stamp result ever depended on it), but a
+  // diagnostic that hides a second problem costs a whole extra round trip.
   final String appId = v('app_id');
+  bool appIdValid = true;
   if (!RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(appId)) {
+    appIdValid = false;
     problems.add(
       'app_id must be lowercase snake_case starting with a letter — got "$appId". '
       'It becomes the Dart package, the database, the subdomain and the store '
       'identity, so it cannot hold a capital, a dash or a space.',
     );
   } else if (appId.length < 2 || appId.length > 63) {
+    appIdValid = false;
     // 63 is not a taste. `<app_id>.nikatru.com` makes app_id a DNS LABEL, and a
     // label cannot exceed 63 octets — a longer one produces a hostname that
     // cannot exist, surfacing as a deploy failure long after stamping.
@@ -77,10 +88,11 @@ void run(HookContext context) {
   // is a divergence the identifiers never re-converge from.
   // Only meaningful once app_id itself is valid: suggesting
   // "Bad-App.nikatru.com" to someone whose app_id was just rejected sends them
-  // to fix the wrong line. The app_id error is the actionable one.
-  final bool appIdOk = problems.isEmpty;
+  // to fix the wrong line. The app_id error is the actionable one — and it is
+  // the ONLY one that may silence these two, which is why the condition reads
+  // `appIdValid` rather than "no problem has been recorded yet".
   final String subdomain = v('subdomain');
-  if (appIdOk && subdomain.isNotEmpty && subdomain != '$appId.nikatru.com') {
+  if (appIdValid && subdomain.isNotEmpty && subdomain != '$appId.nikatru.com') {
     problems.add(
       'subdomain must be "$appId.nikatru.com" or empty to derive — got '
       '"$subdomain". The catalogue entry, the CORS origin and the analytics key '
@@ -90,7 +102,7 @@ void run(HookContext context) {
 
   // ── api_domain ────────────────────────────────────────────────────────────
   final String apiDomain = v('api_domain');
-  if (appIdOk &&
+  if (appIdValid &&
       apiDomain.isNotEmpty &&
       apiDomain != 'api-$appId.nikatru.com') {
     problems.add(

@@ -9,6 +9,31 @@ class AppConfig {
   static const String appName = '{{{display_name_dart}}}';
   static const String category = '{{category}}';
 
+  /// Marketing version of THIS build. Injected at build time
+  /// (`--dart-define=APP_VERSION`) rather than read from `package_info_plus`,
+  /// so it also resolves on the web build and inside `flutter test`, neither of
+  /// which can await a platform channel. `assert-app-versioning.mjs` is what
+  /// keeps the release lane passing a derived, monotonic value here.
+  static const String appVersion = String.fromEnvironment(
+    'APP_VERSION',
+    defaultValue: 'dev',
+  );
+
+  /// What crash reports are grouped and triaged by ([telemetryRelease] is the
+  /// Sentry/GlitchTip `release`).
+  ///
+  /// 🔴 IT MUST NAME THIS APP. The brick used to hand `release` a hard-coded
+  /// string literal naming the CI throwaway probe and a frozen 0.1.0 — a
+  /// literal survives stamping unchanged, so all fifty apps would have reported
+  /// the probe's identity to the ONE shared GlitchTip project. The moment a
+  /// second app crashed there would be no way to tell whose crash it was, and
+  /// nothing about that is visible from inside a single app: it analyzes,
+  /// builds and reports successfully, just under someone else's name.
+  ///
+  /// Composed from the two consts above so it cannot drift from either: the id
+  /// is stamped once, and the version moves with every release.
+  static const String telemetryRelease = '$appId@$appVersion';
+
   // Shared NIKATRU identity (all apps inherit).
   static const String companyName = 'Nikatru';
   static const String companyUrl = 'https://nikatru.com';

@@ -12,6 +12,11 @@
 //   2. a BLANK `subdomain`/`api_domain` — the input pre_gen documents as normal
 //      — was interpolated as nothing, stamping `"https://"` into ALLOWED_ORIGINS
 //      and _phApiBase.
+//   3. the telemetry `release` was a hard-coded literal naming the CI probe, so
+//      all fifty apps would have reported one identity into one GlitchTip.
+//   4. the short-name split fired on `RegExp(r'[—-]')` — a trailing `-` in a
+//      character class is a literal hyphen — so "E-Book Reader" was published to
+//      the public catalogue as "E".
 //
 // ⚠️ A FIXTURE PASSING IS NOT A GUARD WORKING. These cases were written after
 // the guard had already been mutation-proven against the REAL tree: the fix was
@@ -19,6 +24,13 @@
 // red on 11 problems (entities in 11 files, `appName` corrupt, and
 // `api_base_url` / `_phApiBase` / `ALLOWED_ORIGINS` all `"https://"`). The
 // fixtures below lock in the same behaviour cheaply; they did not discover it.
+//
+// Checks 3 and 4 were mutation-proven the same way on 2026-08-01, and the same
+// order was kept — guard first, fixtures after. Re-introducing the literal
+// release in the brick and re-stamping both probes turned the CLIENT lane red on
+// the frozen version half and the BACKEND lane red on the borrowed id; restoring
+// `RegExp(r'[—-]')` in post_gen.dart published "Probe's E" and "ProbeApi's Co"
+// and turned both lanes red on the mid-word cut.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,8 +53,38 @@ after(() => {
   rmSync(TMP, { recursive: true, force: true });
 });
 
-const NAME = "Probe's & Co — 24/7 Smoke";
+// The intra-word hyphen is LOAD-BEARING, exactly as in the real probe vars: a
+// name without one cannot tell a subtitle separator from a hyphen, and the guard
+// exits COVERAGE LOST rather than pretending it checked.
+const NAME = "Probe's E-Book & Co — 24/7 Smoke";
 const DESC = 'A "smoke" probe & nothing more.';
+
+/** The name the catalogue must publish: everything before the first dash that is
+ *  SURROUNDED BY WHITESPACE. Spelled out here rather than imported so the test
+ *  states the expectation independently of the guard's own copy. */
+const shortOf = (name) => name.split(/\s+[—–-]\s+/)[0].trim();
+
+/** The stamped `lib/core/app_config.dart`, as the fixed brick produces it. */
+const configDart = ({ app, name, base, release = "'\$appId@\$appVersion'" }) => {
+  const dartName = name.replace(/\\/g, '\\\\').replace(/\$/g, '\\$').replace(/'/g, "\\'");
+  return (
+    `/// Runtime configuration for ${name}.\nclass AppConfig {\n` +
+    `  static const String appId = '${app}';\n` +
+    `  static const String appName = '${dartName}';\n` +
+    "  static const String appVersion = String.fromEnvironment(\n    'APP_VERSION',\n    defaultValue: 'dev',\n  );\n" +
+    `  static const String telemetryRelease = ${release};\n` +
+    `  static const String _phApiBase = '${base}';\n}\n`
+  );
+};
+
+/** The stamped `lib/main.dart`, as the fixed brick produces it. */
+const mainDart = (release = 'AppConfig.telemetryRelease') =>
+  "import 'core/app_config.dart';\n\nFuture<void> main() async {\n" +
+  '  const TelemetryConfig config = TelemetryConfig(\n' +
+  "    dsn: String.fromEnvironment('GLITCHTIP_DSN'),\n" +
+  `    release: ${release},\n` +
+  "    environment: String.fromEnvironment('APP_ENV', defaultValue: 'dev'),\n  );\n" +
+  '  await TelemetryBootstrap.init(config, appRunner: () async {});\n}\n';
 
 let seq = 0;
 
@@ -66,7 +108,6 @@ function tree({
   };
 
   const base = backend ? `https://api-${app}.nikatru.com` : 'https://platform.nikatru.com/v1';
-  const dartName = name.replace(/\\/g, '\\\\').replace(/\$/g, '\\$').replace(/'/g, "\\'");
   const j = (s) => JSON.stringify(s).slice(1, -1);
 
   const varsFile = `${app}_vars.json`;
@@ -89,9 +130,21 @@ function tree({
     )}\n`,
   );
 
+  write(`apps/${app}/lib/core/app_config.dart`, configDart({ app, name, base }));
+  write(`apps/${app}/lib/main.dart`, mainDart());
+  // The public catalogue row post_gen appends. It lives OUTSIDE apps/, and the
+  // lane reverts it — so a fixture that omitted it would exercise the guard's
+  // COVERAGE LOST path rather than its checking path.
   write(
-    `apps/${app}/lib/core/app_config.dart`,
-    `/// Runtime configuration for ${name}.\nclass AppConfig {\n  static const String appName = '${dartName}';\n  static const String _phApiBase = '${base}';\n}\n`,
+    'sites/_shared/_data/apps.json',
+    `${JSON.stringify(
+      [
+        { slug: 'subly', name: 'Subly', tagline: '', url: 'https://subly.nikatru.com', api: '' },
+        { slug: app, name: shortOf(name), tagline: desc, url: `https://${app}.nikatru.com`, api: '' },
+      ],
+      null,
+      2,
+    )}\n`,
   );
   for (const arb of ['app_en.arb', 'app_ta.arb']) {
     write(`apps/${app}/lib/l10n/${arb}`, `{\n  "appTitle": "${j(name)}"\n}\n`);
@@ -151,7 +204,11 @@ describe('assert-stamp-text-fidelity', () => {
         mutate: ({ write, app }) =>
           write(
             `apps/${app}/lib/core/app_config.dart`,
-            `class AppConfig {\n  static const String appName = 'Probe&#x27;s &amp; Co — 24&#x2F;7 Smoke';\n  static const String _phApiBase = 'https://platform.nikatru.com/v1';\n}\n`,
+            configDart({
+              app,
+              name: 'Probe&#x27;s &amp; Co — 24&#x2F;7 Smoke',
+              base: 'https://platform.nikatru.com/v1',
+            }),
           ),
       }),
     );
@@ -236,10 +293,7 @@ describe('assert-stamp-text-fidelity', () => {
     const r = run(
       tree({
         mutate: ({ write, app }) =>
-          write(
-            `apps/${app}/lib/core/app_config.dart`,
-            `class AppConfig {\n  static const String appName = '${NAME.replace(/'/g, "\\'")}';\n  static const String _phApiBase = 'https://';\n}\n`,
-          ),
+          write(`apps/${app}/lib/core/app_config.dart`, configDart({ app, name: NAME, base: 'https://' })),
       }),
     );
     assert.equal(r.code, 1, r.out);
@@ -273,7 +327,168 @@ describe('assert-stamp-text-fidelity', () => {
     assert.match(r.out, /expected the derived "https:\/\/platform\.nikatru\.com\/v1"/);
   });
 
+  // ── 3 · the release id defect ─────────────────────────────────────────────
+  // THE DEFECT VERBATIM: `release: 'probe@0.1.0'` in the brick's main.dart. It
+  // is right for at most one app, so it is checked from both ends — a foreign id
+  // and a version that cannot move.
+  test("a literal release naming ANOTHER app fails — this is the shipped defect", () => {
+    const r = run(
+      tree({
+        app: 'probeapi',
+        backend: true,
+        mutate: ({ write, app }) => write(`apps/${app}/lib/main.dart`, mainDart("'probe@0.1.0'")),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /it names "probe", but this app is "probeapi"/);
+  });
+
+  test('a literal release with the RIGHT id but a frozen version still fails', () => {
+    const r = run(
+      tree({ mutate: ({ write, app }) => write(`apps/${app}/lib/main.dart`, mainDart("'probe@0.1.0'")) }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /version half "0\.1\.0" is a frozen literal/);
+  });
+
+  test('a release with no id half at all fails — fifty apps in one bucket', () => {
+    const r = run(
+      tree({ mutate: ({ write, app }) => write(`apps/${app}/lib/main.dart`, mainDart('AppConfig.appVersion')) }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no `<app_id>@<version>` shape/);
+  });
+
+  test('a release the guard cannot resolve is reported, never shrugged past', () => {
+    const r = run(
+      tree({ mutate: ({ write, app }) => write(`apps/${app}/lib/main.dart`, mainDart('buildReleaseId()')) }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /could not be resolved/);
+  });
+
+  // The check is about the VALUE that reaches GlitchTip, not one spelling of the
+  // expression that produces it — so an inline composition passes too.
+  test('an inline `${AppConfig.appId}@${AppConfig.appVersion}` passes', () => {
+    const r = run(
+      tree({
+        mutate: ({ write, app }) =>
+          write(`apps/${app}/lib/main.dart`, mainDart("'\${AppConfig.appId}@\${AppConfig.appVersion}'")),
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /telemetry release is this app's own identity \(probe@<APP_VERSION>\)/);
+  });
+
+  test('COVERAGE LOST when main.dart passes no readable release', () => {
+    const r = run(
+      tree({
+        mutate: ({ write, app }) =>
+          write(`apps/${app}/lib/main.dart`, 'Future<void> main() async {\n  runApp(const App());\n}\n'),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /no `release:` to TelemetryConfig/);
+  });
+
+  test('COVERAGE LOST when main.dart is missing entirely', () => {
+    const r = run(
+      tree({ mutate: ({ root, app }) => rmSync(join(root, 'apps', app, 'lib', 'main.dart'), { force: true }) }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /main\.dart is missing/);
+  });
+
+  // ── 4 · the catalogue short-name defect ───────────────────────────────────
+  // THE DEFECT VERBATIM: "E-Book Reader" published as "E". Pinned with a name
+  // that has NO subtitle separator at all, so the whole thing must survive.
+  test('a catalogue name cut at an intra-word hyphen fails ("E-Book Reader…" → "E")', () => {
+    const name = 'E-Book Reader & More';
+    const r = run(
+      tree({
+        name,
+        mutate: ({ write, app }) =>
+          write(
+            'sites/_shared/_data/apps.json',
+            `${JSON.stringify([{ slug: app, name: 'E', url: `https://${app}.nikatru.com` }], null, 2)}\n`,
+          ),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /publishes "E" but the app is called "E-Book Reader & More"/);
+    assert.match(r.out, /cut mid-word at "-"/);
+  });
+
+  // …and the em-dash case still splits, which is what the hyphen fix must not
+  // break. Both halves of the rule in one tree: a hyphen survives, a spaced
+  // em dash does not.
+  test('an em-dash subtitle is still dropped while the hyphen survives', () => {
+    const r = run(tree({ name: 'E-Book Reader & More — Offline Library' }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /publishes "E-Book Reader & More"/);
+  });
+
+  test('a catalogue name that is not the display name at all fails', () => {
+    const r = run(
+      tree({
+        mutate: ({ write, app }) =>
+          write(
+            'sites/_shared/_data/apps.json',
+            `${JSON.stringify([{ slug: app, name: 'Something Else' }], null, 2)}\n`,
+          ),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /publishes "Something Else"/);
+  });
+
+  test('an empty catalogue name fails', () => {
+    const r = run(
+      tree({
+        mutate: ({ write, app }) =>
+          write('sites/_shared/_data/apps.json', `${JSON.stringify([{ slug: app, name: '' }], null, 2)}\n`),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /publishes an empty name/);
+  });
+
+  // The CI-ordering trap, made self-enforcing: the lane reverts apps.json to
+  // keep the tree clean, and a guard run after that revert has checked nothing.
+  test('COVERAGE LOST when the catalogue row is gone — the lane reverted it too early', () => {
+    const r = run(
+      tree({
+        mutate: ({ write }) =>
+          write('sites/_shared/_data/apps.json', `${JSON.stringify([{ slug: 'subly', name: 'Subly' }], null, 2)}\n`),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /check ci\.yml's step order/);
+  });
+
+  test('COVERAGE LOST when apps.json is missing altogether', () => {
+    const r = run(
+      tree({
+        mutate: ({ root }) =>
+          rmSync(join(root, 'sites', '_shared', '_data', 'apps.json'), { force: true }),
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /apps\.json is missing/);
+  });
+
   // ── the fixture audit: a probe that cannot trigger the checks is LOST ─────
+  test('COVERAGE LOST when the probe name holds no hyphen inside a word', () => {
+    const r = run(tree({ name: "Probe's & Co — 24/7 Smoke" }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /no hyphen inside a word/);
+  });
+
   test('COVERAGE LOST when the probe display_name holds none of & < > " \' /', () => {
     const r = run(tree({ name: 'Probe Brick Smoke Test' }));
     assert.equal(r.code, 1, r.out);
