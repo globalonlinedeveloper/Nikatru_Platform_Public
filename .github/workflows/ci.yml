@@ -129,6 +129,26 @@ jobs:
       - name: D1 bindings are real and consistent across Workers
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-d1-bindings.mjs
+      # There is ONE platform Worker and ONE platform_db behind the whole
+      # portfolio, so its capability set has to be declared somewhere a machine
+      # can read — six other stage-4 requirements quantify over "the shared
+      # capability set" or "every binding", and an undefined right-hand side
+      # rejects nothing. This reconciles the register against the tree in BOTH
+      # directions: routes against what index.ts actually mounts (parsed,
+      # following app.route() into each sub-router — the header comment there
+      # names the routes in prose and a grep would have believed it), clients
+      # against real call sites outside the serving Worker, and every binding in
+      # every wrangler config in the repo — the brick template included — against
+      # a reader that is not the Env type declaration.
+      #
+      # It had teeth the day it landed: services/subly-api bound EXPORTS ->
+      # subly-exports (created 2026-07-17) whose only occurrence in the whole
+      # TypeScript tree was its own line in types.ts. assert-clone-contract.mjs
+      # could not see it — that guard only ever inspects the throwaway CI probe
+      # stamp. [pipeline B-1, B-18, B-13]
+      - name: The shared server declares every route and every binding
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-platform-register.mjs
       # The CORS allowlist is EXACT, so it fails closed and silently — dropping
       # an origin breaks that surface in the browser with nothing logged server
       # side. This guards the deployed config; cors.test.ts guards the behaviour.

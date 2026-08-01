@@ -1,0 +1,209 @@
+{
+  "_readme": [
+    "THE SHARED-SERVER REGISTER — [pipeline B-1] company/pipeline/04-backend-platform.md",
+    "",
+    "The complete set of capabilities the ONE shared `platform` Worker provides — every ROUTE it mounts",
+    "and every BINDING any Worker in this repo declares — together with what each one is FOR, who calls",
+    "or reads it, and whether it is authenticated.",
+    "",
+    "WHY IT EXISTS. There is exactly one `platform` Worker and one `platform_db` behind the whole",
+    "portfolio, so a defect here is not one app's bug — it is every app's outage, including apps that do",
+    "not exist yet. SIX other stage-4 requirements quantify over 'the shared capability set' or 'every",
+    "binding', and until this file landed that set did not exist. An undefined right-hand side cannot",
+    "reject anything, so all six reported clean over nothing:",
+    "",
+    "  [4]B-2   onboarding an app is DATA, not a source edit    -> the route set this must not change",
+    "  [4]B-3   the server can authenticate a caller            -> auth: required must be non-zero",
+    "  [4]B-4a  every written row belongs to a registered app   -> the write routes, enumerated",
+    "  [4]B-13  no unauthenticated route can be made expensive  -> auth: public x limiter, below",
+    "  [4]B-14  every field of every shared route is pinned     -> the route count is the pair floor",
+    "  [4]B-18  one shared bucket, every bucket has a reader    -> bindings[], and its reader limb",
+    "",
+    "🔴 THE ONE RULE THAT MAKES THIS FILE MEAN ANYTHING: MEMBERSHIP IS NOT A CLAIM, RESOLUTION IS.",
+    "Writing `\"client\": \"TBD\"` was the original acceptance criterion's third limb, and a string field is",
+    "satisfied by any string. Every `client` here is an EXPRESSION that must appear in comment-stripped",
+    "source in a file OUTSIDE the serving Worker, and must itself contain the route's own static path —",
+    "so a client entry cannot be satisfied by the server's own declaration of the route, and cannot",
+    "survive the route being renamed. `_registerInWorkspace` matched its own declaration six times in",
+    "this repo; this is the seventh place that was not allowed to happen.",
+    "",
+    "Enforced by tooling/ci/assert-platform-register.mjs:",
+    "  · LIMB 1 route set == what services/platform/src/index.ts MOUNTS, parsed (following app.route()",
+    "    into each sub-router), in BOTH directions                                            [B-1]",
+    "  · LIMB 2 a route with no client is NOT a build failure — it PRINTS its `unconsumedReason` on",
+    "    every run, and the reason must be non-empty. Same shape as",
+    "    assert-capability-register.mjs's zero-consumer rule                                   [B-1]",
+    "  · LIMB 3 binding set == every `d1_databases`/`kv_namespaces`/`r2_buckets`/`ratelimits` entry",
+    "    across services/*/wrangler.jsonc AND the brick template, in BOTH directions; each must have a",
+    "    REAL READER — `env.<BINDING>` in comment-stripped code in a file that is NOT the Env type",
+    "    declaration                                                                    [B-1, B-18]",
+    "  · LIMB 4 every `auth: public` route reaches withinRateLimit/withinEdgeCeiling at a real call site",
+    "    in its owningFile, or declares a `noLimiterReason` that prints on every run          [B-13]",
+    "",
+    "⚠️ COVERAGE IS A RELATIONSHIP, NEVER A NUMBER. The route floor is 'equals what index.ts mounts' and",
+    "the binding floor is 'equals what the wrangler configs declare' — both derived from files CI already",
+    "parses. There is no tuned integer anyone can lower. The one integer in the guard is a self-check",
+    "that the PARSE still finds routes at all, because a parser that matches nothing reports perfect",
+    "agreement with an empty register.",
+    "",
+    "⚠️ NOT tooling/capability-register.json. That file is the PACKAGE register (stage 2/3): Dart",
+    "packages, seams and their consumers. This one is the SERVER's. They are deliberately separate files",
+    "because they answer to different guards, different stages and different trees — merging them would",
+    "make one guard's coverage floor depend on the other's subject."
+  ],
+
+  "servingWorker": {
+    "_why": [
+      "The Worker whose mounted routes the register's `routes` array must equal, exactly. Named as data",
+      "rather than hardcoded in the guard so that the guard fails loudly if this Worker is renamed or",
+      "moved, instead of quietly scanning a path that no longer exists."
+    ],
+    "name": "platform",
+    "entrypoint": "services/platform/src/index.ts",
+    "config": "services/platform/wrangler.jsonc",
+    "hosts": ["platform.nikatru.com", "config.nikatru.com"]
+  },
+
+  "bindingSources": {
+    "_why": [
+      "Every config whose bindings the register must account for. DERIVED at runtime by globbing",
+      "services/*/wrangler.jsonc plus the brick's service template — this list is the guard's COVERAGE",
+      "assertion, not its input: if the glob finds a config that is not named here, or names one the",
+      "glob cannot find, the scan and the tree have diverged and the build fails.",
+      "",
+      "The brick template is IN SCOPE on purpose. assert-clone-contract.mjs inspects only the throwaway",
+      "CI probe stamp, so services/subly-api is invisible to it — which is exactly how a per-app R2",
+      "bucket stayed live from 2026-07-17 with every guard green."
+    ],
+    "configs": [
+      "services/platform/wrangler.jsonc",
+      "services/subly-api/wrangler.jsonc",
+      "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc"
+    ]
+  },
+
+  "routes": [
+    {
+      "id": "health",
+      "method": "GET",
+      "path": "/v1/health",
+      "auth": "public",
+      "owningFile": "services/platform/src/index.ts",
+      "purpose": "Deploy verification. Answers `{ ok, app, version, time }` from vars — no I/O at all.",
+      "unconsumedReason": "NO PROGRAMMATIC CLIENT BY DESIGN — this is a human/monitor endpoint. deploy-workers.yml records a GitHub Deployment pointing at https://platform.nikatru.com but does not fetch this route, and no app calls it. [4]B-15 gives it its first machine consumer (`200 with app == '<app_id>'` is the stamped-backend host criterion); until then the honest state is zero clients, printed rather than hidden.",
+      "noLimiterReason": "It does NO I/O — no D1 query, no KV read, no subrequest — so there is nothing an attacker can make expensive beyond the Worker invocation itself, which the account-wide request ceiling already bounds. A limiter here would spend a Rate Limiting namespace (Free tier is finite) to protect a constant-time JSON literal. [4]B-13"
+    },
+    {
+      "id": "config",
+      "method": "GET",
+      "path": "/config/:app",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/config.ts",
+      "purpose": "CFG-1 runtime config: compiled-in defaults overlaid with a KV override (`config:<app>`), edge-cached 300s. DATA and flags only, never server-driven UI, never secrets.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_config_transport.dart",
+        "expression": "'$_base/config/$appId'",
+        "note": "The URL the transport actually builds, at the assignment — not the doc comment three lines above it, which says the same thing and is stripped before matching."
+      }
+    },
+    {
+      "id": "events",
+      "method": "POST",
+      "path": "/v1/events",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/events.ts",
+      "purpose": "G-12 first-party analytics ingest ([ADR 011]). Batched, pseudonymous, consent-gated CLIENT-side. Unauthenticated deliberately: the most valuable events (first_launch, paywall_viewed) happen before any login exists, and a bearer token would attach an identity to rows whose whole point is that they carry none.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_event_transport.dart",
+        "expression": "'$_base/v1/events'",
+        "note": "The first positional argument of the real `_dio.post` call."
+      }
+    },
+    {
+      "id": "consent",
+      "method": "POST",
+      "path": "/v1/consent",
+      "auth": "public",
+      "owningFile": "services/platform/src/routes/events.ts",
+      "purpose": "The DPDP consent artifact each analytics event references. Append-only: a withdrawal is a NEW row with granted=0, never an UPDATE, because the audit trail is the point (DPDP §6(3)).",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_consent_transport.dart",
+        "expression": "'$_base/v1/consent'",
+        "note": "The first positional argument of the real `_dio.post` call."
+      }
+    }
+  ],
+
+  "bindings": [
+    {
+      "binding": "PLATFORM_DB",
+      "kind": "d1_databases",
+      "scope": "shared",
+      "purpose": "The ONE entitlements + analytics + consent database for the whole portfolio. services/platform is the SOLE migrations applier; every other Worker binds it without a migrations_dir.",
+      "readers": [
+        "services/platform/src/routes/events.ts",
+        "services/platform/src/scheduled.ts",
+        "services/subly-api/src/routes/entitlements.ts",
+        "services/subly-api/src/routes/webhooks.ts",
+        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts"
+      ]
+    },
+    {
+      "binding": "SUBLY_DB",
+      "kind": "d1_databases",
+      "scope": "per-app",
+      "purpose": "Subly's own database, bound into `platform` READ/WRITE for the nightly renewals fan-out only. ⚠️ This binding is the thing that does NOT scale: a 50-app portfolio cannot carry 50 hand-added D1 bindings on one Worker. Recorded here so the next app's stamp meets the ceiling as a known cost rather than as a surprise ([4]B-11 derives the job set; the fan-out target list is still `appTargets()`'s hardcoded array).",
+      "readers": ["services/platform/src/scheduled.ts"]
+    },
+    {
+      "binding": "APP_DB",
+      "kind": "d1_databases",
+      "scope": "per-app",
+      "purpose": "A stamped app's own private database — the only datastore an opt-in backend owns outright. D1 Free is 10 databases per account and platform_db is one of them, which is why a backend is opt-in rather than default ([ADR 020]).",
+      "readers": [
+        "services/subly-api/src/routes/subscriptions.ts",
+        "services/subly-api/src/routes/budget.ts",
+        "services/subly-api/src/routes/renewals.ts",
+        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts"
+      ]
+    },
+    {
+      "binding": "CONFIG_KV",
+      "kind": "kv_namespaces",
+      "scope": "shared",
+      "purpose": "Per-app CFG-1 config overrides, keyed `config:<app>`, read on the launch path of every app and edge-cached for 300s.",
+      "readers": ["services/platform/src/routes/config.ts"]
+    },
+    {
+      "binding": "JWKS_CACHE",
+      "kind": "kv_namespaces",
+      "scope": "shared",
+      "purpose": "Caches the Supabase JWKS document so an ES256 verify does not fetch it per request. One identity project portfolio-wide, so one cache.",
+      "readers": [
+        "services/subly-api/src/middleware/auth.ts",
+        "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/middleware/auth.ts"
+      ]
+    },
+    {
+      "binding": "EVENTS_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "FAIRNESS bucket for /v1/events + /v1/consent, keyed `(app_id, anon_id)`. ⚠️ That key is ENTIRELY client-chosen on a route that is unauthenticated by design, so it bounds one honest install and nothing more — EVENTS_CEILING_LIMITER is the half a caller cannot rotate out of.",
+      "readers": ["services/platform/src/routes/events.ts"]
+    },
+    {
+      "binding": "EVENTS_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "SERVER-DERIVED ceiling for /v1/events + /v1/consent, keyed `edge:<colo>:<asn>` from `request.cf` — no request-body value is in the key. Its own namespace so it cannot spend the fairness budget.",
+      "readers": ["services/platform/src/routes/events.ts"]
+    },
+    {
+      "binding": "CONFIG_CEILING_LIMITER",
+      "kind": "ratelimits",
+      "scope": "shared",
+      "purpose": "The same server-derived ceiling for GET /config/:app — the other unauthenticated route on this Worker that does I/O. Its own namespace so config traffic and analytics traffic cannot exhaust each other.",
+      "readers": ["services/platform/src/routes/config.ts"]
+    }
+  ]
+}

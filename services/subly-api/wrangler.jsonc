@@ -1,7 +1,7 @@
 {
   // ───────────────────────────────────────────────────────────────────────────
   // Cloudflare Worker — subly-api. Wrangler v4 / jsonc (migrated from v3 toml).
-  // CLONE CONTRACT: APP_DB + EXPORTS are PER-APP; PLATFORM_DB + JWKS_CACHE +
+  // CLONE CONTRACT: APP_DB is PER-APP; PLATFORM_DB + JWKS_CACHE +
   // SUPABASE_URL are SHARED across every NIKATRU app (one entitlements table,
   // one identity project). Matches tooling/bricks/app __brick__ services template.
   //
@@ -46,9 +46,26 @@
   "kv_namespaces": [
     // Caches the Supabase JWKS document (cuts JWT-verify latency). Shared.
     { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
-  ],
-  "r2_buckets": [
-    // CSV exports / receipts. Per-app.
-    { "binding": "EXPORTS", "bucket_name": "subly-exports" }
   ]
+
+  // 🔴 NO "r2_buckets". The per-app `EXPORTS` → `subly-exports` binding was
+  // REMOVED on 2026-08-01 ([4]B-18, [4]B-1 limb 3). It had been bound since
+  // 2026-07-17 and its ONLY occurrence in the entire TypeScript tree was its own
+  // declaration in src/types.ts — no writer, no reader, on the live app. It is
+  // also the exact per-app bucket `39-CHASSIS` cut 20 removed from the brick on
+  // 2026-07-25: the template was fixed and the live app was not, and no guard
+  // could see it because assert-clone-contract.mjs only ever inspects the
+  // throwaway CI probe stamp. tooling/ci/assert-platform-register.mjs now
+  // enumerates every binding in every wrangler config in the repo — this one and
+  // the brick template included — and fails on any with no resolved reader.
+  //
+  // WHEN OBJECT STORAGE IS ACTUALLY NEEDED: ONE portfolio bucket, bound in
+  // `services/platform`, addressed with an `<app_id>/` key prefix. Per-app
+  // buckets multiply buckets, lifecycle rules and CORS policies by the number of
+  // apps to store the same kind of blob.
+  //
+  // ⚠️ THE BUCKET ITSELF IS STILL IN THE ACCOUNT. Removing the binding is the
+  // reversible half and is agent work; deleting `subly-exports` is destructive
+  // and is the owner's (it holds nothing — no writer has ever existed — but
+  // "nothing" is a claim about a live resource, not a fact this repo can check).
 }
