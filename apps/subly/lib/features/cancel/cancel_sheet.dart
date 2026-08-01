@@ -30,20 +30,49 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
   bool _busy = false;
 
   static const List<String> _months = <String>[
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   Future<void> _confirm() async {
     setState(() => _busy = true);
-    await ref
-        .read(subscriptionsControllerProvider.notifier)
-        .cancelSubscription(widget.sub.id);
-    if (mounted) {
+    // Resolved BEFORE the await — see the note in add_subscription_sheet.dart.
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(subscriptionsControllerProvider.notifier)
+          .cancelSubscription(widget.sub.id);
+      if (!mounted) return;
       setState(() {
         _busy = false;
         _step = 1;
       });
+    } catch (_) {
+      // 🔴 THIS FAILURE PATH DID NOT EXIST, and the stakes here are higher than
+      // in the add sheet: the awaited call reaches the network, so offline it
+      // threw out of an unawaited future and the button stayed disabled on
+      // 'Cancelling…' forever. Advancing to step 1 regardless would have been
+      // worse still — that screen congratulates the user on savings from a
+      // cancellation that never happened.
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not cancel just now — check your connection and try again.',
+          ),
+        ),
+      );
     }
   }
 
@@ -68,14 +97,21 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                   height: 64,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                      color: const Color.fromRGBO(239, 77, 106, 0.12),
-                      borderRadius: BorderRadius.circular(20)),
-                  child: const Icon(Icons.close, color: AppColors.danger, size: 28),
+                    color: const Color.fromRGBO(239, 77, 106, 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Icon(
+                    Icons.close,
+                    color: AppColors.danger,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(height: 14),
-                Text('Cancel ${s.name}?',
-                    style: AppText.title.copyWith(fontSize: 22),
-                    textAlign: TextAlign.center),
+                Text(
+                  'Cancel ${s.name}?',
+                  style: AppText.title.copyWith(fontSize: 22),
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 8),
                 Text.rich(
                   TextSpan(
@@ -83,12 +119,16 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                     children: <InlineSpan>[
                       const TextSpan(text: 'You’ll save '),
                       TextSpan(
-                          text: '$monthly/mo',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w800, color: AppColors.positive)),
+                        text: '$monthly/mo',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.positive,
+                        ),
+                      ),
                       TextSpan(
-                          text:
-                              ' · ${currency.fmt0(s.monthlyPrice * 12)}/yr. Access continues until ${_months[s.nextRenewal.month - 1]} ${s.nextRenewal.day}.'),
+                        text:
+                            ' · ${currency.fmt0(s.monthlyPrice * 12)}/yr. Access continues until ${_months[s.nextRenewal.month - 1]} ${s.nextRenewal.day}.',
+                      ),
                     ],
                   ),
                   textAlign: TextAlign.center,
@@ -97,9 +137,11 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                 Row(
                   children: <Widget>[
                     Expanded(
-                        child: SoftButton(
-                            label: 'Keep it',
-                            onPressed: () => Navigator.of(context).pop())),
+                      child: SoftButton(
+                        label: 'Keep it',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: SizedBox(
@@ -109,11 +151,16 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.danger,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
-                          child: Text(_busy ? 'Cancelling…' : 'Confirm cancel',
-                              style: const TextStyle(
-                                  fontFamily: 'Manrope', fontWeight: FontWeight.w700)),
+                          child: Text(
+                            _busy ? 'Cancelling…' : 'Confirm cancel',
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -129,9 +176,14 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                   height: 70,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                      color: const Color.fromRGBO(16, 185, 129, 0.14),
-                      shape: BoxShape.circle),
-                  child: const Icon(Icons.check_rounded, color: AppColors.positive, size: 34),
+                    color: const Color.fromRGBO(16, 185, 129, 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: AppColors.positive,
+                    size: 34,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text('Cancelled', style: AppText.title.copyWith(fontSize: 23)),
@@ -142,9 +194,12 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                     children: <InlineSpan>[
                       const TextSpan(text: 'You’re now saving '),
                       TextSpan(
-                          text: '$monthly/mo',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w800, color: AppColors.positive)),
+                        text: '$monthly/mo',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.positive,
+                        ),
+                      ),
                       const TextSpan(text: '. Nicely done.'),
                     ],
                   ),
@@ -154,7 +209,9 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                 SizedBox(
                   width: double.infinity,
                   child: GradientButton(
-                      label: 'Done', onPressed: () => Navigator.of(context).pop()),
+                    label: 'Done',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ),
               ],
             ),
