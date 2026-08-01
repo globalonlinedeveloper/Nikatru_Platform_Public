@@ -150,6 +150,20 @@ jobs:
       - name: Workflows are SHA-pinned and least-privilege
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-workflow-hardening.mjs
+      # A green tick must mean the work RAN. Two ways it did not, both live until
+      # 2026-08-01: (A) `ci-gate` — the check assert-gate-passed.mjs polls before
+      # every production deploy, and the one branch protection reads — tested
+      # only 'failure' and 'cancelled', so a lane carrying a job-level `if:`
+      # would report `skipped` and hand both deploys a green verdict over a lane
+      # that never ran; the identical fix landed in build-platforms.yml on
+      # 2026-07-31 and stopped there. (B) e2e.yml gated all nine real steps on a
+      # secret-presence preflight, so a rotated key turned the nightly live proof
+      # into a green run that executed one echo — and its `failure()`-gated alert
+      # could not fire on it. Both aggregators are NAMED targets here: renaming
+      # one is COVERAGE LOST, not a quiet pass. [pipeline F-5a, F-10]
+      - name: A green tick means the work ran
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-green-means-ran.mjs
       # The 6-platform claim must be proven AND RECENT. build-platforms.yml ran
       # only on dispatch or a release tag, so the green tick was undated — found
       # eight commits stale, and fresh again only because someone clicked it by
@@ -710,16 +724,48 @@ jobs:
           export PATH="$PATH:$HOME/.pub-cache/bin"
           melos run test
 
+  # 🔴 THE ROOT OF TRUST. `assert-gate-passed.mjs` reads THIS job's check-run
+  # conclusion and nothing else, and deploy-web, deploy-workers and
+  # build-platforms all refuse to run until it says success — so whatever this
+  # job is willing to call green is, transitively, what reaches production.
+  # Branch protection reads the same check.
+  #
+  # Its contract is asserted structurally by `assert-green-means-ran.mjs` §A,
+  # which names BOTH aggregators in the repo (this job and build-platforms'
+  # `all_platforms`) as targets: the `needs` list must name every other job in
+  # the file, `if: always()` must survive, the three non-green verdicts must
+  # each be tested with a real `contains(needs.*.result, …)` expression, the
+  # body must exit non-zero, the echo must name every lane, and no lane may
+  # carry a job-level `if:`. Renaming or deleting this job is COVERAGE LOST
+  # there, not a quiet pass. (assert-channel-register.mjs §6 independently
+  # covers `all_platforms` via the channel register's `aggregatingJob` pointer;
+  # two guards over one job is redundancy, not a conflict.)
   ci-gate:
     name: ci-gate
     runs-on: ubuntu-24.04
     needs: [subly_api, platform, tokens, site_shared, app_brick, sites, workspace_gate]
+    # LOAD-BEARING. Without `always()` this job inherits the default `success()`
+    # and would itself report SKIPPED whenever a lane failed — and GitHub counts
+    # a skipped required check as SATISFIED, so branch protection would go green
+    # over a red tree. The verdict logic below only means anything because this
+    # job runs no matter what its lanes did.
     if: always()
     steps:
       - name: Require all lanes green
         run: |
-          echo "subly_api=${{ needs.subly_api.result }} platform=${{ needs.platform.result }} tokens=${{ needs.tokens.result }} site_shared=${{ needs.site_shared.result }} app_brick=${{ needs.app_brick.result }} workspace_gate=${{ needs.workspace_gate.result }}"
-          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
-            echo "::error::One or more CI lanes failed"; exit 1
+          echo "subly_api=${{ needs.subly_api.result }} platform=${{ needs.platform.result }} tokens=${{ needs.tokens.result }} site_shared=${{ needs.site_shared.result }} app_brick=${{ needs.app_brick.result }} sites=${{ needs.sites.result }} workspace_gate=${{ needs.workspace_gate.result }}"
+          # 🔴 'skipped' IS A VERDICT, NOT AN ABSENCE — added 2026-08-01, the
+          # same fix build-platforms.yml's aggregator got on 2026-07-31 and this
+          # one did not. One added line — a paths filter to shave the ~6-minute
+          # app_brick lane, or `if: github.event_name != 'pull_request'` — would
+          # otherwise report the lane as `skipped`, neither of the other two
+          # clauses would fire, and ci-gate would conclude SUCCESS over a commit
+          # whose brick/stamp lane never ran. Both production deploys would then
+          # proceed on that verdict. A lane that did not run has not passed.
+          #
+          # `sites` was also missing from the echo above, so the line a human
+          # reads under-reported coverage (6 of 7) even though contains() saw it.
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
+            echo "::error::One or more CI lanes failed, was cancelled, or never ran — see the verdicts above"; exit 1
           fi
           echo "All lanes green"
