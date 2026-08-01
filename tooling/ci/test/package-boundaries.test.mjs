@@ -29,6 +29,12 @@
 //   4. a plugin added to core's pubspec      7. a grandfathered bypass FIXED
 //                                               (the stale-entry direction)
 //
+// An EIGHTH mutation, 2026-08-01, that all seven above had missed: the import
+// scanner hardcoded the single quote, so `import "package:flutter/material.dart"`
+// added to packages/core/lib/src/result.dart left the guard printing "core is
+// pure" (the single-quoted control failed correctly). All three C-5 limbs route
+// through that one function, so quote style walked through every one of them.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -180,6 +186,36 @@ describe('assert-package-boundaries', () => {
       assert.equal(code, 0);
     });
 
+    // 🔴 QUOTE STYLE IS NOT A BOUNDARY (2026-08-01 full-corpus review). The
+    // scanner hardcoded `'`, and Dart accepts `"` — so a double-quoted import
+    // walked through ALL THREE C-5 limbs invisibly. Mutation-proven on the real
+    // packages/core: the double-quoted form left the guard printing "core is
+    // pure" while the single-quoted control failed. Nothing else contradicts it
+    // either — `prefer_single_quotes` is a non-fatal INFO under this
+    // workspace's analyze posture and `dart format` does not normalise quotes.
+    test('FAILS when core imports Flutter with DOUBLE quotes', () => {
+      const { code, out } = run(tree({
+        coreImports: "import 'package:crypto/crypto.dart';\nimport 'package:cryptography/cryptography.dart';\nimport \"package:flutter/material.dart\";\n",
+      }));
+      assert.equal(code, 1, 'a boundary quote style can walk around is not a boundary');
+      assert.match(out, /core IMPORTS `package:flutter`/);
+    });
+
+    test('FAILS when core EXPORTS an undeclared package with double quotes', () => {
+      const { code, out } = run(tree({
+        coreImports: "import 'package:crypto/crypto.dart';\nimport 'package:cryptography/cryptography.dart';\nexport \"package:meta/meta.dart\";\n",
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /core imports `package:meta`.*without declaring it/s);
+    });
+
+    test('does NOT fire on a DOUBLE-quoted package: mentioned in a comment', () => {
+      const { code, out } = run(tree({
+        coreImports: "// never do this: import \"package:flutter/material.dart\";\nimport 'package:crypto/crypto.dart';\nimport 'package:cryptography/cryptography.dart';\n",
+      }));
+      assert.equal(code, 0, out);
+    });
+
     test('FAILS rather than reporting clean when core has no imports at all', () => {
       const { code, out } = run(tree({ coreImports: '// nothing here\n' }));
       assert.equal(code, 1);
@@ -193,6 +229,14 @@ describe('assert-package-boundaries', () => {
     test('FAILS when design_system IMPORTS core with its pubspec untouched', () => {
       const { code, out } = run(tree({
         dsImports: "import 'package:flutter/material.dart';\nimport 'package:nikatru_core/nikatru_core.dart';\n",
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /design_system IMPORTS `package:nikatru_core`/);
+    });
+
+    test('FAILS when design_system IMPORTS core with DOUBLE quotes — limb B', () => {
+      const { code, out } = run(tree({
+        dsImports: "import 'package:flutter/material.dart';\nimport \"package:nikatru_core/nikatru_core.dart\";\n",
       }));
       assert.equal(code, 1);
       assert.match(out, /design_system IMPORTS `package:nikatru_core`/);
@@ -214,6 +258,14 @@ describe('assert-package-boundaries', () => {
       assert.equal(code, 1);
       assert.match(out, /brick imports `package:dio` directly/);
       assert.match(out, /`packages\/api_client` already wraps it/);
+    });
+
+    test('FAILS on a NEW bypass written with DOUBLE quotes — limb C', () => {
+      const { code, out } = run(tree({
+        brickImports: "import 'package:flutter/material.dart';\nimport \"package:dio/dio.dart\";\n",
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /brick imports `package:dio` directly/);
     });
 
     // The lock's explicit requirement: this set must never range over nothing.

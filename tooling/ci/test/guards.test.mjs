@@ -293,6 +293,66 @@ describe('assert-lane-coverage', () => {
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
   });
+
+  // ── 🔴 A COMMENT IS NOT A LANE (2026-08-01 full-corpus review) ──────────────
+  // isClaimed() was a raw substring match over the concatenated workflow text,
+  // so any mention counted. That was not hypothetical: `sites/nikatru` and
+  // `sites/rajasekarselvam` appeared in .github/workflows ONLY inside the prose
+  // comment above the Site-integrity step, so gutting that step to `echo
+  // skipped` left the Pages Function with its live KV binding checked by
+  // nothing while this guard printed "all claimed". Reproduced on the real tree
+  // both directions: gutted-step-plus-comment -> exit 0; comment reworded with
+  // the real checks untouched -> exit 1. The claimable text is now
+  // comment-stripped, `paths-ignore:` blocks are blanked, and the two sites'
+  // claim became structural (ci.yml passes them as arguments to
+  // check-site-integrity.mjs, which fails if a claimed root is not scanned).
+  const commentWorkflow = (paths) =>
+    `name: CI\njobs:\n  a:\n    steps:\n${paths.map((p) => `      # ${p} is deployed by Cloudflare's own Git integration\n`).join('')}      - run: echo skipped\n`;
+
+  test('FAILS when a unit is named ONLY in a workflow comment', () => {
+    const dir = build('lc-comment', { sites: ['sites/nikatru'], named: [] });
+    writeFileSync(join(dir, '.github/workflows/ci.yml'), commentWorkflow(['sites/nikatru']));
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1, 'prose describing a lane is not a lane');
+    assert.match(out, /sites\/nikatru/);
+    assert.match(out, /claimed by no CI lane/);
+  });
+
+  test('FAILS when a unit appears only under paths-ignore — a path named so CI will NOT run', () => {
+    const dir = build('lc-pathsignore', { workers: ['services/w'], named: [] });
+    writeFileSync(
+      join(dir, '.github/workflows/ci.yml'),
+      "name: CI\non:\n  pull_request:\n    paths-ignore:\n      - 'services/w/**'\njobs:\n  a:\n    steps:\n      - run: echo hi\n",
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1, 'an exclusion is the opposite of a claim');
+    assert.match(out, /services\/w/);
+  });
+
+  // The false-alarm side: stripping comments must not strip the real claim, and
+  // a path that is BOTH commented and genuinely run is still claimed.
+  test('a real run line still claims the unit even when a comment repeats it', () => {
+    const dir = build('lc-both', { sites: ['sites/nikatru'], named: [] });
+    writeFileSync(
+      join(dir, '.github/workflows/ci.yml'),
+      "name: CI\njobs:\n  a:\n    steps:\n      # sites/nikatru is deployed by Cloudflare\n      - run: node tooling/ci/check-site-integrity.mjs . sites/nikatru\n",
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /all claimed/);
+  });
+
+  // paths-ignore blanking is indentation-scoped: the block ends at the first
+  // line that dedents, so a `paths:` claim after it must survive intact.
+  test('paths-ignore blanking stops at the end of its own block', () => {
+    const dir = build('lc-pathsignore-scope', { workers: ['services/w'], named: [] });
+    writeFileSync(
+      join(dir, '.github/workflows/ci.yml'),
+      "name: CI\non:\n  pull_request:\n    paths-ignore:\n      - 'docs/**'\n    paths:\n      - 'services/w/**'\njobs:\n  a:\n    steps:\n      - run: echo hi\n",
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -345,6 +405,45 @@ describe('check-site-integrity', () => {
     const { code, out } = run('check-site-integrity.mjs', { args: [build('si-nofn', { fnCount: 0 })] });
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
+  });
+
+  // ── claimed roots (2026-08-01) ─────────────────────────────────────────────
+  // The Cloudflare-Git sites had no structural claim to CI coverage at all —
+  // assert-lane-coverage.mjs was accepting a workflow COMMENT as proof. ci.yml
+  // now names them as ARGUMENTS here, which makes the claim load-bearing at
+  // both ends: it is the text the lane guard matches, and this script fails if
+  // a claimed root is not really among the deploy roots it scans. Without this
+  // check the argument would be decoration again — a claim that outlives the
+  // thing it claims.
+  test('PASSES when every claimed root is really a scanned deploy root', () => {
+    const dir = build('si-claim-ok');
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/b'] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when a claimed root is not a deploy root at all', () => {
+    const dir = build('si-claim-ghost');
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/ghost'] });
+    assert.equal(code, 1, 'the caller promises coverage the scan does not deliver');
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /sites\/ghost/);
+  });
+
+  // Checked against the DISCOVERED roots, not the filesystem: a directory that
+  // still exists but lost its index.html is exactly a site this script has
+  // stopped checking, and is the shape the real mutation took.
+  test('FAILS when a claimed directory survives but stops being a deploy root', () => {
+    const dir = build('si-claim-noindex', { omit: { site: 'b', file: 'index.html' } });
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a', 'sites/b'] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /sites\/b/);
+  });
+
+  test('a trailing slash on a claimed root is not a false alarm', () => {
+    const dir = build('si-claim-slash');
+    const { code, out } = run('check-site-integrity.mjs', { args: [dir, 'sites/a/', 'sites/b'] });
+    assert.equal(code, 0, out);
   });
 });
 
@@ -901,6 +1000,49 @@ Future<void> recordAnalyticsConsent(
     });
     assert.equal(code, 1);
     assert.match(out, /no longer reads/);
+  });
+
+  // ── 🔴 A DEFINE BEHIND A `#` IS PROSE (2026-08-01 full-corpus review) ───────
+  // The check read the RAW workflow, so commenting the define out — one
+  // character, the exact edit somebody makes while debugging build flags — still
+  // counted as "supplied". Mutation-proven on the real deploy-web.yml: the
+  // shipped guard printed `ok   crash sink wired` over a build that would have
+  // initialised the NoOp client. Worse than a plain comment: the define sits in
+  // a `run: >` folded scalar, where that `#` is a SHELL comment that ALSO
+  // swallows the `--dart-define=APP_ENV=production` on the next folded line.
+  test('FAILS when the DSN define is commented out rather than removed', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-commented', {
+        deploy:
+          'run: >\n  flutter build web --release\n  # --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n  --dart-define=APP_ENV=production\n',
+      }),
+    });
+    assert.equal(code, 1, 'a flag behind a comment marker is not a flag');
+    assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  test('FAILS when the whole build line is commented out', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-line-commented', {
+        deploy: '# run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\nrun: echo skipped\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  // The false-alarm side: only a `#` BEFORE the define disqualifies it. A real
+  // define that happens to carry a trailing comment is still a real define, and
+  // comments elsewhere in the file are none of this check's business.
+  test('a comment AFTER the define, or anywhere else, is not a false alarm', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-trailing-comment', {
+        deploy:
+          '# build the web bundle\nrun: >\n  flutter build web --release\n  --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}  # crash sink\n',
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /crash sink wired/);
   });
 
   test('FAILS when the record() call is deleted — the original defect', () => {
@@ -1463,6 +1605,55 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
     assert.equal(code, 1);
     assert.match(out, /'theme-mode-persisted' is NOT asserted/);
+  });
+
+  // ── 🔴 COMMENTED OUT IS EMPTIED (2026-08-01 full-corpus review) ─────────────
+  // The header promises the build fails if this file is "deleted, emptied, or
+  // stops covering a declared property". It was false on "emptied": the source
+  // was scanned RAW, so `// testWidgets(` counted toward the block floor and
+  // every `group('property: …')` regex matched inside a comment. Mutation-proven
+  // on the real brick template — the whole file commented out plus a stub `void
+  // main() {}` (so the app_brick lane still compiles and trivially passes) left
+  // the shipped guard printing `ok — 14 property/properties enforced`.
+  test('FAILS when the whole property test is commented out line by line', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-slashed', {
+        propTest: goodTest.split('\n').map((l) => `// ${l}`).join('\n') + '\nvoid main() {}\n',
+      }),
+    });
+    assert.equal(code, 1, 'a commented-out assertion asserts nothing');
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  // The realistic triage edit: /* */ around ONE flaky group while chasing a red
+  // lane. Nothing else in the file moves, so only the property-level check can
+  // notice — which is precisely what this guard exists to make loud.
+  test('FAILS when a single property group is wrapped in a block comment', () => {
+    const marker = "group('property: locale-actually-switches', () {";
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-blocked', {
+        propTest: goodTest.replace(
+          marker,
+          `/* quarantined 2026-08-01 — flaky\n${marker}`,
+        ).replace("  testWidgets('ii', (t) async {});\n});", "  testWidgets('ii', (t) async {});\n});\n*/"),
+      }),
+    });
+    assert.equal(code, 1, 'a quarantined group is a property that stopped being enforced');
+    assert.match(out, /'locale-actually-switches' is NOT asserted/);
+  });
+
+  // The false-alarm side, and the reason the stripper is hand-rolled rather than
+  // the sibling guard's strip-comments-AND-strings scanner: the group markers
+  // this guard matches ARE string literals, so blanking strings would erase the
+  // very evidence being looked for. A `//` inside a string must survive.
+  test('a `//` inside a string literal is not a comment', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-url-string', {
+        propTest: `const docs = 'https://nikatru.com/chassis#properties';\n${goodTest}`,
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /theme-mode-persisted' asserted/);
   });
 
   // The hollow-test case: the assertion is still there but the thing it asserts

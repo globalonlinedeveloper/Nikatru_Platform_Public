@@ -280,9 +280,14 @@ const brickDeclared = new Set();
 
 // Import prefixes, derived from the brick's own imports: `as core` means a call
 // may legitimately read `core.ConfigLoader(`.
+// 🔴 BOTH quote styles, closing delimiter included (2026-08-01 full-corpus
+// review, found alongside the same defect in assert-package-boundaries.mjs):
+// the quote was hardcoded as `'` at both ends, so a double-quoted
+// `import "package:x/x.dart" as y;` derived NO prefix and every `y.Symbol(`
+// call went unseen. A backreference keeps the two delimiters paired.
 const prefixOf = new Map(); // package name -> prefix
-for (const m of brickRaw.matchAll(/^\s*import\s+'package:([a-z0-9_]+)\/[^']*'\s+as\s+(\w+)\s*;/gm)) {
-  prefixOf.set(m[1], m[2]);
+for (const m of brickRaw.matchAll(/^\s*import\s+(['"])package:([a-z0-9_]+)\/[^'"]*\1\s+as\s+(\w+)\s*;/gm)) {
+  prefixOf.set(m[2], m[3]);
 }
 
 /** Is `sym` CALLED (constructed / invoked / a static member reached) in the brick? */
