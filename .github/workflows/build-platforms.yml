@@ -181,10 +181,35 @@ jobs:
       - name: Build windows
         working-directory: apps/subly
         run: flutter build windows --release
+      # ── the windows-store channel's artifact ────────────────────────────────
+      # THIS JOB IS THE `lane` OF tooling/channel-register.json's `windows-store`
+      # row, and this step is why. Before it, the register printed a FORMAT GAP
+      # on every guard run — the row accepts ".msix" and the only Windows artifact
+      # the tree produced was a ".exe" bundle directory, so the green "Windows
+      # builds" tick was a proof about an artifact the Microsoft Store does not
+      # take. Same shape as the .apk/.aab gap recorded one row up for Play.
+      #
+      # `msix_config` in apps/subly/pubspec.yaml sets `store: true`, so this
+      # produces an UNSIGNED store package: the register's keyKind for this row is
+      # "none" because the Store re-signs. Nothing here holds a certificate and
+      # nothing here needs one — which is what makes this the cheapest real store
+      # channel we have.
+      #
+      # ⬜ The package identity is still `PARTNER-CENTER-PENDING` (OWNER_QUEUE
+      # A-2). The .msix therefore BUILDS and is NOT SUBMITTABLE; that is the
+      # point of building it anyway — the packaging path is proven before the
+      # account exists, so registration day is minutes rather than archaeology.
+      # `build_windows: false` keeps msix from rebuilding: this packages the
+      # exact binaries the step above produced and the upload below proves.
+      - name: Package MSIX (Microsoft Store)
+        working-directory: apps/subly
+        run: dart run msix:create
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: subly-windows
-          path: apps/subly/build/windows/x64/runner/Release
+          path: |
+            apps/subly/build/windows/x64/runner/Release
+            apps/subly/build/windows/msix/subly.msix
           retention-days: 7
           if-no-files-found: error
 

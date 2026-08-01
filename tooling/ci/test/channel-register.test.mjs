@@ -349,6 +349,43 @@ describe('assert-channel-register — what SERVED obliges a row to carry', () =>
     assert.match(out, /names no `lane`/);
   });
 
+  // ── a DEFERRED row's lane is checked too (hardened 2026-08-01) ─────────────
+  // Lane resolution used to live entirely inside the `served === true` branch,
+  // which was harmless only while every deferred lane was null. [10]D-5/D-10
+  // build a channel's lane BEFORE its account exists — windows-store emits the
+  // .msix today with served:false — so a deferred lane naming a job nobody wrote
+  // is a lane that runs nothing, and §3b silently reads an EMPTY job body for it
+  // and reports "nothing to compare", which prints as a pass.
+  const deferredMutation = (fn) => tree({ mutate: (r) => fn(r.channels.find((c) => c.id === 'windows-store')) });
+
+  test('PASSES when a DEFERRED row names a lane that resolves', () => {
+    const { code, out } = run(deferredMutation((c) => { c.lane = { workflow: BUILD_WORKFLOW, job: 'windows' }; }));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when a DEFERRED row names a lane JOB that does not exist', () => {
+    const { code, out } = run(deferredMutation((c) => { c.lane = { workflow: BUILD_WORKFLOW, job: 'ghost-job' }; }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is deferred and claims lane job "ghost-job"/);
+  });
+
+  test('FAILS when a DEFERRED row names a lane WORKFLOW that does not exist', () => {
+    const { code, out } = run(deferredMutation((c) => { c.lane = { workflow: '.github/workflows/nope.yml', job: 'windows' }; }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is deferred and its lane names .*nope\.yml, which does not exist/);
+  });
+
+  test('FAILS on a malformed lane — it resolves to nothing and looks like coverage', () => {
+    const { code, out } = run(deferredMutation((c) => { c.lane = { workflow: BUILD_WORKFLOW }; }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names a `lane` that is not \{workflow: string, job: string\}/);
+  });
+
+  test('still PASSES when a deferred row names NO lane — that is the expected state', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+  });
+
   test('FAILS when a served channel names a toolchain key versions.json does not pin', () => {
     const { code, out } = run(servedMutation((c) => { c.minimumToolchain = ['xcode']; }));
     assert.equal(code, 1, out);

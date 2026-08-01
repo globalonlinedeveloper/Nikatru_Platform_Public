@@ -34,13 +34,13 @@ let seq = 0;
  * Build a fake repo.
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
- * ⚠️ testFiles defaults to 26 because MIN_TEST_FILES ratcheted 4 → 25 → 26
- * (2026-07-31, 2026-08-01) — a fixture below the floor would make every green
+ * ⚠️ testFiles defaults to 29 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29
+ * (2026-07-31, twice on 2026-08-01) — a fixture below the floor would make every green
  * case here red for a reason that has nothing to do with the behaviour under
  * test. Ratchet the floor and this default together, always.
  * `files` writes extra files at the fixture root (e.g. a ci.yml manifest).
  */
-function repo(guards, { testFiles = 26, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
+function repo(guards, { testFiles = 29, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
   const root = join(TMP, `r${seq++}`);
   const ci = join(root, 'tooling', 'ci');
   const t = join(ci, 'test');
@@ -78,9 +78,9 @@ function repo(guards, { testFiles = 26, mentionAll = true, hollow = false, comme
   return root;
 }
 
-/** 36 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36,
- *  2026-07-31 then 2026-08-01). */
-function compliant(extra = {}, count = 36) {
+/** 38 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38,
+ *  2026-07-31, then twice on 2026-08-01 — the second with assert-store-metadata.mjs. */
+function compliant(extra = {}, count = 38) {
   const g = {};
   for (let i = 0; i < count; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
   return { ...g, ...extra };
@@ -92,7 +92,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /36 guard\(s\), all named in 26 test file\(s\)/);
+    assert.match(r.stdout, /38 guard\(s\), all named in 29 test file\(s\)/);
   });
 
   test('a guard no test mentions FAILS', () => {
@@ -162,11 +162,12 @@ describe('assert-guard-coverage', () => {
   test('COVERAGE: ONE guard below the ratcheted floor FAILS — the floor tracks reality, not history', () => {
     // The original floors froze at 15/4/140 while the tree grew to 37/27/533,
     // so 22 guards could vanish from the scan without tripping anything
-    // (triage 2026-07-31, mutation-proven). This pins the ratchet at 36: when
+    // (triage 2026-07-31, mutation-proven). This pins the ratchet: when
     // the tree grows again, ratchet the floor AND this fixture together.
-    const r = run(repo(compliant({}, 35)));
+    // Ratcheted to 38 on 2026-08-01 with assert-store-metadata.mjs ([10]D-5).
+    const r = run(repo(compliant({}, 37)));
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST — found 35 guard\(s\)/);
+    assert.match(r.stderr, /COVERAGE LOST — found 37 guard\(s\)/);
   });
 
   test('COVERAGE: a .mjs moved into a subdirectory of tooling/ci FAILS loudly, naming it', () => {
