@@ -1,0 +1,329 @@
+{
+  "_readme": [
+    "THE CEILINGS REGISTER — [pipeline B-6] company/pipeline/04-backend-platform.md",
+    "",
+    "Every free-tier ceiling this portfolio runs against, recorded ONCE, each with the URL it was read",
+    "from and the date it was read. Every hard cap in the Worker source DERIVES from a row here.",
+    "",
+    "WHY IT EXISTS. B-6's original acceptance criterion was 'a ceilings file exists', which an EMPTY",
+    "file satisfies. The property that actually matters is the opposite one: a NUMBER IN THE SOURCE",
+    "WITH NO CEILING BEHIND IT IS THE FAILURE. `MAX_EVENTS_PER_BATCH = 100` sat in the ingest route for",
+    "months naming no ceiling at all — and it was DOUBLE the documented Free per-invocation query limit.",
+    "Nothing could have told anyone, because there was no right-hand side to compare it to.",
+    "",
+    "🔴 THE ONE RULE: A LIMIT WITHOUT A `source` IS NOT ENFORCED, IT IS REPORTED.",
+    "An invented ceiling fires on CORRECT input, which is strictly worse than no ceiling — the same",
+    "lesson tooling/ci/assert-store-metadata.mjs paid for when a made-up '120 characters or fewer'",
+    "rejected this repo's own 129-character fixture. So a row carrying a numeric `value` MUST carry a",
+    "`source` (an https URL) and a `verifiedOn` date, or the guard fails. A ceiling nobody could source",
+    "is written with `\"value\": null` and an `unverified` reason: it PRINTS on every run and CANNOT be",
+    "derived from. Marking something unverified is cheap and honest; inventing a number is neither.",
+    "",
+    "Enforced by tooling/ci/assert-ceiling-budget.mjs:",
+    "  · LIMB 1 every row with a numeric value has a `source` URL and a `verifiedOn` date      [B-6]",
+    "  · LIMB 2 every `vendors.cloudflare.surfaces` entry in tooling/capability-register.json is",
+    "    named by at least one ceiling row — a RELATIONSHIP to a list another guard already",
+    "    maintains (assert-vendor-portability.mjs), so it cannot be shrunk to make this pass   [B-6]",
+    "  · LIMB 3 every `const NAME = <number>` in services/*/src/ carries an `@ceiling` annotation:",
+    "    either `@ceiling <id> lte` (and the guard CHECKS the arithmetic) or `@ceiling none — <reason>`.",
+    "    An unannotated constant FAILS. A constant that exceeds its ceiling FAILS unless it declares",
+    "    `@ceiling-exceeds <reason>`, which PRINTS on every run                                 [B-6]",
+    "  · LIMB 4 every `.batch(` call site in services/*/src/ is named in `batchCallSites` with either",
+    "    a bounding constant or an `unboundedReason` that PRINTS. A batch is the ONE construct that",
+    "    turns one handler into N queries, so it is the shape queriesPerInvocation actually binds [B-6]",
+    "  · LIMB 5 the deployed configs themselves: total cron triggers, distinct D1 database names,",
+    "    distinct KV namespaces and every rate-limiter `period` are compared to their sourced",
+    "    account-wide ceilings across services/*/wrangler.jsonc AND the brick template     [B-6, B-7]",
+    "",
+    "⚠️ THE COVERAGE FLOOR IS A RELATIONSHIP, NOT A NUMBER. Limb 2's left-hand side is the vendor",
+    "surface list in tooling/capability-register.json; limb 3's domain is every numeric constant the",
+    "scan finds; limb 5's domain is every wrangler config on disk. There is no tuned integer to lower.",
+    "",
+    "⚠️ NOT A PRICING FILE. These are PLATFORM LIMITS — the point at which a request is refused or a",
+    "write is rejected. Cost projections live in company/business/; they move independently and citing",
+    "one for the other is how a limit becomes a guess."
+  ],
+
+  "planOfRecord": {
+    "_why": [
+      "Every ceiling below is recorded for the plan this portfolio actually runs on. Reading a PAID",
+      "number and deriving a cap from it would produce a Worker that is correct on a plan we do not",
+      "have — which is the failure mode that cannot be observed in CI at all, only in production."
+    ],
+    "cloudflare": "workers-free",
+    "note": "Cloudflare publishes Free and Paid side by side on the same pages. Where both exist, the row records the FREE value in `value` and the paid one in `paidValue`, so an upgrade is a one-line edit rather than a re-research."
+  },
+
+  "ceilings": [
+    {
+      "id": "d1.queriesPerInvocation",
+      "value": 50,
+      "paidValue": 1000,
+      "unit": "queries",
+      "scope": "per-invocation",
+      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "source": "https://developers.cloudflare.com/d1/platform/limits/",
+      "sourceText": "Queries per Worker invocation: 1000 (Workers Paid) / 50 (Free)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "🔴 UNRESOLVED, AND IT IS THE ARITHMETIC THAT MATTERS: the docs do NOT state whether a `D1Database.batch([s1..sN])` spends ONE query or N. The limits page states the 50 without qualifying batches; the Workers Binding API page for `batch()` describes it purely as a latency optimisation and never mentions a quota; the D1 pricing page mentions batches only for ROW counting. Neither reading can be cited. Every derivation from this row therefore takes the WORST-CASE reading — one statement = one query — because the other direction fails only in production, on the shared database every app depends on. Resolving it needs miniflare/`wrangler dev` against real D1 or a live probe; until then this sentence is the honest state and the caps below are conservative on purpose.",
+      "note": "Do NOT confuse this with the Workers subrequest limit. That is a separate, differently-sourced ceiling (workers.subrequestsToCloudflareServices, 1,000 on Free) and citing it as a rebuttal to the 50 is wrong: the 50 is D1-specific."
+    },
+    {
+      "id": "d1.databasesPerAccount",
+      "value": 10,
+      "paidValue": 50000,
+      "unit": "databases",
+      "scope": "per-account",
+      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "source": "https://developers.cloudflare.com/d1/platform/limits/",
+      "sourceText": "Databases per account: 50,000 (Workers Paid) / 10 (Free)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None. The count is unambiguous and is checked against the deployed configs by limb 5.",
+      "note": "THIS is why an app's own backend is OPT-IN rather than the default ([ADR 020]). platform_db is one of the ten, so the portfolio can stand up NINE per-app databases on Free before the eleventh app is refused — and the brick's `{{app_id}}_db` means every backend stamp spends one."
+    },
+    {
+      "id": "d1.maxDatabaseSize",
+      "value": 524288000,
+      "paidValue": 10737418240,
+      "unit": "bytes",
+      "scope": "per-database",
+      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "source": "https://developers.cloudflare.com/d1/platform/limits/",
+      "sourceText": "Maximum database size: 10 GB (Workers Paid) / 500 MB (Free)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None in the number. What IS unresolved is whether deleting rows RECLAIMS the space it counts — `cloudflare/workerd#1618` reports it does not, and the limits and pricing pages are both silent. That is [4]B-7's reclamation drill, not this row's business; recorded here so nobody derives a retention rule from this number believing deletion moves it.",
+      "note": "500 MB × 10^6 is decimal, not 2^29. Recorded in BYTES so the comparison is exact; Cloudflare writes '500 MB' and this file takes the binary reading (500 × 1024 × 1024 = 524,288,000) deliberately, because it is the SMALLER of the two candidate values and a ceiling read too generously is a ceiling that does not bind."
+    },
+    {
+      "id": "d1.storagePerAccount",
+      "value": 5368709120,
+      "paidValue": 1099511627776,
+      "unit": "bytes",
+      "scope": "per-account",
+      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "source": "https://developers.cloudflare.com/d1/platform/limits/",
+      "sourceText": "Maximum storage per account: 1 TB (Workers Paid) / 5 GB (Free)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None.",
+      "note": "🔴 THIS IS THE CEILING THAT BINDS FIRST AT SCALE, and it is the arithmetic B-7 turns on. 5 GB across the whole account divided by a 50-app portfolio is ~100 MB per database — FIVE TIMES TIGHTER than the 500 MB per-database limit above. So splitting `events` onto its own database protects the per-database ceiling while doing nothing at all for this one; only a retention rule bounds this. That is exactly why the owner's 2026-07-27 decision was BOTH, and neither substitutes for the other."
+    },
+    {
+      "id": "d1.maxBoundParametersPerQuery",
+      "value": 100,
+      "paidValue": 100,
+      "unit": "parameters",
+      "scope": "per-query",
+      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "source": "https://developers.cloudflare.com/d1/platform/limits/",
+      "sourceText": "Maximum bound parameters per query: 100",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None. Stated once, with no plan split.",
+      "note": "The widest prepared statement in this repo binds 14 (`INSERT INTO events`, 14 columns), so there is 7× headroom. Recorded because the next hand-written multi-row `VALUES (?,?),(?,?)` INSERT is where this one bites, and it bites as a runtime error on a route that was passing."
+    },
+    {
+      "id": "kv.readsPerDay",
+      "value": 100000,
+      "paidValue": null,
+      "unit": "reads",
+      "scope": "per-account-per-day",
+      "surfaces": ["CONFIG_KV", "JWKS_CACHE"],
+      "source": "https://developers.cloudflare.com/kv/platform/limits/",
+      "sourceText": "Reads: 100,000 reads per day (Free) / Unlimited (Paid)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None in the number. `paidValue: null` here means UNLIMITED on paid, which is what the page says — it does not mean unsourced; a row is only treated as unsourced when `value` itself is null.",
+      "note": "Shared by EVERY app's launch path (config resolution) and every authenticated request (the JWKS warm cache). The 300s edge cache on GET /config/:app is what keeps this off the floor — but the query string is part of the cache key, so `?cb=<random>` misses deliberately and unboundedly. CONFIG_CEILING_LIMITER is the bound on that."
+    },
+    {
+      "id": "kv.writesPerDay",
+      "value": 1000,
+      "paidValue": null,
+      "unit": "writes",
+      "scope": "per-account-per-day",
+      "surfaces": ["CONFIG_KV", "JWKS_CACHE"],
+      "source": "https://developers.cloudflare.com/kv/platform/limits/",
+      "sourceText": "Writes to different keys: 1,000 writes per day (Free) / Unlimited (Paid)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None.",
+      "note": "🔴 THE TIGHT ONE, AND THE ONE A CACHE WARMER CAN EXHAUST. A JWKS cache that re-put on every miss rather than on every expiry would spend this in minutes under cold-isolate churn. JWKS_TTL_SECONDS is derived from this row for exactly that reason: at one write per TTL expiry, 600s gives at most 144 writes/day per namespace."
+    },
+    {
+      "id": "kv.namespacesPerAccount",
+      "value": 1000,
+      "paidValue": 1000,
+      "unit": "namespaces",
+      "scope": "per-account",
+      "surfaces": ["CONFIG_KV", "JWKS_CACHE"],
+      "source": "https://developers.cloudflare.com/kv/platform/limits/",
+      "sourceText": "Namespaces per account: 1,000 (Free and Paid)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None.",
+      "note": "Not a real constraint at this portfolio's scale — recorded so that the SHARED-namespace design (one CONFIG_KV keyed `config:<app>`, one JWKS_CACHE) is a deliberate choice rather than a workaround for a limit nobody checked. The reason for sharing is operational, not quota-driven."
+    },
+    {
+      "id": "workers.cronTriggersPerAccount",
+      "value": 5,
+      "paidValue": 250,
+      "unit": "triggers",
+      "scope": "per-account",
+      "surfaces": ["triggers.crons"],
+      "source": "https://developers.cloudflare.com/workers/platform/limits/",
+      "sourceText": "Cron Triggers per account: 5 (Free) / 250 (Paid)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None.",
+      "note": "🔴 THE REASON [4]B-11 IS 'ONE CRON FOR THE PORTFOLIO'. Five triggers account-wide cannot be one-per-app at 50 apps; it cannot even be one-per-app at six. The consolidated 06:00 UTC scheduler with a per-app fan-out is not a tidiness preference, it is this number. Limb 5 counts the crons across every wrangler config in the repo, brick template included, so a stamped app that adds its own is caught at the stamp rather than at the account."
+    },
+    {
+      "id": "workers.requestsPerDay",
+      "value": 100000,
+      "paidValue": null,
+      "unit": "requests",
+      "scope": "per-account-per-day",
+      "surfaces": ["triggers.crons"],
+      "source": "https://developers.cloudflare.com/workers/platform/limits/",
+      "sourceText": "Accounts on the Workers Free plan have a daily request limit of 100,000 requests, resetting at midnight UTC. When a Worker exceeds this limit, Cloudflare returns Error 1027.",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None in the number. What the page does NOT settle is whether a scheduled (cron) invocation counts against it; it speaks of 'requests'. Treated as counting, because 2 invocations/day is noise either way and assuming otherwise would be an unsourced assumption in the expensive direction.",
+      "note": "The whole-portfolio ceiling every unauthenticated route shares. EVENTS_CEILING_LIMITER and CONFIG_CEILING_LIMITER exist because of this row: they are BURST bounds per (colo, asn), not accounting, so they narrow the funnel without ever proving this number is respected."
+    },
+    {
+      "id": "workers.maxRequestBodySize",
+      "value": 104857600,
+      "paidValue": 104857600,
+      "unit": "bytes",
+      "scope": "per-request",
+      "surfaces": [],
+      "source": "https://developers.cloudflare.com/workers/platform/limits/",
+      "sourceText": "Request body size limits depend on your Cloudflare account plan, not your Workers plan. … Free: 100 MB … Requests exceeding these limits return a 413 Request entity too large error.",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None in the number. Note the page's own qualifier: this one tracks the CLOUDFLARE ZONE plan, not the Workers plan — the only ceiling in this file that does. Both are Free here, so the value is the same either way, but an upgrade of one does not move it.",
+      "note": "The OUTER bound on MAX_EVENTS_BODY_BYTES and MAX_CONSENT_BODY_BYTES. It is enormous relative to both (100 MB against 256 KiB), and that is the point: the edge would happily hand this Worker a 100 MB body, so the route's own byte ceiling is the only thing between an isolate and 100 MB of work it has already paid for. `surfaces: []` deliberately — this bounds the REQUEST, not any bound resource, so it contributes nothing to limb 2's coverage and must not appear to."
+    },
+    {
+      "id": "workers.subrequestsToCloudflareServices",
+      "value": 1000,
+      "paidValue": 10000,
+      "unit": "subrequests",
+      "scope": "per-invocation",
+      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB", "CONFIG_KV", "JWKS_CACHE"],
+      "source": "https://developers.cloudflare.com/workers/platform/limits/",
+      "sourceText": "Workers on the free plan remain limited to 50 external subrequests and 1,000 subrequests to Cloudflare services per invocation.",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None in the number, but see the note — this row is here to be DISTINGUISHED from d1.queriesPerInvocation, not to be derived from.",
+      "note": "⚠️ DO NOT DERIVE A D1 CAP FROM THIS. A D1 query IS a Cloudflare-service subrequest, so both ceilings apply and the SMALLER one binds: 50, not 1,000. Citing the 1,000 to justify a batch of 100 has been the wrong answer twice in this corpus, which is why the two rows sit next to each other with this sentence between them."
+    },
+    {
+      "id": "workers.externalSubrequests",
+      "value": 50,
+      "paidValue": 10000,
+      "unit": "subrequests",
+      "scope": "per-invocation",
+      "surfaces": ["triggers.crons"],
+      "source": "https://developers.cloudflare.com/workers/platform/limits/",
+      "sourceText": "Subrequests: 50/request (Free) / 10,000 (up to 10M) (Paid)",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None.",
+      "note": "Binds the nightly scheduler's Supabase keep-alive fan-out: every project URL in SUPABASE_KEEPALIVE_URLS is one external `fetch`. At one identity project today this is nowhere near the limit; at 50 it would be the ceiling that stops the fan-out, not D1."
+    },
+    {
+      "id": "ratelimit.allowedPeriods",
+      "value": null,
+      "paidValue": null,
+      "unit": "seconds",
+      "scope": "per-binding",
+      "allowedValues": [10, 60],
+      "surfaces": ["EVENTS_LIMITER", "EVENTS_CEILING_LIMITER", "CONFIG_CEILING_LIMITER"],
+      "source": "https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/",
+      "sourceText": "Must be either 10 or 60 [seconds].",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "None — this is an ENUMERATION, not a magnitude, which is why `value` is null and `allowedValues` carries the constraint. Limb 5 checks every deployed `simple.period` against it. A `period: 30` deploys and then behaves in a way nobody predicted.",
+      "note": "The set is the whole constraint. Cloudflare documents NO maximum on `limit` itself, so the three limiter magnitudes in services/platform/wrangler.jsonc (120/600/1200) are engineering choices reasoned in that file, NOT derivations from a published ceiling — and this register deliberately does not pretend otherwise."
+    },
+    {
+      "id": "ratelimit.accountingAccuracy",
+      "value": null,
+      "paidValue": null,
+      "unit": "n/a",
+      "scope": "per-binding",
+      "surfaces": ["EVENTS_LIMITER", "EVENTS_CEILING_LIMITER", "CONFIG_CEILING_LIMITER"],
+      "source": "https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/",
+      "sourceText": "permissive, eventually consistent, and intentionally designed to not be used as an accurate accounting system … For each unique key you pass to your rate limiting binding, there is a unique limit per Cloudflare location.",
+      "verifiedOn": "2026-08-01",
+      "ambiguity": "UNVERIFIED BY CONSTRUCTION and it will stay that way — the vendor states there is no accurate number to have. `value: null` is correct here and is not a gap to be filled in later.",
+      "note": "🔴 RECORDED AS A CEILING BECAUSE IT BOUNDS WHAT THE LIMITERS CAN CLAIM, not because it is a magnitude. The limit is PER CLOUDFLARE LOCATION, so a 600/min ceiling is 600/min at EACH colo — the account-wide daily budget (workers.requestsPerDay, d1.storagePerAccount) is NOT protected by any limiter here and needs the separate aggregate guard ([11]E-2). Anything that describes these three bindings as enforcing an account-wide budget is wrong, and this row is the citation for saying so."
+    }
+  ],
+
+  "batchCallSites": {
+    "_why": [
+      "A `.batch([...])` is the ONE construct in this codebase that turns a single handler into N",
+      "queries — so it is the exact shape d1.queriesPerInvocation binds, and the only place the",
+      "worst-case reading of that row's ambiguity can actually bite. Every call site the scan finds",
+      "must appear here with either a `boundedBy` constant or an `unboundedReason` that PRINTS.",
+      "",
+      "DERIVED, NOT DECLARED: the guard globs the call sites out of services/*/src/ and fails when it",
+      "finds one this block does not name, AND when this block names one the glob cannot find. A stale",
+      "entry is the same defect as a missing one — it makes the accounting look complete."
+    ],
+    "sites": [
+      {
+        "file": "services/platform/src/routes/events.ts",
+        "boundedBy": "MAX_EVENTS_PER_BATCH",
+        "note": "One INSERT per well-formed event. This is the call site the 100 → 50 correction was about."
+      },
+      {
+        "file": "services/subly-api/src/routes/budget.ts",
+        "boundedBy": "MAX_CATEGORIES",
+        "note": "One DELETE plus one INSERT per category, deliberately in ONE batch so the replace is atomic. The bound is MAX_CATEGORIES + 1, and it currently exceeds the ceiling — see the `@ceiling-exceeds` declaration at the constant."
+      },
+      {
+        "file": "services/subly-api/src/routes/webhooks.ts",
+        "boundedBy": "MAX_ENTITLEMENT_IDS",
+        "note": "One UPSERT per entitlement id on a validated RevenueCat event."
+      },
+      {
+        "file": "services/platform/src/scheduled.ts",
+        "unboundedReason": "The heartbeat writes ONE row per cron TARGET, and the target list is `appTargets()` — a compiled-in array in this repo, not caller input, so its size is a source edit and is visible in review. It is nonetheless unbounded in the arithmetic sense: at 50 apps this batch is 50 statements and crosses the Free ceiling under the worst-case reading. [4]B-11 (increment 9) is where the job/target set stops being a hardcoded array, and the chunking belongs with it rather than here, where it would be a second uncoordinated fan-out policy."
+      },
+      {
+        "file": "services/platform/src/renewals.ts",
+        "unboundedReason": "🔴 GENUINELY UNBOUNDED BY DATA, AND THE WORST OF THE FIVE. `ops` grows with the number of subscriptions due today PLUS one payment row per missed billing crossing, so a single app with a few hundred due renewals produces a batch far past 50 with no constant anywhere to annotate. It has never fired because Subly's row count is tiny. Chunking it is [4]B-11's increment (the fan-out already lives there) and must not be bolted on here: a retry/partial-failure policy invented at this call site would be the second one, and the cron's failure semantics are that increment's subject. Recorded, dated 2026-08-01, and printed on every run so it cannot go quiet again."
+      }
+    ]
+  },
+
+  "configCeilings": {
+    "_why": [
+      "Limb 5's inputs. Each names the ceiling row it compares against and the thing it counts across",
+      "every wrangler config in the repo — services/*/wrangler.jsonc AND the brick's service template,",
+      "because the brick is what multiplies any of these by the number of apps. assert-clone-contract",
+      "only ever inspects the throwaway CI probe stamp, which is exactly how a per-app R2 bucket stayed",
+      "live from 2026-07-17 with every guard green."
+    ],
+    "checks": [
+      {
+        "id": "crons",
+        "ceiling": "workers.cronTriggersPerAccount",
+        "counts": "every entry of `triggers.crons`, summed across all configs",
+        "relation": "lte"
+      },
+      {
+        "id": "d1Databases",
+        "ceiling": "d1.databasesPerAccount",
+        "counts": "distinct `d1_databases[].database_name`, across all configs",
+        "relation": "lte"
+      },
+      {
+        "id": "kvNamespaces",
+        "ceiling": "kv.namespacesPerAccount",
+        "counts": "distinct `kv_namespaces[].id`, across all configs",
+        "relation": "lte"
+      },
+      {
+        "id": "ratelimitPeriods",
+        "ceiling": "ratelimit.allowedPeriods",
+        "counts": "every `ratelimits[].simple.period`, across all configs",
+        "relation": "memberOf"
+      }
+    ]
+  }
+}

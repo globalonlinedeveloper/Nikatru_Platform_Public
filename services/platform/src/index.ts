@@ -1,13 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // platform Worker entrypoint. Public config chassis + a consolidated cron.
-//   PUBLIC  GET /v1/health     — deploy verification, no auth.
-//   PUBLIC  GET /config/:app   — CFG-1 runtime config (KV-backed, edge-cached).
-//   CRON    0 6 * * *          — Supabase keep-alive + per-app renewals fan-out.
+//   PUBLIC  GET    /v1/health   — deploy verification, no auth.
+//   PUBLIC  GET    /config/:app — CFG-1 runtime config (KV-backed, edge-cached).
+//   PUBLIC  POST   /v1/events   — first-party analytics ingest (G-12).
+//   PUBLIC  POST   /v1/consent  — the DPDP consent artifact.
+//   AUTHED  DELETE /v1/account  — erasure ([4]B-5). ES256/JWKS only.
+//   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
 import { corsMiddleware } from './middleware/cors';
+import { platformAuth } from './middleware/auth';
+import account from './routes/account';
 import config from './routes/config';
 import events from './routes/events';
 import { scheduled } from './scheduled';
@@ -41,6 +46,19 @@ app.route('/config', config);
 // Unauthenticated by design — the events are pseudonymous and the most valuable
 // ones (first_launch, paywall_viewed) happen before any login exists.
 app.route('/v1', events);
+
+// AUTHENTICATED: erasure ([4]B-5). The ONLY route on this Worker behind
+// `platformAuth`, and the reason that middleware is not a dead file.
+//
+// ⚠️ THE `use` MUST BE PATH-SCOPED, NOT `'*'`. A global auth middleware here
+// would put a bearer-token requirement in front of GET /config/:app and
+// POST /v1/events — the two routes that are unauthenticated BY DESIGN, because
+// config resolution happens on every app's launch path and the most valuable
+// analytics events (first_launch, paywall_viewed) happen before any login
+// exists. Mounting order is the whole difference between "the shared server can
+// authenticate" and "every app is locked out of its own config".
+app.use('/v1/account', platformAuth);
+app.route('/v1', account);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {

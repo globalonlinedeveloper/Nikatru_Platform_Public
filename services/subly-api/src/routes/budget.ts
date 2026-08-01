@@ -41,8 +41,14 @@ interface CategoryRow {
 // problem instead of a 500 plus an empty table.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Enough headroom for any real budget; low enough to bound one batch. */
+/**
+ * Enough headroom for any real budget; low enough to bound one batch.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ * @ceiling-exceeds SURFACED 2026-08-01 BY [4]B-6, NOT INTRODUCED BY IT. The replace below is one DELETE plus one INSERT per category in a single `APP_DB.batch()`, so a full body asks for MAX_CATEGORIES + 1 = 201 statements against D1's documented Free ceiling of 50 queries per Worker invocation — under the per-statement reading of that ceiling's recorded ambiguity. It has never fired: no real budget carries 200 categories, and the atomic-replace shape this cap protects is itself a fix for a worse defect (a non-atomic DELETE-then-INSERT that could empty the table on a duplicate name). Lowering it is a PRODUCT decision about Subly's budget screen, not a platform one, and making it here would silently change a user-facing limit inside a ceilings-register change; chunking the batch instead needs a partial-failure policy that would be the second one in this repo. Routed rather than decided, and printed on every run so it cannot go quiet again.
+ */
 const MAX_CATEGORIES = 200;
+/** @ceiling none — one category name's width. An input shape, not a resource. */
 const MAX_NAME_LENGTH = 120;
 
 type ValidatedCategory = { name: string; cap: number };

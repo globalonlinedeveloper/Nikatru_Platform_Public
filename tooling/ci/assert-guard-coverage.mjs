@@ -51,6 +51,18 @@
 // the wrong resolution here is SILENT: a floor set too low guards nothing and
 // still prints ok.
 //
+// 🔴 IT COLLIDED A FOURTH TIME WHILE THIS VERY FIX WAS IN REVIEW. PR #115 landed
+// mid-flight carrying the fourth ratchet — 43/38/1108, with a comment of its own
+// noting it was "the fourth consecutive merge, the fourth number neither branch
+// could have predicted". Merging main in produced a conflict on exactly these
+// three lines for the fourth time in one day. The resolution this time was not a
+// re-measurement: the numbers were gone, #115's whole change to this file WAS
+// the ratchet, and the branch that added a guard and a test file was absorbed by
+// running the guard once — `+ ceiling-budget.test.mjs (34)`, `↑ guards.test.mjs
+// 211 → 217`, identity 45 == 45. No hand edit, no number, no third occurrence of
+// the judgement call that had to be got right from memory. That is the proof the
+// rest of this header is arguing for, and it arrived unprompted.
+//
 // The header used to record an honest limitation: "nothing but a directory
 // listing can derive a directory listing's size". That is true of an ABSOLUTE
 // COUNT, so this file no longer tries to derive one. It derives the

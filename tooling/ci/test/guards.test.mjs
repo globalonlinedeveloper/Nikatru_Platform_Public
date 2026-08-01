@@ -752,6 +752,85 @@ describe('assert-lockfile-discipline', () => {
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🔴 THE HOLE THIS GUARD SHIPPED WITH — mutation-proven on a scratch COPY of
+  // the real tree, 2026-08-01, SIX mutations, every restore re-verified green:
+  //
+  //   ML1 the root pnpm-lock.yaml deleted        -> caught: "and no pnpm-lock.yaml"
+  //   ML2 root packageManager pnpm -> npm        -> caught: "and no package-lock.json"
+  //   ML3 a workflow runs a bare `pnpm install`  -> caught: "--frozen-lockfile"
+  //   ML4 `pnpm install --frozen-lockfile`       -> correctly SILENT (no false positive)
+  //   ML5 a workflow runs a bare `yarn install`  -> caught: "--immutable"
+  //   ML6 services/platform loses its lockfile   -> caught (the original limb still works)
+  //
+  // And the RED it recorded on the tree as it stood: this repo pins
+  // `"packageManager": "pnpm@9.15.0"` at the root with a pnpm-workspace.yaml,
+  // `pnpm install` there writes a 1,030-line pnpm-lock.yaml — and that file was
+  // NEVER COMMITTED, while this guard printed "3 node unit(s) locked" and exited
+  // 0. Two independent reasons: the unit scan globbed services/packages/sites
+  // and never considered the ROOT, and the only lockfile name it knew was
+  // `package-lock.json`, which pnpm does not write. F-8's own failure mode,
+  // inside the guard for F-8.
+  const buildRoot = (name, { manager = 'pnpm@9.15.0', lock = 'pnpm-lock.yaml', workflow = null } = {}) => {
+    const files = {
+      '.github/workflows/ci.yml': workflow ?? 'jobs:\n  a:\n    steps:\n      - run: npm ci\n',
+      'package.json': `{"name":"ws","private":true,"packageManager":"${manager}"}\n`,
+    };
+    for (const u of UNITS) {
+      files[`${u}/package.json`] = '{"name":"x"}\n';
+      files[`${u}/package-lock.json`] = '{"lockfileVersion":3}\n';
+    }
+    if (lock) files[lock] = lock.endsWith('.yaml') ? "lockfileVersion: '9.0'\n" : '{"lockfileVersion":3}\n';
+    return fixture(name, files);
+  };
+
+  test('the REPO ROOT is a node unit, and its declared manager decides the lockfile', () => {
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [buildRoot('ld-root-ok')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /repo root included/);
+    assert.match(out, /1 pnpm/);
+  });
+
+  test('FAILS when the root declares pnpm and no pnpm-lock.yaml is committed [ML1]', () => {
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [buildRoot('ld-root-nolock', { lock: null })] });
+    assert.equal(code, 1);
+    assert.match(out, /<repo root>/);
+    assert.match(out, /no pnpm-lock\.yaml/);
+  });
+
+  test('a package-lock.json does NOT satisfy a root that declares pnpm [ML2 inverse]', () => {
+    // The second half of the original hole: one hardcoded filename. A repo with
+    // the WRONG lockfile is exactly as unreproducible as one with none, and it
+    // looks more locked than it is.
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [buildRoot('ld-root-wronglock', { lock: 'package-lock.json' })] });
+    assert.equal(code, 1);
+    assert.match(out, /no pnpm-lock\.yaml/);
+  });
+
+  test('FAILS on a bare `pnpm install` in a workflow [ML3]', () => {
+    const wf = 'jobs:\n  a:\n    steps:\n      - run: pnpm install\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [buildRoot('ld-pnpm-loose', { workflow: wf })] });
+    assert.equal(code, 1);
+    assert.match(out, /--frozen-lockfile/);
+  });
+
+  test('does NOT flag `pnpm install --frozen-lockfile` [ML4]', () => {
+    // An assertion that fires on CORRECT input is worse than none.
+    const wf = 'jobs:\n  a:\n    steps:\n      - run: pnpm install --frozen-lockfile\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [buildRoot('ld-pnpm-frozen', { workflow: wf })] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS on a bare `yarn install`, and accepts `--immutable` [ML5]', () => {
+    const loose = 'jobs:\n  a:\n    steps:\n      - run: yarn install\n';
+    const r1 = run('assert-lockfile-discipline.mjs', { args: [buildRoot('ld-yarn-loose', { workflow: loose })] });
+    assert.equal(r1.code, 1);
+    assert.match(r1.out, /--immutable/);
+    const frozen = 'jobs:\n  a:\n    steps:\n      - run: yarn install --immutable\n';
+    const r2 = run('assert-lockfile-discipline.mjs', { args: [buildRoot('ld-yarn-frozen', { workflow: frozen })] });
+    assert.equal(r2.code, 0, r2.out);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

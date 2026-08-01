@@ -199,6 +199,20 @@ jobs:
       - name: The shared server declares every route and every binding
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-platform-register.mjs
+      # Every free-tier ceiling recorded ONCE with the URL it was read from and
+      # the date it was read, and every hard cap in the Worker source derives
+      # from one. B-6's original criterion was "a ceilings file exists", which an
+      # EMPTY file satisfies — so the criterion is inverted: a number in the
+      # source with no ceiling behind it is the failure.
+      #
+      # It had teeth the day it landed: MAX_EVENTS_PER_BATCH = 100 sat in the
+      # ingest route naming no ceiling, at DOUBLE D1's documented Free limit of
+      # 50 queries per Worker invocation, on the shared database every app in the
+      # portfolio depends on. A limit with no `source` is reported, never
+      # enforced — an invented ceiling fires on CORRECT input. [pipeline B-6, B-7]
+      - name: Every hard cap derives from a sourced free-tier ceiling
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-ceiling-budget.mjs
       # The CORS allowlist is EXACT, so it fails closed and silently — dropping
       # an origin breaks that surface in the browser with nothing logged server
       # side. This guards the deployed config; cors.test.ts guards the behaviour.
