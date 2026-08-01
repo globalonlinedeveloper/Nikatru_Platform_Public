@@ -71,7 +71,19 @@ dependencies:
   flutter_local_notifications: ^17.2.0
   timezone: ^0.9.4
 
-  intl: ^0.19.0
+  # 🔴 [pipeline S-4] THE UPPER BOUND HAD TO WIDEN, and the reason is a workspace
+  # one rather than a Subly one. Every STAMPED app pulls `flutter_localizations`
+  # (gen-l10n drives lib/l10n/*.arb), and that SDK package hard-pins `intl 0.20.2`.
+  # One workspace = ONE resolution, so `^0.19.0` here and 0.20.2 there cannot both
+  # hold: resolving from the repo root with any stamped app present fails with
+  # "because subly depends on intl ^0.19.0, version solving failed" — the whole
+  # tree, not just Subly. Found while fixing the `resolution: workspace` half of
+  # the same time bomb; both had the same fuse (app #2 being committed) and fixing
+  # only one just changes the error message.
+  # Subly's entire intl surface is `NumberFormat('#,##0.00', 'en_US')` in
+  # lib/core/format/currency.dart — unchanged across 0.19 → 0.20 — and the widened
+  # range was verified by resolving, analyzing and testing the tree on 0.20.2.
+  intl: ">=0.19.0 <0.21.0"
   cupertino_icons: ^1.0.8
 
   # Open external URLs (nikatru.com legal pages + company site) on all 6 platforms.

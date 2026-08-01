@@ -107,9 +107,49 @@ jobs:
 // it rather than hardcoding `apps/probe`, so the fixture must supply it too.
 const goodVars = JSON.stringify({ app_id: 'probe', display_name: 'Probe' });
 
-function tree({ postGen = goodPostGen, ci = goodCi, platforms = ['web'], vars = goodVars } = {}) {
+// ── [pipeline S-4] the workspace-resolution half ────────────────────────────
+// 🔴 THE TEMPLATE'S COMMENT DELIBERATELY CONTAINS THE WORDS IT DECLARES, exactly
+// as the real one does. That is not decoration: it is the trap. Delete the real
+// line and `includes('resolution: workspace')` is STILL true, so a naive guard
+// stays green on the mutation that kills root resolution for the whole repo.
+// Mutation-proven against the real tree before this fixture existed.
+const goodBrickPubspec = `name: {{app_id.snakeCase()}}
+publish_to: "none"
+# The resolver refuses the whole workspace without \`resolution: workspace\`.
+resolution: workspace
+version: 0.1.0+1
+`;
+
+/** A member pubspec — `declares: false` reproduces the shipped defect. */
+const memberPubspec = (name, declares = true) =>
+  `name: ${name}\npublish_to: "none"\n${declares ? 'resolution: workspace\n' : ''}`;
+
+const goodRootPubspec = `name: nikatru_workspace
+publish_to: none
+
+workspace:
+  - packages/core
+  - apps/probe
+
+dev_dependencies:
+  melos: ^8.2.2
+`;
+
+function tree({
+  postGen = goodPostGen,
+  ci = goodCi,
+  platforms = ['web'],
+  vars = goodVars,
+  brickPubspec = goodBrickPubspec,
+  rootPubspec = goodRootPubspec,
+  members = { 'packages/core': memberPubspec('nikatru_core'), 'apps/probe': memberPubspec('probe') },
+} = {}) {
   const root = join(TMP, `r${seq++}`);
-  for (const [f, body] of Object.entries({ [POST_GEN]: postGen, [CI]: ci, [PROBE_VARS]: vars })) {
+  const files = { [POST_GEN]: postGen, [CI]: ci, [PROBE_VARS]: vars };
+  if (rootPubspec !== null) files['pubspec.yaml'] = rootPubspec;
+  if (brickPubspec !== null) files[`${BRICK_APP}/pubspec.yaml`] = brickPubspec;
+  for (const [dir, body] of Object.entries(members)) files[`${dir}/pubspec.yaml`] = body;
+  for (const [f, body] of Object.entries(files)) {
     const p = join(root, f);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, body);
@@ -336,6 +376,89 @@ jobs:
         ),
     }));
     assert.equal(code, 0, out);
+  });
+
+  // ── 🔴 [pipeline S-4] THE WORKSPACE-RESOLUTION HALF ───────────────────────
+  // Registering the app in the workspace was only half of S-4. The stamped
+  // pubspec never said `resolution: workspace`, and Dart refuses the WHOLE
+  // workspace — every package at once — when a listed member omits it:
+  //
+  //   apps\<id>\pubspec.yaml is included in the workspace from .\pubspec.yaml,
+  //   but does not have `resolution: workspace`.
+  //
+  // Reproduced on the real tree with Dart 3.12.2 before any of this was written:
+  // stamp the probe, `flutter pub get` at the repo ROOT -> exit 1 for the entire
+  // repository, i.e. `melos run gate` dead from the day app #2 is committed. It
+  // was invisible to CI by construction — the lane resolves inside `apps/probe`,
+  // which never consults the root, and workspace_gate has no stamp — so ci.yml
+  // now also resolves from the root. These five cases were each mutation-proven
+  // against the real worktree (restore byte-verified) before being written here.
+  test('passes and SAYS SO when the template and every member declare it', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /the stamped pubspec declares `resolution: workspace`/);
+    assert.match(out, /all 2 workspace member\(s\) declare `resolution: workspace`/);
+  });
+
+  // 🔴 THE PROSE TRAP, and the reason the check is comment-stripped and
+  // column-anchored. The fixture template keeps a COMMENT naming the very line
+  // that was deleted, so `includes('resolution: workspace')` is still true here.
+  // This file has already been fooled by a comment saying "flutter build web",
+  // and its sibling by one saying there is no `r2_buckets`.
+  test('FAILS when the template loses the line but a COMMENT still names it', () => {
+    const mutated = goodBrickPubspec.replace(/^resolution: workspace\n/m, '');
+    assert.ok(mutated.includes('resolution: workspace'), 'the trap must survive the mutation');
+    const { code, out } = run(tree({ brickPubspec: mutated }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not declare `resolution: workspace`, but the stamp adds/);
+  });
+
+  // A `resolution:` nested under another key is a different setting; only the
+  // top-level one is honoured, so an indented match must not count as a declaration.
+  test('FAILS when the declaration is INDENTED under another key', () => {
+    const { code, out } = run(tree({
+      brickPubspec: goodBrickPubspec.replace(/^resolution: workspace$/m, 'flutter:\n  resolution: workspace'),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not declare `resolution: workspace`/);
+  });
+
+  // ── the RECIPROCAL direction. Direction 1 alone passes if the stamper starts
+  //    registering some other path; direction 2 alone passes for as long as
+  //    nothing stamped is committed — which is the state that hid this for the
+  //    whole life of the brick. Both, or it is not covered.
+  test('FAILS when a member on the root workspace list does not declare it', () => {
+    const { code, out } = run(tree({
+      members: { 'packages/core': memberPubspec('nikatru_core'), 'apps/probe': memberPubspec('probe', false) },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`apps\/probe` is on the root `workspace:` list but apps\/probe\/pubspec\.yaml does not declare/);
+    assert.match(out, /WHOLE repository/);
+  });
+
+  test('FAILS when the stamper registers a path that has no pubspec at all', () => {
+    const { code, out } = run(tree({
+      rootPubspec: goodRootPubspec.replace('  - apps/probe', '  - apps/probe\n  - apps/ghost'),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`apps\/ghost` is on the root `workspace:` list but has no apps\/ghost\/pubspec\.yaml/);
+  });
+
+  // ── and the two coverage failures: a scan that reaches nothing must be LOUD.
+  test('FAILS COVERAGE LOST when the template pubspec cannot be read', () => {
+    const { code, out } = run(tree({ brickPubspec: null }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /could not be read, so "the stamped app declares/);
+  });
+
+  test('FAILS COVERAGE LOST when the root workspace list yields no members', () => {
+    const { code, out } = run(tree({
+      rootPubspec: goodRootPubspec.replace('workspace:', 'workspace_disabled:'),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /yielded ZERO `workspace:` members/);
   });
 
   // 🔴 M4 — scoped to the right function. `_appendToAppsJson` keeps the phrase.

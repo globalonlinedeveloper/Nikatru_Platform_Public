@@ -93,15 +93,25 @@ const TESTS = join(CI, 'test');
 // only thing that could derive its expected size is the listing itself. What
 // backs them instead is the ci.yml invoked-guard cross-check below, which is a
 // relationship; the numbers are the second line, not the first.
+// Re-measured 2026-08-01 (stage 3 · THE STAMPER: S-4's workspace-resolution
+// limb, S-6's cron limb, S-12r's provisioner coverage): 41 guards, 36 test
+// files, 1022 test declarations. THE GUARD COUNT IS UNCHANGED AND THAT IS
+// CORRECT — S-4's and S-6's limbs EXTENDED assert-stamp-platforms.mjs and
+// assert-clone-contract.mjs rather than adding scanners, and S-12r's subject
+// (provision-backend.mjs) is not a guard at all: it lives in tooling/scripts and
+// is covered through COVERED_SCRIPTS below. Only the file and declaration floors
+// move, and both keep their headroom — 34 against 36, and 980 against 1022 —
+// because a floor pinned AT the measurement goes red on the next honest merge
+// and teaches everyone to raise floors reflexively.
 const MIN_GUARDS = 39;
-const MIN_TEST_FILES = 33;
+const MIN_TEST_FILES = 34;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 950;
+const MIN_TEST_CASES = 980;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing
@@ -119,6 +129,28 @@ const NOT_A_SCANNER = new Map([
   [
     'record-deployment.mjs',
     'writes a GitHub Deployment record. It performs an action rather than scanning anything, so there is no scope for it to silently cover less.',
+  ],
+]);
+
+/** [pipeline S-12r] EXECUTABLE PATHS OUTSIDE tooling/ci THAT STILL NEED A
+ *  NEGATIVE TEST — named individually, never globbed.
+ *
+ *  Why named: this guard's whole subject set is "the .mjs files in tooling/ci",
+ *  and widening it to `tooling/**` would sweep in the release scripts, whose
+ *  coverage story is different (they are dry-run exercised in ci.yml, and their
+ *  tests are already here). A glob would also silently acquire new subjects,
+ *  which is how a list stops being reasoned. Adding to this map should feel as
+ *  expensive as adding to NOT_A_SCANNER above, and for the same reason.
+ *
+ *  Why this entry: `tooling/scripts/provision-backend.mjs` is the ONE command
+ *  the stamp's printed checklist tells the owner to run, and it had neither
+ *  property F-10 requires — `grep -rn provision-backend .github/` returned zero
+ *  and no test named it — purely because it sits one directory away from the set
+ *  this scan reads. That is a filing accident deciding what gets covered. */
+const COVERED_SCRIPTS = new Map([
+  [
+    'tooling/scripts/provision-backend.mjs',
+    "the stamp's checklist names it as the one command that provisions a backend; its config surgery rewrites a uuid in a JSONC file and is scoped so the SHARED PLATFORM_DB binding is never the one rewritten.",
   ],
 ]);
 
@@ -271,6 +303,32 @@ for (const guard of guards) {
   }
 }
 
+// ── [pipeline S-12r] the named non-guard executables ────────────────────────
+// Each must EXIST and be named by an executable line in the suite. The
+// existence half is the self-check: a map entry pointing at a file that has been
+// moved or deleted would otherwise sit here looking like coverage while
+// covering nothing, which is this guard's own failure mode applied to itself.
+let covered = 0;
+for (const [rel, reason] of COVERED_SCRIPTS) {
+  if (!existsSync(join(ROOT, rel))) {
+    problems.push(
+      `COVERAGE LOST — ${rel} is named in COVERED_SCRIPTS but does not exist. Either it moved and ` +
+        'this entry was not updated, or it was deleted and the entry should have gone with it. A map ' +
+        'entry pointing at nothing reports coverage over nothing.',
+    );
+    continue;
+  }
+  const base = rel.split('/').pop();
+  if (!testCorpus.includes(base)) {
+    problems.push(
+      `${rel} — no test file mentions it, though it is required to have one because ${reason} ` +
+        'It has only ever run against valid input, so nothing exercises its failing path.',
+    );
+  } else {
+    covered++;
+  }
+}
+
 if (problems.length) {
   console.error(`✗ guard coverage — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -283,5 +341,6 @@ if (problems.length) {
 
 console.log(
   `ok  guard coverage — ${guards.length} guard(s), all named in ${testFiles.length} test file(s); ` +
-    `${scanners} carry a coverage self-check, ${exempt} exempt with a recorded reason`,
+    `${scanners} carry a coverage self-check, ${exempt} exempt with a recorded reason; ` +
+    `${covered} named non-guard script(s) outside tooling/ci also covered`,
 );
