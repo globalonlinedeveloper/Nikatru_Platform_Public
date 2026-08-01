@@ -1226,6 +1226,9 @@ const SHAPES = [
   /\\b(cfut|cfat|cfk)_[A-Za-z0-9_-]{30,}/,
   /\\bsbp_[A-Za-z0-9]{36,}/,
   /\\bsb_secret_[A-Za-z0-9_-]{20,}/,
+  /\\bpdl_ntfset_[A-Za-z0-9]{20,}/,
+  /\\bpdl_live_apikey_[A-Za-z0-9]{20,}/,
+  /\\bpdl_sdbx_apikey_[A-Za-z0-9]{20,}/,
 ];
 let hit = false;
 for (const f of walk(src)) {
@@ -1274,6 +1277,19 @@ process.exit(0);
         '[[rules]]',
         'id = "nikatru-supabase-secret-key"',
         "regex = '''\\bsb_secret_[A-Za-z0-9_-]{20,}'''",
+        // The money rail's three credential shapes ([pipeline 5]M-1/M-12). The
+        // COUNT here has to match the wrapper's custom canaries: scan-secrets
+        // refuses to run when a rule has no canary, because a rule nobody plants
+        // a secret for is never proven to fire.
+        '[[rules]]',
+        'id = "nikatru-paddle-notification-secret"',
+        "regex = '''\\bpdl_ntfset_[A-Za-z0-9]{20,}'''",
+        '[[rules]]',
+        'id = "nikatru-paddle-live-api-key"',
+        "regex = '''\\bpdl_live_apikey_[A-Za-z0-9]{20,}'''",
+        '[[rules]]',
+        'id = "nikatru-paddle-sandbox-api-key"',
+        "regex = '''\\bpdl_sdbx_apikey_[A-Za-z0-9]{20,}'''",
         '',
       ].join('\n'),
       ...Object.fromEntries(Object.entries(files).map(([k, v]) => [`repo/${k}`, v])),

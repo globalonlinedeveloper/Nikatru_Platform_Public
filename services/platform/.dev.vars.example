@@ -1,3 +1,22 @@
 # Copy to .dev.vars (gitignored) for `wrangler dev`. LOCAL dev secrets only.
-# The platform config endpoint is public (no secrets required). Reserved for
-# future authenticated platform admin routes.
+# The platform config endpoint is public (no secrets required).
+
+# ── THE MONEY RAIL ────────────────────────────────────────────────────────────
+# [pipeline 5]M-1/M-12 · [ADR 004]. POST /v1/money/paddle verifies an HMAC-SHA256
+# over the raw body with Paddle's PER-DESTINATION notification secret.
+#
+# 🔴 OWNER-GATED. This value can only be generated in the Paddle seller console,
+# which requires the seller account — OWNER_QUEUE A-1, PENDING. Until it exists
+# the route answers 503 and CI PRINTS the gap rather than failing the build.
+#
+# Generate: Paddle dashboard -> Developer tools -> Notifications -> your
+# destination -> the secret key. It begins `pdl_ntfset_`.
+# Deploy: `wrangler secret put PADDLE_NOTIFICATION_SECRET` — NEVER as a var in
+# wrangler.jsonc, and never committed anywhere (scan-secrets.mjs refuses it).
+PADDLE_NOTIFICATION_SECRET=
+
+# Which money world THIS local run is. Exactly `live` or `sandbox`. The deployed
+# value lives in wrangler.jsonc `vars` and is `live`; a local run against Paddle's
+# sandbox destination sets `sandbox` HERE so a sandbox notification can never be
+# written with a live provider_environment.
+MONEY_ENVIRONMENT=sandbox

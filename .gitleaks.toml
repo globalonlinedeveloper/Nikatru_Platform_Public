@@ -62,3 +62,43 @@ id = "nikatru-supabase-secret-key"
 description = "Supabase secret key (sb_secret_ prefix)"
 regex = '''\bsb_secret_[A-Za-z0-9_-]{20,}'''
 keywords = ["sb_secret_"]
+
+# ── THE MONEY RAIL — [pipeline 5]M-1/M-12, [ADR 004] ─────────────────────────
+# Added 2026-08-01 with the merchant-of-record webhook. These do not exist yet
+# (OWNER_QUEUE A-1 is pending), and that is exactly when to add the rule: the
+# scanner has to be ready BEFORE the credential does, or the first time anybody
+# handles one is the first time it is unguarded.
+#
+# The webhook destination secret is the highest-value credential this repo will
+# ever touch. It is not a read token — anyone holding it can SIGN a notification,
+# and a correctly signed notification writes the shared entitlements table. A leak
+# is a stranger granting themselves, and anyone else, a paid subscription.
+#
+# ⚠️ THE SANDBOX KEY IS SCANNED TOO, and that is not belt-and-braces: [5]M-12 is
+# about the two worlds never mixing, and a sandbox key committed "because it is
+# only sandbox" is how the habit forms. Prefixes verified against
+# developer.paddle.com on 2026-08-01 (signature-verification ·
+# api-reference/about/authentication · sdks/sandbox).
+#
+# ⚠️ NO RULE FOR THE CLIENT-SIDE TOKEN, deliberately, and for the same reason
+# `sb_publishable_` has none: Paddle's client-side token is PUBLIC by design and
+# ships in the web bundle. A rule for it would fire on every legitimate use,
+# somebody would allowlist it, and the allowlist entry would be a permanent hole.
+
+[[rules]]
+id = "nikatru-paddle-notification-secret"
+description = "Paddle webhook destination secret (pdl_ntfset_ prefix) — signs entitlement writes"
+regex = '''\bpdl_ntfset_[A-Za-z0-9]{20,}'''
+keywords = ["pdl_ntfset_"]
+
+[[rules]]
+id = "nikatru-paddle-live-api-key"
+description = "Paddle LIVE API key (pdl_live_apikey_ prefix)"
+regex = '''\bpdl_live_apikey_[A-Za-z0-9]{20,}'''
+keywords = ["pdl_live_apikey_"]
+
+[[rules]]
+id = "nikatru-paddle-sandbox-api-key"
+description = "Paddle SANDBOX API key (pdl_sdbx_apikey_ prefix) — scanned too, see [5]M-12"
+regex = '''\bpdl_sdbx_apikey_[A-Za-z0-9]{20,}'''
+keywords = ["pdl_sdbx_apikey_"]

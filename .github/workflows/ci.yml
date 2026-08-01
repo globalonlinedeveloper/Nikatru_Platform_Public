@@ -233,6 +233,56 @@ jobs:
       - name: Schema evolution is additive-only
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/check-migrations.mjs
+      # …and the money rail's half of that schema is COMPLETE, which the step
+      # above cannot ask. check-migrations is a DESTRUCTIVE-CHANGE scanner with
+      # no concept of a required column: it passes precisely when nobody has
+      # changed anything, so the way to satisfy it is to leave the schema wrong.
+      #
+      # `entitlements` is the one table in this portfolio whose rows are a
+      # stranger's money, and migrations are additive-only — so every column
+      # missing when the first payment lands is missing FOREVER for that row.
+      # There is no back-fill for a fact the provider only ever sent once, in a
+      # notification we had no column to keep. This asserts the column set, the
+      # verbatim notification store and its exactly-once index, the attribution
+      # tables, and that the revocation-reason enum seeded in SQL is exactly the
+      # set services/platform/src/lib/mor/contract.ts can write — a set that
+      # lives in two places drifts in one of them, and the drift is invisible
+      # until a refund lands. [pipeline 5]M-3, M-2, M-7
+      - name: The entitlement contract is complete before the first payment
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-entitlement-contract.mjs
+      # ONE verifier stands between a merchant of record and the entitlement
+      # table, and the rail reports its own gaps honestly.
+      #
+      # The write enumeration deliberately spans ALL of services/** AND the brick
+      # template, not just the Worker that owns the rail: services/subly-api
+      # upserts the SAME shared table behind a bearer secret and is DEPLOYED, so
+      # a guard scoped to services/platform would print clean standing right next
+      # to it. Every writer must be declared with the gate that protects it.
+      #
+      # It also carries [5]M-14's two-halves split: it FAILS when a piece of the
+      # rail is absent or present-but-UNCALLED, and it PRINTS — never fails — the
+      # owner-gated half (OWNER_QUEUE A-1, the Paddle seller account, and the
+      # destination secret only the owner can generate). Failing on those would
+      # block every CI run on work no agent can do; hiding them would make
+      # "finished, waiting on one signup" indistinguishable from "nothing built",
+      # which is the exact defect M-14 was rewritten to fix.
+      # [pipeline 5]M-1, M-14 · [ADR 004] · [ADR 020]:18
+      - name: One verifier stands between a provider and the entitlement table
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-mor-adapters.mjs
+      # Sandbox money cannot grant a production unlock — enforced at the CONFIG
+      # layer, because the original criterion asked for an input nobody can
+      # construct (sandbox and live credentials are disjoint, so a sandbox
+      # notification fails the signature check first and asserts nothing the step
+      # above does not). Every case here is a value somebody can type into a
+      # file: a sandbox money environment in the deployed config, a sandbox base
+      # URL or API-key prefix anywhere in it, the destination secret committed as
+      # a var in this PUBLIC repository, or a resolver that quietly defaults
+      # instead of refusing. [pipeline 5]M-12
+      - name: Sandbox money cannot grant a production unlock
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-money-config.mjs
       # A Worker whose D1 binding still holds the brick's all-zeros placeholder
       # deploys clean and reaches production pointing at nothing — and
       # `wrangler deploy --dry-run` PASSES on it, because a dry run never

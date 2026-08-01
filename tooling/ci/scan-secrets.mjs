@@ -91,6 +91,25 @@ const CANARIES = [
     file: 'sb-sec.env',
     body: `SUPABASE_SECRET_KEY=${'sb'}${U}${'secret'}${U}${'Vt5'.repeat(10)}`,
   },
+  // ── the money rail's credentials ([pipeline 5]M-1/M-12, [ADR 004]) ────────
+  // The destination secret is the highest-value credential this repo will ever
+  // touch: holding it means being able to SIGN a notification, and a correctly
+  // signed notification writes the shared entitlements table.
+  {
+    rule: 'nikatru-paddle-notification-secret',
+    file: 'paddle-ntf.env',
+    body: `PADDLE_NOTIFICATION_SECRET=${'pdl'}${U}${'ntfset'}${U}${'Wq2'.repeat(10)}`,
+  },
+  {
+    rule: 'nikatru-paddle-live-api-key',
+    file: 'paddle-live.env',
+    body: `PADDLE_API_KEY=${'pdl'}${U}${'live'}${U}${'apikey'}${U}${'Zr8'.repeat(10)}`,
+  },
+  {
+    rule: 'nikatru-paddle-sandbox-api-key',
+    file: 'paddle-sbx.env',
+    body: `PADDLE_API_KEY=${'pdl'}${U}${'sdbx'}${U}${'apikey'}${U}${'Jm4'.repeat(10)}`,
+  },
 ];
 
 /** TESTABILITY SEAM, and the only reason it exists: the behaviour that matters
