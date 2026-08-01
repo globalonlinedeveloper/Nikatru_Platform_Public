@@ -232,6 +232,32 @@ function unsourced(register, channelId, block, file) {
   return `${register} storeMetadataContract.perChannel["${channelId}"].${block}["${file}"] declares a numeric limit with NO \`source\`. An invented limit fires on CORRECT input — a made-up "120 characters or fewer" once rejected this repo's own fixture at 129 — so this guard will not enforce a number nobody sourced, and will not let the register pretend to constrain a field it does not. Add the URL and the date, or remove the limit.`;
 }
 
+/** Unicode CODE POINTS of the trimmed text.
+ *
+ *  🔴 NOT `.length`, WHICH IS UTF-16 UNITS. A correct limit counted the wrong
+ *  way fires on correct input exactly like an invented one: a 30-character app
+ *  name made of astral characters (emoji, many CJK extension and historic
+ *  scripts) scores 60 under `.length` and would be rejected at a limit both
+ *  Apple and Google would accept. Neither publishes the counting RULE — Google
+ *  says only that "Character limits apply to both full-width and half-width
+ *  characters" — so code points are the closest defensible reading; a byte
+ *  count would reject correct UTF-8 prose in the other direction.
+ *
+ *  Trimmed, because the trailing newline every one of these files ends with is
+ *  a text-file convention, not a character of the listing — counting it would
+ *  reject a field sitting exactly on its limit. */
+const charCount = (text) => [...text.trim()].length;
+
+/** How many field limits were actually MEASURED. A contract that names files the
+ *  trees do not carry would report every field within its limit by measuring
+ *  none — see the self-check after the loop.
+ *  `limitProblems` gates that self-check: when a limit was skipped because it is
+ *  UNSOURCED, the guard has already said so, and firing COVERAGE LOST on top
+ *  would exit early and MASK the specific message. A backstop that hides the
+ *  diagnosis it was meant to back up is worse than no backstop. */
+let limitsChecked = 0;
+let limitProblems = 0;
+
 for (const { row, app, dir } of expected) {
   const extraFiles = (contract.perChannel?.[row.id]?.additionalFiles ?? []).filter((f) => typeof f === 'string');
   const maxLines = contract.perChannel?.[row.id]?.maxLines ?? {};
@@ -285,8 +311,10 @@ for (const { row, app, dir } of expected) {
     const limit = maxLines[rel];
     if (limit && Number.isInteger(limit.max)) {
       if (typeof limit.source !== 'string' || limit.source.trim() === '') {
+        limitProblems++;
         problems.push(unsourced(REGISTER, row.id, 'maxLines', rel));
       } else {
+        limitsChecked++;
         const entries = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
         if (entries.length > limit.max) {
           problems.push(`${p} has ${entries.length} entries and the limit is ${limit.max}. Source: ${limit.source}`);
@@ -301,12 +329,11 @@ for (const { row, app, dir } of expected) {
     const chars = maxChars[rel];
     if (chars && (Number.isInteger(chars.max) || Number.isInteger(chars.min))) {
       if (typeof chars.source !== 'string' || chars.source.trim() === '') {
+        limitProblems++;
         problems.push(unsourced(REGISTER, row.id, 'maxChars', rel));
       } else {
-        // Trimmed, because the trailing newline every one of these files ends
-        // with is a text-file convention, not a character of the listing. A
-        // guard that counted it would reject a field at exactly the limit.
-        const n = text.trim().length;
+        limitsChecked++;
+        const n = charCount(text);
         if (Number.isInteger(chars.max) && n > chars.max) {
           problems.push(`${p} is ${n} characters and the limit is ${chars.max}. Source: ${chars.source}`);
         }
@@ -339,6 +366,28 @@ if (treesChecked > 0 && filesChecked === 0) {
   coverageLost([
     `${treesChecked} metadata tree(s) exist and ZERO files inside them were read.`,
     'Every field check above ran over an empty set and reported the listings complete.',
+  ]);
+}
+// The same shape for the LIMITS. A `maxChars`/`maxLines` block declared against
+// a tree that EXISTS, with not one comparison run, means the contract's file
+// names have stopped lining up with the trees — and every listing field would
+// then be "within its limit" by never having been measured. Counted only over
+// channels whose tree is actually present, so a deferred channel's declared
+// limits cannot fake coverage for a tree nobody has built.
+const limitsDeclared = expected
+  .filter((e) => isDir(e.dir))
+  .reduce((n, e) => {
+    const per = contract.perChannel?.[e.row.id] ?? {};
+    const count = (o) => Object.keys(o ?? {}).filter((k) => k !== '_why').length;
+    return n + count(per.maxLines) + count(per.maxChars);
+  }, 0);
+if (limitsDeclared > 0 && limitsChecked === 0 && limitProblems === 0) {
+  coverageLost([
+    `${limitsDeclared} field limit(s) are declared for trees that EXIST and NOT ONE was evaluated.`,
+    'Either the contract names files the trees do not carry, or every limit lost its `source` and was',
+    'skipped. Both report every listing field within its limit by never measuring one — and the limit',
+    'that bites hardest (Play and Apple both cap the app name at 30) is derived from apps.json, so it',
+    'is the STAMP this would stop catching, not just the listing.',
   ]);
 }
 if (treesChecked > 0 && Object.keys(derived).filter((k) => k !== '_why').length > 0 && derivedChecked === 0) {
@@ -472,6 +521,6 @@ if (problems.length) {
     `REQUIRED_COVERAGE — ${storeRows.length} store channel(s) × ${apps.length} app(s) = ${expected.length} expected tree(s); ` +
       `${treesChecked} present and complete, ${expected.length - treesChecked} printed as owner-gated gaps`,
   );
-  ok(`${filesChecked} listing field(s) non-empty, ${derivedChecked} of them compared to their spec source, ${identitiesChecked} package-identity field(s) agree`);
+  ok(`${filesChecked} listing field(s) non-empty, ${derivedChecked} of them compared to their spec source, ${limitsChecked} measured against a SOURCED store limit, ${identitiesChecked} package-identity field(s) agree`);
   console.log('\nassert-store-metadata: ok');
 }

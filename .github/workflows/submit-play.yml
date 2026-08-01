@@ -1,0 +1,99 @@
+name: Google Play submission path (dry run)
+
+# [pipeline D-10] limb (i) — "a submission script exists AND RESOLVES TO A STEP
+# IN A WORKFLOW, parsed not grepped". This workflow is the step it resolves to.
+# tooling/channel-register.json's android-play row names this file and this job
+# in its `submission` block, so deleting either is a register that points at
+# nothing rather than an unnoticed loss.
+#
+# 🔴 DISPATCH-ONLY, AND THAT IS THE CORRECT SHAPE WHILE `served: false`.
+# The channel has no publisher account (OWNER_QUEUE A-3) and no upload key, so
+# there is nothing to submit TO and nothing to sign WITH. What this proves on
+# demand is that the path from source to a validated, store-shaped bundle still
+# WALKS — the listing tree is complete and derived from the spec, the .aab
+# actually builds, the package name is the canonical one Play would bind
+# permanently, and the signing posture is the recorded one. That is the whole of
+# D-10's promise: submission #2 costs minutes, not archaeology. Submission #1
+# costs the account, the upload key, and a 14-day tester window.
+#
+# ⚠️ IT RUNS THE REAL THING, NOT A DOUBLE. The dry run is deliberately NOT given
+# --allow-missing-artifact: the job builds the app bundle first, so the script
+# validates a bundle that exists on disk. A dry run that skipped the artifact
+# would report the path healthy while never touching the one output the channel
+# actually accepts — which is precisely the .apk-shaped hole this channel spent
+# months in.
+#
+# Nothing here contacts Google. `--dry-run` has no network path at all, and the
+# script's `--submit` mode refuses with UNVERIFIED rather than guessing at the
+# Play Developer API's endpoints.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+
+jobs:
+  # Same shape and same reason as build-platforms.yml's gate job: this workflow
+  # runs a `flutter build --release`, and a release build from an ungated commit
+  # is [pipeline R-6]'s whole subject. assert-release-provenance.mjs walks the
+  # `needs` graph, so gating once here covers the job below.
+  gate:
+    name: Require ci-gate to have passed
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Require ci-gate to have passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
+
+  dry-run:
+    name: Validate the submission path
+    runs-on: ubuntu-24.04
+    needs: gate
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Build the app bundle
+        working-directory: apps/subly
+        run: flutter build appbundle --release
+      # The credentials do not exist yet — OWNER_QUEUE A-3 creates the Play
+      # Developer account, and a Google Cloud service account is then granted
+      # access in the Play Console — and the script reports their ABSENCE as a
+      # printed gap rather than a failure. They are wired now so that the day
+      # they exist, nothing about this job changes. An unset `secrets` value is
+      # an empty string, which is what the script's presence check reads.
+      #
+      # ⚠️ PLAY_SERVICE_ACCOUNT_JSON is a PRIVATE KEY. The script parses it to
+      # check its shape and never prints any part of it, including in the
+      # failure messages for a malformed value.
+      - name: Dry-run the Google Play submission
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_TRACK: ${{ vars.PLAY_TRACK }}
+        run: node tooling/release/submit-play.mjs --dry-run --app subly
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: subly-android-play-aab
+          path: apps/subly/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 7
+          if-no-files-found: error

@@ -69,7 +69,7 @@
 // Usage:  node tooling/ci/assert-channel-register.mjs [repoRoot]
 // Exit 0 = the register, the apps and the workflows agree. 1 = they do not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -215,6 +215,10 @@ const isPinned = (k) => Object.hasOwn(versions, k) && typeof versions[k] === 'st
 
 const seenIds = new Set();
 const workflowCache = new Map();
+/** [10]D-10 limb (i): how many `submission` blocks were resolved all the way to
+ *  a job that actually runs the named script. Zero, with blocks declared, means
+ *  the resolution stopped reaching them — see the self-check after the loop. */
+let submissionsResolved = 0;
 
 /** Parse a workflow's job names structurally. Comments are stripped first: this
  *  repo has shipped the "matched the prose describing the check" defect twice,
@@ -389,6 +393,71 @@ for (const c of channels) {
     }
   }
 
+  // ── a `submission` block, WHENEVER ONE IS NAMED, actually resolves ────────
+  // 🔴 [10]D-10 limb (i) IS "a submission script exists AND RESOLVES TO A STEP IN
+  // A WORKFLOW, parsed not grepped" — and until this block landed, nothing parsed
+  // it. Both submission blocks in this register asserted that property in their
+  // own `_why` prose while no line of any guard read `submission` at all
+  // (measured 2026-08-01: one grep hit in this file, inside a comment). A
+  // requirement that documents its own enforcement and is not enforced is the
+  // exact shape D-10's replacement acceptance was written to remove — a claim
+  // about a past event that can never re-fail.
+  //
+  // Deferred rows are checked too, for the same reason lanes are: D-5/D-10 build
+  // a channel's path BEFORE its account exists, so the path has to be real while
+  // `served` is still false or the whole exercise proves nothing.
+  //
+  // HAVING a submission block stays optional — three submittable rows legitimately
+  // have none (no account, no work started). Those PRINT, because a submittable
+  // store channel with no scripted path is [10]D-10's open gap and a gap nobody
+  // sees becomes permanent.
+  const sub = c.submission;
+  if (sub !== null && sub !== undefined) {
+    if (typeof sub !== 'object' || Array.isArray(sub)) {
+      problems.push(`${where} has a \`submission\` that is not an object. Every check below reads fields off it and would silently skip.`);
+    } else {
+      const script = sub.script;
+      if (typeof script !== 'string' || script.trim() === '') {
+        problems.push(`${where} declares a \`submission\` with no \`script\`. [10]D-10 limb (i) is precisely "a submission script exists"; a block naming none satisfies nothing.`);
+      } else if (!existsSync(join(ROOT, script))) {
+        problems.push(
+          `${where} names submission script "${script}", which does not exist. The register would keep pointing at a release path somebody deleted, and the first person to find out is the one submitting.`,
+        );
+      }
+      if (typeof sub.workflow !== 'string' || typeof sub.job !== 'string') {
+        problems.push(
+          `${where} declares a \`submission\` with no {workflow, job}. "Resolves to a step in a workflow" is the half of limb (i) that stops a script from existing in a directory nobody runs.`,
+        );
+      } else {
+        const wf = workflow(sub.workflow);
+        if (wf === null) {
+          problems.push(`${where} names submission workflow ${sub.workflow}, which does not exist.`);
+        } else if (!wf.jobs.has(sub.job)) {
+          problems.push(
+            `${where} claims submission job "${sub.job}" in ${sub.workflow}, which declares [${[...wf.jobs.keys()].join(', ')}].`,
+          );
+        } else if (typeof script === 'string' && script.trim() !== '') {
+          // The last link, and the one that makes the other three mean something:
+          // the named JOB must actually RUN the named SCRIPT. Without this a row
+          // can name a real script and a real job that have nothing to do with
+          // each other, and all three checks above pass.
+          const body = (wf.jobs.get(sub.job) ?? []).join('\n');
+          if (!body.includes(script)) {
+            problems.push(
+              `${where} names submission script "${script}" and job "${sub.job}" in ${sub.workflow}, and that job never invokes that script. Both halves exist and they are not connected — which reads as a wired submission path and is not one.`,
+            );
+          } else {
+            submissionsResolved++;
+          }
+        }
+      }
+    }
+  } else if (c.kind === 'store' && c.submittable === true) {
+    prints.push(
+      `NO SUBMISSION PATH: channel "${c.id}" is a submittable store channel with no \`submission\` block — [10]D-10 limb (i) is unbuilt for it. Blocked on OWNER_QUEUE ${c.ownerQueue ?? '(unnamed)'}; printed rather than failed because starting that work is owner-gated.`,
+    );
+  }
+
   // ── what SERVED additionally means ────────────────────────────────────────
   if (c.served === true) {
     if (typeof c.deploymentEnvironment !== 'string' || !c.deploymentEnvironment.includes('{app}')) {
@@ -448,6 +517,42 @@ for (const c of channels) {
       prints.push(`${where} (deferred) needs a pinned ${unpinned.map((k) => `\`${k}\``).join(', ')} and ${VERSIONS} has no such key.`);
     }
   }
+}
+
+// ── the other direction: a release script no row can reach ───────────────────
+// 🔴 THE ASYMMETRY, ONE LEVEL UP. Above, a submittable store row with no
+// `submission` block PRINTS, because BUILDING a submission path is owner-gated
+// work. Here, a script sitting in tooling/release/ that NO row names FAILS,
+// because KEEPING one is not owner-gated — it is the same rule the metadata
+// trees follow, and the same orphan check assert-store-metadata.mjs runs against
+// apps/*/store/.
+//
+// Without this, deleting a row's whole `submission` block is invisible: the row
+// falls back to the deferred PRINT above and the script it abandoned keeps
+// sitting in the release directory looking maintained, wired to nothing, until
+// somebody tries to submit with it.
+//
+// ⚠️ This replaces a COVERAGE-LOST self-check that was written here first and
+// then removed for being UNREACHABLE: every path through the block above pushes
+// a problem, so "blocks declared, none resolved, nothing complained" could not
+// be constructed. An assertion that cannot fail is worse than none — it inflates
+// apparent coverage — so it was re-pointed at something that can.
+const RELEASE_DIR = 'tooling/release';
+if (existsSync(join(ROOT, RELEASE_DIR))) {
+  const declaredScripts = new Set(
+    channels.map((c) => c.submission?.script).filter((s) => typeof s === 'string' && s.trim() !== ''),
+  );
+  for (const entry of readdirSync(join(ROOT, RELEASE_DIR))) {
+    if (!entry.endsWith('.mjs')) continue;
+    const rel = `${RELEASE_DIR}/${entry}`;
+    if (declaredScripts.has(rel)) continue;
+    problems.push(
+      `${rel} is a release script that NO channel row names in its \`submission.script\`. [10]D-10 limb (i) makes the register the one place a submission path is declared; an unreferenced script is a path nobody can reach from the register and nothing keeps working. Declare it on its channel or delete it.`,
+    );
+  }
+}
+if (submissionsResolved > 0) {
+  ok(`${submissionsResolved} submission path(s) resolve to a workflow job that runs the named script [10]D-10 limb (i)`);
 }
 
 // ── 3b. what the lane EMITS vs what the channel ACCEPTS ──────────────────────
