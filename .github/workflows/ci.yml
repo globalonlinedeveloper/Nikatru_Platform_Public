@@ -143,6 +143,15 @@ jobs:
       - name: Every deployable unit is claimed by a lane
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-lane-coverage.mjs
+      # …and the claim is worth what the lane's TRIGGER is worth. deploy-web.yml
+      # filtered on `apps/subly/**` + `packages/**` only, so a dependency bump —
+      # a transitive patch landing in the root pubspec.lock with no source change
+      # — built differently on main and deployed nothing at all. The failure is
+      # an absence: no run, no error, the old bytes still served and the
+      # deployment marker still naming the previous SHA. [pipeline F-9]
+      - name: Path-filtered deploys list every build input
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-deploy-triggers.mjs
       # A commit must resolve the same dependencies twice. `npm install` takes
       # whatever is newest inside a caret range, so the dry-run that "proved" a
       # Worker deploy and the deploy itself resolved independently, minutes apart
