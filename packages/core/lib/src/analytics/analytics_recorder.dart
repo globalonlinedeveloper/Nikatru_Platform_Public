@@ -24,7 +24,8 @@ const int kMaxQueuedEvents = 500;
 /// Nothing is collected until [ConsentPurpose.analytics] is `granted`. Before
 /// that, [log] discards — it does NOT buffer for later replay, because events
 /// collected before consent are events collected without consent no matter when
-/// they are sent.
+/// they are sent. Withdrawal is the mirror image and is [purge]'s job: the
+/// symmetry only holds if what is already queued dies with the grant.
 ///
 /// ## Connectivity
 /// There is deliberately **no connectivity check**. `connectivity_plus` reports
@@ -76,6 +77,11 @@ class AnalyticsRecorder implements Analytics {
   DateTime? _lastActivity;
   bool _flushing = false;
 
+  /// Bumped by [purge]. A flush that was already awaiting its request when the
+  /// user withdrew must not write the queue back to a key the withdrawal just
+  /// deleted — see [flush].
+  int _epoch = 0;
+
   /// Events waiting to be delivered (test/diagnostic view).
   int get queuedCount => _queue.length;
 
@@ -97,6 +103,31 @@ class AnalyticsRecorder implements Analytics {
   Future<void> hydrate() async {
     final KeyValueStore? store = _queueStore;
     if (store == null) return;
+
+    // 🔴 A QUEUE MAY ONLY BE RESTORED UNDER A LIVE GRANT.
+    //
+    // [purge] empties the outbox on withdrawal, but the recorder is normally
+    // REBUILT immediately afterwards — the app invalidates the consent provider
+    // so the new decision becomes visible — and a rebuild that re-read the file
+    // unconditionally would resurrect exactly the events the user just withdrew
+    // consent for. That is the same in-memory-only mistake in a different
+    // costume, and it survives a restart.
+    //
+    // The two non-granted states are NOT the same and must not be collapsed:
+    //   denied  — the user answered no. There is no lawful basis to keep the
+    //             payload, so the persisted copy is deleted here too.
+    //   unknown — we could not tell (never asked, or an unreadable consent
+    //             store). Nothing is loaded, because unknown never permits
+    //             collection, but nothing is DELETED either: destroying a
+    //             legitimate queue because a read failed is not fail-closed,
+    //             it is data loss.
+    final ConsentStatus status = _consent.statusOf(ConsentPurpose.analytics);
+    if (status == ConsentStatus.denied) {
+      await _clearStore();
+      return;
+    }
+    if (status != ConsentStatus.granted) return;
+
     try {
       final String? raw = await store.read(_queueKey);
       if (raw == null || raw.isEmpty) return;
@@ -141,6 +172,7 @@ class AnalyticsRecorder implements Analytics {
       return;
     }
     _flushing = true;
+    final int epoch = _epoch;
     try {
       // Snapshot: events logged during the in-flight request stay queued for
       // the next flush rather than being dropped by a wholesale clear.
@@ -154,6 +186,10 @@ class AnalyticsRecorder implements Analytics {
             batch.map((AnalyticsEvent e) => e.toJson()).toList(growable: false),
       );
       if (r.isOk) {
+        // A withdrawal landed while this request was on the wire. The queue is
+        // already gone and so is the stored key; re-persisting here would put
+        // the outbox file back moments after the user asked for it to go.
+        if (epoch != _epoch) return;
         _removeSent(batch);
         await _persist();
       }
@@ -164,6 +200,28 @@ class AnalyticsRecorder implements Analytics {
     } finally {
       _flushing = false;
     }
+  }
+
+  /// Drop every queued event, in memory AND on disk, and deliver none of them.
+  ///
+  /// 🔴 THIS IS THE WITHDRAWAL PATH, and it is not the same thing as refusing new
+  /// events. [log] shuts the moment consent stops being `granted`, which stops
+  /// COLLECTION — but at that instant the outbox still holds everything gathered
+  /// under the old grant, in memory and persisted, and every one of those events
+  /// would still have been transmitted by the next [flush] or restored by the
+  /// next [hydrate]. A withdrawal that leaves the payload sitting there means the
+  /// user's data is sent AFTER they said stop, which is precisely what DPDP
+  /// §6(3) forbids; "we stopped enqueueing" is not withdrawal.
+  ///
+  /// Deliberately NOT gated on the current consent status: the caller purges
+  /// because a decision was just recorded, and re-deriving that decision here
+  /// would make the drop depend on whichever object happened to observe the
+  /// write first.
+  @override
+  Future<void> purge() async {
+    _epoch++;
+    _queue.clear();
+    await _clearStore();
   }
 
   /// Drop exactly the events that were DELIVERED, wherever they now sit.
@@ -205,6 +263,21 @@ class AnalyticsRecorder implements Analytics {
       );
     } catch (_) {
       // Best-effort durability; the in-memory queue is still authoritative.
+    }
+  }
+
+  /// Remove the persisted outbox entirely, rather than overwriting it with an
+  /// empty list — a withdrawal should leave no trace of a queue, not an emptied
+  /// one.
+  Future<void> _clearStore() async {
+    final KeyValueStore? store = _queueStore;
+    if (store == null) return;
+    try {
+      await store.remove(_queueKey);
+    } catch (_) {
+      // Best-effort. The in-memory queue is gone regardless, so nothing can be
+      // transmitted from this session; and [hydrate] refuses to restore under a
+      // denied decision, so the leftover cannot come back either.
     }
   }
 }

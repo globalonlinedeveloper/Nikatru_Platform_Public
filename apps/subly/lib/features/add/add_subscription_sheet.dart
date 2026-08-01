@@ -48,17 +48,47 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
       cycle: _cycle,
       nextRenewal: DateTime.now().add(const Duration(days: 12)),
     );
-    await ref.read(subscriptionsControllerProvider.notifier).addSubscription(draft);
-    if (mounted) Navigator.of(context).pop();
+    // Resolved BEFORE the await. Reaching through `context` after an async gap
+    // is only safe while the element is still mounted, and the failure branch
+    // below is precisely the case where that is in doubt.
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(subscriptionsControllerProvider.notifier)
+          .addSubscription(draft);
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      // 🔴 THIS FAILURE PATH DID NOT EXIST. `addSubscription` goes through the
+      // repository to the network, so one offline moment threw out of an
+      // unawaited future: nothing caught it, `_saving` was never cleared, and
+      // the button sat disabled on 'Adding…' forever with no message. The only
+      // way out was to swipe the sheet away and retype everything.
+      //
+      // Same surface the sign-in screen uses (ScaffoldMessenger + SnackBar), and
+      // the sheet deliberately STAYS UP so the typed draft survives — a retry
+      // costs one tap, not a re-entry.
+      if (!mounted) return;
+      setState(() => _saving = false);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not add that subscription — check your connection and try again.',
+          ),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
-        constraints:
-            BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.86),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.86,
+        ),
         decoration: const BoxDecoration(
           color: AppColors.bg,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -74,11 +104,16 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: AppColors.line, borderRadius: BorderRadius.circular(4)),
+                    color: AppColors.line,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
-              Text('Add subscription', style: AppText.title.copyWith(fontSize: 22)),
+              Text(
+                'Add subscription',
+                style: AppText.title.copyWith(fontSize: 22),
+              ),
               const SizedBox(height: 14),
               Text('POPULAR', style: AppText.label),
               const SizedBox(height: 9),
@@ -90,37 +125,46 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                 crossAxisSpacing: 9,
                 childAspectRatio: 0.82,
                 children: DemoData.popular
-                    .map((List<String> p) => GestureDetector(
-                          onTap: () => _name.text = p[0],
-                          child: Column(
-                            children: <Widget>[
-                              Expanded(
-                                child: Container(
-                                  width: double.infinity,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(13),
-                                    gradient: const LinearGradient(colors: <Color>[
+                    .map(
+                      (List<String> p) => GestureDetector(
+                        onTap: () => _name.text = p[0],
+                        child: Column(
+                          children: <Widget>[
+                            Expanded(
+                              child: Container(
+                                width: double.infinity,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(13),
+                                  gradient: const LinearGradient(
+                                    colors: <Color>[
                                       Color.fromRGBO(100, 89, 245, 0.13),
                                       Color.fromRGBO(155, 107, 255, 0.13),
-                                    ]),
+                                    ],
                                   ),
-                                  child: Text(p[1],
-                                      style: const TextStyle(
-                                          fontFamily: 'Space Grotesk',
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                          color: AppColors.accent)),
+                                ),
+                                child: Text(
+                                  p[1],
+                                  style: const TextStyle(
+                                    fontFamily: 'Space Grotesk',
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: AppColors.accent,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 5),
-                              Text(p[0],
-                                  style: AppText.muted.copyWith(fontSize: 10),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                        ))
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              p[0],
+                              style: AppText.muted.copyWith(fontSize: 10),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                     .toList(),
               ),
               const SizedBox(height: 16),
@@ -137,10 +181,14 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                       children: <Widget>[
                         Text('PRICE', style: AppText.label),
                         const SizedBox(height: 6),
-                        _input(_price, '9.99',
-                            keyboard:
-                                const TextInputType.numberWithOptions(decimal: true),
-                            fieldKey: E2EKeys.addPrice),
+                        _input(
+                          _price,
+                          '9.99',
+                          keyboard: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          fieldKey: E2EKeys.addPrice,
+                        ),
                       ],
                     ),
                   ),
@@ -166,7 +214,10 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
               const SizedBox(height: 20),
               Row(
                 children: <Widget>[
-                  SoftButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                  SoftButton(
+                    label: 'Cancel',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: GradientButton(
@@ -196,21 +247,30 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
             gradient: sel ? AppColors.brandGradient : null,
             color: sel ? null : AppColors.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: sel ? Colors.transparent : AppColors.line),
+            border: Border.all(
+              color: sel ? Colors.transparent : AppColors.line,
+            ),
           ),
-          child: Text(label,
-              style: TextStyle(
-                  fontFamily: 'Manrope',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: sel ? Colors.white : AppColors.ink)),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Manrope',
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: sel ? Colors.white : AppColors.ink,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _input(TextEditingController c, String hint,
-      {TextInputType keyboard = TextInputType.text, Key? fieldKey}) {
+  Widget _input(
+    TextEditingController c,
+    String hint, {
+    TextInputType keyboard = TextInputType.text,
+    Key? fieldKey,
+  }) {
     return TextField(
       key: fieldKey,
       controller: c,
@@ -220,7 +280,10 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
         hintText: hint,
         filled: true,
         fillColor: AppColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: AppColors.line),
