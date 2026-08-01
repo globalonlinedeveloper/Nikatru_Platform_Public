@@ -75,7 +75,7 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     // Self-check: if the file moves or the parser breaks, every assertion below
     // would range over an empty set and pass vacuously.
     expect(raw).toContain('ratelimits');
-    expect(rl.length).toBeGreaterThanOrEqual(2);
+    expect(rl.length).toBeGreaterThanOrEqual(3);
   });
 
   it('declares the client-keyed FAIRNESS bucket', () => {
@@ -96,7 +96,19 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     expect(e!.simple?.period).toBe(60);
   });
 
-  it('the two limiters have DISTINCT namespace ids, so they do not share a budget', () => {
+  it('declares the ceiling for GET /config/:app, the OTHER public route that does I/O', () => {
+    // routes/config.ts fails OPEN without it, for the same reason and with the
+    // same cost: deleting this entry silently removes the only bound on how many
+    // free-tier KV reads an anonymous caller can spend, because `s-maxage=300`
+    // does not collapse requests that carry a cache-busting query string. No
+    // unit test can see that — they inject the binding themselves.
+    const e = byName.get('CONFIG_CEILING_LIMITER');
+    expect(e, 'CONFIG_CEILING_LIMITER missing — /config has no ceiling again').toBeDefined();
+    expect(e!.simple?.limit).toBe(1200);
+    expect(e!.simple?.period).toBe(60);
+  });
+
+  it('the three limiters have DISTINCT namespace ids, so they do not share a budget', () => {
     const ids = rl.map((e) => String(e.namespace_id));
     expect(new Set(ids).size, `namespace_id collision among ${ids.join(', ')}`).toBe(ids.length);
     for (const id of ids) expect(id, 'namespace_id must be a non-empty string').toMatch(/^\d+$/);

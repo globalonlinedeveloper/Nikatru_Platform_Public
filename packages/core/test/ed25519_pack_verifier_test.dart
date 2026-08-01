@@ -201,8 +201,10 @@ void main() {
         pinnedKeys: key.pinned,
       );
 
-      final Result<ContentPack> r =
-          await loader.loadFrom(await _signedPack(key), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(
+          await _signedPack(key),
+          requireSignature: true,
+          expectPackId: 'lingo');
 
       expect(r.isOk, isTrue,
           reason: 'the whole point: a real pack reaching a real user');
@@ -221,7 +223,8 @@ void main() {
       );
       final Result<ContentPack> r = await loader.loadFrom(
           await _signedPack(key, tamperManifest: true),
-          requireSignature: true);
+          requireSignature: true,
+          expectPackId: 'lingo');
       expect(r.isOk, isFalse);
     });
 
@@ -236,7 +239,8 @@ void main() {
       );
       final Result<ContentPack> r = await loader.loadFrom(
           await _signedPack(key, tamperContent: true),
-          requireSignature: true);
+          requireSignature: true,
+          expectPackId: 'lingo');
       expect(r.isOk, isFalse);
     });
   });

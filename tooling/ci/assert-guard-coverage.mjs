@@ -70,15 +70,17 @@ const TESTS = join(CI, 'test');
 // branches that each ratcheted honestly still produce a wrong floor when merged,
 // because neither one ever saw the other's test files. Merged reality, measured:
 // 40 guards, 34 test files, 871 test declarations.
-const MIN_GUARDS = 38;
-const MIN_TEST_FILES = 32;
+// Re-measured 2026-08-01 (assert-deploy-triggers.mjs landing, corpus triage #30):
+// 41 guards, 35 test files, 907 test declarations.
+const MIN_GUARDS = 39;
+const MIN_TEST_FILES = 33;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 840;
+const MIN_TEST_CASES = 870;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing

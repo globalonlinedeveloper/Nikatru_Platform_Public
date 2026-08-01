@@ -36,6 +36,22 @@ export interface Env {
    */
   EVENTS_CEILING_LIMITER?: RateLimiterBinding;
 
+  /**
+   * The SAME server-derived ceiling, for GET /config/:app — the other route on
+   * this Worker that is unauthenticated by design and does I/O. Its own
+   * namespace so config traffic and analytics traffic cannot exhaust each
+   * other's budget.
+   *
+   * Why the edge cache is not enough on its own: `Cache-Control: s-maxage=300`
+   * only collapses requests that share a cache key, and the query string is part
+   * of that key. `GET /config/subly?cb=<random>` therefore reaches the origin
+   * every time and spends a free-tier KV read every time. (An UNKNOWN app costs
+   * nothing at all now — that answer comes from the compiled-in registry before
+   * any I/O.) Optional, and absence fails OPEN, for the same reason as above:
+   * config resolution is on every app's launch path.
+   */
+  CONFIG_CEILING_LIMITER?: RateLimiterBinding;
+
   // Non-secret vars (wrangler.jsonc vars).
   APP_ID: string;
   SUPABASE_URL: string;

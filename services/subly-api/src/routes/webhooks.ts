@@ -6,7 +6,13 @@
 
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { nowIso, run } from '../lib/d1';
+import { nowIso } from '../lib/d1';
+import {
+  isIdString,
+  isPlainObject,
+  isoFromEpochMs,
+  type Invalid,
+} from '../lib/validate';
 
 const app = new Hono<AppEnv>();
 
@@ -14,6 +20,9 @@ const app = new Hono<AppEnv>();
  * Minimal shape of the RevenueCat webhook body we consume. RevenueCat sends
  * `{ event: {...}, api_version }`. We read the fields we upsert and ignore the
  * rest. See https://www.revenuecat.com/docs/webhooks for the full schema.
+ *
+ * ⚠️ This interface documents the shape; it does NOT enforce it. Types are erased
+ * before the request lands. `validateEvent` below is the enforcement.
  */
 interface RevenueCatEvent {
   event?: {
@@ -78,11 +87,18 @@ const GRACE_TYPES = new Set(['CANCELLATION', 'BILLING_ISSUE']);
 /**
  * Resolve a handled event type to is_active (0/1).
  *
- * `expiresAtMs` is the event's `expiration_at_ms`. A null/absent date on a
- * grace-class event means "no known end" — the same reading /v1/entitlements
- * already applies to a null `expires_at` — so it keeps access rather than
- * silently revoking. A date in the past (the refund shape of CANCELLATION)
+ * `expiresAtMs` is the event's `expiration_at_ms`. An ABSENT date (null /
+ * undefined) on a grace-class event means "no known end" — the same reading
+ * /v1/entitlements applies to a null `expires_at` — so it keeps access rather
+ * than silently revoking. A date in the past (the refund shape of CANCELLATION)
  * revokes immediately.
+ *
+ * An UNREADABLE date is deliberately NOT the absent case: `NaN > nowMs` is
+ * false, so it revokes. That used to be a `Number.isNaN(...) return 1` branch —
+ * i.e. an expiry nobody could decide GRANTED access, the same fail-open that
+ * /v1/entitlements had. `validateEvent` now rejects such an event before this is
+ * reached; removing the branch means the fall-through stays correct instead of
+ * merely unreachable.
  */
 export function resolveIsActive(
   type: string,
@@ -92,7 +108,7 @@ export function resolveIsActive(
   if (ACTIVE_TYPES.has(type)) return 1;
   if (INACTIVE_TYPES.has(type)) return 0;
   if (GRACE_TYPES.has(type)) {
-    if (typeof expiresAtMs !== 'number' || Number.isNaN(expiresAtMs)) return 1;
+    if (expiresAtMs === null || expiresAtMs === undefined) return 1;
     return expiresAtMs > nowMs ? 1 : 0;
   }
   // Unreachable: callers gate on isHandledType first.
@@ -104,6 +120,184 @@ export function isHandledType(type: string): boolean {
   return (
     ACTIVE_TYPES.has(type) || INACTIVE_TYPES.has(type) || GRACE_TYPES.has(type)
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VALIDATION — the body is public input written straight into the SHARED
+// platform_db, so nothing below may reach a bind unchecked. Three concrete holes
+// this closes, all reachable from a merely BUGGY sender:
+//
+//   1. `typeof ev.expiration_at_ms === 'number' ? new Date(...) : null` turned
+//      EVERY non-number expiry — a stringified epoch, `"2026-09-01"`, a nested
+//      object — into `expires_at = NULL`, which /v1/entitlements reads as a
+//      LIFETIME GRANT. An expiry we cannot read must never become "no expiry":
+//      it is rejected, so RevenueCat retries and the row keeps its old value.
+//   2. `Infinity` (which is what `1e400` parses to out of JSON) IS a number, so
+//      it passed that check and `new Date(Infinity).toISOString()` threw a
+//      RangeError with no try/catch above it — a 500 the sender retries forever.
+//   3. `app_user_id` was unshaped. An object or a number went straight into the
+//      PRIMARY KEY of a shared table: D1_TYPE_ERROR (a 500) at best, a row keyed
+//      by something no JWT `sub` can ever match at worst — an entitlement paid
+//      for and permanently unreachable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** RevenueCat app_user_id / entitlement id / product id / store bound. */
+const MAX_ID_LENGTH = 256;
+/** One event carrying more than this is not a shape we recognise. */
+const MAX_ENTITLEMENT_IDS = 50;
+
+/** The checked fields of an event we are going to act on. */
+export interface ValidatedEvent {
+  type: string;
+  userId: string;
+  entitlementIds: string[];
+  productId: string | null;
+  store: string | null;
+  /** Epoch ms, or null for "no known end". Already proven representable. */
+  expiresAtMs: number | null;
+  /** ISO form of [expiresAtMs] — converted once, inside validation. */
+  expiresAt: string | null;
+}
+
+/**
+ * Three outcomes, kept distinct on purpose:
+ *
+ *   · `ok:false`            — malformed. 400, write nothing, let the sender retry.
+ *   · `ok:true, act:false`  — well-formed but nothing to do (unknown user, no
+ *                             entitlement id, an event type we do not handle).
+ *                             200 + ack, write nothing. NEVER a silent revoke.
+ *   · `ok:true, act:true`   — checked values, safe to bind.
+ *
+ * Collapsing the first two is what let a broken payload look like a handled one.
+ */
+export type ValidatedWebhook =
+  | { ok: true; act: true; event: ValidatedEvent }
+  | { ok: true; act: false; reason: string; ignoredType?: string }
+  | Invalid;
+
+export function validateEvent(body: unknown): ValidatedWebhook {
+  if (!isPlainObject(body)) {
+    return { ok: false, detail: 'body must be a JSON object' };
+  }
+  const evRaw = body.event;
+  if (evRaw === undefined || evRaw === null) {
+    return { ok: true, act: false, reason: 'missing event' };
+  }
+  if (!isPlainObject(evRaw)) {
+    return { ok: false, detail: 'event must be a JSON object' };
+  }
+
+  // ── type — CHECKED FIRST, BEFORE ANY OTHER FIELD ───────────────────────────
+  // RevenueCat sends event types we do not consume, and 400ing one of those for
+  // a field we would never read turns an ack-and-ignore into an infinite retry
+  // that shares a delivery queue with the RENEWAL and EXPIRATION events that
+  // actually move money. So: decide whether we care, THEN check what we read.
+  // A non-string `type` matches nothing handled, so it takes the same ack path
+  // rather than a 400 — a retry cannot fix the shape of that field either.
+  const typeRaw = evRaw.type;
+  const type = typeof typeRaw === 'string' ? typeRaw : '';
+  if (!isHandledType(type)) {
+    return { ok: true, act: false, reason: `unhandled event type: ${type}`, ignoredType: type };
+  }
+
+  // ── identity ───────────────────────────────────────────────────────────────
+  // Absent / null / '' is "no user to act on" and is ACKED — indistinguishable
+  // from an event that simply carries no id, and no retry can add one. A
+  // PRESENT but wrong-typed or oversized id is a 400: coercing it would key a
+  // row in the shared platform_db to something no JWT `sub` can ever match, and
+  // an entitlement that is paid for and unreachable is worse than a retry.
+  let userId: string | null = null;
+  for (const key of ['app_user_id', 'original_app_user_id'] as const) {
+    const v = evRaw[key];
+    if (v === undefined || v === null || v === '') continue;
+    if (!isIdString(v, MAX_ID_LENGTH)) {
+      return {
+        ok: false,
+        detail: `event.${key} must be a non-empty string of at most ${MAX_ID_LENGTH} characters`,
+      };
+    }
+    if (userId === null) userId = v;
+  }
+  if (userId === null) {
+    return { ok: true, act: false, reason: 'missing app_user_id' };
+  }
+
+  // ── the paid-through date — the whole money boundary on this side ───────────
+  const expRaw = evRaw.expiration_at_ms;
+  let expiresAtMs: number | null = null;
+  let expiresAt: string | null = null;
+  if (expRaw !== undefined && expRaw !== null) {
+    const iso = isoFromEpochMs(expRaw);
+    if (iso === null) {
+      return {
+        ok: false,
+        detail:
+          'event.expiration_at_ms must be a finite epoch-millisecond number ' +
+          'within the representable date range',
+      };
+    }
+    expiresAtMs = expRaw as number;
+    expiresAt = iso;
+  }
+
+  // ── the rest ───────────────────────────────────────────────────────────────
+  for (const key of ['product_id', 'store'] as const) {
+    const v = evRaw[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== 'string' || v.length > MAX_ID_LENGTH) {
+      return {
+        ok: false,
+        detail: `event.${key} must be a string of at most ${MAX_ID_LENGTH} characters`,
+      };
+    }
+  }
+  const productId = (evRaw.product_id as string | undefined) ?? null;
+  const store = (evRaw.store as string | undefined) ?? null;
+
+  const idsRaw = evRaw.entitlement_ids;
+  const entitlementIds: string[] = [];
+  if (idsRaw !== undefined && idsRaw !== null) {
+    if (!Array.isArray(idsRaw)) {
+      return { ok: false, detail: 'event.entitlement_ids must be an array' };
+    }
+    if (idsRaw.length > MAX_ENTITLEMENT_IDS) {
+      return {
+        ok: false,
+        detail: `event.entitlement_ids has ${idsRaw.length} entries, the maximum is ${MAX_ENTITLEMENT_IDS}`,
+      };
+    }
+    for (let i = 0; i < idsRaw.length; i++) {
+      const id = idsRaw[i] as unknown;
+      if (!isIdString(id, MAX_ID_LENGTH)) {
+        return {
+          ok: false,
+          detail: `event.entitlement_ids[${i}] must be a non-empty string of at most ${MAX_ID_LENGTH} characters`,
+        };
+      }
+      entitlementIds.push(id);
+    }
+  }
+  if (entitlementIds.length === 0) {
+    const single = evRaw.entitlement_id;
+    if (single !== undefined && single !== null) {
+      if (!isIdString(single, MAX_ID_LENGTH)) {
+        return {
+          ok: false,
+          detail: `event.entitlement_id must be a non-empty string of at most ${MAX_ID_LENGTH} characters`,
+        };
+      }
+      entitlementIds.push(single);
+    }
+  }
+  if (entitlementIds.length === 0) {
+    return { ok: true, act: false, reason: 'event has no entitlement id(s)' };
+  }
+
+  return {
+    ok: true,
+    act: true,
+    event: { type, userId, entitlementIds, productId, store, expiresAtMs, expiresAt },
+  };
 }
 
 // POST /revenuecat
@@ -132,49 +326,34 @@ app.post('/revenuecat', async (c) => {
     return c.json({ error: 'unauthorized' }, 401);
   }
 
-  let body: RevenueCatEvent;
+  let body: unknown;
   try {
     body = await c.req.json<RevenueCatEvent>();
   } catch {
     return c.json({ error: 'invalid_json' }, 400);
   }
 
-  const ev = body.event;
-  const userId = ev?.app_user_id ?? ev?.original_app_user_id;
-  if (!ev || !userId) {
-    // Nothing actionable; ack so RevenueCat doesn't retry forever.
-    console.warn('[webhooks/revenuecat] missing event or app_user_id');
-    return c.json({ ok: true });
+  // ── VALIDATE FIRST — nothing below this line may touch a row otherwise ──────
+  const checked = validateEvent(body);
+  if (!checked.ok) {
+    // 400, NOT an ack: the sender should retry with a body we can read, and the
+    // stored entitlement keeps whatever it already said in the meantime.
+    console.warn(`[webhooks/revenuecat] rejecting malformed event: ${checked.detail}`);
+    return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
+  }
+  if (!checked.act) {
+    // Well-formed but nothing to do; ack so RevenueCat doesn't retry forever.
+    console.warn(`[webhooks/revenuecat] ${checked.reason}`);
+    return checked.ignoredType !== undefined
+      ? c.json({ ok: true, ignored: checked.ignoredType })
+      : c.json({ ok: true });
   }
 
   const appId = c.env.APP_ID;
-  const type = ev.type ?? '';
-  // Unknown event types are a NO-OP (ack + ignore) — never silently revoke.
-  if (!isHandledType(type)) {
-    console.warn(`[webhooks/revenuecat] ignoring unhandled event type: ${type}`);
-    return c.json({ ok: true, ignored: type });
-  }
-  const isActive = resolveIsActive(type, ev.expiration_at_ms, Date.now());
-  const expiresAt =
-    typeof ev.expiration_at_ms === 'number'
-      ? new Date(ev.expiration_at_ms).toISOString()
-      : null;
-  const store = ev.store ?? null;
-  const productId = ev.product_id ?? null;
+  const { type, userId, entitlementIds, productId, store, expiresAtMs, expiresAt } =
+    checked.event;
+  const isActive = resolveIsActive(type, expiresAtMs, Date.now());
   const ts = nowIso();
-
-  // An event can carry one or many entitlement ids. Upsert each.
-  const entitlementIds =
-    ev.entitlement_ids && ev.entitlement_ids.length > 0
-      ? ev.entitlement_ids
-      : ev.entitlement_id
-        ? [ev.entitlement_id]
-        : [];
-
-  if (entitlementIds.length === 0) {
-    console.warn('[webhooks/revenuecat] event has no entitlement id(s)');
-    return c.json({ ok: true });
-  }
 
   const stmt = c.env.PLATFORM_DB.prepare(
     `INSERT INTO entitlements

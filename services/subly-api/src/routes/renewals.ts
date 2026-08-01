@@ -15,13 +15,54 @@ function daysBetween(a: string, b: string): number {
   return Math.round(ms / 86_400_000);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// `withinDays` had a FLOOR and no CEILING: `Math.max(0, Math.trunc(Number(raw)))`
+// clamps the bottom and lets the top run to 1e308. The window is then turned into
+// a date — `new Date(today + withinDays * 86_400_000).toISOString()` — and past
+// roughly 1e11 days that Date is Invalid and `.toISOString()` THROWS a RangeError,
+// which index.ts serves as a generic 500. `?withinDays=1e15` is a one-character
+// typo away from a normal request, so this needs no attacker.
+//
+// A bound also has to exist for the query to mean anything: `next_renewal <= ?`
+// with a year-275760 upper bound is "every row this user has", which is not a
+// renewals view.
+//
+// Default (absent or empty) stays 7. Anything present but unusable is a 400 that
+// NAMES the problem rather than a silent coercion to 0 or 7 — a garbage window
+// answered with a plausible-looking list is the same class of quiet wrongness
+// the rest of this change is about.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** ~10 years. Far past any renewal horizon; bounds the date arithmetic. */
+const MAX_WITHIN_DAYS = 3660;
+const DEFAULT_WITHIN_DAYS = 7;
+
 // GET /?withinDays=7
 app.get('/', async (c) => {
   const userId = c.get('userId');
   const withinDaysRaw = c.req.query('withinDays');
-  const withinDays = Number.isFinite(Number(withinDaysRaw))
-    ? Math.max(0, Math.trunc(Number(withinDaysRaw)))
-    : 7;
+
+  let withinDays = DEFAULT_WITHIN_DAYS;
+  if (withinDaysRaw !== undefined && withinDaysRaw !== '') {
+    const n = Number(withinDaysRaw);
+    if (!Number.isFinite(n)) {
+      return c.json(
+        { error: 'invalid_query', detail: 'withinDays must be a number' },
+        400,
+      );
+    }
+    const days = Math.trunc(n);
+    if (days < 0 || days > MAX_WITHIN_DAYS) {
+      return c.json(
+        {
+          error: 'invalid_query',
+          detail: `withinDays must be between 0 and ${MAX_WITHIN_DAYS}`,
+        },
+        400,
+      );
+    }
+    withinDays = days;
+  }
 
   const today = todayYmd();
   const until = new Date(Date.parse(`${today}T00:00:00Z`) + withinDays * 86_400_000)

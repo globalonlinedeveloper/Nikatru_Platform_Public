@@ -90,6 +90,29 @@
       "name": "EVENTS_CEILING_LIMITER",
       "namespace_id": "1002",
       "simple": { "limit": 600, "period": 60 }
+    },
+    {
+      // The SAME server-derived ceiling for GET /config/<app> — the other
+      // unauthenticated route on this Worker that does I/O. Keyed
+      // `edge:<colo>:<asn>` by the shared src/lib/edge-ceiling.ts, so there is
+      // ONE definition of that key rather than two that drift.
+      //
+      // Its OWN namespace_id: config traffic and analytics traffic must not be
+      // able to exhaust each other's budget. An unknown app is now free (the
+      // registry of known apps is compiled in, so that 404 needs no KV read),
+      // but a KNOWN app still costs one KV read whenever the edge cache misses —
+      // and the query string is part of the cache key, so `?cb=<random>` misses
+      // deliberately and unboundedly.
+      //
+      // 1200/min per (colo, asn) is roughly double the analytics ceiling because
+      // this is a cheap read on every app's LAUNCH path served from a 300s edge
+      // cache: honest origin traffic through one PoP for one ASN is a handful of
+      // requests per cache period, so this is nowhere near real usage while
+      // still turning "unbounded" into "bounded". Same honest limit as the other
+      // two — per-colo and eventually consistent, a burst bound, not accounting.
+      "name": "CONFIG_CEILING_LIMITER",
+      "namespace_id": "1003",
+      "simple": { "limit": 1200, "period": 60 }
     }
   ],
   "triggers": {

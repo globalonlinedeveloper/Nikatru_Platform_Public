@@ -7,9 +7,40 @@ name: Deploy Web
 on:
   push:
     branches: [main]
+    # 🔴 A PATH FILTER IS A CLAIM ABOUT WHAT CHANGES THE ARTIFACT, and this list
+    # named only the SOURCE (2026-08-01 full-corpus review, #30). The build step
+    # is `flutter pub get --enforce-lockfile` inside a Melos 8 workspace: the
+    # root pubspec.yaml (the `workspace:` list) and the single root pubspec.lock
+    # are what decide every dependency version that ends up in build/web. So a
+    # dependency bump — including a security patch landing in the lockfile with
+    # no source change at all — produced a main commit that built differently
+    # and deployed nothing, silently, with CI green. tooling/versions.json is on
+    # the list for the same reason one level up: it is the single declaration
+    # the Flutter and wrangler pins below are held to.
+    #
+    # The three tooling/ci scripts are here because the steps below EXECUTE them
+    # and none of their behaviour is visible in the source tree this filters on:
+    # assert-app-versioning.mjs --emit produces the release line that becomes
+    # --build-name AND the APP_VERSION stamped on every analytics row;
+    # assert-gate-passed.mjs decides whether the deploy happens at all;
+    # record-deployment.mjs writes the marker that answers "what is live". They
+    # are listed INDIVIDUALLY rather than as tooling/ci/** on purpose — guard
+    # work is frequent and unrelated to this artifact, and a filter that
+    # redeploys production on every guard edit is one that gets narrowed back in
+    # a hurry.
+    #
+    # Enforced by tooling/ci/assert-deploy-triggers.mjs, which derives the script
+    # list from this file's own steps — so adding a step adds its path or fails
+    # the build. A list nobody checks drifts back the moment a new input appears.
     paths:
       - 'apps/subly/**'
       - 'packages/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'tooling/versions.json'
+      - 'tooling/ci/assert-gate-passed.mjs'
+      - 'tooling/ci/assert-app-versioning.mjs'
+      - 'tooling/ci/record-deployment.mjs'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 

@@ -138,6 +138,15 @@ void main() {
     });
 
     // An unreadable store must mean "no session", never a crash at launch.
+    //
+    // 🔴 THE LAST LINE OF THIS TEST USED TO ASSERT THE DEFECT (2026-08-01
+    // full-corpus review, #22). It required `removePersistedSession()` to
+    // COMPLETE on a store where every operation throws — i.e. it pinned the
+    // swallow in place, and would have gone red against the honest behaviour.
+    // A sign-out that cannot delete AND cannot overwrite has not signed anyone
+    // out, so it now has to say so. The write half is unchanged and still
+    // swallows: that asymmetry is the point, and it is driven in full in
+    // secure_session_storage_test.dart.
     test('an unreadable store reports no session instead of throwing',
         () async {
       final SecureSessionStorage broken = SecureSessionStorage(
@@ -147,7 +156,10 @@ void main() {
       expect(await broken.accessToken(), isNull);
       // …and a failed write must not abort a sign-in that already succeeded.
       await expectLater(broken.persistSession('x'), completes);
-      await expectLater(broken.removePersistedSession(), completes);
+      await expectLater(
+        broken.removePersistedSession(),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 
@@ -177,9 +189,8 @@ void main() {
     test('EMITS, so a screen showing the name learns it changed', () async {
       await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
       final List<core.AuthUser?> seen = <core.AuthUser?>[];
-      final StreamSubscription<core.AuthUser?> sub = auth
-          .authStateChanges()
-          .listen(seen.add);
+      final StreamSubscription<core.AuthUser?> sub =
+          auth.authStateChanges().listen(seen.add);
       addTearDown(sub.cancel);
 
       await auth.updateProfile(displayName: 'Ada');

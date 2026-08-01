@@ -5,6 +5,7 @@ class Entitlement {
     required this.store,
     required this.isActive,
     this.expiresAt,
+    this.unreadableExpiry,
   });
 
   final String entitlement;
@@ -13,15 +14,64 @@ class Entitlement {
   final bool isActive;
   final DateTime? expiresAt;
 
-  factory Entitlement.fromJson(Map<String, dynamic> j) => Entitlement(
-        entitlement: (j['entitlement'] ?? '') as String,
-        productId: (j['product_id'] ?? '') as String,
-        store: (j['store'] ?? '') as String,
-        isActive: j['is_active'] == true || j['is_active'] == 1,
-        expiresAt: j['expires_at'] == null
-            ? null
-            : DateTime.tryParse(j['expires_at'] as String),
-      );
+  /// The `expires_at` value as it arrived, kept ONLY when it could not be read.
+  ///
+  /// Two jobs. It survives the cache round-trip (see [toJson]) so re-reading a
+  /// poisoned cache re-derives the same refusal rather than seeing a bare null
+  /// and calling it a lifetime grant — and it leaves the offending value visible
+  /// to whoever has to explain why a paying user lost access. Null whenever the
+  /// expiry WAS readable, so `expiresAt == null && unreadableExpiry == null` is
+  /// unambiguously the lifetime shape.
+  final Object? unreadableExpiry;
+
+  /// Parses the wire/cache shape, FAILING CLOSED on anything undecidable.
+  ///
+  /// ## The money boundary, client end
+  /// This used to read `DateTime.tryParse(j['expires_at'] as String)` — and
+  /// `tryParse` returns **null** on a string it cannot read, which this class
+  /// spells "no expiry", i.e. **LIFETIME**. So an `expires_at` nobody could
+  /// parse silently upgraded a subscriber to a permanent grant, offline and
+  /// forever, with no error anywhere. That is the opposite direction from every
+  /// other parse in this package (`AnalyticsEvent.tryFromJson` returns null,
+  /// `ConfigCache.hydrate` skips the entry) and the mirror image of the server
+  /// bug in `services/subly-api/src/routes/entitlements.ts`, which read an
+  /// unparseable expiry as `is_pro: true`. Fixing one end alone just moves where
+  /// the fail-open lives, so both are fixed together.
+  ///
+  /// The rule now: `expires_at` **absent or SQL null** is the lifetime grant —
+  /// there is no end date because there is no end. `expires_at` **present but
+  /// unreadable** (bad string, wrong type, empty) is UNDECIDABLE, and an
+  /// entitlement whose expiry cannot be decided cannot be honoured. It is
+  /// materialised as `isActive: false` so that every downstream reader —
+  /// [isValidAt], [Entitlements.isProAt], the persisted cache round-trip — fails
+  /// closed the same way, instead of each having to remember a special case. The
+  /// server reconciles the real state on the next successful fetch.
+  factory Entitlement.fromJson(Map<String, dynamic> j) {
+    final Object? rawExpiry = j['expires_at'];
+    final bool active = j['is_active'] == true || j['is_active'] == 1;
+
+    DateTime? expiresAt;
+    bool decidable = true;
+    if (rawExpiry != null) {
+      // A non-String here (an epoch-ms number, say) used to throw on the
+      // `as String` cast and escape fromJson entirely.
+      expiresAt = rawExpiry is String ? DateTime.tryParse(rawExpiry) : null;
+      decidable = expiresAt != null;
+    }
+
+    return Entitlement(
+      entitlement: _str(j['entitlement']),
+      productId: _str(j['product_id']),
+      store: _str(j['store']),
+      isActive: active && decidable,
+      expiresAt: expiresAt,
+      unreadableExpiry: decidable ? null : rawExpiry,
+    );
+  }
+
+  /// Non-String identifiers coerce to '' instead of throwing a TypeError out of
+  /// a factory the network and the cache both call.
+  static String _str(Object? v) => v is String ? v : '';
 
   /// Snake_case JSON that round-trips through [Entitlement.fromJson] — used to
   /// persist the entitlement cache (so a paid user stays unlocked offline).
@@ -32,7 +82,12 @@ class Entitlement {
         'is_active': isActive,
         // Normalize to UTC so a local DateTime round-trips to the same instant
         // regardless of any device-timezone change between write and read.
-        'expires_at': expiresAt?.toUtc().toIso8601String(),
+        //
+        // An UNREADABLE expiry is written back VERBATIM. Emitting null for it
+        // would spell "lifetime" on the way back in, so the cache would launder
+        // a refusal into a permanent grant one restart later — the very
+        // fail-open this class was fixed for, taking the long way round.
+        'expires_at': unreadableExpiry ?? expiresAt?.toUtc().toIso8601String(),
       };
 
   /// Whether this entitlement should still be honoured offline at [now], given a
@@ -58,13 +113,45 @@ class Entitlements {
   final bool isPro;
   final List<Entitlement> items;
 
-  factory Entitlements.fromJson(Map<String, dynamic> j) => Entitlements(
-        appId: (j['app_id'] ?? '') as String,
-        isPro: j['is_pro'] == true || j['is_pro'] == 1,
-        items: ((j['entitlements'] as List<dynamic>?) ?? <dynamic>[])
-            .map((dynamic e) => Entitlement.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+  /// An entitlement that exists but grants nothing — the placeholder for a line
+  /// item, or a whole list, that could not be read.
+  ///
+  /// It has to be an ITEM rather than an omission: [isProAt] reads an EMPTY
+  /// `items` as an undated lifetime grant, so quietly dropping what we cannot
+  /// parse would unlock Pro. Refusing has to leave a mark, or it reads as
+  /// "nothing was wrong".
+  static const Entitlement unreadable = Entitlement(
+    entitlement: '',
+    productId: '',
+    store: '',
+    isActive: false,
+  );
+
+  factory Entitlements.fromJson(Map<String, dynamic> j) {
+    final Object? raw = j['entitlements'];
+    final List<Entitlement> items = <Entitlement>[];
+    if (raw is List) {
+      for (final Object? e in raw) {
+        items.add(e is Map
+            ? Entitlement.fromJson(e.cast<String, dynamic>())
+            : unreadable);
+      }
+    } else if (raw != null) {
+      // PRESENT BUT NOT A LIST. The first version of this rewrite left `items`
+      // empty here, which [isProAt] reads as a lifetime grant — so a truncated
+      // cache blob or a server that switched to an object envelope would have
+      // unlocked Pro permanently. (The pre-rewrite `as List<dynamic>?` cast
+      // threw, and the callers' catches turned that into not-Pro; replacing a
+      // throw with a silent `is` test moved the failure to the wrong side.)
+      // One unreadable item keeps the list non-empty, so the answer is no.
+      items.add(unreadable);
+    }
+    return Entitlements(
+      appId: j['app_id'] is String ? j['app_id'] as String : '',
+      isPro: j['is_pro'] == true || j['is_pro'] == 1,
+      items: items,
+    );
+  }
 
   /// Snake_case JSON that round-trips through [Entitlements.fromJson] — the
   /// serialized shape the entitlement cache persists to a [SecureStore].

@@ -25,7 +25,35 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 
 **JSON conventions:** snake_case fields matching the DB columns. `unused` and
 entitlement `is_active` are stored 0/1 but serialized as JSON booleans. Errors are
-`{ "error": "<message>" }` with an appropriate status code.
+`{ "error": "<message>" }` with an appropriate status code; validation failures add
+a `detail` naming the offending field.
+
+### Input rules
+
+Every write route validates the WHOLE body before it touches a row and answers
+**400 `invalid_body`** rather than letting the value fail at the D1 bind (which
+surfaces as an opaque 500 — and, for `PUT /v1/budget`, used to do so *after* the
+delete). The pattern lives in each route's `validate()`; the leaf checks are in
+`src/lib/validate.ts`.
+
+| Field | Rule |
+|---|---|
+| `name` / `category` / `plan` / `glyph` / `usage_note` | string, bounded (200/120/200/32/1000); `''` allowed, `null` clears |
+| `price` | finite number, 0 … 1 000 000 |
+| `cycle` | `monthly` \| `yearly` (matches the DB CHECK) |
+| `next_renewal` | a real calendar date as `YYYY-MM-DD` |
+| `used_pct` | number 0 … 100 (truncated to an int) |
+| `unused` | boolean |
+| `?withinDays` | 0 … 3660; absent/empty ⇒ 7. Out of range is **400 `invalid_query`**, not a silent clamp — an unbounded window made `toISOString()` throw |
+
+### Entitlements fail CLOSED
+
+`is_pro` grants only on an entitlement that is `is_active = 1` **and** either has
+no `expires_at` (a lifetime grant) or has one that parses and is in the future. An
+`expires_at` that is present but **unparseable** denies — it used to grant, forever.
+The RevenueCat webhook rejects (400) an `expiration_at_ms` it cannot read rather
+than storing NULL, because NULL is how this table spells "lifetime". The Flutter
+client mirrors both rules in `packages/core/lib/src/models/entitlement.dart`.
 
 ## Local development
 
