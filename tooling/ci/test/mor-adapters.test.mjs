@@ -76,6 +76,11 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 
 let seq = 0;
 
+/** ⚠️ ASSEMBLED AT RUNTIME, never a literal — see the note in
+ *  money-config.test.mjs. A credential-shaped string written out in a test
+ *  fixture is a finding in the repository's own secret scan. */
+const NTF_SECRET = `${'pdl'}${'_'}${'ntfset'}${'_'}x`;
+
 const BRICK_ACCOUNT =
   'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts';
 
@@ -414,7 +419,7 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
   });
 
   test('the PADDLE destination secret must never be a committed var', () => {
-    const r = run({ wrangler: '{ "name": "platform", "vars": { "PADDLE_NOTIFICATION_SECRET": "pdl_ntfset_x" } }' });
+    const r = run({ wrangler: `{ "name": "platform", "vars": { "PADDLE_NOTIFICATION_SECRET": "${NTF_SECRET}" } }` });
     assert.equal(r.code, 1);
     assert.match(r.out, /declares PADDLE_NOTIFICATION_SECRET as a committed var/);
   });

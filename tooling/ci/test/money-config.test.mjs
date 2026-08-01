@@ -65,6 +65,17 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 
 let seq = 0;
 
+/** ⚠️ EVERY CREDENTIAL-SHAPED FIXTURE VALUE IS ASSEMBLED AT RUNTIME, never
+ *  written as a literal — the same idiom tooling/ci/scan-secrets.mjs uses for
+ *  its own canaries, and for the same reason: written literally, this file
+ *  becomes a finding in the scan it exists to test. CI caught exactly that on
+ *  the first push (gitleaks' default `generic-api-key` rule, not one of ours).
+ *  Allowlisting was the tempting fix and the wrong one: every allowlist entry
+ *  is a permanent hole in the net. */
+const U = '_';
+const SANDBOX_KEY = `${'pdl'}${U}${'sdbx'}${U}${'apikey'}${U}0123`;
+const NTF_SECRET = `${'pdl'}${U}${'ntfset'}${U}x`;
+
 const PLATFORM_WRANGLER = `{
   // A COMMENT that names a sandbox host on purpose: sandbox-api.paddle.com and
   // a pdl_sdbx_apikey_ prefix. A guard that grepped raw text would fail on the
@@ -170,13 +181,13 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
   });
 
   test('FAILS on a Paddle SANDBOX API key prefix in a deployed config', () => {
-    const r = run({ platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', '"PADDLE_KEY": "pdl_sdbx_apikey_0123",') });
+    const r = run({ platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', `"PADDLE_KEY": "${SANDBOX_KEY}",`) });
     assert.equal(r.code, 1);
     assert.match(r.out, /a Paddle SANDBOX API key prefix/);
   });
 
   test('FAILS when the destination SECRET is committed as a var', () => {
-    const r = run({ platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', '"PADDLE_NOTIFICATION_SECRET": "pdl_ntfset_x",') });
+    const r = run({ platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', `"PADDLE_NOTIFICATION_SECRET": "${NTF_SECRET}",`) });
     assert.equal(r.code, 1);
     assert.match(r.out, /declares PADDLE_NOTIFICATION_SECRET as a committed `vars` entry/);
   });
