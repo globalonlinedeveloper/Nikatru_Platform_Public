@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -17,6 +17,14 @@ import '../../data/models/subscription.dart';
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
+
+  /// For test fakes ONLY. The singleton above cannot be replaced and the real
+  /// methods need a platform, so the reminder-wiring tests (which must prove a
+  /// settings toggle reaches this service — see settings_wiring_test.dart)
+  /// subclass via this constructor and override the scheduling methods to
+  /// record calls. Production wiring keeps using [instance].
+  @visibleForTesting
+  NotificationService.forTesting();
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -49,42 +57,54 @@ class NotificationService {
   Future<void> _requestPermissions() async {
     await _plugin
         .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
+          IOSFlutterLocalNotificationsPlugin
+        >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
     await _plugin
         .resolvePlatformSpecificImplementation<
-            MacOSFlutterLocalNotificationsPlugin>()
+          MacOSFlutterLocalNotificationsPlugin
+        >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
     await _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
   }
 
   NotificationDetails get _details => const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: 'Alerts a couple of days before a charge',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(),
-        macOS: DarwinNotificationDetails(),
-        linux: LinuxNotificationDetails(),
-      );
+    android: AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: 'Alerts a couple of days before a charge',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+    macOS: DarwinNotificationDetails(),
+    linux: LinuxNotificationDetails(),
+  );
 
   /// Schedules a one-off reminder [daysBefore] the renewal, at 09:00 local.
   /// (Windows can't do *repeating* notifications, but one-off per-renewal
   /// reminders like this work everywhere.)
-  Future<void> scheduleRenewalReminder(Subscription sub,
-      {int daysBefore = 2}) async {
+  Future<void> scheduleRenewalReminder(
+    Subscription sub, {
+    int daysBefore = 2,
+  }) async {
     if (!_ready) return;
-    final DateTime target =
-        sub.nextRenewal.subtract(Duration(days: daysBefore));
-    final tz.TZDateTime when =
-        tz.TZDateTime(tz.local, target.year, target.month, target.day, 9);
-    if (when.isBefore(tz.TZDateTime.now(tz.local))) return; // don't fire in past
+    final DateTime target = sub.nextRenewal.subtract(
+      Duration(days: daysBefore),
+    );
+    final tz.TZDateTime when = tz.TZDateTime(
+      tz.local,
+      target.year,
+      target.month,
+      target.day,
+      9,
+    );
+    // Don't fire in the past.
+    if (when.isBefore(tz.TZDateTime.now(tz.local))) return;
 
     await _plugin.zonedSchedule(
       _idFor(sub.id),
@@ -116,8 +136,13 @@ class NotificationService {
     if (!_ready) return;
     await _plugin.cancel(_digestId);
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-    tz.TZDateTime when =
-        tz.TZDateTime(tz.local, now.year, now.month, now.day, 18);
+    tz.TZDateTime when = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      18,
+    );
     // DateTime.sunday == 7; walk forward to the next Sunday 18:00.
     while (when.weekday != DateTime.sunday || !when.isAfter(now)) {
       when = when.add(const Duration(days: 1));
@@ -170,8 +195,18 @@ class NotificationService {
 
   String _pretty(DateTime d) {
     const List<String> m = <String>[
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[d.month - 1]} ${d.day}';
   }

@@ -26,15 +26,26 @@ class ReminderPlan {
   /// `alerts` defaults ON, `weekly` defaults OFF -- matching SettingsState, so a
   /// missing key can never silently flip a user's notifications on.
   factory ReminderPlan.from(Map<String, bool> prefs) => ReminderPlan(
-        syncRenewals: prefs['alerts'] ?? true,
-        weeklyDigest: prefs['weekly'] ?? false,
-      );
+    syncRenewals: prefs['alerts'] ?? true,
+    weeklyDigest: prefs['weekly'] ?? false,
+  );
 }
 
 /// Owns the subscription list and keeps on-device reminders in sync with it.
 class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   @override
   Future<List<Subscription>> build() async {
+    // A settings change must take effect NOW, not at the next add/cancel.
+    // _syncReminders reads settings with ref.read, so without this listener a
+    // user who switched 'Renewal alerts' off kept every scheduled reminder
+    // (they still fired), and one who switched 'Weekly digest' on got nothing
+    // — until the list next happened to change. This is the trigger edge of
+    // the "which toggle causes which action" wiring: registered BEFORE the
+    // first await, so a settings hydration landing mid-load is never missed.
+    ref.listen<SettingsState>(settingsControllerProvider, (_, __) {
+      _syncReminders(state.valueOrNull ?? const <Subscription>[]);
+    });
+
     final List<Subscription> subs = await ref
         .watch(subscriptionRepositoryProvider)
         .fetchAll();

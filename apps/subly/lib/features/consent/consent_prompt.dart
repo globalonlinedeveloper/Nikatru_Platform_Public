@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../state/analytics_providers.dart';
@@ -36,7 +37,7 @@ class _ConsentGateState extends ConsumerState<ConsentGate> {
     // pointless and misleading, and it would make every widget test wait on a
     // modal it never asked for.
     final bool decided = ref.watch(consentDecidedProvider);
-    if (AppConfig.isBackendLive && !decided && !_asked) {
+    if (ref.watch(backendLiveProvider) && !decided && !_asked) {
       _asked = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _show(context);
@@ -46,8 +47,20 @@ class _ConsentGateState extends ConsumerState<ConsentGate> {
   }
 
   Future<void> _show(BuildContext context) async {
+    // [pipeline C-6] This widget sits ABOVE the router's Navigator (it is
+    // installed via MaterialApp.router's `builder`, and Flutter inserts the
+    // builder's widget between the app and its Navigator), so `showDialog`
+    // with our own context throws "no Navigator" — and, launched unawaited
+    // from a post-frame callback with `_asked` already latched, it threw
+    // SILENTLY: the DPDP prompt simply never appeared and the fail-closed
+    // recorder discarded every event. The dialog therefore borrows the root
+    // Navigator's context via [rootNavigatorKey]; the fallback to our own
+    // context keeps the gate usable when a test mounts it below a plain
+    // Navigator instead of the app router.
+    final BuildContext dialogContext =
+        rootNavigatorKey.currentContext ?? context;
     final bool? granted = await showDialog<bool>(
-      context: context,
+      context: dialogContext,
       // Not dismissible: a tap outside is not an answer, and treating it as one
       // would record a decision the user never made.
       barrierDismissible: false,
