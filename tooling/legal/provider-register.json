@@ -1,0 +1,305 @@
+{
+  "_readme": [
+    "THE PROVIDER REGISTER — [pipeline K-5] company/pipeline/08-compliance-legal.md",
+    "",
+    "Every third party that touches a payment, a user's data, or the delivery of the Services: what role",
+    "it plays, whether the published pages name it, and — the field the whole file hangs off — whether it",
+    "is REACHABLE IN CODE today.",
+    "",
+    "WHY IT EXISTS. K-5 says 'the commercial surface names the actual seller and payment path'. Nothing",
+    "compared the two. At the moment this register landed the three published pages and the code disagreed",
+    "in four independent places, and no build anywhere could go red over any of them:",
+    "",
+    "  · services/subly-api/src/routes/webhooks.ts declares POST /revenuecat. RevenueCat is named in no",
+    "    published page and in no ADR.",
+    "  · [ADR 004] LOCKED Paddle as the merchant of record on 2026-07-23. Paddle is named in none of",
+    "    privacy.html, terms.html or refund.html.",
+    "  · terms.html and refund.html say website purchases are processed by Razorpay, while privacy.html",
+    "    says 'We do not sell anything directly from this website today'. The pages contradict each other.",
+    "  · privacy.html says usage statistics AND CRASH REPORTS run on infrastructure provided by",
+    "    Cloudflare. Crash reports run on Oracle Cloud (company/runbooks/glitchtip.md).",
+    "",
+    "🔴 EVERY ONE OF THOSE IS FIXED BY EDITING A PUBLISHED LEGAL PAGE, WHICH IS OWNER WORK (OWNER_QUEUE",
+    "O-3). They are therefore carried as `disclosureGap` rows that PRINT on every run — never silently",
+    "exempted, and never made a build failure, because failing CI on copy only the owner can write blocks",
+    "every other lane on this repository. tooling/ci/assert-policy-claims.mjs FAILS the moment a gap row's",
+    "stated reason stops being true, so an exemption cannot outlive what it was granted for.",
+    "",
+    "⚠️ WHAT IS PUBLIC HERE AND WHAT IS NOT. This is a public repository. A row records the provider's",
+    "NAME, its ROLE, where the code reaches it and whether a page discloses it. It records nothing about",
+    "the merchant account itself — no merchant ids, no KYC state, no bank or payout details, no contract",
+    "terms. Those live in the private SSoT and a row points at them by NAME only, in `privateRecord`,",
+    "the same split tooling/channel-register.json uses for signing custody. See tooling/legal/README.md.",
+    "",
+    "Enforced by tooling/ci/assert-policy-claims.mjs:",
+    "  · every claims row typed `provider` resolves to a row here                        [K-5]",
+    "  · every row with `reachableAt` names a route path that really exists in services/  [K-5]",
+    "  · every route path segment in services/** is either a provider row's tell or is",
+    "    named in `nonProviderRouteSegments` below — so a NEW payment webhook cannot be",
+    "    added without somebody writing its name down                                     [K-5]",
+    "  · a `merchant_of_record` row with status `live` MUST be named in BOTH terms.html",
+    "    and refund.html; one that is not yet live PRINTS with its owner item             [K-5]",
+    "  · every `disclosureGap` row carries an ownerItem and a `stillTrue` probe, and the",
+    "    guard FAILS when the probe stops matching — the gap is resolved, retire the row   [C-6 split]",
+    "  · COVERAGE LOST on an empty register or zero route paths extracted                 [F-10]"
+  ],
+
+  "nonProviderRouteSegments": {
+    "_why": [
+      "🔴 THIS IS THE HALF THAT MAKES THE ROUTE LIMB UNFAKEABLE, and it is data rather than a list",
+      "inside the guard on purpose. The guard extracts every literal path segment registered in",
+      "services/**/src/**/*.ts. A segment is allowed to exist only if it is either a provider row's",
+      "tell (RevenueCat's `/revenuecat`) or is written down HERE as a resource of ours.",
+      "",
+      "So adding `app.post('/paddle', …)` — or `/stripe`, or `/lemonsqueezy` — turns the build RED",
+      "until somebody either adds the provider row or claims the segment as ours. There is no third",
+      "option and no way to pad the allowlist except by naming the thing you are adding.",
+      "",
+      "⚠️ `:param` segments are dropped before the comparison, not listed here: `/:id` and `/:app` are",
+      "placeholders, and listing them would be listing the syntax rather than a resource."
+    ],
+    "segments": [
+      "v1",
+      "health",
+      "config",
+      "webhooks",
+      "events",
+      "consent",
+      "subscriptions",
+      "budget",
+      "categories",
+      "entitlements",
+      "renewals"
+    ]
+  },
+
+  "roles": {
+    "_why": "The vocabulary rows are validated against, declared once HERE rather than inside the guard — the same reason keyKinds lives in tooling/channel-register.json. Renaming a role out from under the rows still using it fails.",
+    "store_billing": "an app store that sells to the user and pays us. It is the seller of record for that sale and we never see the card.",
+    "merchant_of_record": "the legal seller for anything sold outside an app store. It collects and remits sales tax worldwide and is who the buyer contracted with.",
+    "payment_gateway": "processes a card payment on our behalf. NOT the seller — we remain the seller, and the tax duty stays with us.",
+    "iap_aggregator": "normalises store purchase events into one entitlement feed. Holds purchase state, not payment instruments.",
+    "infrastructure": "runs or hosts the Services. Sees traffic and whatever the Services store, and is disclosed as a processor rather than as a seller.",
+    "identity": "authenticates users and holds account credentials."
+  },
+
+  "providers": [
+    {
+      "id": "apple-app-store",
+      "name": "Apple App Store",
+      "role": "store_billing",
+      "status": "deferred",
+      "reachableAt": null,
+      "tells": ["apple app store"],
+      "namedIn": ["privacy.html", "refund.html"],
+      "privateRecord": "OWNER_QUEUE A-4 — the Apple Developer account. Deferred by the owner; no account exists.",
+      "notes": [
+        "Named by its full store name in privacy.html §3 and refund.html §1. ⚠️ NOT in terms.html: §4 says",
+        "'that store's terms (Apple, Google, Microsoft)' — a parenthetical reference to the companies, not a",
+        "naming of the stores as sellers. The distinction was found by this register's own disclosure check",
+        "and the row was corrected to match the page rather than the page assumed to match the row.",
+        "Carried as a row because the pages name it, and a register that omits a named provider cannot be",
+        "the answer to 'who is in the payment path'."
+      ]
+    },
+    {
+      "id": "google-play",
+      "name": "Google Play",
+      "role": "store_billing",
+      "status": "deferred",
+      "reachableAt": null,
+      "tells": ["google play"],
+      "namedIn": ["privacy.html", "refund.html"],
+      "privateRecord": "OWNER_QUEUE A-3 — the Play publisher account.",
+      "notes": [
+        "Named in privacy.html and refund.html; terms.html says only 'Google' in a parenthetical. No account",
+        "yet; tooling/channel-register.json android-play is served:false."
+      ]
+    },
+    {
+      "id": "microsoft-store",
+      "name": "Microsoft Store",
+      "role": "store_billing",
+      "status": "deferred",
+      "reachableAt": null,
+      "tells": ["microsoft store"],
+      "namedIn": ["privacy.html", "refund.html"],
+      "privateRecord": "OWNER_QUEUE A-2 — the Partner Center publisher account.",
+      "notes": [
+        "Named in privacy.html and refund.html; terms.html says only 'Microsoft' in a parenthetical.",
+        "tooling/channel-register.json windows-store is served:false."
+      ]
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "role": "infrastructure",
+      "status": "live",
+      "reachableAt": null,
+      "tells": ["cloudflare"],
+      "namedIn": ["privacy.html"],
+      "privateRecord": null,
+      "notes": [
+        "The only LIVE provider in this register. Hosts both static sites (Git integration), both Workers,",
+        "D1 and KV. privacy.html discloses it as the hosting provider and as the network edge — both true.",
+        "⚠️ The SECOND sentence naming Cloudflare in privacy.html is not true, and it is carried as the",
+        "`crash-reports-infrastructure` disclosureGap below rather than being fixed here: fixing it means",
+        "editing a published page."
+      ]
+    },
+    {
+      "id": "paddle",
+      "name": "Paddle",
+      "role": "merchant_of_record",
+      "status": "not-yet-applied",
+      "ownerItem": "A-1",
+      "reachableAt": null,
+      "tells": ["paddle"],
+      "namedIn": [],
+      "privateRecord": "OWNER_QUEUE A-1 — the Paddle seller application, KYC and payout account. [ADR 004] holds the decision itself.",
+      "notes": [
+        "🔒 LOCKED as the primary merchant of record by [ADR 004] on 2026-07-23: 'Paddle = primary', with",
+        "Lemon Squeezy applied to in parallel as a backup. The lock is on the CHOICE; the seller account does",
+        "not exist and the ADR's own sequencing is 'build the complete product first, then apply'.",
+        "",
+        "Named in NO published page. That is the `merchant-of-record-unnamed` gap below. It is not a code",
+        "defect — privacy.html already says 'this Policy will name the provider before we start' — but a",
+        "merchant of record is the legal seller, and terms.html and refund.html still name a different",
+        "company for the same purchases."
+      ]
+    },
+    {
+      "id": "lemon-squeezy",
+      "name": "Lemon Squeezy",
+      "role": "merchant_of_record",
+      "status": "deferred",
+      "reachableAt": null,
+      "tells": ["lemon squeezy", "lemonsqueezy"],
+      "namedIn": [],
+      "privateRecord": "OWNER_QUEUE A-1 — applied to in parallel with Paddle.",
+      "notes": [
+        "The parallel backup in [ADR 004], carried here for the same reason tooling/channel-register.json",
+        "carries deferred channels: the researched facts are recorded once instead of rediscovered under",
+        "time pressure. Not applied to, not wired, named in no page. If it ever becomes the live MoR it is",
+        "a `live` row and the both-pages rule applies to it unchanged."
+      ]
+    },
+    {
+      "id": "razorpay",
+      "name": "Razorpay",
+      "role": "payment_gateway",
+      "status": "named-but-not-wired",
+      "reachableAt": null,
+      "tells": ["razorpay"],
+      "namedIn": ["terms.html", "refund.html"],
+      "privateRecord": null,
+      "notes": [
+        "🔴 NAMED IN TWO PUBLISHED PAGES AND REACHABLE FROM NO CODE. terms.html §4 says website purchases",
+        "'are processed securely by Razorpay' and refund.html §2 and §4 route website refunds through it.",
+        "There is no Razorpay integration anywhere in this repository, no route, no key, no webhook — and",
+        "privacy.html now says we do not sell anything directly from this website at all.",
+        "",
+        "A gateway is also the WRONG SHAPE for what [ADR 004] decided: a gateway leaves us the seller and",
+        "leaves the worldwide sales-tax duty with us, which is the exact burden a merchant of record was",
+        "chosen to remove. Recorded, not resolved — see the `website-seller-contradiction` gap."
+      ]
+    },
+    {
+      "id": "revenuecat",
+      "name": "RevenueCat",
+      "role": "iap_aggregator",
+      "status": "wired-not-live",
+      "reachableAt": "/revenuecat",
+      "tells": ["revenuecat", "revenue cat"],
+      "namedIn": [],
+      "privateRecord": null,
+      "notes": [
+        "🔴 THE ONLY PROVIDER IN THIS REGISTER THAT REAL CODE REACHES, AND IT IS NAMED IN NO PAGE.",
+        "services/subly-api/src/routes/webhooks.ts mounts POST /v1/webhooks/revenuecat, authenticated by a",
+        "shared secret and fail-closed when the secret is unset. It upserts rows into platform_db",
+        "`entitlements` keyed on a RevenueCat app_user_id.",
+        "",
+        "It is `wired-not-live` rather than `live` because no store account exists to send it an event:",
+        "every kind:store row in tooling/channel-register.json is served:false. The route works; nothing",
+        "calls it. That is precisely why it is easy to leave undisclosed until the day it matters."
+      ]
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "role": "identity",
+      "status": "wired-not-live",
+      "reachableAt": null,
+      "tells": ["supabase"],
+      "namedIn": [],
+      "privateRecord": null,
+      "notes": [
+        "The auth vendor. services/platform/wrangler.jsonc declares SUPABASE_URL and the brick's",
+        "initNikatruAuth wires it; [ADR 005] holds the persistence decision and [ADR 024] the app's",
+        "auth-init exception. No shipped app creates accounts today — the brick's default is",
+        "needs_backend:false — so nothing is stored under it yet.",
+        "",
+        "Named in no page. privacy.html's third-party section lists stores, Cloudflare and 'a merchant of",
+        "record' and does not mention an identity provider. Carried as the `identity-provider-unnamed`",
+        "gap: it becomes a disclosure duty the day an app actually offers accounts, and that day is a",
+        "declared trigger in tooling/legal/duty-matrix.json rather than a memory."
+      ]
+    },
+    {
+      "id": "oracle-cloud",
+      "name": "Oracle Cloud",
+      "role": "infrastructure",
+      "status": "live",
+      "reachableAt": null,
+      "tells": ["oracle"],
+      "namedIn": [],
+      "privateRecord": "company/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
+      "notes": [
+        "Crash reports go to a GlitchTip instance we run ourselves on an Oracle Cloud always-free VM.",
+        "privacy.html says crash reports run 'on infrastructure provided by Cloudflare'. That sentence is",
+        "wrong about this provider — see the `crash-reports-infrastructure` gap. The rest of the same",
+        "paragraph (that crash reports are NOT sent to a third-party analytics product, and are received by",
+        "software we run ourselves) is true and stays true under either host."
+      ]
+    }
+  ],
+
+  "disclosureGaps": [
+    {
+      "id": "crash-reports-infrastructure",
+      "ownerItem": "O-3",
+      "provider": "oracle-cloud",
+      "page": "privacy.html",
+      "what": "privacy.html §3 says usage statistics AND crash reports are 'received and stored by software we run ourselves, on infrastructure provided by Cloudflare as our hosting provider'. Usage statistics do run on Cloudflare. Crash reports run on an Oracle Cloud VM. One sentence covers two systems on two providers and is wrong about the second.",
+      "stillTrue": "infrastructure provided by Cloudflare as our hosting provider",
+      "resolution": "Split the sentence so each system names its own host. This is published legal copy — an agent can propose the wording, only the owner publishes it, and it belongs in the SAME version bump as the other two O-3 text corrections so the archive takes one snapshot rather than three."
+    },
+    {
+      "id": "website-seller-contradiction",
+      "ownerItem": "O-3",
+      "provider": "razorpay",
+      "page": "terms.html",
+      "what": "terms.html §4 states 'Purchases made on our website are processed securely by Razorpay' and refund.html §2/§4 route website refunds through Razorpay, while privacy.html §3 states 'We do not sell anything directly from this website today'. The three pages a buyer reads contradict each other about whether the website sells anything and who processes it. [ADR 004] locked a merchant of record, which is a different legal relationship from a gateway.",
+      "stillTrue": "processed securely by Razorpay",
+      "resolution": "Decide which rails a buyer is actually offered (open question: Paddle global only, or Paddle plus an India-domestic rail), then make all three pages say the same thing. The DECISION is the owner's; the register rows follow it."
+    },
+    {
+      "id": "merchant-of-record-unnamed",
+      "ownerItem": "O-3",
+      "provider": "paddle",
+      "page": "privacy.html",
+      "what": "[ADR 004] locked Paddle as the merchant of record on 2026-07-23. No published page names it. privacy.html describes 'a merchant of record' generically and commits to naming the provider before selling starts, which is honest — but terms.html and refund.html name Razorpay for the same purchases, so a reader gets a name, and it is the wrong one.",
+      "stillTrue": "a merchant of record",
+      "resolution": "Name Paddle once the seller account exists (OWNER_QUEUE A-1), in the same version bump as the other corrections. Until then the pages must at least not name a different company for the same transaction."
+    },
+    {
+      "id": "identity-provider-unnamed",
+      "ownerItem": "O-3",
+      "provider": "supabase",
+      "page": "privacy.html",
+      "what": "privacy.html §3 lists app stores, Cloudflare and a merchant of record. It names no identity provider, and Supabase is wired as one. Nothing is stored under it today because no shipped app offers accounts, so this is a disclosure that has to land BEFORE the first account is created rather than a disclosure that is currently wrong.",
+      "stillTrue": "Depending on the app, these may include",
+      "resolution": "Name the identity provider in §3 in the same version bump, or record that accounts are not offered. The trigger — 'the day any app creates a user account' — is carried in tooling/legal/duty-matrix.json so it cannot rely on somebody remembering."
+    }
+  ]
+}

@@ -29,6 +29,9 @@ const GUARD = join(CI_DIR, 'assert-policy-archive.mjs');
 const LIVE = join('sites', 'nikatru', 'privacy.html');
 const DART_SUBLY = join('apps', 'subly', 'lib', 'state', 'analytics_providers.dart');
 const DART_BRICK = join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'state', 'providers.dart');
+/** The brick's ARB directory — the app's own locale list, and the domain of the
+ *  [pipeline K-14] notice-per-locale limb. */
+const L10N = join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'l10n');
 
 let TMP;
 before(() => {
@@ -66,7 +69,7 @@ const g = (root, ...args) => spawnSync('git', ['-C', root, ...args], { encoding:
  * becomes a commit that edits the page and the two Dart constants IN PLACE —
  * which is the exact edit `git log -S` cannot see.
  */
-function repo({ versions = ['2026-07-26', '2026-08-01'], snapshots, workingVersion, initGit = true } = {}) {
+function repo({ versions = ['2026-07-26', '2026-08-01'], snapshots, workingVersion, initGit = true, locales = ['en', 'ta'] } = {}) {
   const root = join(TMP, `r${seq++}`);
   mkdirSync(root, { recursive: true });
   if (initGit) {
@@ -91,6 +94,14 @@ function repo({ versions = ['2026-07-26', '2026-08-01'], snapshots, workingVersi
   for (const [version, locale, html] of snaps) {
     if (html === null) continue;
     write(root, join('sites', 'nikatru', 'legal', version, locale, 'privacy.html'), html);
+  }
+  // [pipeline K-14] The app's OWN locale list is the domain of the notice-per-
+  // locale limb, and it is read from the brick's ARB files. Every fixture needs
+  // it: without one the limb is COVERAGE LOST, which is the correct answer for a
+  // tree that has lost its locale declarations and the wrong one for a fixture
+  // that never had any.
+  for (const locale of locales) {
+    write(root, join(L10N, `app_${locale}.arb`), `{ "@@locale": "${locale}" }\n`);
   }
   return root;
 }
@@ -332,5 +343,67 @@ describe('assert-policy-archive', () => {
     const r = run(fresh);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /exists and declares a policy version, and its history yielded none/);
+  });
+});
+
+// ── [pipeline K-14] a notice per locale the app already supports ─────────────
+// The domain is the app's OWN locale list, read from the brick's ARB files, so
+// it cannot be shrunk without deleting a locale — and deleting one fails the
+// brick's `supportedLocales.length >= 2` property test. Mutation-proven against
+// a scratch copy of the real repository, 3/3 as intended.
+describe('assert-policy-archive — the notice-per-locale relation [pipeline K-14]', () => {
+  test('a locale with no notice PRINTS and does not fail the build', () => {
+    // Owner-gated on purpose: an unreviewed machine translation of a statutory
+    // notice is itself a legal-accuracy exposure, and failing CI on a
+    // translation nobody has commissioned blocks every other lane for weeks.
+    const r = run(repo());
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /NO NOTICE IN ta/);
+    assert.match(r.stdout, /notice locales — 2 supported \(en, ta\)/);
+  });
+
+  test('a translated notice citing a SUPERSEDED version FAILS', () => {
+    // Worse than no translation: the reader believes they have read the policy,
+    // and they have read a different one.
+    const root = repo({
+      snapshots: [
+        ['2026-07-26', 'en', snapshot('2026-07-26')],
+        ['2026-08-01', 'en', snapshot('2026-08-01')],
+        ['2026-08-01', 'ta', snapshot('2026-07-26')],
+      ],
+    });
+    const r = run(root);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /while the English notice in force is 2026-08-01/);
+  });
+
+  test('every locale covered flips the print to PROMOTE ME', () => {
+    // The exemption cannot outlive its reason: once the translation lands, the
+    // guard asks to be turned into a build failure.
+    const root = repo({
+      snapshots: [
+        ['2026-07-26', 'en', snapshot('2026-07-26')],
+        ['2026-08-01', 'en', snapshot('2026-08-01')],
+        ['2026-08-01', 'ta', snapshot('2026-08-01')],
+      ],
+    });
+    const r = run(root);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /PROMOTE ME/);
+  });
+
+  test('a tree that has lost its locale declarations is COVERAGE LOST', () => {
+    const root = repo({ locales: [] });
+    const r = run(root);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /no locale resolved from/);
+  });
+
+  test('a THIRD locale added to the app immediately owes a notice', () => {
+    // The domain grows with the app. Adding a language is what makes this limb
+    // demand more, which is why it is a relationship and not a list.
+    const r = run(repo({ locales: ['en', 'ta', 'hi'] }));
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /NO NOTICE IN hi, ta/);
   });
 });

@@ -1,0 +1,157 @@
+{
+  "_readme": [
+    "THE ASSET LICENCE REGISTER — [pipeline K-10]/[K-11] company/pipeline/08-compliance-legal.md",
+    "",
+    "One row for every asset that ships inside a build, with the licence it ships under and the SOURCE of",
+    "that licence claim. Plus the other half of K-11: every app shows those licences from a real screen.",
+    "",
+    "WHY IT EXISTS. Both major stores can ask for evidence of rights to material an app ships, and a",
+    "review can be held or a listing pulled while the evidence is produced. That demand arrives without",
+    "warning and is answered in hours or not at all. Before this file the answer would have been a search",
+    "through a build directory; now it is a file.",
+    "",
+    "🔴 EVERY ROW CARRIES A SOURCE FOR ITS LICENCE CLAIM, AND THE GUARD REFUSES A ROW WITHOUT ONE.",
+    "This is the same rule tooling/channel-register.json enforces for numeric limits: a field whose value",
+    "was not fetched from a primary source is recorded as UNVERIFIED and is NOT given a plausible one. An",
+    "invented licence looks exactly like a researched one and is worth nothing in the one conversation it",
+    "exists for.",
+    "",
+    "🔴 AND THE HEADLINE EXAMPLE IS IN THIS FILE. The stage document states twice that Flutter's bundled",
+    "MaterialIcons font is CC-BY 4.0. Google's material-design-icons repository has published under",
+    "Apache-2.0 since 2016; CC-BY 4.0 was the project's EARLIER licence. Neither could be confirmed from a",
+    "primary source in this environment, so the row below says UNVERIFIED and names the file that would",
+    "settle it. THE GUARD DESIGN SURVIVES EITHER ANSWER — 'fail on any shipped asset with no row' is",
+    "licence-agnostic — which is precisely why guessing would have bought nothing and cost the register",
+    "its credibility.",
+    "",
+    "TWO ENUMERATION MODES, and the difference is deliberate:",
+    "  · DECLARED (default) — every file under a `flutter: assets:` entry in every workspace pubspec,",
+    "    every declared font file, and the icon font implied by `uses-material-design: true`. Runs in the",
+    "    guards lane on every push, with no Flutter toolchain needed.",
+    "  · BUNDLE (`--bundle <dir>`) — walks a real built bundle. Runs in the app_brick lane after",
+    "    `flutter build web`, which is where the DECLARED set and the SHIPPED set can be seen to differ.",
+    "⚠️ The declared mode is the weaker of the two and says so: it reads intent, not output. It is the",
+    "mode that runs everywhere, and the bundle mode is the one that can catch a build that ships something",
+    "nobody declared.",
+    "",
+    "⚠️ LICENCES THAT ARE ARCHITECTURALLY INCOMPATIBLE ARE REFUSED, not merely noted. CC-BY-NC forbids",
+    "commercial use and CC-BY-SA forbids Effective Technological Measures; our content packs are",
+    "Ed25519-signed with a fail-closed verifier (packages/core/lib/src/content/pack_verifier.dart), which",
+    "is exactly such a measure. An asset under either licence cannot ship here at all, so the guard fails",
+    "rather than printing.",
+    "",
+    "Enforced by tooling/ci/assert-licence-register.mjs. See tooling/legal/README.md for the public/private",
+    "split — nothing here is private: a licence claim with no public source is not a licence claim."
+  ],
+
+  "derivation": {
+    "_why": [
+      "Floors measured on the tree the day this file landed: 12 pubspec.yaml files, 3 declared asset files",
+      "(apps/subly/assets/brand/). A walk that finds fewer has BROKEN — an assets: entry renamed, a",
+      "directory moved — and an asset register that enumerates nothing reports every asset accounted for."
+    ],
+    "workspaceRoots": ["apps", "packages", "tooling/bricks"],
+    "minPubspecs": 10,
+    "minDeclaredAssets": 3,
+    "appRoots": ["apps"],
+    "brickAppRoot": "tooling/bricks/app/__brick__/apps/{{app_id}}",
+    "minApps": 2
+  },
+
+  "incompatibleLicences": {
+    "_why": [
+      "Refused outright rather than flagged. Both prefixes below are incompatible with how this factory",
+      "SHIPS, not merely inconvenient: CC-BY-NC excludes commercial distribution, which is the entire",
+      "business; CC-BY-SA's anti-ETM term is refuted by the Ed25519 pack signature we cannot remove",
+      "without removing the fail-closed verifier that makes shipped content trustworthy.",
+      "Matched by PREFIX so version suffixes (…-4.0, …-3.0) are covered without listing them."
+    ],
+    "prefixes": ["CC-BY-NC", "CC-BY-SA"]
+  },
+
+  "licenceSurfaceCalls": {
+    "_why": [
+      "🔴 RESOLVED AS A CALL SITE, NEVER AS A GREP FOR A STRING. [3]S-2 already proved in this repository",
+      "that a declaration is not a call: a constant referenced from an unrouted widget satisfies",
+      "'references it from a reachable screen' while being unreachable. Each pattern below is a",
+      "CONSTRUCTOR or FUNCTION INVOCATION — `AboutListTile(`, `showLicensePage(`,",
+      "`LicenseRegistry.addLicense(` — so a comment mentioning licences, or an import of the page that",
+      "nothing builds, does not satisfy it. Comments are stripped before matching.",
+      "",
+      "⚠️ HONEST LIMIT, STATED HERE RATHER THAN IMPLIED AWAY: this proves the widget is CONSTRUCTED",
+      "somewhere in the app's lib/, not that a user can reach it in three taps. Proving reachability needs",
+      "a widget test that pumps the screen and taps the tile — that is [8]INC-5, and it lives in files",
+      "this change deliberately does not touch."
+    ],
+    "patterns": ["AboutListTile\\s*\\(", "showLicensePage\\s*\\(", "LicenseRegistry\\.addLicense\\s*\\("]
+  },
+
+  "licenceSurfaceGaps": [
+    {
+      "app": "apps/subly",
+      "owningIncrement": "[8]INC-5",
+      "why": "apps/subly ships NO licences surface — no AboutListTile, no showLicensePage, no LicenseRegistry call anywhere under lib/. The brick has shipped one since it was written, so the one app actually published is the only app in the portfolio without it.",
+      "whyPrintedNotFailed": "Closing it means editing apps/subly/lib/features/settings/settings_screen.dart, which is [8]INC-5's primary file and shared with stages 2 and 3. Failing the build here would block every lane on a change this increment deliberately does not make. The guard prints it every run and flips to a PROMOTE ME notice the moment the surface lands, so the exemption cannot outlive its reason — and a NEW app with no surface still FAILS, because it is not on this list."
+    }
+  ],
+
+  "assets": [
+    {
+      "id": "flutter-material-icons",
+      "fromFlag": "uses-material-design",
+      "name": "MaterialIcons (the icon font Flutter bundles under uses-material-design: true)",
+      "origin": "third-party",
+      "licence": "UNVERIFIED",
+      "attributionRequired": null,
+      "attributedIn": null,
+      "source": {
+        "note": "NOT ESTABLISHED IN THIS ENVIRONMENT, and deliberately not guessed. The stage document states CC-BY 4.0 twice as a headline fact; Google's material-design-icons repository has published under Apache-2.0 since 2016 and CC-BY 4.0 was the earlier licence. Recording either without reading the file would be recording a coin toss with a citation."
+      },
+      "wouldNeed": "The LICENSE file in Google's material-design-icons repository, at the revision Flutter vendors, read directly. Also open: whether a release build ships the whole font or a tree-shaken subset — a subset and a whole font are different artefacts with the same filename (see the flutter-icon-tree-shaking-scope row in tooling/legal/duty-matrix.json).",
+      "shippedIn": "every build of every app: apps/subly/pubspec.yaml and the brick's app pubspec both declare uses-material-design: true, so this font is in 100% of what we publish.",
+      "note": "🔴 THE ROW EXISTS EVEN THOUGH THE LICENCE DOES NOT. That is the point: the register's job is to make the SET complete and the uncertainty visible. A missing row would read as 'nothing to declare'; UNVERIFIED reads as 'somebody has to open this before the first submission', which is true."
+    },
+    {
+      "id": "brand-nikatru-icon",
+      "path": "apps/subly/assets/brand/nikatru-icon.png",
+      "name": "NIKATRU icon",
+      "origin": "own-work",
+      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
+      "licence": "proprietary-all-rights-reserved",
+      "attributionRequired": false,
+      "attributedIn": null,
+      "source": {
+        "note": "Our own brand mark. The repository carries no licence grant at all — NOTICE.md states the source-visible, not-open-source posture and assert-repo-posture.mjs fails if a LICENSE file appears at the root — so everything original here is all-rights-reserved by default."
+      },
+      "shippedIn": "apps/subly (declared under flutter: assets: assets/brand/)"
+    },
+    {
+      "id": "brand-nikatru-logo",
+      "path": "apps/subly/assets/brand/nikatru-logo.png",
+      "name": "NIKATRU wordmark lockup (light background)",
+      "origin": "own-work",
+      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
+      "licence": "proprietary-all-rights-reserved",
+      "attributionRequired": false,
+      "attributedIn": null,
+      "source": {
+        "note": "Our own brand mark; see brand-nikatru-icon."
+      },
+      "shippedIn": "apps/subly (declared under flutter: assets: assets/brand/)"
+    },
+    {
+      "id": "brand-nikatru-logo-dark",
+      "path": "apps/subly/assets/brand/nikatru-logo-dark-bg.png",
+      "name": "NIKATRU wordmark lockup (dark background)",
+      "origin": "own-work",
+      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
+      "licence": "proprietary-all-rights-reserved",
+      "attributionRequired": false,
+      "attributedIn": null,
+      "source": {
+        "note": "Our own brand mark; see brand-nikatru-icon."
+      },
+      "shippedIn": "apps/subly (declared under flutter: assets: assets/brand/)"
+    }
+  ]
+}

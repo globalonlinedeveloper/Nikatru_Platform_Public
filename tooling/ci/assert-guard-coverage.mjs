@@ -132,9 +132,12 @@ const scanningRealRepo = process.argv[2] === undefined;
  *  convention rather than inventing a second one. */
 const COVERAGE_MARKER = 'COVERAGE LOST';
 
-/** Guards that do not scan a tree, with the reason. NOT a waiver list — each
- *  entry is a claim that the coverage question does not apply, and the reason
- *  has to survive being read aloud. */
+/** Files under tooling/ci that do not scan a tree, with the reason. NOT a waiver
+ *  list — each entry is a claim that the coverage question does not apply, and
+ *  the reason has to survive being read aloud. (Two shapes qualify: a guard that
+ *  calls an API instead of walking a tree, and a shared pure-function module
+ *  that every caller's own self-check already covers. Both still owe a negative
+ *  test, which limb 1 above enforces regardless of this map.) */
 const NOT_A_SCANNER = new Map([
   [
     'assert-gate-passed.mjs',
@@ -143,6 +146,10 @@ const NOT_A_SCANNER = new Map([
   [
     'record-deployment.mjs',
     'writes a GitHub Deployment record. It performs an action rather than scanning anything, so there is no scope for it to silently cover less.',
+  ],
+  [
+    'text-reductions.mjs',
+    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree, imported by check-site-integrity, assert-policy-archive, assert-policy-claims, assert-data-inventory and assert-licence-register. The coverage question belongs to those five — each carries its own COVERAGE LOST over what it reads — and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
 ]);
 

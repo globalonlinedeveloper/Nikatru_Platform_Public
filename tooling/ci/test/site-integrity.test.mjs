@@ -91,10 +91,20 @@ const FIXTURE_PROMISE = 'We keep only what this fixture says we keep.';
  *  self-hosted cases go red instead of the requirement quietly relaxing. */
 const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
 
+/** Modules the guard IMPORTS, which therefore have to travel with it into a
+ *  self-hosted fixture. `check-site-integrity.mjs` decides it is scanning its
+ *  own repository by comparing its own location to the root it was given, so
+ *  these cases copy it into the fixture — and a copy that leaves its imports
+ *  behind does not fail the assertion under test, it fails to START, and the
+ *  test then reports whatever the module loader said. (Found the moment
+ *  `stripInert`/`visibleText` moved into the shared reduction module.) */
+const GUARD_IMPORTS = ['text-reductions.mjs'];
+
 function selfHosted(dir, { root = 'a' } = {}) {
   const to = join(dir, 'tooling', 'ci', GUARD);
   mkdirSync(dirname(to), { recursive: true });
   copyFileSync(join(CI_DIR, GUARD), to);
+  for (const dep of GUARD_IMPORTS) copyFileSync(join(CI_DIR, dep), join(dirname(to), dep));
 
   const site = join(dir, 'sites', root);
   // Only the homepage is indexable; every other page declares noindex, so the
