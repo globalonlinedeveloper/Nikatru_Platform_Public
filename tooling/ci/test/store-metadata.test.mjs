@@ -410,3 +410,150 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
     assert.match(out, /NO TREE \(deferred\): apps\/probe\/store\/windows-store/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `maxChars` — the SECOND limit kind, added with the Apple channels.
+//
+// `maxLines` counts entries (MS Store search terms); `maxChars` counts characters
+// of the trimmed field, which is the shape Apple's App Name and Subtitle take.
+// Those two are the ONLY Apple listing limits this repo has a primary source for
+// — the keywords field, description and promotional text are all recorded as
+// COULD-NOT-ESTABLISH in company/pipeline/10-distribution-store.md D-5 and carry
+// no number anywhere.
+//
+// 🔴 THE THREE CASES THAT MATTER ARE THE LAST THREE. An invented limit fires on
+// CORRECT input, so: exactly-at-the-limit must PASS, an undeclared field must be
+// unconstrained at any length, and a limit whose citation was deleted must FAIL
+// LOUDLY rather than be silently skipped — a skipped limit leaves the register
+// claiming a constraint that does nothing.
+// ─────────────────────────────────────────────────────────────────────────────
+const APPLE_SOURCE = 'developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29';
+
+/** A minimal Apple-shaped fixture: one store row, maxChars, no packageIdentity. */
+function appleTree({ mutateRegister = null, fields = {} } = {}) {
+  const root = join(TMP, `a${seq++}`);
+  const write = (rel, body) => {
+    const p = join(root, rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, body);
+  };
+
+  const register = {
+    storeMetadataContract: {
+      requiredFiles: [...REQUIRED],
+      urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
+      derivedFields: {
+        _why: 'generated from the spec',
+        'short-description.txt': { source: 'apps.json', field: 'tagline' },
+        'privacy-policy-url.txt': { source: 'appConfig', field: 'privacyUrl' },
+        'support-url.txt': { source: 'appConfig', field: 'contactUrl' },
+      },
+      appConfigPath: 'apps/{app}/lib/core/config/app_config.dart',
+      perChannel: {
+        'ios-appstore': {
+          additionalFiles: ['subtitle.txt', 'keywords.txt'],
+          maxChars: {
+            'title.txt': { max: 30, min: 2, source: APPLE_SOURCE },
+            'subtitle.txt': { max: 30, source: APPLE_SOURCE },
+          },
+        },
+      },
+    },
+    channels: [
+      {
+        id: 'ios-appstore',
+        name: 'Apple App Store (iOS)',
+        platforms: ['ios'],
+        kind: 'store',
+        served: false,
+        submittable: true,
+        artifactFormats: ['.ipa'],
+        storeMetadataDir: 'apps/{app}/store/ios-appstore',
+        ownerQueue: 'A-4',
+      },
+    ],
+  };
+  if (mutateRegister) mutateRegister(register);
+
+  const apps = [{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }];
+  write('sites/_shared/_data/apps.json', JSON.stringify(apps, null, 2));
+  write('tooling/channel-register.json', JSON.stringify(register, null, 2));
+  write('apps/subly/lib/core/config/app_config.dart', appConfig());
+  write('apps/subly/pubspec.yaml', 'name: subly\nversion: 1.0.0+1\n');
+
+  const body = { ...FIELD, 'subtitle.txt': 'Every subscription, one list\n', 'keywords.txt': 'subscription,tracker\n' };
+  for (const rel of [...REQUIRED, 'subtitle.txt', 'keywords.txt']) {
+    write(`apps/subly/store/ios-appstore/${rel}`, fields[rel] ?? body[rel]);
+  }
+  return root;
+}
+
+describe('assert-store-metadata — maxChars, the Apple limit kind', () => {
+  test('PASSES on a complete Apple tree within both sourced limits', () => {
+    const { code, out } = run(appleTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /assert-store-metadata: ok/);
+  });
+
+  test('FAILS on a 31-character subtitle, and cites the page it came from', () => {
+    const { code, out } = run(appleTree({ fields: { 'subtitle.txt': `${'x'.repeat(31)}\n` } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /subtitle\.txt is 31 characters and the limit is 30/);
+    assert.match(out, /app-store-connect\/reference\/app-information/);
+  });
+
+  test('FAILS below the sourced minimum of 2 characters', () => {
+    const { code, out } = run(appleTree({ fields: { 'title.txt': 'S\n' } }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /title\.txt is 1 characters and the minimum is 2/);
+  });
+
+  // 🔴 exactly-at-the-limit must PASS. This is the case a made-up "120 chars"
+  // failed once, rejecting this repo's own 129-character fixture.
+  test('PASSES on exactly 30 characters — the limit is not off by one', () => {
+    const { code, out } = run(appleTree({ fields: { 'subtitle.txt': `${'x'.repeat(30)}\n` } }));
+    assert.equal(code, 0, out);
+  });
+
+  // 🔴 the trailing newline is a text-file convention, not a listing character.
+  test('does not count the trailing newline against the limit', () => {
+    const { code, out } = run(appleTree({ fields: { 'subtitle.txt': `${'x'.repeat(30)}\n\n` } }));
+    assert.equal(code, 0, out);
+  });
+
+  test('constrains NOTHING on a field with no declared limit — keywords carry no number', () => {
+    const { code, out } = run(appleTree({ fields: { 'keywords.txt': `${'k'.repeat(5000)}\n` } }));
+    assert.equal(code, 0, out);
+  });
+
+  // 🔴 A LIMIT WITHOUT A CITATION IS NOT ENFORCED, AND NOT SILENTLY SKIPPED.
+  test('FAILS when a declared limit has no `source`', () => {
+    const { code, out } = run(appleTree({ mutateRegister: (r) => delete r.storeMetadataContract.perChannel['ios-appstore'].maxChars['subtitle.txt'].source }));
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /declares a numeric limit with NO `source`/);
+  });
+
+  test('FAILS when a maxLines limit has its `source` deleted too — both kinds, one rule', () => {
+    const { code, out } = run(
+      tree({
+        mutateRegister: (r) => delete r.storeMetadataContract.perChannel['windows-store'].maxLines['search-terms.txt'].source,
+        fields: { 'search-terms.txt': 'a\nb\n' },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /declares a numeric limit with NO `source`/);
+  });
+
+  test('FAILS when an Apple-only additionalFile is deleted', () => {
+    const root = appleTree();
+    rmSync(join(root, 'apps/subly/store/ios-appstore/subtitle.txt'), { force: true });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assertComplained(out);
+    assert.match(out, /subtitle\.txt is missing/);
+  });
+});

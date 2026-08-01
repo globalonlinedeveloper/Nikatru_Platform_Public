@@ -1,0 +1,26 @@
+Subly keeps every subscription you pay for in one list, so the renewal that
+would have surprised you next month is a thing you already knew about.
+
+Add each service once with its price and billing cycle. Subly works out what
+you spend per month and per year, shows the next payment date for each one,
+and reminds you before a free trial turns into a charge.
+
+WHAT IT DOES
+- One list of every subscription, with price, currency and billing cycle.
+- Monthly and yearly totals, recalculated as you edit.
+- Next-renewal dates, sorted so the nearest is first.
+- Reminders before a renewal or the end of a free trial.
+- Works offline. Your list is stored on your device and stays readable
+  without a connection.
+
+WHY IT IS DIFFERENT
+Subly does not ask for access to your bank account and does not read your
+transactions. You tell it what you subscribe to; it does the arithmetic and
+the remembering. That is the whole product.
+
+PRIVACY
+Subly does not sell your data and does not show ads. Analytics are off until
+you turn them on, and you can delete your account and its data from inside
+the app. Full policy: https://nikatru.com/privacy.html
+
+Subly is made by Nikatru. Questions: https://nikatru.com/contact.html

@@ -126,15 +126,93 @@
     },
     "appConfigPath": "apps/{app}/lib/core/config/app_config.dart",
     "perChannel": {
+      "_why": [
+        "🔴 EVERY NUMBER IN THIS BLOCK CARRIES ITS CITATION, AND A FIELD WITH NO SOURCED LIMIT",
+        "CARRIES NONE. An invented limit fires on CORRECT input — a made-up '120 characters or fewer'",
+        "once rejected this repo's own fixture at 129 — so a field whose limit was not fetched from a",
+        "primary source is recorded as UNVERIFIED in apps/{app}/store/<channel>/README.md and is NOT",
+        "given a number here. The guard refuses to enforce a `max` that arrives without a `source`,",
+        "so the only way to add a limit is to add its citation with it.",
+        "",
+        "Two limit kinds, because two different things are being counted:",
+        "  `maxLines` — countable ENTRIES, one per non-blank line (MS Store search terms).",
+        "  `maxChars` — CHARACTERS of the trimmed field (Apple's app name and subtitle)."
+      ],
       "windows-store": {
         "additionalFiles": ["search-terms.txt"],
         "maxLines": {
-          "_why": "THE ONLY NUMERIC LIMIT IN THIS FILE, AND IT CARRIES ITS CITATION. An invented limit fires on CORRECT input — a made-up '120 characters or fewer' once rejected this repo's own fixture at 129 — so every other MS Store field limit is recorded as UNVERIFIED in apps/{app}/store/windows-store/README.md instead of being guessed at here.",
           "search-terms.txt": {
             "max": 7,
             "source": "Microsoft Store Policies v7.19 §10.1.3, verbatim: \"Not exceed seven unique terms or phrases.\""
           }
         }
+      },
+      "ios-appstore": {
+        "_why": [
+          "Apple's listing has fields no other store has, so they are additionalFiles rather than",
+          "contract-wide ones: `subtitle.txt` (a real App Store field, 30 chars), `keywords.txt` and",
+          "`promotional-text.txt`. The last two are carried because the FIELDS exist and the listing",
+          "would otherwise be hand-typed into App Store Connect as the only copy — their LIMITS are a",
+          "different question and are UNVERIFIED, see below.",
+          "",
+          "⚠️ `short-description.txt` is NOT Apple's subtitle. The contract requires it in every tree",
+          "and Apple has no field of that name; it is the repo-native line the ≤30 subtitle is",
+          "condensed FROM. Mapping the 37-character tagline onto a 30-character field would fail on",
+          "correct input, which is the exact failure mode this file exists to avoid."
+        ],
+        "additionalFiles": ["subtitle.txt", "keywords.txt", "promotional-text.txt"],
+        "maxChars": {
+          "_why": [
+            "THE ONLY TWO APPLE NUMBERS THAT WERE SOURCED. company/pipeline/10-distribution-store.md",
+            "D-5's limits table records the rest as COULD-NOT-ESTABLISH against the same fetch — the",
+            "keywords field, description and promotional text are NOT on the page that carries Name",
+            "and Subtitle, and the corpus's '100 chars' for keywords is not on it either. They are",
+            "therefore absent here and marked UNVERIFIED in the tree's README, not guessed at."
+          ],
+          "title.txt": {
+            "max": 30,
+            "min": 2,
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
+          },
+          "subtitle.txt": {
+            "max": 30,
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
+          }
+        }
+      },
+      "macos-appstore": {
+        "_why": [
+          "Identical listing shape to ios-appstore and a SEPARATE App Store Connect record — one",
+          "record per platform, one metadata tree, one review outcome, which is why the register",
+          "carries two rows rather than one. The limits are the same page and the same fetch."
+        ],
+        "additionalFiles": ["subtitle.txt", "keywords.txt", "promotional-text.txt"],
+        "maxChars": {
+          "title.txt": {
+            "max": 30,
+            "min": 2,
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
+          },
+          "subtitle.txt": {
+            "max": 30,
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
+          }
+        }
+      },
+      "linux-snap": {
+        "_why": [
+          "⚠️ NO CHARACTER LIMIT IS DECLARED FOR THIS CHANNEL AND THAT IS THE FINDING, NOT AN",
+          "OVERSIGHT. No Snap Store listing limit was fetched from a primary source in this increment,",
+          "so none is enforced — the same rule that leaves Apple's keywords field unnumbered. They are",
+          "recorded as UNVERIFIED in apps/{app}/store/linux-snap/README.md.",
+          "",
+          "`snap-name.txt` is the field with real consequences: it is the GLOBAL Snap Store namespace,",
+          "claimed once with `snapcraft register <name>` (OWNER_QUEUE A-6) and never transferable",
+          "casually. It is carried in the tree so the name we intend to claim is reviewable and diffable",
+          "BEFORE it is claimed, rather than being decided at a terminal prompt.",
+          "`license.txt` is the SPDX identifier the store listing shows."
+        ],
+        "additionalFiles": ["snap-name.txt", "license.txt"]
       }
     }
   },
@@ -243,6 +321,42 @@
       "deploymentEnvironment": "{app}-ios-appstore",
       "storeMetadataDir": "apps/{app}/store/ios-appstore",
       "ownerQueue": "A-4",
+      "bundleIdentifier": {
+        "_why": [
+          "🔴 THE APPLE ANALOGUE OF windows-store's `packageIdentity`, AND UNLIKE THAT ONE IT IS",
+          "ALREADY REAL. Partner Center ASSIGNS the MSIX identity, so that row carries a sentinel; a",
+          "bundle identifier is OURS TO CHOOSE and is already in the Xcode project, so it is a value",
+          "and not a placeholder — and therefore checkable today, with no Apple account.",
+          "",
+          "It is declared here because two copies of an identity is how the wrong one ships",
+          "([pipeline F-2]). tooling/release/submit-appstore.mjs compares this to what the Xcode",
+          "project actually builds. A bundle id that disagrees with App Store Connect's record cannot",
+          "be uploaded at all, and one that is changed AFTER a release is a different app to Apple.",
+          "",
+          "⚠️ iOS and macOS declare it in DIFFERENT FILES — the pbxproj for iOS, an xcconfig for",
+          "macOS — which is exactly why the value is written down once here rather than read from",
+          "'wherever it lives'."
+        ],
+        "value": "com.nikatru.subly",
+        "declaredIn": "apps/{app}/ios/Runner.xcodeproj/project.pbxproj"
+      },
+      "submission": {
+        "_why": [
+          "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
+          "parsed rather than grepped. Limb (ii) is the runbook below — company/ is gitignored so no CI",
+          "guard can open it; the path is recorded here so it is in one place a guard could reach if",
+          "company/ ever ships. Limb (iii) — a submission record in the [10]D-9 ledger — stays",
+          "UNSATISFIED and cannot be satisfied without a real submission.",
+          "",
+          "ONE SCRIPT SERVES BOTH APPLE ROWS because both authenticate with the SAME App Store Connect",
+          "API key and the same Apple Developer account (A-4); the script takes --channel and validates",
+          "whichever row it is pointed at. Two scripts would be two copies of one authentication path."
+        ],
+        "script": "tooling/release/submit-appstore.mjs",
+        "workflow": ".github/workflows/submit-appstore.yml",
+        "job": "dry-run",
+        "runbook": "company/runbooks/store-submission-apple.md"
+      },
       "deferral": {
         "reason": "🔒 DEFERRED by owner (OWNER_QUEUE A-4) until non-Apple revenue exists — no Apple device, and no Apple ORGANIZATION path exists for a sole proprietorship (Apple: enroll as an individual).",
         "alsoBlockedBy": "No Apple hardware for device testing, VoiceOver accessibility, or submission."
@@ -279,6 +393,29 @@
       "deploymentEnvironment": "{app}-macos-appstore",
       "storeMetadataDir": "apps/{app}/store/macos-appstore",
       "ownerQueue": "A-4",
+      "bundleIdentifier": {
+        "_why": [
+          "Same identifier as ios-appstore — one app, one bundle id across Apple platforms — but",
+          "declared in a DIFFERENT FILE: Flutter's macOS template puts it in an xcconfig, not in the",
+          "pbxproj. The pbxproj here carries only the RunnerTests id, so a reader that looked for",
+          "PRODUCT_BUNDLE_IDENTIFIER in the same place as iOS would find the TEST bundle's id and",
+          "compare against it happily. `declaredIn` exists so that cannot happen."
+        ],
+        "value": "com.nikatru.subly",
+        "declaredIn": "apps/{app}/macos/Runner/Configs/AppInfo.xcconfig"
+      },
+      "submission": {
+        "_why": [
+          "Same script as ios-appstore, pointed at this row with --channel macos-appstore. The rows",
+          "differ in artifact format (.pkg, not .ipa) and in one fact the runbook records: a MAC APP",
+          "STORE submission is NOT notarized — notarization is the Developer ID direct-distribution",
+          "path, a different channel this register does not yet carry."
+        ],
+        "script": "tooling/release/submit-appstore.mjs",
+        "workflow": ".github/workflows/submit-appstore.yml",
+        "job": "dry-run",
+        "runbook": "company/runbooks/store-submission-apple.md"
+      },
       "deferral": {
         "reason": "🔒 DEFERRED by owner with ios-appstore (OWNER_QUEUE A-4).",
         "alsoBlockedBy": "Notarization is a separate step from signing and needs the same account."
@@ -442,6 +579,20 @@
       "deploymentEnvironment": "{app}-linux-snap",
       "storeMetadataDir": "apps/{app}/store/linux-snap",
       "ownerQueue": "A-6",
+      "submission": {
+        "_why": [
+          "[10]D-10 limb (i) for the Snap channel. `snapcraft upload` is the real submission verb and",
+          "it authenticates with exported store credentials, not with a key of ours — which is why this",
+          "row's signing.keyKind is \"none\": Canonical signs the binary.",
+          "",
+          "⚠️ THE OWNER-GATED STEP HERE IS NOT AN ACCOUNT, IT IS A NAME. `snapcraft register <name>`",
+          "claims a GLOBAL namespace, one per app, and it is the whole of OWNER_QUEUE A-6."
+        ],
+        "script": "tooling/release/submit-snap.mjs",
+        "workflow": ".github/workflows/submit-snap.yml",
+        "job": "dry-run",
+        "runbook": "company/runbooks/store-submission-snap.md"
+      },
       "deferral": {
         "reason": "[ADR 015] §2 — native Linux is DEFERRED until there is revenue. The web build already serves Linux users at $0, and Linux is the smallest addressable market with no store payments.",
         "alsoBlockedBy": null
