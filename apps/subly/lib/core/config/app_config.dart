@@ -71,6 +71,17 @@ class AppConfig {
   // store-required Privacy Policy link). Change here once → all apps inherit.
   static const String companyName = 'Nikatru';
   static const String companyUrl = 'https://nikatru.com';
+
+  /// The one address a user — or a stranger with a security finding — writes to.
+  ///
+  /// 🔴 THIS APP HAD NONE while the brick every future app is stamped from did
+  /// ([pipeline K-12]). It declared `contactUrl` only, so the single shipping app
+  /// was the one app in the portfolio with no compiled-in address, and nothing
+  /// could see the difference because each file was individually plausible.
+  /// `tooling/ci/assert-repo-posture.mjs` now fails if this, the brick's
+  /// `AppConfig.supportEmail`, the address on `sites/nikatru/contact.html` and
+  /// the one published in `SECURITY.md` are not all the same string.
+  static const String supportEmail = 'support@nikatru.com';
   static const String privacyUrl = 'https://nikatru.com/privacy.html';
   static const String termsUrl = 'https://nikatru.com/terms.html';
   static const String refundUrl = 'https://nikatru.com/refund.html';

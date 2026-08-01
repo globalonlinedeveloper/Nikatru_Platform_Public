@@ -114,15 +114,27 @@ const TESTS = join(CI, 'test');
 // Merged reality, MEASURED on the resolved tree (not predicted from either
 // branch): 42 guards, 37 test files, 1060 test declarations. Floors 40/35/1000 —
 // 2, 2 and 60 below.
-const MIN_GUARDS = 40;
-const MIN_TEST_FILES = 35;
+//
+// 🔴 AND A THIRD TIME, ON THE VERY NEXT MERGE (stage 8 · COMPLIANCE & LEGAL
+// meeting the above). Stage 8 measured 44/38/1071 against ITS base and ratcheted
+// honestly to 42/36/1033; the tree it merged into had already moved to
+// 42/37/1060. Neither set is the merged tree's. Adding two guards
+// (assert-repo-posture.mjs, assert-policy-archive.mjs) and two test files to a
+// 42/37 base, plus stage 3's declarations this branch never saw, MEASURED on the
+// resolved tree: 44 guards, 39 test files, 1106 test declarations.
+// Floors 42/37/1068 — 2, 2 and 38 below. Three merges in a row have now produced
+// a number neither branch could have predicted; this comment is the third
+// consecutive piece of evidence that the rule is "measure after resolving", and
+// that "take the higher one" is the same mistake wearing a disguise.
+const MIN_GUARDS = 42;
+const MIN_TEST_FILES = 37;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 1000;
+const MIN_TEST_CASES = 1068;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing

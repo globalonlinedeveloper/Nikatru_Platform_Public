@@ -78,6 +78,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # 🔴 FULL HISTORY, and it is load-bearing rather than tidy.
+          # `assert-policy-archive.mjs` derives "every privacy-policy version that
+          # has ever been in force" from `git log -p` over the declaring files —
+          # the archive it demands exists precisely because the live page is
+          # edited IN PLACE and the superseded bytes survive nowhere else.
+          # At the default depth of 1 that walk sees one commit adding the whole
+          # file, which is indistinguishable from "there has only ever been one
+          # version": the guard would pass forever while checking nothing about
+          # the past. It refuses to run on a shallow clone for that reason, so
+          # removing this line turns the step RED rather than quietly hollow.
+          # [pipeline K-4]
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -108,6 +120,33 @@ jobs:
       - name: Every guard is tested and self-checking
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-guard-coverage.mjs
+      # The repository's own legal posture. THREE limbs of deliberately different
+      # strength (the guard says which is which): one support address across
+      # SECURITY.md, every app's AppConfig and the published contact page; the two
+      # posture tokens in NOTICE.md; and NO LICENCE FILE AT THE ROOT.
+      #
+      # That last one is the only assertion in this whole workflow guarding
+      # something IRREVERSIBLE. No-LICENSE is what makes this tree
+      # all-rights-reserved, and a licence grant cannot be un-granted — deleting
+      # the file later does not retract it from anyone who already cloned, and it
+      # stays in the public history. Mutation-proven against a copy of the real
+      # tree, 10/10 caught, including `touch LICENSE` and the same grant landing
+      # as COPYING. [pipeline K-12]
+      - name: The repository states its own legal posture
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-repo-posture.mjs
+      # A consent record is worth exactly the bytes it can still point at. The
+      # privacy notice is ONE URL edited in place; on 2026-08-01 the version moved
+      # from 2026-07-26 to 2026-08-01 with no archive, so every artifact collected
+      # before that cited a document nobody could serve. This asserts a snapshot
+      # exists for every version that has EVER been in force (derived from real
+      # history — `git log -S` provably misses an in-place value change and was
+      # measured doing so here), that the current snapshot's text equals the live
+      # page's, and that an archived policy is not a second live one.
+      # Needs `fetch-depth: 0` above; it refuses a shallow clone. [pipeline K-4]
+      - name: Every policy version a user consented to is still retrievable
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-policy-archive.mjs
       # Additive-only schema guard. Lives in this lane (no new lane) but scans
       # EVERY migration set in the repo — one shared platform_db means one
       # destructive migration is a portfolio-wide outage. Runs before the build
