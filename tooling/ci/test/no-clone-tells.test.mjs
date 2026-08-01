@@ -79,6 +79,35 @@ describe('limb 1 — the app name', () => {
     const { code } = run(tree({ extra: { 'packages/core/lib/x.dart': "final m = {'subly': 1};\n" } }));
     assert.equal(code, 1);
   });
+
+  // 🔴 THE PRIVATE HALF, mutation-proven on the real tree 2026-08-01: appending
+  // `_sublyLegacyLimit` and `class _SublyMigration` to packages/core/lib/src/
+  // result.dart left the guard printing "no clone tells". `_` is a WORD
+  // character, so the leading `\b` in the old pattern could never fire inside
+  // `_subly…` — and in Dart the underscore prefix is how you spell "private", so
+  // the ENTIRE private surface of every shared package was out of scope while
+  // the public `sublyLegacyLimit` was caught. Restoring the leading `\b` turns
+  // both of these red.
+  for (const [shape, body] of [
+    ['a private lowerCamel constant', 'const int _sublyLegacyLimit = 5;\n'],
+    ['a private class', 'class _SublyMigration {}\n'],
+    ['a private field', 'class A { final int _sublyRetries = 1; }\n'],
+  ]) {
+    test(`fails on the app name inside ${shape}`, () => {
+      const { code, out } = run(tree({ extra: { 'packages/core/lib/x.dart': body } }));
+      assert.equal(code, 1, `underscore-prefixed identifiers are code too: ${body.trim()}`);
+      assert.match(out, /shared code names the app "[Ss]ubly"/);
+    });
+  }
+
+  // The false-alarm side: widening the left edge to "not a letter or digit" must
+  // not start matching longer, unrelated words.
+  test('a longer unrelated word still does NOT fire', () => {
+    const { code, out } = run(tree({
+      extra: { 'packages/core/lib/x.dart': 'const a = 1; // ok\nclass Sublyx {}\nconst mysubly = 2;\n' },
+    }));
+    assert.equal(code, 0, out);
+  });
 });
 
 describe('limb 2 — domain vocabulary', () => {
@@ -91,6 +120,30 @@ describe('limb 2 — domain vocabulary', () => {
   test('a word not on the list does not fire', () => {
     const { code } = run(tree({ extra: { 'packages/core/lib/x.dart': 'class X { void recipe() {} }\n' } }));
     assert.equal(code, 0);
+  });
+
+  // 🔴 A BANNED WORD THAT CANNOT MATCH ITSELF IS AN ASSERTION THAT CANNOT FAIL.
+  // The variant list was lower/Capital/UPPER only, so the register's camelCase
+  // entries — `billingCycle`, `freeTrial`, `merchantName` — expanded to
+  // `billingcycle|BillingCycle|BILLINGCYCLE` and matched none of the three ways
+  // the word is actually written in Dart. Three of the six domain nouns in
+  // tooling/capability-register.json were dead on arrival.
+  test('fails on a camelCase domain noun spelled exactly as the register spells it', () => {
+    const { code, out } = run(tree({
+      nouns: ['billingCycle'],
+      extra: { 'packages/core/lib/x.dart': 'class X { int billingCycle = 1; }\n' },
+    }));
+    assert.equal(code, 1, 'the register entry could not match its own spelling');
+    assert.match(out, /domain word "billingCycle"/);
+  });
+
+  test('fails on a PRIVATE camelCase domain noun', () => {
+    const { code, out } = run(tree({
+      nouns: ['billingCycle'],
+      extra: { 'packages/core/lib/x.dart': 'class X { int _billingCycleDays = 1; }\n' },
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /domain word "billingCycle"/);
   });
 });
 

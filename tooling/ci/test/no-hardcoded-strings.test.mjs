@@ -61,13 +61,21 @@ class HomeScreen extends StatelessWidget {
 
 /**
  * The canary needs a tree KNOWN to be dirty, at or above the floor of 20 — the
- * real apps/subly holds 58. A fixture below the floor would fail for the wrong
+ * real apps/subly holds 59. A fixture below the floor would fail for the wrong
  * reason, and one with NO dirty tree would let broken matchers look clean, which
  * is the exact failure the canary exists to catch.
+ *
+ * 🔴 DIRTY IN EVERY WAY THE GUARD MATCHES, not only the commonest one
+ * (2026-08-01). The guard now requires each matcher FAMILY to show its own
+ * evidence, because ~47 of apps/subly's 59 hits are `Text(…)` — so deleting the
+ * labelling-parameter matcher outright still cleared the total floor by a wide
+ * margin and printed "matchers verified". A fixture dirty in only one way would
+ * encode exactly that blind spot; `labelled` is the second family's evidence.
  */
-function dirtySubly(n = 25) {
+function dirtySubly(n = 25, labelled = 4) {
   let s = 'class S extends StatelessWidget {\n  Widget build(BuildContext c) {\n    return Column(children: [\n';
   for (let i = 0; i < n; i++) s += `      Text('Legacy label number ${i}'),\n`;
+  for (let i = 0; i < labelled; i++) s += `      AppTile(label: 'Legacy tile number ${i}'),\n`;
   return `${s}    ]);\n  }\n}\n`;
 }
 
@@ -121,6 +129,22 @@ describe('assert-no-hardcoded-strings', () => {
       assert.equal(code, 1);
       assert.match(out, /"My App"/);
     });
+
+    // 🔴 THE DEFECT THIS FILE SHIPPED WITH, mutation-proven on the real brick
+    // 2026-08-01: `settings`, `loading`, `delete` and `subscriptions` all matched
+    // the NOT_USER_FACING entry `^[a-z][a-z0-9_]*$` — "a lowercase key" — so the
+    // guard scanned them and printed "the brick is clean", exit 0. They are the
+    // commonest labels an app ships, in the one tree that multiplies by 50.
+    // Reverting the exemption to `^[a-z][a-z0-9_]*$` turns every case below red.
+    for (const word of ['settings', 'loading', 'delete', 'subscriptions', 'save']) {
+      test(`FAILS on the bare lowercase label '${word}'`, () => {
+        const { code, out } = run(tree({
+          brick: `${CLEAN_BRICK}\nconst probe = Text('${word}');\n`,
+        }));
+        assert.equal(code, 1, `'${word}' was filed as a key, not as prose`);
+        assert.match(out, new RegExp(`shows a hardcoded string in Text\\(…\\): "${word}"`));
+      });
+    }
   });
 
   // Silence matters as much as noise — a guard that fires on keys and hex
@@ -176,6 +200,31 @@ describe('assert-no-hardcoded-strings', () => {
       const { code, out } = run(tree({ omitBrick: true }));
       assert.equal(code, 1);
       assert.match(out, /COVERAGE LOST/);
+    });
+
+    // 🔴 THE TOTAL FLOOR CANNOT SEE HALF THE MATCHERS DIE. apps/subly yields ~47
+    // `Text(…)` hits against ~12 labelling-parameter hits, so losing the second
+    // family entirely still clears MIN_CANARY by more than 2×. The dirty tree
+    // here is dirty in ONE way only — a well-above-floor 30 `Text(…)` literals
+    // and no labelled ones — which is precisely the shape a total count calls
+    // healthy.
+    test('FAILS when one matcher family has no evidence, though the total is high', () => {
+      const { code, out } = run(tree({ subly: dirtySubly(30, 0) }));
+      assert.equal(code, 1, 'a 30-hit total hid a family that matched nothing');
+      assert.match(out, /COVERAGE LOST — the "a labelling parameter" matcher found NOTHING/);
+      // …and the enforcement half still said "clean", which is the point.
+      assert.match(out, /the brick template shows no hardcoded user-facing strings/);
+    });
+
+    // The floor is deliberately left FAR below the measured total and must not
+    // be re-pinned to it — a floor tuned to today's measurement is the stale
+    // floor PR #85 removed from assert-guard-coverage. This proves the headroom
+    // is real: a tree well under the real 59, but over the floor and dirty in
+    // both ways, is still a valid canary.
+    test('passes on a dirty tree well below the measured total but above the floor', () => {
+      const { code, out } = run(tree({ subly: dirtySubly(18, 3) }));
+      assert.equal(code, 0, out);
+      assert.match(out, /matchers verified against a known-dirty tree: 21 literal/);
     });
   });
 });

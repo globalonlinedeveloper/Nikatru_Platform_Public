@@ -138,14 +138,32 @@ function stripComments(src) {
  *  Instead: match the name at a word start, in any of its normal casings, and
  *  require that what follows is not a lowercase letter. `SublyThing` and
  *  `SUBLY_KEY` match; `sublyx` (a longer, unrelated word) does not.
- *  The `i` flag cannot be used here — it would make `[a-z]` match `T` too. */
+ *  The `i` flag cannot be used here — it would make `[a-z]` match `T` too.
+ *
+ *  🔴 AND THE LEADING `\b` MISSED THE PRIVATE HALF (2026-08-01 corpus triage).
+ *  `_` is a WORD character, so there is no word boundary in `_subly…` — which
+ *  means `_sublyLegacyLimit` and `class _SublyMigration` appended to
+ *  packages/core were scanned and the guard printed "no clone tells". That is
+ *  not a corner case: in Dart the underscore prefix is how you spell "private",
+ *  so the entire private surface of every shared package was out of scope while
+ *  the PUBLIC `sublyLegacyLimit` was caught. Mutation-proven on the real tree.
+ *  The left edge is therefore "not preceded by a letter or digit" — `_` and `$`
+ *  separate, exactly as they do to a human reading the identifier — while
+ *  `mysubly` still does not match.
+ *
+ *  🔴 The word's OWN spelling is a variant too. The list was lower/Capital/UPPER
+ *  only, so `billingCycle` — a camelCase entry in cloneTells.domainNouns —
+ *  generated `billingcycle|BillingCycle|BILLINGCYCLE` and matched none of the
+ *  three ways it is actually written. A banned word that cannot match itself is
+ *  an assertion that cannot fail. */
 function tellPattern(words) {
   const variants = words.flatMap((w) => [
+    w,
     w.toLowerCase(),
     w.charAt(0).toUpperCase() + w.slice(1),
     w.toUpperCase(),
   ]);
-  return new RegExp(`\\b(${[...new Set(variants)].join('|')})(?![a-z])`);
+  return new RegExp(`(?<![A-Za-z0-9])(${[...new Set(variants)].join('|')})(?![a-z])`);
 }
 
 const problems = [];
