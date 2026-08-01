@@ -16,13 +16,34 @@ class SupabaseAuthRepository implements core.AuthRepository {
   SupabaseAuthRepository({
     sb.GoTrueClient? client,
     Future<void> Function()? requestServerDeletion,
-  })  : _injected = client,
-        _requestServerDeletion = requestServerDeletion;
+    DateTime Function()? clock,
+    this.refreshSkew = const Duration(seconds: 30),
+  }) : _injected = client,
+       _requestServerDeletion = requestServerDeletion,
+       _now = clock ?? (() => DateTime.now().toUtc());
 
   final sb.GoTrueClient? _injected;
 
-  /// Calls the backend's delete-account route. Injected because that route is
-  /// **stage 4's** and does not exist yet — see [deleteAccount].
+  /// How far AHEAD of the real expiry a token counts as expired.
+  ///
+  /// A token that is valid for another two seconds is worthless: the request
+  /// carrying it takes longer than that to reach the Worker, so it arrives
+  /// expired and comes back 401. The skew is what makes "not expired" mean
+  /// "still valid when it lands".
+  final Duration refreshSkew;
+
+  /// Injectable so expiry is testable with a FAKE CLOCK rather than by sleeping.
+  /// `Session.isExpired` reads the wall clock internally, so a test that used it
+  /// could only ever assert on real time.
+  final DateTime Function() _now;
+
+  /// The single in-flight refresh, or null. See [currentAccessToken].
+  Future<String?>? _refreshInFlight;
+
+  /// Calls the backend's `DELETE /v1/account`. Injected rather than built here
+  /// because the route lives behind the app's own REST client — see
+  /// [deleteAccount]. The brick wires it; leaving it null keeps the honest
+  /// refusal for a caller that has no such route.
   final Future<void> Function()? _requestServerDeletion;
 
   sb.GoTrueClient get _auth => _injected ?? sb.Supabase.instance.client.auth;
@@ -97,9 +118,64 @@ class SupabaseAuthRepository implements core.AuthRepository {
   @override
   Future<void> signOut() => _auth.signOut();
 
+  /// 🔴 REFRESHES ON EXPIRY, and that is the whole point of this override.
+  ///
+  /// This used to be `_auth.currentSession?.accessToken` — whatever was in
+  /// memory, expired or not — while the sibling [InMemoryAuthRepository]
+  /// enforced the opposite invariant and every test drove the sibling. The SDK's
+  /// auto-refresh ticker covers cold start and foreground steady state, but it
+  /// is STOPPED while the app is paused/detached and restarted asynchronously on
+  /// resume: the first request of the frame after a resume reads the still-stale
+  /// token, the Worker answers 401, and the brick used to turn that into a
+  /// sign-out. A token store that hands back an expired token is how a caller
+  /// ends up retrying a 401 forever — or, worse, logged out.
+  ///
+  /// 🔴 SINGLE-FLIGHT, and that is not an optimisation. A resumed screen fires
+  /// several requests at once; without this every one of them starts its own
+  /// refresh, and gotrue INVALIDATES the old refresh token as it issues a new
+  /// one — so the losers of the race present a token the server has already
+  /// retired and the session dies. One refresh per burst, shared by every
+  /// caller. The future is cleared in `finally`, so a later expiry refreshes
+  /// again rather than replaying a stale result forever.
+  ///
+  /// Returns null only when there is no session, or when refresh genuinely
+  /// failed — which is the signal the brick's `onUnauthorized` uses to decide
+  /// whether a 401 really means the session is gone.
   @override
-  Future<String?> currentAccessToken() async =>
-      _auth.currentSession?.accessToken;
+  Future<String?> currentAccessToken() async {
+    final sb.Session? s = _auth.currentSession;
+    if (s == null) return null;
+    if (!_isExpiring(s)) return s.accessToken;
+    return _refreshInFlight ??= _refreshOnce();
+  }
+
+  /// Whether [s] is expired, or close enough that it will be by the time a
+  /// request carrying it arrives. Unknown expiry (`expiresAt == null`, which is
+  /// what a token whose `exp` claim cannot be read reports) is treated as NOT
+  /// expiring: refreshing on every single call would be worse than trusting a
+  /// token the SDK's own ticker is already managing.
+  bool _isExpiring(sb.Session s) {
+    final int? exp = s.expiresAt;
+    if (exp == null) return false;
+    final DateTime expiry = DateTime.fromMillisecondsSinceEpoch(
+      exp * 1000,
+      isUtc: true,
+    );
+    return !expiry.isAfter(_now().toUtc().add(refreshSkew));
+  }
+
+  Future<String?> _refreshOnce() async {
+    try {
+      final sb.AuthResponse res = await _auth.refreshSession();
+      return res.session?.accessToken;
+    } catch (_) {
+      // A failed refresh means "no usable token", never a crash in an HTTP
+      // interceptor. The caller decides what to do about it.
+      return null;
+    } finally {
+      _refreshInFlight = null;
+    }
+  }
 
   @override
   Future<core.AuthSession?> currentSession() async {
@@ -143,11 +219,18 @@ class SupabaseAuthRepository implements core.AuthRepository {
     return u;
   }
 
-  /// 🔴 [pipeline C-15] THE CLIENT HALF. `DELETE /v1/account` is stage 4's route
-  /// and does not exist yet, so the caller injects it. When it is absent this
-  /// still signs out and then throws — it does NOT pretend to have deleted
-  /// anything, because silently succeeding on a deletion request is the one
-  /// outcome a user can never detect and never recover from.
+  /// 🔴 [pipeline C-15] THE CLIENT HALF. The caller injects the request because
+  /// the route is reached through the app's own REST client. When nothing is
+  /// injected this still signs out and then throws — it does NOT pretend to have
+  /// deleted anything, because silently succeeding on a deletion request is the
+  /// one outcome a user can never detect and never recover from.
+  ///
+  /// The same rule binds the SERVER half, and it is why wiring this hook was not
+  /// enough on its own: the stamped route used to purge the app's rows and the
+  /// user's entitlements while leaving the identity record intact, so "your
+  /// account is deleted" would have been followed by a login that still worked.
+  /// The route now refuses (501) unless it can delete the identity too, and that
+  /// refusal arrives here as a thrown [core.AuthFailure] rather than as success.
   @override
   Future<void> deleteAccount() async {
     Object? failure;

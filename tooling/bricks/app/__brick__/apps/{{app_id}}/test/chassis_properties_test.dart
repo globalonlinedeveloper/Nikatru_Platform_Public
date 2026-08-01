@@ -54,9 +54,15 @@ class _MemStore implements core.KeyValueStore {
   Future<void> write(String key, String value) async => data[key] = value;
 }
 
-ProviderContainer _container(_MemStore store) => ProviderContainer(
-  overrides: <Override>[keyValueStoreProvider.overrideWith((_) async => store)],
-);
+ProviderContainer _container(_MemStore store, {core.AuthRepository? auth}) =>
+    ProviderContainer(
+      overrides: <Override>[
+        keyValueStoreProvider.overrideWith((_) async => store),
+        // Only when a test needs a session in a state the default cannot reach
+        // — an already-expired one, for instance.
+        if (auth != null) authRepositoryProvider.overrideWithValue(auth),
+      ],
+    );
 
 /// A container that has already seen onboarding.
 ///
@@ -622,6 +628,48 @@ void main() {
       await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
       await auth.signOut();
       expect(await c.read(authTokenProvider)(), isNull);
+    });
+
+    // ── A 401 IS NOT PROOF THE SESSION IS GONE. ─────────────────────────────
+    // The REST client used to sign out on ANY 401. An access token that merely
+    // expired looks identical from the Worker's chair, and expiry is routine —
+    // the SDK stops its refresh ticker while the app is paused and restarts it
+    // asynchronously on resume, so the first request after a resume carries a
+    // stale token by design. The user came back to the app and was thrown out
+    // of it.
+    test('a 401 with a LIVE session does not sign the user out', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      await signOutOnlyIfSessionIsGone(auth);
+
+      expect(
+        auth.currentUser,
+        isNotNull,
+        reason:
+            'a 401 the session can still answer for is a failed REQUEST, not a '
+            'reason to destroy state the user can still use',
+      );
+    });
+
+    // …and the one case where signing out IS the truthful action.
+    test('a 401 the session cannot answer for DOES sign the user out', () async {
+      final ProviderContainer c = _container(
+        _MemStore(),
+        // A session that is already expired the instant it is issued: the seam
+        // reports no usable token, which is what "the session is gone" means.
+        auth: InMemoryAuthRepository(sessionLifetime: Duration.zero),
+      );
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      expect(await auth.currentAccessToken(), isNull);
+
+      await signOutOnlyIfSessionIsGone(auth);
+
+      expect(auth.currentUser, isNull);
     });
 
     // The six-platform matrix is DECLARED, so a caller can ask before promising
