@@ -86,7 +86,15 @@ function packageImports(dir) {
         const src = readFileSync(full, 'utf8');
         // Import/export directives only — a `package:` inside a doc comment or
         // a string is prose, and prose is not a dependency.
-        for (const m of src.matchAll(/^\s*(?:import|export)\s+'package:([a-z0-9_]+)\//gm)) {
+        // 🔴 BOTH quote styles (2026-08-01 full-corpus review). The quote was
+        // hardcoded as `'`, and Dart accepts `"` — so
+        // `import "package:flutter/material.dart";` walked through ALL THREE
+        // C-5 limbs invisibly. Mutation-proven on core: the double-quoted form
+        // left this guard printing "core is pure" while the single-quoted
+        // control failed. `prefer_single_quotes` is a non-fatal INFO under the
+        // workspace's own analyze posture, so nothing else goes red either: a
+        // boundary that quote style can walk around is not a boundary.
+        for (const m of src.matchAll(/^\s*(?:import|export)\s+['"]package:([a-z0-9_]+)\//gm)) {
           if (!found.has(m[1])) found.set(m[1], []);
           const rel = relative(ROOT, full).replace(/\\/g, '/');
           if (!found.get(m[1]).includes(rel)) found.get(m[1]).push(rel);

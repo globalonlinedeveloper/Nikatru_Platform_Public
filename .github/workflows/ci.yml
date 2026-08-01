@@ -666,8 +666,14 @@ jobs:
       # Cloudflare still cannot be gated. The protection is indirect: with `main`
       # protected (F-5a), code that cannot pass this lane cannot reach `main`, and
       # therefore cannot reach Cloudflare. [pipeline F-9]
+      #
+      # The two site paths are ARGUMENTS, not decoration (2026-08-01 review):
+      # assert-lane-coverage.mjs now ignores comments, so this run line is the
+      # sites' one structural claim to CI coverage — and the script fails if a
+      # claimed root is not really among the deploy roots it scans, so the claim
+      # cannot drift from the checking.
       - name: Site integrity
-        run: node tooling/ci/check-site-integrity.mjs
+        run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam
       # [pipeline S-7a] apps.json is PUBLIC, so a `live` entry is a promise to a
       # stranger that the link works. Under the wildcard `*.nikatru.com` ([ADR
       # 006]) every name resolves and almost every name fails — measured

@@ -25,8 +25,17 @@
 //
 // Pipeline requirement: company/pipeline/01-foundation.md → F-9.
 //
-// Usage:  node tooling/ci/check-site-integrity.mjs [repoRoot]
+// Usage:  node tooling/ci/check-site-integrity.mjs [repoRoot] [claimedRoot...]
 // Exit 0 = clean, 1 = a site is broken or the scan lost its coverage.
+//
+// `claimedRoot` arguments (e.g. `sites/nikatru`) are the CI lane's structural
+// claim over the Cloudflare-Git-deployed sites. assert-lane-coverage.mjs used to
+// accept those two paths appearing in a workflow COMMENT as proof they were
+// covered (2026-08-01 full-corpus review) — prose satisfying a coverage check.
+// Naming them as arguments makes the claim load-bearing at both ends: the run
+// line in ci.yml is the text the lane guard matches, and THIS script fails if a
+// claimed root is not actually among the deploy roots it scans, so the claim
+// cannot outlive the thing it claims.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readdirSync, existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
@@ -35,6 +44,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const repoRoot = process.argv[2] ?? process.cwd();
+const claimedRoots = process.argv.slice(3);
 const SITES = join(repoRoot, 'sites');
 
 /** A deploy root is a directory under sites/ that ships an index.html.
@@ -229,6 +239,22 @@ try {
 }
 
 // ── coverage self-check, BEFORE reporting clean ──────────────────────────────
+// A claimed root the scan does not actually reach is the lane guard's claim
+// pointing at nothing — the caller (ci.yml) says "this script covers X" and X is
+// not covered. Checked against the DISCOVERED deploy roots, not the filesystem:
+// a directory that exists but lost its index.html is exactly a site this script
+// has stopped checking.
+{
+  const scanned = new Set(siteRoots.map((r) => relative(repoRoot, r).replaceAll('\\', '/')));
+  const dangling = claimedRoots.filter((c) => !scanned.has(c.replace(/\/+$/, '')));
+  if (dangling.length) {
+    console.error(
+      `✗ COVERAGE LOST — the caller claims ${dangling.join(', ')} as scanned deploy root(s), but the scan found no such root.`,
+    );
+    console.error('  The CI lane is promising coverage this script does not deliver.');
+    process.exit(1);
+  }
+}
 if (siteRoots.length < MIN_SITES) {
   console.error(
     `✗ COVERAGE LOST — found ${siteRoots.length} deploy root(s) under sites/, expected at least ${MIN_SITES}.`,

@@ -243,7 +243,15 @@ try {
   } else {
     const wf = readFileSync(wfPath, 'utf8');
     const main = readFileSync(entry, 'utf8');
-    const supplied = /--dart-define=GLITCHTIP_DSN=/.test(wf);
+    // 🔴 NO `#` BEFORE THE MATCH (2026-08-01 full-corpus review). This tested
+    // the RAW workflow text, so commenting the define out — one `#`, the exact
+    // edit somebody makes while debugging build flags — still counted as
+    // "supplied", and the shipped build initialised the NoOp client with this
+    // guard printing ok. Worse: the define sits in a `run: >` folded scalar,
+    // where that `#` is a SHELL comment that also swallows the rest of the
+    // line. A define behind a comment marker is prose, not a flag; the match
+    // must sit on a line with no `#` anywhere before it.
+    const supplied = /^[^#\n]*--dart-define=GLITCHTIP_DSN=/m.test(wf);
     const consumed = /String\.fromEnvironment\(\s*'GLITCHTIP_DSN'/.test(main);
     if (!consumed) {
       fail("apps/subly/lib/main.dart no longer reads String.fromEnvironment('GLITCHTIP_DSN') — the deploy would be supplying a value nothing consumes.");
