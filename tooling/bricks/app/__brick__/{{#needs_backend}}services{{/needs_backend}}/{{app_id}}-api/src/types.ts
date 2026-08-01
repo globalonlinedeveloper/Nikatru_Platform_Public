@@ -14,6 +14,13 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   // Optional legacy HS256 fallback secret (most projects use ES256 JWKS).
   SUPABASE_JWT_SECRET?: string;
+  // 🔴 G2. The ONLY credential that can delete an identity record
+  // (`DELETE /auth/v1/admin/users/<id>`). Optional in the TYPE and REQUIRED in
+  // practice: `DELETE /v1/account` refuses with 501 when it is unset, because a
+  // deletion that leaves the login working is one the user can never detect.
+  // NEVER a `var` — set with `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`.
+  // It bypasses RLS, so nothing outside routes/account.ts may read it.
+  SUPABASE_SERVICE_ROLE_KEY?: string;
 }
 
 // Per-request variables set by middleware.

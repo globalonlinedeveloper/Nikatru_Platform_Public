@@ -29,6 +29,14 @@ const ok = (m) => console.log(`ok   ${m}`);
 // a test is exactly the state this guard exists to reject.
 const SCAN_ROOTS = ['apps', 'tooling/bricks'];
 const SKIP_DIR = new Set(['build', '.dart_tool', 'node_modules', 'test', 'integration_test']);
+// 🔴 apps/probe is a GITIGNORED LOCAL STAMP — present on a dev box, never in a
+// fresh CI checkout. Scanning it makes this guard's answer depend on whether
+// somebody happened to run `mason make`, which is not a property of the
+// repository. Found 2026-08-01 while mutation-testing the secure_session seam:
+// with the call deleted from BOTH real call sites the guard still printed `ok`,
+// satisfied entirely by a throwaway stamp — a caller check that cannot fail.
+// assert-package-boundaries.mjs already excludes it for the same reason.
+const SKIP_PATH = [join('apps', 'probe')];
 
 function walk(dir, out = []) {
   let entries;
@@ -46,7 +54,9 @@ function walk(dir, out = []) {
   return out;
 }
 
-const files = SCAN_ROOTS.flatMap((r) => walk(join(repo, r)));
+const files = SCAN_ROOTS.flatMap((r) => walk(join(repo, r))).filter(
+  (f) => !SKIP_PATH.some((skip) => f.startsWith(join(repo, skip) + sep)),
+);
 
 // COVERAGE SELF-CHECK. If the scan silently stops reaching the app tree this
 // guard would pass every seam by finding nothing to contradict it — the exact
@@ -89,6 +99,33 @@ const REQUIRED_COVERAGE = [
         // Must be found somewhere OTHER than the file declaring it.
         declares: /(?:Future<void>\s+)?recordAnalyticsConsent\s*\(\s*\n?\s*WidgetRef/,
         label: 'a UI caller',
+      },
+    ],
+  },
+  {
+    id: 'secure_session',
+    what: 'initNikatruAuth — the only call that keeps the refresh token out of plaintext [G-43]',
+    wired: true,
+    // 🔴 ADDED 2026-08-01 AFTER THE SEAM WAS FOUND DEAD. This guard's whole
+    // subject is "does anything real call it", and `initNikatruAuth` — a
+    // function whose own doc says "the brick calls this" — had ZERO callers
+    // tree-wide: its declaration plus two fixture strings. Meanwhile the brick
+    // initialised Supabase nowhere (a backend-live stamp died at launch) and the
+    // one shipping app called `Supabase.initialize` bare (refresh token in
+    // plaintext). It was not listed here, so C-6 could not count it — the very
+    // gap 02-STAGE-2-OWNER-BRIEF called out: "auth is not even a deferred row".
+    needs: [
+      {
+        re: /initNikatruAuth\s*\(/,
+        // Belt and braces: packages/ is outside SCAN_ROOTS so the declaration is
+        // not in scope anyway, but an anchor that would match a declaration if
+        // the scan ever widened is an anchor that stops meaning anything.
+        declares: /Future<void>\s+initNikatruAuth\(/,
+        label: 'a real caller (not a test)',
+      },
+      {
+        re: /secureStore:\s*FlutterSecureStore\(/,
+        label: 'a real platform secure store handed to it',
       },
     ],
   },

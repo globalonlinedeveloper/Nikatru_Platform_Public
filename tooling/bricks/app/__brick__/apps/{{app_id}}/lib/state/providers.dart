@@ -516,14 +516,30 @@ String _generateInstallId() {
 
 /// The identity seam. Real Supabase once the owner supplies the identity
 /// `--dart-define`s; a real in-memory implementation until then.
+///
+/// 🔴 G2 · `requestServerDeletion` IS WHAT MAKES "DELETE ACCOUNT" A BUTTON THAT
+/// DELETES. It was hard-coded to `null` on the grounds that the server route was
+/// stage 4's and did not exist — but the SAME brick stamps it
+/// (`services/{{app_id}}-api/src/routes/account.ts`, mounted behind the
+/// Supabase-JWT middleware). So every account-bearing backend-live stamp shipped
+/// a Delete Account control that took the refusal branch every single time: the
+/// user was signed OUT and never deleted. Both stores require a WORKING in-app
+/// deletion path wherever an account can be created.
+///
+/// `ref.read` INSIDE the closure, not at build time: [restClientProvider]
+/// watches [authTokenProvider], which reads this provider, so resolving the
+/// client out here would be a cycle. Deletion happens long after both exist.
+///
+/// A non-2xx — including the 501 the route returns when it cannot delete the
+/// IDENTITY record — throws `ApiException`, which `deleteAccount` turns into an
+/// `AuthFailure`. The honest refusal is preserved; it has just moved to the end
+/// of a chain that can actually succeed.
 final Provider<core.AuthRepository> authRepositoryProvider =
     Provider<core.AuthRepository>((ref) {
       if (!AppConfig.isBackendLive) return InMemoryAuthRepository();
       return SupabaseAuthRepository(
-        // The server route is STAGE 4's and does not exist yet, so the client
-        // half refuses loudly rather than pretending to have deleted anything.
-        // Injecting it here is the seam where stage 4 plugs in.
-        requestServerDeletion: null,
+        requestServerDeletion: () =>
+            ref.read(restClientProvider).delete('/account'),
       );
     });
 
@@ -545,15 +561,41 @@ final Provider<Future<String?> Function()> authTokenProvider =
 /// [pipeline C-15] THE ACCEPTANCE CRITERION IN ONE LINE: a `tokenProvider`
 /// reaches the shared REST client. Without this the seam exists and no request
 /// ever carries a token — the app authenticates and the backend never knows.
+///
+/// 🔴 A 401 IS NOT PROOF THE SESSION IS GONE, and treating it as proof logged
+/// people out. This used to sign out unconditionally. An access token that
+/// merely EXPIRED looks identical from the Worker's chair, and expiry is routine
+/// — the SDK stops its refresh ticker while the app is paused and restarts it
+/// asynchronously on resume, so the first request of the frame after a resume
+/// carries a stale token by design. The user came back to the app and was
+/// thrown out of it, on an OAuth account with no easy way back in.
+///
+/// So the decision moved into [signOutOnlyIfSessionIsGone], which is a NAMED
+/// function rather than an inline closure precisely so a test can drive it: the
+/// old closure lived inside `RestClient` where nothing could reach it, which is
+/// why a rule this consequential shipped with no assertion at all.
 final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: AppConfig.apiBaseUrl,
     tokenProvider: ref.watch(authTokenProvider),
-    // A 401 means the session is gone server-side. Signing out locally keeps
-    // the two ends from disagreeing about whether the user is logged in.
-    onUnauthorized: () => ref.read(authRepositoryProvider).signOut(),
+    onUnauthorized: () =>
+        signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
   ),
 );
+
+/// What a 401 means, decided in one place.
+///
+/// Ask the seam for a token first. `currentAccessToken()` refreshes on expiry
+/// and returns null ONLY when there is no session or the refresh really failed —
+/// which is the one case where signing out is the truthful action. A 401 that
+/// survives a good token means the server rejected a LIVE session (revoked, or a
+/// permissions problem); that is a failed request, not a reason to destroy local
+/// state the user can still use.
+Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
+  if (await auth.currentAccessToken() == null) {
+    await auth.signOut();
+  }
+}
 
 /// What identity can actually do on THIS platform — declared, not assumed.
 /// Ask before promising the user something the platform cannot deliver.

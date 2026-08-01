@@ -58,7 +58,13 @@ const APP_ROOT = `${BRICK}/lib/app.dart`;
 const PROVIDERS = `${BRICK}/lib/state/providers.dart`;
 const SETTINGS = `${BRICK}/lib/features/settings/settings_screen.dart`;
 const ROUTER = `${BRICK}/lib/core/router.dart`;
+const MAIN = `${BRICK}/lib/main.dart`;
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
+// The stamped Worker's half of G2. Only present on a needs_backend stamp; the
+// mustache section IS the directory name on disk, so this path resolves in the
+// brick source even though it vanishes from a client-only stamp.
+const ACCOUNT_ROUTE =
+  'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts';
 
 // REQUIRED_COVERAGE. Each entry is a property the stamped app must assert about
 // itself. `group` is the marker the test file must declare; `sources` are the
@@ -120,6 +126,25 @@ const REQUIRED_COVERAGE = [
       // client, so both halves are anchored.
       { file: PROVIDERS, re: /tokenProvider:\s*ref\.watch\(authTokenProvider\)/, what: 'the token provider must reach the shared RestClient, or the app authenticates and no request ever carries a token' },
       { file: 'packages/auth_supabase/lib/nikatru_auth_supabase.dart', re: /localStorage:\s*SecureSessionStorage\(/, what: 'the session must go in the SECURE store — the Supabase SDK defaults to plaintext shared_preferences for the access AND refresh tokens [G-43]' },
+      // 🔴 THE CALL SITE, and it is the anchor that was missing for the whole
+      // life of this property. The line above matches text INSIDE
+      // `initNikatruAuth` — a function that had ZERO callers tree-wide. The
+      // guard printed `ok ... auth-seam-wired` while the brick initialised
+      // Supabase nowhere at all (so a backend-live stamp crashed at launch on
+      // `Supabase.instance`) and the one shipping app called
+      // `Supabase.initialize` bare (so its refresh token sat in plaintext).
+      // Neither could ever have turned this property red, because a declaration
+      // cannot tell you anything about who calls it. There is no `declares:`
+      // exclusion needed here only because the anchor names main.dart, which is
+      // not where the function is declared — that is the point of naming it.
+      { file: MAIN, re: /await\s+initNikatruAuth\(/, what: 'the brick’s main.dart must CALL initNikatruAuth — the SDK was initialised nowhere, so a stamp built with the documented identity dart-defines died at launch on an uninitialised Supabase.instance' },
+      { file: MAIN, re: /secureStore:\s*FlutterSecureStore\(/, what: 'the launch call must hand it a REAL platform secure store — initialising without one is how the refresh token ends up in a plaintext file [G-43]' },
+      // A 401 used to sign the user out unconditionally. An access token that
+      // merely EXPIRED looks identical from the Worker's chair, and expiry is
+      // routine (the SDK stops its refresh ticker while the app is paused), so
+      // the normal act of resuming the app logged people out of it.
+      { file: PROVIDERS, re: /onUnauthorized:\s*\(\)\s*=>\s*\n?\s*signOutOnlyIfSessionIsGone\(/, what: 'a 401 must go through signOutOnlyIfSessionIsGone — signing out on ANY 401 turns a routine expired token into a forced logout' },
+      { file: PROVIDERS, re: /await auth\.currentAccessToken\(\) == null/, what: 'that decision must ASK the seam for a token first — without the check the function is an unconditional sign-out under a reassuring name' },
     ],
     why: 'the auth seam had no home: the only implementations lived inside apps/subly, and the brick wired no auth and no tokenProvider',
   },
@@ -146,6 +171,18 @@ const REQUIRED_COVERAGE = [
       { file: SETTINGS, re: /onConfirm:\s*\(\)\s*=>\s*_deleteAccount\(/, what: 'the confirm button must call _deleteAccount — it used to call Navigator.pop and nothing else' },
       { file: SETTINGS, re: /await auth\.deleteAccount\(\)/, what: 'the delete flow must reach AuthRepository.deleteAccount' },
       { file: SETTINGS, re: /await auth\.signInWithEmail\(/, what: 'deletion is irreversible and must REAUTH first — a borrowed or unattended device must not be enough to destroy an account' },
+      // 🔴 THE THREE ANCHORS ABOVE ALL LIVE IN settings_screen.dart, so every
+      // one of them was satisfied by a call chain whose terminal branch was an
+      // unconditional throw: providers.dart hard-coded `requestServerDeletion:
+      // null`, the repository took the refusal branch every time, and the user
+      // was signed out and never deleted. Same shape as the `Navigator.pop`
+      // confirm button this property was built for, one layer deeper.
+      { file: PROVIDERS, re: /requestServerDeletion:\s*\(\)\s*=>/, what: 'the deletion request must be WIRED to the server route — hard-coding it to null makes every anchor above pass against a flow that can only ever refuse' },
+      // …and wiring it to a route that leaves the identity behind would be
+      // worse than the refusal: "your account is deleted" followed by a login
+      // that still works is the one failure a user cannot detect.
+      { file: ACCOUNT_ROUTE, re: /auth\/v1\/admin\/users\//, what: 'the stamped route must delete the IDENTITY record too — purging rows and entitlements while the login still works is a deletion the user can never verify [master §0.1 G2]' },
+      { file: ACCOUNT_ROUTE, re: /SUPABASE_SERVICE_ROLE_KEY/, what: 'the identity delete needs the service-role credential, and the route must refuse rather than report a success it cannot deliver' },
     ],
     why: 'both stores require a WORKING in-app deletion path wherever an account can be created',
   },

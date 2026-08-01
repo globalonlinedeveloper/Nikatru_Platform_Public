@@ -852,6 +852,23 @@ Future<void> recordAnalyticsConsent(
   const DEPLOY_WITH_DSN = 'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
   const MAIN_READS_DSN = "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n";
 
+  // [G-43] The secure-session seam. `initNikatruAuth` is the one call that keeps
+  // the refresh token out of plaintext, and it had ZERO callers tree-wide while
+  // this guard — whose entire subject is "does anything real call it" — did not
+  // list it at all. The fixture carries a real call site so the mutations below
+  // have something to remove.
+  const BRICK_MAIN_INITS_AUTH = `
+Future<void> main() async {
+  if (AppConfig.isBackendLive) {
+    await initNikatruAuth(
+      url: AppConfig.supabaseUrl,
+      publishableKey: AppConfig.supabaseAnonKey,
+      secureStore: FlutterSecureStore(),
+    );
+  }
+}
+`;
+
   const build = (
     name,
     {
@@ -863,6 +880,7 @@ Future<void> recordAnalyticsConsent(
       fillerCount = 14,
       deploy = DEPLOY_WITH_DSN,
       mainDart = MAIN_READS_DSN,
+      brickMain = BRICK_MAIN_INITS_AUTH,
     } = {},
   ) =>
     fixture(name, {
@@ -875,6 +893,7 @@ Future<void> recordAnalyticsConsent(
       'sites/nikatru/privacy.html': POLICY(htmlVersion),
       '.github/workflows/deploy-web.yml': deploy,
       'apps/subly/lib/main.dart': mainDart,
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': brickMain,
     });
 
   test('passes when the seam has a real call site and the policy matches', () => {
@@ -919,6 +938,52 @@ Future<void> recordAnalyticsConsent(
     assert.match(out, /a UI caller NOT FOUND/);
   });
 
+  // [G-43] The secure-session seam, which was the fifth dead capability nobody
+  // counted: `initNikatruAuth` shipped with zero callers while its own doc said
+  // "the brick calls this". It was absent from REQUIRED_COVERAGE, so the guard
+  // built to count dead capabilities could not see it.
+  test('FAILS when nothing calls initNikatruAuth — the session goes back to plaintext', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-authinit', { brickMain: '// the brick initialises no identity at all\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real caller \(not a test\) NOT FOUND/);
+  });
+
+  // 🔴 A LOCALLY STAMPED apps/probe MUST NOT SATISFY A SEAM. It is gitignored —
+  // present on a dev box, absent from a fresh CI checkout — so a guard that
+  // counts it answers a different question depending on who runs it. Found by
+  // mutation: with `initNikatruAuth` deleted from BOTH real call sites this
+  // guard still printed ok, held up entirely by a throwaway stamp.
+  test('a gitignored apps/probe stamp does NOT count as a caller', () => {
+    const dir = fixture('seams-probe-only', {
+      ...filler(14),
+      ...PACK_FILES,
+      ...BRICK_POLICY_FILE,
+      'apps/subly/lib/state/analytics_providers.dart':
+        `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
+      'apps/subly/lib/features/consent/consent_prompt.dart': UI_CALLER,
+      'sites/nikatru/privacy.html': POLICY('2026-07-26'),
+      '.github/workflows/deploy-web.yml': DEPLOY_WITH_DSN,
+      'apps/subly/lib/main.dart': MAIN_READS_DSN,
+      // The ONLY call site is inside the throwaway stamp.
+      'apps/probe/lib/main.dart': BRICK_MAIN_INITS_AUTH,
+    });
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /a real caller \(not a test\) NOT FOUND/);
+  });
+
+  test('FAILS when the caller passes no real platform secure store', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-securestore', {
+        brickMain: BRICK_MAIN_INITS_AUTH.replace('      secureStore: FlutterSecureStore(),\n', ''),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real platform secure store handed to it NOT FOUND/);
+  });
+
   // The regression test for the guard's own defect. A declaration is not a
   // caller; if this ever passes with no UI file, the caller check has stopped
   // discriminating and the rail can go dark with CI green.
@@ -931,6 +996,9 @@ Future<void> recordAnalyticsConsent(
         `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       // no consent_prompt.dart, no settings caller — nothing calls it at all
       'sites/nikatru/privacy.html': POLICY('2026-07-26'),
+      // Present so the ONLY thing missing is the consent caller: an unrelated
+      // failure would make this test pass for the wrong reason.
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': BRICK_MAIN_INITS_AUTH,
     });
     const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
     assert.equal(code, 1);
@@ -1009,6 +1077,9 @@ class Ed25519PackVerifier implements PackVerifier {
     'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
       "const String kPrivacyPolicyVersion = '2026-07-26';\n",
+    // …and the secure-session seam, for the same reason.
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart':
+      'await initNikatruAuth(url: u, publishableKey: k, secureStore: FlutterSecureStore());\n',
   };
 
   const build = (name, { impl = REAL_IMPL, barrel = BARREL, keys = keysFile('') } = {}) =>
@@ -1231,14 +1302,26 @@ final Provider<bool> consentDecidedProvider = X();
 final Provider<core.ConsentTransport> consentTransportProvider = X();
 final Provider<core.EventTransport> eventTransportProvider = X();
 final FutureProvider<core.Analytics> analyticsProvider = X();
-final Provider<core.AuthRepository> authRepositoryProvider = X();
+final Provider<core.AuthRepository> authRepositoryProvider = Provider<core.AuthRepository>((ref) {
+  if (!AppConfig.isBackendLive) return InMemoryAuthRepository();
+  return SupabaseAuthRepository(
+    requestServerDeletion: () => ref.read(restClientProvider).delete('/account'),
+  );
+});
 final Provider<Future<String?> Function()> authTokenProvider = X();
 final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: AppConfig.apiBaseUrl,
     tokenProvider: ref.watch(authTokenProvider),
+    onUnauthorized: () => signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
   ),
 );
+
+Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
+  if (await auth.currentAccessToken() == null) {
+    await auth.signOut();
+  }
+}
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
 final Provider<AuthRefreshNotifier> authRefreshProvider = X();
 final StreamProvider<core.AuthUser?> authUserProvider = X();
@@ -1373,6 +1456,47 @@ Future<void> _deleteAccount(...) async {
   const ARB_TA = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n/app_ta.arb';
   const goodArbTa = '{\n  "@@locale": "ta",\n  "settingsTitle": "x"\n}\n';
 
+  // 🔴 THE CALL SITE. Every anchor above lives in a file that DECLARES
+  // something; this one is about who calls it. `initNikatruAuth` had zero
+  // callers tree-wide while the property printed `ok`, so the stamped app both
+  // died at launch on an uninitialised `Supabase.instance` and — in the one app
+  // that did initialise — wrote its refresh token in plaintext.
+  const BRICK_MAIN = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart';
+  const goodMain = `
+Future<void> main() async {
+  await TelemetryBootstrap.init(config, appRunner: () async {
+    AppErrorScreen.install();
+    if (AppConfig.isBackendLive) {
+      await initNikatruAuth(
+        url: AppConfig.supabaseUrl,
+        publishableKey: AppConfig.supabaseAnonKey,
+        secureStore: FlutterSecureStore(),
+      );
+    }
+    runApp(const ProviderScope(child: ProbeApp()));
+  });
+}
+`;
+
+  // The SERVER half of G2. The client hook can be wired perfectly and the
+  // deletion still be a lie: this route used to purge the app's rows and the
+  // user's entitlements and leave the identity record alone, so the same
+  // password still logged in afterwards.
+  const ACCOUNT_ROUTE =
+    'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts';
+  const goodAccountRoute = `
+account.delete('/', async (c) => {
+  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) return c.json({ error: 'account_deletion_unconfigured' }, 501);
+  const identityRes = await fetch(
+    \`\${c.env.SUPABASE_URL}/auth/v1/admin/users/\${encodeURIComponent(userId)}\`,
+    { method: 'DELETE', headers: { apikey: serviceRoleKey } },
+  );
+  if (!identityRes.ok && identityRes.status !== 404) return c.json({ error: 'identity_delete_failed' }, 502);
+  return c.json({ ok: true, deleted });
+});
+`;
+
   // [pipeline C-13] The auth SEAM itself. The profile screen was refused on the
   // grounds that "there is no profile data model"; this method is the model, so
   // the property is anchored to its declaration and not only to the screen.
@@ -1425,8 +1549,8 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth };
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, omitArbTa = false, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -1578,7 +1702,12 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
   describe('the auth seam is wired into the stamp', () => {
     test('FAILS when the brick wires no AuthRepository', () => {
       const { code, out } = run('assert-stamp-properties.mjs', {
-        cwd: build('sp-noauth', { providers: goodProviders.replace('final Provider<core.AuthRepository> authRepositoryProvider = X();', '') }),
+        cwd: build('sp-noauth', {
+          providers: goodProviders.replace(
+            /final Provider<core\.AuthRepository> authRepositoryProvider = Provider<core\.AuthRepository>\(\(ref\) \{[\s\S]*?\n\}\);\n/,
+            '',
+          ),
+        }),
       });
       assert.equal(code, 1);
       assert.match(out, /must wire an AuthRepository/);
@@ -1600,6 +1729,64 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       });
       assert.equal(code, 1);
       assert.match(out, /session must go in the SECURE store/);
+    });
+
+    // 🔴 THE HOLE THIS PROPERTY SHIPPED WITH. The anchor above matches text
+    // inside `initNikatruAuth` — the DECLARATION — and that function had ZERO
+    // callers in the whole tree. HEAD already was the mutant the plaintext test
+    // above pretends to catch, and this guard printed `ok`. Both cases below
+    // mutate the CALL SITE, which is the only thing that could ever have said
+    // whether the SDK gets initialised at all.
+    test('FAILS when nothing calls initNikatruAuth — the defect that shipped', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noauthinit', {
+          brickMain: goodMain.replace(/      await initNikatruAuth\([\s\S]*?\);\n/, ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must CALL initNikatruAuth/);
+    });
+
+    // Initialising WITHOUT a real secure store is the plaintext defect with
+    // extra steps: the call is present, the session still lands on disk in the
+    // clear.
+    test('FAILS when the launch call is handed no platform secure store', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nosecurestore', {
+          brickMain: goodMain.replace('        secureStore: FlutterSecureStore(),\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /REAL platform secure store/);
+    });
+
+    // A 401 is not proof the session is gone. Signing out on ANY 401 turned the
+    // ordinary act of resuming the app — where the SDK's refresh ticker has been
+    // stopped and restarts asynchronously — into a forced logout.
+    test('FAILS when any 401 goes straight back to signing the user out', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-401logout', {
+          providers: goodProviders.replace(
+            'onUnauthorized: () => signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),',
+            'onUnauthorized: () => ref.read(authRepositoryProvider).signOut(),',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must go through signOutOnlyIfSessionIsGone/);
+    });
+
+    // The named function is only worth anything if it still ASKS. Gutting the
+    // check leaves an unconditional sign-out wearing a reassuring name — which
+    // the anchor above would happily pass.
+    test('FAILS when the named check stops consulting the seam', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-401nocheck', {
+          providers: goodProviders.replace('await auth.currentAccessToken() == null', 'true'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must ASK the seam for a token first/);
     });
   });
 
@@ -1632,6 +1819,47 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       });
       assert.equal(code, 1);
       assert.match(out, /must REAUTH first/);
+    });
+
+    // 🔴 THE THREE ABOVE ALL LIVE IN settings_screen.dart, and all three passed
+    // while providers.dart hard-coded `requestServerDeletion: null` — so the
+    // repository took the refusal branch on every press and the user was signed
+    // out without ever being deleted. Presence of a call chain says nothing
+    // about its terminal branch.
+    test('FAILS when the deletion request is hard-coded back to null', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nullhook', {
+          providers: goodProviders.replace(
+            "requestServerDeletion: () => ref.read(restClientProvider).delete('/account'),",
+            'requestServerDeletion: null,',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must be WIRED to the server route/);
+    });
+
+    // …and wiring it to a route that leaves the identity behind is WORSE than
+    // the refusal: the user is told they are deleted and their login still
+    // works, which is the one failure they can never detect.
+    test('FAILS when the server route stops deleting the identity record', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-noidentity', {
+          accountRoute: goodAccountRoute.replace('/auth/v1/admin/users/', '/rest/v1/records/'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must delete the IDENTITY record too/);
+    });
+
+    test('FAILS when the route stops requiring the service-role credential', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-nosvcrole', {
+          accountRoute: goodAccountRoute.replaceAll('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /needs the service-role credential/);
     });
   });
 

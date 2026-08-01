@@ -4,8 +4,22 @@ Per-app backend for **{{display_name}}**, stamped from the NIKATRU app brick.
 
 - `GET /v1/health` — public deploy marker (no auth).
 - `DELETE /v1/account` — **G2** in-app account deletion (auth required): purges
-  every row this user owns from `APP_DB` + their shared `PLATFORM_DB`
-  entitlements. Extend `src/routes/account.ts` as you add user-owned tables.
+  every row this user owns from `APP_DB`, their shared `PLATFORM_DB`
+  entitlements, **and their Supabase identity record**. Extend
+  `src/routes/account.ts` as you add user-owned tables.
+
+## Secrets (never in wrangler.jsonc)
+- `SUPABASE_SERVICE_ROLE_KEY` — **required before `DELETE /v1/account` will do
+  anything.** It is the only credential that can remove an identity record, and
+  without it the route answers `501 account_deletion_unconfigured` rather than
+  reporting a deletion that leaves the user's login working. Set it with:
+
+      wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+
+  It bypasses RLS — nothing outside `src/routes/account.ts` may read it, and it
+  must never be logged or returned in a response.
+- `SUPABASE_JWT_SECRET` — optional legacy HS256 fallback; most projects verify
+  with the ES256 JWKS and need no secret here.
 
 ## Bindings (wrangler.jsonc)
 - `APP_DB` — this app's D1 (`{{app_id}}_db`). The ONLY per-app resource. Set
