@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import events from '../src/routes/events';
+import events, {
+  MAX_CONSENT_BODY_BYTES,
+  MAX_EVENTS_BODY_BYTES,
+  MAX_PARAM_COUNT,
+} from '../src/routes/events';
 import type { AppEnv } from '../src/types';
 
 /** Records every prepared SQL string and the values bound to it. */
@@ -90,7 +94,17 @@ function harness(
     if (cf) Object.defineProperty(req, 'cf', { value: cf });
     return app.fetch(req, env);
   };
-  return { db, post, fairness, ceiling };
+
+  /**
+   * The same route, but the caller composes the raw Request. Needed because
+   * `post()` always serialises an object — and the unbounded-body defect is
+   * about BYTES ON THE WIRE, including a lying Content-Length and a body that
+   * arrives as a stream, neither of which a JSON helper can express.
+   */
+  const postRaw = (path: string, init: RequestInit) =>
+    app.fetch(new Request(`https://platform.nikatru.com${path}`, { method: 'POST', ...init }), env);
+
+  return { db, post, postRaw, fairness, ceiling };
 }
 
 const ev = (over: Record<string, unknown> = {}) => ({
@@ -153,6 +167,42 @@ describe('POST /v1/events — ingest', () => {
     });
     expect(await res.json()).toEqual({ ok: true, received: 1 });
     expect(db.batched).toBe(1);
+  });
+
+  it('caps the NUMBER of params, not just their type and length', async () => {
+    // 🔴 The client stopped at `kMaxParamCount = 12`; the server stopped at
+    // nothing. Measured at HEAD on this route: 200 keys sent, 200 keys stored.
+    // The JSON-length cap did not cover it either — 200 short keys serialise to
+    // well under 2048 bytes, so the only thing bounding this column was the
+    // client being ours, on a route that is unauthenticated by design.
+    const { db, post } = harness();
+    const params: Record<string, number> = {};
+    for (let i = 0; i < 200; i++) params[`k${i}`] = i;
+    await post('/v1/events', { app_id: 'subly', events: [ev({ params })] });
+    const stored = JSON.parse((db.bound[0] as string[])[7]) as Record<string, number>;
+    expect(Object.keys(stored)).toHaveLength(MAX_PARAM_COUNT);
+    // The FIRST 12 are kept, so a client whose params are ordered by importance
+    // keeps the ones it put first — and the row is deterministic, not sampled.
+    expect(stored.k0).toBe(0);
+    expect(stored[`k${MAX_PARAM_COUNT - 1}`]).toBe(MAX_PARAM_COUNT - 1);
+    expect(stored[`k${MAX_PARAM_COUNT}`]).toBeUndefined();
+  });
+
+  it('the count is of ACCEPTED keys, exactly as the Dart mirror counts them', async () => {
+    // Asserted rather than left implicit: if the server counted EXAMINED entries,
+    // a map of rejected values followed by good ones would keep fewer keys than
+    // the client keeps from the same map — and the shared constant that
+    // analytics-contract.test.ts asserts would hide the difference entirely.
+    const { db, post } = harness();
+    const params: Record<string, unknown> = {};
+    // 20 droppable entries first (nested objects), then 12 good ones.
+    for (let i = 0; i < 20; i++) params[`drop${i}`] = { nested: true };
+    for (let i = 0; i < MAX_PARAM_COUNT; i++) params[`keep${i}`] = i;
+    await post('/v1/events', { app_id: 'subly', events: [ev({ params })] });
+    const stored = JSON.parse((db.bound[0] as string[])[7]) as Record<string, number>;
+    expect(Object.keys(stored)).toHaveLength(MAX_PARAM_COUNT);
+    expect(stored.keep0).toBe(0);
+    expect(stored[`keep${MAX_PARAM_COUNT - 1}`]).toBe(MAX_PARAM_COUNT - 1);
   });
 
   it('drops free text and nested values from params', async () => {
@@ -362,6 +412,170 @@ describe('the /v1/events cost circuit breaker is keyed on server-derived values'
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE BODY IS BOUNDED **BEFORE** IT IS PARSED.
+//
+// 🔴 THE DEFECT. `c.req.json()` was the FIRST statement of the handler. The 413
+// on `events.length > 100` and the whole circuit breaker both evaluated after
+// it, so they graded values that only existed because the isolate had already
+// materialised the entire request — on a public, unauthenticated route sharing
+// an isolate with GET /config/:app.
+//
+// Measured at HEAD with a streamed 8 MB body and an ALLOWING limiter: all 8 MB
+// were pulled into the isolate, and only then did the handler answer. With the
+// fix the same request is refused after the cap is crossed.
+//
+// Every test below fails on a handler that parses first — that is the property,
+// not "a big body is rejected", which a post-parse check also satisfies.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('POST /v1/events bounds the body before parsing it', () => {
+  /** A body that streams `chunks` × 1 MB, counting what the handler pulls. */
+  function streamedBody(chunks: number) {
+    const counter = { pulled: 0 };
+    const meg = new TextEncoder().encode('z'.repeat(1024 * 1024));
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(ctrl) {
+          if (counter.pulled >= chunks) {
+            ctrl.close();
+            return;
+          }
+          counter.pulled++;
+          ctrl.enqueue(meg);
+        },
+      },
+      // highWaterMark 0 so the stream pre-buffers NOTHING. With the default of 1
+      // the fixture pulls a megabyte before the handler has run at all, and
+      // `pulled` would read as 1 even for a request the handler never touched —
+      // a floor the assertions would then have to be loosened to accept, which
+      // is how a measurement stops measuring.
+      { highWaterMark: 0 },
+    );
+    return { counter, stream };
+  }
+
+  it('an over-cap streamed body is refused, and the isolate stops reading it', async () => {
+    const { db, postRaw } = harness();
+    const { counter, stream } = streamedBody(8);
+    const res = await postRaw('/v1/events', {
+      headers: { 'Content-Type': 'application/json' },
+      body: stream,
+      // @ts-expect-error undici requires `duplex` for a stream body; the Workers
+      // runtime does not have the option, which is why this is a test-only cast.
+      duplex: 'half',
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'body_too_large' });
+    expect(db.batched).toBe(0);
+    // 🔴 THE LOAD-BEARING ASSERTION, and the one that fails on a handler that
+    // parses first: at HEAD all 8 chunks were pulled. Exactly ONE now — the cap
+    // is 256 KB, so the very first 1 MB chunk crosses it and the reader is
+    // cancelled. Peak buffering is one chunk, whatever the caller intended to
+    // send. `toBe(1)`, not `toBeLessThan(8)`: a bound that loosens as the fixture
+    // grows is a bound that stops noticing.
+    expect(counter.pulled).toBe(1);
+  });
+
+  it('a LYING Content-Length does not buy a bigger body', async () => {
+    // Content-Length is caller-supplied, so it is only ever a cheap early
+    // reject. If it were the bound, `Content-Length: 10` plus 8 MB of body would
+    // be accepted — which is the whole reason the read is independently
+    // budgeted.
+    const { postRaw } = harness();
+    const { counter, stream } = streamedBody(8);
+    const res = await postRaw('/v1/events', {
+      headers: { 'Content-Type': 'application/json', 'Content-Length': '10' },
+      body: stream,
+      // @ts-expect-error see above
+      duplex: 'half',
+    });
+    expect(res.status).toBe(413);
+    expect(counter.pulled).toBe(1);
+  });
+
+  it('an over-cap Content-Length is refused without reading the body at all', async () => {
+    const { postRaw } = harness();
+    const { counter, stream } = streamedBody(8);
+    const res = await postRaw('/v1/events', {
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(MAX_EVENTS_BODY_BYTES + 1),
+      },
+      body: stream,
+      // @ts-expect-error see above
+      duplex: 'half',
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'body_too_large' });
+    expect(counter.pulled).toBe(0); // the cheap limb, doing its job
+  });
+
+  it('a Content-Length that is not a count is a 400, not a skipped check', async () => {
+    // `Number('')` is 0 and `Number('12abc')` is NaN — treating either as "no
+    // header" would be a free way to bypass the cheap limb.
+    const { postRaw } = harness();
+    for (const value of ['abc', '-1', '1.5']) {
+      const res = await postRaw('/v1/events', {
+        headers: { 'Content-Type': 'application/json', 'Content-Length': value },
+        body: JSON.stringify({ app_id: 'subly', events: [ev()] }),
+      });
+      expect(res.status, value).toBe(400);
+      expect(await res.json(), value).toEqual({ error: 'bad_content_length' });
+    }
+  });
+
+  it('a body just UNDER the cap is still accepted', async () => {
+    // A cap that also rejects legitimate traffic is not a fix. The number is
+    // derived from the caps this route already enforces (100 events × ~2.4 KB),
+    // so the largest batch the route permits must go through.
+    const { db, post } = harness();
+    const params: Record<string, string> = {};
+    for (let i = 0; i < 12; i++) params[`k${i}`] = 'v'.repeat(64);
+    const big = {
+      app_id: 'subly',
+      events: Array.from({ length: 100 }, (_, i) => ev({ event_id: `id-${i}`, params })),
+    };
+    expect(JSON.stringify(big).length).toBeLessThan(MAX_EVENTS_BODY_BYTES);
+    const res = await post('/v1/events', big);
+    expect(res.status).toBe(200);
+    expect(db.batched).toBe(100);
+  });
+
+  it('the ceiling is consulted BEFORE the body is read', async () => {
+    // The order is the fix. A denied ceiling must cost the isolate nothing.
+    const { db, postRaw } = harness({ allowCeiling: false });
+    const { counter, stream } = streamedBody(8);
+    const res = await postRaw('/v1/events', {
+      headers: { 'Content-Type': 'application/json' },
+      body: stream,
+      // @ts-expect-error see above
+      duplex: 'half',
+    });
+    expect(res.status).toBe(429);
+    expect(counter.pulled).toBe(0);
+    expect(db.batched).toBe(0);
+  });
+
+  it('/v1/consent has a far tighter cap — there is no 256 KB consent artifact', async () => {
+    const { db, postRaw } = harness();
+    const res = await postRaw('/v1/consent', {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        consent_id: '2'.repeat(16),
+        app_id: 'subly',
+        anon_id: 'install-1',
+        purpose: 'analytics',
+        policy_version: '2026-07-25',
+        pad: 'z'.repeat(MAX_CONSENT_BODY_BYTES),
+      }),
+    });
+    expect(res.status).toBe(413);
+    expect(db.bound).toEqual([]);
+    // …and the cap is genuinely tighter than the batch route's, not a copy.
+    expect(MAX_CONSENT_BODY_BYTES).toBeLessThan(MAX_EVENTS_BODY_BYTES);
+  });
+});
+
 describe('anon_id is required, never invented and never borrowed', () => {
   it('a batch whose first event has no anon_id is a 400, not bucket `unknown`', async () => {
     // `?? "unknown"` collapsed every client whose install-id provider returned
@@ -376,8 +590,18 @@ describe('anon_id is required, never invented and never borrowed', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'missing_anon_id' });
     expect(db.batched).toBe(0);
-    // Rejected before either limiter is charged for a malformed batch.
-    expect([...fairness.keys, ...ceiling.keys]).toEqual([]);
+    // The BODY-DERIVED limiter is not charged: there is no usable install id to
+    // key it on, and inventing one is the `?? 'unknown'` defect above.
+    expect(fairness.keys).toEqual([]);
+    // ⚠️ CHANGED DELIBERATELY. This used to assert that NEITHER limiter was
+    // charged. The server-derived ceiling now runs before the body is read at
+    // all — that is the whole point of the unbounded-body fix — so a malformed
+    // batch is charged against `edge:<colo>:<asn>`. That is the correct
+    // direction: a flood of garbage costs this isolate the same work as a flood
+    // of valid batches, and the key it lands on is the one a caller cannot
+    // rotate out of. The opposite order is what let an 8 MB body be parsed in
+    // full before anything graded it.
+    expect(ceiling.keys).toEqual(['edge:-:-']);
   });
 
   it('never writes the literal `unknown` as an install id', async () => {

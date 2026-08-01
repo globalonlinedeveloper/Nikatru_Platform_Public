@@ -24,10 +24,49 @@ export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = {
   },
 };
 
+/**
+ * The app-id grammar: lowercase, starts with a letter, `[a-z0-9_]` thereafter —
+ * the same shape the brick's `pre_gen.dart` enforces when it stamps an app.
+ *
+ * ⚠️ THIS IS AN INVARIANT ON THE REGISTRY ABOVE, **NOT** A RUNTIME LIMB, and the
+ * distinction was established by mutation rather than assumed. The first version
+ * of this fix put the pattern inside `isKnownApp` and claimed both limbs had
+ * teeth. Replacing the pattern with a bare `typeof appId === 'string'` left the
+ * ENTIRE 120-test suite green — because an own-property lookup against an object
+ * literal already answers false for `__proto__`, `constructor`, `toString` and
+ * `valueOf` alike. A check whose failing input cannot be written is worse than
+ * none: it inflates apparent coverage. So it is re-pointed at the thing it CAN
+ * fail on — every key of DEFAULT_CONFIGS, asserted in test/config.test.ts. That
+ * is what keeps `config:${appId}` an unambiguous KV key: register an app as
+ * `config:evil` or `My App` and the build goes red.
+ */
+export const APP_ID_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
+
+/** Is `v` syntactically an app id? Used to police the registry, not the request. */
+export function isValidAppId(v: unknown): v is string {
+  return typeof v === 'string' && APP_ID_PATTERN.test(v);
+}
+
+/**
+ * Is `appId` an app this Worker actually serves?
+ *
+ * 🔴 `hasOwnProperty`, NOT `DEFAULT_CONFIGS[appId]`, AND THAT IS THE WHOLE FIX.
+ * A plain index reads straight through to `Object.prototype`, so at HEAD:
+ *   · `__proto__`    → `Object.prototype`, truthy, cloned to `{}` ⇒ 200 `{}`
+ *   · `constructor` / `toString` / `valueOf` → functions, and
+ *     `JSON.parse(JSON.stringify(fn))` is `JSON.parse(undefined)` ⇒ THROWS ⇒ 500
+ * i.e. an anonymous caller could make this Worker throw at will. An own-property
+ * test answers false for every inherited member, so all four collapse into the
+ * same honest 404 the registry always meant to give.
+ */
+export function isKnownApp(appId: unknown): appId is string {
+  return typeof appId === 'string' && Object.prototype.hasOwnProperty.call(DEFAULT_CONFIGS, appId);
+}
+
 /** Base default config for a known app, or null if the app is unregistered. */
 export function baseConfig(appId: string): AppConfig | null {
-  const cfg = DEFAULT_CONFIGS[appId];
-  return cfg ? structuredCloneSafe(cfg) : null;
+  if (!isKnownApp(appId)) return null;
+  return structuredCloneSafe(DEFAULT_CONFIGS[appId]);
 }
 
 /** Deep-merge a partial override onto a base config (override wins). */
@@ -62,6 +101,16 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/**
+ * Keys that are not data. `JSON.parse` produces `__proto__` as an OWN property,
+ * but assigning it back onto a plain object runs the inherited setter and
+ * repoints the object's prototype instead of storing a key — so a KV override
+ * document could reshape the config object it was merely supposed to overlay.
+ * `constructor`/`prototype` are here for the same reason: they are the other two
+ * names on the walk from a plain object to `Object.prototype`.
+ */
+const NON_DATA_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /** Recursive merge; objects merge key-wise, everything else is replaced. */
 function deepMerge(
   base: Record<string, unknown>,
@@ -69,6 +118,7 @@ function deepMerge(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(override)) {
+    if (NON_DATA_KEYS.has(k)) continue;
     const cur = out[k];
     out[k] = isPlainObject(cur) && isPlainObject(v) ? deepMerge(cur, v) : v;
   }

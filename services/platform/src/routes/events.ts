@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type { AnalyticsBatch, AnalyticsEvent, AppEnv, EdgeGeo } from '../types';
 import { nowIso } from '../lib/d1';
+import { readBoundedBody } from '../lib/body';
+import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // G-12 — first-party product analytics ingest ([ADR 011]).
@@ -29,6 +31,28 @@ const MAX_EVENT_NAME_LEN = 64;
 const MAX_ID_LEN = 64;
 const MAX_PARAMS_JSON_LEN = 2048;
 
+/**
+ * ⚠️ THE TWO PARAM CAPS MIRROR `packages/core/lib/src/analytics/analytics.dart`
+ * — `kMaxParamCount` and `kMaxParamValueLength`. Dart and TypeScript cannot
+ * share a literal, so the pair is asserted to AGREE by
+ * test/analytics-contract.test.ts, which reads the Dart source and fails when
+ * either side moves alone. Without the count cap the server enforced no bound at
+ * all: the client stopped at 12 keys and a hand-rolled POST stored 200.
+ */
+export const MAX_PARAM_COUNT = 12;
+export const MAX_PARAM_VALUE_LEN = 64;
+
+/**
+ * Byte ceilings on the RAW REQUEST BODY, enforced before it is parsed.
+ *
+ * `MAX_EVENTS_BODY_BYTES` is sized from the caps above rather than picked: 100
+ * events × (2048 bytes of params + ~400 bytes of ids, name and timestamps) is
+ * ≈ 245 KB, so 256 KiB accepts every batch the caps permit and nothing beyond.
+ * A consent artifact is a dozen short fields, so it gets a far tighter one.
+ */
+export const MAX_EVENTS_BODY_BYTES = 256 * 1024;
+export const MAX_CONSENT_BODY_BYTES = 8 * 1024;
+
 const events = new Hono<AppEnv>();
 
 /** Coarse geo from the `request.cf` object — never from a header. */
@@ -45,94 +69,84 @@ function edgeGeo(c: { req: { raw: Request } }): EdgeGeo {
 const str = (v: unknown, max: number): string | null =>
   typeof v === 'string' && v.length > 0 && v.length <= max ? v : null;
 
-/** Keep only enumerable scalars — mirrors the client's sanitizer. Defence in
- *  depth: free text in D1 is a posture that cannot be retracted once written. */
+/**
+ * Keep only enumerable scalars — mirrors the client's sanitizer. Defence in
+ * depth: free text in D1 is a posture that cannot be retracted once written.
+ *
+ * 🔴 THE COUNT LIMB IS NEW AND IT IS THE POINT. "The client sanitizes; we
+ * re-check" was true of the value TYPE and the value LENGTH and false of the
+ * KEY COUNT: `kMaxParamCount` stopped honest clients at 12 while a hand-rolled
+ * POST stored every key it sent (200, measured). The JSON-length cap did not
+ * cover it either — 200 short keys serialise well under 2048 bytes, so the only
+ * thing that ever bounded the column width was the client being ours.
+ *
+ * The break is placed exactly where the Dart mirror puts it — on the count of
+ * ACCEPTED keys, before the next entry is examined — so a map of 12 valid keys
+ * followed by 100 rejected ones behaves identically on both sides.
+ */
 function sanitizeParams(v: unknown): string {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return '{}';
   const out: Record<string, string | number | boolean> = {};
+  let kept = 0;
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (kept >= MAX_PARAM_COUNT) break;
     if (typeof val === 'boolean' || typeof val === 'number') out[k] = val;
-    else if (typeof val === 'string' && val.length <= 64) out[k] = val;
+    else if (typeof val === 'string' && val.length <= MAX_PARAM_VALUE_LEN) out[k] = val;
+    else continue;
+    kept++;
   }
   const json = JSON.stringify(out);
   return json.length <= MAX_PARAMS_JSON_LEN ? json : '{}';
 }
 
 /**
- * Cost circuit breaker. Deliberately the Rate Limiting binding and NOT KV:
- * a KV counter is eventually consistent with a ~60s edge cache, so under the
- * exact burst it exists to stop it reads a stale value and lets the burst
- * through — the failure mode is "the breaker is useless precisely when needed".
- * Free-tier D1 writes are the resource being protected.
+ * The two-key cost circuit breaker. BOTH halves now live in lib/edge-ceiling.ts,
+ * because GET /config/:app needs the identical server-derived key and two
+ * near-identical definitions is exactly the drift F-2 exists to stop. Their
+ * reasoning — why the Rate Limiting binding rather than KV, why `colo`+`asn`
+ * cannot be chosen by the caller, why absence fails OPEN, and the honest limit
+ * of a per-colo eventually-consistent limiter — is recorded there, once.
  *
- * Fails OPEN (no binding configured ⇒ allow), because dropping real analytics
- * because a binding is missing is worse than the burst it would have stopped.
+ * ⚠️ THE ORDER IS PART OF THE PROTECTION, AND IT IS STRICTER THAN IT WAS.
+ * The server-derived ceiling needs NOTHING from the body, so it is now evaluated
+ * BEFORE the body is read at all (see each handler). It used to run after
+ * `c.req.json()` had already materialised whatever the caller chose to send, so
+ * the breaker was grading a request the isolate had already paid for in full.
+ * The fairness half still runs after the parse, because its key IS body-derived
+ * — and it is still reached only when the ceiling has already allowed.
+ *
+ * A consequence, stated here rather than discovered later: the ceiling is now
+ * charged for malformed bodies too. That is the correct direction. A flood of
+ * garbage costs this isolate the same work as a flood of valid batches, and the
+ * key it is charged against is the one a caller cannot rotate out of.
  */
-async function withinRateLimit(
-  limiter: AppEnv['Bindings']['EVENTS_LIMITER'] | undefined,
-  key: string,
-): Promise<boolean> {
-  if (!limiter) return true;
-  try {
-    const { success } = await limiter.limit({ key });
-    return success;
-  } catch {
-    return true;
-  }
-}
-
-/**
- * 🔴 THE UNSPOOFABLE HALF OF THE BREAKER. Every character of this key comes from
- * the runtime's `request.cf` object; NOTHING comes from the request body.
- *
- * Why it exists: this route is unauthenticated by design, so the fairness bucket
- * `${app_id}:${anon_id}` is composed entirely of values the caller chooses. A
- * caller that mints a fresh `anon_id` (or a fresh `app_id`) per request lands in
- * a fresh bucket every time, which makes the per-key ceiling "120 requests per
- * minute PER REQUEST" — i.e. no ceiling at all, on a path that writes up to 100
- * rows × 5 indexed writes into the shared free-tier D1. A breaker keyed on the
- * attacker's own input cannot fail closed on the burst it exists to stop.
- *
- * `colo` + `asn` cannot be chosen by the caller: the colo is the edge PoP that
- * terminated the connection and the ASN is derived by Cloudflare from the real
- * transport source. This is NOT `CF-Connecting-IP` — that header is never read
- * (see the invariants at the top of this file), and nothing here is stored: the
- * key lives only for the duration of the `limit()` call.
- *
- * ⬜ HONEST LIMIT: the Rate Limiting binding is per-colo and eventually
- * consistent — Cloudflare documents it as "intentionally designed to not be used
- * as an accurate accounting system". So this bounds the burst-per-network, not
- * the account-wide daily D1 write budget. The aggregate daily-write guard is
- * tracked separately ([11]E-2 → [4]B-13/B-6) and is NOT what this function
- * claims to be.
- */
-function edgeCeilingKey(c: { req: { raw: Request } }): string {
-  const cf = (c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf;
-  const colo = typeof cf?.colo === 'string' && cf.colo.length <= 16 ? cf.colo : '-';
-  const asnRaw = (cf as { asn?: unknown } | undefined)?.asn;
-  const asn =
-    typeof asnRaw === 'number' || (typeof asnRaw === 'string' && asnRaw.length <= 16)
-      ? String(asnRaw)
-      : '-';
-  return `edge:${colo}:${asn}`;
-}
-
-/**
- * BOTH halves must pass, and the server-derived ceiling is checked FIRST so a
- * rotating caller is shed before any body-derived key is even composed.
- */
-async function breakerAllows(
-  c: { req: { raw: Request }; env: AppEnv['Bindings'] },
-  fairnessKey: string,
-): Promise<boolean> {
-  if (!(await withinRateLimit(c.env.EVENTS_CEILING_LIMITER, edgeCeilingKey(c)))) return false;
-  return withinRateLimit(c.env.EVENTS_LIMITER, fairnessKey);
-}
+// 429 with ok:false — an honest rejection. The client keeps its queue and
+// retries later; pretending we took the batch would lose it. The batch route
+// also says `received: 0`, because "how many did you take" is a question its
+// success shape answers and a rejection must answer the same way; /v1/consent
+// posts one artifact and has no such field to be consistent with.
+const RATE_LIMITED_BATCH = { ok: false, error: 'rate_limited', received: 0 } as const;
+const RATE_LIMITED = { ok: false, error: 'rate_limited' } as const;
 
 events.post('/events', async (c) => {
+  // 1 · SHED FIRST, ON A KEY THAT NEEDS NO BODY. Nothing below this line runs
+  //     for a caller already over the per-(colo, asn) ceiling — including the
+  //     read.
+  if (!(await withinEdgeCeiling(c.env.EVENTS_CEILING_LIMITER, c))) {
+    return c.json(RATE_LIMITED_BATCH, 429);
+  }
+
+  // 2 · BOUND THE BODY, THEN PARSE IT. `c.req.json()` used to be the first
+  //     statement of this handler: the 413 below and the breaker above both
+  //     graded values that existed only because the isolate had already
+  //     materialised the whole request. Reproduced at HEAD — an 8 MB POST was
+  //     parsed in full and then answered 429.
+  const read = await readBoundedBody(c.req.raw, MAX_EVENTS_BODY_BYTES);
+  if (!read.ok) return c.json({ error: read.error }, read.status);
+
   let body: AnalyticsBatch;
   try {
-    body = (await c.req.json()) as AnalyticsBatch;
+    body = JSON.parse(read.text) as AnalyticsBatch;
   } catch {
     return c.json({ error: 'bad_json' }, 400);
   }
@@ -154,10 +168,9 @@ events.post('/events', async (c) => {
   // required, so this is a 400, not a merge.
   const firstAnon = str(list[0]?.anon_id, MAX_ID_LEN);
   if (!firstAnon) return c.json({ error: 'missing_anon_id' }, 400);
-  if (!(await breakerAllows(c, `${appId}:${firstAnon}`))) {
-    // 429 with ok:false and received:0 — an honest rejection. The client keeps
-    // its queue and retries later; pretending we took the batch would lose it.
-    return c.json({ ok: false, error: 'rate_limited', received: 0 }, 429);
+  // 3 · The body-derived half, reached only once the ceiling has allowed.
+  if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `${appId}:${firstAnon}`))) {
+    return c.json(RATE_LIMITED_BATCH, 429);
   }
 
   const geo = edgeGeo(c);
@@ -219,9 +232,20 @@ events.post('/events', async (c) => {
 });
 
 events.post('/consent', async (c) => {
+  // Same three steps, same order, same reasons as /v1/events above: shed on the
+  // server-derived key first, bound the body, then parse. A consent artifact is
+  // a dozen short fields, so its ceiling is far tighter than the batch route's —
+  // there is no legitimate 256 KB consent record.
+  if (!(await withinEdgeCeiling(c.env.EVENTS_CEILING_LIMITER, c))) {
+    return c.json(RATE_LIMITED, 429);
+  }
+
+  const read = await readBoundedBody(c.req.raw, MAX_CONSENT_BODY_BYTES);
+  if (!read.ok) return c.json({ error: read.error }, read.status);
+
   let body: Record<string, unknown>;
   try {
-    body = (await c.req.json()) as Record<string, unknown>;
+    body = JSON.parse(read.text) as Record<string, unknown>;
   } catch {
     return c.json({ error: 'bad_json' }, 400);
   }
@@ -236,8 +260,8 @@ events.post('/consent', async (c) => {
   }
   // Same two-key breaker as /v1/events: the consent row is a D1 write on the
   // same unauthenticated surface, so a rotating caller must be shed here too.
-  if (!(await breakerAllows(c, `consent:${appId}:${anonId}`))) {
-    return c.json({ ok: false, error: 'rate_limited' }, 429);
+  if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `consent:${appId}:${anonId}`))) {
+    return c.json(RATE_LIMITED, 429);
   }
 
   try {
