@@ -7,11 +7,31 @@ name: E2E (live)
 # Runs nightly + on demand — NOT on every push (it writes to live prod and takes
 # a few minutes). To also run per-push, add `push: { branches: [main] }` below.
 #
-# Required repo secrets:
+# Required repo secrets — ALL of them, on every run:
 #   SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL,
 #   CLOUDFLARE_API_TOKEN (needs D1 read+write), CLOUDFLARE_ACCOUNT_ID,
-#   SUPABASE_SERVICE_ROLE_KEY  <-- NEW: add this one to enable the job.
-# If SUPABASE_SERVICE_ROLE_KEY is absent the job green-skips (degrades gracefully).
+#   SUPABASE_SERVICE_ROLE_KEY
+#
+# 🔴 A MISSING SECRET IS A FAILED RUN, NOT A SKIPPED ONE — changed 2026-08-01.
+# This header used to read "if SUPABASE_SERVICE_ROLE_KEY is absent the job
+# green-skips (degrades gracefully)", and every real step carried
+# `if: steps.pre.outputs.run == 'true'`. The graceful degradation was a fully
+# green nightly run that executed one `echo` and tested nothing — and the `alert`
+# job below, gated on `failure()`, could not fire on it by construction. So the
+# day that secret was rotated, renamed or expired, the only end-to-end proof the
+# factory has against live Supabase + the live Worker + live D1 would have gone
+# dark reporting success, in the same workflow whose header memorialises six
+# unattended red nights nobody saw. Silence is not success, and neither is a
+# green tick over an empty run.
+#
+# There is no secretless audience to protect: this workflow has no `push` or
+# `pull_request` trigger, so it never runs on a fork PR, and both triggers it
+# does have (schedule, workflow_dispatch) only ever run in this repository where
+# the secrets exist. Failing closed costs a contributor nothing and buys the
+# owner a red run — which the `alert` job turns into a durable GitHub issue.
+#
+# tooling/ci/assert-green-means-ran.mjs §B enforces this structurally: the
+# preflight must exit non-zero, and no step may be `if:`-gated on its output.
 
 on:
   workflow_dispatch:
@@ -48,48 +68,44 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Preflight — is the service-role secret present?
+      # THE RUN IS EITHER POSSIBLE OR IT IS RED. Nothing downstream is gated on
+      # this step's output — the job simply stops here, which is what makes the
+      # `alert` job below reachable when the secret goes missing unattended.
+      - name: Preflight — the service-role secret must be present
         id: pre
         env:
           KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ -z "$KEY" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=E2E skipped::SUPABASE_SERVICE_ROLE_KEY is not set — add it to enable the live E2E job."
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=E2E cannot run::SUPABASE_SERVICE_ROLE_KEY is not set. The nightly end-to-end proof did NOT run — this is a failed run, not a skipped one. Add or re-add the secret in Settings → Secrets and variables → Actions."
+            exit 1
           fi
+          echo "SUPABASE_SERVICE_ROLE_KEY present — running the live suite."
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        if: steps.pre.outputs.run == 'true'
         with:
           node-version: 24
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        if: steps.pre.outputs.run == 'true'
         with:
           channel: stable
           flutter-version: 3.44.8
 
       - name: Set up ChromeDriver
-        if: steps.pre.outputs.run == 'true'
         uses: nanasess/setup-chromedriver@ef5c64a93512d266b23b80bae95e46a67f30e703 # v2
 
       - name: flutter pub get
-        if: steps.pre.outputs.run == 'true'
         working-directory: apps/subly
         run: flutter pub get --enforce-lockfile
 
       - name: Provision throwaway confirmed user
         id: user
-        if: steps.pre.outputs.run == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
 
       - name: Run integration tests (headless Chrome)
-        if: steps.pre.outputs.run == 'true'
         working-directory: apps/subly
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -121,7 +137,6 @@ jobs:
           kill "$CHROMEDRIVER_PID" || true
 
       - name: Verify the row landed in live D1
-        if: steps.pre.outputs.run == 'true'
         env:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -129,8 +144,15 @@ jobs:
           SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
         run: node tooling/e2e/verify_row.mjs
 
+      # `steps.user.outcome != 'skipped'` = "provisioning was ATTEMPTED", which is
+      # the honest trigger for both cleanup steps: it is true when the run got far
+      # enough to touch production (including when provisioning itself failed
+      # halfway and may have left a user behind), and false when the job stopped
+      # at the preflight — where there is nothing to purge and no screenshots to
+      # collect. It replaces the old `steps.pre.outputs.run == 'true'` gate
+      # without inheriting its green-skip.
       - name: Upload per-page screenshots
-        if: always() && steps.pre.outputs.run == 'true'
+        if: always() && steps.user.outcome != 'skipped'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-screenshots
@@ -138,7 +160,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Purge test data (always — keep prod pristine)
-        if: always() && steps.pre.outputs.run == 'true'
+        if: always() && steps.user.outcome != 'skipped'
         env:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -174,6 +196,10 @@ jobs:
   #
   # No `uses:` is added: `gh` is preinstalled on GitHub-hosted runners, so this
   # introduces no third-party action to SHA-pin and nothing new can go stale.
+  #
+  # Since 2026-08-01 this also covers the MISSING-SECRET case: the preflight now
+  # fails the job instead of green-skipping it, so the one condition under which
+  # the nightly used to go dark silently is now a `failure()` this job reports.
   alert:
     name: Open or refresh the nightly-failure issue
     needs: e2e
