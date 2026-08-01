@@ -40,19 +40,27 @@ String _sha(List<int> bytes) => sha256.convert(bytes).toString();
 /// the real keys in `kContentPackPublicKeys`, which is empty until S-3.
 const Map<String, String> _testKeys = <String, String>{'k1': 'dGVzdC1rZXk='};
 
+/// The identity every fixture below declares unless a test asks for another —
+/// named so a test that means "a DIFFERENT pack" says so out loud.
+const String _kPackId = 'lingo';
+const String _kVersion = '1.2.0';
+
 /// A well-formed pack source with a matching content hash. [tamperContent]
 /// corrupts content.json AFTER the manifest hash is computed (hash mismatch);
 /// omit [includeSig] to drop the signature entry; [keyId] sets/clears the
-/// manifest's ADR-016 signing-key id.
+/// manifest's ADR-016 signing-key id; [packId] / [version] set the manifest's
+/// declared identity, which is what the loader binds against.
 InMemoryContentPackSource _pack({
   bool tamperContent = false,
   bool includeSig = true,
   String? keyId = 'k1',
+  String packId = _kPackId,
+  String version = _kVersion,
 }) {
   final List<int> content = _b('{"en":{"hello":"Hi"},"fr":{"hello":"Salut"}}');
   final List<int> manifest = _b(jsonEncode(<String, Object?>{
-    'pack_id': 'lingo',
-    'version': '1.2.0',
+    'pack_id': packId,
+    'version': version,
     if (keyId != null) 'key_id': keyId,
     'content_hash': _sha(content),
     'locales': <String>['en', 'fr'],
@@ -140,8 +148,8 @@ void main() {
       // unverified on the untrusted remote path (ADR 007: sig AND hash).
       const ContentPackLoader loader = ContentPackLoader(
           verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
-      final Result<ContentPack> r =
-          await loader.loadFrom(_hashlessPack(), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(_hashlessPack(),
+          requireSignature: true, expectPackId: _kPackId);
       expect(r.isOk, isFalse);
     });
 
@@ -155,24 +163,26 @@ void main() {
     test('remote pack requires a signature — missing sig rejected', () async {
       const ContentPackLoader loader = ContentPackLoader(
           verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
-      final Result<ContentPack> r = await loader
-          .loadFrom(_pack(includeSig: false), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(
+          _pack(includeSig: false),
+          requireSignature: true,
+          expectPackId: _kPackId);
       expect(r.isOk, isFalse);
     });
 
     test('remote pack with an invalid signature is rejected', () async {
       const ContentPackLoader loader = ContentPackLoader(
           verifier: _FakeVerifier(false), pinnedKeys: _testKeys);
-      final Result<ContentPack> r =
-          await loader.loadFrom(_pack(), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(_pack(),
+          requireSignature: true, expectPackId: _kPackId);
       expect(r.isOk, isFalse);
     });
 
     test('remote pack with a valid signature + matching hash loads', () async {
       const ContentPackLoader loader = ContentPackLoader(
           verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
-      final Result<ContentPack> r =
-          await loader.loadFrom(_pack(), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(_pack(),
+          requireSignature: true, expectPackId: _kPackId);
       expect(r.isOk, isTrue);
     });
 
@@ -200,8 +210,8 @@ void main() {
     test('returns the verified remote pack when valid', () async {
       const ContentPackLoader loader = ContentPackLoader(
           verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
-      final Result<ContentPack> r =
-          await loader.load(remote: _pack(), bundled: _pack());
+      final Result<ContentPack> r = await loader.load(
+          remote: _pack(), bundled: _pack(), expectPackId: _kPackId);
       expect(r.isOk, isTrue);
     });
 
@@ -210,8 +220,8 @@ void main() {
       // Default loader: no pinned keys AND a RejectingPackVerifier => the
       // remote pack never validates, so the trusted bundled base loads instead.
       const ContentPackLoader loader = ContentPackLoader();
-      final Result<ContentPack> r =
-          await loader.load(remote: _pack(), bundled: _pack());
+      final Result<ContentPack> r = await loader.load(
+          remote: _pack(), bundled: _pack(), expectPackId: _kPackId);
       expect(r.isOk, isTrue);
       final ContentPack p =
           r.fold((ContentPack p) => p, (_) => ContentPack.empty);
@@ -221,7 +231,8 @@ void main() {
     test('errs when neither a valid remote nor a bundled pack is available',
         () async {
       const ContentPackLoader loader = ContentPackLoader();
-      final Result<ContentPack> r = await loader.load(remote: _pack());
+      final Result<ContentPack> r =
+          await loader.load(remote: _pack(), expectPackId: _kPackId);
       expect(r.isOk, isFalse); // remote rejected, no bundled base
     });
   });
@@ -232,8 +243,8 @@ void main() {
     test('a remote manifest with NO key_id is rejected', () async {
       const ContentPackLoader loader = ContentPackLoader(
           verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
-      final Result<ContentPack> r =
-          await loader.loadFrom(_pack(keyId: null), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(_pack(keyId: null),
+          requireSignature: true, expectPackId: _kPackId);
       expect(r.isOk, isFalse);
     });
 
@@ -242,8 +253,8 @@ void main() {
       // verification, so a rotated-out (or attacker-chosen) key can't be used.
       const ContentPackLoader loader = ContentPackLoader(
           verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
-      final Result<ContentPack> r =
-          await loader.loadFrom(_pack(keyId: 'k99'), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(_pack(keyId: 'k99'),
+          requireSignature: true, expectPackId: _kPackId);
       expect(r.isOk, isFalse);
     });
 
@@ -252,8 +263,8 @@ void main() {
       final _KeyCapturingVerifier v = _KeyCapturingVerifier();
       final ContentPackLoader loader =
           ContentPackLoader(verifier: v, pinnedKeys: _testKeys);
-      final Result<ContentPack> r =
-          await loader.loadFrom(_pack(), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(_pack(),
+          requireSignature: true, expectPackId: _kPackId);
       expect(r.isOk, isTrue);
       expect(v.seenKeyId, 'k1');
     });
@@ -314,8 +325,8 @@ void main() {
       // yes. So it now uses an id that is genuinely unpinned. [ADR 022]
       const ContentPackLoader loader =
           ContentPackLoader(verifier: _FakeVerifier(true));
-      final Result<ContentPack> r =
-          await loader.loadFrom(_pack(keyId: 'k2'), requireSignature: true);
+      final Result<ContentPack> r = await loader.loadFrom(_pack(keyId: 'k2'),
+          requireSignature: true, expectPackId: _kPackId);
       expect(r.isOk, isFalse);
     });
 
@@ -326,4 +337,148 @@ void main() {
           isFalse);
     });
   });
+
+  // ── IDENTITY BINDING (2026-08-01 full-corpus review, #8). ─────────────────
+  //
+  // 🔴 EVERY TEST ABOVE PASSED WITH NO IDENTITY CHECK AT ALL. They prove the
+  // pack is AUTHENTIC — signed by a pinned key, hash intact — and authenticity
+  // is a different question from "is this the pack I asked for". The verifier is
+  // given `_FakeVerifier(true)` throughout precisely so these say what they mean:
+  // a perfectly valid signature is not an answer, so every rejection below is the
+  // binding doing the work and nothing else.
+  group('ADR 007 identity binding: pack_id + version', () {
+    const ContentPackLoader loader =
+        ContentPackLoader(verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
+
+    // Same bucket, same signing key, wrong app. Nothing else in the pipeline
+    // separates these two packs.
+    test('a correctly-signed pack for ANOTHER app is rejected', () async {
+      final Result<ContentPack> r = await loader.loadFrom(
+        _pack(packId: 'drift'),
+        requireSignature: true,
+        expectPackId: _kPackId,
+      );
+      expect(r.isOk, isFalse);
+      expect(_why(r), contains('pack_id mismatch'));
+    });
+
+    // Last release's pack, still validly signed, replayed by the CDN.
+    test('a correctly-signed pack at ANOTHER version is rejected', () async {
+      final Result<ContentPack> r = await loader.loadFrom(
+        _pack(version: '1.1.0'),
+        requireSignature: true,
+        expectPackId: _kPackId,
+        expectVersion: _kVersion,
+      );
+      expect(r.isOk, isFalse);
+      expect(_why(r), contains('version mismatch'));
+    });
+
+    // The fail-closed limb: the same posture key_id and content_hash already
+    // have. A caller that names no pack cannot be given one.
+    test('a remote load that asks for NO pack_id is refused', () async {
+      final Result<ContentPack> r =
+          await loader.loadFrom(_pack(), requireSignature: true);
+      expect(r.isOk, isFalse);
+      expect(_why(r), contains('asked for no pack_id'));
+
+      // Empty is not a request either — and it must be reported as the CALLER's
+      // omission, not as a mismatch. Both reject, so `isOk` alone cannot tell
+      // them apart, and they are opposite bugs: "we forgot to say which pack we
+      // wanted" versus "the CDN served us someone else's". Asserting only
+      // `isFalse` here would leave the `isEmpty` limb unprovable — an assertion
+      // nobody can fail is worse than none.
+      final Result<ContentPack> blank = await loader.loadFrom(_pack(),
+          requireSignature: true, expectPackId: '');
+      expect(blank.isOk, isFalse);
+      expect(_why(blank), contains('asked for no pack_id'));
+    });
+
+    // The positive control. Without this the group would pass just as well
+    // against a loader that rejected everything.
+    test('the requested id AND version load', () async {
+      final Result<ContentPack> r = await loader.loadFrom(
+        _pack(),
+        requireSignature: true,
+        expectPackId: _kPackId,
+        expectVersion: _kVersion,
+      );
+      expect(r.isOk, isTrue);
+      final ContentPack p =
+          r.fold((ContentPack p) => p, (_) => ContentPack.empty);
+      expect(p.manifest.packId, _kPackId);
+      expect(p.manifest.version, _kVersion);
+    });
+
+    // Version is optional BY DESIGN: the pointer may name only the id (ADR 007
+    // pointer indirection resolves `latest`). Omitting it must not be read as
+    // "reject everything", or the common case never loads.
+    test('an unspecified version accepts whatever the pointer resolved to',
+        () async {
+      final Result<ContentPack> r = await loader.loadFrom(
+        _pack(version: '9.9.9'),
+        requireSignature: true,
+        expectPackId: _kPackId,
+      );
+      expect(r.isOk, isTrue);
+    });
+
+    test('the bundled tier binds the id too — no unchecked trusted path',
+        () async {
+      const ContentPackLoader bundledOnly = ContentPackLoader();
+      final Result<ContentPack> r = await bundledOnly.loadFrom(
+        _pack(packId: 'drift'),
+        requireSignature: false,
+        expectPackId: _kPackId,
+      );
+      expect(r.isOk, isFalse);
+      expect(_why(r), contains('pack_id mismatch'));
+    });
+  });
+
+  group('ADR 007 identity binding through load() (two-tier)', () {
+    test('an id mismatch on BOTH tiers ends in Err, never in the wrong pack',
+        () async {
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
+      final Result<ContentPack> r = await loader.load(
+        remote: _pack(packId: 'drift'),
+        bundled: _pack(packId: 'drift'),
+        expectPackId: _kPackId,
+      );
+      expect(r.isOk, isFalse,
+          reason:
+              'falling back onto another app\'s base pack is not a fallback');
+    });
+
+    // 🔴 VERSION MUST NOT REACH THE BUNDLED TIER. The bundled base is whatever
+    // shipped in this binary and is legitimately older than the version the
+    // pointer names; binding it there would make every content release fall all
+    // the way through to Err the moment the device is offline.
+    test(
+        'a version asked of the remote tier does NOT disqualify the bundled base',
+        () async {
+      const ContentPackLoader loader = ContentPackLoader(
+          verifier: _FakeVerifier(true), pinnedKeys: _testKeys);
+      final Result<ContentPack> r = await loader.load(
+        // The remote is unusable (no signature entry), so the bundled base — at
+        // an older version — has to carry the load.
+        remote: _pack(includeSig: false),
+        bundled: _pack(version: '1.0.0'),
+        expectPackId: _kPackId,
+        expectVersion: '2.0.0',
+      );
+      expect(r.isOk, isTrue);
+      final ContentPack p =
+          r.fold((ContentPack p) => p, (_) => ContentPack.empty);
+      expect(p.manifest.version, '1.0.0');
+    });
+  });
 }
+
+/// The failure message from an [Err], or '' for an [Ok]. Asserting on the REASON
+/// matters here: every one of these rejections would also be produced by a
+/// loader that had simply stopped loading anything, and `isOk == false` cannot
+/// tell those apart.
+String _why(Result<ContentPack> r) =>
+    r.fold((ContentPack _) => '', (Failure f) => f.message);

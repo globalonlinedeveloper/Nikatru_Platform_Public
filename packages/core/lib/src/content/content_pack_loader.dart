@@ -13,6 +13,10 @@ import 'pack_verifier.dart';
 /// pinned in `core` by `key_id` (ADR 016); Ed25519 verification is injected via
 /// a [PackVerifier], so `core` needs no crypto-signing dependency (only sha256
 /// for the hash check).
+///
+/// Authenticity and IDENTITY are two questions, and the loader answers both: the
+/// signature says the pack is genuinely ours, the `pack_id`/`version` binding
+/// says it is the pack this caller asked for. See [loadFrom].
 class ContentPackLoader {
   const ContentPackLoader({
     PackVerifier verifier = const RejectingPackVerifier(),
@@ -30,18 +34,46 @@ class ContentPackLoader {
 
   /// Two-tier load: the verified [remote] pack if available and valid, otherwise
   /// the trusted [bundled] base pack, otherwise [Err] (offline, no bundled base).
+  ///
+  /// [expectPackId] is WHICH PACK THE APP ASKED FOR — the id the pointer named
+  /// (`packs.nikatru.com/<app>/latest.json`, ADR 007). It applies to both tiers:
+  /// an app must not fall back onto another app's base pack either.
+  ///
+  /// 🔴 REQUIRED, NOT OPTIONAL, and that is a deliberate choice about the SHAPE
+  /// of the failure. [loadFrom] fails closed on a remote source with no expected
+  /// id — but this method DISCARDS a failed remote tier by design, so a caller
+  /// who forgot the argument would silently fall through to the bundled base on
+  /// every launch forever, with an `Ok` result and nothing red anywhere. That is
+  /// the repo's own "silence ≠ success" shape rebuilt one level up. There are no
+  /// callers yet, so making it required costs nothing today and cannot be done
+  /// once apps depend on it.
+  ///
+  /// [expectVersion] binds the remote tier ONLY, and deliberately. Version is
+  /// freshness, not identity: the pointer names the version the CDN should be
+  /// serving, while the bundled base is whatever shipped inside this binary and
+  /// is legitimately older. Applying it to both tiers would turn every content
+  /// release into an app that falls all the way through to [Err] offline.
   Future<Result<ContentPack>> load({
+    required String expectPackId,
     ContentPackSource? remote,
     ContentPackSource? bundled,
+    String? expectVersion,
   }) async {
     if (remote != null) {
-      final Result<ContentPack> r =
-          await loadFrom(remote, requireSignature: true);
+      final Result<ContentPack> r = await loadFrom(
+        remote,
+        requireSignature: true,
+        expectPackId: expectPackId,
+        expectVersion: expectVersion,
+      );
       if (r.isOk) return r;
     }
     if (bundled != null) {
-      final Result<ContentPack> b =
-          await loadFrom(bundled, requireSignature: false);
+      final Result<ContentPack> b = await loadFrom(
+        bundled,
+        requireSignature: false,
+        expectPackId: expectPackId,
+      );
       if (b.isOk) return b;
     }
     return const Result<ContentPack>.err(
@@ -56,9 +88,16 @@ class ContentPackLoader {
   /// for a trusted bundled base pack shipped inside the app binary; NEVER for a
   /// remote source, as it skips signature verification entirely. Prefer [load],
   /// which sets this correctly per tier.
+  ///
+  /// [expectPackId] / [expectVersion] are the identity the caller ASKED FOR;
+  /// see the identity-binding block below for why a signature does not answer
+  /// that question. [expectPackId] is mandatory whenever [requireSignature] is
+  /// true.
   Future<Result<ContentPack>> loadFrom(
     ContentPackSource source, {
     required bool requireSignature,
+    String? expectPackId,
+    String? expectVersion,
   }) async {
     final List<int>? manifestBytes = await source.read('manifest.json');
     if (manifestBytes == null) {
@@ -100,6 +139,43 @@ class ContentPackLoader {
         return const Result<ContentPack>.err(
             Failure('content pack: signature verification failed'));
       }
+    }
+
+    // ── IDENTITY BINDING (2026-08-01 full-corpus review, #8). ────────────────
+    // 🔴 A SIGNATURE ANSWERS "WHO MADE THIS", NEVER "IS THIS THE ONE I ASKED
+    // FOR". Every check above passes for a pack that is perfectly valid and
+    // simply not ours: another app's pack from the same bucket, signed with the
+    // same pinned key, or last release's pack for THIS app replayed by whatever
+    // serves the CDN. The manifest has carried `pack_id` and `version` since
+    // [ADR 007] and nothing compared either of them to the request, so the
+    // pointer indirection decided what the app asked for and no one ever checked
+    // that it got it.
+    //
+    // Mandatory on the untrusted remote path — the same posture as `key_id`
+    // above and `content_hash` below: a caller that cannot say which pack it
+    // wanted must not be handed one. Checked AFTER signature verification so an
+    // unsigned attacker-supplied manifest cannot spend the comparison; the id it
+    // declares has been proven authentic by the time it is read here.
+    //
+    // ⚠️ HONEST LIMIT, stated rather than implied: this binds the pack to the
+    // POINTER. Whoever can serve a forged pack can usually serve the pointer
+    // that names it, so a consistent older (id, version) PAIR still passes.
+    // Rollback needs a monotonic floor remembered across launches, which is a
+    // different mechanism and is not this one.
+    if (requireSignature && (expectPackId == null || expectPackId.isEmpty)) {
+      return const Result<ContentPack>.err(Failure(
+          'content pack: remote load asked for no pack_id — refusing to accept '
+          'whatever the source returns'));
+    }
+    if (expectPackId != null && manifest.packId != expectPackId) {
+      return Result<ContentPack>.err(
+          Failure('content pack: pack_id mismatch — asked for "$expectPackId", '
+              'manifest declares "${manifest.packId}"'));
+    }
+    if (expectVersion != null && manifest.version != expectVersion) {
+      return Result<ContentPack>.err(Failure(
+          'content pack: version mismatch — asked for "$expectVersion", '
+          'manifest declares "${manifest.version}"'));
     }
 
     final List<int>? contentBytes = await source.read('content.json');
