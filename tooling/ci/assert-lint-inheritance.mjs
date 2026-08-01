@@ -74,6 +74,50 @@ if (!existsSync(join(ROOT, SHARED))) {
   problems.push(`${SHARED} is MISSING — the shared convention set every other file inherits does not exist.`);
 }
 
+/**
+ * Every value of a file's top-level `include:` directive, read as YAML
+ * STRUCTURE. Three shapes are accepted because the analyzer accepts three: a
+ * scalar, a flow sequence (`[a, b]`) and a block sequence.
+ *
+ * 🔴 STRUCTURE, NOT SUBSTRING (2026-08-01 full-corpus triage). This check used
+ * to be `code.includes(INCLUDE)` over the whole file with only FULL-LINE
+ * comments stripped. So a file whose real directive read
+ *
+ *     include: flutter_lints/flutter.yaml  # was package:nikatru_lints/analysis_options.yaml
+ *
+ * scored as compliant and the guard printed `ok 9 file(s) inherit the shared
+ * set` — mutation-proven against the BRICK, the one file whose config reaches
+ * every app the factory will ever stamp. A trailing comment is prose. The
+ * include is a key with a value, and only the value can be inherited from.
+ *
+ * This is the same lesson the file's own header records — the previous version
+ * was itself written to defeat a comment that mentioned the include — applied
+ * this time to WHERE the match is allowed to happen, not only to what is
+ * stripped first.
+ */
+function includeValues(src) {
+  const lines = src.split('\n');
+  const clean = (s) => s.replace(/\s+#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2').trim();
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^include:\s*(.*)$/);
+    if (!m) continue; // a `#` comment can never match a column-0 key
+    const head = clean(m[1]);
+    if (head.startsWith('[')) {
+      return head.replace(/^\[/, '').replace(/\]$/, '').split(',').map(clean).filter(Boolean);
+    }
+    if (head) return [head];
+    const items = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '' || /^\s*#/.test(lines[j])) continue;
+      const item = lines[j].match(/^\s+-\s+(.*)$/);
+      if (!item) break;
+      items.push(clean(item[1]));
+    }
+    return items;
+  }
+  return [];
+}
+
 // ── 1 · every file inherits the shared set ───────────────────────────────────
 let inheriting = 0;
 for (const f of files) {
@@ -83,13 +127,17 @@ for (const f of files) {
     problems.push(`${f} could not be read.`);
     continue;
   }
-  // Comments stripped BEFORE matching. `packages/analysis`'s own file already
-  // mentioned this exact include inside a comment while using none of it —
-  // grepping the raw text would have scored that file as compliant.
-  const code = src.replace(/^\s*#.*$/gm, '');
-  if (!code.includes(INCLUDE)) {
+  // The directive is PARSED, not grepped. `packages/analysis`'s own file
+  // mentioned this exact include inside a comment while using none of it, and a
+  // trailing `# was package:nikatru_lints/…` note fooled the substring version
+  // in exactly the same way — neither can survive reading the value itself.
+  const included = includeValues(src);
+  if (!included.includes(INCLUDE)) {
+    const found = included.length
+      ? `its \`include:\` names ${included.map((x) => `\`${x}\``).join(', ')} instead`
+      : 'it declares no `include:` directive at all';
     problems.push(
-      `${f} does not include \`${INCLUDE}\`. A rule change in the shared set will not reach it, which is the whole point of C-12 — and the brick shipping its own weaker config is how every stamped app was born with less checking than apps/subly.`,
+      `${f} does not include \`${INCLUDE}\` — ${found}. A rule change in the shared set will not reach it, which is the whole point of C-12 — and the brick shipping its own weaker config is how every stamped app was born with less checking than apps/subly.`,
     );
     continue;
   }

@@ -62,6 +62,7 @@ let seq = 0;
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const POST_GEN = 'tooling/bricks/app/hooks/post_gen.dart';
 const CI = '.github/workflows/ci.yml';
+const PROBE_VARS = 'tooling/bricks/app/_probe_vars.json';
 
 const goodPostGen = `
 import 'dart:io';
@@ -101,9 +102,14 @@ jobs:
         run: flutter build web --pwa-strategy=none
 `;
 
-function tree({ postGen = goodPostGen, ci = goodCi, platforms = ['web'] } = {}) {
+// The stamp lane feeds mason THIS file, so `apps/<app_id>` is where a stamped
+// app lands and where its build has to run. The guard derives the anchor from
+// it rather than hardcoding `apps/probe`, so the fixture must supply it too.
+const goodVars = JSON.stringify({ app_id: 'probe', display_name: 'Probe' });
+
+function tree({ postGen = goodPostGen, ci = goodCi, platforms = ['web'], vars = goodVars } = {}) {
   const root = join(TMP, `r${seq++}`);
-  for (const [f, body] of Object.entries({ [POST_GEN]: postGen, [CI]: ci })) {
+  for (const [f, body] of Object.entries({ [POST_GEN]: postGen, [CI]: ci, [PROBE_VARS]: vars })) {
     const p = join(root, f);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, body);
@@ -267,6 +273,67 @@ jobs:
         'run: flutter build web --pwa-strategy=none',
         'run: flutter build web --pwa-strategy=none  # PWA off: [ADR 006]',
       ),
+    }));
+    assert.equal(code, 0, out);
+  });
+
+  // ── 🔴 M6 — THE DIRECTORY. Scoping the match to command position asked
+  //    WHETHER the command exists and never WHICH APP it builds. PR #92 fixed
+  //    prose-vs-command and added no anchor at all. Mutation-proven against the
+  //    real ci.yml 2026-08-01: flipping this step's `working-directory` from the
+  //    freshly stamped probe to `apps/subly` left the shipped guard printing
+  //    `ok every claimed platform is stamped and built in CI`. "A fresh stamp
+  //    really builds" was then being proven by building the hand-maintained
+  //    legacy app that has compiled for a year.
+  test('FAILS when the build runs in a DIFFERENT app than the one that was stamped', () => {
+    const { code, out } = run(tree({
+      ci: goodCi.replace('working-directory: apps/probe', 'working-directory: apps/subly'),
+    }));
+    assert.equal(code, 1, 'building apps/subly proves nothing about a fresh stamp');
+    assert.match(out, /runs `flutter build web`, but not in `apps\/probe` — it runs in `apps\/subly`/);
+  });
+
+  test('FAILS when the build runs at the repo root with no anchor at all', () => {
+    const { code, out } = run(tree({
+      ci: goodCi.replace('        working-directory: apps/probe\n', ''),
+    }));
+    assert.equal(code, 1, 'an unanchored build is a build of whatever happens to be at the root');
+    assert.match(out, /it runs in `<repo root>`/);
+  });
+
+  // The anchor is DERIVED, never typed: rename the probe in the vars file and
+  // the required directory moves with it. This is the pair that proves it — the
+  // same ci.yml passes or fails purely on what the vars file says.
+  test('the anchor follows _probe_vars.json — a renamed probe moves the requirement', () => {
+    const renamed = JSON.stringify({ app_id: 'smoke' });
+    const stale = run(tree({ vars: renamed }));
+    assert.equal(stale.code, 1, 'ci.yml still builds apps/probe while the stamp is now apps/smoke');
+    assert.match(stale.out, /but not in `apps\/smoke`/);
+
+    const moved = run(tree({
+      vars: renamed,
+      ci: goodCi.replace('working-directory: apps/probe', 'working-directory: apps/smoke'),
+    }));
+    assert.equal(moved.code, 0, moved.out);
+  });
+
+  test('FAILS COVERAGE LOST when the vars file yields no app_id to anchor to', () => {
+    const { code, out } = run(tree({ vars: JSON.stringify({ display_name: 'Probe' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /yields no `app_id`/);
+  });
+
+  // The false-alarm side of the anchor: a `cd` into the stamped app is the other
+  // shape this repo's workflows use, and it must still count.
+  test('passes when the step has no working-directory but the chain cds into the stamp', () => {
+    const { code, out } = run(tree({
+      ci: goodCi
+        .replace('        working-directory: apps/probe\n', '')
+        .replace(
+          'run: flutter build web --pwa-strategy=none',
+          'run: cd apps/probe && flutter build web --pwa-strategy=none',
+        ),
     }));
     assert.equal(code, 0, out);
   });

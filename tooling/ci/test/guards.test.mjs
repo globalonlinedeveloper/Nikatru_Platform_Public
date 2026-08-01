@@ -138,6 +138,43 @@ describe('check-migrations', () => {
     });
   }
 
+  // 🔴 THE FINAL STATEMENT OF EVERY FILE WAS UNSCANNABLE. The NOT-NULL rule
+  // matched `…NOT NULL…;` — the terminating semicolon was MANDATORY — so a
+  // statement without one fell outside the pattern entirely. Mutation-proven
+  // against the real tree 2026-08-01: `ALTER TABLE events ADD COLUMN tenant TEXT
+  // NOT NULL` with no trailing `;` printed "7 migration file(s) clean", exit 0;
+  // the identical statement WITH the `;` exited 1. A trailing semicolon is
+  // optional in SQL and wrangler applies the statement either way — the guard
+  // was the only thing that cared about the punctuation, and every migration has
+  // a last statement.
+  for (const [label, sql] of [
+    ['at end of file with no trailing newline', 'ALTER TABLE t ADD COLUMN y TEXT NOT NULL'],
+    ['at end of file with a trailing newline', 'ALTER TABLE t ADD COLUMN y TEXT NOT NULL\n'],
+    ['after an earlier terminated statement', `${ADDITIVE}ALTER TABLE t ADD COLUMN y TEXT NOT NULL\n`],
+  ]) {
+    test(`FAILS on an UNTERMINATED NOT NULL column ${label}`, () => {
+      const { code, out } = run('check-migrations.mjs', {
+        cwd: build(`mig-unterm-${label.replace(/\W+/g, '')}`, sql),
+      });
+      assert.equal(code, 1, 'a missing semicolon is not a licence to skip the rule');
+      assert.match(out, /BANNED ADD COLUMN … NOT NULL without DEFAULT/);
+    });
+  }
+
+  // The false-alarm side: making the terminator optional must not start firing
+  // on the legitimate form, terminated or not.
+  for (const [label, sql] of [
+    ['terminated', "ALTER TABLE t ADD COLUMN y TEXT NOT NULL DEFAULT '';\n"],
+    ['unterminated', "ALTER TABLE t ADD COLUMN y TEXT NOT NULL DEFAULT ''"],
+  ]) {
+    test(`does NOT trip on a ${label} NOT NULL column that HAS a DEFAULT`, () => {
+      const { code, out } = run('check-migrations.mjs', {
+        cwd: build(`mig-default-${label}`, `${ADDITIVE}${sql}`),
+      });
+      assert.equal(code, 0, out);
+    });
+  }
+
   test('does NOT trip on a banned keyword inside a comment', () => {
     const sql = `-- we never DROP TABLE here, and never RENAME either\n${ADDITIVE}`;
     const { code } = run('check-migrations.mjs', { cwd: build('mig-comment', sql) });

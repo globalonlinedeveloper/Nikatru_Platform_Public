@@ -59,7 +59,18 @@ const SHOWN_TO_A_PERSON = [
 // seen in this tree, not a hypothetical.
 const NOT_USER_FACING = [
   { re: /^\s*$/, why: 'empty or whitespace' },
-  { re: /^[a-z][a-z0-9_]*$/, why: 'a snake_case / lowercase key, not prose' },
+  // 🔴 TIGHTENED 2026-08-01 (full-corpus triage). This read `^[a-z][a-z0-9_]*$`
+  // — ANY bare lowercase word — so `Text('settings')`, `Text('loading')`,
+  // `Text('delete')` and `Text('subscriptions')` were every one of them filed as
+  // "a key" and the guard printed "the brick is clean". Mutation-proven against
+  // the real brick: those four literals added, exit 0. They are not keys; they
+  // are the commonest labels an app ships, in the one tree that multiplies by 50.
+  //
+  // The distinguishing fact is a SEPARATOR: an identifier has one, a word does
+  // not. So the exemption now requires at least one `_`. `analytics_opt_in`
+  // stays silent; `settings` no longer does. An exemption broad enough that you
+  // cannot write the input it should have caught is a hole, not a filter.
+  { re: /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/, why: 'a snake_case key — it carries a separator, so it is an identifier and not prose' },
   { re: /^[A-Z][A-Z0-9_]+$/, why: 'a CONSTANT_KEY' },
   { re: /^#?[0-9a-fA-F]{3,8}$/, why: 'a hex colour' },
   { re: /^(?:https?:|mailto:|tel:|package:|asset|assets\/)/i, why: 'a URL or asset path' },
@@ -125,6 +136,26 @@ if (canary.length < MIN_CANARY) {
   );
 } else {
   ok(`matchers verified against a known-dirty tree: ${canary.length} literal(s) found in apps/subly (excluded from enforcement, see below)`);
+}
+
+// 🔴 AND A RELATIONSHIP, NOT ONLY A COUNT (2026-08-01 corpus triage).
+// MIN_CANARY is deliberately left FAR below the measured total — apps/subly
+// yields ~59 — and it must stay that way: re-pinning a floor at whatever the
+// tree happens to measure today is the stale-floor defect PR #85 removed from
+// assert-guard-coverage. But a total floor is also blind in the other
+// direction: ~47 of those hits come from the `Text(…)` matcher, so DELETING THE
+// LABELLING MATCHER OUTRIGHT still clears any total floor by a wide margin and
+// prints "matchers verified".
+//
+// So the real coverage claim is derived from the matcher list itself: every
+// family must show its own evidence that it still matches. Add a matcher and it
+// must earn evidence too — there is no number to tune and nothing to go stale.
+for (const { what } of SHOWN_TO_A_PERSON) {
+  if (canary.length >= MIN_CANARY && !canary.some((h) => h.what === what)) {
+    problems.push(
+      `COVERAGE LOST — the "${what}" matcher found NOTHING in apps/subly, a tree known to be dirty in exactly that way. One matcher family has stopped matching while the others carry the total over the floor, so the brick's clean result proves nothing about ${what}.`,
+    );
+  }
 }
 
 for (const [root, why] of Object.entries(EXCLUDED_ROOTS)) {
