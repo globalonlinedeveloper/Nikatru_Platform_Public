@@ -146,38 +146,132 @@ describe('check-migrations', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔴 REGRESSION CONTEXT. This guard read ONE hardcoded file
+// (services/platform/wrangler.jsonc) while tooling/capability-register.json
+// claimed it guarded ALLOWED_ORIGINS generally. Emptying services/subly-api's
+// allowlist produced byte-identical output and exit 0 — a live user-data API
+// could go permissive with CI fully green. Every test below that names
+// subly-api would have PASSED against the old guard, which is exactly why they
+// are here: the fork must not be able to come back silently.
+//
+// The extension was mutation-proven against a scratch COPY of the real tree
+// before these tests existed (a fixture I write encodes the same
+// misunderstanding as the guard I write): 8 mutations, each failing with its
+// intended message and each restoring to green.
 describe('assert-cors-allowlist', () => {
-  const ALL = [
+  const PLATFORM = [
     'https://subly.nikatru.com',
     'https://subly-9cp.pages.dev',
     'http://localhost:3000',
   ];
-  const build = (name, body) =>
-    fixture(name, { 'services/platform/wrangler.jsonc': body });
-  const config = (origins, trailer = '') =>
-    `{\n  // the shared platform Worker\n  "vars": { "ALLOWED_ORIGINS": "${origins.join(',')}" }${trailer}\n}\n`;
+  // No localhost here: the per-app Worker allows it by regex (recorded trade).
+  const SUBLY = ['https://subly.nikatru.com', 'https://subly-9cp.pages.dev'];
 
-  test('PASSES when every required origin is listed', () => {
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-ok', config(ALL)) });
+  const config = (origins) =>
+    `{\n  // a Worker\n  "vars": { "ALLOWED_ORIGINS": "${origins.join(',')}" }\n}\n`;
+
+  /** Both Workers, each overridable. Anything less is not a valid tree — the
+   *  guard is supposed to insist that every service it knows about is present. */
+  const build = (name, { platform = config(PLATFORM), subly = config(SUBLY), extra = {} } = {}) =>
+    fixture(name, {
+      'services/platform/wrangler.jsonc': platform,
+      'services/subly-api/wrangler.jsonc': subly,
+      ...extra,
+    });
+
+  test('PASSES when every required origin is listed for BOTH Workers', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: build('cors-ok') });
     assert.equal(code, 0);
+    // The tally must show it read two configs, not one — a guard that checked
+    // half the tree and said "ok" is the defect this replaced.
+    assert.match(out, /2 Worker config\(s\) checked/);
   });
 
-  test('FAILS when a required origin is dropped, and names it', () => {
-    const dir = build('cors-missing', config(ALL.slice(0, 2)));
+  test('FAILS when a required PLATFORM origin is dropped, and names it', () => {
+    const dir = build('cors-missing-platform', { platform: config(PLATFORM.slice(0, 2)) });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
     assert.match(out, /localhost:3000/);
+    assert.match(out, /services\/platform/);
   });
 
-  test('FAILS on an empty allowlist — which would deny every browser origin', () => {
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-empty', config([])) });
+  test('FAILS when a required SUBLY-API origin is dropped — the old guard could not see this', () => {
+    const dir = build('cors-missing-subly', { subly: config(SUBLY.slice(0, 1)) });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
     assert.equal(code, 1);
+    assert.match(out, /services\/subly-api/);
+    assert.match(out, /subly-9cp\.pages\.dev/);
+  });
+
+  test('FAILS on an empty PLATFORM allowlist', () => {
+    const { code } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-empty-platform', { platform: config([]) }),
+    });
+    assert.equal(code, 1);
+  });
+
+  test('FAILS on an empty SUBLY-API allowlist — the exact mutation that shipped green', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-empty-subly', { subly: config([]) }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /services\/subly-api/);
+    assert.match(out, /EMPTY/);
+  });
+
+  test('FAILS when ALLOWED_ORIGINS is absent from a Worker entirely', () => {
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-absent-subly', { subly: '{ "name": "subly-api" }\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /ALLOWED_ORIGINS is missing/);
   });
 
   test('is STRUCTURAL — an origin mentioned only in a comment does not satisfy it', () => {
-    const body = `{\n  // https://subly-9cp.pages.dev and http://localhost:3000 used to be here\n  "vars": { "ALLOWED_ORIGINS": "https://subly.nikatru.com" }\n}\n`;
-    const { code } = run('assert-cors-allowlist.mjs', { cwd: build('cors-comment', body) });
+    const subly = `{\n  // https://subly-9cp.pages.dev used to be here\n  "vars": { "ALLOWED_ORIGINS": "https://subly.nikatru.com" }\n}\n`;
+    const { code, out } = run('assert-cors-allowlist.mjs', {
+      cwd: build('cors-comment', { subly }),
+    });
     assert.equal(code, 1);
+    assert.match(out, /subly-9cp\.pages\.dev/);
+  });
+
+  test('FAILS on a Worker it was never TAUGHT about — a new service is untaught scope, not out of scope', () => {
+    const dir = build('cors-untaught', {
+      extra: { 'services/newthing/wrangler.jsonc': config(['https://x.test']) },
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /never been taught about services\/newthing/);
+  });
+
+  test('FAILS its own coverage check when a Worker POLICY names is not on disk', () => {
+    // The rename case: services/subly-api moves and the guard keeps printing a
+    // healthy tally over whatever is left.
+    const dir = fixture('cors-renamed', {
+      'services/platform/wrangler.jsonc': config(PLATFORM),
+      'services/subly-backend/wrangler.jsonc': config(SUBLY),
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /services\/subly-api/);
+  });
+
+  test('FAILS its own coverage check when fewer Workers than expected are found', () => {
+    const dir = fixture('cors-one-worker', {
+      'services/platform/wrangler.jsonc': config(PLATFORM),
+    });
+    const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('a directory under services/ with no Worker config is skipped, not failed', () => {
+    const dir = build('cors-nonworker', {
+      extra: { 'services/_notes/README.md': 'not a Worker\n' },
+    });
+    assert.equal(run('assert-cors-allowlist.mjs', { cwd: dir }).code, 0);
   });
 });
 
