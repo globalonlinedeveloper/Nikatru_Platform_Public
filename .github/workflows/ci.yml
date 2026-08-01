@@ -167,10 +167,11 @@ jobs:
       # declares a card or bank column.
       #
       # ⚠️ ONLY `code` ROWS CARRY AN ASSERTION. This does not prove the pages
-      # true and its own header says so. Four things ARE wrong on those pages
-      # today — the crash-report host, the Razorpay/merchant-of-record
-      # contradiction, the unnamed seller and the unnamed identity provider —
-      # and every one is fixed by publishing copy only the owner can approve
+      # true and its own header says so. Three things ARE wrong on those pages
+      # today — the crash-report host, the unnamed seller and the unnamed
+      # identity provider (the Razorpay/merchant-of-record contradiction was
+      # the fourth, and was corrected) — and every one is fixed by publishing
+      # copy only the owner can approve
       # (OWNER_QUEUE O-3). They PRINT every run and cannot be silently exempted:
       # each declares the sentence that must still be on the page, and the guard
       # goes RED when that sentence is corrected, demanding the row be retired.

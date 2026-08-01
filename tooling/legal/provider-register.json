@@ -14,8 +14,10 @@
     "    published page and in no ADR.",
     "  · [ADR 004] LOCKED Paddle as the merchant of record on 2026-07-23. Paddle is named in none of",
     "    privacy.html, terms.html or refund.html.",
-    "  · terms.html and refund.html say website purchases are processed by Razorpay, while privacy.html",
-    "    says 'We do not sell anything directly from this website today'. The pages contradict each other.",
+    "  · terms.html and refund.html said website purchases are processed by Razorpay, while privacy.html",
+    "    says 'We do not sell anything directly from this website today'. The pages contradicted each",
+    "    other. ✅ FIXED — the `website-seller-contradiction` gap was retired when the wording landed; the",
+    "    two pages now describe the merchant-of-record role and name nobody, matching privacy.html.",
     "  · privacy.html says usage statistics AND CRASH REPORTS run on infrastructure provided by",
     "    Cloudflare. Crash reports run on Oracle Cloud (company/runbooks/glitchtip.md).",
     "",
@@ -172,9 +174,10 @@
         "not exist and the ADR's own sequencing is 'build the complete product first, then apply'.",
         "",
         "Named in NO published page. That is the `merchant-of-record-unnamed` gap below. It is not a code",
-        "defect — privacy.html already says 'this Policy will name the provider before we start' — but a",
-        "merchant of record is the legal seller, and terms.html and refund.html still name a different",
-        "company for the same purchases."
+        "defect — privacy.html already says 'this Policy will name the provider before we start', and",
+        "terms.html §4 and refund.html §2 now say the same thing in their own words. The three pages agree",
+        "with each other and with this register: the role is described, the provider is unnamed because no",
+        "account exists, and none of them names anybody else for the same purchase."
       ]
     },
     {
@@ -197,20 +200,29 @@
       "id": "razorpay",
       "name": "Razorpay",
       "role": "payment_gateway",
-      "status": "named-but-not-wired",
+      "status": "not-named-not-wired",
       "reachableAt": null,
       "tells": ["razorpay"],
-      "namedIn": ["terms.html", "refund.html"],
+      "namedIn": [],
       "privateRecord": null,
       "notes": [
-        "🔴 NAMED IN TWO PUBLISHED PAGES AND REACHABLE FROM NO CODE. terms.html §4 says website purchases",
-        "'are processed securely by Razorpay' and refund.html §2 and §4 route website refunds through it.",
-        "There is no Razorpay integration anywhere in this repository, no route, no key, no webhook — and",
-        "privacy.html now says we do not sell anything directly from this website at all.",
+        "WAS NAMED IN TWO PUBLISHED PAGES AND REACHABLE FROM NO CODE; the naming was removed, the code was",
+        "never there. Until this change terms.html §4 said website purchases 'are processed securely by",
+        "Razorpay' and refund.html §2/§4 routed website refunds through it, while privacy.html said we do",
+        "not sell anything directly from this website at all. There is no Razorpay integration anywhere in",
+        "this repository — no route, no key, no webhook — so the pages named a payment path that did not",
+        "exist, and named it for a purchase the same site said does not happen.",
         "",
         "A gateway is also the WRONG SHAPE for what [ADR 004] decided: a gateway leaves us the seller and",
         "leaves the worldwide sales-tax duty with us, which is the exact burden a merchant of record was",
-        "chosen to remove. Recorded, not resolved — see the `website-seller-contradiction` gap."
+        "chosen to remove. The row is KEPT rather than deleted so the removal is a recorded fact instead of",
+        "an absence: if a domestic India rail is ever offered alongside the merchant of record, this is the",
+        "row that has to go back to `namedIn` — and the both-pages rule in assert-policy-claims.mjs applies",
+        "to the merchant of record, not to a gateway, so nothing would catch it silently.",
+        "",
+        "⚠️ WHETHER A RAZORPAY MERCHANT ACCOUNT EXISTS IS NOT RECORDED HERE and must not be: account state",
+        "is private-SSoT material (see the ⚠️ note at the top of this file). `not-named-not-wired` is a",
+        "statement about this repository and the published pages, and nothing else."
       ]
     },
     {
@@ -284,22 +296,13 @@
       "resolution": "Split the sentence so each system names its own host. This is published legal copy — an agent can propose the wording, only the owner publishes it, and it belongs in the SAME version bump as the other two O-3 text corrections so the archive takes one snapshot rather than three."
     },
     {
-      "id": "website-seller-contradiction",
-      "ownerItem": "O-3",
-      "provider": "razorpay",
-      "page": "terms.html",
-      "what": "terms.html §4 states 'Purchases made on our website are processed securely by Razorpay' and refund.html §2/§4 route website refunds through Razorpay, while privacy.html §3 states 'We do not sell anything directly from this website today'. The three pages a buyer reads contradict each other about whether the website sells anything and who processes it. [ADR 004] locked a merchant of record, which is a different legal relationship from a gateway.",
-      "stillTrue": "processed securely by Razorpay",
-      "resolution": "Decide which rails a buyer is actually offered (open question: Paddle global only, or Paddle plus an India-domestic rail), then make all three pages say the same thing. The DECISION is the owner's; the register rows follow it."
-    },
-    {
       "id": "merchant-of-record-unnamed",
       "ownerItem": "O-3",
       "provider": "paddle",
       "page": "privacy.html",
-      "what": "[ADR 004] locked Paddle as the merchant of record on 2026-07-23. No published page names it. privacy.html describes 'a merchant of record' generically and commits to naming the provider before selling starts, which is honest — but terms.html and refund.html name Razorpay for the same purchases, so a reader gets a name, and it is the wrong one.",
+      "what": "[ADR 004] locked Paddle as the merchant of record on 2026-07-23. No published page names it. All three pages now describe 'a merchant of record' generically and commit to naming the provider before any purchase is possible, which is honest and is all that can honestly be said — the seller account does not exist, and [ADR 004]'s own sequencing is 'build the complete product first, then apply'. The narrower defect this gap used to carry — terms.html and refund.html naming a DIFFERENT company for the same purchases — is fixed; what remains is that the provider has no name on the page because it has no account behind it.",
       "stillTrue": "a merchant of record",
-      "resolution": "Name Paddle once the seller account exists (OWNER_QUEUE A-1), in the same version bump as the other corrections. Until then the pages must at least not name a different company for the same transaction."
+      "resolution": "Name Paddle in all three pages once the seller account exists (OWNER_QUEUE A-1). privacy.html is inside the policy-version surface, so naming it there is a version bump plus an archive snapshot (assert-policy-archive.mjs); terms.html and refund.html are not, and can be corrected without one."
     },
     {
       "id": "identity-provider-unnamed",

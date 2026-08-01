@@ -175,9 +175,9 @@
       "duty": "The pages a buyer reads name the actual seller and the actual payment path, and agree with each other.",
       "status": "owner-gated",
       "ownerItem": "O-3",
-      "trigger": "Before the first website sale. Today terms.html and refund.html name a payment gateway for purchases privacy.html says do not happen.",
+      "trigger": "Before the first website sale. All three pages now agree that nothing is sold directly from the website yet and that a merchant of record will be named before it is; what none of them can say is WHO, because the seller account does not exist (OWNER_QUEUE A-1).",
       "verification": "in-tree",
-      "note": "The guard is built and the four gaps print every run (tooling/legal/provider-register.json disclosureGaps). The remaining work is published wording plus one decision — which rails a buyer is offered."
+      "note": "The guard is built and the remaining gaps print every run (tooling/legal/provider-register.json disclosureGaps). The `website-seller-contradiction` gap was retired when the terms/refund wording was corrected. The remaining work is the seller account, then naming the provider in all three pages — and one decision the owner still owes: whether a buyer is offered the merchant of record only, or the merchant of record plus an India-domestic rail."
     },
     {
       "id": "in-app-legal-links",

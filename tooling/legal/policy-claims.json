@@ -205,12 +205,10 @@
     },
     {
       "page": "terms.html",
-      "claim": "Razorpay",
-      "type": "known-gap",
-      "ownerItem": "O-3",
-      "providers": ["razorpay"],
-      "why": "terms.html §4 tells a buyer their website purchase is processed by Razorpay. There is no Razorpay integration in this repository, privacy.html says nothing is sold from the website today, and [ADR 004] locked a merchant of record — a different legal relationship, in which the provider is the seller and we are not. The correction is published copy: OWNER_QUEUE O-3, and it belongs in the same version bump as the other two.",
-      "stillTrue": "processed securely by Razorpay"
+      "claim": "merchant of record",
+      "type": "provider",
+      "providers": ["paddle"],
+      "note": "REPLACED THE `Razorpay` known-gap ROW. §4 previously told a buyer their website purchase was 'processed securely by Razorpay' — a company no code in this repository reaches, for a purchase privacy.html says does not happen, in a legal relationship ([ADR 004] locked a merchant of record) that a gateway is not. The span now describes the ROLE and commits to naming the provider before any purchase is possible, which is the same thing privacy.html §3 says and can be read off this tree. The provider is still named nowhere: that remains the `merchant-of-record-unnamed` gap, and Paddle's own row prints every run until the seller account exists (OWNER_QUEUE A-1)."
     },
     {
       "page": "terms.html",
@@ -236,6 +234,13 @@
       "claim": "Microsoft Store",
       "type": "provider",
       "providers": ["microsoft-store"]
+    },
+    {
+      "page": "refund.html",
+      "claim": "merchant of record",
+      "type": "provider",
+      "providers": ["paddle"],
+      "note": "§2 previously read 'Purchases on our website (via Razorpay)' and routed website refunds through that company; §4 issued them through it. Same correction as the terms.html row — the role is described, the provider is not named, and the page says so rather than naming the wrong one. The bullets that follow are the policy we will apply to those purchases when they exist; they were left standing rather than deleted, because they are commitments about digital goods and not claims about who the seller is."
     },
     {
       "page": "refund.html",
