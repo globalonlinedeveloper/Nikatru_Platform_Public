@@ -71,6 +71,32 @@ class AppConfig {
     defaultValue: companyUrl,
   );
 
+  // ── STORE IDENTITY ─────────────────────────────────────────────────────────
+  // 🔴 `openStoreListing()` CANNOT RUN WITHOUT THESE on the platforms that need
+  // them. `in_app_review` calls `ArgumentError.checkNotNull` — a RELEASE-build
+  // throw, not an assert — for `appStoreId` on iOS/macOS and `microsoftStoreId`
+  // on Windows, and the adapter used to pass neither, so the "rate us" route
+  // was dead on three of the four store platforms while reporting success.
+  // Android needs nothing: Play resolves the listing from the package name.
+  //
+  // OWNER-GATED, hence a define with an empty default rather than a stamped
+  // constant: neither id EXISTS until the app is registered with that store, so
+  // there is no value the factory could stamp. Empty means "not registered
+  // yet", and the adapter reports that as `StoreListingOutcome.notConfigured`
+  // instead of pretending the store opened.
+  static const String appStoreId = String.fromEnvironment('APP_STORE_ID');
+  static const String microsoftStoreId = String.fromEnvironment(
+    'MICROSOFT_STORE_ID',
+  );
+
+  // ── REMINDERS ──────────────────────────────────────────────────────────────
+  // When the daily reminder fires, in the DEVICE's local time. A plain constant
+  // rather than a define: the right hour is a product decision each app makes
+  // once, not a per-build one, and 20:00 is the chassis default because an
+  // evening nudge is the least intrusive time that still reaches a daily user.
+  static const int reminderHour = 20;
+  static const int reminderMinute = 0;
+
   // Shared Supabase auth (portfolio-wide).
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',

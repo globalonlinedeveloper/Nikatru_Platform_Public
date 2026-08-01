@@ -46,25 +46,31 @@ class LocalNotificationService implements NotificationService {
     bool isWeb = false,
     LocalTimezoneResolver? localTimezone,
     TZDateTimeNow? now,
+    DeviceUtcOffset? deviceUtcOffset,
   })  : _plugin = plugin ?? _FlutterLocalNotificationsAdapter(),
         _caps = NotificationCapabilities.forPlatform(
           platform ?? defaultTargetPlatform,
           isWeb: isWeb,
         ),
-        _resolveTimezone = localTimezone ?? _defaultTimezone,
-        _now = now;
+        _resolveTimezone = localTimezone,
+        _now = now,
+        _deviceUtcOffset = deviceUtcOffset ?? _hostUtcOffset;
 
   final NotificationPlugin _plugin;
   final NotificationCapabilities _caps;
-  final LocalTimezoneResolver _resolveTimezone;
+
+  /// NULLABLE, and the null case is the interesting one — see
+  /// [LocalTimezoneResolver] and [_resolveLocation].
+  final LocalTimezoneResolver? _resolveTimezone;
   final TZDateTimeNow? _now;
+  final DeviceUtcOffset _deviceUtcOffset;
   bool _initialized = false;
 
   /// Fixed id bucket for immediate notifications (kept clear of caller-chosen
   /// small reminder ids); each `showNow` replaces the previous immediate one.
   static const int _immediateId = 0x7f000000;
 
-  static Future<String> _defaultTimezone() async => 'UTC';
+  static Duration _hostUtcOffset() => DateTime.now().timeZoneOffset;
 
   /// The resolved platform capabilities — lets the app decide whether to offer a
   /// scheduling toggle or fall back to an in-app nudge.
@@ -74,7 +80,7 @@ class LocalNotificationService implements NotificationService {
   Future<void> init() async {
     if (_initialized) return;
     tz_data.initializeTimeZones();
-    tz.setLocalLocation(_locationOrUtc(await _safeTimezone()));
+    tz.setLocalLocation(await _resolveLocation());
     if (_caps.canNotify) {
       await _plugin.initialize();
     }
@@ -117,23 +123,66 @@ class LocalNotificationService implements NotificationService {
     await _plugin.cancelAll();
   }
 
-  Future<String> _safeTimezone() async {
-    try {
-      return await _resolveTimezone();
-    } catch (_) {
-      return 'UTC';
+  /// The location `tz.local` is set to, and therefore the wall clock every
+  /// reminder is anchored to.
+  ///
+  /// 🔴 THE FALLBACK IS NOT `UTC`, AND THAT IS THE FIX. Falling back to UTC is
+  /// indistinguishable from working — the code runs, the notification is
+  /// scheduled, every test passes, and the reminder fires at the wrong hour in
+  /// every market that is not on UTC. The device's own offset is always
+  /// available (`DateTime.timeZoneOffset` comes from the OS) and is exact for
+  /// the schedule being made, so there is no honest reason to prefer a zone the
+  /// user is not in.
+  Future<tz.Location> _resolveLocation() async {
+    final LocalTimezoneResolver? resolve = _resolveTimezone;
+    if (resolve != null) {
+      try {
+        return tz.getLocation(await resolve());
+      } catch (_) {
+        // A resolver that throws, or names a zone the tz database does not
+        // carry, falls through to the device offset — never to UTC.
+      }
     }
+    return deviceOffsetLocation(_deviceUtcOffset());
   }
+}
 
-  tz.Location _locationOrUtc(String name) {
-    try {
-      return tz.getLocation(name);
-    } catch (_) {
-      // tz.UTC is a built-in constant (no database lookup) so it never throws,
-      // even if the tz database somehow isn't loaded.
-      return tz.UTC;
-    }
-  }
+/// A [tz.Location] that is simply "wherever this device currently is": one zone,
+/// no transitions, [offset] from UTC.
+///
+/// Exact for a schedule made now, and knowingly incomplete: with no DST rules it
+/// cannot predict that the offset changes next month, so a schedule made before
+/// a transition fires an hour out until it is re-armed. That is a bounded,
+/// twice-a-year, one-hour error — against an unbounded, permanent, up-to-14-hour
+/// one for the UTC default it replaces. Inject a real IANA
+/// [LocalTimezoneResolver] to remove even that.
+///
+/// `transitionAt` starts at [minTime] so the single zone covers all time; the
+/// `timezone` package binary-searches that list and takes the last entry at or
+/// before the instant it is asked about.
+tz.Location deviceOffsetLocation(Duration offset) {
+  final int ms = offset.inMilliseconds;
+  final String label = _offsetLabel(offset);
+  return tz.Location(
+    // Not an IANA name, and deliberately shaped so it cannot be mistaken for
+    // one if it ever shows up in a log.
+    'device$label',
+    <int>[_minTime],
+    <int>[0],
+    <tz.TimeZone>[tz.TimeZone(ms, isDst: false, abbreviation: label)],
+  );
+}
+
+/// `timezone`'s own lower bound for an instant, inlined rather than imported:
+/// the package exports `Location` but not its `minTime` constant.
+const int _minTime = -8640000000000000;
+
+String _offsetLabel(Duration offset) {
+  final Duration abs = offset.isNegative ? -offset : offset;
+  final String sign = offset.isNegative ? '-' : '+';
+  final String h = abs.inHours.toString().padLeft(2, '0');
+  final String m = (abs.inMinutes % 60).toString().padLeft(2, '0');
+  return '$sign$h$m';
 }
 
 /// The next [tz.TZDateTime] at [hour]:[minute] in [now]'s location, strictly

@@ -1180,10 +1180,31 @@ Future<void> recordAnalyticsConsent(
   // The brick template also declares kPrivacyPolicyVersion, so the guard checks
   // BOTH files. A fixture missing it fails for a reason unrelated to the test —
   // fixtures must mirror the real tree.
-  const BRICK_POLICY_FILE = {
+  // [pipeline C-6] The reminders seam, added 2026-08-01 after it was found dead:
+  // the brick's toggle called requestPermission() and persisted the answer, and
+  // `scheduleDaily` had zero call sites in the whole template. The DECLARATION
+  // of applyReminderChoice lives in the provider file exactly as it does in the
+  // real tree, so the caller check cannot be satisfied by the declaration — the
+  // trap that was live in this guard once already.
+  const BRICK_SCHEDULES = `
+Future<bool> applyReminderChoice({
+  required bool on,
+  required String title,
+  required String body,
+}) async {
+  await svc.init();
+  await svc.scheduleDaily(core.DailyReminder(id: kDailyReminderId));
+  return true;
+}
+`;
+  const BRICK_TOGGLE_CALLS = 'onChanged: (bool on) => c.applyReminderChoice(on: on),\n';
+
+  const brickFiles = ({ reminders = BRICK_SCHEDULES, toggle = BRICK_TOGGLE_CALLS } = {}) => ({
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      "const String kPrivacyPolicyVersion = '2026-07-26';\n",
-  };
+      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}`,
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
+      toggle,
+  });
 
   const PACK_FILES = {
     'packages/core/lib/src/content/ed25519_pack_verifier.dart':
@@ -1230,12 +1251,14 @@ Future<void> main() async {
       deploy = DEPLOY_WITH_DSN,
       mainDart = MAIN_READS_DSN,
       brickMain = BRICK_MAIN_INITS_AUTH,
+      reminders = BRICK_SCHEDULES,
+      toggle = BRICK_TOGGLE_CALLS,
     } = {},
   ) =>
     fixture(name, {
       ...filler(fillerCount),
       ...PACK_FILES,
-      ...BRICK_POLICY_FILE,
+      ...brickFiles({ reminders, toggle }),
       'apps/subly/lib/state/analytics_providers.dart':
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
@@ -1351,7 +1374,7 @@ Future<void> main() async {
     const dir = fixture('seams-probe-only', {
       ...filler(14),
       ...PACK_FILES,
-      ...BRICK_POLICY_FILE,
+      ...brickFiles(),
       'apps/subly/lib/state/analytics_providers.dart':
         `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': UI_CALLER,
@@ -1364,6 +1387,49 @@ Future<void> main() async {
     const { code, out } = run('assert-seams-wired.mjs', { cwd: dir });
     assert.equal(code, 1);
     assert.match(out, /a real caller \(not a test\) NOT FOUND/);
+  });
+
+  // ── THE REMINDERS SEAM ─────────────────────────────────────────────────────
+  // Recorded failing cases for the seam added 2026-08-01. Both mutations are the
+  // state HEAD was actually in: the toggle existed, the flag persisted, and
+  // nothing was ever scheduled.
+  test('FAILS when the brick schedules nothing — the shipped defect', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-schedule', {
+        reminders:
+          '\nFuture<bool> applyReminderChoice({required bool on}) async {\n' +
+          '  final bool granted = await svc.requestPermission();\n' +
+          '  await set(granted);\n  return granted;\n}\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real scheduleDaily call site in the stamped chassis NOT FOUND/);
+  });
+
+  test('FAILS when the toggle no longer calls the scheduling path', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-no-toggle-caller', {
+        toggle: 'onChanged: (bool on) => c.setRemindersFlag(on),\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a UI caller that turns the switch into a schedule NOT FOUND/);
+  });
+
+  // 🔴 THE DECLARATION IS NOT A CALLER, and the `scope` is not decoration:
+  // without it a call in apps/ keeps the CHASSIS seam green while every stamped
+  // app ships the dead toggle.
+  test('a caller outside the brick does NOT satisfy a chassis seam', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-schedule-elsewhere', {
+        reminders:
+          '\nFuture<bool> applyReminderChoice({required bool on}) async => on;\n',
+        toggle: 'onChanged: (bool on) => c.applyReminderChoice(on: on),\n',
+        record: `${RECORD_CALL}\nawait service.scheduleDaily(reminder);\n`,
+      }),
+    });
+    assert.equal(code, 1, 'apps/subly calling scheduleDaily says nothing about the brick');
+    assert.match(out, /a real scheduleDaily call site in the stamped chassis NOT FOUND/);
   });
 
   test('FAILS when the caller passes no real platform secure store', () => {
@@ -1383,7 +1449,7 @@ Future<void> main() async {
     const dir = fixture('seams-decl-only', {
       ...filler(14),
       ...PACK_FILES,
-      ...BRICK_POLICY_FILE,
+      ...brickFiles(),
       'apps/subly/lib/state/analytics_providers.dart':
         `${RECORD_CALL}\n${DECLARATION}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       // no consent_prompt.dart, no settings caller — nothing calls it at all
@@ -1409,7 +1475,7 @@ Future<void> main() async {
     const dir = fixture('seams-noversion', {
       ...filler(14),
       ...PACK_FILES,
-      ...BRICK_POLICY_FILE,
+      ...brickFiles(),
       'apps/subly/lib/state/analytics_providers.dart': `${RECORD_CALL}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': UI_CALLER,
       'sites/nikatru/privacy.html': '<p class="updated">Last updated: whenever</p>',
@@ -1468,8 +1534,14 @@ class Ed25519PackVerifier implements PackVerifier {
     'apps/subly/lib/features/consent/consent_prompt.dart': 'recordAnalyticsConsent(ref, granted: true);',
     'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      "const String kPrivacyPolicyVersion = '2026-07-26';\n",
-    // …and the secure-session seam, for the same reason.
+      "const String kPrivacyPolicyVersion = '2026-07-26';\n" +
+      'Future<bool> applyReminderChoice({required bool on}) async {\n' +
+      '  await svc.init();\n' +
+      '  await svc.scheduleDaily(core.DailyReminder(id: 1));\n' +
+      '  return on;\n}\n',
+    // …and the reminders seam, and the secure-session seam, for the same reason.
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
+      'onChanged: (bool on) => c.applyReminderChoice(on: on),\n',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart':
       'await initNikatruAuth(url: u, publishableKey: k, secureStore: FlutterSecureStore());\n',
   };
@@ -1764,6 +1836,15 @@ class RemindersEnabledController extends Notifier<bool> {
   Future<void> set(bool on) async {
     await kv.write(_remindersKey, on ? 'true' : 'false');
   }
+  // 🔴 THE HALF THAT WAS MISSING UNTIL 2026-08-01. Persisting the flag was
+  // always right and was never the feature; without these two lines the toggle
+  // spends the one OS permission prompt and schedules nothing.
+  Future<bool> applyReminderChoice({required bool on, required String title, required String body}) async {
+    final core.NotificationService svc = ref.read(notificationServiceProvider);
+    await svc.init();
+    await svc.scheduleDaily(core.DailyReminder(id: kDailyReminderId, title: title, body: body, hour: 20, minute: 0));
+    return on;
+  }
 }
 
 class ThemeModeController extends Notifier<ThemeMode> {
@@ -1817,6 +1898,13 @@ void _confirmDelete(BuildContext context, WidgetRef ref, AppLocalizations l10n) 
 }
 
 final caps = NotificationCapabilities.forPlatform(defaultTargetPlatform, isWeb: kIsWeb);
+
+// The switch must reach the path that SCHEDULES, not merely the persisted flag.
+onChanged: (bool on) => ref.read(remindersEnabledProvider.notifier).applyReminderChoice(
+  on: on,
+  title: l10n.reminderTitle,
+  body: l10n.reminderBody,
+),
 
 // [pipeline C-13] The profile editor. The tile watches the identity STREAM:
 // a currentUser snapshot compiles, renders, and never rebuilds, so a saved

@@ -211,4 +211,138 @@ void main() {
       expect(p.scheduledFor.single, tz.TZDateTime(tz.UTC, 2026, 1, 1, 9, 15));
     },
   );
+
+  // ── LOCAL TIME REALLY MEANS LOCAL ──────────────────────────────────────────
+  // 🔴 THE GAP THESE TESTS EXIST TO CLOSE. Every test above injects
+  // `localTimezone: () async => 'UTC'`, and UTC is the ONE value where the bug
+  // and the correct behaviour are identical — so the whole suite was green while
+  // a reminder core documents as "at [hour]:[minute] local time" was built at
+  // that hour in UTC, i.e. 14:30 IST for a 09:00 reminder and the middle of the
+  // night across the Americas.
+  //
+  // The offset is INJECTED rather than read from the host, because a test that
+  // used the real `DateTime.now().timeZoneOffset` would assert nothing on a UTC
+  // CI runner — the same blindness in a different costume.
+  group('the local-vs-UTC difference is asserted, not assumed', () {
+    // `tz.local` is process-global and `init()` sets it. Put it back so a later
+    // test file (or a later test here) cannot inherit a device zone.
+    tearDown(() => tz.setLocalLocation(tz.UTC));
+
+    const Duration ist = Duration(hours: 5, minutes: 30);
+
+    test(
+      'with NO resolver a 09:15 reminder fires at 09:15 DEVICE-local, '
+      'which is NOT 09:15 UTC',
+      () async {
+        final _FakePlugin p = _FakePlugin();
+        final LocalNotificationService s = LocalNotificationService(
+          plugin: p,
+          platform: TargetPlatform.android,
+          // No localTimezone at all — the exact wiring every consumer has.
+          deviceUtcOffset: () => ist,
+          // Read INSIDE the closure so it sees the location init() installed.
+          now: () => tz.TZDateTime(tz.local, 2026, 1, 1, 6, 0),
+        );
+
+        await s.init();
+        await s.scheduleDaily(reminder);
+
+        final tz.TZDateTime when = p.scheduledFor.single;
+        expect(
+          <int>[when.hour, when.minute],
+          <int>[9, 15],
+          reason: 'the wall clock the user reads must say 09:15',
+        );
+        // The assertion that fails against the old UTC default: the same
+        // instant expressed in UTC must be 5h30m EARLIER, not identical.
+        expect(
+          <int>[when.toUtc().hour, when.toUtc().minute],
+          <int>[3, 45],
+          reason: 'a 09:15 IST reminder is 03:45 UTC; if this reads 09:15 the '
+              'service is scheduling in UTC and firing 5h30m late',
+        );
+      },
+    );
+
+    test('a negative offset works too — the sign is not assumed', () {
+      final tz.Location loc = deviceOffsetLocation(const Duration(hours: -8));
+      final tz.TZDateTime when = tz.TZDateTime(loc, 2026, 1, 1, 9, 0);
+      expect(when.toUtc().hour, 17);
+      expect(when.toUtc().day, 1);
+    });
+
+    test('an injected IANA zone still wins over the device offset', () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = LocalNotificationService(
+        plugin: p,
+        platform: TargetPlatform.android,
+        localTimezone: () async => 'Asia/Kolkata',
+        // Deliberately disagrees with the zone above: if the fallback were
+        // used, `when.toUtc()` would land an hour off.
+        deviceUtcOffset: () => const Duration(hours: 6, minutes: 30),
+        now: () => tz.TZDateTime(tz.local, 2026, 1, 1, 6, 0),
+      );
+
+      await s.init();
+      await s.scheduleDaily(reminder);
+
+      expect(tz.local.name, 'Asia/Kolkata');
+      expect(<int>[
+        p.scheduledFor.single.toUtc().hour,
+        p.scheduledFor.single.toUtc().minute
+      ], <int>[
+        3,
+        45
+      ]);
+    });
+
+    test(
+      'a resolver that throws falls back to the DEVICE offset, never to UTC',
+      () async {
+        final _FakePlugin p = _FakePlugin();
+        final LocalNotificationService s = LocalNotificationService(
+          plugin: p,
+          platform: TargetPlatform.android,
+          localTimezone: () async => throw StateError('no platform channel'),
+          deviceUtcOffset: () => ist,
+          now: () => tz.TZDateTime(tz.local, 2026, 1, 1, 6, 0),
+        );
+
+        await s.init();
+        await s.scheduleDaily(reminder);
+
+        expect(
+          <int>[
+            p.scheduledFor.single.toUtc().hour,
+            p.scheduledFor.single.toUtc().minute,
+          ],
+          <int>[3, 45],
+          reason: 'the old code caught the throw and installed UTC, which is a '
+              'wrong answer dressed as a safe one',
+        );
+      },
+    );
+
+    test('an unknown zone name falls back to the DEVICE offset too', () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = LocalNotificationService(
+        plugin: p,
+        platform: TargetPlatform.android,
+        localTimezone: () async => 'Mars/Olympus_Mons',
+        deviceUtcOffset: () => ist,
+        now: () => tz.TZDateTime(tz.local, 2026, 1, 1, 6, 0),
+      );
+
+      await s.init();
+      await s.scheduleDaily(reminder);
+
+      expect(
+        <int>[
+          p.scheduledFor.single.toUtc().hour,
+          p.scheduledFor.single.toUtc().minute,
+        ],
+        <int>[3, 45],
+      );
+    });
+  });
 }

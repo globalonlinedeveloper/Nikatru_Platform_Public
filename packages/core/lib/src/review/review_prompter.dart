@@ -24,6 +24,34 @@ enum ReviewRequestOutcome {
   gated,
 }
 
+/// What happened when the app tried to open the store listing.
+///
+/// 🔴 IT RETURNS A VALUE BECAUSE THE FAILURE IS OTHERWISE INVISIBLE. The listing
+/// call used to be `Future<void>` wrapped in a bare `catch (_) {}`, and the
+/// pinned plugin throws `ArgumentError.checkNotNull` in a RELEASE build when the
+/// store id it needs is absent (`appStoreId` on iOS/macOS, `microsoftStoreId` on
+/// Windows). So the one deliberate "rate us" tap a user ever makes did nothing,
+/// silently, on three of the four store platforms — and no caller could tell.
+/// A no-op is acceptable; a no-op indistinguishable from success is not.
+enum StoreListingOutcome {
+  /// The platform was asked to show the listing. Whether the store app actually
+  /// came to the foreground is not something any of them report back.
+  opened,
+
+  /// This platform has no store listing to open (Linux, web, Fuchsia).
+  unavailable,
+
+  /// The platform HAS a listing and needs an id to address it, and this build
+  /// carries none. Owner-gated: the id does not exist until the app is
+  /// registered with that store, so this is a configuration gap and must read
+  /// as one rather than as a store that refused.
+  notConfigured,
+
+  /// The platform was asked and threw. Best-effort by nature — nothing is
+  /// surfaced to the user — but the caller can at least count it.
+  failed,
+}
+
 /// Asks the platform's own store-review UI to appear.
 ///
 /// 🔴 THE ONE CHANCE PROBLEM. iOS shows this at most a handful of times a year
@@ -45,7 +73,13 @@ abstract interface class ReviewPrompter {
   /// Open the store listing instead — the fallback where the inline prompt does
   /// not exist but a store page does (Windows), and the honest answer to a
   /// "rate us" button the user pressed deliberately.
-  Future<void> openStoreListing();
+  ///
+  /// The STORE IDS are not parameters here on purpose: they are a property of
+  /// the build, not of the tap, so they are configured once where the concrete
+  /// prompter is constructed. What this method owes its caller is the
+  /// [StoreListingOutcome] — the difference between "the store opened" and
+  /// "this build has no id for that store" is the whole reason it is typed.
+  Future<StoreListingOutcome> openStoreListing();
 }
 
 /// The safe default, and the value a stamped app is born with.
@@ -65,5 +99,6 @@ class NoOpReviewPrompter implements ReviewPrompter {
   Future<void> requestReview() async {}
 
   @override
-  Future<void> openStoreListing() async {}
+  Future<StoreListingOutcome> openStoreListing() async =>
+      StoreListingOutcome.unavailable;
 }

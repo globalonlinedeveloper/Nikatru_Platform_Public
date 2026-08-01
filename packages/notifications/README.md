@@ -13,8 +13,11 @@ Inject the platform-appropriate service in the app/brick layer:
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 
 final NotificationService notifications = createLocalNotificationService(
-  // Optional: a real device-timezone resolver (e.g. flutter_timezone) for
-  // timezone-correct scheduling. Defaults to UTC.
+  // OPTIONAL. With no resolver the service anchors reminders to the device's
+  // own current UTC offset, so `hour: 9` fires at 09:00 where the user is.
+  // Supply a real IANA resolver (e.g. flutter_timezone) only where DST-rule
+  // correctness across a transition matters — a fixed offset cannot know that
+  // a zone shifts next month.
   localTimezone: () async => 'Asia/Kolkata',
 );
 

@@ -197,7 +197,9 @@
     "SKIP_REMOTE_CONFIG": "test/demo switch, no external system behind it",
     "UPDATE_URL": "where the force-update wall sends users. FIXED 2026-07-28 — it was compile-time only, which made the kill-switch circular: the one thing the wall must do in an emergency is send users somewhere, but its destination was frozen at build time, so redirecting it meant shipping the very build the wall exists to replace. Now `AppConfig.updateUrl` in the RUNTIME config (core), read by the brick's app.dart with the compiled-in define as the offline fallback. This guard is what caught it; the owner decision of 2026-07-27 is what settled it.",
     "E2E_EMAIL": "throwaway CI test credential — e2e.yml provisions a pre-confirmed user before the run and purges it after, so this names no durable external account",
-    "E2E_PASSWORD": "throwaway CI test credential — see E2E_EMAIL"
+    "E2E_PASSWORD": "throwaway CI test credential — see E2E_EMAIL",
+    "APP_STORE_ID": "OUR OWN listing's numeric id on Apple's App Store — an identifier of a thing we publish, not a credential and not a service we call. `in_app_review` needs it to open the listing on iOS/macOS (ArgumentError.checkNotNull, in release), and it does not EXIST until the app is registered, which is why it is a define with an empty default rather than a stamped constant. Empty reads as StoreListingOutcome.notConfigured, never as success. Added 2026-08-01.",
+    "MICROSOFT_STORE_ID": "OUR OWN Microsoft Store ProductId — see APP_STORE_ID. Windows has NO inline review prompt, so the listing is its only route to a store, and without this id that route threw inside the plugin and was swallowed. Added 2026-08-01."
   },
   "packageEarnReasons": {
     "_why": [
@@ -471,7 +473,7 @@
         "symbol": "ReviewCapabilities",
         "test": "packages/platform_storage/test/review_capabilities_test.dart",
         "pinnedTo": "in_app_review 2.0.12",
-        "degradesOn": "Linux and web have NO implementation at all -- reaching the plugin there throws MissingPluginException, so the adapter checks the matrix before touching it. Windows is the asymmetric row: openStoreListing() exists and the inline prompt does not, so collapsing the two booleans into one would silently lose Windows' only route to the store. Android additionally needs the Play Store present ON THE DEVICE, which no build-time fact can know, so isAvailable() is asked at runtime. iOS requestReview() does NOTHING in TestFlight -- the one build a developer is most likely to test it in."
+        "degradesOn": "Linux and web have NO implementation at all -- reaching the plugin there throws MissingPluginException, so the adapter checks the matrix before touching it. Windows is the asymmetric row: openStoreListing() exists and the inline prompt does not, so collapsing the two booleans into one would silently lose Windows' only route to the store. Android additionally needs the Play Store present ON THE DEVICE, which no build-time fact can know, so isAvailable() is asked at runtime. iOS requestReview() does NOTHING in TestFlight -- the one build a developer is most likely to test it in. 2026-08-01: the matrix also declares `requiredStoreId` (StoreIdRequirement), because openStoreListing() was being called with NO arguments while the pinned plugin runs ArgumentError.checkNotNull on appStoreId (iOS/macOS) and microsoftStoreId (Windows) -- a RELEASE-build throw, swallowed by the adapter's catch, so the listing was dead on three of the four store platforms and reported success. The ids arrive as APP_STORE_ID / MICROSOFT_STORE_ID dart-defines and are OWNER-GATED (they do not exist until the app is registered); an absent id now reads as core.StoreListingOutcome.notConfigured."
       }
     },
     {
@@ -532,7 +534,7 @@
         "symbol": "NotificationCapabilities",
         "test": "packages/notifications/test/notification_capabilities_test.dart",
         "pinnedTo": "flutter_local_notifications 17.x — re-review on any bump",
-        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Unsupported calls no-op so a caller falls back to an in-app nudge."
+        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Unsupported calls no-op so a caller falls back to an in-app nudge. 2026-08-01, TIMEZONE: with no LocalTimezoneResolver injected the service used to install tz.local = UTC, so a reminder core documents as firing at [hour]:[minute] LOCAL time was built at that hour in UTC -- 14:30 IST for a 09:00 reminder, and the middle of the night across the Americas. No consumer injected a resolver and every test injected 'UTC', the one value where the bug and the correct behaviour agree. The fallback is now the DEVICE's own current UTC offset (deviceOffsetLocation), exact for the schedule being made and needing no plugin; an injected IANA resolver still wins and is what removes the residual one-hour drift across a DST transition."
       }
     },
     {

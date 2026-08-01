@@ -227,6 +227,13 @@ class SettingsScreen extends ConsumerWidget {
   /// system settings app. So the cost of asking at a bad moment is not a
   /// dismissed dialog — it is the feature, forever. Priming first means the one
   /// prompt is spent on someone who has already said yes in principle.
+  ///
+  /// 🔴 AND THEN IT MUST ACTUALLY SCHEDULE. This used to end at
+  /// `requestPermission()` — the prompt was spent, the switch read ON, and no
+  /// notification was ever scheduled in any app this factory stamps. The
+  /// scheduling lives in [RemindersEnabledController.applyReminderChoice] so it
+  /// is reachable from a property test without a widget, and so the intent and
+  /// the OS state can never be written apart.
   Future<void> _setReminders(
     BuildContext context,
     WidgetRef ref,
@@ -234,8 +241,13 @@ class SettingsScreen extends ConsumerWidget {
     required bool on,
   }) async {
     if (!on) {
-      await ref.read(notificationServiceProvider).cancelAll();
-      ref.read(remindersEnabledProvider.notifier).set(false);
+      await ref
+          .read(remindersEnabledProvider.notifier)
+          .applyReminderChoice(
+            on: false,
+            title: l10n.reminderTitle,
+            body: l10n.reminderBody,
+          );
       return;
     }
     final bool proceed =
@@ -260,10 +272,13 @@ class SettingsScreen extends ConsumerWidget {
     // Declining the PRIMING must not spend the OS prompt — that is the whole
     // point of asking twice.
     if (!proceed) return;
-    final bool granted = await ref
-        .read(notificationServiceProvider)
-        .requestPermission();
-    ref.read(remindersEnabledProvider.notifier).set(granted);
+    await ref
+        .read(remindersEnabledProvider.notifier)
+        .applyReminderChoice(
+          on: true,
+          title: l10n.reminderTitle,
+          body: l10n.reminderBody,
+        );
   }
 
   Future<void> _openUrl(String url) async {

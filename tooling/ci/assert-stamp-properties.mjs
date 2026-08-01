@@ -240,6 +240,14 @@ const REQUIRED_COVERAGE = [
       // lines in the stamped app, and an anchor that only matches the unwrapped
       // form fails on the very file it is guarding.
       { file: SETTINGS, re: /NotificationCapabilities\s*\.\s*forPlatform\(/, what: 'the toggle must consult the platform matrix — a switch that silently does nothing on Linux/Windows is worse than an honest sentence' },
+      // 🔴 ADDED 2026-08-01 AFTER THE TOGGLE WAS FOUND INERT. Everything above
+      // was green while the ON path called `requestPermission()` and stored the
+      // answer and NOTHING ELSE: no `init()`, no `scheduleDaily`, no call site
+      // for either anywhere in the brick. Persisting the intent was never the
+      // feature — these three anchors are the feature.
+      { file: PROVIDERS, re: /scheduleDaily\(\s*core\.DailyReminder\(/, what: 'the toggle must really SCHEDULE — the ON path used to end at requestPermission(), so every stamped app spent the one OS prompt and then scheduled nothing, on every platform' },
+      { file: PROVIDERS, re: /svc\.init\(\)/, what: 'the service must be initialised — without it the timezone database and the plugin never load, and scheduleDaily has nothing to schedule against' },
+      { file: SETTINGS, re: /applyReminderChoice\(/, what: 'the switch must call the path that schedules; a switch wired only to the persisted flag is the toggle-with-no-feature shape' },
     ],
     why: 'a toggle that reads ON while every notification is dropped is the C-6 shape',
   },
