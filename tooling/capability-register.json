@@ -102,6 +102,7 @@
         "JWKS_CACHE",
         "EXPORTS",
         "EVENTS_LIMITER",
+        "EVENTS_CEILING_LIMITER",
         "triggers.crons"
       ],
       "openProtocol": "PARTIAL — D1 is SQLite dialect and R2 is S3-compatible, both portable. KV and the rate-limiter are proprietary; the crons are a Workers-only scheduler. This is the honest weak spot, and it is why the stickiness is ★★★.",
