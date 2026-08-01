@@ -106,6 +106,7 @@ jobs:
         run: node tooling/e2e/provision_user.mjs
 
       - name: Run integration tests (headless Chrome)
+        id: drive
         working-directory: apps/subly
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -120,6 +121,9 @@ jobs:
           chromedriver --port=4444 &
           CHROMEDRIVER_PID=$!
           sleep 3
+          # tee'd, not just printed: the step below turns the assertion into a
+          # GitHub annotation, and `pipefail` (set above) keeps flutter's exit
+          # code as the pipeline's, so teeing cannot mask a failure.
           flutter drive \
             --driver=test_driver/integration_test.dart \
             --target=integration_test/app_test.dart \
@@ -133,8 +137,54 @@ jobs:
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=API_BASE_URL="$API_BASE_URL" \
             --dart-define=E2E_EMAIL="$E2E_EMAIL" \
-            --dart-define=E2E_PASSWORD="$E2E_PASSWORD"
+            --dart-define=E2E_PASSWORD="$E2E_PASSWORD" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
           kill "$CHROMEDRIVER_PID" || true
+
+      # WHAT BROKE, ON THE RUN PAGE — not on line 370 of a 549-line log.
+      #
+      # `flutter drive` reports an integration_test failure as one enormous
+      # single-line JSON blob with the stack traces \n-escaped inside it. The
+      # 2026-08-01 failure ("Found 0 widgets with text \"Welcome back\"") was
+      # fully present in the log of all six red nights and read by nobody,
+      # because nothing carried it up to where a person looks. An `::error::`
+      # annotation shows at the top of the run page and in the failure email; the
+      # step summary keeps it after the log rotates.
+      #
+      # Never gated on success: `if: failure()` only, so it cannot fire on a
+      # green run and cannot itself turn one red (`|| true` on the extraction).
+      - name: Surface the failing assertion
+        if: failure() && steps.drive.outcome == 'failure'
+        run: |
+          set -uo pipefail
+          log="${RUNNER_TEMP}/drive.log"
+          if [ ! -s "$log" ]; then
+            echo "::error title=E2E failed before the suite ran::flutter drive produced no output — the failure is above this step (build, chromedriver or dart-define)."
+            exit 0
+          fi
+          # One line per failing test, plus the first assertion line under it.
+          # `Failure in method:` is flutter_driver's own heading for the decoded
+          # blob, so this reads the human-readable half, not the JSON.
+          grep -E '^(Failure in method:|Expected:|  Actual:|   Which:)' "$log" \
+            | head -40 > "${RUNNER_TEMP}/why.txt" || true
+          if [ ! -s "${RUNNER_TEMP}/why.txt" ]; then
+            echo "::error title=E2E failed::The suite failed but no assertion heading was found in the driver output — open the 'Run integration tests' log and the e2e-screenshots artifact."
+            exit 0
+          fi
+          while IFS= read -r line; do
+            case "$line" in
+              'Failure in method:'*) echo "::error title=E2E test failed::${line}" ;;
+              *) echo "::error::${line}" ;;
+            esac
+          done < "${RUNNER_TEMP}/why.txt"
+          {
+            echo '### Nightly E2E — failing assertions'
+            echo ''
+            echo '```'
+            cat "${RUNNER_TEMP}/why.txt"
+            echo '```'
+            echo ''
+            echo 'Screenshots up to the failure are in the `e2e-screenshots` artifact on this run.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify the row landed in live D1
         env:
@@ -239,6 +289,10 @@ jobs:
           that someone looked.
 
           Where to start:
+          - the red **annotations at the top of the run page** — the `Surface the failing
+            assertion` step lifts the failing test name and its `Expected/Actual` out of
+            the driver's one-line JSON blob, so the actual assertion is readable without
+            opening the log
           - the failing step in the run linked above
           - the `e2e-screenshots` artifact attached to that run — one screenshot per page
           - whether `Purge test data` still ran (it is `if: always()`), or a throwaway

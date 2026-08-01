@@ -64,7 +64,90 @@ void main() {
     return false;
   }
 
+  // Poll for a finder to DISAPPEAR — the mirror of waitFor, used to prove a
+  // dismissed modal really left the tree before the next tap is attempted.
+  Future<bool> waitGone(
+    WidgetTester tester,
+    Finder f, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final DateTime end = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(end)) {
+      await tester.pump(const Duration(milliseconds: 200));
+      if (f.evaluate().isEmpty) return true;
+    }
+    return false;
+  }
+
   Future<void> shot(String name) => binding.takeScreenshot(name);
+
+  /// 🔴 THE FAILURE THIS SUITE MUST NAME OUT LOUD.
+  ///
+  /// A modal route installs a `ModalBarrier` over everything below it, so a
+  /// `tester.tap()` aimed at a widget behind it hits the barrier and SILENTLY
+  /// DOES NOTHING — no exception, no warning. The test then fails several lines
+  /// later on whatever the tap was supposed to produce, naming the wrong thing.
+  ///
+  /// That is exactly how the nightly died for six consecutive nights from
+  /// 2026-07-27: the DPDP consent dialog (added 2026-07-26, `ConsentGate`) came
+  /// up over onboarding, `tap('Skip')` was swallowed, and both tests reported
+  /// `Found 0 widgets with text "Welcome back"` — a login-screen error for a
+  /// dialog problem. Assert the absence of the modal HERE, where the message can
+  /// say what is actually wrong.
+  void expectNothingCoveringTheApp(String where) {
+    expect(
+      find.byType(Dialog),
+      findsNothing,
+      reason:
+          'A modal dialog is on screen at $where. Its barrier swallows every '
+          'tap aimed at the app beneath it — silently — so the next failure '
+          'would blame whatever that tap was meant to do. If a new first-run '
+          'modal was added to the app, this suite has to answer it (see '
+          'answerConsentIfPrompted).',
+    );
+  }
+
+  /// Answers the DPDP analytics-consent dialog if it is up, and reports whether
+  /// it was.
+  ///
+  /// The prompt opens over whatever screen is showing the first time a LIVE
+  /// build launches with no decision on disk — which is precisely this suite,
+  /// and only this suite: `ConsentGate` keys off `backendLiveProvider`, so no
+  /// demo build and no widget test ever takes this branch.
+  ///
+  /// Answering it is not a workaround. The prompt is a real first-run screen and
+  /// this is the only automated proof it appears at all. **"No thanks" on
+  /// purpose:** `applyConsentDecision` records and uploads the artifact for
+  /// either answer, so denying exercises the same seam as allowing without
+  /// pointing a nightly stream of CI analytics events at production.
+  ///
+  /// The decision persists to the browser's key-value store, so only the FIRST
+  /// launch of a run is prompted. The hard assertion that the gate still appears
+  /// therefore lives in the first test alone; the second calls this so that a
+  /// reordering or a cleared store cannot wedge the suite, and does not assert
+  /// on the result.
+  Future<bool> answerConsentIfPrompted(
+    WidgetTester tester, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final Finder dialog = find.byType(Dialog);
+    if (!await waitFor(tester, dialog, timeout: timeout)) return false;
+    expect(
+      find.text('No thanks'),
+      findsOneWidget,
+      reason:
+          'A modal came up on first launch but it is not the consent prompt — '
+          'this suite only knows how to answer that one.',
+    );
+    await shot('00-consent');
+    await tester.tap(find.text('No thanks'));
+    expect(
+      await waitGone(tester, dialog),
+      isTrue,
+      reason: 'The consent dialog did not close after "No thanks" was tapped',
+    );
+    return true;
+  }
 
   testWidgets('login rejects empty + invalid credentials with clear messages', (
     WidgetTester tester,
@@ -72,6 +155,21 @@ void main() {
     await app.main();
     await pumpFor(tester, const Duration(seconds: 3));
 
+    // First launch of the run: the consent gate MUST ask. If this ever goes
+    // false the DPDP prompt has stopped appearing and the analytics rail is
+    // silently fail-closed again — the defect ConsentGate was built to fix, and
+    // one that no other test in the tree can see (see assert-seams-wired.mjs).
+    expect(
+      await answerConsentIfPrompted(tester),
+      isTrue,
+      reason:
+          'The analytics-consent prompt never appeared on a fresh live launch. '
+          'ConsentGate is the on-switch for the whole analytics rail; without '
+          'the dialog the recorder stays fail-closed and discards every event, '
+          'and nothing else in the suite would notice.',
+    );
+
+    expectNothingCoveringTheApp('the onboarding screen');
     await tester.tap(find.text('Skip'));
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.text('Welcome back'), findsOneWidget);
@@ -129,7 +227,15 @@ void main() {
     await app.main();
     await pumpFor(tester, const Duration(seconds: 3));
 
+    // The first test already answered consent and the decision is persisted, so
+    // this normally finds nothing. Called anyway so that reordering the tests,
+    // or a store that failed to write, cannot wedge the run behind a modal
+    // barrier; the assertion that the gate still ASKS lives in the first test,
+    // which is the only one that launches with an undecided store.
+    await answerConsentIfPrompted(tester, timeout: const Duration(seconds: 4));
+
     // ── 01 Onboarding ────────────────────────────────────────────────────────
+    expectNothingCoveringTheApp('the onboarding screen');
     expect(
       find.text('Skip'),
       findsOneWidget,
