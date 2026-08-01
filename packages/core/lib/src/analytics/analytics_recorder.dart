@@ -154,7 +154,7 @@ class AnalyticsRecorder implements Analytics {
             batch.map((AnalyticsEvent e) => e.toJson()).toList(growable: false),
       );
       if (r.isOk) {
-        _queue.removeRange(0, batch.length);
+        _removeSent(batch);
         await _persist();
       }
       // On Err: keep everything. The next log() or flush() retries, and the
@@ -164,6 +164,27 @@ class AnalyticsRecorder implements Analytics {
     } finally {
       _flushing = false;
     }
+  }
+
+  /// Drop exactly the events that were DELIVERED, wherever they now sit.
+  ///
+  /// This was `_queue.removeRange(0, batch.length)` — "drop the first N", which
+  /// assumes the head of the queue is still the batch that was sent. It is not,
+  /// because the queue moves DURING the in-flight request: [log] may run while
+  /// `_transport.send` is awaited (nothing blocks it; only re-entrant `flush` is
+  /// guarded), and each `log` calls [_trim], which drops from the HEAD once the
+  /// queue is over [maxQueued]. After one trim the first N are no longer the sent
+  /// N, so `removeRange` deleted events that were never delivered — silently, on
+  /// exactly the devices that queue the most: a long offline stretch followed by
+  /// a reconnect, which is when the queue is full and busiest. It could also
+  /// throw a RangeError once the queue was shorter than the batch.
+  ///
+  /// Identity, not equality: two events can carry equal field values, and only
+  /// the instances actually handed to the transport were delivered.
+  void _removeSent(List<AnalyticsEvent> batch) {
+    final Set<AnalyticsEvent> sent = Set<AnalyticsEvent>.identity()
+      ..addAll(batch);
+    _queue.removeWhere(sent.contains);
   }
 
   /// Drop the OLDEST events beyond the cap.

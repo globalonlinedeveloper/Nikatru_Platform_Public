@@ -10,13 +10,35 @@ const String redactedToken = '[REDACTED]';
 /// the broader digit rules get a chance to partially match them:
 ///
 /// 1. PAN (5 uppercase letters, 4 digits, 1 uppercase letter)
-/// 2. Aadhaar (4+4+4 digits, groups optionally whitespace-separated)
+/// 2. Aadhaar (4+4+4 digits, groups optionally space- OR hyphen-separated)
 /// 3. Email addresses
-/// 4. Indian mobile numbers (optional `+91`/`91` prefix, then 10 digits)
+/// 4. Indian mobile numbers (optional `+91`/`91` prefix, then 10 digits,
+///    optionally split 5+5 by a space or hyphen)
 /// 5. Any leftover run of 10 or more consecutive digits (catch-all)
 ///
 /// PAN and Aadhaar MUST run before the phone rules; otherwise the 10-digit
 /// phone pattern would eat 10 of an Aadhaar's 12 digits and leak the rest.
+///
+/// ## Separators (2026-08-01 full-corpus triage #10/#42)
+///
+/// The rules used to accept only a single whitespace between groups, so the two
+/// commonest human-typed forms — `1234-5678-9012` and `98765 43210` — reached
+/// GlitchTip in full. Nothing else caught them either: no digit run in either
+/// string is long enough for the 10+ catch-all. `privacy.html` promises crash
+/// logs carry no identifiers, so that gap was a DPDP-facing defect, not cosmetics.
+///
+/// ## The false-positive trade — DELIBERATELY FAIL-CLOSED
+///
+/// A 12-digit order id is not an Aadhaar, and two adjacent 5-digit numbers are
+/// not a phone number, but both are redacted here anyway. That is the chosen
+/// trade, not an oversight: the cost of a false positive is ONE unreadable field
+/// in a crash report, while the cost of a false negative is a reportable leak of
+/// a government identifier. Telemetry never needs a raw 12-digit id to be legible.
+///
+/// What the rules must NOT swallow is ordinary log numerics — short ids, ISO
+/// dates (`2026-08-01`, a 4-2-2 shape no rule matches), millisecond durations
+/// and build numbers all survive byte-identical, and `pii_scrubber_test.dart`
+/// pins that direction too. Widen a separator class only with that test in view.
 class PiiScrubber {
   /// Const-constructible; the scrubber is stateless and thread-safe.
   const PiiScrubber();
@@ -24,17 +46,29 @@ class PiiScrubber {
   /// PAN, e.g. `ABCDE1234F`.
   static final RegExp _pan = RegExp(r'\b[A-Z]{5}[0-9]{4}[A-Z]\b');
 
-  /// Aadhaar: 12 digits as 4+4+4, each group optionally separated by
-  /// a single whitespace, e.g. `1234 5678 9012` or `123456789012`.
-  static final RegExp _aadhaar = RegExp(r'\b\d{4}\s?\d{4}\s?\d{4}\b');
+  /// Aadhaar: 12 digits as 4+4+4, each group optionally separated by a single
+  /// space/whitespace OR hyphen - `1234 5678 9012`, `1234-5678-9012` and
+  /// `123456789012` are all the same number. The separators are matched
+  /// independently rather than back-referenced on purpose: requiring the SAME
+  /// separator in both slots would drop the mixed form `1234 56789012`, which
+  /// the whitespace-only rule DID catch, i.e. the tightening would have been a
+  /// silent regression.
+  static final RegExp _aadhaar = RegExp(r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b');
 
   /// Email: pragmatic RFC-lite pattern (local@domain.tld).
   static final RegExp _email =
       RegExp(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}');
 
   /// Indian mobile: optional `+91`/`91` prefix (optionally followed by a
-  /// space or hyphen), then 10 digits starting with 6-9.
-  static final RegExp _indianPhone = RegExp(r'(\+?91[- ]?)?[6-9]\d{9}');
+  /// space or hyphen), then 10 digits starting with 6-9, written either solid
+  /// or split 5+5 by a single space or hyphen (`98765 43210`, `98765-43210`).
+  ///
+  /// The digit lookarounds make the match an EXACT 10-digit token. Without them
+  /// an 11-digit run was chewed down to its first ten and the remainder handed
+  /// back in the clear (`98765432101` -> `[REDACTED]1`); with them the phone
+  /// rule declines and [_longDigitRun] swallows the run whole.
+  static final RegExp _indianPhone =
+      RegExp(r'(?:\+?91[- ]?)?(?<!\d)[6-9]\d{4}[- ]?\d{5}(?!\d)');
 
   /// Catch-all: any remaining run of 10 or more consecutive digits.
   static final RegExp _longDigitRun = RegExp(r'\d{10,}');

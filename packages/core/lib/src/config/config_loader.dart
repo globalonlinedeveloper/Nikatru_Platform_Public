@@ -61,17 +61,23 @@ class ConfigCache {
     final KeyValueStore? persist = _persist;
     if (persist == null) return;
     for (final String appId in appIds) {
-      final String? raw = await persist.read('$_keyPrefix$appId');
-      if (raw == null) continue;
       try {
+        // THE STORE READ IS INSIDE THE TRY. It used to sit above it, so a
+        // throwing store — a corrupt shared_preferences file, a plugin
+        // `PlatformException`, a disk error — escaped as an unhandled error
+        // instead of taking the documented "skip the entry" path. This is called
+        // at STARTUP, before the first peek/load, so that error surfaced as a
+        // launch crash on the exact devices whose storage was already unhappy.
+        final String? raw = await persist.read('$_keyPrefix$appId');
+        if (raw == null) continue;
         final Object? decoded = jsonDecode(raw);
         if (decoded is Map) {
           _store[appId] = AppConfig.fromJson(decoded.cast<String, Object?>());
         }
       } catch (_) {
-        // Corrupt/tampered cache entry (bad JSON, wrong shape, or a wrong-typed
-        // field) — ignore; the bundled default remains available. A corrupt
-        // cache must never crash startup (matches EntitlementCache.readRaw).
+        // Unreadable store OR a corrupt/tampered entry (bad JSON, wrong shape,
+        // wrong-typed field) — ignore; the bundled default remains available.
+        // Neither may ever crash startup (matches EntitlementCache.readRaw).
       }
     }
   }
