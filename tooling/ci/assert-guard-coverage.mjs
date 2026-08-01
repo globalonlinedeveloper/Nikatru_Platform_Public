@@ -56,7 +56,6 @@ const TESTS = join(CI, 'test');
 // 38 guards, 28 test files, 614 test declarations — floors moved up behind it.
 // Re-measured again 2026-08-01 (assert-store-metadata.mjs landing, [10]D-5):
 // 40 guards, 31 test files, 710 test declarations.
-<<<<<<< HEAD
 // Re-measured again 2026-08-01 (the Apple + Snap channels landing, [10]D-5/D-10):
 // 40 guards, 33 test files, 830 test declarations. Guard count is UNCHANGED and
 // that is correct — submit-appstore.mjs and submit-snap.mjs live in
@@ -69,16 +68,17 @@ const TESTS = join(CI, 'test');
 // EXTENDED rather than duplicated. ⚠️ These numbers were RE-MEASURED against the
 // merged result rather than taking the higher of the two branches' figures: two
 // branches that each ratcheted honestly still produce a wrong floor when merged,
-// because neither one ever saw the other's test files.
+// because neither one ever saw the other's test files. Merged reality, measured:
+// 40 guards, 34 test files, 871 test declarations.
 const MIN_GUARDS = 38;
-const MIN_TEST_FILES = 31;
+const MIN_TEST_FILES = 32;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 800;
+const MIN_TEST_CASES = 840;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing
