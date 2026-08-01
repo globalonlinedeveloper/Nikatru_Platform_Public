@@ -76,7 +76,13 @@ export interface Env {
    */
   SUPABASE_ANON_KEY?: string;
   API_VERSION: string;
-  /** Comma-separated browser origins for CORS. Absent/empty ⇒ '*'. */
+  /**
+   * Comma-separated EXACT browser origins for CORS (owner decision 2026-07-25).
+   * Absent/empty ⇒ every browser origin is DENIED — it has not fallen back to
+   * `*` since the fail-closed change, and this comment said it did until
+   * 2026-08-01. See `middleware/cors.ts`, which is the behaviour of record;
+   * `tooling/ci/assert-cors-allowlist.mjs` guards the list itself.
+   */
   ALLOWED_ORIGINS?: string;
 }
 

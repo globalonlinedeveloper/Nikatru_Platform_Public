@@ -236,10 +236,10 @@ analyticsProvider = FutureProvider<core.Analytics>((ref) async {
   return recorder;
 });
 
-/// Fire-and-forget helper so a feature never has to await analytics, and a
-/// still-resolving provider can never delay a user-facing action.
-void logEvent(Ref ref, String event, {Map<String, Object?>? params}) {
-  final core.Analytics? a = ref.read(analyticsProvider).valueOrNull;
-  if (a == null) return; // not ready yet — dropping beats blocking the UI
-  a.log(event, params: params);
-}
+// REMOVED 2026-08-01 — `logEvent(Ref, …)` was declared here and called from
+// nowhere in this app (the 2026-08-01 corpus review found zero call sites; the
+// brick's own copy IS wired, at its `app.dart`). A second, never-called path to
+// the analytics rail inflates apparent coverage and is exactly what
+// `assert-seams-wired` exists to stop being mistaken for a wiring. Features here
+// read `analyticsProvider` directly. If a fire-and-forget helper is wanted again,
+// it belongs in the chassis with a caller, not in this frozen app without one.
