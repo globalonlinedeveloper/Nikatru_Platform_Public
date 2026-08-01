@@ -80,6 +80,19 @@ const TESTS = join(CI, 'test');
 // the measured 938: a floor pinned AT reality goes red on the next honest merge
 // and teaches everyone to raise floors reflexively, which is how 15/4/140 came to
 // sit at ~40% of the tree.
+// Re-measured 2026-08-01 (guard-coverage-and-scanner-args, corpus triage
+// #27/#28/#29/#39): 41 guards, 35 test files, 993 test declarations. Guard and
+// file counts are UNCHANGED and that is correct — every fix EXTENDED an existing
+// guard (assert-vendor-portability, assert-workflow-hardening, the two scanners)
+// or added a section to one (assert-green-means-ran §C), so only the declaration
+// floor moves: to 950, 43 below the measurement. ⚠️ THE SAME PR RETIRED TWO
+// FLOORS OF THIS SHAPE ELSEWHERE — assert-workflow-hardening's 3/10 against 9/57
+// and assert-vendor-portability's wrangler 5 against 11 — replacing them with
+// relationships derived from the tree. These three survive because no
+// relationship exists for them: the guard set is a directory listing, and the
+// only thing that could derive its expected size is the listing itself. What
+// backs them instead is the ci.yml invoked-guard cross-check below, which is a
+// relationship; the numbers are the second line, not the first.
 const MIN_GUARDS = 39;
 const MIN_TEST_FILES = 33;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
@@ -88,7 +101,7 @@ const MIN_TEST_FILES = 33;
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 900;
+const MIN_TEST_CASES = 950;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing

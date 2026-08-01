@@ -566,7 +566,21 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
+      # 🔴 THE ARTIFACT IS DELETED FIRST, AND THAT IS THE WHOLE POINT. A bare
+      # `git diff --exit-code` after a build cannot tell "the generator produced
+      # identical bytes" from "the generator produced NOTHING and the checked-out
+      # copy is what you are diffing" — both are an empty diff. Corpus triage
+      # 2026-08-01 (#27) proved it on the real tree: emptying `platforms` in
+      # style-dictionary.config.mjs makes `npm run build` emit zero files, and
+      # this lane still went green. Removing the file first means the build has
+      # to write it back, so the same diff that detects drift now also detects a
+      # build that did nothing. Enforced structurally by
+      # tooling/ci/assert-green-means-ran.mjs §C.
+      - name: Delete the artifact so the build has to produce it
+        run: rm -f ../../sites/_shared/assets/tokens.css
       - run: npm run build
+      - name: The build actually wrote the artifact
+        run: test -s ../../sites/_shared/assets/tokens.css
       # Guards the file the SITES ACTUALLY SERVE, not a build/ artifact nobody
       # read. Until 2026-07-26 this checked packages/tokens/build/, while
       # sites/_shared/assets/tokens.css was a separate hand-maintained copy —

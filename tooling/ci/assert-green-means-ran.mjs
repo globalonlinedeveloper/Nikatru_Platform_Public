@@ -42,11 +42,26 @@
 //      second, quieter silence path. Absence of a required secret is now a
 //      failure; this guard is what stops the green-skip growing back.
 //
-// Both are the house failure mode: "a check that silently stopped checking". The
-// lesson is encoded here rather than in a session note, per CLAUDE.md.
+//   C. A DRIFT CHECK THAT PASSES BECAUSE NOTHING WAS BUILT. `npm run build`
+//      followed by `git diff --exit-code -- <artifact>` reads as "the generated
+//      file is up to date". It is not. An empty diff means the working copy
+//      equals HEAD, and a generator that emitted ZERO FILES leaves the
+//      checked-out copy exactly where it was — so "identical output" and "no
+//      output at all" are the same green tick. Corpus triage 2026-08-01 (#27)
+//      proved it on the real tree: emptying `platforms` in
+//      packages/tokens/style-dictionary.config.mjs makes `npm run build` produce
+//      nothing, and the lane guarding the CSS every site serves still went green.
+//      There is exactly one mechanical repair — DELETE the artifact before
+//      building, so the build has to write it back and the same diff catches its
+//      absence — and this section is what stops it being quietly removed as a
+//      redundant-looking `rm`.
+//
+// All three are the house failure mode: "a check that silently stopped checking".
+// The lesson is encoded here rather than in a session note, per CLAUDE.md.
 //
 // Usage:  node tooling/ci/assert-green-means-ran.mjs [repoRoot]
-// Exit 0 = every aggregate verdict is complete and no job can green-skip.
+// Exit 0 = every aggregate verdict is complete, no job can green-skip, and every
+//          drift check proves its artifact was written.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -395,6 +410,56 @@ for (const rel of REQUIRED_SECRET_GATES) {
   ]);
 }
 
+// ═════ C. a drift check must prove its artifact was actually written ═════════
+// `git diff --exit-code -- <path>` answers "does the working copy equal HEAD".
+// After a build, people read that as "the generator is up to date" — but a
+// generator that wrote NOTHING leaves the working copy equal to HEAD too, so the
+// vacuous pass and the real pass are the same exit code. The only way to tell
+// them apart is to remove the artifact first: then an empty diff can only mean
+// the build put it back byte-for-byte.
+const DRIFT = /git\s+diff\s+[^\n]*--exit-code[^\n]*?--\s+(\S+)/g;
+/** Workflows that MUST still contain a drift check for section C to be checking
+ *  anything — same contract as REQUIRED_SECRET_GATES. If the detector stops
+ *  matching, this says so instead of sweeping every workflow and finding nothing. */
+const REQUIRED_DRIFT_CHECKS = ['.github/workflows/ci.yml'];
+
+const driftFiles = new Map(); // workflow rel → [artifact paths]
+for (const f of wfFiles) {
+  const rel = `.github/workflows/${f}`;
+  const wf = workflow(rel);
+  if (wf === null) continue;
+  for (const [jobName, bodyLines] of wf.jobs) {
+    const steps = jobSteps(bodyLines);
+    for (let i = 0; i < steps.length; i++) {
+      for (const m of steps[i].run.matchAll(DRIFT)) {
+        const artifact = m[1];
+        if (!driftFiles.has(rel)) driftFiles.set(rel, []);
+        driftFiles.get(rel).push(artifact);
+        // Some EARLIER step in the same job must delete it. Earlier matters: a
+        // deletion after the diff proves nothing and would be a plain bug.
+        const removed = steps
+          .slice(0, i)
+          .some((s) => s.run.split('\n').some((l) => /\brm\b/.test(l) && l.includes(artifact)));
+        if (removed) continue;
+        problems.push(
+          `${rel}: job "${jobName}" diffs \`${artifact}\` against HEAD, but no earlier step in that job deletes it first. ` +
+            'An empty diff then means EITHER "the build reproduced the file exactly" OR "the build emitted nothing and you are diffing the checkout against itself" — the same exit code for a working generator and a dead one. ' +
+            `Add \`rm -f ${artifact}\` before the build (and a \`test -s\` after it for a readable message); the diff then also fails on the absence.`,
+        );
+      }
+    }
+  }
+}
+for (const rel of REQUIRED_DRIFT_CHECKS) {
+  if (driftFiles.has(rel)) continue;
+  coverageLost([
+    `${rel} contains no \`git diff --exit-code -- <path>\` drift check this scan can see, and it is listed in REQUIRED_DRIFT_CHECKS.`,
+    'Either the detector stopped matching the shape — in which case section C just swept every workflow',
+    'and found nothing, which looks exactly like clean — or the drift check was removed, which is a',
+    'deliberate act that has to be recorded here rather than inferred from a silent pass.',
+  ]);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error('');
@@ -404,7 +469,8 @@ if (problems.length) {
 }
 
 const gates = [...secretGateFiles.values()].reduce((n, xs) => n + xs.length, 0);
+const drifts = [...driftFiles.values()].reduce((n, xs) => n + xs.length, 0);
 console.log(
   `ok  green means ran — ${aggregatorsChecked} aggregating job(s) fail on failure/cancelled/skipped over every lane, ` +
-    `${gates} secret-presence check(s) fail closed`,
+    `${gates} secret-presence check(s) fail closed, ${drifts} drift check(s) delete their artifact before rebuilding it`,
 );

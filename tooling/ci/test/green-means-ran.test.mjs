@@ -213,6 +213,42 @@ describe('§B — a job cannot green-skip its own body when a secret is absent',
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// §C — corpus triage 2026-08-01 (#27). Reproduced on the real tree first: with
+// `platforms` emptied in packages/tokens/style-dictionary.config.mjs the build
+// emitted zero files, `git diff --exit-code` exited 0, and the lane guarding the
+// CSS every site serves went green over a generator that had stopped generating.
+// The three mutations below are the ones a person would plausibly make.
+describe('§C — a drift check cannot pass by diffing the checkout against itself', () => {
+  const RM_STEP =
+    '      - name: Delete the artifact so the build has to produce it\n' +
+    '        run: rm -f ../../sites/_shared/assets/tokens.css\n';
+  const DIFF_STEP =
+    '      - name: Site tokens.css must equal a fresh build\n' +
+    '        run: git diff --exit-code -- ../../sites/_shared/assets/tokens.css\n';
+
+  test('deleting the `rm` step fails — the "this looks redundant" edit', () => {
+    const root = mutant([['ci.yml', RM_STEP, '']]);
+    caught(run(root), /job "tokens" diffs `\.\.\/\.\.\/sites\/_shared\/assets\/tokens\.css` against HEAD, but no earlier step in that job deletes it first/);
+  });
+
+  test('a `rm` AFTER the diff does not count — present, and proving nothing', () => {
+    const root = mutant([['ci.yml', RM_STEP, ''], ['ci.yml', DIFF_STEP, DIFF_STEP + RM_STEP]]);
+    caught(run(root), /no earlier step in that job deletes it first/);
+  });
+
+  test('removing the drift check itself is COVERAGE LOST, not a clean sweep', () => {
+    const root = mutant([['ci.yml', DIFF_STEP, '']]);
+    caught(run(root), /COVERAGE LOST[\s\S]*ci\.yml contains no `git diff --exit-code -- <path>` drift check/);
+  });
+
+  test('the committed lane satisfies it, and the count is reported', () => {
+    const r = run(mutant([]));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 drift check\(s\) delete their artifact before rebuilding it/);
+  });
+});
+
 describe('the fixture base is real', () => {
   test('the workflow directory this suite copies from actually exists', () => {
     assert.ok(existsSync(WORKFLOWS), `${WORKFLOWS} is missing — every mutation above would be applied to nothing`);
