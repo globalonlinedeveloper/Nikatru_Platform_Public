@@ -81,6 +81,54 @@ async function withinRateLimit(
   }
 }
 
+/**
+ * 🔴 THE UNSPOOFABLE HALF OF THE BREAKER. Every character of this key comes from
+ * the runtime's `request.cf` object; NOTHING comes from the request body.
+ *
+ * Why it exists: this route is unauthenticated by design, so the fairness bucket
+ * `${app_id}:${anon_id}` is composed entirely of values the caller chooses. A
+ * caller that mints a fresh `anon_id` (or a fresh `app_id`) per request lands in
+ * a fresh bucket every time, which makes the per-key ceiling "120 requests per
+ * minute PER REQUEST" — i.e. no ceiling at all, on a path that writes up to 100
+ * rows × 5 indexed writes into the shared free-tier D1. A breaker keyed on the
+ * attacker's own input cannot fail closed on the burst it exists to stop.
+ *
+ * `colo` + `asn` cannot be chosen by the caller: the colo is the edge PoP that
+ * terminated the connection and the ASN is derived by Cloudflare from the real
+ * transport source. This is NOT `CF-Connecting-IP` — that header is never read
+ * (see the invariants at the top of this file), and nothing here is stored: the
+ * key lives only for the duration of the `limit()` call.
+ *
+ * ⬜ HONEST LIMIT: the Rate Limiting binding is per-colo and eventually
+ * consistent — Cloudflare documents it as "intentionally designed to not be used
+ * as an accurate accounting system". So this bounds the burst-per-network, not
+ * the account-wide daily D1 write budget. The aggregate daily-write guard is
+ * tracked separately ([11]E-2 → [4]B-13/B-6) and is NOT what this function
+ * claims to be.
+ */
+function edgeCeilingKey(c: { req: { raw: Request } }): string {
+  const cf = (c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf;
+  const colo = typeof cf?.colo === 'string' && cf.colo.length <= 16 ? cf.colo : '-';
+  const asnRaw = (cf as { asn?: unknown } | undefined)?.asn;
+  const asn =
+    typeof asnRaw === 'number' || (typeof asnRaw === 'string' && asnRaw.length <= 16)
+      ? String(asnRaw)
+      : '-';
+  return `edge:${colo}:${asn}`;
+}
+
+/**
+ * BOTH halves must pass, and the server-derived ceiling is checked FIRST so a
+ * rotating caller is shed before any body-derived key is even composed.
+ */
+async function breakerAllows(
+  c: { req: { raw: Request }; env: AppEnv['Bindings'] },
+  fairnessKey: string,
+): Promise<boolean> {
+  if (!(await withinRateLimit(c.env.EVENTS_CEILING_LIMITER, edgeCeilingKey(c)))) return false;
+  return withinRateLimit(c.env.EVENTS_LIMITER, fairnessKey);
+}
+
 events.post('/events', async (c) => {
   let body: AnalyticsBatch;
   try {
@@ -98,8 +146,15 @@ events.post('/events', async (c) => {
   }
 
   // Bucket by app + install so one noisy client cannot starve the portfolio.
-  const firstAnon = str(list[0]?.anon_id, MAX_ID_LEN) ?? 'unknown';
-  if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `${appId}:${firstAnon}`))) {
+  // NOT `?? 'unknown'`: that collapsed every client whose install-id provider
+  // returned null into ONE bucket, capping them together at 120/min while the
+  // rotation bypass stayed wide open — and wrote rows with anon_id='unknown'.
+  // A batch whose first event has no usable anon_id is malformed: the column is
+  // NOT NULL (migrations/0002_analytics.sql) and the wire type declares it
+  // required, so this is a 400, not a merge.
+  const firstAnon = str(list[0]?.anon_id, MAX_ID_LEN);
+  if (!firstAnon) return c.json({ error: 'missing_anon_id' }, 400);
+  if (!(await breakerAllows(c, `${appId}:${firstAnon}`))) {
     // 429 with ok:false and received:0 — an honest rejection. The client keeps
     // its queue and retries later; pretending we took the batch would lose it.
     return c.json({ ok: false, error: 'rate_limited', received: 0 }, 429);
@@ -123,8 +178,10 @@ events.post('/events', async (c) => {
   for (const e of list as AnalyticsEvent[]) {
     const eventId = str(e?.event_id, MAX_ID_LEN);
     const name = str(e?.event, MAX_EVENT_NAME_LEN);
-    const anonId = str(e?.anon_id, MAX_ID_LEN) ?? firstAnon;
-    if (!eventId || !name) continue; // skip malformed, keep the rest
+    // Each row carries its OWN anon_id — never one borrowed from another event.
+    // Borrowing attributed one install's events to a different install id.
+    const anonId = str(e?.anon_id, MAX_ID_LEN);
+    if (!eventId || !name || !anonId) continue; // skip malformed, keep the rest
     rows.push(
       stmt.bind(
         eventId,
@@ -177,7 +234,9 @@ events.post('/consent', async (c) => {
   if (!consentId || !appId || !anonId || !purpose || !policyVersion) {
     return c.json({ error: 'missing_fields' }, 400);
   }
-  if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `consent:${appId}:${anonId}`))) {
+  // Same two-key breaker as /v1/events: the consent row is a D1 write on the
+  // same unauthenticated surface, so a rotating caller must be shed here too.
+  if (!(await breakerAllows(c, `consent:${appId}:${anonId}`))) {
     return c.json({ ok: false, error: 'rate_limited' }, 429);
   }
 

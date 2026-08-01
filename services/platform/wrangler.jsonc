@@ -58,15 +58,38 @@
   ],
   "ratelimits": [
     {
-      // Cost circuit breaker for /v1/events (G-12). NOT a KV counter: KV is
-      // eventually consistent with a ~60s edge cache, so under the exact burst
-      // a breaker exists to stop, a KV counter reads stale and lets it through.
-      // 120 requests/min per (app_id, anon_id) is far above any honest client
-      // (the SDK batches 20 events per request) and far below what could burn
-      // the free-tier D1 write allowance.
+      // FAIRNESS bucket for /v1/events + /v1/consent (G-12). NOT a KV counter:
+      // KV is eventually consistent with a ~60s edge cache, so under the exact
+      // burst a breaker exists to stop, a KV counter reads stale and lets it
+      // through. 120 requests/min per (app_id, anon_id) is far above any honest
+      // client (the SDK batches 20 events per request), so one noisy install
+      // cannot starve the portfolio.
+      //
+      // ⚠️ THIS KEY IS ENTIRELY CLIENT-CHOSEN, and the route is unauthenticated
+      // by design — a caller that rotates `anon_id` gets a fresh bucket per
+      // request. The previous claim here ("far below what could burn the
+      // free-tier D1 write allowance") was FALSE and is removed: this entry
+      // bounds one honest install, nothing more. EVENTS_CEILING_LIMITER below is
+      // the half that a caller cannot rotate out of.
       "name": "EVENTS_LIMITER",
       "namespace_id": "1001",
       "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      // SERVER-DERIVED ceiling, keyed `edge:<colo>:<asn>` from `request.cf` —
+      // no request-body value is in the key, so it cannot be rotated out of.
+      // (Not CF-Connecting-IP: that header is never read, and nothing is stored.)
+      // Its OWN namespace_id so it does not consume the per-install budget.
+      //
+      // 600/min per (colo, asn) is ~10 req/s from one network through one PoP —
+      // far above a real user population in one ASN batching 20 events per
+      // request, and it turns "unbounded" into "bounded". It is a BURST bound,
+      // not an accounting system: the binding is per-colo and eventually
+      // consistent, so the account-wide daily D1 write budget still needs the
+      // separate aggregate guard ([11]E-2 → [4]B-13/B-6).
+      "name": "EVENTS_CEILING_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 600, "period": 60 }
     }
   ],
   "triggers": {
