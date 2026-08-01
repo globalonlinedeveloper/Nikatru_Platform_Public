@@ -24,6 +24,19 @@ import {
 import type { AppEnv, Env } from '../types';
 
 const JWKS_KV_KEY = 'supabase_jwks';
+/**
+ * @ceiling none — and the reason is that the relation is INVERSE, so an `lte`
+ * comparison against `kv.writesPerDay` would be arithmetic that cannot fail and
+ * would therefore overstate what is checked.
+ *
+ * The resource this bounds is KV WRITES, whose Free ceiling is 1,000/day
+ * (`tooling/ceilings.json` → `kv.writesPerDay`) — and a LARGER TTL spends FEWER
+ * of them, not more. The arithmetic, written out because it is the whole
+ * justification for the value: one write per expiry gives 86400/600 = 144
+ * writes/day per namespace, ~14% of the Free daily budget, shared with the
+ * config namespace. Halving this constant doubles that; taking it to 60s would
+ * spend 1,440/day and exhaust the account's entire KV write budget on a cache.
+ */
 const JWKS_TTL_SECONDS = 600; // 10 minutes
 
 // Cache the remote JWKS *getter* per SUPABASE_URL for the lifetime of the

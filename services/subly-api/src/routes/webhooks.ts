@@ -141,9 +141,20 @@ export function isHandledType(type: string): boolean {
 //      for and permanently unreachable.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** RevenueCat app_user_id / entitlement id / product id / store bound. */
+/** RevenueCat app_user_id / entitlement id / product id / store bound.
+ *  @ceiling none — an identifier column's width, not a platform resource. */
 const MAX_ID_LENGTH = 256;
-/** One event carrying more than this is not a shape we recognise. */
+/**
+ * One event carrying more than this is not a shape we recognise.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ *
+ * ⚠️ IT SITS EXACTLY ON THE CEILING, AND THAT IS DELIBERATE. The handler issues
+ * one UPSERT per entitlement id in a single `PLATFORM_DB.batch()`, so this cap
+ * IS the statement count — 50 against D1's documented Free limit of 50 queries
+ * per Worker invocation. Raising it by one is a build failure, which is the
+ * correct behaviour: the next value is the first one that cannot be served.
+ */
 const MAX_ENTITLEMENT_IDS = 50;
 
 /** The checked fields of an event we are going to act on. */

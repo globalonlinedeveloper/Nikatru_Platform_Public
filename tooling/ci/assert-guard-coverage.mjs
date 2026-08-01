@@ -126,15 +126,32 @@ const TESTS = join(CI, 'test');
 // a number neither branch could have predicted; this comment is the third
 // consecutive piece of evidence that the rule is "measure after resolving", and
 // that "take the higher one" is the same mistake wearing a disguise.
-const MIN_GUARDS = 42;
-const MIN_TEST_FILES = 37;
+//
+// 🔴 AND A FOURTH TIME, ON THE MERGE AFTER THAT (the stage-4 CONTINUATION —
+// assert-ceiling-budget.mjs for [4]B-6 — meeting stage 8's compliance work).
+// FOURTH CONSECUTIVE MERGE, FOURTH NUMBER NEITHER BRANCH COULD HAVE PREDICTED.
+// This branch measured 43/37/1058 against its own base (cc2fb2d) and ratcheted
+// honestly to 41/35/1020; while it was in flight main moved to 44/39/1106 with
+// floors 42/37/1068. Taking either side would describe a tree that never
+// existed, and taking the higher of the two would UNDERCOUNT the declarations,
+// because the two sets of new tests are disjoint and add up.
+// This change contributes ONE guard (assert-ceiling-budget.mjs) and ONE test
+// file (ceiling-budget.test.mjs); it also EXTENDED assert-lockfile-discipline
+// and assert-guard-coverage rather than duplicating them, so those move no
+// counts.
+// MEASURED on the resolved tree AFTER the rebase, from the actual directory
+// listing and the actual declaration count — not predicted from either branch:
+// 45 guards, 40 test files, 1146 test declarations. Floors 43/38/1108 — 2, 2
+// and 38 below, the same gaps every previous ratchet chose.
+const MIN_GUARDS = 43;
+const MIN_TEST_FILES = 38;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 1068;
+const MIN_TEST_CASES = 1108;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing

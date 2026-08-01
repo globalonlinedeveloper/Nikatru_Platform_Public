@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import events, {
   MAX_CONSENT_BODY_BYTES,
   MAX_EVENTS_BODY_BYTES,
+  MAX_EVENTS_PER_BATCH,
   MAX_PARAM_COUNT,
 } from '../src/routes/events';
 import type { AppEnv } from '../src/types';
@@ -515,20 +516,53 @@ describe('POST /v1/events bounds the body before parsing it', () => {
   });
 
   it('a body just UNDER the cap is still accepted', async () => {
-    // A cap that also rejects legitimate traffic is not a fix. The number is
-    // derived from the caps this route already enforces (100 events × ~2.4 KB),
-    // so the largest batch the route permits must go through.
+    // A cap that also rejects legitimate traffic is not a fix. The byte ceiling
+    // is derived from the caps this route already enforces, so the largest batch
+    // the route permits must go through.
+    //
+    // ⚠️ DERIVED FROM `MAX_EVENTS_PER_BATCH`, NOT FROM A LITERAL. This test read
+    // `length: 100` until 2026-08-01, when [4]B-6 lowered the cap to D1's
+    // documented Free ceiling of 50 queries per invocation — and a hard-coded
+    // 100 then asserted a 200 on a batch the route now correctly answers 413.
+    // A test that pins a number the source owns has to be edited every time the
+    // source is right; a test that reads the number tracks it.
     const { db, post } = harness();
     const params: Record<string, string> = {};
     for (let i = 0; i < 12; i++) params[`k${i}`] = 'v'.repeat(64);
     const big = {
       app_id: 'subly',
-      events: Array.from({ length: 100 }, (_, i) => ev({ event_id: `id-${i}`, params })),
+      events: Array.from({ length: MAX_EVENTS_PER_BATCH }, (_, i) =>
+        ev({ event_id: `id-${i}`, params }),
+      ),
     };
     expect(JSON.stringify(big).length).toBeLessThan(MAX_EVENTS_BODY_BYTES);
     const res = await post('/v1/events', big);
     expect(res.status).toBe(200);
-    expect(db.batched).toBe(100);
+    expect(db.batched).toBe(MAX_EVENTS_PER_BATCH);
+  });
+
+  it('one event OVER the cap is refused 413, and writes nothing', async () => {
+    // The other side of the same boundary, and the one that makes
+    // MAX_EVENTS_PER_BATCH mean something: the first batch the route will not
+    // serve. Run against the real engine, so "writes nothing" is a row count
+    // rather than a claim about a double.
+    //
+    // 🔴 THIS IS THE ASSERTION THAT MAKES THE D1 CEILING REAL. The cap exists
+    // because one `PLATFORM_DB.batch()` holds one INSERT per event, and D1
+    // documents 50 queries per Worker invocation on Free. Without a test at
+    // cap+1 the constant could be raised back to 100 and every other test here
+    // would still pass.
+    const { db, post } = harness();
+    const before = db.count('events');
+    const res = await post('/v1/events', {
+      app_id: 'subly',
+      events: Array.from({ length: MAX_EVENTS_PER_BATCH + 1 }, (_, i) =>
+        ev({ event_id: `over-${i}` }),
+      ),
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'batch_too_large' });
+    expect(db.count('events')).toBe(before);
   });
 
   it('the ceiling is consulted BEFORE the body is read', async () => {

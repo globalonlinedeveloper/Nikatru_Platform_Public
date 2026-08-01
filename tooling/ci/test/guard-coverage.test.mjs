@@ -34,10 +34,11 @@ let seq = 0;
  * Build a fake repo.
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
- * ⚠️ testFiles defaults to 37 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
- * → 32 → 33 → 34 → 35 → 37 (2026-07-31, then eight times on 2026-08-01: the seventh
- * where stage 3 · THE STAMPER met stage 4 · B-1, the eighth where stage 8 · COMPLIANCE
- * & LEGAL met that result) — a fixture below the floor would make
+ * ⚠️ testFiles defaults to 38 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
+ * → 32 → 33 → 34 → 35 → 37 → 38 (2026-07-31, then nine times on 2026-08-01: the
+ * seventh where stage 3 · THE STAMPER met stage 4 · B-1, the eighth where stage 8 ·
+ * COMPLIANCE & LEGAL met that result, the ninth where stage 4's CONTINUATION —
+ * assert-ceiling-budget.mjs, [4]B-6 — met that) — a fixture below the floor would make
  * every green case here red for a reason that has nothing to do with the behaviour
  * under test. Ratchet the floor and this default together, always.
  * ⚠️ THREE of those ratchets were MERGES, and the third settles it: every time, two
@@ -50,7 +51,7 @@ let seq = 0;
 function repo(
   guards,
   {
-    testFiles = 37,
+    testFiles = 38,
     mentionAll = true,
     hollow = false,
     commentsOnly = false,
@@ -108,14 +109,13 @@ function repo(
   return root;
 }
 
-/** 42 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39 →
- *  40 → 42, 2026-07-31, then six times on 2026-08-01 — the last on the merge where
- *  stage 8 · COMPLIANCE & LEGAL met stage 3 + stage 4, adding
- *  assert-repo-posture.mjs and assert-policy-archive.mjs to a 42-guard tree
- *  [8]K-12/K-4). Deliberately equal to MIN_GUARDS, not to the real tree's count:
- *  this fixture exists to sit exactly ON the floor so the case below can sit one
- *  under it. */
-function compliant(extra = {}, count = 42) {
+/** 43 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39 →
+ *  40 → 42 → 43, 2026-07-31, then seven times on 2026-08-01 — the last on the merge
+ *  where stage 4's CONTINUATION added assert-ceiling-budget.mjs ([4]B-6) to the
+ *  43-guard tree stage 8 · COMPLIANCE & LEGAL had just produced). Deliberately equal
+ *  to MIN_GUARDS, not to the real tree's count: this fixture exists to sit exactly ON
+ *  the floor so the case below can sit one under it. */
+function compliant(extra = {}, count = 43) {
   const g = {};
   for (let i = 0; i < count; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
   return { ...g, ...extra };
@@ -127,7 +127,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /42 guard\(s\), all named in 37 test file\(s\)/);
+    assert.match(r.stdout, /43 guard\(s\), all named in 38 test file\(s\)/);
   });
 
   test('a guard no test mentions FAILS', () => {
@@ -199,10 +199,11 @@ describe('assert-guard-coverage', () => {
     // so 22 guards could vanish from the scan without tripping anything
     // (triage 2026-07-31, mutation-proven). This pins the ratchet: when
     // the tree grows again, ratchet the floor AND this fixture together.
-    // Ratcheted to 42 on 2026-08-01 with the stage-8 compliance guards ([8]K-12/K-4).
-    const r = run(repo(compliant({}, 41)));
+    // Ratcheted to 43 on 2026-08-01 with assert-ceiling-budget.mjs ([4]B-6),
+    // on top of the stage-8 compliance guards ([8]K-12/K-4).
+    const r = run(repo(compliant({}, 42)));
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /COVERAGE LOST — found 41 guard\(s\)/);
+    assert.match(r.stderr, /COVERAGE LOST — found 42 guard\(s\)/);
   });
 
   test('COVERAGE: a .mjs moved into a subdirectory of tooling/ci FAILS loudly, naming it', () => {

@@ -131,6 +131,15 @@
         "expression": "'$_base/v1/consent'",
         "note": "The first positional argument of the real `_dio.post` call."
       }
+    },
+    {
+      "id": "account",
+      "method": "DELETE",
+      "path": "/v1/account",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/account.ts",
+      "purpose": "G2 in-app account deletion ([4]B-5). THE FIRST `auth: required` ROUTE ON THIS WORKER, and the reason src/middleware/auth.ts is not a dead file. Three limbs: every user-owned table in platform_db (DERIVED from the schema — a `user_id` column is the selector — not from a literal array somebody must remember to extend), then the identity record itself. Refuses 501 while SUPABASE_SERVICE_ROLE_KEY is unset, so it ships honest rather than not at all.",
+      "unconsumedReason": "⛔ THE CLIENT HALF IS BLOCKED ON STAGE 2, AND THIS IS THE HONEST STATE OF IT. packages/core/lib/src/auth/auth_repository.dart already carries the seam and says verbatim that `DELETE /v1/account` is stage 4's route and does not exist yet — that sentence is now false and the seam is what must change, in [2]C-13/[2]C-16, which own that file. Registering the route with zero clients and PRINTING the gap is the correct intermediate state: the alternative is either a fake client entry, or holding the server route back until the Flutter side lands, which is what left the brick's client-only stamps with no deletion path at all for months. [8]K-7's public deletion page is the other consumer, and it is stage 8's."
     }
   ],
 
@@ -141,6 +150,7 @@
       "scope": "shared",
       "purpose": "The ONE entitlements + analytics + consent database for the whole portfolio. services/platform is the SOLE migrations applier; every other Worker binds it without a migrations_dir.",
       "readers": [
+        "services/platform/src/routes/account.ts",
         "services/platform/src/routes/events.ts",
         "services/platform/src/scheduled.ts",
         "services/subly-api/src/routes/entitlements.ts",
@@ -180,6 +190,7 @@
       "scope": "shared",
       "purpose": "Caches the Supabase JWKS document so an ES256 verify does not fetch it per request. One identity project portfolio-wide, so one cache.",
       "readers": [
+        "services/platform/src/middleware/auth.ts",
         "services/subly-api/src/middleware/auth.ts",
         "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/middleware/auth.ts"
       ]

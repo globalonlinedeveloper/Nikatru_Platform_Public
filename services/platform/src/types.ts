@@ -18,6 +18,18 @@ export interface Env {
   CONFIG_KV: KVNamespace;
 
   /**
+   * Warm cache for the Supabase JWKS document, so an ES256 verify does not fetch
+   * it on every cold isolate. ONE identity project portfolio-wide, so one cache
+   * — the same namespace services/subly-api binds.
+   *
+   * Optional, and absence is NOT a security hole: `jose` fetches the JWKS itself,
+   * so a missing binding costs latency on a cold start and nothing else.
+   * Verification never degrades to a weaker check — there is no fallback path
+   * (see middleware/auth.ts for why the HS256 one was deliberately not ported).
+   */
+  JWKS_CACHE?: KVNamespace;
+
+  /**
    * Cost circuit breaker for /v1/events (G-12). The Rate Limiting binding, NOT
    * a KV counter: KV is eventually consistent with a ~60s edge cache, so under
    * the exact burst a breaker exists to stop, a KV counter reads stale and lets
@@ -75,6 +87,20 @@ export interface Env {
    * treats it as a GitHub secret for the web build, so the two should agree.
    */
   SUPABASE_ANON_KEY?: string;
+  /**
+   * Supabase SERVICE ROLE key — used ONLY by DELETE /v1/account, to remove the
+   * identity record itself.
+   *
+   * 🔴 OPTIONAL, AND THE ROUTE REFUSES 501 WITHOUT IT. That is not a
+   * convenience: a deletion that purges the data and leaves the login working is
+   * one the user cannot detect as incomplete, so the route must never start work
+   * it cannot finish. Same shape the brick template already ships.
+   *
+   * ⚠️ WHAT THE OWNER IS APPROVING WHEN THEY SET IT: this key bypasses RLS
+   * PORTFOLIO-WIDE, and this Worker is public-facing. Set with
+   * `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`, never as a committed var.
+   */
+  SUPABASE_SERVICE_ROLE_KEY?: string;
   API_VERSION: string;
   /**
    * Comma-separated EXACT browser origins for CORS (owner decision 2026-07-25).
@@ -90,6 +116,13 @@ export interface Env {
 export interface Variables {
   /** Correlation id stamped by the request-id middleware (echoed in headers). */
   requestId: string;
+  /**
+   * The authenticated subject, set by `middleware/auth.ts` and by NOTHING else.
+   * Present only on routes mounted behind it; a public route never sees it.
+   */
+  userId: string;
+  /** The token's `email` claim when it carries one. Never required. */
+  userEmail?: string;
 }
 
 /** Convenience: the generics shape used across the worker + sub-routers. */
