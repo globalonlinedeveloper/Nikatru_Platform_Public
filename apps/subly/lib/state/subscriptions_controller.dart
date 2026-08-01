@@ -54,20 +54,36 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
   }
 
   Future<void> addSubscription(Subscription draft) async {
-    final List<Subscription> before =
-        state.valueOrNull ?? const <Subscription>[];
+    // 🔴 ABSENT IS NOT EMPTY. This was `state.valueOrNull ?? const []`, which
+    // reads a still-loading first fetch and a failed one as "the user has no
+    // subscriptions" — so an add during either state looked like an empty→first
+    // transition and fired ACTIVATION again, on an install that had already
+    // activated. `activation` is a once-per-install signal and the denominator
+    // of the whole funnel; a false one cannot be told apart from a real one
+    // after the fact, and it silently degrades the event into an add counter.
+    // A miss is recoverable arithmetic, a spurious fire is corrupted data, so
+    // the hook keys off an OBSERVED prior list and nothing else.
+    //
+    // `hasValue && !hasError`: Riverpod keeps the previous data on an AsyncError,
+    // so `valueOrNull` alone would treat a stale list behind a failed refresh as
+    // a current observation.
+    final AsyncValue<List<Subscription>> prior = state;
+    final List<Subscription>? before = prior.hasValue && !prior.hasError
+        ? prior.requireValue
+        : null;
+
     final Subscription created = await ref
         .read(subscriptionRepositoryProvider)
         .add(draft);
-    final List<Subscription> list = <Subscription>[...before, created];
+    final List<Subscription> list = <Subscription>[...?before, created];
     state = AsyncData<List<Subscription>>(list);
     _syncReminders(list);
 
     // G-12 ACTIVATION. Subly's "aha" is the FIRST subscription added — the
-    // single strongest predictor of retention and of paying. Fired only when
-    // the list was empty, so it stays a once-per-install signal rather than a
-    // per-add counter, and only after the write succeeded.
-    if (before.isEmpty) {
+    // single strongest predictor of retention and of paying. Fired only on a
+    // real empty→first transition, so it stays a once-per-install signal rather
+    // than a per-add counter, and only after the write succeeded.
+    if (before != null && before.isEmpty) {
       ref.read(analyticsFunnelProvider).valueOrNull?.onActivation();
     }
   }
