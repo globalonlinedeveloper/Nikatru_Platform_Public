@@ -34,23 +34,46 @@ let seq = 0;
  * Build a fake repo.
  * @param guards  map of filename -> source text
  * @param tests   number of test files that mention every guard (0 = mention none)
- * ⚠️ testFiles defaults to 36 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
- * → 32 → 33 → 34 → 36 (2026-07-31, then seven times on 2026-08-01, the last with the
- * stage-8 compliance guards assert-repo-posture.mjs + assert-policy-archive.mjs) — a
- * fixture below the floor would make
+ * ⚠️ testFiles defaults to 37 because MIN_TEST_FILES ratcheted 4 → 25 → 26 → 29 → 31
+ * → 32 → 33 → 34 → 35 → 37 (2026-07-31, then eight times on 2026-08-01: the seventh
+ * where stage 3 · THE STAMPER met stage 4 · B-1, the eighth where stage 8 · COMPLIANCE
+ * & LEGAL met that result) — a fixture below the floor would make
  * every green case here red for a reason that has nothing to do with the behaviour
  * under test. Ratchet the floor and this default together, always.
- * ⚠️ The last of those ratchets was a MERGE: two branches each ratcheted honestly to
- * 31, and the merged tree has 34 test files. Neither branch's number was wrong and
- * neither was right — re-measure after a merge rather than taking the higher one.
+ * ⚠️ THREE of those ratchets were MERGES, and the third settles it: every time, two
+ * branches each ratcheted honestly against their own tree, and the merged tree had
+ * more test files than either had ever seen. Neither branch's number was wrong and
+ * neither was right — re-measure ON THE MERGE, and do not reach for the higher of the
+ * two, which is the same mistake wearing a disguise.
  * `files` writes extra files at the fixture root (e.g. a ci.yml manifest).
  */
-function repo(guards, { testFiles = 36, mentionAll = true, hollow = false, commentsOnly = false, files = {} } = {}) {
+function repo(
+  guards,
+  {
+    testFiles = 37,
+    mentionAll = true,
+    hollow = false,
+    commentsOnly = false,
+    files = {},
+    // [pipeline S-12r] The named executables OUTSIDE tooling/ci that must still
+    // carry a negative test. The fixture ships the real list by default because
+    // the guard now reads it: a fixture that omitted them would make every case
+    // here COVERAGE LOST, and "the fixture does not model the tree" is how a
+    // guard's tests end up encoding the guard's own blind spot.
+    scripts = ['tooling/scripts/provision-backend.mjs'],
+    mentionScripts = true,
+  } = {},
+) {
   const root = join(TMP, `r${seq++}`);
   const ci = join(root, 'tooling', 'ci');
   const t = join(ci, 'test');
   mkdirSync(t, { recursive: true });
   for (const [name, src] of Object.entries(guards)) writeFileSync(join(ci, name), src);
+  for (const rel of scripts) {
+    const abs = join(root, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, '#!/usr/bin/env node\n// a named non-guard executable\n');
+  }
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(root, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -60,7 +83,9 @@ function repo(guards, { testFiles = 36, mentionAll = true, hollow = false, comme
   // write `// <guard-name>` and pass — encoding the same blind spot the guard
   // itself had, so neither could see that a hollowed-out test file covers
   // nothing. Found 2026-07-27 while closing F-10.
-  const covered = mentionAll ? Object.keys(guards) : ['nothing-real.mjs'];
+  const covered = mentionAll
+    ? [...Object.keys(guards), ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
+    : ['nothing-real.mjs'];
   for (let i = 0; i < testFiles; i++) {
     // commentsOnly reproduces this fixture's ORIGINAL behaviour, kept so the fix
     // that removed it has a failing case of its own.
@@ -84,8 +109,12 @@ function repo(guards, { testFiles = 36, mentionAll = true, hollow = false, comme
 }
 
 /** 42 compliant guards — enough to clear the floor (ratcheted 15 → 35 → 36 → 38 → 39 →
- *  40 → 42, 2026-07-31, then five times on 2026-08-01 — the last with the stage-8
- *  compliance guards assert-repo-posture.mjs + assert-policy-archive.mjs, [8]K-12/K-4). */
+ *  40 → 42, 2026-07-31, then six times on 2026-08-01 — the last on the merge where
+ *  stage 8 · COMPLIANCE & LEGAL met stage 3 + stage 4, adding
+ *  assert-repo-posture.mjs and assert-policy-archive.mjs to a 42-guard tree
+ *  [8]K-12/K-4). Deliberately equal to MIN_GUARDS, not to the real tree's count:
+ *  this fixture exists to sit exactly ON the floor so the case below can sit one
+ *  under it. */
 function compliant(extra = {}, count = 42) {
   const g = {};
   for (let i = 0; i < count; i++) g[`assert-thing-${i}.mjs`] = 'if (x) throw new Error("COVERAGE LOST");\n';
@@ -98,7 +127,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /42 guard\(s\), all named in 36 test file\(s\)/);
+    assert.match(r.stdout, /42 guard\(s\), all named in 37 test file\(s\)/);
   });
 
   test('a guard no test mentions FAILS', () => {
@@ -207,6 +236,32 @@ describe('assert-guard-coverage', () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /COVERAGE LOST — ci\.yml invokes 1 guard\(s\)/);
     assert.match(r.stderr, /assert-vanished\.mjs/);
+  });
+
+  // ── [pipeline S-12r] the NAMED non-guard executables ──────────────────────
+  // tooling/scripts/provision-backend.mjs had neither F-10 property — no CI
+  // invocation, no test — purely because it sits one directory outside the set
+  // this scan reads. A filing accident was deciding what got covered.
+  test('a named script under tooling/scripts with no test FAILS', () => {
+    const r = run(repo(compliant(), { mentionScripts: false }));
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /tooling\/scripts\/provision-backend\.mjs — no test file mentions it/);
+    assert.match(r.stderr, /required to have one because/);
+  });
+
+  // The self-check on the list itself: an entry pointing at a file that has been
+  // moved or deleted would sit here looking like coverage while covering
+  // nothing — this guard's own failure mode, applied to itself.
+  test('COVERAGE LOST when a NAMED script does not exist at all', () => {
+    const r = run(repo(compliant(), { scripts: [] }));
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /COVERAGE LOST — tooling\/scripts\/provision-backend\.mjs is named in COVERED_SCRIPTS but does not exist/);
+  });
+
+  test('the passing line reports how many named non-guard scripts were covered', () => {
+    const r = run(repo(compliant()));
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /1 named non-guard script\(s\) outside tooling\/ci also covered/);
   });
 
   test('a ci.yml whose invocations are all found passes, and comments do not count as invocations', () => {

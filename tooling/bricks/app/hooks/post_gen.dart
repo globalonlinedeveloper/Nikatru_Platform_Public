@@ -61,7 +61,21 @@ void run(HookContext context) {
       ..info('     (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Do NOT '
           '`source` .claude/secrets.env — it is not a pure env file; extract '
           'the two keys. [pipeline S-12])')
-      ..info('  3. Add DNS for $apiHost and the web subdomain $webHost.')
+      // [pipeline S-1r] NOT "add DNS". [ADR 006] locked a proxied wildcard
+      // `*.nikatru.com`, so a stamped app needs ZERO new DNS — and the old step
+      // sent the owner to create a record that already resolves, while the thing
+      // actually keeping the app dark went unnamed. Re-measured 2026-08-01 over
+      // DNS-over-HTTPS (the system resolver has no egress here): four random
+      // labels under nikatru.com all returned the same Cloudflare addresses,
+      // while the same labels under two control domains returned no A record at
+      // all — so the wildcard is answering, not the resolver being permissive.
+      // An unattached host then answers 522, never NXDOMAIN, which is why "it
+      // resolves" is not the question worth asking.
+      ..info(
+          '  3. NO DNS RECORD IS NEEDED — the wildcard *.nikatru.com already '
+          'resolves $webHost and $apiHost ([ADR 006]). ATTACHMENT is what is '
+          'missing: bind $webHost to the app\'s deployment and $apiHost to this '
+          'Worker\'s routes, or both answer 522 while resolving perfectly.')
       ..info('  4. REQUIRED for the web build: add "https://$webHost" to '
           'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
           'The allowlist is EXACT — omit this and the app silently loses '
@@ -75,8 +89,14 @@ void run(HookContext context) {
       ..success('Stamped $id (apps/$id — CLIENT-ONLY). Owner checklist:')
       ..info('  1. Add store metadata for apps/\$id. Web icons were GENERATED '
           'from seed_hex — replace them only if you have real art.')
-      ..info('  2. Add DNS for the web subdomain $webHost. No API host and no '
-          'D1 database are needed — this app uses the shared platform Worker.')
+      // [pipeline S-1r] Same correction as the backend branch above — see the
+      // note there for the measurement. The wildcard makes this a NON-step; the
+      // real one is attachment, and saying "add DNS" hid it.
+      ..info(
+          '  2. NO DNS RECORD IS NEEDED — the wildcard *.nikatru.com already '
+          'resolves $webHost ([ADR 006]); ATTACH it to the deployment or it '
+          'answers 522 while resolving perfectly. No API host and no D1 '
+          'database are needed — this app uses the shared platform Worker.')
       ..info('  3. REQUIRED for the web build: add "https://$webHost" to '
           'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
           'The allowlist is EXACT — omit this and the app silently loses '

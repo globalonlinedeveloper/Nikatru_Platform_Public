@@ -219,6 +219,118 @@ if (backendApp) {
   }
 }
 
+// ── [pipeline S-6] NO `crons` OUTSIDE services/platform ─────────────────────
+// S-6's acceptance has always read "a stamp claims only affordable cloud
+// resources — AND no `crons` block outside services/platform". The first half
+// was built; THIS HALF WAS NEVER WRITTEN. Until now `grep -i cron` over this
+// file and its test returned zero matches, so the limb that stages 13 T-1 and
+// T-10 both name as their single enforcer did not exist. Nothing was violating
+// it — exactly one `crons` block exists, in services/platform — and nothing
+// would have noticed if something started to.
+//
+// WHY IT IS STRUCTURAL, not a per-app budget: cron triggers are capped PER
+// CLOUDFLARE ACCOUNT on the Free plan, not per Worker, so the ceiling is shared
+// by the whole portfolio and a per-app cron does not scale to 50 apps. ⚠️ The
+// specific number in `company/.../architecture.md` is a REPO-SOURCED claim that
+// was NOT re-verified against the vendor when this limb was written — it is not
+// restated here as a fresh fact, and the rule does not depend on its exact
+// value. One nightly cron in one place scales; N do not.
+//
+// ⚠️ NEVER A GREP. This repo has already shipped a guard that matched the
+// template comment explaining why there is no `r2_buckets` — and the platform
+// config's own header contains the word "cron" in prose twice. The config is
+// PARSED (comments stripped by parseJsonc above) and the check reads
+// `triggers.crons` off the resulting object.
+//
+// It runs on every invocation rather than under --client/--backend, because it
+// is a property of the whole services/ tree: the freshly stamped config is one
+// subject, the committed ones are the others, and a limb that only ever looked
+// at the stamp would miss a cron added to subly-api by hand.
+const CRON_HOME = 'platform';
+{
+  let dirs = null;
+  try {
+    dirs = readdirSync('services', { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    /* reported immediately below */
+  }
+
+  if (dirs === null || dirs.length === 0) {
+    // COVERAGE ASSERTION. "No configs found → ok" is the shape this whole repo
+    // keeps re-learning; a cron scan that reaches nothing reports a clean
+    // portfolio.
+    fail(
+      'COVERAGE LOST — the cron scan found no service directories under services/. ' +
+        'A scan over an empty set proves no cron exists anywhere, which is how a guard ' +
+        'reports healthy while enforcing nothing.',
+    );
+  } else {
+    // 🔴 THE COVERAGE FLOOR IS DERIVED, NOT TYPED. Not "at least N configs" — a
+    // number somebody eventually lowers — but a RELATIONSHIP between two
+    // independent observations: every directory under services/ is a deployable
+    // Worker, so every one of them must have yielded a parsed wrangler.jsonc. A
+    // directory the scan could not read is either a real defect or this scan's
+    // filename assumption having drifted, and both must be loud.
+    const parsed = [];
+    const unreadable = [];
+    const offenders = [];
+    for (const dir of dirs) {
+      // Forward slashes deliberately, not join(): this path goes into the
+      // FAILURE MESSAGE as well as into readFileSync, and join() would print
+      // `services\x\wrangler.jsonc` on a Windows dev box and
+      // `services/x/wrangler.jsonc` on the Linux runner. A guard whose message
+      // changes shape by operating system cannot be matched by its own tests.
+      // Node's fs accepts forward slashes on Windows, and the rest of this file
+      // already builds its paths this way.
+      const path = `services/${dir}/wrangler.jsonc`;
+      if (!existsSync(path)) {
+        unreadable.push(`${path} — the directory exists but carries no wrangler.jsonc`);
+        continue;
+      }
+      let cfg;
+      try {
+        cfg = parseJsonc(path);
+      } catch (e) {
+        unreadable.push(`${path} — is not parseable JSONC (${e.message})`);
+        continue;
+      }
+      parsed.push(dir);
+      const crons = cfg?.triggers?.crons;
+      if (Array.isArray(crons) && crons.length > 0 && dir !== CRON_HOME) {
+        offenders.push(
+          `services/${dir}/wrangler.jsonc declares ${crons.length} cron trigger(s) ` +
+            `(${crons.map((c) => JSON.stringify(c)).join(', ')}). Cron triggers are capped per ` +
+            'ACCOUNT, not per Worker, so a per-app cron spends a portfolio-wide budget and does ' +
+            `not scale to 50 apps. The ONE scheduled job lives in services/${CRON_HOME}; give it ` +
+            'the work rather than giving this Worker a schedule.',
+        );
+      }
+    }
+
+    for (const u of unreadable) {
+      fail(`COVERAGE LOST — ${u}. The cron limb did not examine it, so its result is unknown, not clean.`);
+    }
+    if (!parsed.includes(CRON_HOME)) {
+      fail(
+        `COVERAGE LOST — the cron scan never read services/${CRON_HOME}/wrangler.jsonc, which is the ` +
+          'one directory the rule exempts. Without it the scan is not looking at this repo\'s ' +
+          'services/ tree at all, and every "no cron here" result below is about some other tree.',
+      );
+    }
+    if (offenders.length) {
+      offenders.forEach(fail);
+    } else if (!unreadable.length && parsed.includes(CRON_HOME)) {
+      ok(
+        `no cron triggers outside services/${CRON_HOME} ` +
+          `(${parsed.length} service config(s) parsed: ${parsed.join(', ')})`,
+      );
+    }
+  }
+}
+
 if (!clientApp && !backendApp) {
   console.error('assert-clone-contract: pass --client <app> and/or --backend <app>');
   process.exit(1);

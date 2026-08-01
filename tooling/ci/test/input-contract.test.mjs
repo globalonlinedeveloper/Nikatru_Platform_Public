@@ -89,10 +89,33 @@ ${vars.map((x) => `  final ${x}_x = v('${x}');\n  if (${x}_x == 'no') { problems
 }
 `;
 
+// [pipeline S-1r] The fixture now PRINTS A CHECKLIST, both branches, because the
+// guard reads it. A post_gen with no checklist is COVERAGE LOST, not a pass —
+// so a fixture without one would have quietly disabled the new limb for every
+// case in this file.
+//
+// 🔴 IT ALSO CARRIES THE PROSE TRAP ON PURPOSE: the comment below quotes the
+// retired instruction verbatim, exactly as the real hook's does. A limb that
+// grepped the file instead of the printed literals would fire on this comment
+// and could never go green.
 const goodPostGen = `
 import 'package:mason/mason.dart';
+
+// Historical note: this used to say "Add DNS for <host>" before [ADR 006]
+// locked the wildcard. The words survive HERE, in prose, and must not count.
 void run(HookContext context) {
-  context.logger.info('stamped');
+  final needsBackend = context.vars['needs_backend'] == true;
+  if (needsBackend) {
+    context.logger
+      ..success('Stamped x. Owner checklist:')
+      ..info('  1. Add store metadata.')
+      ..info('  2. NO DNS RECORD IS NEEDED — the wildcard already resolves; ATTACH the host.');
+  } else {
+    context.logger
+      ..success('Stamped x (CLIENT-ONLY). Owner checklist:')
+      ..info('  1. Add store metadata.')
+      ..info('  2. NO DNS RECORD IS NEEDED — the wildcard already resolves; ATTACH the host.');
+  }
 }
 `;
 
@@ -271,5 +294,81 @@ describe('assert-input-contract', () => {
       post: `${goodPostGen}\n// see brick.yaml for the vars\n`,
     }));
     assert.equal(code, 0, 'brick.yaml exists in the fixture and is allowlisted');
+  });
+
+  // ── [pipeline S-1r] no printed step may be one a locked ADR retired ────────
+  // The checklist said "Add DNS for <host>" for months after [ADR 006] locked a
+  // proxied wildcard that made it unnecessary — and it named the WRONG LAYER: an
+  // unattached host resolves fine and answers 522, so an owner debugging a dark
+  // app was sent to the one thing that was already working.
+  //
+  // ⚠️ THE PREMISE IS A MEASUREMENT, NOT A DOCUMENT. Two corpus files
+  // contradicted each other (the stage file's 522 observations vs
+  // `00-TRACKER.md`, which still says the wildcard was never created), so it was
+  // re-checked live 2026-08-01 over DNS-over-HTTPS — the system resolver has no
+  // egress here and returns ECONNREFUSED even for a control name. Four random
+  // labels under nikatru.com returned identical Cloudflare A records; the same
+  // shape under two control domains returned none. The wildcard is answering.
+  //
+  // All five cases were mutation-proven against the real hook first, including
+  // the two that must stay GREEN.
+  test('the shipped checklist passes, and says how many branches it read', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /the printed checklist \(2 branch\(es\)\) names no retired instruction/);
+  });
+
+  test('FAILS when "Add DNS" comes back as a printed step', () => {
+    const { code, out } = run(tree({
+      post: goodPostGen.replace(
+        "'  2. NO DNS RECORD IS NEEDED — the wildcard already resolves; ATTACH the host.'",
+        "'  2. Add DNS for the web subdomain.'",
+      ),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /prints a retired instruction — telling the owner to add a DNS record/);
+    assert.match(out, /\[ADR 006\] locked a proxied wildcard/);
+  });
+
+  // 🔴 THE PROSE TRAP. The fixture's header comment quotes "Add DNS for <host>"
+  // verbatim — as the real hook's does — so a grep over the file would fire here
+  // and the limb could never be green. Match printed literals, not the note
+  // explaining the removal.
+  test('does NOT fire on a COMMENT that quotes the retired instruction', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+  });
+
+  // The corrected wording contains the word "DNS". A lazier pattern would have
+  // made the fix unshippable.
+  test('does NOT fire on the corrected wording, which still says DNS', () => {
+    const { code } = run(tree({
+      post: goodPostGen.replace(
+        "'  1. Add store metadata.'",
+        "'  1. NO DNS RECORD IS NEEDED here either — the wildcard covers it.'",
+      ),
+    }));
+    assert.equal(code, 0);
+  });
+
+  test('COVERAGE LOST when post_gen prints no checklist at all', () => {
+    const { code, out } = run(tree({ post: goodPostGen.replace(/Owner checklist:/g, 'Next:') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /prints no "Owner checklist:" at all/);
+  });
+
+  // The relationship, not a typed floor: the raw file and the extracted view are
+  // two observations of the same thing, and they must agree. Here the checklist
+  // moves into a raw string the literal-extractor cannot see.
+  test('COVERAGE LOST when the extractor recovers fewer headers than the file has', () => {
+    const { code, out } = run(tree({
+      post: goodPostGen.replace(
+        "..success('Stamped x (CLIENT-ONLY). Owner checklist:')",
+        '..success(r"""Stamped x (CLIENT-ONLY). Owner checklist:""")',
+      ),
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /recovered 1 of 2 "Owner checklist:" header\(s\)/);
   });
 });
