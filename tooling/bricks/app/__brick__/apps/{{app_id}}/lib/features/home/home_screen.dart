@@ -4,7 +4,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
 
-/// Home shell for {{display_name}}, built on the design-system [AppScaffold]
+/// Home shell for {{{display_name}}}, built on the design-system [AppScaffold]
 /// (adaptive NavigationBar -> Rail -> Drawer) and brand tokens.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

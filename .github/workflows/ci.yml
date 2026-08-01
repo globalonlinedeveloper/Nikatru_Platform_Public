@@ -157,6 +157,20 @@ jobs:
       - name: Workflows are SHA-pinned and least-privilege
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-workflow-hardening.mjs
+      # A green tick must mean the work RAN. Two ways it did not, both live until
+      # 2026-08-01: (A) `ci-gate` — the check assert-gate-passed.mjs polls before
+      # every production deploy, and the one branch protection reads — tested
+      # only 'failure' and 'cancelled', so a lane carrying a job-level `if:`
+      # would report `skipped` and hand both deploys a green verdict over a lane
+      # that never ran; the identical fix landed in build-platforms.yml on
+      # 2026-07-31 and stopped there. (B) e2e.yml gated all nine real steps on a
+      # secret-presence preflight, so a rotated key turned the nightly live proof
+      # into a green run that executed one echo — and its `failure()`-gated alert
+      # could not fire on it. Both aggregators are NAMED targets here: renaming
+      # one is COVERAGE LOST, not a quiet pass. [pipeline F-5a, F-10]
+      - name: A green tick means the work ran
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-green-means-ran.mjs
       # The 6-platform claim must be proven AND RECENT. build-platforms.yml ran
       # only on dispatch or a release tag, so the green tick was undated — found
       # eight commits stale, and fresh again only because someone clicked it by
@@ -582,6 +596,21 @@ jobs:
       # config is parsed, not grepped) — see the script header for why.
       - name: Default stamp claims NO Worker, NO D1 and NO R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe
+      # 🔴 THE STAMP CAN BE GREEN AND STILL SHIP THE WRONG TEXT. mason renders
+      # every DOUBLE stache HTML-escaped (& < > " ' /), so a display name with
+      # an apostrophe stamped `Probe&#x27;s` into the Dart appName const, the ARB
+      # app title, the PWA install name and the pubspec — output that compiles,
+      # analyzes, formats and tests clean while the OS window title is corrupt.
+      # And a BLANK `subdomain`/`api_domain` — the input pre_gen documents as
+      # normal ("or empty to derive") — was interpolated as nothing, stamping
+      # `"https://"` into ALLOWED_ORIGINS and _phApiBase.
+      #
+      # Both probe vars files now carry `& ' / "` in their free text and leave a
+      # derivable host BLANK, and the guard refuses to run (COVERAGE LOST) if a
+      # future edit takes either away — an escape-free probe is precisely why
+      # this lane could not catch the defect before.
+      - name: Stamped text is the spec's, and blank hosts were DERIVED
+        run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_vars.json
       # A stamped app must be born `dart format`-clean. Every app in the
       # portfolio starts as a copy of this output, so template dirt is dirt in
       # all of them at once — and it makes adding a repo-wide format gate
@@ -631,6 +660,14 @@ jobs:
           git checkout -- sites/_shared/_data/apps.json
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
+      # The backend probe stamps with BOTH hosts blank, so this is the run that
+      # proves the stamped Worker's own ALLOWED_ORIGINS is a real origin rather
+      # than the bare `https://` the derive path used to produce — an allowlist
+      # matching nothing, which `cors.ts` cannot even fall back from because
+      # "https://" is not empty. It fails as a browser CORS error with no
+      # server-side trace, so nothing downstream would ever have reported it.
+      - name: Backend stamp derived its own web origin and API host
+        run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_backend_vars.json --service services/probeapi-api
       - name: Stamped backend app is dart format-clean
         run: dart format --output=none --set-exit-if-changed apps/probeapi
       - name: Analyze the stamped backend app
@@ -673,8 +710,14 @@ jobs:
       # Cloudflare still cannot be gated. The protection is indirect: with `main`
       # protected (F-5a), code that cannot pass this lane cannot reach `main`, and
       # therefore cannot reach Cloudflare. [pipeline F-9]
+      #
+      # The two site paths are ARGUMENTS, not decoration (2026-08-01 review):
+      # assert-lane-coverage.mjs now ignores comments, so this run line is the
+      # sites' one structural claim to CI coverage — and the script fails if a
+      # claimed root is not really among the deploy roots it scans, so the claim
+      # cannot drift from the checking.
       - name: Site integrity
-        run: node tooling/ci/check-site-integrity.mjs
+        run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam
       # [pipeline S-7a] apps.json is PUBLIC, so a `live` entry is a promise to a
       # stranger that the link works. Under the wildcard `*.nikatru.com` ([ADR
       # 006]) every name resolves and almost every name fails — measured
@@ -717,16 +760,48 @@ jobs:
           export PATH="$PATH:$HOME/.pub-cache/bin"
           melos run test
 
+  # 🔴 THE ROOT OF TRUST. `assert-gate-passed.mjs` reads THIS job's check-run
+  # conclusion and nothing else, and deploy-web, deploy-workers and
+  # build-platforms all refuse to run until it says success — so whatever this
+  # job is willing to call green is, transitively, what reaches production.
+  # Branch protection reads the same check.
+  #
+  # Its contract is asserted structurally by `assert-green-means-ran.mjs` §A,
+  # which names BOTH aggregators in the repo (this job and build-platforms'
+  # `all_platforms`) as targets: the `needs` list must name every other job in
+  # the file, `if: always()` must survive, the three non-green verdicts must
+  # each be tested with a real `contains(needs.*.result, …)` expression, the
+  # body must exit non-zero, the echo must name every lane, and no lane may
+  # carry a job-level `if:`. Renaming or deleting this job is COVERAGE LOST
+  # there, not a quiet pass. (assert-channel-register.mjs §6 independently
+  # covers `all_platforms` via the channel register's `aggregatingJob` pointer;
+  # two guards over one job is redundancy, not a conflict.)
   ci-gate:
     name: ci-gate
     runs-on: ubuntu-24.04
     needs: [subly_api, platform, tokens, site_shared, app_brick, sites, workspace_gate]
+    # LOAD-BEARING. Without `always()` this job inherits the default `success()`
+    # and would itself report SKIPPED whenever a lane failed — and GitHub counts
+    # a skipped required check as SATISFIED, so branch protection would go green
+    # over a red tree. The verdict logic below only means anything because this
+    # job runs no matter what its lanes did.
     if: always()
     steps:
       - name: Require all lanes green
         run: |
-          echo "subly_api=${{ needs.subly_api.result }} platform=${{ needs.platform.result }} tokens=${{ needs.tokens.result }} site_shared=${{ needs.site_shared.result }} app_brick=${{ needs.app_brick.result }} workspace_gate=${{ needs.workspace_gate.result }}"
-          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
-            echo "::error::One or more CI lanes failed"; exit 1
+          echo "subly_api=${{ needs.subly_api.result }} platform=${{ needs.platform.result }} tokens=${{ needs.tokens.result }} site_shared=${{ needs.site_shared.result }} app_brick=${{ needs.app_brick.result }} sites=${{ needs.sites.result }} workspace_gate=${{ needs.workspace_gate.result }}"
+          # 🔴 'skipped' IS A VERDICT, NOT AN ABSENCE — added 2026-08-01, the
+          # same fix build-platforms.yml's aggregator got on 2026-07-31 and this
+          # one did not. One added line — a paths filter to shave the ~6-minute
+          # app_brick lane, or `if: github.event_name != 'pull_request'` — would
+          # otherwise report the lane as `skipped`, neither of the other two
+          # clauses would fire, and ci-gate would conclude SUCCESS over a commit
+          # whose brick/stamp lane never ran. Both production deploys would then
+          # proceed on that verdict. A lane that did not run has not passed.
+          #
+          # `sites` was also missing from the echo above, so the line a human
+          # reads under-reported coverage (6 of 7) even though contains() saw it.
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
+            echo "::error::One or more CI lanes failed, was cancelled, or never ran — see the verdicts above"; exit 1
           fi
           echo "All lanes green"

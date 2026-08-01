@@ -1,6 +1,6 @@
 # {{app_id}}-api — Cloudflare Worker
 
-Per-app backend for **{{display_name}}**, stamped from the NIKATRU app brick.
+Per-app backend for **{{{display_name}}}**, stamped from the NIKATRU app brick.
 
 - `GET /v1/health` — public deploy marker (no auth).
 - `DELETE /v1/account` — **G2** in-app account deletion (auth required): purges

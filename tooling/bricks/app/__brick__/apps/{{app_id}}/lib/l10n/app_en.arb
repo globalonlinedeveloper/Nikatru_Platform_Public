@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "appTitle": "{{display_name}}",
+  "appTitle": "{{{display_name_json}}}",
   "@appTitle": {
     "description": "The application title shown in the OS task switcher."
   },

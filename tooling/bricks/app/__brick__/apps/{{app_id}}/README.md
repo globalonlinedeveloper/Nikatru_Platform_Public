@@ -1,4 +1,4 @@
-# {{display_name}}
+# {{{display_name}}}
 
 A NIKATRU Cross Platform App, stamped from `tooling/bricks/app`.
 
@@ -13,7 +13,7 @@ flutter pub get
 flutter run \
   --dart-define=SUPABASE_URL=... \
   --dart-define=SUPABASE_ANON_KEY=...{{#needs_backend}} \
-  --dart-define=API_BASE_URL=https://{{api_domain}}{{/needs_backend}}
+  --dart-define=API_BASE_URL={{{api_base_url}}}{{/needs_backend}}
 ```
 {{^needs_backend}}
 This app is **client-only**: it has no Worker and no database of its own and

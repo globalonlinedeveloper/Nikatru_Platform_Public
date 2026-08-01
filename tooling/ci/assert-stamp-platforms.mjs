@@ -42,8 +42,61 @@ const postGen = read(POST_GEN);
 // the prose describing the check instead of the check. That is this repo's own
 // recorded rule — assert on structure, never by grepping prose — reproduced by
 // the person writing it down.
+//
+// 🔴 AND THAT FIX WAS HALF A FIX (2026-08-01 full-corpus review). It stripped
+// FULL-LINE comments only, then tested bare presence anywhere in the file — so a
+// TRAILING comment (`run: echo skip  # flutter build web disabled`), a step
+// `name:` containing the phrase, or an `echo "flutter build web"` all still
+// satisfied "CI builds this platform". Mutation-proven: gutting the real build
+// step to an echo-plus-comment left this guard printing ok. The check now ranges
+// over RUN-BLOCK STRUCTURE: only the command text of `run:` scalars, with shell
+// comments and quoted strings removed, and the phrase must sit in COMMAND
+// position — the same prose-vs-structure rule, applied to where the match is
+// allowed to happen, not only to what is stripped first.
 const ciRaw = read(CI);
 const ci = ciRaw === null ? null : ciRaw.replace(/^\s*#.*$/gm, '');
+
+/** The command text of every `run:` scalar in a workflow, comments stripped.
+ *  Handles the three shapes this repo's workflows use: a plain one-line scalar
+ *  (YAML trailing ` #comment` removed), and `|`/`>` block scalars (each body
+ *  line collected until dedent — a `#` there is SHELL syntax, handled later). */
+function runBlocks(yaml) {
+  const lines = yaml.split('\n');
+  const blocks = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
+    if (!m) continue;
+    const keyIndent = m[1].length;
+    const rest = m[2];
+    if (/^[|>][+-]?\d*\s*(?:#.*)?$/.test(rest)) {
+      const body = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() === '') { body.push(''); continue; }
+        const indent = lines[j].match(/^\s*/)[0].length;
+        if (indent <= keyIndent) break;
+        body.push(lines[j]);
+      }
+      blocks.push(body.join('\n'));
+    } else {
+      blocks.push(rest.replace(/\s#.*$/, ''));
+    }
+  }
+  return blocks;
+}
+
+/** Does any run block actually INVOKE `flutter build <p>` — in command position,
+ *  not inside a quoted string, a shell comment, or an argument to `echo`? */
+function ciRunsBuild(yaml, p) {
+  const invoke = new RegExp(`^\\s*flutter\\s+build\\s+${p}\\b`);
+  return runBlocks(yaml).some((block) =>
+    block
+      .replace(/'[^'\n]*'/g, ' ')      // quoted prose is not a command
+      .replace(/"[^"\n]*"/g, ' ')
+      .replace(/(^|\s)#.*$/gm, '$1')   // a shell comment is not a command
+      .split(/\n|&&|\|\||;|\|/)        // one command per segment
+      .some((seg) => invoke.test(seg)),
+  );
+}
 if (postGen === null) problems.push(`${POST_GEN} is missing — nothing writes the platform claim.`);
 if (ciRaw === null) problems.push(`${CI} is missing — nothing builds a stamp.`);
 
@@ -80,7 +133,7 @@ if (postGen !== null && ci !== null) {
         `the stamp CLAIMS "${p}" but the brick stamps no \`${p}/\` folder. \`flutter build ${p}\` fails immediately on a fresh stamp, and its error suggests \`flutter create . --platforms ${p}\` — the hand-repair a stamper exists to make unnecessary.`,
       );
     }
-    if (!new RegExp(`flutter build ${p}\\b`).test(ci)) {
+    if (!ciRunsBuild(ci, p)) {
       problems.push(
         `the stamp CLAIMS "${p}" but ${CI} never runs \`flutter build ${p}\` against a stamped app. A claim nothing builds is a promise made to a public catalogue and never kept.`,
       );

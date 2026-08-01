@@ -40,7 +40,7 @@
     "APP_ID": "{{app_id}}",
     "SUPABASE_URL": "https://lcrkiurkvzhkonjwhpiv.supabase.co",
     "API_VERSION": "v1",
-    "ALLOWED_ORIGINS": "https://{{subdomain}}"
+    "ALLOWED_ORIGINS": "https://{{{subdomain}}}"
   },
   "d1_databases": [
     {

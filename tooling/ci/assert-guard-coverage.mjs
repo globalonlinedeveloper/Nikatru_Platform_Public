@@ -52,15 +52,17 @@ const TESTS = join(CI, 'test');
 // The floors are also backed by a RELATIONSHIP below: every guard ci.yml
 // invokes must be a file this scan found, so the manifest CI actually runs is
 // what anchors the set, not just a number that goes stale.
-const MIN_GUARDS = 35;
-const MIN_TEST_FILES = 25;
+// Re-measured at the 2026-08-01 ratchet (assert-green-means-ran.mjs landing):
+// 38 guards, 28 test files, 614 test declarations — floors moved up behind it.
+const MIN_GUARDS = 36;
+const MIN_TEST_FILES = 26;
 // ⚠️ Counting FILES is not counting TESTS. Seven files containing nothing but
 // comments satisfy MIN_TEST_FILES and run zero assertions, and `node --test`
 // exits 0 on a glob that matches nothing at all (verified on node v24, 2026-07-27)
 // — so the suite can be hollowed out or moved out from under its own glob while
 // ci.yml's "The guards must be able to fail" step still reports success. Counting
 // the declarations is what makes an empty suite loud.
-const MIN_TEST_CASES = 480;
+const MIN_TEST_CASES = 560;
 
 /** The marker every scanning guard uses when its own reach falls short. Chosen
  *  because it is already this repo's idiom, so the check enforces the existing

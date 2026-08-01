@@ -1,10 +1,10 @@
 {
   "app_id": "probeapi",
-  "display_name": "ProbeApi — Brick Backend Smoke Test",
-  "subdomain": "probeapi.nikatru.com",
-  "api_domain": "api-probeapi.nikatru.com",
+  "display_name": "ProbeApi's & Co — Backend Smoke",
+  "subdomain": "",
+  "api_domain": "",
   "seed_hex": "0E7C6B",
   "category": "productivity",
-  "description": "Throwaway app stamped in CI with needs_backend=true, to prove the OPT-IN Worker + D1 half of the clone contract still typechecks.",
+  "description": "Throwaway app stamped in CI with needs_backend=true, to prove the OPT-IN Worker + D1 half of the clone contract still typechecks (& ' / \" survive).",
   "needs_backend": true
 }
