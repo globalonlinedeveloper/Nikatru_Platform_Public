@@ -29,12 +29,10 @@ class ManagePlanScreen extends ConsumerStatefulWidget {
   const ManagePlanScreen({super.key});
 
   @override
-  ConsumerState<ManagePlanScreen> createState() =>
-      _ManagePlanScreenState();
+  ConsumerState<ManagePlanScreen> createState() => _ManagePlanScreenState();
 }
 
-class _ManagePlanScreenState
-    extends ConsumerState<ManagePlanScreen> {
+class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   bool _busy = false;
   CancellationOutcome? _outcome;
 
@@ -98,9 +96,7 @@ class _ManagePlanScreenState
         children: <Widget>[
           ListTile(
             leading: Icon(isPro ? Icons.verified_outlined : Icons.lock_outline),
-            title: Text(
-              isPro ? l10n.planActive : l10n.planInactive,
-            ),
+            title: Text(isPro ? l10n.planActive : l10n.planInactive),
           ),
           const Divider(),
           // [pipeline 5]M-10. On this rail the entitlement is a server row keyed

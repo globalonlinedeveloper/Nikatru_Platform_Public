@@ -174,7 +174,8 @@ class SettingsScreen extends ConsumerWidget {
           // account: offering "manage your subscription" to a signed-out user
           // is an offer the app cannot honour, the same reason the profile and
           // deletion entries are gated.
-          if (ref.watch(authRepositoryProvider).currentUser != null) ...<Widget>[
+          if (ref.watch(authRepositoryProvider).currentUser !=
+              null) ...<Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(

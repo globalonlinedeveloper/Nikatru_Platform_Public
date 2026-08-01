@@ -242,6 +242,7 @@ class _MemSecureStore implements core.SecureStore {
 class _FakeEntitlements implements core.EntitlementTransport {
   _FakeEntitlements({this.pro = false});
   bool pro;
+
   /// Set by a test to make the SERVER unreachable mid-flight.
   bool fail = false;
   int calls = 0;
@@ -2003,71 +2004,80 @@ void main() {
       expect(c.read(paywallLockedProvider), isFalse);
     });
 
-    test('the paywall is OFF by default, so a fresh stamp gates nothing', () async {
-      // `paywall.enabled` is the outer switch and a stamped app is born with it
-      // false. Without this, being born with the gate would cost every new app
-      // a wall it never asked for.
-      final ProviderContainer c = _moneyContainer(
-        store: _onboardedStore(),
-        server: _FakeEntitlements(),
-        paywallEnabled: false,
-      );
-      addTearDown(c.dispose);
-      await c.read(appConfigProvider.future);
-      await c.read(entitlementsProvider.future);
-      expect(c.read(paywallLockedProvider), isFalse);
-    });
+    test(
+      'the paywall is OFF by default, so a fresh stamp gates nothing',
+      () async {
+        // `paywall.enabled` is the outer switch and a stamped app is born with it
+        // false. Without this, being born with the gate would cost every new app
+        // a wall it never asked for.
+        final ProviderContainer c = _moneyContainer(
+          store: _onboardedStore(),
+          server: _FakeEntitlements(),
+          paywallEnabled: false,
+        );
+        addTearDown(c.dispose);
+        await c.read(appConfigProvider.future);
+        await c.read(entitlementsProvider.future);
+        expect(c.read(paywallLockedProvider), isFalse);
+      },
+    );
 
-    test('[5]M-8 · a stale answer RE-LOCKS when online, and HOLDS when offline', () async {
-      final ProviderContainer c = _moneyContainer(
-        store: _onboardedStore(),
-        server: _FakeEntitlements(pro: true),
-      );
-      addTearDown(c.dispose);
+    test(
+      '[5]M-8 · a stale answer RE-LOCKS when online, and HOLDS when offline',
+      () async {
+        final ProviderContainer c = _moneyContainer(
+          store: _onboardedStore(),
+          server: _FakeEntitlements(pro: true),
+        );
+        addTearDown(c.dispose);
 
-      // The config must be RESOLVED first: paywallLockedProvider reads it, and
-      // nothing else in this chain starts it. Without this the provider takes
-      // its documented not-yet-known branch and the test measures that instead.
-      await c.read(appConfigProvider.future);
-      await c.read(entitlementsProvider.future);
-      expect(c.read(paywallLockedProvider), isFalse);
+        // The config must be RESOLVED first: paywallLockedProvider reads it, and
+        // nothing else in this chain starts it. Without this the provider takes
+        // its documented not-yet-known branch and the test measures that instead.
+        await c.read(appConfigProvider.future);
+        await c.read(entitlementsProvider.future);
+        expect(c.read(paywallLockedProvider), isFalse);
 
-      // The cache now holds a verified grant. Move the clock past the ceiling.
-      final core.EntitlementCache cache = c.read(entitlementCacheProvider);
-      final DateTime far = DateTime.now().add(
-        cache.stalenessCeiling + const Duration(days: 1),
-      );
-      expect(
-        (await cache.readValid(now: far)).isPro,
-        isFalse,
-        reason: 'online and unverified past the ceiling ⇒ access stops',
-      );
-      // 🔴 BOTH DIRECTIONS. Without the second, a client that ALWAYS locks
-      // passes — and always-locking is the fail-closed-and-dead shape this
-      // stage exists to stop.
-      expect(
-        (await cache.readValid(now: far, connectivityAvailable: false)).isPro,
-        isTrue,
-        reason:
-            'offline it is HELD — a deliberate loss, written down: locking a '
-            'paying user out for being in a tunnel is the larger harm',
-      );
-    });
+        // The cache now holds a verified grant. Move the clock past the ceiling.
+        final core.EntitlementCache cache = c.read(entitlementCacheProvider);
+        final DateTime far = DateTime.now().add(
+          cache.stalenessCeiling + const Duration(days: 1),
+        );
+        expect(
+          (await cache.readValid(now: far)).isPro,
+          isFalse,
+          reason: 'online and unverified past the ceiling ⇒ access stops',
+        );
+        // 🔴 BOTH DIRECTIONS. Without the second, a client that ALWAYS locks
+        // passes — and always-locking is the fail-closed-and-dead shape this
+        // stage exists to stop.
+        expect(
+          (await cache.readValid(now: far, connectivityAvailable: false)).isPro,
+          isTrue,
+          reason:
+              'offline it is HELD — a deliberate loss, written down: locking a '
+              'paying user out for being in a tunnel is the larger harm',
+        );
+      },
+    );
 
-    test('a failed fetch keeps the cached answer — a flat network is not a refund', () async {
-      final _FakeEntitlements server = _FakeEntitlements(pro: true);
-      final ProviderContainer c = _moneyContainer(
-        store: _onboardedStore(),
-        server: server,
-      );
-      addTearDown(c.dispose);
-      await c.read(appConfigProvider.future);
-      await c.read(entitlementsProvider.future);
+    test(
+      'a failed fetch keeps the cached answer — a flat network is not a refund',
+      () async {
+        final _FakeEntitlements server = _FakeEntitlements(pro: true);
+        final ProviderContainer c = _moneyContainer(
+          store: _onboardedStore(),
+          server: server,
+        );
+        addTearDown(c.dispose);
+        await c.read(appConfigProvider.future);
+        await c.read(entitlementsProvider.future);
 
-      server.fail = true;
-      c.invalidate(entitlementsProvider);
-      expect((await c.read(entitlementsProvider.future)).isPro, isTrue);
-    });
+        server.fail = true;
+        c.invalidate(entitlementsProvider);
+        expect((await c.read(entitlementsProvider.future)).isPro, isTrue);
+      },
+    );
 
     test('[5]M-11 · the price comes from the RAIL CONFIG, formatted', () async {
       final ProviderContainer c = _moneyContainer(
@@ -2104,10 +2114,7 @@ void main() {
       await c.read(entitlementsProvider.future);
 
       await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: c,
-          child: const {{app_id.pascalCase()}}App(),
-        ),
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
       );
       await _turnsAndSettleRoute(tester);
 
