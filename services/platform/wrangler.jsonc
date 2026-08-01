@@ -54,7 +54,14 @@
   ],
   "kv_namespaces": [
     // Edge-cached per-app config overrides (key: `config:<app>`).
-    { "binding": "CONFIG_KV", "id": "33e4e58abb644d0e917a159227c6c134" }
+    { "binding": "CONFIG_KV", "id": "33e4e58abb644d0e917a159227c6c134" },
+    // Warm cache for the Supabase JWKS document, so an ES256 verify on
+    // DELETE /v1/account does not fetch it on every cold isolate. The SAME
+    // namespace services/subly-api binds: there is one identity project for the
+    // whole portfolio, so a second namespace would be a second copy of one
+    // public document, doubling the KV writes that cache costs against a Free
+    // budget of 1,000/day account-wide (tooling/ceilings.json → kv.writesPerDay).
+    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
   ],
   "ratelimits": [
     {

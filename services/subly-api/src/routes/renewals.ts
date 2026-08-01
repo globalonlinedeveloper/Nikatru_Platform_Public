@@ -33,8 +33,12 @@ function daysBetween(a: string, b: string): number {
 // the rest of this change is about.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** ~10 years. Far past any renewal horizon; bounds the date arithmetic. */
+/** ~10 years. Far past any renewal horizon; bounds the date arithmetic.
+ *  @ceiling none — bounds a QUERY WINDOW in days, not a platform resource. The
+ *  route issues one SELECT regardless of the window's width, so no Cloudflare
+ *  ceiling moves with this number. */
 const MAX_WITHIN_DAYS = 3660;
+/** @ceiling none — a default for the same window; same reasoning. */
 const DEFAULT_WITHIN_DAYS = 7;
 
 // GET /?withinDays=7

@@ -12,7 +12,8 @@
     "db:migrate": "wrangler d1 migrations apply PLATFORM_DB --remote"
   },
   "dependencies": {
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "jose": "^5.9.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",

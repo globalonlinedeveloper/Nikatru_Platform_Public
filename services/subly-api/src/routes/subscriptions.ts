@@ -62,11 +62,21 @@ function serializeSubscription(row: Subscription) {
 //   · unbounded strings — a megabyte `usage_note` per row, per user.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Bounds. Generous enough for any real subscription, small enough to bound a row. */
+/** Bounds. Generous enough for any real subscription, small enough to bound a row.
+ *
+ *  All five are COLUMN WIDTHS on one row of one INSERT — input shapes, not
+ *  platform resources. The resource they touch is D1's maximum row size, whose
+ *  ceiling is 2 MB; their sum is under 1.6 KB, three orders of magnitude below
+ *  it, so none of them can ever be the binding constraint. */
+/** @ceiling none — column width; see the block above. */
 const MAX_NAME = 200;
+/** @ceiling none — column width; see the block above. */
 const MAX_CATEGORY = 120;
+/** @ceiling none — column width; see the block above. */
 const MAX_PLAN = 200;
-const MAX_GLYPH = 32; // an emoji or short token, not a field
+/** @ceiling none — column width; an emoji or short token, not a field. */
+const MAX_GLYPH = 32;
+/** @ceiling none — column width; see the block above. */
 const MAX_NOTE = 1000;
 /**
  * Upper bound on `price`. Deliberately generous: Subly stores a bare number with
@@ -75,6 +85,9 @@ const MAX_NOTE = 1000;
  * 1 000 000 cap would 400 legitimate first-party traffic in those markets. The
  * bound exists to keep a typo out of a REAL column and to keep the value well
  * inside exact-integer range, not to police what a subscription may cost.
+ *
+ * @ceiling none — a VALUE bound on one numeric column, not a resource bound. Its
+ * real right-hand side is Number.MAX_SAFE_INTEGER, a language limit.
  */
 const MAX_PRICE = 1_000_000_000;
 

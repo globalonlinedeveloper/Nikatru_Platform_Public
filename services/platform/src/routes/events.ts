@@ -26,9 +26,46 @@ import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Hard caps. A batch beyond these is a bug or an abuser, not a real client. */
-const MAX_EVENTS_PER_BATCH = 100;
+
+/**
+ * 🔴 LOWERED 100 → 50 ON 2026-08-01, AND THE OLD VALUE WAS NEVER SAFE.
+ *
+ * D1's documented ceiling is **50 queries per Worker invocation on Free**
+ * (`tooling/ceilings.json` → `d1.queriesPerInvocation`, sourced and dated). The
+ * handler below issues ONE `PLATFORM_DB.batch()` holding one INSERT per
+ * well-formed event, so a full batch at the old cap asked for 100 statements
+ * against a 50-query limit — double, with nothing in the tree able to say so,
+ * for as long as the constant named no ceiling.
+ *
+ * ⚠️ WHY 50 AND NOT "MEASURE FIRST". Cloudflare does NOT document whether a
+ * `batch()` of N statements spends ONE query or N (the limits page states the 50
+ * without qualifying batches; the Binding API page describes `batch()` purely as
+ * a latency optimisation; the pricing page mentions batches only for ROW
+ * counting). That ambiguity is recorded verbatim on the ceiling row. Under the
+ * one-query reading 100 was fine; under the per-statement reading it was a 500
+ * on the shared database every app in the portfolio depends on — and the second
+ * reading fails ONLY in production, where it cannot be observed in CI. So the
+ * cap takes the worst case.
+ *
+ * AND IT COSTS NOTHING. The first-party client flushes at `kFlushBatchSize = 20`
+ * (`packages/core/lib/src/analytics/analytics_recorder.dart:14`), so 50 still
+ * leaves 2.5× headroom over the largest batch any shipped app actually sends.
+ * The alternative — leaving 100 in place until someone runs the miniflare probe
+ * — meant shipping a server whose own cap exceeded its platform's documented
+ * limit, indefinitely, to avoid a change that no client can notice.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const MAX_EVENTS_PER_BATCH = 50;
+/** @ceiling none — bounds the WIDTH of one `events.event` value, not a platform
+ *  resource. Sized to the locked event taxonomy, which has no name near 64. */
 const MAX_EVENT_NAME_LEN = 64;
+/** @ceiling none — an identifier column's width (UUIDv4 is 36). Bounds the shape
+ *  of one field; no D1, KV or Workers limit moves with it. */
 const MAX_ID_LEN = 64;
+/** @ceiling none — the serialised width of one `events.params` cell. An input
+ *  shape cap; the resource it touches (row size) has a 2 MB D1 ceiling this is
+ *  three orders of magnitude below, so it can never be the binding constraint. */
 const MAX_PARAMS_JSON_LEN = 2048;
 
 /**
@@ -39,18 +76,35 @@ const MAX_PARAMS_JSON_LEN = 2048;
  * either side moves alone. Without the count cap the server enforced no bound at
  * all: the client stopped at 12 keys and a hand-rolled POST stored 200.
  */
+/** @ceiling none — mirrors the Dart client's `kMaxParamCount`. Its right-hand
+ *  side is the OTHER LANGUAGE, not a vendor limit, and test/analytics-contract.test.ts
+ *  is the assertion that keeps the pair equal. */
 export const MAX_PARAM_COUNT = 12;
+/** @ceiling none — mirrors the Dart client's `kMaxParamValueLength`, same pair,
+ *  same test. An enumerable value that needs 64 characters is not enumerable. */
 export const MAX_PARAM_VALUE_LEN = 64;
 
 /**
  * Byte ceilings on the RAW REQUEST BODY, enforced before it is parsed.
  *
- * `MAX_EVENTS_BODY_BYTES` is sized from the caps above rather than picked: 100
- * events × (2048 bytes of params + ~400 bytes of ids, name and timestamps) is
- * ≈ 245 KB, so 256 KiB accepts every batch the caps permit and nothing beyond.
+ * `MAX_EVENTS_BODY_BYTES` is sized from the caps above rather than picked: at the
+ * cap of 50 events × (2048 bytes of params + ~400 bytes of ids, name and
+ * timestamps) it is ≈ 123 KB, so 256 KiB accepts every batch the caps permit and
+ * nothing beyond. (It was sized against the old cap of 100 at ≈ 245 KB and is
+ * deliberately NOT tightened alongside it: the headroom is now 2×, and a byte
+ * ceiling that tracked the event cap exactly would reject a legitimate batch of
+ * unusually verbose — but individually legal — params.)
+ *
  * A consent artifact is a dozen short fields, so it gets a far tighter one.
+ *
+ * ⚠️ THE VENDOR CEILING ABOVE BOTH IS 100 MB. The edge will hand this Worker a
+ * body that large (`workers.maxRequestBodySize`, Free), so these two constants
+ * are the ONLY thing between an isolate and 100 MB of work it has already been
+ * charged for — which is why they are enforced before `JSON.parse`, not after.
  */
+/** @ceiling workers.maxRequestBodySize lte */
 export const MAX_EVENTS_BODY_BYTES = 256 * 1024;
+/** @ceiling workers.maxRequestBodySize lte */
 export const MAX_CONSENT_BODY_BYTES = 8 * 1024;
 
 const events = new Hono<AppEnv>();

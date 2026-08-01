@@ -56,6 +56,9 @@ export function isIdString(v: unknown, max: number): v is string {
  * `1e400` parses out of JSON as `Infinity`, so the input is reachable from the
  * wire — it does not need a hostile client, only a buggy one.
  */
+/** @ceiling none — this is ECMAScript's own maximum time value (ES2024 §21.4.1.1,
+ *  ±8.64e15 ms), not a Cloudflare limit. It moves only if the language does, and
+ *  no D1/KV/Workers ceiling is related to it. */
 export const MAX_TIME_MS = 8.64e15;
 
 /**

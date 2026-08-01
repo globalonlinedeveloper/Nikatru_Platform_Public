@@ -70,7 +70,8 @@
         "SUPABASE_URL",
         "SUPABASE_ANON_KEY",
         "SUPABASE_JWT_SECRET",
-        "SUPABASE_KEEPALIVE_URLS"
+        "SUPABASE_KEEPALIVE_URLS",
+        "SUPABASE_SERVICE_ROLE_KEY"
       ],
       "openProtocol": "YES — OIDC/JWKS for tokens and plain Postgres underneath. Verification is against standard JWKS claims, not a Supabase SDK call, which is what makes the identity provider swappable.",
       "seam": {
