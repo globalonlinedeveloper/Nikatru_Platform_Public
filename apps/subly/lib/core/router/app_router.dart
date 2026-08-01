@@ -17,7 +17,12 @@ import '../../features/settings/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../state/providers.dart';
 
-final GlobalKey<NavigatorState> _rootKey = GlobalKey<NavigatorState>();
+/// The root Navigator's key — public, not an implementation detail, because
+/// [pipeline C-6] ConsentGate is installed via `MaterialApp.router`'s `builder`,
+/// which Flutter inserts ABOVE this Navigator. A dialog launched from up there
+/// has no Navigator ancestor of its own, so the consent prompt borrows this
+/// key's context to reach the real Navigator (see consent_prompt.dart).
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Router is built once (authRepositoryProvider is a stable instance) and
 /// refreshed on auth changes via [GoRouterRefreshStream].
@@ -25,7 +30,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authRepositoryProvider);
 
   return GoRouter(
-    navigatorKey: _rootKey,
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/onboarding',
     refreshListenable: GoRouterRefreshStream(auth.authStateChanges()),
     redirect: (BuildContext context, GoRouterState state) {
@@ -38,17 +43,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: <RouteBase>[
-      GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
+      GoRoute(
+        path: '/onboarding',
+        builder: (_, __) => const OnboardingScreen(),
+      ),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/scan', builder: (_, __) => const ScanScreen()),
       GoRoute(
         path: '/notifications',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootNavigatorKey,
         builder: (_, __) => const NotificationsScreen(),
       ),
       GoRoute(
         path: '/sub/:id',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootNavigatorKey,
         builder: (_, GoRouterState state) =>
             SubscriptionDetailScreen(id: state.pathParameters['id']!),
       ),
@@ -56,21 +64,43 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __, StatefulNavigationShell navShell) =>
             AppShell(navigationShell: navShell),
         branches: <StatefulShellBranch>[
-          StatefulShellBranch(routes: <RouteBase>[
-            GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
-          ]),
-          StatefulShellBranch(routes: <RouteBase>[
-            GoRoute(path: '/calendar', builder: (_, __) => const CalendarScreen()),
-          ]),
-          StatefulShellBranch(routes: <RouteBase>[
-            GoRoute(path: '/insights', builder: (_, __) => const InsightsScreen()),
-          ]),
-          StatefulShellBranch(routes: <RouteBase>[
-            GoRoute(path: '/budget', builder: (_, __) => const BudgetScreen()),
-          ]),
-          StatefulShellBranch(routes: <RouteBase>[
-            GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
-          ]),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: '/calendar',
+                builder: (_, __) => const CalendarScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: '/insights',
+                builder: (_, __) => const InsightsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: '/budget',
+                builder: (_, __) => const BudgetScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: '/settings',
+                builder: (_, __) => const SettingsScreen(),
+              ),
+            ],
+          ),
         ],
       ),
     ],

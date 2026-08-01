@@ -56,7 +56,12 @@ class _SublyAppState extends ConsumerState<SublyApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: router,
-      // Below the router's Navigator, so the prompt can be a real dialog.
+      // NOTE: the builder's widget is inserted ABOVE the router's Navigator
+      // (the Navigator lives inside `child`), so the gate itself cannot host
+      // a dialog — its prompt borrows the root Navigator's context via
+      // `rootNavigatorKey` (see consent_prompt.dart). This comment used to
+      // claim the opposite, and that wrong belief shipped a consent prompt
+      // that could never appear.
       builder: (BuildContext context, Widget? child) =>
           ConsentGate(child: child ?? const SizedBox.shrink()),
     );

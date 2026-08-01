@@ -34,6 +34,17 @@ const String kPrivacyPolicyVersion = '2026-07-26';
 /// when it does.
 const String kInstallIdKey = 'nikatru.install_id';
 
+/// [AppConfig.isBackendLive], as a provider.
+///
+/// [pipeline C-6] Exists so the open-path WIDGET test can pump [ConsentGate]
+/// as a live build. `isBackendLive` is a compile-time constant, and that is
+/// exactly what let the gate ship broken: no test could ever take the live
+/// branch, so `showDialog` throwing above the router's Navigator went unseen
+/// while every logic test stayed green. Production never overrides this.
+final Provider<bool> backendLiveProvider = Provider<bool>(
+  (_) => AppConfig.isBackendLive,
+);
+
 /// Non-secret key-value store (install id, consent decision, event queue).
 final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
     FutureProvider<core.KeyValueStore>((ref) => PrefsKeyValueStore.create());
