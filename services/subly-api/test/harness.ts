@@ -122,23 +122,22 @@ export function realAppDb(extraSchema: string[] = []): SqliteD1 {
   return new SqliteD1([init0001, init0002, ...extraSchema]);
 }
 
-/** The SHARED platform_db entitlements table. Declared here rather than
- *  imported because it is migrated by services/platform, which is a separate
- *  npm project outside this Vite root; the shape is asserted against
- *  src/types.ts's `Entitlement` in entitlements.test.ts so it cannot drift
- *  unnoticed. */
-export const ENTITLEMENTS_SCHEMA = `
-CREATE TABLE entitlements (
-  user_id     TEXT,
-  app_id      TEXT,
-  entitlement TEXT,
-  product_id  TEXT,
-  store       TEXT,
-  is_active   INTEGER DEFAULT 0,
-  expires_at  TEXT,
-  updated_at  TEXT,
-  PRIMARY KEY (user_id, app_id, entitlement)
-);`;
+/**
+ * The SHARED platform_db entitlements table — THE REAL MIGRATION, imported the
+ * same way subly's own are.
+ *
+ * This used to be a hand-typed copy, with a comment claiming it was checked
+ * against `src/types.ts` "in entitlements.test.ts" — a file that did not exist.
+ * A copy is exactly the wrong shape for this table: it is owned and applied by
+ * services/platform, so the drift that actually happens is that file changing
+ * while the copy here sits still, and no assertion between two LOCAL
+ * declarations can ever see that. The path crosses npm-project boundaries but
+ * not the Vite root (the monorepo root is what `fs.allow` resolves to), so it
+ * simply resolves — which the previous comment asserted it would not.
+ */
+import platformEntitlements from '../../platform/migrations/0001_entitlements.sql?raw';
+
+export const ENTITLEMENTS_SCHEMA = platformEntitlements;
 
 export function realPlatformDb(): SqliteD1 {
   return new SqliteD1([ENTITLEMENTS_SCHEMA]);
