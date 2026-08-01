@@ -359,6 +359,84 @@ if (scanned === 0) {
   ok(`no phantom filenames in ${scanned} brick file(s)`);
 }
 
+// ── 3 · [pipeline S-1r] NO PRINTED STEP MAY BE ONE A LOCKED ADR RETIRED ─────
+// The checklist is the ONLY instruction a stamped app ever gives its owner, and
+// a false step there costs more than silence: for months it said
+// "Add DNS for <host>", which [ADR 006] had already made unnecessary by locking
+// a proxied wildcard `*.nikatru.com`. Following it meant creating a record that
+// already resolved — and, worse, it NAMED THE WRONG CAUSE. A stamped host that
+// nothing is attached to answers 522, never NXDOMAIN, so an owner debugging a
+// dark app was pointed at DNS, the one layer that was already working.
+//
+// Re-measured 2026-08-01 over DNS-over-HTTPS, because the system resolver has no
+// egress from this environment (`ECONNREFUSED` for every name including a
+// control): four random labels under nikatru.com returned identical Cloudflare
+// A records, while the same shape under two control domains returned none. The
+// wildcard is answering. ⚠️ That measurement is what this rule rests on — not on
+// `00-TRACKER.md`, which still records the wildcard as never created and is the
+// stale side of a contradiction the corpus carried unresolved.
+//
+// This is a small NAMED list, deliberately. It is not "scan the checklist for
+// anything questionable" — each entry is a specific instruction a specific
+// locked decision retired, and it has to survive being read aloud.
+const RETIRED_INSTRUCTIONS = [
+  {
+    pattern: /\badd\s+dns\b/i,
+    what: 'telling the owner to add a DNS record',
+    why: '[ADR 006] locked a proxied wildcard `*.nikatru.com`, so a stamped app needs ZERO new DNS. '
+      + 'The step is not merely redundant — it points at the wrong layer: an unattached host resolves '
+      + 'fine and answers 522. Say what is actually missing (attachment), not what already works.',
+  },
+];
+
+const POST_GEN_PATH = `${BRICK}/hooks/post_gen.dart`;
+const postGenSrc = read(POST_GEN_PATH);
+if (postGenSrc === null) {
+  problems.push(
+    `COVERAGE LOST — ${POST_GEN_PATH} could not be read, so the printed checklist was never examined. That file IS the owner-facing instruction; not reading it is not the same as it being correct.`,
+  );
+} else {
+  // Comments stripped, string literals KEPT: the checklist IS a set of literals,
+  // and this file's own explanatory comments quote the retired phrase verbatim
+  // — the prose trap that has caught two guards in this repo already. Match the
+  // printed text, never the note explaining why it was removed.
+  const printable = stripDart(postGenSrc, { keepStrings: true });
+  const printed = [...printable.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]);
+
+  // 🔴 COVERAGE AS A RELATIONSHIP, not a typed floor. The raw source and the
+  // extracted view are two independent observations of the same thing: every
+  // checklist header present in the file must survive extraction. If the hook is
+  // restructured so these literals stop being visible (a heredoc, a helper, a
+  // different quote style), the scan below would range over nothing and report
+  // "no retired instructions" — clean, having read none of the checklist.
+  const rawHeaders = (postGenSrc.match(/Owner checklist:/g) ?? []).length;
+  const seenHeaders = printed.filter((t) => t.includes('Owner checklist:')).length;
+  if (rawHeaders === 0) {
+    problems.push(
+      `COVERAGE LOST — ${POST_GEN_PATH} prints no "Owner checklist:" at all. Either the stamp stopped telling its owner anything, or this scan no longer recognises the checklist it is supposed to police.`,
+    );
+  } else if (seenHeaders < rawHeaders) {
+    problems.push(
+      `COVERAGE LOST — the checklist scan recovered ${seenHeaders} of ${rawHeaders} "Owner checklist:" header(s) from ${POST_GEN_PATH}. The extractor has stopped seeing printed text, so every "no retired instruction" result below is about the part it can still read.`,
+    );
+  } else {
+    const retired = [];
+    for (const rule of RETIRED_INSTRUCTIONS) {
+      const hit = printed.find((t) => rule.pattern.test(t));
+      if (hit !== undefined) retired.push({ rule, hit });
+    }
+    if (retired.length) {
+      for (const { rule, hit } of retired) {
+        problems.push(
+          `${POST_GEN_PATH} prints a retired instruction — ${rule.what}: "${hit.trim()}". ${rule.why}`,
+        );
+      }
+    } else {
+      ok(`the printed checklist (${seenHeaders} branch(es)) names no retired instruction`);
+    }
+  }
+}
+
 /** Is there a file with this basename anywhere we would plausibly mean? */
 function existsAnywhere(name) {
   const roots = [BRICK, 'tooling', '.'];

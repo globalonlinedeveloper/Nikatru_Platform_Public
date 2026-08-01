@@ -59,9 +59,23 @@ const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VALID_HINTS = ['wnam', 'enam', 'weur', 'eeur', 'apac', 'oc'];
 
+/** 🔴 THE CONFIG SURGERY, HOISTED TO A CONSTANT SO ONE THING IS TESTED.
+ *
+ *  This regex is the riskiest line in the script: it rewrites a uuid inside a
+ *  JSONC file, and its scoping — `"binding": "APP_DB"` first, then the NEXT
+ *  `database_id` within 400 characters — is the only reason PLATFORM_DB (shared
+ *  by the whole portfolio, bound in the very same array) is never rewritten.
+ *
+ *  It lives up here, above the credential gate, because `--self-check` must
+ *  exercise THE REAL EXPRESSION. A self-check with its own copy of the pattern
+ *  proves that the copy works, which is worth nothing: the two would rot apart
+ *  and the check would go on passing. [pipeline S-12r] */
+const APP_DB_BLOCK = /("binding"\s*:\s*"APP_DB"[\s\S]{0,400}?"database_id"\s*:\s*")([^"]+)(")/;
+
 const args = process.argv.slice(2);
 const appId = args.find((a) => !a.startsWith('--'));
 const dry = args.includes('--dry');
+const selfCheck = args.includes('--self-check');
 const locIdx = args.indexOf('--location');
 const location = locIdx > -1 ? args[locIdx + 1] : 'apac';
 
@@ -91,6 +105,167 @@ if (!existsSync(cfgPath)) {
     `✗ no stamped backend at ${cfgPath}.`,
     '  This provisions an app the brick already stamped with needs_backend=true; it does not stamp one.',
   ]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `--self-check` — the OFFLINE exercise, and the whole of [pipeline S-12r].
+//
+// WHY IT EXISTS. Until now nothing ran this script and nothing tested it:
+// `grep -rn provision-backend .github/` returned zero, and it sits under
+// tooling/scripts/, which assert-guard-coverage.mjs did not cover. The repo's
+// own precedent is three lines away in ci.yml, where the four release scripts
+// are dry-run exercised on every push because "a release script nobody runs
+// rots exactly like a guard nobody feeds bad input to". This one had neither.
+//
+// WHY NOT REUSE `--dry`. `--dry` is not offline: it exits at the credential gate
+// below without CLOUDFLARE_API_TOKEN/ACCOUNT_ID, then runs `npm install` and
+// calls `wrangler d1 info` before it stops. In CI that would fail for people who
+// have no secret — a fork PR — rather than for defects, which is the worst kind
+// of red. `--self-check` stops HERE, above the gate: no token, no install, no
+// network, no writes.
+//
+// WHAT IT PROVES — the config surgery, which is the half most likely to rot. A
+// template edit to the stamped wrangler.jsonc (renaming the binding, reordering
+// the array so PLATFORM_DB comes first, widening the gap past 400 characters)
+// breaks the scoping silently, and the failure would land on a real database.
+// So the patch is applied IN MEMORY to a synthetic uuid and the result RE-PARSED,
+// asserting structurally that APP_DB moved and PLATFORM_DB did not.
+if (selfCheck) {
+  const problems = [];
+  const raw = readFileSync(cfgPath, 'utf8');
+
+  /** Strip JSONC comments and trailing commas, then parse. A local copy on
+   *  purpose: every guard in tooling/ci that reads wrangler.jsonc carries its
+   *  own, because these files are each meant to run standalone with no import
+   *  graph. Structural parsing is the point — this repo has already shipped a
+   *  check that matched a COMMENT explaining the absence of the very key it was
+   *  looking for. */
+  const parseJsonc = (text) => {
+    let out = '';
+    let i = 0;
+    while (i < text.length) {
+      const two = text.slice(i, i + 2);
+      if (two === '//') {
+        while (i < text.length && text[i] !== '\n') i++;
+      } else if (two === '/*') {
+        const end = text.indexOf('*/', i + 2);
+        i = end === -1 ? text.length : end + 2;
+      } else if (text[i] === '"') {
+        out += text[i++];
+        while (i < text.length && text[i] !== '"') {
+          if (text[i] === '\\') out += text[i++];
+          out += text[i++];
+        }
+        if (i < text.length) out += text[i++];
+      } else {
+        out += text[i++];
+      }
+    }
+    return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+  };
+
+  // 🔴 THE ENTRY AND ITS `database_id` ARE TWO DIFFERENT FACTS, and collapsing
+  // them into one lookup made this check report the wrong cause: an APP_DB entry
+  // that had merely lost its `database_id` line was reported as "no entry is
+  // bound as APP_DB", sending a reader to look for a rename that had not
+  // happened. It is also the more dangerous of the two — see below.
+  const entryOf = (cfg, binding) => (cfg.d1_databases ?? []).find((d) => d.binding === binding);
+  const idOf = (cfg, binding) => entryOf(cfg, binding)?.database_id;
+
+  console.log(`self-check: ${cfgPath}`);
+  let before;
+  try {
+    before = parseJsonc(raw);
+    console.log('  ok  the stamped wrangler.jsonc parses as JSONC');
+  } catch (e) {
+    problems.push(`the stamped wrangler.jsonc is not parseable JSONC: ${e.message}`);
+  }
+
+  if (before) {
+    const appIdBefore = idOf(before, 'APP_DB');
+    const platformIdBefore = idOf(before, 'PLATFORM_DB');
+    // Matched up here so the diagnostics below can say what the live patch WOULD
+    // have captured, rather than only that something is missing.
+    const m = raw.match(APP_DB_BLOCK);
+
+    if (entryOf(before, 'APP_DB') === undefined) {
+      problems.push(
+        'no d1_databases entry is bound as "APP_DB". The patch below targets that binding by name, ' +
+          'so a rename in the brick template would leave this script silently patching nothing.',
+      );
+    } else if (appIdBefore === undefined) {
+      // 🔴 THE SHAPE THAT REWRITES THE SHARED BINDING. The patch looks for the
+      // FIRST `database_id` after `"binding": "APP_DB"`. If the APP_DB entry has
+      // none, the search runs straight on into the NEXT entry — PLATFORM_DB —
+      // and the live run would write this app's uuid over the portfolio's shared
+      // database id. The regex still "matches"; it just matches the wrong thing.
+      problems.push(
+        'the APP_DB entry declares no `database_id`. The patch is scoped to the first `database_id` ' +
+          'FOLLOWING the APP_DB binding, so with none of its own it captures the NEXT binding\'s — ' +
+          'PLATFORM_DB, shared by the whole portfolio. A missing line here is not a missing patch, ' +
+          'it is a patch applied to the wrong database' +
+          (m ? `: the live run would have captured "${m[2]}"` : '') + '.',
+      );
+    }
+    if (platformIdBefore === undefined) {
+      problems.push(
+        'no d1_databases entry is bound as "PLATFORM_DB". That binding is the REASON the patch is ' +
+          'scoped: without it in the fixture, "the shared binding was not rewritten" is proven by ' +
+          'its absence rather than by the scoping, which is no proof at all.',
+      );
+    }
+
+    if (!m) {
+      problems.push(
+        'APP_DB_BLOCK did not match the stamped config. This is the exact expression the live run ' +
+          'uses to patch database_id, so a non-match means provisioning would die at step 1 for ' +
+          'every newly stamped backend app.',
+      );
+    } else if (appIdBefore !== undefined && m[2] !== appIdBefore) {
+      // 🔴 THE CASE THE SCOPING EXISTS FOR. If the array is reordered or the
+      // 400-character window widened, this regex can capture a DIFFERENT
+      // binding's database_id while still "matching".
+      problems.push(
+        `APP_DB_BLOCK captured "${m[2]}", but the parsed APP_DB.database_id is "${appIdBefore}". ` +
+          'The regex matched something other than the APP_DB binding it names.',
+      );
+    }
+
+    if (m && appIdBefore !== undefined && platformIdBefore !== undefined) {
+      const SYNTHETIC = '11111111-2222-4333-8444-555555555555';
+      let after;
+      try {
+        after = parseJsonc(raw.replace(APP_DB_BLOCK, `$1${SYNTHETIC}$3`));
+      } catch (e) {
+        problems.push(`the patch produced a config that no longer parses: ${e.message}`);
+      }
+      if (after) {
+        if (idOf(after, 'APP_DB') !== SYNTHETIC) {
+          problems.push(`after the patch APP_DB.database_id is "${idOf(after, 'APP_DB')}", not the value written.`);
+        } else {
+          console.log('  ok  the patch rewrites APP_DB.database_id (verified by re-parsing, not by regex)');
+        }
+        if (idOf(after, 'PLATFORM_DB') !== platformIdBefore) {
+          problems.push(
+            `the patch also rewrote PLATFORM_DB.database_id ("${platformIdBefore}" -> ` +
+              `"${idOf(after, 'PLATFORM_DB')}"). That binding is SHARED by the whole portfolio; ` +
+              'rewriting it points every app at the wrong database.',
+          );
+        } else {
+          console.log('  ok  PLATFORM_DB.database_id is untouched — the shared binding is never rewritten');
+        }
+      }
+    }
+  }
+
+  if (problems.length) {
+    console.error('\n✗ provision-backend --self-check FAILED:');
+    for (const p of problems) console.error(`    ${p}`);
+    console.error('\n  Nothing was created, patched or migrated — this mode never leaves memory.');
+    process.exit(1);
+  }
+  console.log('\n✅ self-check passed. No token, no install, no network, no writes.');
+  process.exit(0);
 }
 
 for (const k of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
@@ -156,7 +331,9 @@ const WRANGLER = ensureInstalled();
 const wrangler = (a, cwd = svcDir) => sh(process.execPath, [WRANGLER, ...a], cwd);
 console.log(`    wrangler: ${WRANGLER}`);
 let cfgText = readFileSync(cfgPath, 'utf8');
-const appDbBlock = /("binding"\s*:\s*"APP_DB"[\s\S]{0,400}?"database_id"\s*:\s*")([^"]+)(")/;
+// The SAME constant `--self-check` exercises above — see its header for why it
+// is not a second copy of the pattern.
+const appDbBlock = APP_DB_BLOCK;
 const m = cfgText.match(appDbBlock);
 if (!m) {
   die([

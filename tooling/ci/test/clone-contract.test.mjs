@@ -37,13 +37,38 @@ after(() => {
 });
 
 let seq = 0;
+
+/** [pipeline S-6] The shared platform Worker, which every real tree has and
+ *  which is the ONE directory allowed to carry a cron. The fixture ships it by
+ *  default because the cron limb's coverage assertion is derived from the real
+ *  services/ tree: a fixture without it is a tree the scan cannot have read, and
+ *  that must be COVERAGE LOST rather than a quiet pass.
+ *
+ *  🔴 ITS HEADER COMMENT NAMES CRONS ON PURPOSE — the real one does too, and a
+ *  grep-based limb would fire on it. Prose here is the trap; the parsed object
+ *  is the subject. */
+const platformConfig = (crons = ['0 6 * * *']) =>
+  `{
+  // Scheduled work for the WHOLE portfolio lives here — one cron, one Worker,
+  // staying under the per-account cron trigger cap.
+  "name": "platform",
+  "triggers": {
+    "crons": ${JSON.stringify(crons)}
+  }
+}
+`;
+
 /** A minimally valid stamped tree. `mutate` receives helpers to break exactly
  *  one thing, so each test differs from the passing case in one dimension. */
-function tree(app, { backend = false, mutate = null } = {}) {
+function tree(app, { backend = false, mutate = null, platform = platformConfig() } = {}) {
   const root = join(TMP, `r${seq++}`);
   const appDir = join(root, 'apps', app);
   const coreDir = join(appDir, 'lib', 'core');
   mkdirSync(coreDir, { recursive: true });
+  if (platform !== null) {
+    mkdirSync(join(root, 'services', 'platform'), { recursive: true });
+    writeFileSync(join(root, 'services', 'platform', 'wrangler.jsonc'), platform);
+  }
 
   const host = backend ? `https://api-${app}.nikatru.com` : 'https://platform.nikatru.com';
   const files = {
@@ -251,5 +276,105 @@ describe('the guard itself', () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /COVERAGE LOST/);
     assert.match(r.stderr, /The scan is broken, not the tree/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline S-6] NO `crons` OUTSIDE services/platform.
+//
+// This limb was written into S-6's acceptance and NEVER BUILT: `grep -i cron`
+// over the guard and this file both returned zero, while stage 13's T-1 and T-10
+// each name [3]S-6 as their single cron enforcer. Nothing was violating it —
+// there is exactly one `crons` block, in services/platform — so the gap was
+// invisible: the rule held by luck, and nothing would have said otherwise.
+//
+// All six cases below were mutation-proven against the REAL worktree first
+// (restore byte-verified), including the two FALSE-ALARM cases: a limb that
+// fires on the legitimate cron home, or on a comment, is worse than no limb.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('[S-6] cron triggers are portfolio-wide, so they live in ONE Worker', () => {
+  test('the committed shape passes and names what it parsed', () => {
+    const r = run(tree('demo'), '--client', 'demo');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /no cron triggers outside services\/platform/);
+    assert.match(r.stdout, /service config\(s\) parsed: platform/);
+  });
+
+  test('a cron in ANOTHER service FAILS, naming the file and the count', () => {
+    const root = tree('demo', {
+      mutate: (t) =>
+        t.write('services/other-api/wrangler.jsonc', '{ "triggers": { "crons": ["0 6 * * *", "0 7 * * *"] } }'),
+    });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /services\/other-api\/wrangler\.jsonc declares 2 cron trigger\(s\)/);
+    assert.match(r.stderr, /capped per ACCOUNT, not per Worker/);
+  });
+
+  // 🔴 THE FALSE-ALARM SIDE, half of the point. services/platform is the ONE
+  // allowed home; a limb that fires there would make the legitimate arrangement
+  // unshippable and teach everyone to disable the check.
+  test('the SAME cron inside services/platform is fine', () => {
+    const r = run(tree('demo'), '--client', 'demo');
+    assert.equal(r.status, 0, r.stderr);
+  });
+
+  test('services/platform having NO cron at all is also fine — it is a ceiling, not a quota', () => {
+    const r = run(tree('demo', { platform: '{ "name": "platform" }\n' }), '--client', 'demo');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /no cron triggers outside services\/platform/);
+  });
+
+  // 🔴 NEVER A GREP. This repo already shipped a guard that matched the comment
+  // explaining why there is no `r2_buckets`; the real platform config's header
+  // says "cron" in prose twice, and so does this fixture's.
+  test('a COMMENT naming crons in another service does NOT fire', () => {
+    const root = tree('demo', {
+      mutate: (t) =>
+        t.write(
+          'services/other-api/wrangler.jsonc',
+          '{\n  // "triggers": { "crons": ["0 6 * * *"] } — deliberately NOT set: cron lives in platform.\n  "name": "other-api"\n}\n',
+        ),
+    });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 0, r.stderr);
+  });
+
+  test('an EMPTY crons array is not a cron trigger', () => {
+    const root = tree('demo', {
+      mutate: (t) => t.write('services/other-api/wrangler.jsonc', '{ "triggers": { "crons": [] } }'),
+    });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 0, r.stderr);
+  });
+
+  // ── coverage: the scan must prove it reached the tree it claims to police ──
+  test('COVERAGE LOST when a services/ directory carries no wrangler.jsonc', () => {
+    const root = tree('demo', { mutate: (t) => t.write('services/other-api/README.md', 'no config here\n') });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /COVERAGE LOST/);
+    assert.match(r.stderr, /services\/other-api\/wrangler\.jsonc — the directory exists but carries no wrangler\.jsonc/);
+  });
+
+  test('COVERAGE LOST when the exempt home services/platform was never read', () => {
+    const r = run(tree('demo', { platform: null, mutate: (t) => t.write('services/other-api/wrangler.jsonc', '{}') }), '--client', 'demo');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /never read services\/platform\/wrangler\.jsonc/);
+  });
+
+  test('COVERAGE LOST when there is no services/ tree at all', () => {
+    const r = run(tree('demo', { platform: null }), '--client', 'demo');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /found no service directories under services\//);
+  });
+
+  test('COVERAGE LOST when a service config is unparseable — unknown, not clean', () => {
+    const root = tree('demo', {
+      mutate: (t) => t.write('services/other-api/wrangler.jsonc', '{ this is not json'),
+    });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /is not parseable JSONC/);
   });
 });

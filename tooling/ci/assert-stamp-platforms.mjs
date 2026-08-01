@@ -325,6 +325,118 @@ if (postGen !== null && ci !== null) {
   }
 }
 
+// ── [pipeline S-4] JOINING THE WORKSPACE IS TWO HALVES, AND ONLY ONE WAS BUILT ─
+// 🔴 THIS BLOCK IS DELIBERATELY OUTSIDE THE `postGen && ci` GUARD ABOVE. It asks
+// about pubspecs, not about post_gen or the workflow, and a check that quietly
+// stops running when an unrelated file goes missing is this repo's most repeated
+// failure shape.
+//
+// The defect it exists for: `_registerInWorkspace` adds `apps/<id>` to the root
+// `workspace:` list, and the stamped pubspec never said `resolution: workspace`.
+// Dart's resolver then refuses THE WHOLE WORKSPACE — every package at once, not
+// just the offending member:
+//
+//   apps\<id>\pubspec.yaml is included in the workspace from .\pubspec.yaml,
+//   but does not have `resolution: workspace`.
+//
+// So `melos run gate` — the one command that defines green here — would have
+// stopped resolving on the day app #2 was committed. Measured on the real tree
+// with Dart 3.12.2 (stamp the probe, `flutter pub get` at the root: exit 1).
+//
+// 🔴 AND IT WAS INVISIBLE TO CI BY CONSTRUCTION, which is why a guard alone is
+// not the fix. The `app_brick` lane resolves INSIDE `apps/probe`, which resolves
+// standalone and never consults the root; `workspace_gate` runs on a clean
+// checkout that has no stamp. Neither lane could see it. ci.yml now resolves
+// from the repo ROOT after the stamp, so the real resolver has to accept the
+// stamp too — this guard is the second line, not the only one.
+{
+  const BRICK_PUBSPEC = `${BRICK_APP}/pubspec.yaml`;
+  const ROOT_PUBSPEC = 'pubspec.yaml';
+
+  /** Does this pubspec declare `resolution: workspace` as a TOP-LEVEL key?
+   *
+   *  🔴 COMMENT-STRIPPED AND COLUMN-ANCHORED, because the words are in the
+   *  template's own explanatory comment — the exact prose-vs-structure trap this
+   *  file has already been fooled by twice (a comment saying "flutter build web",
+   *  then a comment saying there is no `r2_buckets` in the sibling guard). A bare
+   *  `includes('resolution: workspace')` stays GREEN after the real line is
+   *  deleted, because the comment explaining why the line matters survives it.
+   *  Column 0 also matters: a nested `resolution:` under some other key is a
+   *  different setting, and the resolver only honours the top-level one. */
+  const declaresWorkspaceResolution = (text) =>
+    text
+      .split('\n')
+      .map((l) => l.replace(/#.*$/, '').trimEnd())
+      .some((l) => /^resolution:[ \t]+workspace$/.test(l));
+
+  // ── direction 1: the TEMPLATE must declare it ──────────────────────────────
+  const tmpl = read(BRICK_PUBSPEC);
+  if (tmpl === null) {
+    problems.push(
+      `COVERAGE LOST — ${BRICK_PUBSPEC} could not be read, so "the stamped app declares \`resolution: workspace\`" was asked of nothing. A stamped app that omits it kills root resolution for the ENTIRE repository, so this must be a failure and never a skip.`,
+    );
+  } else if (!declaresWorkspaceResolution(tmpl)) {
+    problems.push(
+      `${BRICK_PUBSPEC} does not declare \`resolution: workspace\`, but the stamp adds \`apps/<id>\` to the root \`workspace:\` list. Dart refuses the whole workspace when a listed member omits it — \`flutter pub get\` at the repo root exits 1 for EVERY package, so \`melos run gate\` stops working the day the first stamped app is committed. Add the line beside \`publish_to\`, matching apps/subly/pubspec.yaml.`,
+    );
+  } else {
+    ok('the stamped pubspec declares `resolution: workspace`');
+  }
+
+  // ── direction 2: the reciprocal — every member on the root list declares it ─
+  // One direction cannot catch this. Direction 1 alone passes if the stamper
+  // starts registering some OTHER path; direction 2 alone passes for as long as
+  // nothing stamped is committed — which is precisely the state that hid the
+  // defect for the whole life of the brick. The list is parsed the same way
+  // `_registerInWorkspace` writes it (`^  - <path>`), so the guard ranges over
+  // exactly what the stamper edits rather than over a second idea of the format.
+  const rootRaw = read(ROOT_PUBSPEC);
+  const members = [];
+  if (rootRaw !== null) {
+    const lines = rootRaw.split('\n');
+    const start = lines.findIndex((l) => l.trimEnd() === 'workspace:');
+    if (start !== -1) {
+      for (let i = start + 1; i < lines.length; i++) {
+        const mm = lines[i].match(/^ {2}- (\S+)[ \t]*$/);
+        if (!mm) break;
+        members.push(mm[1]);
+      }
+    }
+  }
+  if (rootRaw === null) {
+    problems.push(
+      `COVERAGE LOST — ${ROOT_PUBSPEC} could not be read, so the reciprocal workspace check ranged over nothing. That file IS the workspace; without it there is no list to verify the stamp against.`,
+    );
+  } else if (members.length === 0) {
+    problems.push(
+      `COVERAGE LOST — ${ROOT_PUBSPEC} yielded ZERO \`workspace:\` members. Either the block is gone (in which case the stamper's registration writes into nothing) or this parse no longer matches the format \`_registerInWorkspace\` writes. A reciprocal check over an empty list passes by examining nothing.`,
+    );
+  } else {
+    const bad = [];
+    for (const mem of members) {
+      const mp = read(`${mem}/pubspec.yaml`);
+      if (mp === null) {
+        bad.push(
+          `\`${mem}\` is on the root \`workspace:\` list but has no ${mem}/pubspec.yaml — the resolver fails on the missing member before it reaches any of the real ones`,
+        );
+      } else if (!declaresWorkspaceResolution(mp)) {
+        bad.push(
+          `\`${mem}\` is on the root \`workspace:\` list but ${mem}/pubspec.yaml does not declare \`resolution: workspace\``,
+        );
+      }
+    }
+    if (bad.length) {
+      for (const b of bad) {
+        problems.push(
+          `${b}. Root resolution then fails for the WHOLE repository, not just that member, and \`melos run gate\` cannot run at all.`,
+        );
+      }
+    } else {
+      ok(`all ${members.length} workspace member(s) declare \`resolution: workspace\``);
+    }
+  }
+}
+
 if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);

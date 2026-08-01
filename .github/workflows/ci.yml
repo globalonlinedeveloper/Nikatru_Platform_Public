@@ -781,6 +781,23 @@ jobs:
           mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
+      # [pipeline S-12r] EXERCISE THE PROVISIONER. Same reasoning the four
+      # release scripts above already carry — "a release script nobody runs rots
+      # exactly like a guard nobody feeds bad input to" — applied to the one
+      # command the stamp's own checklist tells the owner to run. Nothing ran
+      # provision-backend.mjs and nothing tested it: `grep -rn provision-backend
+      # .github/` returned zero.
+      #
+      # `--self-check` and NOT `--dry`: --dry needs CLOUDFLARE_API_TOKEN, runs
+      # `npm install` and calls `wrangler d1 info` before it stops, so on a fork
+      # PR it would fail for want of a secret rather than for a defect. This mode
+      # stops above the credential gate — no token, no install, no network, no
+      # writes — and proves the half most likely to rot silently: that the
+      # config surgery still targets APP_DB and still leaves the SHARED
+      # PLATFORM_DB binding alone. Verified structurally, by re-parsing the
+      # patched config, never by re-grepping it.
+      - name: The provisioner's config surgery still targets APP_DB, not the shared binding
+        run: node tooling/scripts/provision-backend.mjs probeapi --self-check
       # The backend probe stamps with BOTH hosts blank, so this is the run that
       # proves the stamped Worker's own ALLOWED_ORIGINS is a real origin rather
       # than the bare `https://` the derive path used to produce — an allowlist
@@ -804,6 +821,31 @@ jobs:
           flutter pub get
           flutter analyze --no-fatal-infos
           flutter test
+      # 🔴 [pipeline S-4] RESOLVE FROM THE REPO ROOT, WITH THE STAMPS ON THE LIST.
+      # This step exists because the defect it catches was INVISIBLE TO THIS LANE
+      # BY CONSTRUCTION. Every `flutter pub get` above runs INSIDE `apps/<probe>`,
+      # which resolves standalone and never consults the root; `workspace_gate`
+      # runs on a clean checkout that has no stamp. So a stamped app could be
+      # added to the root `workspace:` list while omitting `resolution: workspace`
+      # — which makes Dart refuse THE WHOLE WORKSPACE, every package at once —
+      # and both lanes stayed green. It would have surfaced on the day app #2 was
+      # committed, as `melos run gate` failing to resolve for the entire repo.
+      #
+      # There is no `working-directory` on purpose: the root IS the subject.
+      # Both probes are on the list by now, so this is literally the app-#2
+      # scenario — two stamped apps plus apps/subly plus the eight packages in one
+      # resolution. assert-stamp-platforms.mjs asserts the same property
+      # statically; this is the half that makes the REAL RESOLVER agree, because a
+      # guard's own correctness must not be the only thing standing between this
+      # repo and a dead gate.
+      #
+      # The revert mirrors the SHOW-1 step above: both probes are throwaway, and
+      # the resolve rewrites pubspec.lock as well as leaving the two `apps/` lines
+      # in the root pubspec.
+      - name: The WHOLE workspace still resolves from the root with stamped apps on it
+        run: flutter pub get
+      - name: Revert the root pubspec + lockfile — both probes are throwaway
+        run: git checkout -- pubspec.yaml pubspec.lock
       # ⚠️ THE ONE DELIBERATE EXCEPTION to F-8's `npm ci` / `--enforce-lockfile`
       # rule, and it is stated here rather than left to look like an oversight.
       #

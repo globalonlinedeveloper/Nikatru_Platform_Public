@@ -1,6 +1,26 @@
 name: {{app_id.snakeCase()}}
 description: "{{{display_name_json}}} — a NIKATRU Cross Platform App."
 publish_to: "none"
+# 🔴 [pipeline S-4] THIS LINE IS WHAT KEEPS `melos run gate` ALIVE. post_gen adds
+# `apps/<id>` to the ROOT `workspace:` list, and Dart's resolver refuses the whole
+# workspace — not just this member — when a listed path's pubspec omits
+# `resolution: workspace`:
+#
+#   apps\<id>\pubspec.yaml is included in the workspace from .\pubspec.yaml,
+#   but does not have `resolution: workspace`.
+#
+# That is `dart pub get`/`flutter pub get` exiting 1 AT THE REPO ROOT, so the one
+# command that defines green stops resolving for every package at once. Measured
+# on the real tree with Dart 3.12.2 by stamping the probe and resolving from the
+# root; the same two-file shape reproduces it standalone.
+#
+# It was invisible for as long as no stamped app was committed: the `app_brick`
+# lane resolves INSIDE `apps/probe` (standalone, never consults the root) and
+# `workspace_gate` runs on a clean checkout that has no stamp. So the defect was
+# scheduled to land on the day app #2 was committed and on no day before it.
+# `.github/workflows/ci.yml` now resolves from the repo root after the stamp so
+# the real resolver, not only assert-stamp-platforms.mjs, has to accept this.
+resolution: workspace
 version: 0.1.0+1
 
 environment:
