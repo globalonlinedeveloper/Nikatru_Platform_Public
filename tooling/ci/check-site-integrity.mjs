@@ -59,7 +59,15 @@ const SITES = join(repoRoot, 'sites');
 /** A deploy root is a directory under sites/ that ships an index.html.
  *  `sites/_shared` is an Eleventy source layer, not a deploy root, and is
  *  correctly excluded by that test rather than by a hardcoded name. */
-const REQUIRED_FILES = ['index.html', '404.html', 'robots.txt', '_headers'];
+// [pipeline 12]W-3b, 2026-08-02. `sitemap.xml` and `llms.txt` were NOT here, and
+// the sitemap relationship below sat behind an `if (existsSync(...))` — so
+// deleting sites/rajasekarselvam/sitemap.xml passed this lane, passed ci-gate,
+// and shipped, with the check that would have caught a drifted sitemap quietly
+// skipping instead. A discovery surface is not optional decoration: the sitemap
+// is how every page on these roots is found, and llms.txt is the machine-readable
+// description an assistant reads INSTEAD of the pages. Deleting either is a
+// deploy that loses a channel, and nothing said so.
+const REQUIRED_FILES = ['index.html', '404.html', 'robots.txt', '_headers', 'sitemap.xml', 'llms.txt'];
 
 /** The pages a store reviewer (and Indian e-commerce rules, for refunds) expects
  *  to resolve on the site that fronts a published app. */
@@ -402,6 +410,11 @@ const canonicalByOrigin = new Map();
 let policyVersionsChecked = 0;
 let storeUrlsChecked = 0;
 let urlFormRoots = 0;
+/** [12]W-3b — how many deploy roots had their sitemap compared to their pages.
+ *  Zero is the state this limb spent its whole life one deletion away from. */
+let sitemapRootsCompared = 0;
+/** [12]W-3c — how many llms.txt files were read against the app registry. */
+let llmsFilesChecked = 0;
 
 for (const root of siteRoots) {
   const name = root.slice(SITES.length + 1);
@@ -452,7 +465,11 @@ for (const root of siteRoots) {
 
   // ── the sitemap must list exactly the indexable pages, by canonical URL ────
   const sitemapPath = join(root, 'sitemap.xml');
+  // The absence itself is reported ONCE, by REQUIRED_FILES above — two messages
+  // for one fault is how a fix chases the wrong one. What this counter defends
+  // is the other failure: the limb running against ZERO roots and printing ok.
   if (existsSync(sitemapPath)) {
+    sitemapRootsCompared++;
     const entries = sitemapEntries(readFileSync(sitemapPath, 'utf8'));
     const listed = new Set(entries.map((e) => e.loc));
     for (const [url, page] of wanted) {
@@ -631,6 +648,115 @@ let appsArrayFound = false;
   }
 }
 
+// ── [pipeline 12]W-3c · llms.txt must not contradict the app registry ────────
+//
+// `llms.txt` is the machine-readable description an assistant reads INSTEAD of
+// the pages, and it had ZERO coverage: the string appeared in this file exactly
+// once, inside a comment. It was measurably lying — `sites/nikatru/llms.txt`
+// said "First releases are on the way" and "Status: pre-launch" while
+// `sites/_shared/_data/apps.json` marked `subly` live and
+// `assert-catalog-reachable.mjs` proved its URL answers.
+//
+// 🔴 WHY THIS FAILS WHERE THE HOMEPAGE LIMB ONLY PRINTS. The homepage limb
+// deliberately refuses to decide whether a live app is ANNOUNCED — a soft
+// launch is a legitimate state and that is an owner's call. This is a different
+// question. A file whose entire job is to state what the site is cannot say
+// "pre-launch" while the registry says an app is live and the app answers on
+// the public internet: that is not a launch-timing choice, it is a factual
+// contradiction between two files in this repo, and an agent can fix either
+// side. The announcement decision stays exactly where it was.
+//
+// Derived from `apps.json`, never from a keyword list somebody tunes. The one
+// prose pattern below is a CONTRADICTION list, not a copy standard, and it says
+// so. Platform-count claims are deliberately NOT touched here —
+// `assert-channel-claims.mjs` owns those and PRINTS rather than fails, because
+// site copy is the owner's voice; two guards on one fault is how a fix chases
+// the wrong message.
+{
+  const appsJsonPath = join(repoRoot, 'sites', '_shared', '_data', 'apps.json');
+  let registry = [];
+  try {
+    registry = JSON.parse(readFileSync(appsJsonPath, 'utf8'));
+  } catch {
+    registry = []; // a missing/unparseable registry is assert-channel-claims.mjs's complaint
+  }
+  const live = (Array.isArray(registry) ? registry : []).filter(
+    (a) => a && a.status === 'live' && typeof a.url === 'string' && a.url,
+  );
+  const notLive = (Array.isArray(registry) ? registry : []).filter(
+    (a) => a && a.status !== 'live' && typeof a.url === 'string' && a.url,
+  );
+  /** Phrases that cannot be true at the same time as a live registry entry.
+   *  A CONTRADICTION list — not a house style, and not a claim about how the
+   *  copy should read. Each one asserts the studio has shipped nothing. */
+  const PRE_LAUNCH_CLAIMS = [
+    /\bpre-?launch\b/i,
+    /first releases? (?:are|is) on the way\b/i,
+    /\bnot (?:yet )?(?:released|launched|available)\b/i,
+    /\bcoming soon\b/i,
+    // "first apps in active development" and "first NIKATRU releases in active
+    // development" are the same claim with a brand dropped in the middle, and
+    // the narrower pattern this replaced caught only the first — leaving the
+    // mirror site making the identical false statement, unremarked, on the run
+    // that first went red.
+    /\bfirst\b[^.\n]{0,40}\breleases?\b[^.\n]{0,40}\bin active development\b/i,
+    /\bfirst\b[^.\n]{0,40}\bapps?\b[^.\n]{0,40}\bin active development\b/i,
+  ];
+  const appFacingNames = new Set(appFacingRoots.map((r) => r.name));
+
+  for (const root of siteRoots) {
+    const name = root.slice(SITES.length + 1);
+    const p = join(root, 'llms.txt');
+    if (!existsSync(p)) continue; // absence is REQUIRED_FILES' complaint, reported once
+    llmsFilesChecked++;
+    const text = readFileSync(p, 'utf8');
+
+    // (a) It may not advertise an app the registry does not call live. Same
+    //     rule, same reason, as the homepage limb: a name with nothing behind
+    //     it is a promise made to a stranger.
+    for (const app of notLive) {
+      if (text.includes(app.url)) {
+        problems.push(
+          `sites/${name}/llms.txt names ${app.url}, and sites/_shared/_data/apps.json gives "${app.name ?? app.slug}" status ` +
+            `"${app.status}". An assistant reading this file will send someone to an app the registry does not say is live.`,
+        );
+      }
+    }
+
+    if (live.length === 0) continue;
+
+    // (b) It may not claim the studio has shipped nothing while it has.
+    for (const re of PRE_LAUNCH_CLAIMS) {
+      const m = text.match(re);
+      if (m) {
+        problems.push(
+          `sites/${name}/llms.txt says ${JSON.stringify(m[0])} while sites/_shared/_data/apps.json marks ` +
+            `${live.map((a) => `"${a.name ?? a.slug}"`).join(', ')} live at ${live.map((a) => a.url).join(', ')}. ` +
+            'The two files contradict each other. This is NOT the announcement question the homepage limb ' +
+            'leaves to the owner — one of these two statements is simply false, and either side is an ' +
+            'agent-sized edit: correct the copy, or change the registry status.',
+        );
+      }
+    }
+
+    // (c) On an APP-FACING root only, a live app must be findable by URL. The
+    //     mirror ships an llms.txt too and is deliberately out of scope: it
+    //     points readers at the studio rather than duplicating its catalogue,
+    //     and forcing it to carry the list would be inventing a requirement
+    //     nobody wrote.
+    if (!appFacingNames.has(name)) continue;
+    for (const app of live) {
+      if (!text.includes(app.url)) {
+        problems.push(
+          `sites/${name}/llms.txt does not name ${app.url}, which sites/_shared/_data/apps.json marks live. ` +
+            'This file exists to tell a machine reader what the site is; a live app it omits is a page the ' +
+            'assistant will never mention and a user will never reach.',
+        );
+      }
+    }
+  }
+}
+
 // ── Pages Functions must at least parse ──────────────────────────────────────
 // Pages Functions are ES modules in .js files. `node --check` assumes CommonJS
 // for .js and would reject `export` as a syntax error, so each file is copied to
@@ -783,6 +909,12 @@ if (SCANNING_OWN_REPO) {
   }
   if (ipReaders === 0) {
     lost.push(`NO Pages Function reads the ${IP_HEADER} header, so the keyed-fingerprint requirement ranged over an empty set. sites/nikatru/functions/api/subscribe.js does read it.`);
+  }
+  if (sitemapRootsCompared === 0) {
+    lost.push('NO deploy root had its sitemap compared to its indexable pages. That limb used to sit behind an existsSync() skip, so a root with no sitemap produced silence; it is now a required file, and this says so if the comparison itself stops happening.');
+  }
+  if (llmsFilesChecked === 0) {
+    lost.push('NO llms.txt was read against sites/_shared/_data/apps.json, so the machine-readable description of these sites was compared to nothing. Both deploy roots ship one.');
   }
   if (promiseMarkers === 0) {
     lost.push('NO Pages Function carries a `SITE PROMISE: "…"` marker, so no code-held promise was checked against the copy the site actually serves.');

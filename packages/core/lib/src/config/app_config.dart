@@ -40,6 +40,7 @@ class AppConfig {
     this.flags = const <String, int>{},
     this.theme,
     this.updateUrl,
+    this.maxPromosPerWeek = 0,
   });
 
   final String appId;
@@ -69,6 +70,27 @@ class AppConfig {
   /// default, so this stays offline-safe: an unreachable config service can
   /// never leave the wall with nowhere to send anyone.
   final String? updateUrl;
+
+  /// How many PROMOTIONAL notifications a week an app may send — [pipeline
+  /// 13]T-6.
+  ///
+  /// 🔴 THE DEFAULT IS ZERO, AND THAT IS THE POINT. There is no promo sender in
+  /// this repo and no code path that posts a promotional touch, so zero is the
+  /// only value that cannot be wrong before there is anything to be wrong
+  /// about. Raising it is a deliberate decision, taken once, priced at the time
+  /// — not a number that drifted upward while nobody was looking.
+  ///
+  /// Typed on BOTH sides of the config contract on purpose. `services/platform`
+  /// declares the same key and its test asserts the full key set in both
+  /// directions, so adding it here alone fails the server's lane and adding it
+  /// there alone fails the stray-key check. A cap the server can send and the
+  /// client cannot read is a cap that does not exist.
+  ///
+  /// Deliberately NOT a rate limiter: nothing enforces this at runtime, because
+  /// nothing sends. The tripwire that makes the first promo sender read it
+  /// lives in `tooling/ci/assert-adapter-capabilities.mjs`, and that guard
+  /// PRINTS every run that its domain is empty today.
+  final int maxPromosPerWeek;
 
   /// Whether feature [key] is enabled ([orElse] when the key is absent).
   bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;
@@ -119,6 +141,12 @@ class AppConfig {
               (json['update_url'] as String).isNotEmpty
           ? json['update_url'] as String
           : null,
+      // A wrong-typed or absent value reads as 0 rather than throwing: a
+      // drifted config body must never be able to RAISE the cap, and it
+      // must never crash a client that is only trying to load its config.
+      maxPromosPerWeek: json['max_promos_per_week'] is num
+          ? (json['max_promos_per_week']! as num).toInt().clamp(0, 1 << 20)
+          : 0,
     );
   }
 
@@ -130,6 +158,7 @@ class AppConfig {
         'content_pack': contentPack,
         'copy': copy,
         'min_supported_version': minSupportedVersion,
+        'max_promos_per_week': maxPromosPerWeek,
         if (flags.isNotEmpty) 'flags': flags,
         if (theme != null) 'theme': theme,
       };
@@ -145,6 +174,7 @@ class AppConfig {
     Map<String, int>? flags,
     Map<String, Object?>? theme,
     String? updateUrl,
+    int? maxPromosPerWeek,
   }) =>
       AppConfig(
         appId: appId ?? this.appId,
@@ -157,6 +187,7 @@ class AppConfig {
         flags: flags ?? this.flags,
         theme: theme ?? this.theme,
         updateUrl: updateUrl ?? this.updateUrl,
+        maxPromosPerWeek: maxPromosPerWeek ?? this.maxPromosPerWeek,
       );
 
   @override

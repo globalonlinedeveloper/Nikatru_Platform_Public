@@ -58,8 +58,14 @@ const ADAPTERS = [
   'telemetry',
 ];
 
-/** A capability source covering all six platforms, taking the platform as a param. */
-const capsSrc = (symbol, { dropLinux = false, hostOnly = false } = {}) => `
+/** A capability source covering all six platforms, taking the platform as a param.
+ *
+ *  `schedules` adds a `canSchedule` field, which is the DERIVED DOMAIN of the
+ *  [pipeline 13]T-7 schedule-contract limb: a descriptor that promises a
+ *  platform can schedule owes the register a contract naming the OS arguments
+ *  that make the promise true. Only the notifications fixture sets it, exactly
+ *  as only one real adapter does. */
+const capsSrc = (symbol, { dropLinux = false, hostOnly = false, schedules = false } = {}) => `
 import 'package:flutter/foundation.dart' show TargetPlatform, immutable;
 
 /// Doc mentioning desktop Windows/Linux and web in PROSE — deliberately, because
@@ -69,7 +75,7 @@ class ${symbol} {
   const ${symbol}({required this.works, required this.note});
   final bool works;
   final String note;
-
+${schedules ? '  bool get canSchedule => works;\n' : ''}
   static ${symbol} ${hostOnly ? 'current' : 'forPlatform'}(
     TargetPlatform platform, {
     required bool isWeb,
@@ -114,7 +120,46 @@ void main() {
 }
 `;
 
-function tree({ mutateRegister = (r) => r, capsOverride = {}, testOverride = {} } = {}) {
+/** The scheduling adapter's implementation file. The doc comment NAMES both
+ *  pinned arguments in prose — deliberately, because that is what makes a
+ *  raw-text scan green against a file where the arguments themselves are gone.
+ *  `dropMode` / `dropRepeat` delete the real argument and leave the prose. */
+const schedImplSrc = ({
+  dropMode = false,
+  dropRepeat = false,
+  exact = false,
+  secondChannel = false,
+  noChannel = false,
+  channelComment = false,
+} = {}) => `
+${noChannel ? '' : `const details = AndroidNotificationDetails(
+  ${channelComment ? "// A promo channel would be AndroidNotificationDetails('nikatru_promos', ...).\n  " : ''}'nikatru_reminders',
+  'Reminders',
+);
+`}${secondChannel ? `const promo = AndroidNotificationDetails(
+  'nikatru_promos',
+  'Offers',
+);
+` : ''}
+/// Schedules with androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle
+/// and matchDateTimeComponents: DateTimeComponents.time — described here in a
+/// comment, which must NOT satisfy the contract on its own.
+Future<void> scheduleDaily(int id, Object when) => plugin.zonedSchedule(
+      id,
+      when,
+${dropMode ? '' : `      androidScheduleMode: AndroidScheduleMode.${exact ? 'exact' : 'inexact'}AllowWhileIdle,\n`}${dropRepeat ? '' : '      matchDateTimeComponents: DateTimeComponents.time,\n'}    );
+`;
+
+const SCHED_CONTRACT = {
+  file: 'packages/notifications/lib/src/impl.dart',
+  unobservable: 'set below the port; no fake plugin can observe it',
+  requires: [
+    { code: 'androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle', why: 'inexact needs no SCHEDULE_EXACT_ALARM' },
+    { code: 'matchDateTimeComponents: DateTimeComponents.time', why: 'without it the daily reminder fires once' },
+  ],
+};
+
+function tree({ mutateRegister = (r) => r, capsOverride = {}, testOverride = {}, schedImpl = schedImplSrc(), capReader = null } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
 
@@ -130,6 +175,7 @@ function tree({ mutateRegister = (r) => r, capsOverride = {}, testOverride = {} 
         test: `packages/${a}/test/caps_test.dart`,
         pinnedTo: 'some_sdk 1.x',
         degradesOn: 'web differs',
+        ...(a === 'notifications' ? { scheduleContract: JSON.parse(JSON.stringify(SCHED_CONTRACT)) } : {}),
       },
     };
   });
@@ -141,9 +187,14 @@ function tree({ mutateRegister = (r) => r, capsOverride = {}, testOverride = {} 
     const symbol = `${a.replace(/(^|_)(\w)/g, (_, __, c) => c.toUpperCase())}Capabilities`;
     // Each adapter needs a third-party dep or the derivation will not see it.
     files[`packages/${a}/pubspec.yaml`] = `name: nikatru_${a}\ndependencies:\n  flutter:\n    sdk: flutter\n  some_sdk: ^1.0.0\n`;
-    files[`packages/${a}/lib/src/caps.dart`] = capsOverride[a] ?? capsSrc(symbol);
+    files[`packages/${a}/lib/src/caps.dart`] =
+      capsOverride[a] ?? capsSrc(symbol, { schedules: a === 'notifications' });
     files[`packages/${a}/test/caps_test.dart`] = testOverride[a] ?? testSrc(symbol);
   }
+  files['packages/notifications/lib/src/impl.dart'] = schedImpl;
+  // [13]T-6's tripwire: a file that READS the promo cap. `null` is the honest
+  // default, because nothing in the real tree reads it either.
+  if (capReader !== null) files['packages/notifications/lib/src/promo.dart'] = capReader;
   // core and design_system are excluded from the adapter derivation by name.
   files['packages/core/pubspec.yaml'] = 'name: nikatru_core\ndependencies:\n  crypto: ^3.0.0\n';
   files['packages/design_system/pubspec.yaml'] = 'name: nikatru_design_system\ndependencies:\n  flutter:\n    sdk: flutter\n';
@@ -344,6 +395,143 @@ describe('assert-adapter-capabilities', () => {
     }));
     assert.equal(code, 1);
     assert.match(out, /which does not exist/);
+  });
+
+  // ── [pipeline 13]T-7 · the OS rules a `canSchedule` row schedules under ────
+  //
+  // Proven against the REAL tree first (2026-08-02), five mutations, each
+  // restored from memory and byte-compared:
+  //   1. inexactAllowWhileIdle → exactAllowWhileIdle                 → caught
+  //   2. matchDateTimeComponents deleted                             → caught
+  //   3. BOTH deleted, leaving only the comment that names them      → caught
+  //      (this is the one that matters: the doc comment directly above those
+  //      arguments spells both of them out, so a raw-text scan is green here)
+  //   4. `scheduleContract` renamed out of the register              → caught
+  //      — i.e. deleting the declaration makes the build RED, not quieter,
+  //      which is the whole point of T-9a's sibling finding
+  //   5. a `requires` entry that pins a `codeX` instead of a `code`  → caught
+  test('FAILS when the pinned Android schedule MODE is flipped to exact', () => {
+    const { code, out } = run(tree({ schedImpl: schedImplSrc({ exact: true }) }));
+    assert.equal(code, 1);
+    assert.match(out, /no longer passes `androidScheduleMode: AndroidScheduleMode\.inexactAllowWhileIdle`/);
+    assert.match(out, /SCHEDULE_EXACT_ALARM/);
+  });
+
+  test('FAILS when the daily REPEAT argument is deleted (fires once, looks fine for a day)', () => {
+    const { code, out } = run(tree({ schedImpl: schedImplSrc({ dropRepeat: true }) }));
+    assert.equal(code, 1);
+    assert.match(out, /no longer passes `matchDateTimeComponents: DateTimeComponents\.time`/);
+  });
+
+  // The mutation that separates a structural assertion from a prose grep. Both
+  // arguments are gone; the doc comment that NAMES both of them is untouched.
+  test('FAILS when only the COMMENT describing the arguments survives', () => {
+    const { code, out } = run(tree({ schedImpl: schedImplSrc({ dropMode: true, dropRepeat: true }) }));
+    assert.equal(code, 1);
+    assert.match(out, /no longer passes `androidScheduleMode/);
+    assert.match(out, /no longer passes `matchDateTimeComponents/);
+  });
+
+  // A descriptor that promises scheduling and declares no contract. The domain
+  // is DERIVED from the descriptor's own `canSchedule` field, so a second
+  // scheduling adapter cannot arrive without one either.
+  test('FAILS when a canSchedule descriptor declares no scheduleContract', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        delete r.capabilities.find((c) => c.id === 'notifications').capabilityMatrix.scheduleContract;
+        return r;
+      },
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /declares a `canSchedule` row but its capabilityMatrix has no `scheduleContract`/);
+  });
+
+  test('FAILS when the contract exists but pins nothing', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        r.capabilities.find((c) => c.id === 'notifications').capabilityMatrix.scheduleContract.requires = [];
+        return r;
+      },
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /non-empty `requires`/);
+  });
+
+  // 🔴 THE LIMB'S OWN EMPTY-DOMAIN CASE. Drop `canSchedule` from the descriptor
+  // and every assertion above ranges over nothing — which without this check is
+  // indistinguishable from every assertion holding.
+  test('FAILS with COVERAGE LOST when no descriptor declares canSchedule at all', () => {
+    const { code, out } = run(tree({
+      capsOverride: { notifications: capsSrc('NotificationsCapabilities', { schedules: false }) },
+      mutateRegister: (r) => {
+        delete r.capabilities.find((c) => c.id === 'notifications').capabilityMatrix.scheduleContract;
+        return r;
+      },
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — no capability descriptor declares a `canSchedule` field/);
+  });
+
+  // ── [pipeline 13]T-6 · the promo tripwire, whose domain is empty today ─────
+  //
+  // The requirement's second conjunct ("the promo send path refuses to exceed
+  // the cap") quantifies over a subsystem that does not exist and is not being
+  // built, so a rate limiter here would be an assertion with no writable
+  // failing input. What IS assertable is that a promotional touch and its cap
+  // must arrive TOGETHER, and that a promo may not ride the reminders channel.
+  //
+  // Mutation-proven on the REAL tree first (2026-08-02): a second channel with
+  // no cap reader → caught; a cap reader with one channel → caught; the channel
+  // constructor renamed → COVERAGE LOST; a COMMENT naming a second channel →
+  // stayed green. That last one was NOT green on the first attempt: reading the
+  // channel ID out of the raw source broke when a comment sat between the
+  // constructor and its first argument, and the guard blamed the adapter for
+  // its own scanner bug. Hence `stripDartCommentsOnly`.
+  const capReaderSrc = 'int budget(dynamic cfg) => cfg.maxPromosPerWeek;\n';
+
+  test('PRINTS an armed tripwire with an empty domain when nothing sends', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /TRIPWIRE ARMED, DOMAIN EMPTY/);
+    // The honest state has to be legible, not merely non-failing.
+    assert.match(out, /There is no promo sender/);
+  });
+
+  test('FAILS when a second notification channel arrives with no cap reader', () => {
+    const { code, out } = run(tree({ schedImpl: schedImplSrc({ secondChannel: true }) }));
+    assert.equal(code, 1);
+    assert.match(out, /a second notification channel exists \(nikatru_promos\)/);
+  });
+
+  // The other direction, and the one that stops a promo riding the reminders
+  // channel: block promos and you would lose your reminders with them.
+  test('FAILS when something reads the cap and reminders is still the only channel', () => {
+    const { code, out } = run(tree({ capReader: capReaderSrc }));
+    assert.equal(code, 1);
+    assert.match(out, /is still the only notification channel/);
+    assert.match(out, /separately\s+opt-outable channel/);
+  });
+
+  test('PASSES when the cap reader and a separate channel arrive together', () => {
+    const { code, out } = run(tree({
+      capReader: capReaderSrc,
+      schedImpl: schedImplSrc({ secondChannel: true }),
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /promo cap read on 1 path\(s\), delivered on a channel separate from nikatru_reminders/);
+  });
+
+  test('a COMMENT naming a second channel is prose, not a channel', () => {
+    const { code, out } = run(tree({ schedImpl: schedImplSrc({ channelComment: true }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /TRIPWIRE ARMED, DOMAIN EMPTY/);
+    assert.match(out, /nikatru_reminders/);
+  });
+
+  test('FAILS with COVERAGE LOST when no channel declaration is found at all', () => {
+    const { code, out } = run(tree({ schedImpl: schedImplSrc({ noChannel: true }) }));
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — no notification channel declaration/);
   });
 
   // Coverage self-check: a derivation that finds almost nothing reads exactly

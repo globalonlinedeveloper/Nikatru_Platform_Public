@@ -198,6 +198,29 @@ export interface AppConfig {
   content_pack: string | null;
   copy: Record<string, string>;
   min_supported_version: string;
+  /**
+   * How many PROMOTIONAL notifications a week an app may send — [pipeline 13]T-6.
+   *
+   * 🔴 SHIPS AS 0, and that is the whole design. Nothing in this repo sends a
+   * promotional touch, so zero is the only value that cannot already be wrong.
+   * Raising it is a deliberate decision taken once and priced at the time,
+   * rather than a number that drifts upward while nobody is looking. No
+   * engagement benchmark is encoded here and none should be — MASTER_PLAN §3
+   * bans the figures that would otherwise get typed into this line.
+   *
+   * TYPED ON BOTH SIDES, which is the requirement. `packages/core`'s AppConfig
+   * declares `maxPromosPerWeek` and parses this key; the contract test below
+   * asserts the key set in BOTH directions, so adding it on one side alone
+   * fails the other's lane. That bidirectional lever is what makes this a
+   * contract rather than two files that happen to agree today.
+   *
+   * NOT enforced at runtime, deliberately: there is no send path to enforce it
+   * on, and a limiter over an empty domain is an assertion that cannot fail.
+   * `tooling/ci/assert-adapter-capabilities.mjs` carries the tripwire that
+   * makes the FIRST promo sender read this value and post through a second,
+   * separately opt-outable channel — and prints that its domain is empty today.
+   */
+  max_promos_per_week: number;
   theme?: Record<string, unknown>;
 }
 

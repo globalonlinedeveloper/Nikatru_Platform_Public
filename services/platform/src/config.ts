@@ -49,6 +49,12 @@ export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = {
     content_pack: null,
     copy: {},
     min_supported_version: '1.0.0',
+    // [pipeline 13]T-6. ZERO, because there is no promo sender: no code path in
+    // this repo posts a promotional notification, so zero is the only value
+    // that cannot already be wrong. Raising it is a decision someone takes and
+    // prices, not a default somebody inherited. A KV override can raise it per
+    // app the day that decision is made — which is the point of it being config.
+    max_promos_per_week: 0,
   },
 };
 

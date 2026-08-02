@@ -84,6 +84,54 @@ function stripDart(src) {
 }
 
 /**
+ * Blank Dart comments but KEEP string literals, preserving offsets.
+ *
+ * The T-6 tripwire below needs both readings of one file: `stripDart` to find
+ * where a channel is CONSTRUCTED (so a comment cannot declare one), and this to
+ * read the channel ID out of the literal that follows. Proven necessary by
+ * mutation: with only `stripDart` and an offset-based read of the raw source, a
+ * comment inserted between `AndroidNotificationDetails(` and its first argument
+ * made the ID unreadable, and the guard reported COVERAGE LOST on a file whose
+ * channel was right there. The scanner was wrong, not the adapter.
+ */
+function stripDartCommentsOnly(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  const blank = (ch) => (ch === '\n' ? '\n' : ' ');
+  while (i < n) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '/' && c2 === '/') {
+      while (i < n && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      let depth = 0;
+      while (i < n) {
+        if (src[i] === '/' && src[i + 1] === '*') { depth++; out += '  '; i += 2; continue; }
+        if (src[i] === '*' && src[i + 1] === '/') { depth--; out += '  '; i += 2; if (depth === 0) break; continue; }
+        out += blank(src[i]); i++;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      const q = c;
+      out += src[i++];
+      while (i < n && src[i] !== q) {
+        if (src[i] === '\\') out += src[i++];
+        if (i < n) out += src[i++];
+      }
+      if (i < n) out += src[i++];
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
  * Character spans covered by the argument list of a `test(…)` / `testWidgets(…)`
  * call. Something written outside every one of these spans does not run when the
  * suite runs — which is the difference between a test file and a file of prose
@@ -196,6 +244,12 @@ for (const cap of reg.capabilities ?? []) {
 const REQUIRED_PLATFORMS = ['android', 'iOS', 'macOS', 'windows', 'linux', 'web'];
 
 let checked = 0;
+// [13]T-7 domain counters — see limb 7 below. Both are declared here so the
+// coverage self-check at the bottom can say which half emptied out: zero
+// descriptors means the DERIVATION stopped finding scheduling adapters, zero
+// clauses means a contract exists but pins nothing.
+let scheduleDescriptors = 0;
+let scheduleClauses = 0;
 // Flattened deliberately: the unit of work is a MATRIX, not a package, because a
 // package with two capabilities has two matrices and both have to hold.
 const matrixJobs = [];
@@ -313,6 +367,60 @@ for (const { pkg, cap } of matrixJobs) {
     }
   }
 
+  // 7 · [pipeline 13]T-7 — WHERE THE MATRIX SAYS "CAN SCHEDULE", THE OS RULES IT
+  //     SCHEDULES UNDER ARE PART OF THE CONTRACT.
+  //
+  // A `canSchedule` row is a promise about a repeating, OS-brokered timer, and
+  // the two arguments that make that promise true are passed BELOW the port the
+  // service is tested through (`NotificationPlugin.scheduleDaily` takes
+  // `(id, title, body, when)`). So no fake plugin can observe them and no
+  // behavioural test can be written — flipping `inexactAllowWhileIdle` to
+  // `exactAllowWhileIdle`, or deleting `matchDateTimeComponents`, compiles,
+  // ships, and turns every stamped app's daily reminder into either a
+  // special-permission request or a one-off. Both changes are silent.
+  //
+  // The DOMAIN is derived, not typed: a descriptor that declares a
+  // `canSchedule` field owes a `scheduleContract`. That is a relationship
+  // between two independently-maintained files, so a second scheduling adapter
+  // cannot arrive without one, and deleting the contract from the register does
+  // not make the build quieter — it makes it red.
+  const declaresSchedule = /\bcanSchedule\b/.test(code);
+  if (declaresSchedule) {
+    scheduleDescriptors++;
+    const sc = m.scheduleContract;
+    if (!sc) {
+      problems.push(
+        `\`${m.symbol}\` declares a \`canSchedule\` row but its capabilityMatrix has no \`scheduleContract\`. A platform told it can schedule is being promised a REPEATING, OS-brokered timer, and the arguments that deliver that sit below the testable port — so if the register does not pin them, nothing does.`,
+      );
+    } else if (!sc.file || !Array.isArray(sc.requires) || sc.requires.length === 0 || !sc.unobservable) {
+      problems.push(
+        `\`${pkg}\`'s scheduleContract needs \`file\`, a non-empty \`requires\` array and \`unobservable\` (why no behavioural test can replace it). An empty \`requires\` iterates nothing and certifies the contract held.`,
+      );
+    } else if (!existsSync(join(ROOT, sc.file))) {
+      problems.push(`\`${pkg}\`'s scheduleContract names \`${sc.file}\`, which does not exist.`);
+    } else {
+      // Stripped for the same reason every other limb here is: the doc comment
+      // directly above these two arguments NAMES both of them in prose, so a
+      // raw-text match is green against a file where the arguments were deleted
+      // and only the comment explaining them survived.
+      const impl = stripDart(readFileSync(join(ROOT, sc.file), 'utf8'));
+      const normalise = (s) => s.replace(/\s+/g, '');
+      const flat = normalise(impl);
+      for (const req of sc.requires) {
+        if (!req?.code || !req?.why) {
+          problems.push(`\`${pkg}\`'s scheduleContract has a \`requires\` entry without both \`code\` and \`why\`. A pinned argument with no stated consequence is one the next person deletes.`);
+          continue;
+        }
+        scheduleClauses++;
+        if (!flat.includes(normalise(req.code))) {
+          problems.push(
+            `${sc.file} no longer passes \`${req.code}\` in CODE (comments and string literals do not count). ${req.why}`,
+          );
+        }
+      }
+    }
+  }
+
   if (m.degradesOn) notes.push(`· ${pkg.split('/')[1]} (${m.pinnedTo ?? 'unpinned'})\n    ${m.degradesOn}`);
 }
 
@@ -336,10 +444,128 @@ if (matrixJobs.length < declaredOnAdapters.length) {
   );
 }
 
+// [13]T-7 coverage self-check. This limb is derived from the descriptor's own
+// source, so it empties out silently in two different ways: rename
+// `canSchedule` and no adapter is in scope; keep the field and empty
+// `requires` and the contract asserts nothing. Both print `ok` without this.
+if (scheduleDescriptors === 0) {
+  problems.push(
+    'COVERAGE LOST — no capability descriptor declares a `canSchedule` field, so the OS-scheduling-rules limb ranged over nothing. `NotificationCapabilities` declares one; if it was renamed, re-point this derivation rather than deleting it.',
+  );
+} else if (scheduleClauses === 0) {
+  problems.push(
+    `COVERAGE LOST — ${scheduleDescriptors} scheduling descriptor(s) in scope and ZERO scheduleContract clause(s) checked. A contract that pins no argument reports the same "ok" as one that pins the right ones.`,
+  );
+} else {
+  ok(`${scheduleClauses} OS scheduling rule(s) pinned across ${scheduleDescriptors} scheduling adapter(s)`);
+}
+
 if (adapters.length > 0 && checked === 0) {
   problems.push('COVERAGE LOST — not one adapter matrix is exercised by a test that calls forPlatform. Every check above would then be asserting the existence of documentation.');
 } else if (checked > 0) {
   ok(`${checked} adapter matrix/matrices exercised per-platform by their own tests`);
+}
+
+// ── [pipeline 13]T-6 · THE PROMO TRIPWIRE, and its domain is empty today ─────
+//
+// The requirement's second conjunct — "and the promo send path refuses to
+// exceed it" — quantifies over a subsystem this repo does not have and is not
+// building. Writing a rate limiter over zero send paths would be an assertion
+// with no writable failing input, which is this repo's cardinal sin. So the cap
+// is TYPED on both sides of the config contract (packages/core AppConfig ·
+// services/platform types.ts, each with the other's test as its failing lever)
+// and the enforcement is a TRIPWIRE with an honestly empty domain.
+//
+// The rule: a promotional touch and the cap that bounds it must arrive
+// TOGETHER, and a promotional touch may not share the reminders channel.
+// Sharing it means a user who blocks promos loses their reminders, and a user
+// who wants reminders is forced to accept promos — the shape App Review 5.1.2(i)
+// is about (an app may not require enabling notifications to access
+// functionality). ⚠️ Grounded there DELIBERATELY, and voluntarily: Apple 4.5.4
+// is PUSH-only and does not reach local notifications, and no Play policy
+// requiring local-notification opt-out was found. The separate channel is our
+// choice, not a quoted obligation.
+{
+  const CHANNEL_DECL = /\bAndroidNotification(?:Channel|Details)\s*\(/g;
+  const REMINDER_CHANNEL = 'nikatru_reminders';
+  const CAP_KEY = /\b(?:max_promos_per_week|maxPromosPerWeek)\b/;
+  // Where the cap is DECLARED and PARSED. A reader here is the contract, not a
+  // send path — excluding them is what keeps the tripwire's domain honest.
+  const CAP_DECLARERS = new Set([
+    'packages/core/lib/src/config/app_config.dart',
+  ]);
+
+  const channelIds = new Set();
+  const senders = [];
+  const dartUnder = (dir, rel, out) => {
+    let entries;
+    try { entries = readdirSync(join(ROOT, dir), { withFileTypes: true }); } catch { return out; }
+    for (const e of entries) {
+      if (e.name.startsWith('.') || e.name === 'build' || e.name === 'node_modules') continue;
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory()) dartUnder(p, `${rel}/${e.name}`, out);
+      else if (e.name.endsWith('.dart')) out.push(p);
+    }
+    return out;
+  };
+  const scanned = [
+    ...dartUnder('packages', 'packages', []),
+    ...dartUnder('apps', 'apps', []),
+    ...dartUnder('tooling/bricks', 'tooling/bricks', []),
+  ].filter((p) => !/\/(?:test|integration_test)\//.test(p));
+
+  for (const rel of scanned) {
+    const raw = readFileSync(join(ROOT, rel), 'utf8');
+    // TWO readings of one file, and both are needed. `stripDart` says where a
+    // channel is really CONSTRUCTED (a comment describing one must not count);
+    // `stripDartCommentsOnly` preserves the offsets AND the literals, so the ID
+    // can be read out of the argument that follows even when a comment sits
+    // between the constructor and its first argument — which is exactly the
+    // mutation that broke the first version of this scan.
+    const code = stripDart(raw);
+    const withLits = stripDartCommentsOnly(raw);
+    for (const m of code.matchAll(CHANNEL_DECL)) {
+      const lit = withLits.slice(m.index + m[0].length).match(/^\s*(['"])([^'"]*)\1/);
+      if (lit) channelIds.add(lit[2]);
+    }
+    if (!CAP_DECLARERS.has(rel) && CAP_KEY.test(code)) senders.push(rel);
+  }
+
+  const extraChannels = [...channelIds].filter((id) => id !== REMINDER_CHANNEL);
+  if (channelIds.size === 0) {
+    problems.push(
+      'COVERAGE LOST — no notification channel declaration was found in any non-test Dart source, so the ' +
+        `[13]T-6 promo tripwire ranged over nothing. The adapter declares \`${REMINDER_CHANNEL}\`; if that ` +
+        'moved, re-point this scan rather than deleting it.',
+    );
+  } else if (extraChannels.length > 0 && senders.length === 0) {
+    problems.push(
+      `a second notification channel exists (${extraChannels.join(', ')}) and NOTHING reads the promo cap. ` +
+        '[13]T-6 A second channel is how a promotional touch is delivered, and the cap that bounds it is ' +
+        '`max_promos_per_week` — typed on both sides of the config contract and readable today. Read it on ' +
+        'the send path, or do not add the channel.',
+    );
+  } else if (senders.length > 0 && extraChannels.length === 0) {
+    problems.push(
+      `${senders.join(', ')} reads the promo cap while \`${REMINDER_CHANNEL}\` is still the only notification ` +
+        'channel. [13]T-6 A promotional touch may not ride the reminders channel: blocking promos would take ' +
+        'the reminders with it, and keeping reminders would force promos. Declare a second, separately ' +
+        'opt-outable channel for it.',
+    );
+  } else if (senders.length > 0) {
+    ok(`promo cap read on ${senders.length} path(s), delivered on a channel separate from ${REMINDER_CHANNEL}`);
+  } else {
+    // The honest state, printed rather than asserted. An empty domain that says
+    // so cannot be mistaken for a rule that held.
+    notes.push(
+      `· promo cap [13]T-6 — TRIPWIRE ARMED, DOMAIN EMPTY (${scanned.length} non-test Dart file(s) scanned)\n` +
+        `    There is no promo sender. One notification channel exists (${[...channelIds].join(', ')}), and ` +
+        'zero code paths read `max_promos_per_week`.\n' +
+        '    The cap ships as 0 in services/platform and is typed in packages/core, so the first promotional\n' +
+        '    touch fails this build unless it reads the cap AND posts through a second, separately\n' +
+        '    opt-outable channel. Nothing enforces a rate today because nothing sends.',
+    );
+  }
 }
 
 if (notes.length) {

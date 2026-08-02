@@ -45,9 +45,32 @@ after(() => {
   rmSync(ROOT, { recursive: true, force: true });
 });
 
-function fixture(name, files) {
+/** [pipeline 12]W-3b, 2026-08-02: `sitemap.xml` and `llms.txt` joined
+ *  REQUIRED_FILES, so EVERY deploy root a fixture builds now owes both. They are
+ *  filled in centrally rather than case by case for one reason — a case that
+ *  spells them out is a case that can forget to, and forty cases each carrying
+ *  two lines of boilerplate is forty places for the boilerplate to drift.
+ *
+ *  A case that is ABOUT one of these files supplies it (or names it in `omit`
+ *  to delete it), and that override always wins. The empty `<urlset>` default is
+ *  safe for the roots that get it: a root declaring no homepage canonical never
+ *  reaches the sitemap↔page comparison, which is the same reason
+ *  sites/rajasekarselvam is out of the URL-form limb's scope. */
+const DEFAULT_LLMS = '# Fixture\n\n> A deploy root with nothing to say.\n';
+const DEFAULT_SITEMAP =
+  '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>\n';
+
+function fixture(name, files, { omit = [] } = {}) {
   const dir = join(ROOT, name);
-  for (const [rel, body] of Object.entries(files)) {
+  const all = { ...files };
+  for (const rel of Object.keys(files)) {
+    const m = rel.match(/^(sites\/[^/]+)\/index\.html$/);
+    if (!m) continue;
+    if (!(`${m[1]}/llms.txt` in all)) all[`${m[1]}/llms.txt`] = DEFAULT_LLMS;
+    if (!(`${m[1]}/sitemap.xml` in all)) all[`${m[1]}/sitemap.xml`] = DEFAULT_SITEMAP;
+  }
+  for (const rel of omit) delete all[rel];
+  for (const [rel, body] of Object.entries(all)) {
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
@@ -373,7 +396,7 @@ const KEYED_FN =
  * limb's scope — which is itself the behaviour that keeps sites/rajasekarselvam
  * from being dragged into a form it never adopted.
  */
-function urlTree(name, over = {}) {
+function urlTree(name, over = {}, opts = {}) {
   const files = {
     'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy.html">Privacy</a>', '<script>const APPS = [\n];</script>'),
     'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, POLICY_BODY),
@@ -388,7 +411,7 @@ function urlTree(name, over = {}) {
     'sites/b/_headers': 'x\n',
     'sites/_shared/_data/apps.json': '[]\n',
   };
-  return fixture(name, { ...files, ...over });
+  return fixture(name, { ...files, ...over }, opts);
 }
 
 describe('check-site-integrity · one canonical URL form', () => {
@@ -688,6 +711,158 @@ describe('check-site-integrity · the site app list vs apps.json', () => {
     );
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /My Notes App/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 12]W-3b · A DISCOVERY SURFACE MAY NOT BE DELETED.
+//
+// `REQUIRED_FILES` held index.html, 404.html, robots.txt and _headers, and the
+// sitemap relationship sat behind an `if (existsSync(...))`. So deleting
+// `sites/rajasekarselvam/sitemap.xml` passed this lane, passed ci-gate, and
+// shipped — and the check that would have caught a drifted sitemap silently
+// skipped instead of failing.
+//
+// Mutation-proven by DELETING the real files first (2026-08-02): removing
+// sites/rajasekarselvam/sitemap.xml → red naming that root; removing
+// sites/nikatru/llms.txt → red naming that root. Both restored byte-identical
+// and the baseline re-verified green.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('check-site-integrity · a deploy root owes its discovery surfaces', () => {
+  // Built on urlTree so each case is a ONE-DELETION difference from a tree that
+  // PASSES. A hand-rolled minimal tree stops at an unrelated coverage floor
+  // (MIN_SITES, then MIN_FUNCTIONS) and the assertion never reaches the check it
+  // is about — which is a test that fails for the wrong reason, i.e. a test that
+  // would keep passing after the limb it names was deleted.
+  test('FAILS when a root ships no sitemap.xml', () => {
+    const { code, out } = run(urlTree('req-sitemap', {}, { omit: ['sites/b/sitemap.xml'] }));
+    assert.equal(code, 1);
+    assert.match(out.replaceAll('\\', '/'), /missing sites\/b\/sitemap\.xml/);
+  });
+
+  test('FAILS when a root ships no llms.txt', () => {
+    const { code, out } = run(urlTree('req-llms', {}, { omit: ['sites/b/llms.txt'] }));
+    assert.equal(code, 1);
+    assert.match(out.replaceAll('\\', '/'), /missing sites\/b\/llms\.txt/);
+  });
+
+  // …and the same tree with nothing deleted PASSES, or the two cases above
+  // prove only that the fixture was broken to begin with.
+  test('PASSES when both are present', () => {
+    const { code, out } = run(urlTree('req-both'));
+    assert.equal(code, 0, out);
+    assert.match(out, /required files present/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 12]W-3c · llms.txt MAY NOT CONTRADICT THE APP REGISTRY.
+//
+// Repo-wide, `llms.txt` appeared in guard code exactly once — inside a comment —
+// and the file was measurably lying: sites/nikatru/llms.txt said "First releases
+// are on the way" and "Status: pre-launch" while apps.json marked `subly` live
+// and assert-catalog-reachable.mjs proved its URL answers.
+//
+// 🔴 THE STRONGEST NEGATIVE TEST THIS LIMB WILL EVER GET is that it was RED ON
+// THE REAL TREE the moment it was written, before a word of copy changed — five
+// problems across both deploy roots, including one the first (narrower) pattern
+// missed: the mirror said "first NIKATRU releases in active development", the
+// same claim with a brand dropped into the middle.
+//
+// This FAILS where the homepage limb only PRINTS, and the difference is not
+// arbitrary. The homepage limb refuses to decide whether a live app is
+// ANNOUNCED — an owner's launch-timing call. This limb decides nothing of the
+// kind: a file whose whole job is to state what the site IS cannot say the
+// studio has shipped nothing while the registry says it has and the app answers
+// on the public internet. Either side of that contradiction is an agent-sized
+// edit.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('check-site-integrity · llms.txt vs the app registry', () => {
+  const LIVE = '[{ "slug": "subly", "name": "Subly", "url": "https://subly.test", "status": "live" }]\n';
+  const PREVIEW = '[{ "slug": "subly", "name": "Subly", "url": "https://subly.test", "status": "preview" }]\n';
+  const honest = '# N\n\n> The studio ships apps.\n\n## Apps\n- Subly — https://subly.test (web)\n';
+
+  /** An APP-FACING root: it ships an apps/ directory, which is the heuristic
+   *  that catches a new site nobody added to REQUIRED_LEGAL_ROOTS. Only an
+   *  app-facing root owes the catalogue — the personal mirror points readers at
+   *  the studio instead, and forcing it to duplicate the list would be inventing
+   *  a requirement nobody wrote. */
+  /** A noindex legal page with enough visible text to clear the stub floor.
+   *  noindex so it owes no canonical and must stay OUT of the sitemap, which
+   *  keeps these cases about llms.txt rather than about the sitemap limb. */
+  const legalPage = `<html><head><meta name="robots" content="noindex"></head><body><h1>Legal</h1><p>${'legal sentence. '.repeat(80)}</p></body></html>\n`;
+
+  const appFacing = (name, over = {}) =>
+    urlTree(name, {
+      'sites/nikatru/apps/_template.html': '<meta name="robots" content="noindex"><html><body>t</body></html>\n',
+      // Shipping an apps/ directory makes this root APP-FACING, which is the
+      // whole point — and app-facing roots owe the full legal set.
+      'sites/nikatru/terms.html': legalPage,
+      'sites/nikatru/refund.html': legalPage,
+      'sites/_shared/_data/apps.json': LIVE,
+      'sites/nikatru/llms.txt': honest,
+      ...over,
+    });
+
+  test('PASSES when llms.txt names every live app and claims nothing false', () => {
+    const { code, out } = run(appFacing('llms-ok'));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS on "pre-launch" while the registry marks an app live', () => {
+    const { code, out } = run(appFacing('llms-prelaunch', {
+      'sites/nikatru/llms.txt': `${honest}- Status: pre-launch\n`,
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /says "pre-launch" while/);
+    assert.match(out, /contradict each other/);
+  });
+
+  // The same claim with a brand dropped into the middle — the exact phrasing
+  // the first version of the pattern walked straight past on the real mirror.
+  test('FAILS on "first <brand> releases in active development" too', () => {
+    const { code, out } = run(appFacing('llms-dev', {
+      'sites/nikatru/llms.txt': `${honest}- Status: first NIKATRU releases in active development\n`,
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /in active development" while/);
+  });
+
+  test('FAILS when an app-facing root omits a live app entirely', () => {
+    const { code, out } = run(appFacing('llms-omits', {
+      'sites/nikatru/llms.txt': '# N\n\n> The studio ships apps.\n',
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /does not name https:\/\/subly\.test/);
+  });
+
+  // The other direction, and the one that matches the homepage limb's rule: a
+  // name with nothing behind it is a promise made to a stranger.
+  test('FAILS when llms.txt advertises an app the registry does not call live', () => {
+    const { code, out } = run(appFacing('llms-unbacked', { 'sites/_shared/_data/apps.json': PREVIEW }));
+    assert.equal(code, 1);
+    assert.match(out, /names https:\/\/subly\.test, and .* status "preview"/);
+  });
+
+  // A root that is NOT app-facing ships an llms.txt too and is deliberately out
+  // of scope for the catalogue half — it may still not advertise a non-live app.
+  test('a non-app-facing root is not required to carry the catalogue', () => {
+    const { code, out } = run(urlTree('llms-mirror', {
+      'sites/_shared/_data/apps.json': LIVE,
+      'sites/nikatru/llms.txt': '# N\n\n> A studio. See the catalogue elsewhere.\n',
+    }));
+    assert.equal(code, 0, out);
+  });
+
+  // Platform-count claims belong to assert-channel-claims.mjs, which PRINTS
+  // rather than fails because site copy is the owner's voice. Two guards on one
+  // fault is how a fix chases the wrong message.
+  test('does NOT touch the six-platform claim', () => {
+    const { code, out } = run(appFacing('llms-platforms', {
+      'sites/nikatru/llms.txt': `${honest}- Platforms: iOS, Android, Windows, macOS, Linux, Web\n`,
+    }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /platform/i);
   });
 });
 
