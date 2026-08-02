@@ -533,12 +533,24 @@ if (has('sites/_shared/_data/apps.json')) {
 const shallow = spawnSync('git', ['-C', ROOT, 'rev-parse', '--is-shallow-repository'], { encoding: 'utf8' });
 const isShallow = shallow.status === 0 && shallow.stdout.trim() === 'true';
 
-/** Last commit touching a path, ISO date only, or null when git knows nothing. */
+/** Last commit touching a path, ISO date only, or null when git knows nothing.
+ *
+ *  🔴 THE DAY IS TAKEN IN UTC, and that is not tidiness — it is the fix for a
+ *  timezone-shaped false failure that this suite hit on 2026-08-03. `today` above
+ *  is `new Date().toISOString()`, i.e. UTC; git's `%cI` carries the COMMITTER'S
+ *  LOCAL OFFSET. In IST (+05:30) every commit made between 00:00 and 05:30 local
+ *  time is stamped one day AHEAD of the UTC date the same instant has, so
+ *  `mut.date < day` fired against a record written minutes earlier and told the
+ *  author their proof described code that was no longer there. Comparing a UTC
+ *  date to a local-time date is comparing two different calendars; re-reading
+ *  `%cI` through Date() puts both sides on the one this guard already uses. */
 function lastCommitDay(relPath) {
   const r = spawnSync('git', ['-C', ROOT, 'log', '-1', '--format=%cI', '--', relPath], { encoding: 'utf8' });
   if (r.status !== 0) return null;
   const t = r.stdout.trim();
-  return t === '' ? null : t.slice(0, 10);
+  if (t === '') return null;
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? t.slice(0, 10) : d.toISOString().slice(0, 10);
 }
 
 /** Every Dart file under the app's own test trees — the files its test lane runs. */

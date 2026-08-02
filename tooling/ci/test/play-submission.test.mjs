@@ -149,7 +149,7 @@ function tree({
   };
   if (mutateRegister) mutateRegister(register);
 
-  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }], null, 2));
+  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }], null, 2));
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
   if (!omitGradle) write('apps/subly/android/app/build.gradle.kts', gradle(gradleOver));
   if (withKeyProperties) write('apps/subly/android/key.properties', 'storeFile=x.jks\n');

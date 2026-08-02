@@ -55,6 +55,19 @@ export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = {
     // prices, not a default somebody inherited. A KV override can raise it per
     // app the day that decision is made — which is the point of it being config.
     max_promos_per_week: 0,
+    // [pipeline 9]R-10 / [10]D-8. NULL, and null is the finding rather than a
+    // placeholder. Subly is served on `web` only, where the browser IS the
+    // update mechanism and there is nowhere to send anybody; the non-store
+    // channels that would use this (`windows-direct`, `linux-appimage`) are
+    // deferred and `dl.nikatru.com` exists in documents with no DNS record
+    // behind it. A plausible URL here would send the first force-updated user
+    // to a 404 at the exact moment the app has already refused to run — worse
+    // than the gate showing its message with no button, which is true.
+    // A KV override sets it per app the day a direct channel is served, which
+    // is the whole reason it is runtime config and not a compiled-in constant
+    // (owner decision #19: baking it in means shipping an update to change
+    // where updates come from).
+    update_url: null,
   },
 };
 

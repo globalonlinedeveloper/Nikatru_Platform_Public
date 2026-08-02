@@ -685,6 +685,79 @@ jobs:
       - name: No release build from an ungated commit, no publish unrecorded
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-release-provenance.mjs
+      # [pipeline 9]R-12, and it must hold BEFORE stage 5's money rail ships. A
+      # `--dart-define` writes its value INTO the artifact — on web that is one
+      # view-source away — so `secrets.X` says where a value was KEPT and
+      # nothing about where it ends up. Every define in this repo comes from
+      # `secrets.`, including SUPABASE_ANON_KEY (designed to ship), GLITCHTIP_DSN
+      # (designed to ship) and E2E_PASSWORD (a real account password that must
+      # never reach a published build). Nothing about their SHAPE separates them,
+      # so the check is a SET EQUALITY against tooling/publishable-inputs.json,
+      # both directions: an undeclared define fails, and a declared name no
+      # workflow passes ALSO fails — otherwise a name can be pre-approved months
+      # before anybody asks the question again.
+      - name: Nothing is compiled into an artifact that was not declared shippable
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-secret-defines.mjs
+      # [pipeline 9]R-7. Zero builds obfuscate today, and that is exactly when
+      # this is cheap to install. `--obfuscate --split-debug-info=<dir>` makes
+      # every future crash report from that build unreadable without the mapping
+      # written to <dir>, a rebuild produces a DIFFERENT mapping, and the runner
+      # that made it is reclaimed within days. So the failure is not "we forgot
+      # to obfuscate" — it is somebody adding the flag in good faith and the
+      # crash sink going blind weeks later with no way back except a re-release.
+      # Matches the FLAG ON A BUILD COMMAND, never the bare word: `.symbols`
+      # matches apps/subly/.gitignore and "obfuscated" appears in a doc comment.
+      - name: Obfuscation and symbol retention are one increment or neither
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-obfuscation-coupled.mjs
+      # [pipeline 9]R-8. Cloudflare Universal SSL AUTO-RENEWS the certificate in
+      # front of every hostname we serve, so a client that pins one loses the
+      # backend entirely — every installed copy, at the same moment, with nothing
+      # to see server side and no way to reach the clients it broke except a
+      # store release they can no longer be told about. Matches TLS TRUST-OVERRIDE
+      # APIs in comment-stripped Dart, never the vocabulary: [ADR 016] pins an
+      # Ed25519 CONTENT-PACK key on purpose across ~22 lines, and a guard that
+      # matched the word "pin" would fire on it on day one and be switched off.
+      - name: No shipped client overrides TLS certificate trust
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-tls-pinning.mjs
+      # [pipeline 9]R-9's CACHE limb. [ADR 023] rejected the service worker
+      # deliberately, so there is no client-side update machinery at all and the
+      # HTTP cache IS the update mechanism on the only served channel. Until
+      # apps/subly/web/_headers existed, nothing in this repository chose a
+      # policy — `flutter build web` emits none and the deploy ships build/web
+      # straight to Pages — so a returning visitor could run the PREVIOUS build
+      # and report the previous version honestly, which is the one client the
+      # CFG-1 force-update gate cannot see. The FLAG limb is DROPPED by name:
+      # ADR 023 rejects guarding `--pwa-strategy=none` in CI as over-encoding.
+      - name: The web channel declares a cache policy a deploy can be seen through
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-web-cache-policy.mjs
+      # [pipeline 10]D-3. Three identity checks already existed and each was
+      # real; three holes were not. Linux's `APPLICATION_ID` was compared by
+      # NOTHING; every existing check runs as `--app subly`, hardcoded, so app #2
+      # would be invisible to all of them; and — the sharpest — ABSENCE READ AS
+      # AGREEMENT, so Windows was green on having no identity at all. The subject
+      # set here is (every app in apps.json) × (every register row declaring an
+      # identity), restricted to platforms the app actually has, and a declared
+      # platform whose identity file yields nothing is COVERAGE LOST.
+      - name: One app_id derives every store identity, on every platform
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-store-identity.mjs
+      # [pipeline 10]D-6. A strike attaches to the PUBLISHER, so one bad
+      # submission costs every app in the portfolio its distribution at once
+      # (L21). Build-failing: an empty or duplicate normalised `tagline` across
+      # apps.json — the field that EXISTS, where D-6's original criterion named
+      # `description`, a key apps.json does not have, so it ranged over nothing
+      # forever. ⚠️ Duplicate-detection is VACUOUS at one app, so the guard
+      # prints the compared-pair count every run. The web-prove-first status rule
+      # runs inside the four tooling/release/submit-*.mjs preflights, where a
+      # submission actually happens; the ≤2/month cadence PRINTS and is labelled
+      # "NIKATRU cadence rule" verbatim, because it is OURS and not store policy.
+      - name: No submission endangers the store identity
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-submission-safety.mjs
       # A fail-closed seam with no on-switch is a dead feature that reports
       # healthy. Four shipped that way — the analytics rail discarded every event
       # because nothing ever recorded consent, and no test went red because

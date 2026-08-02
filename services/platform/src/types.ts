@@ -243,6 +243,37 @@ export interface AppConfig {
    * separately opt-outable channel — and prints that its domain is empty today.
    */
   max_promos_per_week: number;
+  /**
+   * Where a NON-STORE build sends a user whose version is below
+   * `min_supported_version` — [pipeline 9]R-10 / [10]D-8, and owner decision
+   * #19 (2026-07-27).
+   *
+   * 🔴 THIS KEY EXISTED ON THE CLIENT AND NOWHERE ELSE, AND THAT IS A DEAD
+   * SEAM THAT REPORTS HEALTHY. `packages/core`'s AppConfig has parsed
+   * `update_url` since the force-update work landed, and the brick's app.dart
+   * resolves `appConfigProvider…updateUrl ?? AppConfig.updateUrl` — runtime
+   * first, compiled-in fallback. But the server had no such field, so the
+   * runtime branch could never be taken in production: the client was parsing
+   * a key this server was structurally incapable of sending, and every test
+   * passed because the compile-time fallback answered instead. Nothing went
+   * red, because falling back is the correct behaviour when the value is
+   * absent. That is instance five of the shape [pipeline C-6] exists for.
+   *
+   * ⚠️ IT IS RUNTIME AND NOT COMPILE-TIME BECAUSE THE ALTERNATIVE IS CIRCULAR.
+   * Owner decision #19 moved it here deliberately: baking the update
+   * destination into the binary means shipping an update in order to change
+   * where updates come from — and the binaries that need the change most are
+   * exactly the ones that cannot receive it. A store channel does not use this
+   * at all (the store owns the update path); a direct-download channel has
+   * nothing else.
+   *
+   * `null` is the honest default and the ONLY defensible one today: no
+   * non-store channel is served, `dl.nikatru.com` exists in documents and in
+   * no DNS record, and a plausible-looking URL here would send the first
+   * force-updated user to a 404 at the moment the app has already refused to
+   * run. Null ⇒ the gate shows its message with no action, which is true.
+   */
+  update_url: string | null;
   theme?: Record<string, unknown>;
 }
 

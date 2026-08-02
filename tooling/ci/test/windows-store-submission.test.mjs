@@ -102,7 +102,7 @@ function tree({
   if (mutateRegister) mutateRegister(register);
 
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
-  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }]));
+  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }]));
 
   const cfg = {
     display_name: 'Subly',

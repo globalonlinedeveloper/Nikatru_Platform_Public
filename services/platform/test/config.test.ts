@@ -198,6 +198,16 @@ describe('AppConfig contract (mirrors packages/core AppConfig)', () => {
     // without listing it here fails the stray-key assertion below. One key, two
     // writable failing inputs, both live today.
     'max_promos_per_week',
+    // [pipeline 9]R-10 / [10]D-8, and it is here for the SAME lever as the row
+    // above, applied to a seam that was already half-built and reporting
+    // healthy. packages/core's Dart AppConfig has parsed `update_url` since the
+    // force-update work landed and the brick's app.dart prefers it over the
+    // compiled-in constant — against a server that had no such field, so the
+    // runtime branch was unreachable in production while every test passed,
+    // because falling back is the correct behaviour when the value is absent.
+    // Listing it here is what makes deleting it from types.ts turn this lane
+    // red instead of quietly re-opening that gap.
+    'update_url',
   ] as const;
 
   it('every compiled-in default carries the full key set', () => {

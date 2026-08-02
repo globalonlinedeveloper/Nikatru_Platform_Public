@@ -57,6 +57,15 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+// 🔴 THE WORKFLOW PARSE MOVED OUT OF THIS FILE ON 2026-08-03, unchanged, because
+// four guards now need it and four copies of a parser drift in the one way that
+// reports "clean": which lines it can see at all. Every recorded defect this
+// parser absorbed — the `run: >` fold, the ` ; ` join for `run: |`, all three
+// `needs:` forms with their quotes, comments BLANKED so line numbers survive —
+// travelled with it and is recorded in workflow-scan.mjs's header. This guard's
+// own semantics (the gate walk, the publish classification, the per-segment
+// dry-run rule) stayed here: they are R-6's, not everybody's.
+import { parseWorkflow } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const WORKFLOWS = '.github/workflows';
@@ -179,134 +188,10 @@ const wfFiles = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.
 if (wfFiles.length === 0) coverageLost([`${WORKFLOWS} contains no workflow files.`]);
 
 /**
- * LOGICAL LINES — a `run: >` block is ONE command that YAML happens to fold
- * (deploy-web.yml:95 folds the web release build exactly this way, and a
- * reflowed `--release` was invisible to the line-anchored regexes — triage
- * 2026-07-31), so its continuation lines are joined with a space before any
- * pattern looks at them. A `run: |` block is the opposite — each line is its
- * OWN shell command — so those lines are joined with ` ; `, a separator the
- * segment splitter above already understands, and two commands can never blur
- * into one. Joining `|` with spaces would re-open the dry-run hole this same
- * review closed: line one's `--dry-run` would exonerate line two's real deploy.
- * The joined entry keeps the `run:` line's number, so a report still points
- * into the real file.
+ * The parse itself lives in tooling/ci/workflow-scan.mjs — see the import note
+ * at the top of this file. What stays here is what to DO with the parse.
  */
-function joinBlockScalars(jobLines) {
-  const out = [];
-  for (let i = 0; i < jobLines.length; i++) {
-    const line = jobLines[i];
-    const m = line.text.match(/^(\s*)(?:-\s+)?run:\s*([|>])[+-]?[0-9]*\s*$/);
-    if (!m) {
-      out.push(line);
-      continue;
-    }
-    const keyIndent = m[1].length;
-    const parts = [];
-    let contentIndent = null;
-    let j = i + 1;
-    while (j < jobLines.length) {
-      const t = jobLines[j].text;
-      if (t.trim() === '') {
-        j++; // blank (or comment-blanked) lines are legal inside a block scalar
-        continue;
-      }
-      const indent = t.match(/^ */)[0].length;
-      if (contentIndent === null) {
-        if (indent <= keyIndent) break;
-        contentIndent = indent;
-      }
-      if (indent < contentIndent) break;
-      parts.push(t.trim());
-      j++;
-    }
-    out.push({ n: line.n, text: line.text.replace(/[|>][+-]?[0-9]*\s*$/, parts.join(m[2] === '>' ? ' ' : ' ; ')) });
-    i = j - 1;
-  }
-  return out;
-}
-
-/**
- * Jobs, their `needs`, and every line inside them — with comments stripped but
- * LINE NUMBERS PRESERVED, so a reported line still points at the real file.
- * Blanking a comment rather than deleting it is what keeps those in step.
- */
-function parseWorkflow(rel) {
-  const raw = read(rel);
-  if (raw === null) return null;
-  const rawLines = raw.split('\n');
-  const lines = rawLines.map((l) => (/^\s*#/.test(l) ? '' : l.replace(/\s#.*$/, '')));
-
-  const jobsAt = lines.findIndex((l) => /^jobs:\s*$/.test(l));
-  const jobs = new Map();
-  if (jobsAt !== -1) {
-    let current = null;
-    for (let i = jobsAt + 1; i < lines.length; i++) {
-      if (/^\S/.test(lines[i])) break;
-      const m = lines[i].match(/^ {2}([A-Za-z_][A-Za-z0-9_-]*):\s*$/);
-      if (m) {
-        current = m[1];
-        jobs.set(current, { name: current, needs: [], lines: [], logical: [], jobIf: null, continueOnError: null, displayName: null });
-      } else if (current !== null) {
-        jobs.get(current).lines.push({ n: i + 1, text: lines[i] });
-      }
-    }
-  }
-
-  // 🔴 `needs:` HAS THREE FORMS AND THE FIRST VERSION PARSED ONLY TWO.
-  // `deploy-workers.yml` writes the SCALAR form — `needs: detect` — and its two
-  // deploy jobs are correctly gated through that dependency. Missing the scalar
-  // form made a properly-wired production workflow look ungated, and "fixing"
-  // the tree on the strength of that would have been the actual defect. Flow,
-  // scalar, block — all three, or the graph walk below is reading a lie.
-  //
-  // Triage 2026-07-31 (mutation-proven): all three forms must also strip
-  // QUOTES. `needs: ["gate"]` is the same edge in YAML GitHub happily runs,
-  // but reading the dep as `"gate"` — quotes included — made `wf.jobs.get()`
-  // miss and the walk silently drop the edge, so a correctly-gated workflow
-  // drew this guard's own ungated complaint. A false red on a right tree is
-  // the scalar-form lesson above, relearned one quoting level down.
-  for (const job of jobs.values()) {
-    const body = job.lines.map((l) => l.text).join('\n');
-    const flow = body.match(/needs:\s*\[([^\]]*)\]/);
-    const scalar = body.match(/^\s*needs:\s*(['"]?)([A-Za-z_][A-Za-z0-9_-]*)\1\s*$/m);
-    if (flow) {
-      job.needs = flow[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
-    } else if (scalar) {
-      job.needs = [scalar[2]];
-    } else {
-      const idx = job.lines.findIndex((l) => /^\s*needs:\s*$/.test(l.text));
-      if (idx !== -1) {
-        for (const l of job.lines.slice(idx + 1)) {
-          const m = l.text.match(/^\s*-\s*(['"]?)([A-Za-z_][A-Za-z0-9_-]*)\1\s*$/);
-          if (!m) break;
-          job.needs.push(m[2]);
-        }
-      }
-    }
-
-    // Job-level `if:` / `continue-on-error:` / `name:` — read for the gate
-    // credit below. Job keys sit at exactly 4 spaces (jobs at 2, steps at 6),
-    // so the ` {4}` anchor is what keeps a STEP's `if:` — 8 spaces, e.g.
-    // e2e.yml's purge steps — from being mistaken for a job condition.
-    // `continue-on-error` is taken at ANY depth on purpose: on the gate STEP it
-    // swallows a red verdict inside the job, at job level it swallows it from
-    // `needs` — either placement disarms the edge.
-    for (const l of job.lines) {
-      let m;
-      if (job.jobIf === null && (m = l.text.match(/^ {4}if:\s*(\S.*?)\s*$/))) job.jobIf = { n: l.n, cond: m[1] };
-      if (job.continueOnError === null && /^\s*continue-on-error:\s*true\b/.test(l.text)) job.continueOnError = { n: l.n };
-      if (job.displayName === null && (m = l.text.match(/^ {4}name:\s*(\S.*?)\s*$/))) job.displayName = m[1].replace(/^['"]|['"]$/g, '');
-    }
-
-    job.logical = joinBlockScalars(job.lines);
-  }
-
-  const rawStepCount = (raw.match(/^\s+-\s+(name|run|uses):/gm) ?? []).length;
-  const strippedStepCount = lines.join('\n').match(/^\s+-\s+(name|run|uses):/gm)?.length ?? 0;
-  return { rel, jobs, rawStepCount, strippedStepCount };
-}
-
-const workflows = wfFiles.map((f) => parseWorkflow(`${WORKFLOWS}/${f}`)).filter(Boolean);
+const workflows = wfFiles.map((f) => parseWorkflow(ROOT, `${WORKFLOWS}/${f}`)).filter(Boolean);
 
 // ── coverage self-check on the stripper ──────────────────────────────────────
 // A stripper that ate the file makes every "does this call X" question below run

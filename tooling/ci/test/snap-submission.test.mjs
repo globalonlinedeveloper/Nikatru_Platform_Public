@@ -93,7 +93,7 @@ function tree({ mutateRegister = null, fields = {}, omitFiles = [], omitTree = f
   if (mutateRegister) mutateRegister(register);
 
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
-  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }]));
+  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }]));
 
   if (!omitTree) {
     for (const [rel, body] of Object.entries(FILES)) {
