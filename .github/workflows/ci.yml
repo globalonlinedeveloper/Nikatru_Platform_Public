@@ -643,6 +643,22 @@ jobs:
       - name: One convention set reaches every app, and can fail a build
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-lint-inheritance.mjs
+      # …and the other half of the same seam. C-12 makes the rule set REACH every
+      # app; nothing checked that an app had not hollowed it out UNDERNEATH a
+      # perfectly correct `include:` — a file-level suppression, an `analyzer:
+      # errors: <rule>: ignore`, an `exclude:` glob, a `skip:`, or a per-app
+      # dart_test.yaml. All of those leave every stage-1 and stage-2 guard green,
+      # because they all check that the checks exist rather than that an app opted
+      # out of them.
+      #
+      # The allowlist is `file:rule`, deliberately NOT `file:line:rule` as the
+      # stage doc specifies: measured over five days the one real suppression moved
+      # from main.dart:21 to :41 and then vanished, so a line-pinned list would have
+      # gone stale three times, and each staleness is a red build on unrelated work.
+      # [pipeline N-4]
+      - name: No app has hollowed out the gates it inherited
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-gate-weakening.mjs
       # DoD §4-E: zero hardcoded user-facing strings. A string baked into a
       # widget cannot be translated, and retrofitting l10n across 50 shipped
       # apps is the expensive path (architecture.md §16) -- so the brick, which
@@ -719,6 +735,25 @@ jobs:
       - name: The money funnel is wired, and the pseudonymity firewall holds
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-pseudonymity-firewall.mjs
+      # [pipeline N-1 · N-3] The DoD register's own integrity, on a checkout with
+      # no stamp: every non-`human` item resolves to a `run:` step on a NON-COMMENT
+      # line, in a workflow whose `on:` includes push, whose job is in ci-gate's
+      # `needs:`. File presence is not enforcement — the drafted criterion said
+      # "present in tooling/ci/ OR ci.yml", which a guard nobody runs satisfies and
+      # which a COMMENT in this very file satisfies too.
+      #
+      # Its domain here is the brick template's own seeded `dod.json` — a real
+      # subject with tracked test files, tracked implementations and real git
+      # history, so the feature-row and mutation-staleness clauses run on every
+      # push even before a stamp exists. The `app_brick` lane runs it again with
+      # `--require-stamped` against the freshly stamped `apps/probe`.
+      #
+      # 🔴 This lane's `fetch-depth: 0` (above, for assert-policy-archive) is
+      # load-bearing here too: the staleness clause needs real history and refuses
+      # a shallow clone rather than reading every file as changed today.
+      - name: Every app carries a done-record, and its DoD items really run
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-app-dod.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
@@ -843,6 +878,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # 🔴 FULL HISTORY, and it is load-bearing rather than tidy — the same
+          # reasoning the `platform` lane already carries for assert-policy-archive.
+          # `assert-app-dod.mjs` expires each feature row's MUTATION RECORD against
+          # the last commit that touched the implementation it probed, which is what
+          # turns "proven once in a terminal" into a state. At the default depth of 1
+          # there is exactly ONE commit, dated at checkout time, so `git log -1 --
+          # <file>` returns that date for every file in the tree: every mutation
+          # record would read as stale and every human-review row as freshly signed.
+          # The guard refuses a shallow clone with COVERAGE LOST rather than
+          # softening to a print, so removing this line turns the lane RED rather
+          # than quietly hollow. [pipeline N-5]
+          fetch-depth: 0
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
@@ -966,6 +1013,32 @@ jobs:
         run: node tooling/ci/assert-stamp-platforms.mjs
       - name: Stamped app asserts its own chassis properties
         run: node tooling/ci/assert-stamp-properties.mjs
+      # 🔴 [pipeline N-2] THE ONE MOVE THAT MAKES STAGE 6 ABLE TO FAIL AT ALL, and
+      # it has to run HERE — after the stamp and before any revert.
+      #
+      # The done-record guard enumerates the root pubspec's `workspace:` list and
+      # exempts `apps/subly` by name (39-CHASSIS §4 cut 1 freezes it). `apps/` holds
+      # exactly one app, so on a clean checkout that domain is EMPTY and seven
+      # stage-6 requirements are vacuously true — `assert-app-dod.mjs` would print
+      # ok having examined nothing. It refuses to: an empty non-exempt set is
+      # COVERAGE LOST.
+      #
+      # This lane has already stamped `apps/probe` and post_gen has already appended
+      # it to the workspace block, so right here there IS a real, non-exempt,
+      # freshly stamped app to quantify over — on every single push, without waiting
+      # for app #2 (which the owner sequenced last). The probe is the domain.
+      #
+      # ORDERING, both sides of it: after `Stamp the default (client-only) app`
+      # because the app must exist, and before `Revert the root pubspec` at the end
+      # of the lane because that is what takes the domain away again.
+      #
+      # `--require-stamped` is what makes this invocation different from the
+      # static one: outside this lane the guard's domain is the brick template
+      # alone and it says so; here a stamp has just run, so ZERO non-exempt apps
+      # means the stamp or the workspace registration regressed, and it is
+      # COVERAGE LOST rather than a quieter pass over the template.
+      - name: The stamped app carries a done-record, and its DoD items really run
+        run: node tooling/ci/assert-app-dod.mjs . --require-stamped
       - name: Analyze + test the stamped app
         working-directory: apps/probe
         run: |

@@ -51,7 +51,31 @@
 // no obligation to be classified at all — hole 2 above, arriving through a file
 // rather than through a provider. Add a providers file to the list the same day
 // you create it.
-import { readFileSync } from 'node:fs';
+//
+// ── 2026-08-01 · [pipeline N-4 clause 7 / N-7 clause 4] THE SCAN NOW READS EVERY
+//    APP, NOT ONLY THE BRICK. One change, two requirements — build it once. ─────
+//
+// 🔴 THE HOLE: these paths were hardcoded to the brick, and NOTHING looked under
+// `apps/`. So a stamped app could delete its own `test/chassis_properties_test.dart`
+// — one `rm`, no lint suppression, no `skip:` — and drop every inherited property
+// assertion with EVERY GUARD IN THE TREE STILL GREEN. That is the single
+// highest-leverage gate-weakening move available, and the requirement that exists
+// to stop apps weakening the inherited gates did not name it.
+//
+// The domain is now the brick template PLUS every non-exempt `apps/*` member of
+// the root `pubspec.yaml` `workspace:` list — the same domain assert-app-dod.mjs
+// uses, and for the same reason: a directory listing differs between this box and
+// CI, while the workspace block is a maintained field the stamper itself writes.
+// `apps/subly` is exempt by name (39-CHASSIS §4 cut 1 — it predates the brick and
+// was never stamped, so it has no inherited property test to keep).
+//
+// SOURCE ANCHORS ARE APP-RELATIVE UNLESS THEY NAME A SHARED TREE. A path starting
+// `packages/`, `services/` or `tooling/` is repo-absolute (the design-system
+// scaffold, the stamped Worker's account route); everything else — `lib/…`,
+// `test/…` — is resolved under each root in turn. The Worker route deliberately
+// stays repo-absolute: it exists only on a `needs_backend` stamp, so anchoring it
+// per app would fail the client-only probe for being what it is.
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const repo = process.cwd();
@@ -60,17 +84,21 @@ const fail = (m) => { console.error(`FAIL ${m}`); failed = true; };
 const ok = (m) => console.log(`ok   ${m}`);
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
-const PROP_TEST = `${BRICK}/test/chassis_properties_test.dart`;
-const APP_ROOT = `${BRICK}/lib/app.dart`;
-const PROVIDERS = `${BRICK}/lib/state/providers.dart`;
-const SETTINGS = `${BRICK}/lib/features/settings/settings_screen.dart`;
-const ROUTER = `${BRICK}/lib/core/router.dart`;
-const MAIN = `${BRICK}/lib/main.dart`;
-const HOME = `${BRICK}/lib/features/home/home_screen.dart`;
+/** App-relative: resolved under the brick AND under every stamped app. */
+const PROP_TEST = 'test/chassis_properties_test.dart';
+const APP_ROOT = 'lib/app.dart';
+const PROVIDERS = 'lib/state/providers.dart';
+const SETTINGS = 'lib/features/settings/settings_screen.dart';
+const ROUTER = 'lib/core/router.dart';
+const MAIN = 'lib/main.dart';
+const HOME = 'lib/features/home/home_screen.dart';
 // [pipeline 5]M-13's wiring. A SECOND providers file, so the domain scan below
 // reads both — a new providers file with no coverage requirement is a hole the
 // size of a whole capability.
-const MONEY_PROVIDERS = `${BRICK}/lib/state/money_providers.dart`;
+const MONEY_PROVIDERS = 'lib/state/money_providers.dart';
+/** Trees that are shared rather than owned by an app; never re-rooted. */
+const SHARED_PREFIX = /^(packages|services|tooling)\//;
+const EXEMPT_APPS = new Set(['apps/subly']);
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 // The stamped Worker's half of G2. Only present on a needs_backend stamp; the
 // mustache section IS the directory name on disk, so this path resolves in the
@@ -484,62 +512,120 @@ function stripDartComments(src) {
   return out;
 }
 
-let test;
+// ── THE ROOTS. The brick, plus every non-exempt app on the workspace list. ───
+// The workspace block is the domain rather than `ls apps/` for the reason
+// assert-app-dod.mjs states at length: a directory listing differs between this
+// box and CI (the brick lane stamps `apps/probe` and `apps/probeapi` and never
+// removes them), and a domain that depends on which machine reads it is not one.
+const roots = [BRICK];
+let workspaceRead = false;
 try {
-  test = stripDartComments(readFileSync(join(repo, PROP_TEST), 'utf8'));
-} catch {
-  fail(`${PROP_TEST} is MISSING. Every stamped app inherits its property assertions from this file; without it a stamped app asserts nothing about its own behaviour.`);
+  const lines = readFileSync(join(repo, 'pubspec.yaml'), 'utf8').replace(/^\s*#.*$/gm, '').split('\n');
+  const at = lines.findIndex((l) => /^workspace:\s*$/.test(l));
+  if (at !== -1) {
+    workspaceRead = true;
+    for (const line of lines.slice(at + 1)) {
+      if (/^\S/.test(line)) break;
+      const m = line.match(/^\s*-\s*(\S+)\s*$/);
+      if (m && m[1].startsWith('apps/') && !EXEMPT_APPS.has(m[1])) roots.push(m[1]);
+    }
+  }
+} catch { /* handled by workspaceRead below */ }
+if (!workspaceRead) {
+  fail(
+    'COVERAGE LOST — the root pubspec.yaml has no readable `workspace:` block, so the set of stamped ' +
+      'apps this guard checks could not be built. It would then have audited the brick template alone, ' +
+      'which is exactly the blind spot [N-4 clause 7] exists to close: an app can delete its inherited ' +
+      'property test with every guard in the tree still green.',
+  );
+}
+// The one root that must always be there. Losing it means the template every app
+// is stamped from stopped being audited, and on a clean checkout it is the ONLY
+// root, so its absence would empty the whole scan.
+if (!existsSync(join(repo, BRICK, PROP_TEST))) {
+  fail(
+    `COVERAGE LOST — ${BRICK}/${PROP_TEST} is MISSING. Every stamped app inherits its property ` +
+      'assertions from this file; without it a stamped app asserts nothing about its own behaviour, and ' +
+      'this guard has no template to compare an app against.',
+  );
   console.error('\nassert-stamp-properties: FAILED');
   process.exit(1);
 }
 
-// COVERAGE SELF-CHECK. A file that still exists but has been emptied of tests
-// would satisfy every `group` regex below only if they were also removed — but a
-// file gutted down to one token would otherwise pass the "exists" check alone.
-// Counted over the COMMENT-STRIPPED source: `// testWidgets(` is not a test.
-const blocks = (test.match(/\b(?:test|testWidgets)\(/g) ?? []).length;
-const MIN_BLOCKS = 12;
-if (blocks < MIN_BLOCKS) {
-  fail(`COVERAGE LOST — ${PROP_TEST} declares only ${blocks} test block(s), expected >= ${MIN_BLOCKS}. The file exists but has stopped asserting.`);
-} else {
-  ok(`property test declares ${blocks} assertion block(s)`);
-}
+/** Resolve a source anchor: shared trees are repo-absolute, everything else is
+ *  read under the root currently being audited. */
+const resolveSource = (root, file) => (SHARED_PREFIX.test(file) ? file : `${root}/${file}`);
 
-for (const p of REQUIRED_COVERAGE) {
-  if (!p.group.test(test)) {
-    fail(`property '${p.key}' is NOT asserted in ${PROP_TEST} — ${p.why}`);
+const MIN_BLOCKS = 12;
+let rootsAudited = 0;
+
+for (const root of roots) {
+  const testPath = `${root}/${PROP_TEST}`;
+  let test;
+  try {
+    test = stripDartComments(readFileSync(join(repo, testPath), 'utf8'));
+  } catch {
+    fail(
+      `${testPath} is MISSING. A stamped app that deletes its inherited property test drops all ` +
+        `${REQUIRED_COVERAGE.length} assertions with ONE rm — no lint suppression, no skip:, and until ` +
+        'this guard read apps/ as well as the brick, every other guard in the tree stayed green.',
+    );
     continue;
   }
-  const sources = p.sources ?? [];
-  let anchored = true;
-  for (const s of sources) {
-    let src = '';
-    try {
-      src = readFileSync(join(repo, s.file), 'utf8');
-    } catch {
-      fail(`property '${p.key}': ${s.file} could not be read`);
-      anchored = false;
-      break;
-    }
-    if (!s.re.test(src)) {
-      fail(`property '${p.key}' is asserted but its IMPLEMENTATION is gone — ${s.what}`);
-      anchored = false;
-      break;
-    }
+  rootsAudited++;
+
+  // COVERAGE SELF-CHECK. A file that still exists but has been emptied of tests
+  // would satisfy every `group` regex below only if they were also removed — but a
+  // file gutted down to one token would otherwise pass the "exists" check alone.
+  // Counted over the COMMENT-STRIPPED source: `// testWidgets(` is not a test.
+  const blocks = (test.match(/\b(?:test|testWidgets)\(/g) ?? []).length;
+  if (blocks < MIN_BLOCKS) {
+    fail(`COVERAGE LOST — ${testPath} declares only ${blocks} test block(s), expected >= ${MIN_BLOCKS}. The file exists but has stopped asserting.`);
+  } else {
+    ok(`${root} — property test declares ${blocks} assertion block(s)`);
   }
-  if (!anchored) continue;
-  if (sources.length === 0) {
-    // Refused deliberately: an unanchored property is a test heading that
-    // survives its own feature's deletion. That was hole 1.
-    fail(`property '${p.key}' has NO source anchor — it would still pass with the feature deleted`);
-    continue;
+
+  for (const p of REQUIRED_COVERAGE) {
+    if (!p.group.test(test)) {
+      fail(`${root}: property '${p.key}' is NOT asserted in ${testPath} — ${p.why}`);
+      continue;
+    }
+    const sources = p.sources ?? [];
+    let anchored = true;
+    for (const s of sources) {
+      const path = resolveSource(root, s.file);
+      let src = '';
+      try {
+        src = readFileSync(join(repo, path), 'utf8');
+      } catch {
+        fail(`${root}: property '${p.key}': ${path} could not be read`);
+        anchored = false;
+        break;
+      }
+      if (!s.re.test(src)) {
+        fail(`${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}`);
+        anchored = false;
+        break;
+      }
+    }
+    if (!anchored) continue;
+    if (sources.length === 0) {
+      // Refused deliberately: an unanchored property is a test heading that
+      // survives its own feature's deletion. That was hole 1.
+      fail(`${root}: property '${p.key}' has NO source anchor — it would still pass with the feature deleted`);
+      continue;
+    }
+    ok(`${root} — property '${p.key}' asserted and implemented (${sources.length} anchor${sources.length > 1 ? 's' : ''})`);
   }
-  ok(`property '${p.key}' asserted and implemented (${sources.length} anchor${sources.length > 1 ? 's' : ''})`);
 }
 
 // ── "EVERY" — the domain check. ─────────────────────────────────────────────
+// Deliberately BRICK-ONLY, and that is not an oversight: COVERED_BY/UNASSERTED
+// classify the CHASSIS's capabilities, and a stamped app's providers files are
+// rendered copies of the template's. Classifying the same set once per app would
+// report the same judgement N times and invite N places to edit it.
 let domainSrc = '';
-for (const f of DOMAIN_FILES) {
+for (const f of DOMAIN_FILES.map((f) => `${BRICK}/${f}`)) {
   try {
     domainSrc += `
 ${readFileSync(join(repo, f), 'utf8')}`;
@@ -597,5 +683,8 @@ if (failed) {
   console.error('\nassert-stamp-properties: FAILED');
   process.exitCode = 1;
 } else {
-  console.log(`\nassert-stamp-properties: ok — ${REQUIRED_COVERAGE.length} property/properties enforced`);
+  console.log(
+    `\nassert-stamp-properties: ok — ${REQUIRED_COVERAGE.length} property/properties enforced across ` +
+      `${rootsAudited} root(s): ${roots.join(', ')}`,
+  );
 }

@@ -1,0 +1,161 @@
+{
+  "_readme": [
+    "THIS APP'S DONE-RECORD — [pipeline N-2] company/pipeline/06-app-build.md",
+    "",
+    "Stamped with the app. It answers 'is this app done?' as a QUERY rather than a memory, and",
+    "tooling/ci/assert-app-dod.mjs fails the build on it. The right-hand side of every set comparison",
+    "below is tooling/dod-register.json — the DoD items, and the four human-review rows.",
+    "",
+    "IT IS AN OUTPUT, NEVER AN INPUT. 39-CHASSIS §4 cut 4 stands: mason vars are the stamp's only",
+    "input contract. This file describes VERIFICATION STATE; it never feeds the stamp.",
+    "",
+    "status:",
+    "  stamped        a fresh stamp. Shape + the mechanical rows are enforced; the human verdicts and",
+    "                 the selection gates are recorded as pending, and their blanks do not fail.",
+    "  claiming-done  everything is enforced. An app the public catalogue advertises as 'live' while",
+    "                 this still says 'stamped' FAILS THE BUILD — that cross-check is what stops",
+    "                 'stamped' becoming a permanent excuse.",
+    "",
+    "features: the six the CHASSIS itself ships, so a freshly stamped app carries six REAL rows",
+    "rather than `features: []`. An app adds its own here as it builds them. Each row's `test` must",
+    "resolve to a real declaration with a non-empty body, `effect` must still name a symbol that is",
+    "there, and `mutation.date` EXPIRES: change the implementation and the row goes red until the",
+    "mutation is re-run and the date moved. That is the difference between an event and a state.",
+    "",
+    "🔴 EVERY MUTATION BELOW WAS ACTUALLY RUN, on a real mason stamp, with `flutter test`, and the",
+    "named test was observed RED. Two candidate rows were REJECTED at that step rather than recorded:",
+    "a `themeMode` row whose mutation the suite did not notice, and an account-deletion row whose test",
+    "drives the seam in packages/auth_supabase rather than anything under this app — an effect anchor",
+    "outside the app cannot be re-dated against the app's own history. Account deletion is covered",
+    "instead by the chassis property `account-deletion-works`, which carries six anchors of its own.",
+    "A row whose mutation nobody watched is exactly the 'proven once in a terminal' claim this field",
+    "exists to replace."
+  ],
+  "app": "{{app_id}}",
+  "status": "stamped",
+  "items": {
+    "A": { "claim": "held", "note": "the chassis ships the screen set; assert-screen-set.mjs holds the 22-screen register with anchors" },
+    "B": { "claim": "pending", "note": "human — the four-states verdict per data screen, recorded in humanReview" },
+    "C": { "claim": "held", "note": "property ui-invariants-inherited pins the five Material window classes at 600/840/1200/1600" },
+    "D": { "claim": "held", "note": "properties theme-triplet-supplied + theme-mode-persisted, both limbs anchored (write AND read-back)" },
+    "E": { "claim": "held", "note": "assert-no-hardcoded-strings.mjs; the chassis ships a second locale so the seam is really exercised" },
+    "F": { "claim": "held", "note": "the mechanical WCAG limbs — text-scale clamp, 48px targets, non-empty icon labels" },
+    "G": { "claim": "held", "note": "the stamp generates this app's OWN icons; assert-stamp-brand-assets.mjs compares against the live SDK's stock assets" },
+    "H": { "claim": "held", "note": "the app_brick lane resolves, analyzes and tests this app on every push; the feature rows below carry the effect anchors" }
+  },
+  "features": [
+    {
+      "name": "sign in",
+      "primaryAction": "submitting the sign-in form authenticates and moves the user off it",
+      "test": "signing in through the FORM moves the user off it",
+      "effect": "lib/features/auth/sign_in_screen.dart:signInWithEmail",
+      "mutation": {
+        "symbol": "lib/features/auth/sign_in_screen.dart:signInWithEmail",
+        "observedRed": "signing in through the FORM moves the user off it",
+        "date": "2026-08-02"
+      }
+    },
+    {
+      "name": "sign out",
+      "primaryAction": "ending the session puts the user back on the sign-in form",
+      "test": "signing out puts the user back on the form",
+      "effect": "lib/core/router.dart:refreshListenable",
+      "mutation": {
+        "symbol": "lib/core/router.dart:refreshListenable",
+        "observedRed": "signing out puts the user back on the form",
+        "date": "2026-08-02"
+      }
+    },
+    {
+      "name": "finish onboarding",
+      "primaryAction": "the last onboarding step records the choice and first run does not come back",
+      "test": "finishing it moves the user on, and it does not come back",
+      "effect": "lib/features/firstrun/onboarding_screen.dart:onboardingSeenProvider",
+      "mutation": {
+        "symbol": "lib/features/firstrun/onboarding_screen.dart:onboardingSeenProvider",
+        "observedRed": "finishing it moves the user on, and it does not come back",
+        "date": "2026-08-02"
+      }
+    },
+    {
+      "name": "edit profile",
+      "primaryAction": "saving a display name reaches the identity seam and the UI shows the new value",
+      "test": "editing it in the REAL app updates what the user sees",
+      "effect": "lib/features/settings/settings_screen.dart:updateProfile",
+      "mutation": {
+        "symbol": "lib/features/settings/settings_screen.dart:updateProfile",
+        "observedRed": "editing it in the REAL app updates what the user sees",
+        "date": "2026-08-02"
+      }
+    },
+    {
+      "name": "consent prompt",
+      "primaryAction": "the app root asks for analytics consent and Allow really opens the rail",
+      "test": "the app root asks for consent, and Allow opens the rail",
+      "effect": "lib/app.dart:AnalyticsGate",
+      "mutation": {
+        "symbol": "lib/app.dart:AnalyticsGate",
+        "observedRed": "the app root asks for consent, and Allow opens the rail",
+        "date": "2026-08-02"
+      }
+    },
+    {
+      "name": "dark mode",
+      "primaryAction": "the dark theme is a genuinely dark scheme, not the light one under another name",
+      "test": "light and dark are genuinely different schemes",
+      "effect": "lib/app.dart:darkTheme",
+      "mutation": {
+        "symbol": "lib/app.dart:brightness: Brightness.dark",
+        "observedRed": "light and dark are genuinely different schemes",
+        "date": "2026-08-02"
+      }
+    }
+  ],
+  "humanReview": [
+    {
+      "id": "four-states",
+      "verdict": "",
+      "reviewer": "",
+      "date": "",
+      "artifact": "",
+      "asks": "loading (skeleton), empty (illustration+CTA), error (message+Retry) and offline are FOUR visually distinct outcomes on every data screen"
+    },
+    {
+      "id": "depth-beyond-viewing",
+      "verdict": "",
+      "reviewer": "",
+      "date": "",
+      "artifact": "",
+      "asks": "at least one interactive feature beyond viewing content. UNVERIFIED: the applicable Apple clause is carried as 4.2.2 from 00-STAGE-3-14-RESEARCH.md, not read from developer.apple.com"
+    },
+    {
+      "id": "first-value-and-paywall",
+      "verdict": "",
+      "reviewer": "",
+      "date": "",
+      "artifact": "",
+      "asks": "first value arrives fast and the paywall sits AFTER the value moment. A judgment, never a threshold a guard may assert — the '60 seconds' in master-requirements §2.4 is a target with no measurement method"
+    },
+    {
+      "id": "polish",
+      "verdict": "",
+      "reviewer": "",
+      "date": "",
+      "artifact": "",
+      "asks": "brand icon and splash applied, motion tokens, skeletons not spinners, friendly empty/error states"
+    }
+  ],
+  "selection": {
+    "record": "",
+    "sha256": "",
+    "decided": "",
+    "decidedBy": "",
+    "gates": {
+      "g1a": "",
+      "g1b": "",
+      "g1c": "",
+      "g2": "",
+      "g3": ""
+    }
+  }
+}

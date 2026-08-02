@@ -2365,8 +2365,22 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
 }
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache };
+  // 🔴 [pipeline N-4 clause 7] THE FIXTURE MUST CARRY A WORKSPACE BLOCK, because
+  // the guard's domain is no longer "the brick" — it is the brick PLUS every
+  // non-exempt `apps/*` member of the root pubspec's `workspace:` list. A stamped
+  // app could previously delete its own inherited property test with one `rm` and
+  // every guard in the tree stayed green, so the guard now reads `apps/` too and
+  // refuses to run at all when that list is unreadable (an unreadable list would
+  // silently shrink the domain back to the brick alone, which is the whole hole).
+  //
+  // The default here lists only `apps/subly` — exempt by name under 39-CHASSIS §4
+  // cut 1 — so these cases still exercise exactly the brick-only path they were
+  // written for, and the per-app path is exercised by the stamped-app cases below.
+  const WORKSPACE = 'pubspec.yaml';
+  const goodWorkspace = 'name: nikatru_workspace\nworkspace:\n  - packages/core\n  - apps/subly\n';
+
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, workspace = goodWorkspace, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [WORKSPACE]: workspace, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -2462,6 +2476,99 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     });
     assert.equal(code, 1);
     assert.match(out, /IMPLEMENTATION is gone/);
+  });
+
+  // ── [pipeline N-4 clause 7 / N-7 clause 4] THE GUARD READS `apps/` TOO ──────
+  // Until 2026-08-01 every path above was hardcoded to the brick, so a STAMPED
+  // app could delete its own `test/chassis_properties_test.dart` — one `rm`, no
+  // lint suppression, no `skip:` — and drop every inherited property assertion
+  // with every guard in the tree still green. That is the single
+  // highest-leverage gate-weakening move available, and N-4 as drafted did not
+  // name it. Proven first by stamping a REAL `apps/probe` with mason into a
+  // short-path clone and deleting the file there; these fixtures encode what
+  // that run showed.
+  //
+  // The app's own copy of every app-relative anchor, so the stamped root is a
+  // real subject rather than a directory with one test file in it.
+  const stampedApp = (dir, over = {}) => ({
+    [`${dir}/test/chassis_properties_test.dart`]: over.propTest ?? goodTest,
+    [`${dir}/lib/app.dart`]: over.app ?? goodApp,
+    [`${dir}/lib/state/providers.dart`]: over.providers ?? goodProviders,
+    [`${dir}/lib/state/money_providers.dart`]: over.moneyProviders ?? goodMoneyProviders,
+    [`${dir}/lib/features/settings/settings_screen.dart`]: over.settings ?? goodSettings,
+    [`${dir}/lib/features/home/home_screen.dart`]: over.home ?? goodHome,
+    [`${dir}/lib/core/router.dart`]: over.router ?? goodRouter,
+    [`${dir}/lib/main.dart`]: over.brickMain ?? goodMain,
+    [`${dir}/lib/features/firstrun/onboarding_screen.dart`]: over.onboarding ?? goodOnboarding,
+    [`${dir}/lib/l10n/app_ta.arb`]: over.arbTa ?? goodArbTa,
+  });
+  const WS_WITH_PROBE = 'name: nikatru_workspace\nworkspace:\n  - packages/core\n  - apps/subly\n  - apps/probe\n';
+
+  test('audits a stamped app on the workspace list, not only the brick', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-app-ok', { workspace: WS_WITH_PROBE, extra: stampedApp('apps/probe') }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /apps\/probe — property 'account-deletion-works' asserted/);
+    assert.match(out, /across 2 root\(s\)/);
+  });
+
+  test('FAILS when a stamped app deletes its inherited property test', () => {
+    const files = stampedApp('apps/probe');
+    delete files['apps/probe/test/chassis_properties_test.dart'];
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-app-rm', { workspace: WS_WITH_PROBE, extra: files }),
+    });
+    assert.equal(code, 1, 'one `rm` must not drop every inherited property silently');
+    assert.match(out, /apps\/probe\/test\/chassis_properties_test\.dart is MISSING/);
+  });
+
+  test('FAILS naming the app when its copy drops one property group', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-app-group', {
+        workspace: WS_WITH_PROBE,
+        extra: stampedApp('apps/probe', {
+          propTest: goodTest.replace('account-deletion-works', 'account-deletion-works-ish'),
+        }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /apps\/probe: property 'account-deletion-works' is NOT asserted/);
+  });
+
+  test('FAILS naming the app when its own implementation anchor is gone', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-app-impl', {
+        workspace: WS_WITH_PROBE,
+        extra: stampedApp('apps/probe', {
+          settings: goodSettings.replace('onConfirm: () => _deleteAccount(', 'onConfirm: () => Navigator.pop('),
+        }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /apps\/probe: property 'account-deletion-works' is asserted but its IMPLEMENTATION is gone/);
+  });
+
+  // apps/subly is the frozen legacy rail-prover (39-CHASSIS §4 cut 1): it
+  // predates the brick, was never stamped, and has no inherited property test to
+  // keep. Exempting it BY NAME is what stops this guard demanding a retrofit the
+  // freeze forbids — and this case is what stops the exemption being silently
+  // widened to every app.
+  test('does NOT demand a property test from the frozen apps/subly', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-subly-exempt') });
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /apps\/subly/);
+  });
+
+  // The domain itself. An unreadable workspace list silently shrinks the scan
+  // back to the brick alone, which is exactly the hole these cases close — so it
+  // must be COVERAGE LOST rather than a quieter pass over the template.
+  test('COVERAGE LOST when the workspace list cannot be read', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-no-workspace', { workspace: 'name: nikatru_workspace\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — the root pubspec\.yaml has no readable `workspace:` block/);
   });
 
   // ── C-16 narrowed lock, 2026-07-28. Every case below was FIRST reproduced by

@@ -1,0 +1,159 @@
+{
+  "_readme": [
+    "THE DEFINITION-OF-DONE REGISTER — [pipeline N-1] company/pipeline/06-app-build.md",
+    "",
+    "The machine-readable half of the factory's Definition of Done: one row per DoD item, each naming",
+    "HOW it is enforced. The prose one-pager lives at company/requirements/definition-of-done.md and",
+    "POINTS AT THIS FILE rather than restating it — the items live in one place, or they drift in two.",
+    "",
+    "WHY THE SPLIT, AND WHY THIS HALF IS PUBLIC.",
+    "The stage doc's acceptance for N-1 asks CI to parse company/MASTER_PLAN.md §4 and the DoD page.",
+    "Both live under company/, which is GITIGNORED — CI cannot read either, so as written the",
+    "requirement was unenforceable from the only place a build can fail. Exactly the class of blocker",
+    "stage 8 hit, and its resolution there was to give the machine-checkable half an in-tree home",
+    "(tooling/legal/); this mirrors that reasoning. So:",
+    "",
+    "  · tooling/dod-register.json (HERE, public)      — what a guard can check, and does:",
+    "                                                    tooling/ci/assert-app-dod.mjs.",
+    "  · company/requirements/definition-of-done.md    — the one-page prose version, private.",
+    "  · tooling/scripts/check-dod-sync.mjs            — a LOCAL check, the only place with read",
+    "                                                    access to BOTH trees. It asserts this",
+    "                                                    register's item ids are set-equal to",
+    "                                                    MASTER_PLAN §4's lettered items and to the",
+    "                                                    prose page's, and that no dated cut has crept",
+    "                                                    back onto the page. What CI cannot see, it",
+    "                                                    PRINTS rather than silently omitting.",
+    "",
+    "FIELDS.",
+    "  id          the MASTER_PLAN §4 letter. The set of ids here must equal the set of letters there;",
+    "              adding a letter to §4 without adding a row here fails check-dod-sync.mjs.",
+    "  title       short name, for messages.",
+    "  enforcedBy  'guard' | 'lane' | 'human'. There is no fourth value and no blank.",
+    "  check       guard  -> the filename in tooling/ci/ that enforces it. assert-app-dod.mjs resolves",
+    "                        it to a `run:` step on a NON-COMMENT line, in a workflow whose `on:`",
+    "                        includes push, whose job is in ci-gate's `needs:`. Presence of the file is",
+    "                        NOT sufficient — a guard nothing runs cannot fail a build.",
+    "              lane   -> the ci.yml job name. Same last clause: it must be in ci-gate's `needs:`.",
+    "              human  -> the humanReview row id in every app's dod.json that carries the verdict.",
+    "  humanHalf   optional. Names the humanReview row that carries the JUDGMENT half of an item whose",
+    "              mechanical half is guarded. It must name a real required humanReview row, so an item",
+    "              cannot point its human half at nothing.",
+    "  why         the sentence that justifies the enforcement choice.",
+    "",
+    "THE CUT LIST IS PART OF THE CONTRACT, NOT AN APPENDIX. Every entry is a DoD sub-item that was",
+    "deliberately priced out, with the date and the decision that cut it. check-dod-sync.mjs fails if a",
+    "cut phrase reappears in the prose page's ITEMS section — a cut that quietly returns is how a",
+    "one-pager becomes a four-pager again, which is what rotted the first time.",
+    "",
+    "Enforced by tooling/ci/assert-app-dod.mjs (public half) + tooling/scripts/check-dod-sync.mjs (local)."
+  ],
+  "source": "company/MASTER_PLAN.md §4 — 'Per-app production checklist = reusable Definition of Done', items A-H",
+  "humanReviewRows": [
+    "four-states",
+    "depth-beyond-viewing",
+    "first-value-and-paywall",
+    "polish"
+  ],
+  "items": [
+    {
+      "id": "A",
+      "title": "Complete screen set",
+      "enforcedBy": "guard",
+      "check": "assert-screen-set.mjs",
+      "why": "the non-app-specific screens ship in the chassis, so the register of 22 screens plus its anchors is what makes 'complete' a query rather than a memory [C-13]"
+    },
+    {
+      "id": "B",
+      "title": "Four distinguishable states on every data screen",
+      "enforcedBy": "human",
+      "check": "four-states",
+      "why": "39-CHASSIS §6 downgraded widget-per-state from CI: seven screens x fifty apps of golden-backed state widgets is unaffordable. The judgment stays; the RECORDING of it is mechanical [N-8]"
+    },
+    {
+      "id": "C",
+      "title": "Adaptive — five Material window classes",
+      "enforcedBy": "guard",
+      "check": "assert-stamp-properties.mjs",
+      "why": "the 'ui-invariants-inherited' property pins the five classes at their exact Material edges; the tree once covered three and 600-639 got the phone layout"
+    },
+    {
+      "id": "D",
+      "title": "Dark mode, persisted",
+      "enforcedBy": "guard",
+      "check": "assert-stamp-properties.mjs",
+      "why": "'theme-triplet-supplied' plus 'theme-mode-persisted' anchor BOTH limbs — the write and the read-back — because a choice saved and never restored looks exactly like no persistence at all"
+    },
+    {
+      "id": "E",
+      "title": "Localized — zero hardcoded strings",
+      "enforcedBy": "guard",
+      "check": "assert-no-hardcoded-strings.mjs",
+      "why": "l10n retrofitted across fifty shipped apps is the canonical near-free-at-birth item; the chassis also ships a second locale so the seam can actually be exercised"
+    },
+    {
+      "id": "F",
+      "title": "Accessible — the mechanical WCAG 2.2 limbs",
+      "enforcedBy": "guard",
+      "check": "assert-stamp-properties.mjs",
+      "humanHalf": "polish",
+      "why": "text-scale clamp, 48px targets and non-empty icon labels are asserted on the stamped app; the manual screen-reader pass is a recorded cut (no Apple device) and stays a11y debt, not a gate"
+    },
+    {
+      "id": "G",
+      "title": "Polished — the app's own brand icon and splash",
+      "enforcedBy": "guard",
+      "check": "assert-stamp-brand-assets.mjs",
+      "humanHalf": "polish",
+      "why": "the mechanical half is that the stamp generates the app's OWN icons rather than shipping Flutter's stock ones — measured against the live SDK's assets, never pinned hashes. Motion tokens, skeletons-not-spinners and friendly empty/error states are judgment and live in the humanHalf row"
+    },
+    {
+      "id": "H",
+      "title": "Proven — the app analyzes clean and its own suite passes",
+      "enforcedBy": "lane",
+      "check": "app_brick",
+      "why": "the lane stamps a fresh app, resolves it, analyzes it and runs its tests on every push. The per-feature effect proof is assert-app-dod.mjs's `features` block; the golden matrix, the >=80% number and E2E-per-environment are all recorded cuts below"
+    }
+  ],
+  "cuts": [
+    {
+      "id": "golden-matrix",
+      "what": "Alchemist golden-per-breakpoint x {compact,medium,expanded,large,XL} x {light,dark}",
+      "decided": "2026-07-25",
+      "by": "39-CHASSIS §4 cut 2 / §6",
+      "pageMustNotContain": "Alchemist",
+      "why": "every intentional design change becomes N image approvals x 50 apps"
+    },
+    {
+      "id": "coverage-percentage",
+      "what": ">=80% unit coverage on core + logic",
+      "decided": "2026-07-25",
+      "by": "39-CHASSIS §6",
+      "pageMustNotContain": "80%",
+      "why": "a percentage of any tests is gameable; N-5 demands DISCRIMINATING tests instead — a named effect anchor and a dated mutation record"
+    },
+    {
+      "id": "manual-screen-reader",
+      "what": "a manual screen-reader pass per platform",
+      "decided": "2026-07-25",
+      "by": "39-CHASSIS §6 / MASTER_PLAN §4-F",
+      "pageMustNotContain": "screen-reader pass",
+      "why": "no Apple device; logged as a11y debt rather than carried as a gate that can never go green"
+    },
+    {
+      "id": "widget-per-state-as-ci",
+      "what": "widget-per-state as a CI assertion",
+      "decided": "2026-07-25",
+      "by": "39-CHASSIS §6",
+      "pageMustNotContain": "widget-per-state",
+      "why": "downgraded to item B's human verdict; not re-mechanised here"
+    },
+    {
+      "id": "e2e-per-environment",
+      "what": "integration E2E per environment (six)",
+      "decided": "2026-07-29",
+      "by": "company/pipeline/06-app-build.md N-6",
+      "pageMustNotContain": "per environment",
+      "why": "MASTER_PLAN §4-H wins on intent, N-6 on cost: ONE web E2E is kept. The cost is stated rather than hidden — five of six platforms have no end-to-end proof under any requirement in any of the fourteen stages, and the purchase->unlock leg cannot be reversed on iOS/Android at all under store billing policy"
+    }
+  ]
+}
