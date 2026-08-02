@@ -28,6 +28,20 @@ export interface Env {
   API_VERSION: string;
   /** Comma-separated browser origins for CORS. Absent/empty ⇒ '*' (template). */
   ALLOWED_ORIGINS?: string;
+  /**
+   * [pipeline 11]E-8 — the crash sink for UNHANDLED WORKER ERRORS. A `var`, not
+   * a secret: a GlitchTip DSN is a write-only ingest key this factory already
+   * ships inside every web build. Absent ⇒ no report, silently; lib/
+   * error-sink.ts fails open by design.
+   */
+  GLITCHTIP_DSN?: string;
+  /**
+   * The commit this Worker was deployed from — `--var RELEASE:<sha>`. NOT
+   * `API_VERSION`, which is the literal "v1" and would group every error the
+   * factory ever reports into one bucket. [9]R-2 replaces it with a real
+   * release id.
+   */
+  RELEASE?: string;
 
   // Secrets (wrangler secret put / .dev.vars) — optional in template mode
   SUPABASE_JWT_SECRET?: string;

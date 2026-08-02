@@ -294,6 +294,11 @@
         "workflow": ".github/workflows/deploy-web.yml",
         "job": "deploy-web"
       },
+      "crashSink": {
+        "layers": ["dart"],
+        "native": false,
+        "note": "sentry_flutter on web captures Dart exceptions and unhandled JS errors. VERIFIED LIVE: GlitchTip issue SUBLY-2, release subly@1.0.75+e509a26, environment production, from https://subly.nikatru.com/. [pipeline 11]E-7"
+      },
       "deploymentEnvironment": "{app}-web",
       "storeMetadataDir": null,
       "ownerQueue": null,
@@ -345,6 +350,11 @@
           "that SHIPS it. Serving needs OWNER_QUEUE A-3 (the publisher account), the 12-tester closed",
           "test, and a real upload key."
         ]
+      },
+      "crashSink": {
+        "layers": ["dart"],
+        "native": false,
+        "note": "The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so Dart errors from this artifact reach GlitchTip. sentry_flutter vendors sentry-android, but NOTHING HAS EXERCISED THE NATIVE PATH FROM THIS FACTORY — Android cannot be built on the owner's box at all, so no Android artifact has ever run on a handset. Native coverage is UNVERIFIED and is not claimed. [pipeline 11]E-7"
       },
       "deploymentEnvironment": "{app}-android-play",
       "storeMetadataDir": "apps/{app}/store/android-play",
@@ -563,6 +573,11 @@
           "⚠️ `served` is still false and stays false: a lane that BUILDS the artifact is not a channel",
           "that SHIPS it. Serving needs OWNER_QUEUE A-2 (the publisher account) plus a real submission."
         ]
+      },
+      "crashSink": {
+        "layers": ["dart"],
+        "native": false,
+        "note": "THE DART LAYER ONLY, and this row is where that is written down. The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so a Dart exception reaches GlitchTip; a native crash in the C++ runner or in a plugin's native half does NOT. 'Windows crashes reach GlitchTip' is therefore true of Dart exceptions and false of access violations, and six green build ticks must never be read as six covered platforms. [pipeline 11]E-7"
       },
       "deploymentEnvironment": "{app}-windows-store",
       "storeMetadataDir": "apps/{app}/store/windows-store",

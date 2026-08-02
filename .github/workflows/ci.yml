@@ -233,6 +233,23 @@ jobs:
       - name: Schema evolution is additive-only
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/check-migrations.mjs
+      # …and the ANALYTICS half of that schema is one contract written down in
+      # four places that cannot import each other: the migrations, the ingest
+      # route, the Dart event object and the Dart wire envelope. E-1's acceptance
+      # ("one locked taxonomy and envelope serves every app") could not fail —
+      # events.test.ts posts one fixture batch and nothing compared the sets.
+      #
+      # It also makes the two privacy invariants STRUCTURAL. events.test.ts:141
+      # and :663 assert "no ip column" by searching the INSERT *string*, so a
+      # migration adding `ip TEXT` to the schema passes both; and
+      # check-migrations above reads migrations only and exempts WHERE-filtered
+      # statements by design, so a filtered `DELETE FROM consent_artifacts` in
+      # route code is invisible to it — measured, not argued: it printed
+      # "8 migration file(s) clean" over exactly that mutation.
+      # [pipeline 11]E-1, E-2, E-3
+      - name: One analytics envelope, and the consent trail stays append-only
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-analytics-contract.mjs
       # …and the money rail's half of that schema is COMPLETE, which the step
       # above cannot ask. check-migrations is a DESTRUCTIVE-CHANGE scanner with
       # no concept of a required column: it passes precisely when nobody has
@@ -317,6 +334,24 @@ jobs:
       - name: The shared server declares every route and every binding
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-platform-register.mjs
+      # …and when that server throws, somebody finds out. Measured at HEAD
+      # 2026-08-02: `grep -rn "sentry|glitchtip|toucan" services/` → ZERO HITS,
+      # while the Flutter app's crashes had been reaching GlitchTip since July.
+      # Both Workers' onError logged and returned 500, and on Free
+      # `console.error` goes to `wrangler tail` — a LIVE STREAM with no
+      # searchable history — so an unhandled error on the SHARED Worker was
+      # invisible the moment it happened and the only person who knew was the
+      # user who got the 500.
+      #
+      # This guard is the STRUCTURE (handler → sink → deploy vars, per job). The
+      # BEHAVIOUR — the envelope shape, its release id, its privacy invariants,
+      # its fail-open paths — is asserted by services/*/test/error-sink.test.ts
+      # driving the real onError through the real app. A source scan can say the
+      # wire is connected and can never say what travels down it.
+      # [pipeline 11]E-8
+      - name: A Worker's unhandled error reaches a sink, not just the log
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-worker-error-sink.mjs
       # Every free-tier ceiling recorded ONCE with the URL it was read from and
       # the date it was read, and every hard cap in the Worker source derives
       # from one. B-6's original criterion was "a ceilings file exists", which an
@@ -345,6 +380,26 @@ jobs:
       - name: Every deployable unit is claimed by a lane
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-lane-coverage.mjs
+      # …and every deployable HOSTNAME is claimed by a monitor. Same shape, other
+      # axis. The deployed hostname set is DERIVED from the tree (Worker custom
+      # domains + the app catalogue + each site's own canonical URL), so adding a
+      # route acquires a monitoring obligation on merge rather than when somebody
+      # remembers tooling/monitor-register.json exists.
+      #
+      # Measured against the live GlitchTip API 2026-08-01 and 2026-08-02: six
+      # monitors, five hostnames, and TWO deployed custom domains that nothing
+      # watches — platform.nikatru.com (the whole analytics + consent rail) and
+      # config.nikatru.com (the pre-consent launch fetch). Creating a monitor is
+      # an action on the owner's GlitchTip instance rather than a repo change, so
+      # that gap PRINTS on every run instead of failing the build; what fails is
+      # a deployed hostname nobody DECLARED. The live reconcile is
+      # tooling/ops/verify-monitors.mjs, run by hand until GLITCHTIP_TOKEN is a
+      # repository secret — a CI limb that needed a network token would either be
+      # skipped (and a skipped check reports ok) or would make every build depend
+      # on the Oracle box, which is the very SPOF E-9b is about. [pipeline 11]E-9
+      - name: Every deployed hostname is declared, and its monitor gap is visible
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-monitor-coverage.mjs
       # …and the claim is worth what the lane's TRIGGER is worth. deploy-web.yml
       # filtered on `apps/subly/**` + `packages/**` only, so a dependency bump —
       # a transitive patch landing in the root pubspec.lock with no source change
@@ -735,6 +790,22 @@ jobs:
       - name: The money funnel is wired, and the pseudonymity firewall holds
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-pseudonymity-firewall.mjs
+      # …and a ROLLOUT is measurable at all. `resolveFlag` has shipped since CFG
+      # G-14 and `grep -rn variant_exposed` matched NOTHING, in any language:
+      # the client decided on/off locally and told nobody, so the treatment
+      # group could only be re-derived from a rollout percentage — and percents
+      # are not versioned, so the moment one is ramped the past is gone.
+      #
+      # The chassis now hands out core.ObservedFeatureFlags, which emits
+      # variant_exposed{flag, variant, bucket} once per flag per session with
+      # the bucket from the SAME flagBucket the decision used. This guard fails
+      # on a raw reader escaping and PRINTS the `.isOn(` call-site count on
+      # every run — it is 0 today, which is exactly when the rule is free to
+      # enforce and exactly when a silent assertion would be dishonest.
+      # [pipeline 11]E-12
+      - name: Every rollout read is an observed rollout
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-flag-exposure.mjs
       # [pipeline N-1 · N-3] The DoD register's own integrity, on a checkout with
       # no stamp: every non-`human` item resolves to a `run:` step on a NON-COMMENT
       # line, in a workflow whose `on:` includes push, whose job is in ci-gate's

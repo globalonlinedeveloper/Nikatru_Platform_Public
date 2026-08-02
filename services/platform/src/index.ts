@@ -13,6 +13,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
+import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
 import account from './routes/account';
@@ -100,8 +101,33 @@ app.use('/v1/plan/*', platformAuth);
 app.route('/v1', cancellation);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
+// [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.
+// `console.error` alone produced exactly one artefact nobody sees: `wrangler
+// tail` is a live stream, and Free keeps no searchable history. The report is
+// handed to `waitUntil` so the caller's 500 is not held open behind GlitchTip,
+// and `reportWorkerError` never rejects — see lib/error-sink.ts.
 app.onError((err, c) => {
   console.error(`[unhandled] rid=${c.get('requestId') ?? '-'}`, err);
+  const url = new URL(c.req.url);
+  const report = reportWorkerError(
+    err,
+    {
+      service: 'platform',
+      release: c.env.RELEASE,
+      requestId: c.get('requestId'),
+      method: c.req.method,
+      path: url.pathname, // pathname only — never the query string
+    },
+    c.env,
+  );
+  // `executionCtx` is absent when the app is invoked directly (unit tests), so
+  // the await-less fallback keeps the handler working in both worlds rather
+  // than throwing a second error while reporting the first.
+  try {
+    c.executionCtx.waitUntil(report);
+  } catch {
+    void report;
+  }
   return c.json({ error: 'internal_error' }, 500);
 });
 

@@ -1,5 +1,6 @@
 {
   "adapter-capabilities.test.mjs": 16,
+  "analytics-contract.test.mjs": 22,
   "app-dod.test.mjs": 33,
   "app-versioning.test.mjs": 30,
   "appstore-submission.test.mjs": 37,
@@ -16,14 +17,16 @@
   "deploy-triggers.test.mjs": 17,
   "dod-sync.test.mjs": 18,
   "entitlement-contract.test.mjs": 22,
+  "flag-exposure.test.mjs": 18,
   "green-means-ran.test.mjs": 25,
   "guard-coverage.test.mjs": 38,
-  "guards.test.mjs": 225,
+  "guards.test.mjs": 233,
   "input-contract.test.mjs": 20,
   "legal-tripwires.test.mjs": 26,
   "licence-register.test.mjs": 39,
   "lint-inheritance.test.mjs": 12,
   "money-config.test.mjs": 20,
+  "monitor-coverage.test.mjs": 21,
   "mor-adapters.test.mjs": 34,
   "no-clone-tells.test.mjs": 16,
   "no-gate-weakening.test.mjs": 22,
@@ -53,5 +56,6 @@
   "store-metadata.test.mjs": 49,
   "text-reductions.test.mjs": 17,
   "vendor-portability.test.mjs": 19,
-  "windows-store-submission.test.mjs": 20
+  "windows-store-submission.test.mjs": 20,
+  "worker-error-sink.test.mjs": 18
 }

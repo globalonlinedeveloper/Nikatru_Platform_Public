@@ -130,11 +130,29 @@ final FutureProvider<String> installIdProvider = FutureProvider<String>((
 
 /// Resolved feature flags for this install: `AppConfig.flags` (rollout percents)
 /// bound to the persisted install id. Callers ask `.isOn('flag')`.
-final FutureProvider<core.FeatureFlags> featureFlagsProvider =
-    FutureProvider<core.FeatureFlags>((ref) async {
+///
+/// 🔴 THE TYPE IS [core.ObservedFeatureFlags], AND IT IS NOT AN UPGRADE — it is
+/// the only way a rollout is measurable at all ([pipeline 11]E-12). A raw
+/// `core.FeatureFlags` decides on/off locally and tells nobody, so the treatment
+/// group can only ever be re-derived later from a rollout percentage that has
+/// since moved: percents are not versioned, so once ramped the past is gone.
+/// The wrapper emits `variant_exposed{flag, variant, bucket}` on the FIRST read
+/// of each flag per session, with the bucket coming from the same `flagBucket`
+/// the decision used — two independent bucketing ids would attribute sessions to
+/// the wrong arm with nothing ever looking wrong.
+///
+/// ⚠️ The `core.FeatureFlags` construction MUST stay inside the wrapper's
+/// argument list. `tooling/ci/assert-flag-exposure.mjs` fails the build on a raw
+/// one escaping, because a chassis that can read a flag silently is a chassis
+/// where the next fifty stamped apps ship unmeasurable rollouts.
+final FutureProvider<core.ObservedFeatureFlags> featureFlagsProvider =
+    FutureProvider<core.ObservedFeatureFlags>((ref) async {
       final core.AppConfig cfg = await ref.watch(appConfigProvider.future);
       final String id = await ref.watch(installIdProvider.future);
-      return core.FeatureFlags(rollouts: cfg.flags, stableId: id);
+      return core.ObservedFeatureFlags(
+        flags: core.FeatureFlags(rollouts: cfg.flags, stableId: id),
+        analytics: await ref.watch(analyticsProvider.future),
+      );
     });
 
 /// Local notifications (G-25): the plugin-backed impl of core's
