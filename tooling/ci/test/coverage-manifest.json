@@ -25,6 +25,7 @@
   "licence-register.test.mjs": 39,
   "lint-inheritance.test.mjs": 12,
   "money-config.test.mjs": 20,
+  "monitor-coverage.test.mjs": 21,
   "mor-adapters.test.mjs": 34,
   "no-clone-tells.test.mjs": 16,
   "no-gate-weakening.test.mjs": 22,

@@ -1,0 +1,128 @@
+{
+  "_readme": [
+    "THE MONITOR REGISTER — [pipeline E-9] company/pipeline/11-measurement.md",
+    "",
+    "Every hostname this factory serves, and whether anything is watching it.",
+    "",
+    "WHY IT EXISTS. E-9's acceptance is 'every live hostname has a monitor, and the list cannot silently",
+    "shrink'. Until this file landed the right-hand side did not exist: the monitor set lived only inside",
+    "GlitchTip on the Oracle box, and the comparison the acceptance names was performed by a human, from",
+    "memory, when someone happened to look. Measured 2026-08-01 and again 2026-08-02: six monitors, five",
+    "hostnames, and TWO deployed custom domains — platform.nikatru.com and config.nikatru.com — that",
+    "nothing watches, both of them bound in services/platform/wrangler.jsonc since the day the Worker",
+    "shipped. Nobody had decided not to monitor them. Nobody had noticed.",
+    "",
+    "🔴 THE HOSTNAME LIST IS DERIVED, NOT TYPED. tooling/ci/assert-monitor-coverage.mjs computes the",
+    "deployed set from the tree on every run — Worker custom domains, the app catalogue, and each site's",
+    "own canonical URL — and fails when a hostname the repo deploys has no row here. That is the half a",
+    "hand-written list can never have: adding a route to a wrangler.jsonc acquires a monitoring",
+    "obligation the moment it merges, rather than when somebody remembers this file exists.",
+    "",
+    "⚠️ AND THE CHECK IS DELIBERATELY SPLIT IN TWO.",
+    "  · tooling/ci/assert-monitor-coverage.mjs   OFFLINE. Runs in ci.yml, reads only the tree, needs no",
+    "    token and no network. Fails on an undeclared deployed hostname or a dead row.",
+    "  · tooling/ops/verify-monitors.mjs          LIVE. Reconciles the rows below against the GlitchTip",
+    "    API using the vault GLITCHTIP_TOKEN, printing drift. Run by hand until that token is a repo",
+    "    secret (OWNER_QUEUE S-8).",
+    "A CI limb that needed a network token would either be skipped — and a skipped check is a check that",
+    "reports ok — or it would make every build depend on the Oracle box, which is the exact single point",
+    "of failure the observability note below is about.",
+    "",
+    "⚠️ `monitor: null` IS A GAP, NOT A WAIVER. Those rows are PRINTED on every guard run and never fail",
+    "the build, because creating a monitor is an action on the owner's GlitchTip instance rather than a",
+    "change to this repository. A guard that failed CI on them would block every branch on work only the",
+    "owner can do. Printing is what stops the gap becoming invisible instead.",
+    "",
+    "[14]O-2 must CONSUME this register rather than re-enumerate the hostnames. Two enumerations of one",
+    "list is how the ceiling budget came to disagree with itself by 5x."
+  ],
+
+  "_derivation": {
+    "workerCustomDomains": "every routes[] entry with custom_domain: true across services/*/wrangler.jsonc",
+    "appCatalogue": "every url and api host in sites/_shared/_data/apps.json",
+    "siteCanonicals": "the <link rel=\"canonical\"> host of each sites/*/index.html (_shared is not a site)",
+    "declared": [
+      "A hostname NO deploy config can mention, because it is the thing doing the watching.",
+      "Exactly one row may carry role: \"observability\", and the guard requires that row to exist —",
+      "otherwise 'is the monitor host itself monitored' is a question nothing in the tree asks."
+    ]
+  },
+
+  "hosts": [
+    {
+      "hostname": "nikatru.com",
+      "what": "the factory's public site",
+      "derivedFrom": "siteCanonicals",
+      "monitor": { "id": 4, "name": "nikatru.com", "type": "Ping", "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+    },
+    {
+      "hostname": "rajasekarselvam.com",
+      "what": "the founder site",
+      "derivedFrom": "siteCanonicals",
+      "monitor": { "id": 5, "name": "rajasekarselvam.com", "type": "Ping", "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+    },
+    {
+      "hostname": "subly.nikatru.com",
+      "what": "the flagship app's web build — the only shipping client today",
+      "derivedFrom": "appCatalogue",
+      "monitor": { "id": 3, "name": "Subly web", "type": "Ping", "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+    },
+    {
+      "hostname": "api.nikatru.com",
+      "what": "the subly-api Worker",
+      "derivedFrom": "appCatalogue",
+      "monitor": { "id": 2, "name": "Subly API health", "type": "GET", "path": "/v1/health", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+    },
+    {
+      "hostname": "glitchtip.nikatru.com",
+      "role": "observability",
+      "what": "the crash sink and the monitor host itself",
+      "derivedFrom": "declared",
+      "why": "No wrangler.jsonc, app row or site canonical names it: it is not something this repo deploys, it is the thing watching what this repo deploys. Declared here so 'who watches the watcher' is at least askable.",
+      "monitor": { "id": 1, "name": "GlitchTip", "type": "GET", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+    },
+    {
+      "hostname": "platform.nikatru.com",
+      "what": "the shared platform Worker — POST /v1/events and POST /v1/consent, the whole analytics and DPDP consent rail for every app in the portfolio",
+      "derivedFrom": "workerCustomDomains",
+      "monitor": null,
+      "gap": {
+        "why": "Bound as a custom domain in services/platform/wrangler.jsonc since the Worker shipped and never monitored. This is the highest-consequence unwatched host in the tree: if it stops answering, every stamped app's events queue locally and nothing anywhere goes red.",
+        "action": "Create a GlitchTip uptime monitor. An owner action on the GlitchTip instance, not a repository change.",
+        "openedOn": "2026-08-02"
+      }
+    },
+    {
+      "hostname": "config.nikatru.com",
+      "what": "the shared platform Worker's config surface — GET /config/:app, the pre-consent launch fetch every client makes",
+      "derivedFrom": "workerCustomDomains",
+      "monitor": null,
+      "gap": {
+        "why": "Same wrangler.jsonc, same omission. It is the FIRST request a launching app makes, so its failure is a launch failure rather than a degraded feature.",
+        "action": "Create a GlitchTip uptime monitor. An owner action on the GlitchTip instance, not a repository change.",
+        "openedOn": "2026-08-02"
+      }
+    }
+  ],
+
+  "observability": {
+    "spof": [
+      "🔴 EVERY MONITOR ABOVE RUNS INSIDE GLITCHTIP ON ONE ORACLE CLOUD BOX, including monitor id 1,",
+      "which watches glitchtip.nikatru.com. So does the alert path (Resend SMTP). If that box is down,",
+      "every check is down and the notification that would say so is down with it — the failure is",
+      "indistinguishable from everything being healthy.",
+      "",
+      "This is [pipeline E-9b] and it is OWNER-GATED: either fund/accept an off-box checker",
+      "(company/requirements/zero-cost-stack.md keeps Gatus on the adopt-nothing-until-trigger menu), or",
+      "write the single point of failure down as ACCEPTED, with a date and a name. 'Not noticed' is not",
+      "an answer; 'accepted and recorded' is. No agent can make that call.",
+      "",
+      "⚠️ NO ALERT THRESHOLD IS RECORDED IN THIS FILE and none may be invented. `intervalSeconds` above",
+      "is a MEASURED fact — what each monitor is configured with today, read from the live API — not a",
+      "target anybody chose. How many consecutive failures should page, and how fast, is a decision with",
+      "no derivable answer in this repository."
+    ],
+    "decidedOn": null,
+    "decidedBy": null
+  }
+}

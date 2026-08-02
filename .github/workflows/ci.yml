@@ -362,6 +362,26 @@ jobs:
       - name: Every deployable unit is claimed by a lane
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-lane-coverage.mjs
+      # …and every deployable HOSTNAME is claimed by a monitor. Same shape, other
+      # axis. The deployed hostname set is DERIVED from the tree (Worker custom
+      # domains + the app catalogue + each site's own canonical URL), so adding a
+      # route acquires a monitoring obligation on merge rather than when somebody
+      # remembers tooling/monitor-register.json exists.
+      #
+      # Measured against the live GlitchTip API 2026-08-01 and 2026-08-02: six
+      # monitors, five hostnames, and TWO deployed custom domains that nothing
+      # watches — platform.nikatru.com (the whole analytics + consent rail) and
+      # config.nikatru.com (the pre-consent launch fetch). Creating a monitor is
+      # an action on the owner's GlitchTip instance rather than a repo change, so
+      # that gap PRINTS on every run instead of failing the build; what fails is
+      # a deployed hostname nobody DECLARED. The live reconcile is
+      # tooling/ops/verify-monitors.mjs, run by hand until GLITCHTIP_TOKEN is a
+      # repository secret — a CI limb that needed a network token would either be
+      # skipped (and a skipped check reports ok) or would make every build depend
+      # on the Oracle box, which is the very SPOF E-9b is about. [pipeline 11]E-9
+      - name: Every deployed hostname is declared, and its monitor gap is visible
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-monitor-coverage.mjs
       # …and the claim is worth what the lane's TRIGGER is worth. deploy-web.yml
       # filtered on `apps/subly/**` + `packages/**` only, so a dependency bump —
       # a transitive patch landing in the root pubspec.lock with no source change
