@@ -154,7 +154,7 @@ const NOT_A_SCANNER = new Map([
   ],
   [
     'text-reductions.mjs',
-    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree, imported by check-site-integrity, assert-policy-archive, assert-policy-claims, assert-data-inventory and assert-licence-register. The coverage question belongs to those five — each carries its own COVERAGE LOST over what it reads — and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree, imported by NINE guards — check-site-integrity, assert-policy-archive, assert-policy-claims, assert-data-inventory, assert-licence-register, assert-analytics-contract, assert-e2e-legs, assert-flag-exposure and assert-worker-error-sink, of which seven take stripSourceComments. (This entry said "five" until 2026-08-02, when a defect in that stripper was triaged against the undercount; the list is now derived from the actual import statements.) The coverage question belongs to those nine — each carries its own COVERAGE LOST over what it reads — and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
 ]);
 
@@ -367,6 +367,21 @@ const importsOf = (file) => {
   // this is the guard that audits which modules are reachable, and having it
   // depend on one of its own subjects is a circularity nobody should have to
   // reason about at 2am.
+  //
+  // 🔴 THAT DECISION WAS RE-TAKEN 2026-08-02, when text-reductions.mjs's
+  // stripSourceComments was fixed for the identical defect and "one declaration,
+  // not two" became the obvious tidy-up. It is still NOT unified, and the reason
+  // is stronger than tidiness. Measured on the tree that day: the two reducers
+  // already agree — over all 76 files in tooling/ci they derive the SAME import
+  // graph, 0 differences — so unifying buys no correctness. What it COSTS is the
+  // property the derivation exists for. text-reductions.mjs is reached today
+  // only because nine guards import it; delete the last of those and it becomes
+  // unreached and this guard FAILS, which is exactly when it has stopped being
+  // covered. An import HERE would make its auditor one of its consumers, so it
+  // would be reported reachable on the day nothing else reaches it. Verified by
+  // mutation on a clone: with all nine real imports deleted the guard names
+  // text-reductions.mjs as unreached; with this file importing it, it does not.
+  // The duplication is the price of the invariant, and it is worth it.
   //
   // 🔴 2026-08-02 — THIS WAS `.replace(/\/\*[\s\S]*?\*\//g, ' ')` AND IT ATE THIS
   // FILE'S OWN IMPORTS. Line 70 of this very file is a LINE comment containing
