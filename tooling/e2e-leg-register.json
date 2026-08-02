@@ -100,8 +100,8 @@
       "id": "account-delete-purges",
       "asks": "deleting the account from inside the app really erases the user and its rows",
       "status": "blocked",
-      "blockedBy": "[6] apps/subly has no delete-account call site",
-      "declaredOn": "2026-08-02"
+      "blockedBy": "[6] no deployed route erases apps/subly own database",
+      "declaredOn": "2026-08-03"
     }
   ]
 }

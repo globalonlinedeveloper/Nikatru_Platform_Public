@@ -2420,7 +2420,7 @@ final FutureProvider<core.Analytics> analyticsProvider = X();
 final Provider<core.AuthRepository> authRepositoryProvider = Provider<core.AuthRepository>((ref) {
   if (!AppConfig.isBackendLive) return InMemoryAuthRepository();
   return SupabaseAuthRepository(
-    requestServerDeletion: () => ref.read(restClientProvider).delete('/account'),
+    requestServerDeletion: () => requestAccountDeletion(ref.read(restClientProvider)),
   );
 });
 final Provider<Future<String?> Function()> authTokenProvider = X();
@@ -2579,6 +2579,13 @@ Future<void> _deleteAccount(...) async {
   await auth.signInWithEmail(email: email, password: password);
   await auth.deleteAccount();
 }
+
+// [ADR 027] And the failure path must say WHICH refusal it was: a catch(_)
+// printing one string tells a user whose data is already gone (502) that
+// nothing happened.
+messenger.showSnackBar(SnackBar(content: Text(
+  deleteAccountFailureMessage(l10n, core.accountDeletionOutcomeOf(e)),
+)));
 `;
 
   // [pipeline C-13] A SECOND locale must exist. With one language file the
@@ -3149,13 +3156,46 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       const { code, out } = run('assert-stamp-properties.mjs', {
         cwd: build('sp-nullhook', {
           providers: goodProviders.replace(
-            "requestServerDeletion: () => ref.read(restClientProvider).delete('/account'),",
+            'requestServerDeletion: () => requestAccountDeletion(ref.read(restClientProvider)),',
             'requestServerDeletion: null,',
           ),
         }),
       });
       assert.equal(code, 1);
       assert.match(out, /must be WIRED to the server route/);
+    });
+
+    // [ADR 027] …and wiring it to a BARE delete() is the same defect one layer
+    // out. `ApiException` carries the status; `deleteAccount` flattens it into
+    // an `AuthFailure`, so by the time the screen catches it 501 (nothing was
+    // deleted) and 502 (the data is gone, the login is not) are the same object.
+    test('FAILS when the deletion bypasses the helper that keeps the status', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-barehook', {
+          providers: goodProviders.replace(
+            'requestServerDeletion: () => requestAccountDeletion(ref.read(restClientProvider)),',
+            "requestServerDeletion: () => ref.read(restClientProvider).delete('/account'),",
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must go through requestAccountDeletion/);
+    });
+
+    // 🔴 AND THE MESSAGE ITSELF. Every anchor above was satisfied by a
+    // `catch (_)` printing ONE string for every refusal the route can give —
+    // including 502, where "your account has NOT been deleted" is simply false.
+    test('FAILS when the failure path collapses back to one message', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-onemessage', {
+          settings: goodSettings.replace(
+            'deleteAccountFailureMessage(l10n, core.accountDeletionOutcomeOf(e)),',
+            'l10n.deleteAccountFailed,',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /must resolve WHICH refusal it was/);
     });
 
     // …and wiring it to a route that leaves the identity behind is WORSE than

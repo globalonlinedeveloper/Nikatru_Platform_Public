@@ -566,16 +566,20 @@ String _generateInstallId() {
 /// watches [authTokenProvider], which reads this provider, so resolving the
 /// client out here would be a cycle. Deletion happens long after both exist.
 ///
-/// A non-2xx — including the 501 the route returns when it cannot delete the
-/// IDENTITY record — throws `ApiException`, which `deleteAccount` turns into an
-/// `AuthFailure`. The honest refusal is preserved; it has just moved to the end
-/// of a chain that can actually succeed.
+/// 🔴 `requestAccountDeletion`, NOT a bare `delete('/account')`, and the
+/// difference is the honesty of the message the user finally sees. A bare call
+/// throws `ApiException`, `deleteAccount` wraps it in an `AuthFailure`, and by
+/// the time the screen catches it the STATUS is a substring of a sentence — so
+/// 501 (nothing was deleted) and 502 (the data is gone, the login is not) arrive
+/// indistinguishable. The helper maps the status ONCE, at the only layer that
+/// still has it, into a `core.AccountDeletionFailure` that names the outcome.
+/// [ADR 027].
 final Provider<core.AuthRepository> authRepositoryProvider =
     Provider<core.AuthRepository>((ref) {
       if (!AppConfig.isBackendLive) return InMemoryAuthRepository();
       return SupabaseAuthRepository(
         requestServerDeletion: () =>
-            ref.read(restClientProvider).delete('/account'),
+            requestAccountDeletion(ref.read(restClientProvider)),
       );
     });
 

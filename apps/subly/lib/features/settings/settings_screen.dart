@@ -6,7 +6,9 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
-import '../../data/auth/auth_models.dart';
+// `auth_repository.dart` is the F0-4 re-export shim: it carries AuthRepository
+// AND the AuthUser/AuthFailure types, so one import covers both.
+import '../../data/auth/auth_repository.dart';
 import '../../state/analytics_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
@@ -226,6 +228,27 @@ class SettingsScreen extends ConsumerWidget {
             if (context.mounted) context.go('/onboarding');
           },
         ),
+        // ── DELETE ACCOUNT ───────────────────────────────────────────────────
+        //
+        // 🔴 [ADR 027] BOTH STORES REQUIRE AN IN-APP DELETION PATH WHEREVER AN
+        // ACCOUNT CAN BE CREATED, and this app had none: `deleteAccount()` was
+        // an unconditional throw, so there was nothing honest to point a button
+        // at and no button was drawn. `sites/nikatru/delete-account.html` had to
+        // scope its own sentence around that absence.
+        //
+        // BELOW "Log out", deliberately, and the order is the point: logging out
+        // is the action a user wants hundreds of times more often, and putting
+        // the irreversible one first invites a misfire. It is gated on a session
+        // for the same reason the profile block is — offering "delete your
+        // account" to a signed-out user is an offer the app cannot honour.
+        if (user != null) ...<Widget>[
+          const SizedBox(height: 10),
+          SoftButton(
+            label: 'Delete account',
+            color: AppColors.danger,
+            onPressed: () => _confirmDelete(context, ref),
+          ),
+        ],
         const SizedBox(height: 22),
         const Center(child: PoweredByNikatru()),
         const SizedBox(height: 12),
@@ -237,6 +260,84 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  /// The confirmation step. Split into its own widget for the reason the brick
+  /// records: a confirm action only reachable through a tap on a tile is one
+  /// nobody writes a test for, which is how a dead delete button survives.
+  ///
+  /// IT CANNOT BE TRIGGERED ACCIDENTALLY. Two independent things must happen —
+  /// the destructive button is DISABLED until a password has been typed, and the
+  /// password is then used to RE-AUTHENTICATE through the same seam sign-in
+  /// uses. Deletion is irreversible, so a borrowed or unattended device must not
+  /// be enough to destroy an account.
+  void _confirmDelete(BuildContext context, WidgetRef ref) {
+    showDialog<void>(
+      context: context,
+      // 🔴 NOT DISMISSIBLE, and the dialog also refuses a system back/Escape
+      // while the request is in flight (`PopScope` below). On desktop and web
+      // Escape closes a dialog and on Android the back gesture does, so a stray
+      // input would look exactly like a cancelled deletion while the request
+      // carried on — on the five platforms this is least likely to be tried by
+      // hand.
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => _DeleteAccountDialog(
+        onConfirm: (String password) => _deleteAccount(ref, password),
+      ),
+    );
+  }
+
+  /// Runs the real path and returns WHAT ACTUALLY HAPPENED.
+  ///
+  /// 🔴 IT RETURNS AN OUTCOME RATHER THAN A BOOL, and that is the whole point.
+  /// `DELETE /v1/account` answers 501 when the server cannot delete the identity
+  /// record (nothing was deleted) and 502 when the rows went and the identity
+  /// did not (the data is gone and the login still works). A `catch (_)` that
+  /// prints one message collapses those into each other, and the 502 case is the
+  /// one a user can never discover for themselves.
+  ///
+  /// Nothing here invents a turnaround time, a retention period or a legal
+  /// statement — `sites/nikatru/delete-account.html` deliberately publishes none.
+  Future<core.AccountDeletionOutcome> _deleteAccount(
+    WidgetRef ref,
+    String password,
+  ) async {
+    final AuthRepository auth = ref.read(authRepositoryProvider);
+    final AuthUser? user = auth.currentUser;
+    core.AccountDeletionOutcome outcome;
+    try {
+      if (user == null) throw core.AuthFailure('Not signed in');
+      // Re-authenticate through the SAME seam sign-in uses, so it works against
+      // whatever identity provider is wired.
+      await auth.signInWithEmail(email: user.email, password: password);
+      try {
+        await auth.deleteAccount();
+        outcome = core.AccountDeletionOutcome.deleted;
+      } catch (e) {
+        // `accountDeletionOutcomeOf` resolves an unrecognised error to `unknown`
+        // rather than to a refusal shape this screen invented — an error nobody
+        // modelled is exactly the case where how far the deletion got is unknown.
+        outcome = core.accountDeletionOutcomeOf(e);
+      }
+    } on core.AuthFailure {
+      // The provider REFUSED the credentials. Nothing was sent, nothing was
+      // deleted, and — unlike every server-side refusal — the session is
+      // untouched, which is why this is not `nothingDeleted` (whose message says
+      // the user was signed out).
+      return core.AccountDeletionOutcome.reauthFailed;
+    } catch (_) {
+      // 🔴 NOT reauthFailed. Anything that is not the provider saying no — no
+      // network, a rate-limit, a plugin error — is NOT a wrong password, and
+      // telling somebody on a train that their password did not match sends them
+      // round a loop retyping a correct one.
+      return core.AccountDeletionOutcome.couldNotReach;
+    }
+    // 🔴 PARK IT ABOVE THE SCREEN. The deletion signed the user out, so the
+    // router is already replacing this page — taking the dialog with it. The
+    // login screen renders whatever is left here. Measured: without this the
+    // result widget is GONE by the time the redirect settles.
+    ref.read(lastAccountDeletionOutcomeProvider.notifier).state = outcome;
+    return outcome;
   }
 
   Widget _prefRow(String label, String desc, bool value, VoidCallback onTap) {
@@ -262,6 +363,154 @@ class SettingsScreen extends ConsumerWidget {
           _Toggle(value: value, onTap: onTap),
         ],
       ),
+    );
+  }
+}
+
+/// The irreversible confirmation, and then THE HONEST ANSWER, in one place.
+///
+/// 🔴 THE RESULT IS SHOWN IN THIS DIALOG RATHER THAN IN A SNACKBAR, and that is
+/// not styling. `deleteAccount()` signs out whichever way the request went, and
+/// a sign-out flips the router straight to `/onboarding` — a `SnackBar` posted
+/// to the settings screen's `ScaffoldMessenger` would be raced by the teardown
+/// of the very screen that owns it. The one message a user must not miss is the
+/// one saying their data is gone and their login is not.
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog({required this.onConfirm});
+
+  /// Runs the real deletion and reports what happened.
+  final Future<core.AccountDeletionOutcome> Function(String password) onConfirm;
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  final TextEditingController _password = TextEditingController();
+  bool _busy = false;
+  core.AccountDeletionOutcome? _outcome;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run() async {
+    setState(() => _busy = true);
+    final core.AccountDeletionOutcome outcome = await widget.onConfirm(
+      _password.text,
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _outcome = outcome;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final core.AccountDeletionOutcome? outcome = _outcome;
+    // Nothing may dismiss this while the request is in flight — a stray Escape
+    // or back gesture would look exactly like a cancelled deletion.
+    if (outcome != null) {
+      return PopScope(canPop: true, child: _result(context, outcome));
+    }
+    return PopScope(canPop: !_busy, child: _form(context));
+  }
+
+  Widget _form(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: const Text('Delete your account?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'This cannot be undone. Deleting removes your sign-in, so the same '
+            'email and password will no longer work.',
+            style: AppText.body,
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Enter your password to confirm it is you.',
+            style: AppText.muted,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const Key('deleteAccountPassword'),
+            controller: _password,
+            obscureText: true,
+            enabled: !_busy,
+            // The button below is disabled until this is non-empty, so the
+            // destructive action cannot be reached by a stray tap.
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: 'Password'),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('deleteAccountConfirm'),
+          style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+          onPressed: (_busy || _password.text.isEmpty) ? null : _run,
+          child: Text(_busy ? 'Deleting…' : 'Delete account'),
+        ),
+      ],
+    );
+  }
+
+  /// WHAT ACTUALLY HAPPENED, in the outcome's own words.
+  ///
+  /// The sentence comes from `packages/core` so that no app can invent a kinder
+  /// one, and the only path that offers "Sign in again" is the one where the
+  /// deletion never left the device.
+  Widget _result(BuildContext context, core.AccountDeletionOutcome outcome) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text(
+        outcome.accountIsGone ? 'Account deleted' : 'Not deleted',
+        key: const Key('deleteAccountResultTitle'),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            outcome.plainMessage,
+            key: const Key('deleteAccountResult'),
+            style: AppText.body,
+          ),
+          // 🔴 THE EMAIL ROUTE ON EVERY FAILURE, INCLUDING reauthFailed — and
+          // that inclusion is not tidiness. Re-auth is `signInWithEmail`, and an
+          // account created through "Continue with Apple" has NO PASSWORD here,
+          // so the in-app path cannot confirm it and the person Apple's rule is
+          // most about would otherwise be left with a dead end. Fixing that
+          // properly needs the identity seam to report which provider an account
+          // uses, which is chassis work and is a named follow-up in [ADR 027];
+          // until then the address is on screen rather than absent.
+          if (!outcome.accountIsGone) ...<Widget>[
+            const SizedBox(height: 12),
+            // The email route, which the published page also names. No
+            // turnaround time is stated here because none is published.
+            const Text(
+              'Email ${AppConfig.supportEmail} and we will finish it.',
+              style: AppText.muted,
+            ),
+          ],
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

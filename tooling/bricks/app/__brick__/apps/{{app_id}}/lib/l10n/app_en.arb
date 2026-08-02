@@ -108,7 +108,19 @@
   },
   "deleteAccountFailed": "Could not delete your account. Your account has NOT been deleted.",
   "@deleteAccountFailed": {
-    "description": "Shown when deletion fails. Must state plainly that nothing was deleted."
+    "description": "Shown when deletion fails with nothing removed. Must state plainly that nothing was deleted."
+  },
+  "deleteAccountNotConfigured": "Nothing was deleted. This app cannot complete an account deletion yet, so the request was refused rather than carried out in part. Your account and your data are unchanged.",
+  "@deleteAccountNotConfigured": {
+    "description": "The 501 answer: the server cannot remove the identity record, so it refused BEFORE deleting anything. Must not state a turnaround time, a retention period or a legal basis — the published deletion page states none."
+  },
+  "deleteAccountSignInSurvives": "Your data was deleted, but your sign-in was not: the same email and password can still sign in. The deletion is incomplete.",
+  "@deleteAccountSignInSurvives": {
+    "description": "The 502 answer: rows purged, identity delete failed. Must NOT say nothing was deleted — the data really is gone and only the login survived."
+  },
+  "deleteAccountUnknown": "We could not confirm what happened to your account. Do not assume it has been deleted.",
+  "@deleteAccountUnknown": {
+    "description": "No response, or a status the contract does not model. How far the deletion got is unknown, so nothing is claimed either way."
   },
   "errorTitle": "Something went wrong",
   "@errorTitle": {

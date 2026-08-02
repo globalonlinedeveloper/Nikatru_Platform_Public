@@ -14,12 +14,61 @@ import '../data/subscriptions/subscription_repository.dart';
 import '../services/notifications/notification_service.dart';
 
 /// Auth: real Supabase when configured, else the in-memory mock (demo mode).
+///
+/// 🔴 `requestServerDeletion` IS WHAT MAKES "DELETE ACCOUNT" A BUTTON THAT
+/// DELETES. Without it `deleteAccount()` took an unconditional refusal branch —
+/// the user was signed out and never deleted — and the app shipped no control at
+/// all because there was nothing honest to point one at. [ADR 027].
+///
+/// It goes to [platformRestClientProvider], NOT to [apiClientProvider]: the
+/// erasure route lives on the SHARED platform Worker (its auth boundary is
+/// ES256/JWKS only), while `apiClientProvider` addresses `subly-api`, which has
+/// no account route and whose middleware still accepts a shared HS256 secret.
+/// An irreversible route must not sit behind a symmetric secret.
+///
+/// `ref.read` INSIDE the closure, never at build time: the REST client's token
+/// provider reads THIS provider, so resolving it out here would be a cycle.
+/// Deletion happens long after both exist.
 final Provider<AuthRepository> authRepositoryProvider =
     Provider<AuthRepository>(
       (ref) => AppConfig.isSupabaseConfigured
-          ? SupabaseAuthRepository()
+          ? SupabaseAuthRepository(
+              requestServerDeletion: () =>
+                  requestAccountDeletion(ref.read(platformRestClientProvider)),
+            )
           : MockAuthRepository(),
     );
+
+/// 🔴 WHERE THE DELETION OUTCOME LIVES ONCE THE SCREEN IS GONE.
+///
+/// `deleteAccount()` signs out whichever way the request went; the auth stream
+/// fires, and go_router replaces the page stack with `/login`. A `SnackBar` — or
+/// a dialog, which is a PAGELESS ROUTE on the page being removed — goes with it.
+/// **Measured, not assumed:** the first version of this flow rendered the result
+/// in the dialog, and the router-driven test in
+/// `test/delete_account_test.dart` found zero widgets with the result key after
+/// the redirect settled. So the message that matters most — 502: your data is
+/// gone and your login still works — was the one message the user never saw.
+///
+/// The outcome therefore outlives the screen here, and `LoginScreen` renders it.
+/// Cleared when the user dismisses it, so it cannot resurface at a later
+/// sign-out. [ADR 027]
+final StateProvider<core.AccountDeletionOutcome?>
+lastAccountDeletionOutcomeProvider =
+    StateProvider<core.AccountDeletionOutcome?>((ref) => null);
+
+/// The authenticated client for the SHARED platform Worker (`/v1/...`).
+///
+/// Subly's other transports already talk to `AppConfig.platformBaseUrl` (consent
+/// and events), but each builds its own dio and none of them carries a bearer
+/// token, because neither call is authenticated. Erasure is, so it needs the
+/// shared [RestClient] — the one place the `Authorization` header is attached.
+final Provider<RestClient> platformRestClientProvider = Provider<RestClient>(
+  (ref) => RestClient(
+    baseUrl: '${AppConfig.platformBaseUrl}/v1',
+    tokenProvider: ref.watch(authRepositoryProvider).currentAccessToken,
+  ),
+);
 
 /// Reactive auth stream (drives sign-in UI; router uses its own refresh bridge).
 final StreamProvider<AuthUser?> authStateProvider = StreamProvider<AuthUser?>(

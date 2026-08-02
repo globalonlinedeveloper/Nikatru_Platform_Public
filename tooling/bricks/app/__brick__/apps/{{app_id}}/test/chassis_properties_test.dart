@@ -37,6 +37,7 @@ import 'package:{{app_id.snakeCase()}}/l10n/app_localizations.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/core/router.dart';
 import 'package:{{app_id.snakeCase()}}/features/firstrun/onboarding_screen.dart';
+import 'package:{{app_id.snakeCase()}}/features/settings/settings_screen.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:{{app_id.snakeCase()}}/state/money_providers.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
@@ -984,6 +985,48 @@ void main() {
         );
       },
     );
+
+    // 🔴 AND IT MUST SAY WHICH FAILURE. The screen used to `catch (_)` and print
+    // ONE string — "Your account has NOT been deleted" — for every refusal the
+    // route can give. That sentence is FALSE on a 502, where the rows are gone
+    // and only the identity survived: the user is told nothing happened while
+    // their data is already destroyed and their login still works. [ADR 027].
+    test('501 and 502 do NOT collapse into one message', () async {
+      final AppLocalizations l10n = await AppLocalizations.delegate.load(
+        const Locale('en'),
+      );
+
+      final String nothing = deleteAccountFailureMessage(
+        l10n,
+        core.AccountDeletionOutcome.forStatus(501),
+      );
+      final String dataGone = deleteAccountFailureMessage(
+        l10n,
+        core.AccountDeletionOutcome.forStatus(502),
+      );
+      final String refused = deleteAccountFailureMessage(
+        l10n,
+        core.AccountDeletionOutcome.forStatus(503),
+      );
+      final String unknown = deleteAccountFailureMessage(
+        l10n,
+        core.AccountDeletionOutcome.forStatus(0),
+      );
+
+      expect(
+        <String>{nothing, dataGone, refused, unknown}.length,
+        4,
+        reason:
+            'four outcomes that mean four different things to the user must '
+            'not share a sentence',
+      );
+      // The 502 message must not claim the account is intact — that is the one
+      // state the user cannot verify for themselves.
+      expect(dataGone.toLowerCase(), contains('deleted'));
+      expect(dataGone.toLowerCase(), isNot(contains('nothing')));
+      // …and the 501 message must not claim anything WAS removed.
+      expect(nothing.toLowerCase(), contains('nothing'));
+    });
   });
 
   // ── PROPERTY: profile-edit-works ──────────────────────────────────────────

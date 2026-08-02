@@ -1,3 +1,4 @@
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'auth_models.dart';
@@ -6,6 +7,16 @@ import 'auth_repository.dart';
 /// Supabase (GoTrue) implementation. Pure REST under the hood, so this same
 /// class works on all six platforms with no desktop-specific package.
 class SupabaseAuthRepository implements AuthRepository {
+  SupabaseAuthRepository({Future<void> Function()? requestServerDeletion})
+    : _requestServerDeletion = requestServerDeletion;
+
+  /// Calls the backend's `DELETE /v1/account`. INJECTED rather than built here
+  /// for the same reason `packages/auth_supabase` injects it: the route is
+  /// reached through the app's REST client, and this file must not know which
+  /// one. Leaving it null keeps the honest refusal for a caller that has no such
+  /// route — see [deleteAccount].
+  final Future<void> Function()? _requestServerDeletion;
+
   sb.GoTrueClient get _auth => sb.Supabase.instance.client.auth;
 
   AuthUser? _map(sb.User? u) => u == null
@@ -105,21 +116,49 @@ class SupabaseAuthRepository implements AuthRepository {
     return u;
   }
 
-  /// [pipeline C-15] The CLIENT half only — `DELETE /v1/account` is stage 4's
-  /// route and does not exist yet. Signs out regardless (a user who asked to be
-  /// deleted must not keep a live session) and then throws, because silently
-  /// succeeding on a deletion request is the one outcome a user can never detect
-  /// and never recover from.
+  /// 🔴 THE CLIENT HALF. This used to be an UNCONDITIONAL THROW — "the server
+  /// route is not wired" — written when `DELETE /v1/account` genuinely did not
+  /// exist. It does now ([pipeline B-5], `services/platform/src/routes/account.ts`),
+  /// and the refusal outlived its reason: the one shipping app had a seam that
+  /// could only ever fail, which is why it also had no Delete-account control.
+  /// [ADR 027].
+  ///
+  /// The shape is the chassis's, deliberately (`packages/auth_supabase`):
+  ///   · nothing injected  → still an honest refusal, never a faked success;
+  ///   · SIGN OUT REGARDLESS — a user who has asked to be deleted must not be
+  ///     left holding a live session, whichever way the request went;
+  ///   · a sign-out error must NOT mask the real cause;
+  ///   · the failure is RETHROWN UNCHANGED when it is already an
+  ///     [core.AccountDeletionFailure], so the 501-vs-502 distinction survives
+  ///     all the way to the screen. Flattening it into a new `AuthFailure` here
+  ///     is exactly how "your data is gone and your login still works" would
+  ///     have been shown as "deletion failed".
   @override
   Future<void> deleteAccount() async {
+    Object? failure;
+    try {
+      if (_requestServerDeletion == null) {
+        failure = core.AccountDeletionFailure(
+          core.AccountDeletionOutcome.notConfigured,
+        );
+      } else {
+        await _requestServerDeletion();
+      }
+    } catch (e) {
+      failure = e;
+    }
     try {
       await signOut();
     } catch (_) {
-      // Already failing; do not mask the real cause below.
+      // Already failing; a sign-out error must not mask the real cause.
     }
-    throw AuthFailure(
-      'Account deletion is not available yet: the server route is not wired. '
-      'Your account has NOT been deleted.',
-    );
+    if (failure != null) {
+      throw failure is AuthFailure
+          ? failure
+          : core.AccountDeletionFailure(
+              core.AccountDeletionOutcome.unknown,
+              message: 'Account deletion failed: $failure',
+            );
+    }
   }
 }
