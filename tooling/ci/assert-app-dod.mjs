@@ -516,6 +516,26 @@ if (mechanical === 0) {
 
 // ═════ 2 · THE PER-APP RECORD (N-2) ══════════════════════════════════════════
 const today = new Date().toISOString().slice(0, 10);
+/**
+ * 🔴 A BARE CALENDAR DATE CARRIES NO TIMEZONE, AND THIS GUARD COMPARES THREE OF
+ * THEM ON DIFFERENT CLOCKS.
+ *
+ * `today` is UTC. A `date` in a done-record is typed by a person in their own
+ * zone. `git log --format=%cI` renders in the COMMIT'S zone. In IST (UTC+5:30)
+ * all three disagree for the first five and a half hours of every local day —
+ * measured here on 2026-08-03 at 01:20 IST, where this suite reported a proof
+ * "dated in the future" and, one fix later, a file "changed after the record",
+ * both manufactured entirely by the clock. On CI (UTC) the skew is zero, so the
+ * failure only ever appears on the owner's machine, which is the worst place for
+ * it: a check that is red for part of every day locally and green in CI is one
+ * somebody learns to ignore.
+ *
+ * So: one day of slack on "in the future", and `lastCommitDay` normalised to
+ * UTC below. A date more than a day ahead is still a real fault — the recorded
+ * failing input is `2099-01-01`, and it still fails.
+ */
+const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+const inTheFuture = (day) => day > tomorrow;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Catalogue rows, for the lifecycle anchor. Absence is not fatal — the file is
@@ -535,34 +555,28 @@ const isShallow = shallow.status === 0 && shallow.stdout.trim() === 'true';
 
 /** Last commit touching a path, ISO date only, or null when git knows nothing.
  *
- *  🔴 UTC, AND THE `slice` THAT USED TO BE HERE WAS A LATENT ONE-DAY FLAKE.
- *  `%cI` renders the committer timestamp in the COMMITTER'S OWN UTC OFFSET, so
- *  `.slice(0, 10)` returned a LOCAL day, while `today` above is `toISOString()`
- *  — UTC. The two bases only coincide where the offset is zero, which is exactly
- *  where CI runs, so the mismatch was invisible in the only place anyone looked.
- *  On the owner's box (IST, +05:30) every commit made between 00:00 and 05:30
- *  local reads one day LATER than its UTC day, and the staleness clause below
- *  then fails a mutation record that is perfectly current: observed 2026-08-03
- *  at 00:21 IST, where a record dated 2026-08-02 was compared against a commit
- *  whose UTC day was also 2026-08-02 but whose `%cI` day was 2026-08-03. Four
- *  fixture tests reddened for five and a half hours a day and nowhere else.
+ *  ⚠️ NORMALISED TO UTC. `%cI` carries the commit's OWN offset, so slicing the
+ *  first ten characters yields the committer's local calendar date — which is a
+ *  different clock from `today` above, and the two disagree east of Greenwich
+ *  for the first hours of every day. See the note on `inTheFuture`.
  *
- *  Parsing the offset-aware timestamp and re-emitting it as UTC puts both sides
- *  of `mut.date < day` on ONE basis in EVERY timezone. Note the comparison is
- *  one-sided — a record dated later than the code is fine — so pushing the code
- *  side to UTC can only ever make the guard more forgiving by a day, never less
- *  able to catch the thing it is for: a record describing code that has moved. */
+ *  🔴 THE RED THIS PREVENTS, MEASURED: on 2026-08-03 at 00:21 IST (+05:30) a
+ *  clean checkout of `main` had FOUR `app-dod.test.mjs` fixture tests red, with a
+ *  mutation record dated 2026-08-02 graded against a commit whose UTC day was
+ *  also 2026-08-02 but whose `%cI` day was 2026-08-03. The guard run against the
+ *  real tree passed at the same moment — only the fixtures, which re-commit at
+ *  test time, could see it. Reproduced and diagnosed independently in
+ *  `feat/stage4-remaining` before this fix landed from #130; the two arrived at
+ *  the same normalisation. Note the comparison is one-sided — a record dated
+ *  later than the code is fine — so moving the code side to UTC can only forgive
+ *  by a day, never miss a record describing code that has moved. */
 function lastCommitDay(relPath) {
   const r = spawnSync('git', ['-C', ROOT, 'log', '-1', '--format=%cI', '--', relPath], { encoding: 'utf8' });
   if (r.status !== 0) return null;
   const t = r.stdout.trim();
   if (t === '') return null;
-  const parsed = new Date(t);
-  // A timestamp git rendered but Date could not parse must not silently become
-  // "1970-01-01", which compares older than every record and would turn the
-  // clause off. Unknown is `null` — the caller already prints that as an
-  // unverifiable, rather than treating it as a pass.
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  const asUtc = new Date(t);
+  return Number.isNaN(asUtc.getTime()) ? t.slice(0, 10) : asUtc.toISOString().slice(0, 10);
 }
 
 /** Every Dart file under the app's own test trees — the files its test lane runs. */
@@ -787,7 +801,7 @@ for (const appDir of domain) {
         fail(`${at}: \`mutation.date\` is "${mut.date}" — it must be YYYY-MM-DD.`);
         return;
       }
-      if (mut.date > today) {
+      if (inTheFuture(mut.date)) {
         fail(`${at}: \`mutation.date\` is ${mut.date}, which is in the future. A proof cannot predate itself.`);
         return;
       }
@@ -838,7 +852,7 @@ for (const appDir of domain) {
       }
       if (typeof row.date === 'string' && row.date !== '') {
         if (!DATE_RE.test(row.date)) fail(`${appId}: humanReview row "${id}" has date "${row.date}" — it must be YYYY-MM-DD.`);
-        else if (row.date > today) fail(`${appId}: humanReview row "${id}" is dated ${row.date}, in the future.`);
+        else if (inTheFuture(row.date)) fail(`${appId}: humanReview row "${id}" is dated ${row.date}, in the future.`);
       }
       if (done) {
         for (const k of ['verdict', 'reviewer', 'date', 'artifact']) {
@@ -889,7 +903,7 @@ for (const appDir of domain) {
     }
     if (typeof sel.decided === 'string' && sel.decided !== '') {
       if (!DATE_RE.test(sel.decided)) fail(`${appId}: \`selection.decided\` is "${sel.decided}" — it must be YYYY-MM-DD.`);
-      else if (sel.decided > today) fail(`${appId}: \`selection.decided\` is ${sel.decided}, in the future. A decision cannot have been taken tomorrow.`);
+      else if (inTheFuture(sel.decided)) fail(`${appId}: \`selection.decided\` is ${sel.decided}, in the future. A decision cannot have been taken tomorrow.`);
     }
     if (done) {
       for (const k of ['record', 'sha256', 'decided', 'decidedBy']) {

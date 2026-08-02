@@ -29,6 +29,20 @@
     "store exists, it holds this CATEGORY of data, it is written by this file, it is kept for this long.",
     "No row contains a person's data, an identifier, a key, or a database id. See tooling/legal/README.md.",
     "",
+    "🔴 AND EVERY TABLE CARRIES AN ERASURE STORY, because a delete route that silently misses rows is",
+    "worse than no delete route: the user is told their data is gone and stops asking. The erasure route",
+    "(services/platform/src/routes/account.ts) DERIVES the tables it empties from the schema — every table",
+    "with a `user_id` column — which is right, and has one consequence nobody had written down: a table",
+    "holding personal data WITHOUT such a column is invisible to it, and the route still answers ok:true.",
+    "`provider_notifications` was exactly that table until migration 0006. So `erasure` is now required on",
+    "every d1-table row and every row that holds personal data, its `kind` is CHECKED AGAINST THE PARSED",
+    "SCHEMA (a `purge` row whose table has no `user_id` fails; a `pseudonymous` row whose table GROWS one",
+    "fails, because the declaration has become false), and a store no route can reach PRINTS every run",
+    "with the thing that blocks it named. The behaviour behind the declaration is proven separately, by",
+    "services/platform/test/erasure-reach.test.ts, which plants a row in every table this file names,",
+    "runs the REAL route against the REAL migrations, and asserts the erased user's id survives in no",
+    "column of any table.",
+    "",
     "RETENTION IS A DECLARATION, AND `undecided` IS AN HONEST ONE. Every row carries `retention`.",
     "`ttl` states the bound and the code that sets it. `keep` requires a written reason. `undecided`",
     "requires an ownerItem and PRINTS on every run — because choosing how long to keep a real person's",
@@ -48,7 +62,7 @@
     "migrationRoots": [
       "services"
     ],
-    "minMigrationFiles": 5,
+    "minMigrationFiles": 6,
     "wranglerRoots": [
       "services",
       "tooling/bricks"
@@ -58,7 +72,15 @@
       "sites/nikatru/functions"
     ],
     "minPagesFunctionFiles": 1,
-    "minPagesKvBindings": 1
+    "minPagesKvBindings": 1,
+    "_whyErasureFloor": [
+      "How many rows must actually have their erasure story CHECKED AGAINST THE SCHEMA. Measured on the",
+      "tree the day the limb landed (13 d1-table rows + the one Pages KV namespace that holds a plain",
+      "email address). A run that checks fewer has stopped reaching rows, and 'every table has an erasure",
+      "story' would range over a subset while printing ok — the exact shape check-migrations.mjs failed in",
+      "silently when it dropped from 5 files to 4."
+    ],
+    "minErasureRowsChecked": 14
   },
   "retentionKinds": {
     "_why": "The vocabulary rows are validated against, declared in the register rather than in the guard so that renaming a kind out from under the rows using it fails.",
@@ -66,6 +88,23 @@
     "keep": "kept until deliberately deleted. Requires a written reason — 'we might want it' is not one.",
     "undecided": "nobody has decided yet. Requires an ownerItem, and PRINTS every run so it cannot become permanent by being invisible.",
     "derived": "holds no record of its own; its lifetime is the lifetime of the rows inside it (a database, not a table)."
+  },
+  "erasureKinds": {
+    "_why": [
+      "The vocabulary lives here, not in the guard, for the same reason `retentionKinds` does: renaming a",
+      "kind out from under the rows using it must FAIL rather than quietly mean nothing.",
+      "",
+      "🔴 EVERY KIND IS CHECKED AGAINST THE PARSED SCHEMA, not taken on trust. That is what makes this a",
+      "RELATIONSHIP rather than a second wish-list: `purge` asserts the column the route derives from is",
+      "really there, and `pseudonymous` / `no-personal-data` assert that no user-shaped column is — so a",
+      "migration that adds `user_id` to `events` tomorrow turns the declaration false and the build red,",
+      "instead of leaving a row that says 'unreachable' about a table that is now reachable."
+    ],
+    "purge": "the table carries a column literally called `user_id`, so the schema-derived sweep in the named `route` DELETEs this person's rows. Checked: the column must exist in the migrations.",
+    "unlink": "the row is NOT this person's, but a `*_user_id` column REFERENCES them; the sweep NULLs that column so no dangling identifier of an erased person survives. Requires `column`. Checked: the column must exist and must end in `_user_id`.",
+    "pseudonymous": "nothing in the table resolves to an account, so an erasure request cannot address it and 'zero rows for this user' is vacuously true. Requires a written reason. Checked: the table must carry NO user-shaped column — the day one is added this declaration is false and the guard says so.",
+    "no-personal-data": "the table holds nothing about a person, so there is nothing to erase. Requires personalData:false. Checked the same way as `pseudonymous`.",
+    "no-route": "🔴 A STORE HOLDING PERSONAL DATA THAT NO DEPLOYED ERASURE ROUTE REACHES. Requires `blockedBy` naming what stops it. PRINTS on every run rather than failing the build — the fix is an architecture or owner decision, and a guard that reddens main on work nobody can do today is a guard somebody switches off."
   },
   "stores": [
     {
@@ -120,7 +159,12 @@
       "holds": "One row per (user, app, entitlement): what a person has paid for. Keyed on a store/aggregator user id, not on a name or an email.",
       "retention": {
         "kind": "keep",
-        "reason": "An entitlement is the record of what somebody bought and is entitled to keep using. Deleting it deletes their purchase. It is retained for as long as the account exists; erasure is [pipeline K-7]'s route, which is BLOCKED on [4]B-5 (there is no DELETE /v1/account in the shared Worker yet)."
+        "reason": "An entitlement is the record of what somebody bought and is entitled to keep using. Deleting it deletes their purchase. It is retained for as long as the account exists, and erasure is [pipeline K-7]'s route — DELETE /v1/account, which landed with [4]B-5 and reaches this table through its `user_id` column."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "Keyed (user_id, app_id, entitlement). The account is gone, so the entitlement it granted is gone with it — and master §0.1 G2 names this table specifically."
       },
       "writtenBy": [
         "services/platform/migrations/0001_entitlements.sql",
@@ -142,8 +186,19 @@
         "ownerItem": "O-3",
         "reason": "This is the audit trail behind every entitlement decision and the only thing that can resolve a payment dispute from our side — and it is also the most personal store in the database. How long a solo founder should keep a payment notification is a question with a tax answer, a consumer-law answer and a DPDP answer, and they may not agree. An agent picking a number here would be inventing a retention period that then looks authoritative. What IS decided is that the row exists, that the table is named as personal data, and that the gap prints on every run. NOTHING WRITES TO THIS TABLE TODAY — no seller account exists (OWNER_QUEUE A-1) — so the decision is due before the first payment, not after."
       },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "🔴 THE GAP THIS FILE WAS EXTENDED TO CLOSE. Until services/platform/migrations/0006_erasure_reach.sql this table carried NO `user_id`, so the schema-derived sweep could not see it — a person could ask to be erased, be told they were, and have their name and email address still sitting in the verbatim payload. 0006 adds the column and services/platform/src/lib/mor/store.ts stamps it at DERIVE time (the row is written before it is interpreted, so that is the first moment the account is known), which puts the table inside the sweep with no edit to the route.",
+        "unverified": {
+          "question": "Whether a merchant-of-record payment notification carries a STATUTORY RETENTION BASIS (tax, accounting, or consumer-law) that would override erasure for this row, and for how long.",
+          "ownerItem": "O-3",
+          "status": "UNVERIFIED — no primary source for such an obligation could be read from this environment, and none is invented here. The default shipped is to PURGE, because honouring the published promise needs no justification while RETAINING a person's data does. Nothing writes to this table yet (OWNER_QUEUE A-1), so the decision is still free; it stops being free at the first payment."
+        }
+      },
       "writtenBy": [
         "services/platform/migrations/0004_money_rail.sql",
+        "services/platform/migrations/0006_erasure_reach.sql",
         "services/platform/src/lib/mor/store.ts"
       ],
       "disclosure": {
@@ -161,6 +216,11 @@
       "retention": {
         "kind": "keep",
         "reason": "It is the answer to 'why do we believe this subscription belongs to this account', and it is needed for as long as the subscription can renew, lapse or be refunded — i.e. for the life of the account. It is ERASED WITH THE ACCOUNT and needs no special handling to be: the shared erasure route derives its table set from the schema (every table carrying a `user_id` column), so this table joined that set the moment it was created, with no edit to the route."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row IS the link between a person and a subscription. When the person is erased the link has nothing left to join, and leaving it would keep their account id in the database after the account is gone."
       },
       "writtenBy": [
         "services/platform/migrations/0004_money_rail.sql",
@@ -180,7 +240,13 @@
       "retention": {
         "kind": "undecided",
         "ownerItem": "O-3",
-        "reason": "A row here is the evidence that somebody paid and we could not find them; deleting it destroys the only thing that could ever resolve their support ticket, and keeping it forever means holding a pseudonymised identifier for a person who may never appear. ⚠️ IT ALSO DOES NOT JOIN THE ERASURE SET, deliberately: the claim column is named `claimed_user_id`, not `user_id`, so the shared erasure route's schema-derived table set does not include it. Whether an erasure should NULL the claim link is a compliance judgement, not a column-naming accident, and it is recorded here and in the migration rather than silently decided either way."
+        "reason": "A row here is the evidence that somebody paid and we could not find them; deleting it destroys the only thing that could ever resolve their support ticket, and keeping it forever means holding a pseudonymised identifier for a person who may never appear. The ROW is not erased; the LINK to the erased person is — see `erasure` below."
+      },
+      "erasure": {
+        "kind": "unlink",
+        "column": "claimed_user_id",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "🔴 THE QUESTION 0004 DELIBERATELY LEFT OPEN, ANSWERED — AND ANSWERED THE WAY THAT DESTROYS NOTHING. The row is the record of money that arrived and could not be attributed: deleting it removes the only thing that could ever resolve that payer's support ticket, so it is kept. But `claimed_user_id` is the ERASED PERSON'S ACCOUNT ID, and a row still addressable by the identifier of someone who asked to be forgotten is not erased. So the route NULLs the column and keeps the row. The rule is derived from the schema, not from a list: `user_id` means the row IS theirs (delete it), `*_user_id` means the row REFERENCES them (null it), so a future `linked_user_id` is covered the day it is created. ⚠️ `claimed_at` is deliberately LEFT SET — 'this payment was claimed' stays true and is what stops it being claimed twice; what is erased is WHO. ⚠️ HONEST RESIDUE: `customer_email_hash` is a SHA-256 of an email address and is NOT anonymous — it is pseudonymised, and the same person hashing to the same value is the whole point of the lookup. Unlinking does not remove it, and no claim is made here that it does; whether an erasure should also clear the hash on an unclaimed row is part of the same undecided retention question above."
       },
       "writtenBy": [
         "services/platform/migrations/0004_money_rail.sql",
@@ -199,7 +265,12 @@
       "holds": "One row per time a user pressed Cancel ([pipeline 5]M-9, ROSCA). It holds WHO asked (the Supabase `sub`), for which app, in which money world, and which provider subscription it was about — copied at request time rather than joined, because the entitlement row can be revoked and rewritten afterwards and this record has to keep saying what the user was cancelling. It holds no name, no email and no payment detail. 🔴 IT EXISTS BECAUSE OF A GAP THE USER WOULD OTHERWISE FALL INTO: only the merchant of record can actually stop a subscription, so between 'I pressed cancel' and 'the rail acted' the ONLY evidence that they asked is what we wrote down. Without it, a cancellation the provider dropped is indistinguishable from one nobody requested, and the person still being billed is the one who has to prove otherwise.",
       "retention": {
         "kind": "keep",
-        "reason": "KEPT until the account is erased, and the reason it is kept is the whole point of the table: it is the only evidence the user asked. It joins the erasure set BY CONSTRUCTION: the column is spelled `user_id`, and the shared erasure route (services/platform/src/routes/account.ts) derives the tables it empties from the schema, so this is emptied with no edit to the route. That was verified rather than assumed — adding the table turned services/platform/test/auth.test.ts red on its 'an empty derivation is a refusal' fixture, which is the derivation working. (Contrast `unclaimed_payments.claimed_user_id`, named to stay OUT of that set for a reason recorded above.)"
+        "reason": "KEPT until the account is erased, and the reason it is kept is the whole point of the table: it is the only evidence the user asked. It joins the erasure set BY CONSTRUCTION: the column is spelled `user_id`, and the shared erasure route (services/platform/src/routes/account.ts) derives the tables it empties from the schema, so this is emptied with no edit to the route. That was verified rather than assumed — adding the table turned services/platform/test/auth.test.ts red on its 'an empty derivation is a refusal' fixture, which is the derivation working. (Contrast `unclaimed_payments.claimed_user_id`, which is UNLINKED rather than deleted for the reason recorded above.)"
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A cancellation request IS a record about a person and goes when they do. The evidentiary value it exists for — 'the user asked three times and nothing happened' — is value to THAT user; once the account is erased there is nobody it could be produced for."
       },
       "writtenBy": [
         "services/platform/migrations/0005_cancellation_requests.sql",
@@ -220,6 +291,10 @@
         "kind": "keep",
         "reason": "Reference data seeded by the migration itself. Deleting it would leave every `revocation_reason` value in `entitlements` unresolvable — the rows would still say why access ended, and nothing would be able to say what those words mean."
       },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "Eight seeded vocabulary rows. There is nothing here to erase, and an erasure sweep that DID empty it would break every entitlement row's `revocation_reason` for everyone else — which is why the erasure test asserts this table is still full after a deletion, rather than assuming a sweep would leave it alone."
+      },
       "writtenBy": [
         "services/platform/migrations/0004_money_rail.sql"
       ]
@@ -234,6 +309,10 @@
         "kind": "undecided",
         "ownerItem": "O-3",
         "reason": "privacy.html promises information is kept 'only for as long as necessary'. No bound is set on this table and none is invented here: how long usage statistics are useful is a product and legal judgement, and an agent picking a number would be inventing a retention period that then looks authoritative. What IS decided is that the row exists and the gap is printed on every run."
+      },
+      "erasure": {
+        "kind": "pseudonymous",
+        "reason": "Keyed on `anon_id`, an install id, and there is NO `anon_id -> user_id` map anywhere — [ADR 020] forbids one ever being written, because that map is the thing that would turn pseudonymous analytics into erasure-subject personal data. So an account deletion cannot address these rows, and 'zero rows for this user' is vacuously true rather than achieved. ⚠️ THE PUBLISHED PROMISE IS WIDER THAN THAT: privacy.html promises deletion of 'information associated with you' without qualification. Either the promise narrows or the client sends its anon_id on erasure — a wording decision that belongs in the same O-3 version bump as the other corrections, not in a code change. This declaration is CHECKED: the guard fails if this table ever grows a user-shaped column, because on that day the sentence above stops being true."
       },
       "writtenBy": [
         "services/platform/migrations/0002_analytics.sql",
@@ -255,6 +334,10 @@
         "kind": "keep",
         "reason": "The artifact IS the evidence that the choice was the user's. Deleting it destroys the only proof that consent was obtained, which is the opposite of what a retention limit is for. Append-only: a withdrawal is a NEW row, never an edit of the old one."
       },
+      "erasure": {
+        "kind": "pseudonymous",
+        "reason": "Keyed on `anon_id` for the same [ADR 020] reason as `events`, so an account deletion cannot address it either. Unlike `events` there is also a positive reason not to want it addressable: the artifact is the proof that a consent decision was the user's, and a store that can be emptied by asking is not evidence. Checked the same way — a user-shaped column appearing here turns this row's claim false and the build red."
+      },
       "writtenBy": [
         "services/platform/migrations/0002_analytics.sql",
         "services/platform/src/routes/events.ts"
@@ -275,6 +358,10 @@
         "kind": "keep",
         "reason": "Operational evidence, and tiny. It is how a silently-dead scheduler is noticed at all."
       },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "One row per scheduled run: a timestamp and an outcome. No user id, no install id, nothing that is about anybody."
+      },
       "writtenBy": [
         "services/platform/migrations/0003_cron_heartbeat.sql"
       ]
@@ -287,7 +374,11 @@
       "holds": "The subscriptions a Subly user tracks — service name, cost, renewal date. USER-ENTERED CONTENT about the person's own finances, keyed on their user id.",
       "retention": {
         "kind": "keep",
-        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists and is asserted (the `account-deletion-works` coverage key); the SERVER-side erasure route does not — [pipeline K-7] conjunct (c), BLOCKED on [4]B-5."
+        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The chassis in-app deletion control exists and is asserted (the `account-deletion-works` coverage key on the brick); see `erasure` below for what still cannot reach this database."
+      },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "🔴 NO DEPLOYED ROUTE REACHES subly_db. DELETE /v1/account lives on the shared platform Worker and binds PLATFORM_DB only, so it cannot see this database; services/subly-api has no account route at all (its routes are subscriptions, renewals, budget, entitlements, webhooks). Every table here carries `user_id`, so the same schema-derived sweep would reach all four the day such a route exists — the missing piece is the route, not the schema. ⚠️ PORTING THE ROUTE INTO subly-api WAS CONSIDERED AND DELIBERATELY NOT DONE IN THE SAME CHANGE: services/subly-api/src/middleware/auth.ts accepts a token signed with a SHARED HS256 SECRET when the asymmetric path fails, and services/platform/test/auth.test.ts carries a test whose stated purpose is to keep account deletion off that boundary ('the portfolio's one auth boundary — guarding account deletion for every app — accepts a symmetric secret'). Putting an irreversible, destructive route behind a symmetric shared secret is a worse outcome than a named gap. The prerequisite is one of: remove subly-api's HS256 fallback, or bind subly_db to the platform Worker, and that is an architecture decision with a decision record, not an agent's edit."
       },
       "writtenBy": [
         "services/subly-api/migrations/0001_init.sql",
@@ -308,6 +399,10 @@
         "kind": "keep",
         "reason": "The user's own data, kept until they delete it. Same erasure position as subscriptions."
       },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "Same as table:subly_db.subscriptions — no deployed erasure route binds subly_db. The column is spelled `user_id`, so the schema-derived sweep covers it the day a route exists."
+      },
       "writtenBy": [
         "services/subly-api/migrations/0001_init.sql",
         "services/subly-api/src/routes/budget.ts"
@@ -327,6 +422,10 @@
         "kind": "keep",
         "reason": "The user's own data, kept until they delete it."
       },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "Same as table:subly_db.subscriptions — no deployed erasure route binds subly_db. The column is spelled `user_id`, so the schema-derived sweep covers it the day a route exists."
+      },
       "writtenBy": [
         "services/subly-api/migrations/0001_init.sql",
         "services/subly-api/src/routes/budget.ts"
@@ -345,6 +444,10 @@
       "retention": {
         "kind": "keep",
         "reason": "The user's own history, kept until they delete it."
+      },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "Same as table:subly_db.subscriptions — no deployed erasure route binds subly_db. The column is spelled `user_id`, so the schema-derived sweep covers it the day a route exists."
       },
       "writtenBy": [
         "services/subly-api/migrations/0001_init.sql",
@@ -394,6 +497,10 @@
         "kind": "undecided",
         "ownerItem": "O-3",
         "reason": "🔴 THE SHARPEST GAP IN THIS FILE. sites/nikatru/functions/api/subscribe.js writes the SIGNUP record with no expirationTtl, while the rate-limit key beside it correctly carries one — against privacy.html's promise to keep information 'only for as long as necessary'. It is NOT fixed here on purpose: setting a TTL on this namespace silently deletes the owner's real launch list after whatever number an agent picks, and no number is derivable from anything in this tree. What is needed is a decision (a period, or a written 'kept until launch, then deleted'), not a guess."
+      },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "No code in this repository deletes a signup key. The store is a Cloudflare Pages KV namespace bound in the dashboard, keyed `sub:<email>`, and the only writer (sites/nikatru/functions/api/subscribe.js) is a PUT — there is no DELETE handler and no authenticated surface on this site that could own one. An erasure request for this store is served by the OPERATOR deleting the key, which is a real answer and not an automated one, and sites/nikatru/delete-account.html says so in those words rather than implying the website erases it. Building a public delete endpoint here would need an ownership proof (a confirmation link to the address) that nothing on this site can send today — no transactional mail path exists."
       },
       "writtenBy": [
         "sites/nikatru/functions/api/subscribe.js"

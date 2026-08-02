@@ -174,6 +174,36 @@ describe('[5]M-1 · the verifier is the only door', () => {
     expect(db.count('provider_notifications')).toBe(1);
   });
 
+  it('THE STORED NOTIFICATION IS STAMPED WITH THE ACCOUNT — which is what makes it erasable', async () => {
+    // 🔴 WITHOUT THIS ASSERTION THE ERASURE COLUMN IS A DEAD FEATURE THAT
+    // REPORTS HEALTHY. Migration 0006 gives `provider_notifications` a `user_id`
+    // so the schema-derived sweep in routes/account.ts can reach the one table
+    // in platform_db that holds the buyer's NAME AND EMAIL ADDRESS, verbatim.
+    // erasure-reach.test.ts proves the sweep empties the table — but it plants
+    // its own rows, so it would keep passing while the money rail left the
+    // column NULL on every real row, and "delete my account" would silently miss
+    // every payment notification in production.
+    //
+    // The stamp cannot happen at INSERT time: [5]M-2 requires the row be stored
+    // verbatim BEFORE it is interpreted, so derivation is the first moment the
+    // account is known. This is that moment, asserted.
+    const { send, db } = harness();
+    await send(subscriptionBody({ occurredAt: '2026-08-01T00:00:00.000Z', status: 'active', periodEnd: FUTURE, userId: USER, appId: APP }));
+    expect(db.rows('SELECT user_id FROM provider_notifications')[0].user_id).toBe(USER);
+    expect(db.count('provider_notifications', 'user_id = ?', USER)).toBe(1);
+  });
+
+  it('an UNATTRIBUTABLE notification is stamped with NO account, never a guess', async () => {
+    // The other half of the same property. A notification whose account cannot
+    // be resolved gets `user_id IS NULL` — writing anything else would attach a
+    // stranger's payment to somebody, and erasing on a guess is as wrong as not
+    // erasing at all. `unclaimed_payments` is where that case is recorded.
+    const { send, db } = harness();
+    const res = await send(subscriptionBody({ occurredAt: '2026-08-01T00:00:00.000Z', status: 'active', periodEnd: FUTURE }));
+    expect(await res.json()).toMatchObject({ derived: 'unclaimed' });
+    expect(db.rows('SELECT user_id FROM provider_notifications')[0].user_id).toBeNull();
+  });
+
   it('A TAMPERED BODY IS REJECTED — 401, and NOTHING is written', async () => {
     // The signature is computed over the honest body; one byte of the body is
     // then changed. This is the assertion the whole rail rests on: without it,

@@ -41,6 +41,7 @@ import analytics0002 from '../migrations/0002_analytics.sql?raw';
 import cronHeartbeat0003 from '../migrations/0003_cron_heartbeat.sql?raw';
 import moneyRail0004 from '../migrations/0004_money_rail.sql?raw';
 import cancellations0005 from '../migrations/0005_cancellation_requests.sql?raw';
+import erasureReach0006 from '../migrations/0006_erasure_reach.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -59,13 +60,14 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   cronHeartbeat0003,
   moneyRail0004,
   cancellations0005,
+  erasureReach0006,
 ];
 
 /**
  * The subset of [PLATFORM_MIGRATIONS] that is safe to APPLY TWICE.
  *
  * SQLite has no `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, so 0004's entitlement
- * contract is inherently once-only. D1's ledger records migration FILE NAMES, so
+ * contract — and 0006's erasure-reach column — are inherently once-only. D1's ledger records migration FILE NAMES, so
  * wrangler applies each file exactly once and this is not a production hazard —
  * but it does mean "the whole set re-applies" stopped being true on 2026-08-01
  * and pretending otherwise would have meant weakening the replay test into

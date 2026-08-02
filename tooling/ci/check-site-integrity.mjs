@@ -71,8 +71,18 @@ const SITES = join(repoRoot, 'sites');
 const REQUIRED_FILES = ['index.html', '404.html', 'robots.txt', '_headers', 'sitemap.xml', 'llms.txt'];
 
 /** The pages a store reviewer (and Indian e-commerce rules, for refunds) expects
- *  to resolve on the site that fronts a published app. */
-const LEGAL_PAGES = ['privacy.html', 'terms.html', 'refund.html'];
+ *  to resolve on the site that fronts a published app.
+ *
+ *  `delete-account.html` joined the set on 2026-08-03 ([pipeline K-7], INC-12).
+ *  It is here rather than in PRINTED_LEGAL_GAPS because — unlike the pricing
+ *  page — it needs no owner decision to exist: it describes what the code
+ *  already does. A published deletion route with no published way to find it is
+ *  the orphan K-7 is named after, and it is the URL a store reviewer opens when
+ *  an app offers accounts. Adding it here is what makes the 1000-character
+ *  visible-text floor, the <h1> check, the canonical form, the sitemap relation
+ *  and the navigation walker all apply to it — the same treatment the other
+ *  three get, with no second code path. */
+const LEGAL_PAGES = ['privacy.html', 'terms.html', 'refund.html', 'delete-account.html'];
 
 /** "Still a real page" without matching prose the owner alone may edit:
  *  a size floor measured on VISIBLE TEXT (so a fat <script> or a base64 image

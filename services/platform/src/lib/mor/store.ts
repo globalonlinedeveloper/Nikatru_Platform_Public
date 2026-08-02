@@ -92,19 +92,37 @@ export async function persistNotification(
   return { fresh: (res.meta?.changes ?? 0) > 0 };
 }
 
-/** Stamp the stored notification with what derivation concluded. */
+/**
+ * Stamp the stored notification with what derivation concluded — and, when
+ * derivation resolved one, WHOSE it is.
+ *
+ * 🔴 `user_id` IS WHAT MAKES THIS ROW ERASABLE ([pipeline K-7], migration 0006).
+ * The row is written verbatim BEFORE it is interpreted ([5]M-2), so the account
+ * is not knowable at insert time; this is the first and only moment it is. The
+ * shared erasure route derives the tables it purges from the schema — every
+ * table carrying a `user_id` column — so stamping it here is what puts the one
+ * non-pseudonymous table in platform_db (it holds the buyer's name and email,
+ * verbatim, because that is what the provider sent) inside the reach of "delete
+ * my account". Leaving it NULL means a person can be told they were erased while
+ * their name is still in the database.
+ *
+ * NULL stays NULL when nothing was resolved: an unattributable notification has
+ * no account, and writing a guess would be worse than leaving the honest gap —
+ * `unclaimed_payments` is where that case is recorded.
+ */
 async function markDerived(
   deps: MoneyStoreDeps,
   n: NormalizedNotification,
   error: string | null,
+  userId: string | null,
 ): Promise<void> {
   await deps.db
     .prepare(
       `UPDATE provider_notifications
-          SET derived_at = ?, derive_error = ?
+          SET derived_at = ?, derive_error = ?, user_id = COALESCE(?, user_id)
         WHERE provider = ? AND provider_event_id = ?`,
     )
-    .bind(nowIso(), error, n.provider, n.eventId)
+    .bind(nowIso(), error, userId, n.provider, n.eventId)
     .run();
 }
 
@@ -297,6 +315,7 @@ export async function deriveAndApply(
     result.outcome === 'applied' || result.outcome === 'stale'
       ? null
       : `${result.outcome}: ${'detail' in result ? result.detail : ''}`,
+    'userId' in result ? result.userId : null,
   );
   return result;
 }
