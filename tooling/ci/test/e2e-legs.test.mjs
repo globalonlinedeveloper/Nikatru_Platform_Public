@@ -27,6 +27,9 @@ const REGISTER = 'tooling/e2e-leg-register.json';
 const SUITE = 'apps/subly/integration_test/app_test.dart';
 const APP_LIB = 'apps/subly/lib';
 const WORKFLOW = '.github/workflows/e2e.yml';
+/** The ERASURE SURFACE the delete leg's blocker is a predicate over. */
+const SUBLY_API_ROUTES = 'services/subly-api/src/routes';
+const PLATFORM_ACCOUNT = 'services/platform/src/routes/account.ts';
 
 /** A real-tree copy carrying exactly what the guard reads. */
 function realTree() {
@@ -38,6 +41,9 @@ function realTree() {
   cpSync(join(REPO, SUITE), join(root, SUITE));
   cpSync(join(REPO, APP_LIB), join(root, APP_LIB), { recursive: true });
   cpSync(join(REPO, WORKFLOW), join(root, WORKFLOW));
+  mkdirSync(join(root, 'services/platform/src/routes'), { recursive: true });
+  cpSync(join(REPO, SUBLY_API_ROUTES), join(root, SUBLY_API_ROUTES), { recursive: true });
+  cpSync(join(REPO, PLATFORM_ACCOUNT), join(root, PLATFORM_ACCOUNT));
   return root;
 }
 
@@ -175,11 +181,20 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  test('🔴 WIRING A REAL deleteAccount CALL SITE KILLS THE DELETE-LEG EXCUSE', () => {
+  // 🔄 RESTATED 2026-08-03 ([ADR 027]). These three used to drive the previous
+  // delete-leg blocker — "apps/subly has no delete-account call site" — whose
+  // predicate was `!src.subly.includes('.deleteAccount(')`. The app shipped the
+  // control, the predicate went false, and the guard failed the build exactly as
+  // it was built to. What still blocks the LEG is the server: no deployed route
+  // erases subly_db. Both halves of that are read from the tree, so either fix
+  // kills the excuse — and each has a test below.
+  test('🔴 AN account ROUTE UNDER services/subly-api KILLS THE DELETE-LEG EXCUSE', () => {
     withTree(
       (root) => {
-        const p = join(root, 'apps/subly/lib/state/providers.dart');
-        writeFileSync(p, `${readFileSync(p, 'utf8')}\n// added by the test\nvoid _wire(dynamic repo) { repo.deleteAccount(); }\n`);
+        writeFileSync(
+          join(root, SUBLY_API_ROUTES, 'account.ts'),
+          "export default 'a route that can erase subly_db';\n",
+        );
       },
       (r) => {
         assert.equal(r.status, 1);
@@ -189,15 +204,31 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  test('the call-site predicate is NOT satisfied by the DECLARATION — the assert-seams-wired trap', () => {
-    // `Future<void> deleteAccount() async` already exists in apps/subly/lib and
-    // the delete leg is still correctly blocked on the real tree. Adding another
-    // DECLARATION must not flip the blocker; only a `.deleteAccount(` CALL does.
-    // Without the leading dot this test goes red, which is the whole check.
+  test('🔴 THE PLATFORM ROUTE REACHING A SECOND DATABASE KILLS IT TOO', () => {
     withTree(
       (root) => {
-        const p = join(root, 'apps/subly/lib/state/providers.dart');
-        writeFileSync(p, `${readFileSync(p, 'utf8')}\nFuture<void> deleteAccount() async {}\n`);
+        const p = join(root, PLATFORM_ACCOUNT);
+        writeFileSync(
+          p,
+          `${readFileSync(p, 'utf8')}\nexport const sweepAlso = (c) => c.env.SUBLY_DB.prepare('x');\n`,
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`account-delete-purges` claims to be blocked/);
+        assert.match(r.stderr, /has SHIPPED/);
+      },
+    );
+  });
+
+  test('a COMMENT naming the second database does not kill the excuse', () => {
+    // The comment-strip trap, third occurrence in this repo: that route's header
+    // narrates which databases it does not reach, and a raw scan would read the
+    // prose explaining the absence as evidence of the presence.
+    withTree(
+      (root) => {
+        const p = join(root, PLATFORM_ACCOUNT);
+        writeFileSync(p, `// TODO: one day sweep c.env.SUBLY_DB here too\n${readFileSync(p, 'utf8')}`);
       },
       (r) => {
         assert.equal(r.status, 0, r.stderr);
@@ -206,13 +237,28 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  test('a commented-out call site does not kill the excuse either', () => {
+  test('an unrelated new subly-api route does not kill the excuse', () => {
+    // The predicate is anchored on a file NAMED account, not on the directory
+    // changing. A guard that fired on any new route would be noise, and noise is
+    // what gets a guard switched off.
     withTree(
       (root) => {
-        const p = join(root, 'apps/subly/lib/state/providers.dart');
-        writeFileSync(p, `${readFileSync(p, 'utf8')}\n// repo.deleteAccount();\n`);
+        writeFileSync(join(root, SUBLY_API_ROUTES, 'reports.ts'), 'export default 1;\n');
       },
       (r) => assert.equal(r.status, 0, r.stderr),
+    );
+  });
+
+  test('COVERAGE LOST when the erasure surface cannot be read at all', () => {
+    // Both new facts are read from services/. Over a missing tree the predicate
+    // would answer "still blocked" for reasons that have nothing to do with
+    // erasure, and the excuse would survive the Worker being deleted.
+    withTree(
+      (root) => rmSync(join(root, SUBLY_API_ROUTES), { recursive: true, force: true }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+      },
     );
   });
 

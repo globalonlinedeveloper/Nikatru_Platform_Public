@@ -100,20 +100,32 @@ const BLOCKERS_STILL_REAL = {
   // that day all three legs stop being excusable in the same run.
   '[5] apps/subly sells nothing': (src) => /PaywallConfig\(\s*enabled:\s*false/.test(src.subly),
 
-  // `deleteAccount()` is DECLARED in apps/subly/lib/data/auth/*.dart and CALLED
-  // from nowhere in the app — the exact "seam exists, nothing reaches it" defect
-  // class this repo has now shipped four times (ConsentController.record with
-  // zero call sites, PaywallGate with zero consumers, the delete dialog whose
-  // confirm button only closed itself).
+  // 🔄 RESTATED 2026-08-03 ([ADR 027]), because the previous blocker SHIPPED and
+  // this guard is what said so. It read "[6] apps/subly has no delete-account
+  // call site" and its predicate was `!src.subly.includes('.deleteAccount(')` —
+  // the seam-exists-nothing-reaches-it shape. The app now has the control, the
+  // predicate went false, and the build failed exactly as designed. The excuse
+  // could not outlive its reason, so it was replaced rather than edited.
   //
-  // 🔴 `.deleteAccount(` WITH THE LEADING DOT, and that dot is the whole check.
-  // `assert-seams-wired.mjs` shipped broken because its caller check matched the
-  // function's own DECLARATION, so deleting every real caller still passed, and
-  // all six of its fixture tests passed against the broken version. A declaration
-  // reads `Future<void> deleteAccount() async`; a call reads `repo.deleteAccount()`.
-  // Verified on this tree: zero hits under apps/subly/lib, real hits under
-  // packages/auth_supabase/test.
-  '[6] apps/subly has no delete-account call site': (src) => !src.subly.includes('.deleteAccount('),
+  // WHAT STILL BLOCKS THE LEG IS NARROWER, AND IT IS NOT THE CLIENT. The leg
+  // asks that deleting from inside the app "really erases the user AND ITS
+  // ROWS". Subly's rows live in `subly_db`, and NO DEPLOYED ROUTE ERASES THEM:
+  //   · `services/subly-api` has no account route at all (subscriptions,
+  //     renewals, budget, entitlements, webhooks) — and putting an irreversible
+  //     route there is refused while its auth middleware still accepts a shared
+  //     HS256 secret as a fallback;
+  //   · `services/platform`'s DELETE /v1/account reads PLATFORM_DB and nothing
+  //     else, so the identity and the platform rows go and the user's own
+  //     subscriptions stay.
+  // `tooling/legal/data-inventory.json` declares those four tables `no-route`
+  // for the same reason and PRINTS it every run.
+  //
+  // BOTH LIMBS ARE READ FROM THE TREE, so either fix kills the excuse in the
+  // same run: an `account` route appearing under services/subly-api/src/routes,
+  // or the platform route reaching a second database binding.
+  '[6] no deployed route erases apps/subly own database': (src) =>
+    !src.sublyApiRoutes.some((f) => /^account\b/.test(f)) &&
+    src.platformAccountDbs.every((b) => b === 'PLATFORM_DB'),
 };
 
 const problems = [];
@@ -225,7 +237,60 @@ const readDartTree = (dir) => {
   return out.join('\n');
 };
 
-const sources = { subly: readDartTree(join(APP_DIR, 'lib')) };
+/** The ERASURE SURFACE, read from the tree the same way. Two facts, because the
+ *  delete leg is blocked by the SERVER and either half unblocks it. */
+const SUBLY_API_ROUTES = 'services/subly-api/src/routes';
+const PLATFORM_ACCOUNT_ROUTE = 'services/platform/src/routes/account.ts';
+
+const sublyApiRoutesDir = join(ROOT, SUBLY_API_ROUTES);
+if (!existsSync(sublyApiRoutesDir)) {
+  coverageLost([
+    `${SUBLY_API_ROUTES} does not exist.`,
+    'The delete leg\'s blocker asks whether an account route has appeared there. Over a missing directory',
+    'the answer is "no route" for a reason that has nothing to do with erasure, and the excuse would',
+    'survive the Worker being deleted.',
+  ]);
+}
+const sublyApiRoutes = listDir(sublyApiRoutesDir);
+if (sublyApiRoutes.length === 0) {
+  coverageLost([
+    `${SUBLY_API_ROUTES} is empty.`,
+    'A predicate over an empty listing answers "still blocked" whatever the truth is.',
+  ]);
+}
+if (!existsSync(join(ROOT, PLATFORM_ACCOUNT_ROUTE))) {
+  coverageLost([
+    `${PLATFORM_ACCOUNT_ROUTE} does not exist.`,
+    'It is the only deployed erasure route in the tree. Without it the second half of the delete leg\'s',
+    'blocker is evaluated over nothing and reports "still blocked" forever.',
+  ]);
+}
+const platformAccountSrc = stripSourceComments(
+  readFileSync(join(ROOT, PLATFORM_ACCOUNT_ROUTE), 'utf8'),
+  '.ts',
+);
+/** Every D1 binding the erasure route actually touches. Comment-stripped, for
+ *  the reason this file's header gives at length: that route's header NARRATES
+ *  which databases it does not reach, so a raw scan would find `SUBLY_DB` in the
+ *  prose explaining why it is absent. */
+const platformAccountDbs = [
+  ...new Set(
+    [...platformAccountSrc.matchAll(/\bc\.env\.([A-Z0-9_]*DB)\b/g)].map((m) => m[1]),
+  ),
+];
+if (platformAccountDbs.length === 0) {
+  coverageLost([
+    `${PLATFORM_ACCOUNT_ROUTE} names no \`c.env.*DB\` binding once comments are stripped.`,
+    'The route reads at least one database by construction, so finding none means this scan stopped',
+    'seeing them — and the delete leg\'s blocker would then read "only PLATFORM_DB" over an empty set.',
+  ]);
+}
+
+const sources = {
+  subly: readDartTree(join(APP_DIR, 'lib')),
+  sublyApiRoutes,
+  platformAccountDbs,
+};
 if (sources.subly.trim().length === 0) {
   coverageLost([
     `no Dart source was read under ${APP_DIR}/lib.`,

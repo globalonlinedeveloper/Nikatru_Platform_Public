@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:nikatru_core/nikatru_core.dart' as core;
+
 import 'auth_models.dart';
 import 'auth_repository.dart';
 
@@ -70,10 +72,24 @@ class MockAuthRepository implements AuthRepository {
   /// [pipeline C-15] Added when core's AuthRepository gained this member.
   /// apps/subly is frozen (39-CHASSIS cut 1), so this is the minimum that keeps
   /// it compiling — the real client lives in packages/auth_supabase.
+  /// 🔴 IT REFUSES, AND THAT IS THE HONEST ANSWER — [ADR 027].
+  ///
+  /// This used to sign out and return normally, which the new Delete-account
+  /// control turns into "Your account has been deleted. Signing in with the same
+  /// email and password will not work any more." In demo mode that is FALSE
+  /// twice over: there is no server account, and [signInWithEmail] here accepts
+  /// any credentials, so the user types the same pair and is signed straight
+  /// back in. Every non-web artifact `build-platforms.yml` produces runs on this
+  /// repository, because none of those builds passes the identity dart-defines.
+  ///
+  /// Only a real 2xx from `DELETE /v1/account` may ever produce `deleted`.
   @override
   Future<void> deleteAccount() async {
     if (currentUser == null) throw AuthFailure('Not signed in');
     await signOut();
+    throw core.AccountDeletionFailure(
+      core.AccountDeletionOutcome.notConfigured,
+    );
   }
 
   /// [pipeline C-13] Required by the shared `AuthRepository` seam, which Subly

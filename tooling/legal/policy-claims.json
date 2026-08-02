@@ -44,7 +44,7 @@
       "page": "delete-account.html",
       "claim": "Delete account",
       "type": "descriptive",
-      "why": "The name of the in-app control, as the chassis renders it: tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart builds a tile from l10n.deleteAccount, and the `account-deletion-works` REQUIRED_COVERAGE key in tooling/ci/assert-stamp-properties.mjs keeps it wired. The page says \"where an app shows a Delete account control\" rather than asserting every app has one, because apps/subly does not yet."
+      "why": "The name of the in-app control, in both trees that render one: tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart builds a tile from l10n.deleteAccount, and apps/subly/lib/features/settings/settings_screen.dart ships the same control ([ADR 027]). The page used to hedge — \"where an app shows a Delete account control\" — precisely because apps/subly had none; the hedge is gone because the control landed. What keeps the sentence true is tooling/ci/assert-deletion-control.mjs, which quantifies over the brick AND every apps/* workspace member with NO exemptions and fails the build for any app that offers accounts without one; the `account-deletion-works` key in assert-stamp-properties.mjs covers the stamped half."
     },
     {
       "page": "delete-account.html",
@@ -56,7 +56,7 @@
       "page": "delete-account.html",
       "claim": "the same email address and password no longer sign in anywhere",
       "type": "descriptive",
-      "why": "The identity limb of services/platform/src/routes/account.ts: the Supabase admin user record is deleted LAST, and the route answers 502 rather than ok:true when that call fails. services/platform/test/auth.test.ts asserts on the request the route MADE, which is the one limb row counts cannot fake. The route answers 501 while SUPABASE_SERVICE_ROLE_KEY is unset (an owner action), which is why this page tells the reader to email us and never offers a self-service button."
+      "why": "The identity limb of services/platform/src/routes/account.ts: the Supabase admin user record is deleted LAST, and the route answers 502 rather than ok:true when that call fails. services/platform/test/auth.test.ts asserts on the request the route MADE, which is the one limb row counts cannot fake. The route answers 501 while SUPABASE_SERVICE_ROLE_KEY is unset (an owner action) — which is why section 1 keeps the email route as a first-class path rather than a fallback, and why the in-app control reports that refusal in the words \"Nothing was deleted\" instead of a generic failure ([ADR 027], packages/core/lib/src/auth/account_deletion.dart)."
     },
     {
       "page": "delete-account.html",
@@ -75,6 +75,12 @@
       "claim": "Records of a payment we could not match to any account.",
       "type": "descriptive",
       "why": "`unclaimed_payments` (services/platform/migrations/0004_money_rail.sql section D). The sentence that follows it — the account link is removed, the record stays — is the `unlink` erasure kind, proven by services/platform/test/erasure-reach.test.ts, which asserts the row survives and the column is NULL."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "What you created inside an app.",
+      "type": "descriptive",
+      "why": "The four `subly_db` tables tooling/legal/data-inventory.json declares with erasure kind `no-route`: services/platform's DELETE /v1/account reads PLATFORM_DB only, and services/subly-api has no account route. assert-data-inventory.mjs PRINTS that gap on every run. The paragraph exists because [ADR 027] shipped the in-app control WITHOUT closing that gap, and a section headed 'What is kept, and why' that omitted the user's own app content would be the omission the section exists to prevent. It comes down with the row, when a route reaches those tables."
     },
     {
       "page": "delete-account.html",

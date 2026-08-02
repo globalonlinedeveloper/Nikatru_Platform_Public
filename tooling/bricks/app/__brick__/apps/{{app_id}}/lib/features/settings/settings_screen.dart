@@ -436,14 +436,66 @@ class SettingsScreen extends ConsumerWidget {
       await auth.signInWithEmail(email: email, password: password);
       await auth.deleteAccount();
       nav.pop();
-    } catch (_) {
+    } catch (e) {
       // Deliberately NOT "deleted" on failure. AuthRepository.deleteAccount
       // signs out regardless and then throws, so the user may be signed out
       // WITHOUT being deleted — saying otherwise would be the one lie they can
       // never detect and never recover from.
+      //
+      // 🔴 AND NOT ONE MESSAGE FOR EVERY FAILURE EITHER. This used to be
+      // `catch (_)` printing `l10n.deleteAccountFailed` — "Your account has NOT
+      // been deleted" — for every refusal the route can give. That sentence is
+      // FALSE on a 502, where the rows are gone and only the identity survived:
+      // the user is told nothing happened while their data is already destroyed
+      // and their login still works. [ADR 027].
       nav.pop();
-      messenger.showSnackBar(SnackBar(content: Text(l10n.deleteAccountFailed)));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            deleteAccountFailureMessage(l10n, core.accountDeletionOutcomeOf(e)),
+          ),
+        ),
+      );
     }
+  }
+}
+
+/// The sentence for each way a deletion can fail.
+///
+/// TOP-LEVEL AND PUBLIC so `test/chassis_properties_test.dart` can assert on it
+/// directly: a mapping only reachable through a dialog is one nobody tests, and
+/// the whole defect this replaces was invisible for exactly that reason.
+///
+/// ⚠️ NO TURNAROUND TIME, RETENTION PERIOD OR LEGAL STATEMENT appears in any of
+/// these strings, because `sites/nikatru/delete-account.html` publishes none —
+/// an app promising one would be committing the business to it.
+String deleteAccountFailureMessage(
+  AppLocalizations l10n,
+  core.AccountDeletionOutcome outcome,
+) {
+  switch (outcome) {
+    // Cannot happen on this path — `_deleteAccount` only calls this from its
+    // catch — but stated rather than defaulted, so adding an outcome to the
+    // chassis is a compile error here instead of a silently wrong sentence.
+    case core.AccountDeletionOutcome.deleted:
+      return l10n.deleteAccountFailed;
+    // 501 — the route refused BEFORE touching anything, because it cannot
+    // remove the identity record (`SUPABASE_SERVICE_ROLE_KEY` is an owner
+    // action). Nothing was deleted, and that is safe to say.
+    case core.AccountDeletionOutcome.notConfigured:
+      return l10n.deleteAccountNotConfigured;
+    // 502 — the rows went and the identity did not. THE OPPOSITE of "nothing
+    // happened", and the state a user cannot discover for themselves.
+    case core.AccountDeletionOutcome.signInSurvives:
+      return l10n.deleteAccountSignInSurvives;
+    case core.AccountDeletionOutcome.nothingDeleted:
+    case core.AccountDeletionOutcome.reauthFailed:
+      return l10n.deleteAccountFailed;
+    // No status, or one this contract does not model: how far the deletion got
+    // is genuinely unknown, and claiming either way would be a guess.
+    case core.AccountDeletionOutcome.couldNotReach:
+    case core.AccountDeletionOutcome.unknown:
+      return l10n.deleteAccountUnknown;
   }
 }
 

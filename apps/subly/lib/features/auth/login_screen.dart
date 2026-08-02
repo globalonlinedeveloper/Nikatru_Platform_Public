@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 
+import '../../core/config/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -43,10 +45,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       if (_signUp) {
         await auth.signUpWithEmail(
-            email: _email.text.trim(), password: _password.text);
+          email: _email.text.trim(),
+          password: _password.text,
+        );
       } else {
         await auth.signInWithEmail(
-            email: _email.text.trim(), password: _password.text);
+          email: _email.text.trim(),
+          password: _password.text,
+        );
       }
       if (mounted) context.go('/scan');
     } catch (e) {
@@ -71,9 +77,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _snack(Object e) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_friendlyMessage(e))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(_friendlyMessage(e))));
   }
 
   /// Maps raw auth/network errors onto short, human messages so users never see
@@ -125,12 +131,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   gradient: AppColors.brandGradient,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Text('◈',
-                    style: TextStyle(fontSize: 24, color: Colors.white)),
+                child: const Text(
+                  '◈',
+                  style: TextStyle(fontSize: 24, color: Colors.white),
+                ),
               ),
               const SizedBox(height: 22),
-              Text(_signUp ? 'Create account' : 'Welcome back',
-                  style: AppText.title.copyWith(fontSize: 34)),
+              // 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE.
+              //
+              // `deleteAccount()` signs out whichever way the request went, so
+              // the router lands the user HERE — and takes the settings screen,
+              // its dialog and any SnackBar with it. Measured, not assumed: the
+              // router-driven test in test/delete_account_test.dart found ZERO
+              // result widgets after the redirect settled. So the message that
+              // matters most (502: your data is gone and your login still
+              // works) was the one message nobody ever saw. [ADR 027]
+              const _AccountDeletionNotice(),
+              Text(
+                _signUp ? 'Create account' : 'Welcome back',
+                style: AppText.title.copyWith(fontSize: 34),
+              ),
               const SizedBox(height: 6),
               Text(
                 _signUp
@@ -139,12 +159,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 style: AppText.muted.copyWith(fontSize: 15),
               ),
               const SizedBox(height: 28),
-              _field('EMAIL', _email, TextInputType.emailAddress,
-                  fieldKey: E2EKeys.loginEmail, hint: 'you@email.com'),
+              _field(
+                'EMAIL',
+                _email,
+                TextInputType.emailAddress,
+                fieldKey: E2EKeys.loginEmail,
+                hint: 'you@email.com',
+              ),
               const SizedBox(height: 14),
-              _field('PASSWORD', _password, TextInputType.text,
-                  obscure: true, fieldKey: E2EKeys.loginPassword,
-                  hint: 'Your password'),
+              _field(
+                'PASSWORD',
+                _password,
+                TextInputType.text,
+                obscure: true,
+                fieldKey: E2EKeys.loginPassword,
+                hint: 'Your password',
+              ),
               if (!_signUp)
                 Align(
                   alignment: Alignment.centerRight,
@@ -155,9 +185,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           .sendPasswordReset(_email.text.trim());
                       _snack('Password reset sent (demo).');
                     },
-                    child: Text('Forgot password?',
-                        style: AppText.body.copyWith(
-                            color: AppColors.accent, fontWeight: FontWeight.w700)),
+                    child: Text(
+                      'Forgot password?',
+                      style: AppText.body.copyWith(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               const SizedBox(height: 12),
@@ -196,9 +230,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         TextSpan(
                           text: _signUp ? 'Sign in' : 'Create account',
                           style: const TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.accent),
+                            fontFamily: 'Manrope',
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.accent,
+                          ),
                         ),
                       ],
                     ),
@@ -214,8 +249,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _field(String label, TextEditingController c, TextInputType type,
-      {bool obscure = false, Key? fieldKey, String? hint}) {
+  Widget _field(
+    String label,
+    TextEditingController c,
+    TextInputType type, {
+    bool obscure = false,
+    Key? fieldKey,
+    String? hint,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -232,8 +273,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             hintStyle: AppText.muted.copyWith(fontWeight: FontWeight.w500),
             filled: true,
             fillColor: AppColors.surface,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 15,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: AppColors.line),
@@ -245,6 +288,69 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The deletion outcome, rendered where the sign-out redirect cannot reach it.
+///
+/// Inline rather than a dialog, deliberately: a dialog here is another PAGELESS
+/// ROUTE, and this widget exists precisely because a pageless route was carried
+/// away by a page change. It sits until the user dismisses it — clearing the
+/// provider, so it cannot resurface at some later sign-out. [ADR 027]
+class _AccountDeletionNotice extends ConsumerWidget {
+  const _AccountDeletionNotice();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final core.AccountDeletionOutcome? outcome = ref.watch(
+      lastAccountDeletionOutcomeProvider,
+    );
+    if (outcome == null) return const SizedBox.shrink();
+    return Container(
+      key: const Key('accountDeletionNotice'),
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: outcome.accountIsGone ? AppColors.line : AppColors.danger,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            outcome.accountIsGone ? 'Account deleted' : 'Not deleted',
+            style: AppText.body.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            outcome.plainMessage,
+            key: const Key('accountDeletionNoticeText'),
+            style: AppText.muted.copyWith(fontSize: 13),
+          ),
+          if (!outcome.accountIsGone) ...<Widget>[
+            const SizedBox(height: 6),
+            // No turnaround time and no retention period: the published page
+            // states none, and an app inventing one commits us to it.
+            Text(
+              'Email ${AppConfig.supportEmail} and we will finish it.',
+              style: AppText.muted.copyWith(fontSize: 13),
+            ),
+          ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () =>
+                  ref.read(lastAccountDeletionOutcomeProvider.notifier).state =
+                      null,
+              child: const Text('Dismiss'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

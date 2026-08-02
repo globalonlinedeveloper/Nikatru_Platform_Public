@@ -238,6 +238,15 @@ const REQUIRED_COVERAGE = [
       // was signed out and never deleted. Same shape as the `Navigator.pop`
       // confirm button this property was built for, one layer deeper.
       { file: PROVIDERS, re: /requestServerDeletion:\s*\(\)\s*=>/, what: 'the deletion request must be WIRED to the server route — hard-coding it to null makes every anchor above pass against a flow that can only ever refuse' },
+      // …and it must be wired through the helper that KEEPS THE STATUS. A bare
+      // `delete('/account')` throws an ApiException that `deleteAccount` flattens
+      // into an AuthFailure, so by the time the screen catches it, 501 (nothing
+      // was deleted) and 502 (data gone, login alive) are the same object.
+      { file: PROVIDERS, re: /requestAccountDeletion\(/, what: 'the deletion must go through requestAccountDeletion, which maps the HTTP status while it still exists — a bare delete() call loses the 501-vs-502 distinction before any screen can read it [ADR 027]' },
+      // 🔴 THE ANCHOR FOR THE MESSAGE ITSELF. Every anchor above was satisfied by
+      // a `catch (_)` printing ONE string for every refusal — including 502,
+      // where "your account has NOT been deleted" is simply false.
+      { file: SETTINGS, re: /core\.accountDeletionOutcomeOf\(/, what: 'the failure path must resolve WHICH refusal it was — one message for every outcome tells a user whose data is already gone that nothing happened [ADR 027]' },
       // …and wiring it to a route that leaves the identity behind would be
       // worse than the refusal: "your account is deleted" followed by a login
       // that still works is the one failure a user cannot detect.

@@ -547,6 +547,16 @@ jobs:
       - name: The nightly exercised the legs it claims
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-e2e-legs.mjs
+      # An app that lets a person create an account must let them delete it from
+      # inside the app — both stores require it. assert-stamp-properties.mjs
+      # already enforces that for the brick and every STAMPED app, and exempts
+      # apps/subly by name (it predates the brick and has no inherited property
+      # test) — so the only app in the field was the only app no deletion guard
+      # reached, and it shipped with none. This asks the store's question over a
+      # domain with NO exemptions. [ADR 027]
+      - name: Every app with accounts ships a deletion control
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-deletion-control.mjs
       # One declaration for every build version. Before this, "3.44.8" appeared in
       # six places and node 24 in eight; wsl-setup.sh carried the comment "keep in
       # lockstep with *.yml", i.e. maintained by hope. The guard compares PARSED

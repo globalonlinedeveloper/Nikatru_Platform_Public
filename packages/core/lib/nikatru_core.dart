@@ -3,6 +3,7 @@
 library;
 
 export 'src/analytics/analytics.dart';
+export 'src/auth/account_deletion.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
 export 'src/analytics/analytics_recorder.dart';
