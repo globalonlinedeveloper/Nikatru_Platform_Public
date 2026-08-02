@@ -1512,6 +1512,34 @@ Future<void> _buy(Offering offering) async {
   const DEPLOY_WITH_DSN = 'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n';
   const MAIN_READS_DSN = "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n";
 
+  // 🔴 THE SUPPLIER SIDE IS DERIVED FROM tooling/channel-register.json SINCE
+  // 2026-08-02 ([pipeline 11]E-7 residue), so these fixtures now have to model a
+  // workflow's JOB STRUCTURE rather than a bare `run:` line. The old check read
+  // the filename `deploy-web.yml` and nothing else, and printed ok while
+  // build-platforms.yml built all six platforms with ZERO `--dart-define`s —
+  // and that workflow is the declared lane of BOTH the `android-play` and the
+  // `windows-store` rows. Two artifact lanes with no crash sink, guard green.
+  const jobWith = (name, body) =>
+    `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: build\n        ${body
+      .trimEnd()
+      .split('\n')
+      .join('\n        ')}\n`;
+  const workflow = (...jobs) => `name: fixture\non: [push]\njobs:\n${jobs.join('')}`;
+  /** Three lanes — the number the real register carries — because the guard
+   *  floors the derived subject set at 3 and a fixture below deliberately
+   *  drops one to prove that floor can fail. */
+  const CHANNEL_REGISTER = JSON.stringify(
+    {
+      channels: [
+        { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+      ],
+    },
+    null,
+    2,
+  );
+
   // [G-43] The secure-session seam. `initNikatruAuth` is the one call that keeps
   // the refresh token out of plaintext, and it had ZERO callers tree-wide while
   // this guard — whose entire subject is "does anything real call it" — did not
@@ -1539,6 +1567,9 @@ Future<void> main() async {
       dartVersion = '2026-07-26',
       fillerCount = 14,
       deploy = DEPLOY_WITH_DSN,
+      android = DEPLOY_WITH_DSN,
+      windows = DEPLOY_WITH_DSN,
+      register = CHANNEL_REGISTER,
       mainDart = MAIN_READS_DSN,
       brickMain = BRICK_MAIN_INITS_AUTH,
       reminders = BRICK_SCHEDULES,
@@ -1553,7 +1584,12 @@ Future<void> main() async {
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
       'sites/nikatru/privacy.html': POLICY(htmlVersion),
-      '.github/workflows/deploy-web.yml': deploy,
+      'tooling/channel-register.json': register,
+      '.github/workflows/deploy-web.yml': workflow(jobWith('deploy-web', deploy)),
+      '.github/workflows/build-platforms.yml': workflow(
+        jobWith('linux_web_android', android),
+        jobWith('windows', windows),
+      ),
       'apps/subly/lib/main.dart': mainDart,
       'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': brickMain,
     });
@@ -1625,6 +1661,58 @@ Future<void> main() async {
     });
     assert.equal(code, 0, out);
     assert.match(out, /crash sink wired/);
+  });
+
+  // ── [pipeline 11]E-7 — the SUPPLIER SET IS DERIVED, and it is per-JOB ──────
+  test('FAILS when an ARTIFACT lane other than the web deploy supplies no DSN', () => {
+    // The residue this replaced: build-platforms.yml built all six platforms
+    // with zero `--dart-define`s while the old check, which read the filename
+    // `deploy-web.yml`, printed ok. Both non-web rows point at that workflow.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-android-no-dsn', { android: 'run: flutter build appbundle --release\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /job `linux_web_android` \(the lane of channel `android-play`\) does not pass --dart-define=GLITCHTIP_DSN/);
+  });
+
+  test('the define in a DIFFERENT job of the same workflow does not satisfy the check', () => {
+    // The whole-file form would pass here: build-platforms.yml still contains
+    // the string. Mutation-proven on the REAL tree first — the define moved from
+    // the `windows` job to the `apple` job, five occurrences in the file, and the
+    // guard still named `windows`.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-wrong-job', { windows: 'run: flutter build windows --release\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /job `windows` \(the lane of channel `windows-store`\)/);
+  });
+
+  test('COVERAGE LOST when the register stops declaring the lanes that exist', () => {
+    const shrunk = JSON.parse(CHANNEL_REGISTER);
+    shrunk.channels[2].lane = null;
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-lane-dropped', { register: JSON.stringify(shrunk, null, 2) }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /only 2 channel row\(s\) declare a `lane\.workflow` \+ `lane\.job`/);
+  });
+
+  test('COVERAGE LOST when a lane names a job that is not in its workflow', () => {
+    const renamed = JSON.parse(CHANNEL_REGISTER);
+    renamed.channels[2].lane.job = 'windows_build';
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-lane-job-gone', { register: JSON.stringify(renamed, null, 2) }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /names job `windows_build` .* and this scan could not find that job/);
+  });
+
+  test('COVERAGE LOST when the channel register cannot be read at all', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-register-broken', { register: '{ not json' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /channel-register\.json could not be read/);
   });
 
   test('FAILS when the record() call is deleted — the original defect', () => {
@@ -1815,9 +1903,23 @@ class Ed25519PackVerifier implements PackVerifier {
   // consent, the policy pin, and the crash sink. A fixture that omits one fails
   // for a reason unrelated to what the test is about, which is how a fixture
   // starts lying about the guard it exercises.
+  // The crash sink's supplier set is DERIVED from the channel register's lanes
+  // since 2026-08-02 ([pipeline 11]E-7), so satisfying it needs the register and
+  // both lane workflows — a bare deploy-web.yml no longer answers the question
+  // the guard now asks.
+  const laneJob = (name) =>
+    `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build --release --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
   const consentOk = {
-    '.github/workflows/deploy-web.yml':
-      'run: flutter build web --release --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}\n',
+    'tooling/channel-register.json': JSON.stringify({
+      channels: [
+        { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
+        { id: 'android-play', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+      ],
+    }),
+    '.github/workflows/deploy-web.yml': `name: f\njobs:\n${laneJob('deploy-web')}`,
+    '.github/workflows/build-platforms.yml':
+      `name: f\njobs:\n${laneJob('linux_web_android')}${laneJob('windows')}`,
     'apps/subly/lib/main.dart': "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n",
     'apps/subly/lib/state/analytics_providers.dart':
       "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
