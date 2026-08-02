@@ -1,0 +1,68 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0006_erasure_reach.sql — THE ONE TABLE THE ERASURE ROUTE COULD NOT REACH.
+--
+-- Applies to the SHARED platform_db (services/platform is the sole applier):
+--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
+--
+-- [pipeline K-7] "The erasure path is published, reachable and not orphaned."
+--
+-- 🔴 THE DEFECT THIS CLOSES, STATED PLAINLY. services/platform/src/routes/
+-- account.ts derives the tables it empties from the schema: every table carrying
+-- a column literally called `user_id` is user-owned, and is purged with no edit
+-- to the route. That derivation is right, and it has one consequence nobody had
+-- written down: a table holding personal data with NO such column is invisible
+-- to it — and the route still answers `{ ok: true }`. `provider_notifications`
+-- (0004 section B) is exactly that table. It stores every merchant-of-record
+-- notification VERBATIM, which for a subscription event is the buyer's name,
+-- email address and billing country (0004:138-143 names it as the one
+-- non-pseudonymous store in platform_db). A person could ask to be erased, be
+-- told they were, and have their name still in the database.
+--
+-- A DELETE ROUTE THAT SILENTLY MISSES ROWS IS WORSE THAN NO ROUTE, because the
+-- user is told their data is gone and stops asking.
+--
+-- ── WHY A COLUMN, AND WHY THIS COLUMN NAME ───────────────────────────────────
+-- The alternatives were considered and rejected:
+--   · a hardcoded table list in the route — the exact "somebody must remember to
+--     edit two files" property account.ts:18-25 exists to remove;
+--   · a join through `provider_accounts` — the notification carries no
+--     subscription-id COLUMN (the id is inside the verbatim payload, which is
+--     TEXT and must not be parsed by a delete path), so there is nothing to join
+--     ON without adding a column anyway;
+--   · leaving it unreachable and declaring a retention basis — see below.
+-- Spelling it `user_id` is load-bearing: that is the name the schema-derived
+-- sweep recognises, so this migration alone makes the table reachable and no
+-- code in account.ts changes. It is NULL until derivation resolves an account
+-- (services/platform/src/lib/mor/store.ts), which is the only moment the link is
+-- known — the row is written BEFORE it is interpreted, and that ordering is
+-- [pipeline 5]M-2 and is not negotiable.
+--
+-- ⚠️ THIS DOES NOT PAIR A PAYER WITH A PSEUDONYMOUS INSTALL. [ADR 020] forbids an
+-- `anon_id -> user_id` map. This column is `user_id`, the same account id
+-- `entitlements` and `provider_accounts` already carry; there is still no
+-- `anon_id` anywhere in this table and none may ever be added.
+--
+-- 🔴 WHAT IS DECIDED HERE AND WHAT IS NOT. Decided: the row is REACHABLE, and
+-- the default behaviour of an erasure request is to purge it — because honouring
+-- the published promise needs no justification and RETAINING a person's data
+-- does. NOT decided, and NOT invented here: whether a payment notification
+-- carries a statutory retention basis (tax, accounting, consumer-law) that would
+-- override that default. No primary source for one could be read from this
+-- environment, so tooling/legal/data-inventory.json records the question as
+-- UNVERIFIED against an owner item and PRINTS it on every CI run rather than
+-- letting an agent write a retention period that then looks authoritative.
+-- NOTHING WRITES TO THIS TABLE TODAY (no seller account exists — OWNER_QUEUE
+-- A-1), so the decision is still free. It stops being free at the first payment.
+--
+-- ⚠️ REPLAY. `ALTER TABLE … ADD COLUMN` has no `IF NOT EXISTS` form in SQLite, so
+-- this file is LEDGER-PROTECTED rather than replay-safe, exactly as 0004 section
+-- A is. test/migrations-replay.test.ts classifies every statement in the whole
+-- set and proves ALTER … ADD COLUMN is the only non-replay-safe form present.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE provider_notifications ADD COLUMN user_id TEXT;
+
+-- The erasure sweep's own query: "every row this person owns". Without it the
+-- delete is a full scan of the one table that grows fastest per paying customer.
+CREATE INDEX IF NOT EXISTS idx_provider_notifications_user
+  ON provider_notifications (user_id);
