@@ -48,10 +48,11 @@
 // Usage:  node tooling/ci/assert-worker-error-sink.mjs [repoRoot]
 // Exit 0 = every Worker's unhandled error reaches a declared sink.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -81,7 +82,7 @@ if (!existsSync(rel(SERVICES))) {
   coverageLost(`no ${SERVICES}/ directory under ${ROOT}. The scan is broken, not the tree.`);
 }
 
-const workers = readdirSync(rel(SERVICES), { withFileTypes: true })
+const workers = listDir(rel(SERVICES), { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
   .map((e) => e.name)
   .filter((name) => existsSync(rel(`${SERVICES}/${name}/src/index.ts`)))

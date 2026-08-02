@@ -20,8 +20,9 @@
 // `apps/subly` is on it because a human typed it there, and the stamper added
 // nothing — so the newest and least-tested app in the repo was the one thing the
 // one-command check did not check. Green tick, nothing examined.
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = process.cwd();
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
@@ -272,7 +273,7 @@ if (postGen !== null && ci !== null) {
   // catalogue never mentions and CI never builds.
   let stamped = [];
   try {
-    stamped = readdirSync(join(ROOT, BRICK_APP))
+    stamped = listDir(join(ROOT, BRICK_APP))
       .filter((e) => PLATFORM_DIRS.includes(e))
       .filter((e) => statSync(join(ROOT, BRICK_APP, e)).isDirectory());
   } catch {

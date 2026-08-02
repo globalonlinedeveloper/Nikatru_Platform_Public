@@ -42,8 +42,9 @@
 // Usage:  node tooling/ci/assert-repo-posture.mjs [repoRoot]
 // Exit 0 = clean, 1 = the posture drifted or this scan lost its coverage.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 
@@ -171,7 +172,7 @@ if (existsSync(appsDir)) {
   const walk = (dir) => {
     let entries;
     try {
-      entries = readdirSync(dir, { withFileTypes: true });
+      entries = listDir(dir, { withFileTypes: true });
     } catch {
       return;
     }
@@ -182,7 +183,7 @@ if (existsSync(appsDir)) {
       else if (e.name === 'app_config.dart') appConfigs.push(p);
     }
   };
-  for (const e of readdirSync(appsDir, { withFileTypes: true })) {
+  for (const e of listDir(appsDir, { withFileTypes: true })) {
     if (e.isDirectory()) walk(join(appsDir, e.name));
   }
 }
@@ -222,7 +223,7 @@ if (noticeSrc !== null) {
 // ── LIMB 3 · no LICENSE at the root — the irreversible one ──────────────────
 let rootEntries;
 try {
-  rootEntries = readdirSync(repoRoot, { withFileTypes: true });
+  rootEntries = listDir(repoRoot, { withFileTypes: true });
 } catch {
   console.error(`✗ COVERAGE LOST — cannot list ${repoRoot}, so the no-LICENSE check ran over nothing.`);
   process.exit(1);

@@ -38,9 +38,10 @@
 // Usage:  node tooling/ci/assert-no-clone-tells.mjs [repoRoot]
 // Exit 0 = shared code is app-neutral, 1 = a clone tell leaked in.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
@@ -56,7 +57,7 @@ function fail(lines) {
 // ── 1. the app names, derived from disk ──────────────────────────────────────
 let appNames = [];
 try {
-  appNames = readdirSync(join(ROOT, 'apps'), { withFileTypes: true })
+  appNames = listDir(join(ROOT, 'apps'), { withFileTypes: true })
     .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
     .map((e) => e.name)
     // `probe` is the stamped fixture the app_brick lane creates; it is also an
@@ -94,7 +95,7 @@ if (!Array.isArray(domainNouns) || domainNouns.length === 0) {
 function dartFiles(absDir, rel, out) {
   let entries;
   try {
-    entries = readdirSync(absDir, { withFileTypes: true });
+    entries = listDir(absDir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -109,7 +110,7 @@ function dartFiles(absDir, rel, out) {
 const sharedFiles = [];
 for (const pkg of (() => {
   try {
-    return readdirSync(join(ROOT, 'packages'), { withFileTypes: true }).filter((e) => e.isDirectory());
+    return listDir(join(ROOT, 'packages'), { withFileTypes: true }).filter((e) => e.isDirectory());
   } catch {
     return [];
   }

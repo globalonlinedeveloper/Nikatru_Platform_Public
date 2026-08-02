@@ -112,6 +112,15 @@ function repo(
   // guard, and a switch that relaxes a guard is a switch someone will find.
   if (real) all['assert-guard-coverage.mjs'] = readFileSync(GUARD, 'utf8');
 
+  // Modules the copied guard IMPORTS travel with it, or the copy does not FAIL
+  // the assertion under test — it fails to start, and the test then reports
+  // whatever the module loader said. Deliberately NOT added to `all`: nothing
+  // invokes tree-walk.mjs, and that is the point. It is reached only through the
+  // import graph, which is exactly the FOUND ⊆ REACHED path these fixtures
+  // otherwise never exercise.
+  const deps = real ? ['tree-walk.mjs'] : [];
+  for (const dep of deps) writeFileSync(join(ci, dep), readFileSync(join(CI_DIR, dep), 'utf8'));
+
   for (const [name, src] of Object.entries(all)) writeFileSync(join(ci, name), src);
   for (const rel of [...scripts, ...excused]) {
     const abs = join(root, rel);
@@ -145,7 +154,7 @@ function repo(
   // itself had, so neither could see that a hollowed-out test file covers
   // nothing. Found 2026-07-27 while closing F-10.
   const covered = mentionAll
-    ? [...Object.keys(all), ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
+    ? [...Object.keys(all), ...deps, ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
     : ['nothing-real.mjs'];
   for (let i = 0; i < testFiles; i++) {
     // commentsOnly reproduces this fixture's ORIGINAL behaviour, kept so the fix

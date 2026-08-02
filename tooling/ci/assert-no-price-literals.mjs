@@ -23,9 +23,10 @@
 //
 // Usage:  node tooling/ci/assert-no-price-literals.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
@@ -111,7 +112,7 @@ const SKIP_PATH = [join('apps', 'probe')];
 function walk(dir, out = []) {
   let entries;
   try {
-    entries = readdirSync(dir);
+    entries = listDir(dir);
   } catch {
     return out;
   }

@@ -65,10 +65,11 @@
 // Usage:  node tooling/ci/assert-analytics-contract.mjs [repoRoot]
 // Exit 0 = clean, 1 = violation or lost coverage.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, extname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -225,7 +226,7 @@ function splitTopLevel(body) {
 if (!has(MIGRATIONS_DIR)) {
   coverageLost(`${MIGRATIONS_DIR} does not exist, so no schema was read at all.`);
 }
-const migrationFiles = readdirSync(join(ROOT, MIGRATIONS_DIR))
+const migrationFiles = listDir(join(ROOT, MIGRATIONS_DIR))
   .filter((f) => f.endsWith('.sql'))
   .sort()
   .map((f) => join(MIGRATIONS_DIR, f));
@@ -475,7 +476,7 @@ const SKIP_DIR = new Set(['node_modules', 'dist', '.wrangler', 'build', 'coverag
 
 function walk(dir, out = []) {
   let entries;
-  try { entries = readdirSync(dir); } catch { return out; }
+  try { entries = listDir(dir); } catch { return out; }
   for (const e of entries) {
     const p = join(dir, e);
     let s;

@@ -45,9 +45,10 @@
 // Usage:  node tooling/ci/assert-capability-register.mjs [repoRoot]
 // Exit 0 = the register and the tree agree, 1 = they do not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 /**
  * Blank Dart comments and string literals, preserving offsets and newlines.
@@ -173,7 +174,7 @@ if (consumerRoots.length === 0) {
 // ── 1. packages on disk ──────────────────────────────────────────────────────
 let onDisk = [];
 if (existsSync(PACKAGES_DIR) && statSync(PACKAGES_DIR).isDirectory()) {
-  onDisk = readdirSync(PACKAGES_DIR, { withFileTypes: true })
+  onDisk = listDir(PACKAGES_DIR, { withFileTypes: true })
     .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
     .map((e) => `packages/${e.name}`)
     .sort();
@@ -551,7 +552,7 @@ for (const cap of capabilities) {
 function dartFilesUnder(dir, rel, out) {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -565,7 +566,7 @@ function dartFilesUnder(dir, rel, out) {
 }
 let appFiles = [];
 if (existsSync(APPS_DIR)) {
-  for (const e of readdirSync(APPS_DIR, { withFileTypes: true })) {
+  for (const e of listDir(APPS_DIR, { withFileTypes: true })) {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     dartFilesUnder(join(APPS_DIR, e.name, 'lib'), `apps/${e.name}/lib`, appFiles);
   }

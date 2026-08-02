@@ -34,8 +34,9 @@
 // it would ship this guard red on day one — and a guard that is red on day one
 // gets switched off, which is the failure this repository keeps recording.
 // Retrofitting Subly is `architecture.md` §16's own work item.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = process.cwd();
 const problems = [];
@@ -82,7 +83,7 @@ function scan(dir) {
   const hits = [];
   const walk = (d) => {
     if (!existsSync(d)) return;
-    for (const entry of readdirSync(d)) {
+    for (const entry of listDir(d)) {
       const full = join(d, entry);
       if (statSync(full).isDirectory()) { walk(full); continue; }
       if (!entry.endsWith('.dart')) continue;

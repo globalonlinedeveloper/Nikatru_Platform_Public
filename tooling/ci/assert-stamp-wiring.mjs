@@ -76,8 +76,9 @@
 // Usage:  node tooling/ci/assert-stamp-wiring.mjs [repoRoot]
 // Exit 0 = the stamp calls what it declares, 1 = it does not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 // cwd, not this file's location. Resolving from `import.meta.url` pins the guard
 // to the real repository no matter where it is invoked from, so every fixture
@@ -177,7 +178,7 @@ const TOP_FN_RE = /^(?!\s)(?:[A-Za-z_][\w<>,?\[\]. ]*\s+)([a-zA-Z_]\w*)\s*\(/gm;
 function dartFilesUnder(dir, out = []) {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return out;
   }
@@ -409,7 +410,7 @@ function nonDartReference(pkg) {
   const walk = (dir, rel) => {
     let entries;
     try {
-      entries = readdirSync(dir, { withFileTypes: true });
+      entries = listDir(dir, { withFileTypes: true });
     } catch {
       return null;
     }

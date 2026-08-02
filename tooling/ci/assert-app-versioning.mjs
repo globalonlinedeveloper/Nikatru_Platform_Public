@@ -50,8 +50,9 @@
 //
 // Exit 0 = the version mechanism is wired, 1 = it is not (or the scan shrank).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 // ── The release lanes: a workflow that BUILDS a Flutter app and SHIPS it. ─────
 // Declared rather than sniffed, so the guard can name the app each lane ships.
@@ -144,7 +145,7 @@ if (!existsSync(wfDir)) {
   console.error(`✗ no .github/workflows under ${repoRoot}`);
   process.exit(1);
 }
-const wfFiles = readdirSync(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+const wfFiles = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
 
 /** Fold a `run: >` block back into one command line. The flags of a Flutter
  *  build are spread over a dozen continuation lines; scanning line-by-line would
@@ -217,7 +218,7 @@ for (const lane of RELEASE_LANES) {
 const appsDir = join(repoRoot, 'apps');
 let appsChecked = 0;
 if (existsSync(appsDir)) {
-  for (const a of readdirSync(appsDir)) {
+  for (const a of listDir(appsDir)) {
     const p = join(appsDir, a, 'pubspec.yaml');
     if (!existsSync(p) || !statSync(p).isFile()) continue;
     appsChecked++;

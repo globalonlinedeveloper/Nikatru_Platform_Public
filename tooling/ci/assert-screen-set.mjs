@@ -24,8 +24,9 @@
 // named blocker has already shipped, the build fails. Otherwise "blocked by
 // stage 5" becomes a permanent excuse that outlives stage 5 — the same rot the
 // dated grandfather lists elsewhere exist to prevent.
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/screen-register.json';
@@ -87,7 +88,7 @@ const BLOCKERS_STILL_REAL = {
 function readAll(dir) {
   let out = '';
   const walk = (d) => {
-    for (const e of readdirSync(d)) {
+    for (const e of listDir(d)) {
       const f = join(d, e);
       if (statSync(f).isDirectory()) walk(f);
       else if (e.endsWith('.dart')) out += readFileSync(f, 'utf8');

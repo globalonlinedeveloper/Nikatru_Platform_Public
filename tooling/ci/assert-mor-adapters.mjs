@@ -41,9 +41,10 @@
 // Usage:  node tooling/ci/assert-mor-adapters.mjs [repoRoot]
 // Exit 0 = the rail is sound (gaps printed), 1 = it is not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -117,7 +118,7 @@ const DECLARED_WRITERS = [
 // ── the scan ─────────────────────────────────────────────────────────────────
 function walk(dir, out = []) {
   let entries;
-  try { entries = readdirSync(dir); } catch { return out; }
+  try { entries = listDir(dir); } catch { return out; }
   for (const e of entries) {
     if (e === 'node_modules' || e === 'dist' || e === '.wrangler') continue;
     const p = join(dir, e);
@@ -296,7 +297,7 @@ if (!existsSync(registryPath)) {
 }
 
 const testFiles = existsSync(join(ROOT, TEST_DIR))
-  ? readdirSync(join(ROOT, TEST_DIR)).filter((f) => f.endsWith('.test.ts'))
+  ? listDir(join(ROOT, TEST_DIR)).filter((f) => f.endsWith('.test.ts'))
   : [];
 const testCorpus = new Map(
   testFiles.map((f) => [f, stripComments(readFileSync(join(ROOT, TEST_DIR, f), 'utf8'))]),

@@ -103,12 +103,38 @@
 // the register itself is in the public tree: a register under company/ would be
 // unenforceable, which is precisely what blocked four stage-8 increments.
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️ WHAT THESE SCANS DO NOT WALK INTO, AND THE RULE THAT DECIDES IT.
+//
+// Reproduced on `main` 2026-08-02: with agent worktrees present under
+// `.claude/worktrees/` — which this repo creates one of per agent task — this
+// guard exited 1 with SIXTEEN problems, every one of the form
+//
+//     .claude/worktrees/agent-<id>/services/platform/wrangler.jsonc declares
+//     `triggers.crons` and has no `duty` row …
+//
+// Both walks below were descending into NESTED FULL COPIES OF THE REPOSITORY
+// and reading their wrangler configs as this tree's own. CI creates no
+// worktrees, so CI stayed green and only a developer machine went red — and a
+// guard that cries wolf exactly where a human is watching is a guard that gets
+// disbelieved, which is a slower way of not having one.
+//
+// THE RULE, implemented once in `tooling/ci/tree-walk.mjs` and applied by every
+// `listDir` call below: an entry is not part of the tree under test if it is a
+// directory containing a `.git` entry — FILE or directory; a worktree's is a
+// file, and that is the case that bit — or if it is named `.claude`. The root of
+// a walk is never itself excluded, so pointing this guard at a checkout (which
+// the real repository always is) still scans it in full. Anchoring on the
+// literal path `.claude/worktrees/` was rejected: it would leave submodules,
+// stray clones and `git worktree add` into the tree all still wrong.
+//
 // Usage:  node tooling/ci/assert-ops-register.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -188,7 +214,7 @@ export function findWranglerConfigs(root) {
   const excluded = [];
   const walk = (dir, rel) => {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = listDir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (e.name === 'node_modules' || e.name === '.git' || e.name === 'build') continue;
       const abs = join(dir, e.name);
@@ -548,7 +574,7 @@ function main() {
   if (!existsSync(wfDir)) {
     coverageLost([`${WORKFLOW_DIR_REL} does not exist, so the workflow coverage relationship ranged over nothing.`]);
   }
-  const workflows = readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort();
+  const workflows = listDir(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort();
   if (workflows.length === 0) {
     coverageLost([`${WORKFLOW_DIR_REL} contains no workflow files, so every duty row would be trivially satisfied.`]);
   }
@@ -606,7 +632,7 @@ function main() {
   const paths = new Set();
   const collect = (dir, rel) => {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = listDir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (e.name === 'node_modules' || e.name === '.git' || e.name === 'build') continue;
       const r = rel ? `${rel}/${e.name}` : e.name;

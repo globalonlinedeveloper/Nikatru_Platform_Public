@@ -26,8 +26,9 @@
 //
 // Usage:  node tooling/ci/assert-prompt-provenance.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 import { IP_STEERING_RULES, assertPromptIsClean, ipSteeringViolations } from '../content_pipeline/src/prompts.mjs';
 
@@ -73,7 +74,7 @@ function check(prov, manifest, content) {
 
 // ── the domain ───────────────────────────────────────────────────────────────
 const packs = existsSync(FIXTURES)
-  ? readdirSync(FIXTURES, { withFileTypes: true })
+  ? listDir(FIXTURES, { withFileTypes: true })
       .filter((e) => e.isDirectory() && existsSync(join(FIXTURES, e.name, 'PROVENANCE.json')))
       .map((e) => join(FIXTURES, e.name))
   : [];

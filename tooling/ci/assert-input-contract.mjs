@@ -31,8 +31,9 @@
 // a different name, sails through while the guard reports clean. So this
 // EXTRACTS every yaml/json filename the brick and its hooks mention and fails on
 // any that neither exists nor is allowlisted. Catch the class, not the instance.
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 // ── two views of the hook, both offset-preserving ────────────────────────────
 // Blanked spans keep their newlines and their width, so an index in one view is
@@ -448,7 +449,7 @@ function existsAnywhere(name) {
 function walkFind(dir, name, depth) {
   if (depth > 4) return false;
   let entries;
-  try { entries = readdirSync(dir); } catch { return false; }
+  try { entries = listDir(dir); } catch { return false; }
   for (const e of entries) {
     if (e === 'node_modules' || e === '.git' || e === 'build' || e === '.dart_tool') continue;
     const p = join(dir, e);

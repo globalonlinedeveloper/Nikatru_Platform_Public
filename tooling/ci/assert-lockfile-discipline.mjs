@@ -40,9 +40,10 @@
 // Usage:  node tooling/ci/assert-lockfile-discipline.mjs [repoRoot]
 // Exit 0 = reproducible, 1 = something can drift (or the scan broke).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 
@@ -88,7 +89,7 @@ const SKIP = new Set(['node_modules', 'build', '.dart_tool', '.wrangler', '_site
 function childDirs(rel) {
   const abs = join(repoRoot, rel);
   if (!existsSync(abs) || !statSync(abs).isDirectory()) return [];
-  return readdirSync(abs, { withFileTypes: true })
+  return listDir(abs, { withFileTypes: true })
     .filter((e) => e.isDirectory() && !SKIP.has(e.name) && !e.name.startsWith('.'))
     .map((e) => posix.join(rel, e.name));
 }
@@ -161,7 +162,7 @@ for (const unit of nodeUnits) {
 // ── 2. no workflow installs non-reproducibly for a unit that has a lock ──────
 const wfDir = join(repoRoot, '.github', 'workflows');
 const workflows = existsSync(wfDir)
-  ? readdirSync(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+  ? listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
   : [];
 
 /** Every loose-install form, with the flag that makes each one reproducible.

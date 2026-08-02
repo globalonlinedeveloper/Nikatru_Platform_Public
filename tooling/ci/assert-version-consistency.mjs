@@ -20,8 +20,9 @@
 // Usage:  node tooling/ci/assert-version-consistency.mjs [repoRoot]
 // Exit 0 = every literal matches tooling/versions.json, 1 = drift.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 const declPath = join(repoRoot, 'tooling', 'versions.json');
@@ -65,7 +66,7 @@ const RULES = [
 const TARGETS = [];
 const wfDir = join(repoRoot, '.github', 'workflows');
 if (existsSync(wfDir)) {
-  for (const f of readdirSync(wfDir).filter((x) => x.endsWith('.yml') || x.endsWith('.yaml'))) {
+  for (const f of listDir(wfDir).filter((x) => x.endsWith('.yml') || x.endsWith('.yaml'))) {
     TARGETS.push(join('.github', 'workflows', f));
   }
 }

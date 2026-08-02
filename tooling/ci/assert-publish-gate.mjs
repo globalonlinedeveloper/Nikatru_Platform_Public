@@ -33,9 +33,10 @@
 //
 // Usage:  node tooling/ci/assert-publish-gate.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 import { DECLARED_GATES, publishPreconditionProblems } from '../content_pipeline/src/gates.mjs';
 import { DRILL_RECORD_REL, TEST_KEY_ID, drillStatus, signPack, testSeed } from '../content_pipeline/src/sign.mjs';
@@ -68,7 +69,7 @@ if (dropped.length) {
 // Every gate that names a guard must have one, and CI must run it — otherwise
 // the gate's artifact is produced by nothing and asserted by nobody.
 const ciText = existsSync(join(repoRoot, '.github', 'workflows'))
-  ? readdirSync(join(repoRoot, '.github', 'workflows'))
+  ? listDir(join(repoRoot, '.github', 'workflows'))
       .filter((f) => /\.ya?ml$/.test(f))
       .map((f) => readFileSync(join(repoRoot, '.github', 'workflows', f), 'utf8'))
       .join('\n')
@@ -86,7 +87,7 @@ for (const g of DECLARED_GATES) {
 // ── the domain ───────────────────────────────────────────────────────────────
 const subjects = [];
 if (existsSync(EXAMPLES)) {
-  for (const e of readdirSync(EXAMPLES, { withFileTypes: true })) {
+  for (const e of listDir(EXAMPLES, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
     const recipePath = join(EXAMPLES, e.name, 'recipe.json');
     const gatesDir = join(EXAMPLES, e.name, 'gates');

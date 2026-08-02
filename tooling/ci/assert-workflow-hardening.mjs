@@ -33,9 +33,10 @@
 // Usage:  node tooling/ci/assert-workflow-hardening.mjs [repoRoot]
 // Exit 0 = hardened, 1 = a movable reference or a missing permissions block.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 /** No argument means CI's own invocation — the real repository, where the git
@@ -77,7 +78,7 @@ if (!existsSync(wfDir)) {
   process.exit(1);
 }
 
-const files = readdirSync(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+const files = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
 
 /** `uses:` referencing a repository action. Local (`./…`) and container
  *  (`docker://…`) forms are not tag-pinnable and are deliberately skipped.

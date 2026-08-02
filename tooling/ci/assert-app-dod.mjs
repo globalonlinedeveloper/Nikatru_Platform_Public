@@ -100,10 +100,11 @@
 //
 // Usage:  node tooling/ci/assert-app-dod.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -428,12 +429,12 @@ const wfDir = join(ROOT, '.github', 'workflows');
 if (!existsSync(wfDir)) {
   coverageLost(['.github/workflows does not exist, so no register row could be resolved to an invocation.']);
 }
-const workflows = readdirSync(wfDir)
+const workflows = listDir(wfDir)
   .filter((f) => /\.ya?ml$/.test(f))
   .map((f) => parseWorkflow(`.github/workflows/${f}`));
 
 const guardDir = join(ROOT, 'tooling', 'ci');
-const guardFiles = new Set(existsSync(guardDir) ? readdirSync(guardDir).filter((f) => f.endsWith('.mjs')) : []);
+const guardFiles = new Set(existsSync(guardDir) ? listDir(guardDir).filter((f) => f.endsWith('.mjs')) : []);
 if (guardFiles.size === 0) {
   coverageLost(['tooling/ci holds no .mjs guard files, so every `guard` row below would fail for the wrong reason.']);
 }
@@ -547,7 +548,7 @@ function testFilesOf(appDir) {
     const dir = join(ROOT, appDir, sub);
     if (!existsSync(dir)) continue;
     const walk = (d, rel) => {
-      for (const e of readdirSync(d, { withFileTypes: true })) {
+      for (const e of listDir(d, { withFileTypes: true })) {
         const p = join(d, e.name);
         if (e.isDirectory()) walk(p, `${rel}/${e.name}`);
         else if (e.name.endsWith('.dart')) out.push({ rel: `${rel}/${e.name}`, text: readFileSync(p, 'utf8') });

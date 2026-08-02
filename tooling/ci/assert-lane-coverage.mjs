@@ -27,8 +27,9 @@
 // Usage:  node tooling/ci/assert-lane-coverage.mjs [repoRoot]
 // Exit 0 = every unit is claimed, 1 = something is unclaimed (or the scan broke).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 
@@ -40,7 +41,7 @@ const SKIP = new Set(['node_modules', 'build', '.dart_tool', '.wrangler', '_site
 function dirs(rel) {
   const abs = join(repoRoot, rel);
   if (!existsSync(abs) || !statSync(abs).isDirectory()) return [];
-  return readdirSync(abs, { withFileTypes: true })
+  return listDir(abs, { withFileTypes: true })
     .filter((e) => e.isDirectory() && !SKIP.has(e.name) && !e.name.startsWith('.'))
     .map((e) => posix.join(rel, e.name));
 }
@@ -115,7 +116,7 @@ function claimableText(raw) {
 
 const wfDir = join(repoRoot, '.github', 'workflows');
 const workflowText = existsSync(wfDir)
-  ? readdirSync(wfDir)
+  ? listDir(wfDir)
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
       .map((f) => claimableText(readFileSync(join(wfDir, f), 'utf8')))
       .join('\n')

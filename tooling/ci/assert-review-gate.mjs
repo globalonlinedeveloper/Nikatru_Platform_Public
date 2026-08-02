@@ -31,8 +31,9 @@
 //
 // Usage:  node tooling/ci/assert-review-gate.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 import { REVIEW_CHECKLIST, checklistProblems, deriveSample } from '../content_pipeline/src/sample.mjs';
 import { readReviewLog } from '../content_pipeline/src/gates.mjs';
@@ -94,7 +95,7 @@ function gate(recipe, prov, contentHash, rows) {
 // ── the domain ───────────────────────────────────────────────────────────────
 const subjects = [];
 if (existsSync(EXAMPLES)) {
-  for (const e of readdirSync(EXAMPLES, { withFileTypes: true })) {
+  for (const e of listDir(EXAMPLES, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
     const recipePath = join(EXAMPLES, e.name, 'recipe.json');
     const logPath = join(EXAMPLES, e.name, 'gates', 'review.jsonl');

@@ -30,8 +30,9 @@
 //
 // Usage:  node tooling/ci/assert-content-licences.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 import { IMPLEMENTED_MODALITIES, QA_IMPLEMENTED_MODALITIES } from '../content_pipeline/src/recipe.mjs';
 
@@ -141,7 +142,7 @@ for (const row of families) {
 const pubspecs = [];
 const collectPubspecs = (dir, depth) => {
   if (depth > 4 || !existsSync(dir)) return;
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
+  for (const e of listDir(dir, { withFileTypes: true })) {
     if (e.name === 'node_modules' || e.name === 'build' || e.name.startsWith('.')) continue;
     const abs = join(dir, e.name);
     if (e.isDirectory()) collectPubspecs(abs, depth + 1);
@@ -173,7 +174,7 @@ for (const row of families) {
 // ── the recipes: a declared family must exist AND be cleared ────────────────
 const recipes = [];
 if (existsSync(EXAMPLES)) {
-  for (const e of readdirSync(EXAMPLES, { withFileTypes: true })) {
+  for (const e of listDir(EXAMPLES, { withFileTypes: true })) {
     const p = join(EXAMPLES, e.name, 'recipe.json');
     if (e.isDirectory() && existsSync(p) && statSync(p).isFile()) recipes.push(p);
   }

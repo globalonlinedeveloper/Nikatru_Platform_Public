@@ -52,9 +52,10 @@
 // Usage:  node tooling/ci/assert-store-metadata.mjs [repoRoot]
 // Exit 0 = every tree that exists is complete and derived; 1 = it is not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -186,7 +187,7 @@ for (const app of apps) {
   if (typeof app.slug !== 'string') continue;
   const storeRoot = `apps/${app.slug}/store`;
   if (!isDir(storeRoot)) continue;
-  for (const entry of readdirSync(abs(storeRoot), { withFileTypes: true })) {
+  for (const entry of listDir(abs(storeRoot), { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const rel = posix.join(storeRoot, entry.name);
     if (declaredDirs.has(rel)) continue;

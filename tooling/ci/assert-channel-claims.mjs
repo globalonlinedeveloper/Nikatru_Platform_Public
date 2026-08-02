@@ -54,9 +54,10 @@
 // Usage:  node tooling/ci/assert-channel-claims.mjs [repoRoot]
 // Exit 0 = every public claim is backed by a served channel. 1 = it is not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const SITES = join(ROOT, 'sites');
@@ -373,7 +374,7 @@ if (disqualified.length === 0) {
 
 // ── the deploy-root set, floored against check-site-integrity's own MIN_SITES ─
 if (!existsSync(SITES)) coverageLost([`no sites/ directory under ${ROOT}.`]);
-const siteRoots = readdirSync(SITES, { withFileTypes: true })
+const siteRoots = listDir(SITES, { withFileTypes: true })
   .filter((e) => e.isDirectory() && existsSync(join(SITES, e.name, 'index.html')))
   .map((e) => e.name)
   .sort();
@@ -406,7 +407,7 @@ ok(`${siteRoots.length} deploy root(s) (${siteRoots.join(', ')}), floor ${minSit
 function walk(dir, out = []) {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return out;
   }

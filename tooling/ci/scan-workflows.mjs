@@ -44,10 +44,11 @@
 // Usage:  node tooling/ci/scan-workflows.mjs [repoRoot] [--zizmor <path>]
 // Exit 0 = clean at the gate, 1 = a finding, a broken scanner, or a failed self-test.
 // ─────────────────────────────────────────────────────────────────────────────
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { listDir } from './tree-walk.mjs';
 
 const MIN_SEVERITY = 'medium';
 const MIN_CONFIDENCE = 'high';
@@ -152,7 +153,7 @@ if (!existsSync(wfDir)) {
   console.error(`✗ COVERAGE LOST — ${wfDir} does not exist. zizmor would scan nothing and exit 0.`);
   process.exit(1);
 }
-const workflows = readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f));
+const workflows = listDir(wfDir).filter((f) => /\.ya?ml$/.test(f));
 if (workflows.length < MIN_WORKFLOWS) {
   console.error(`✗ COVERAGE LOST — found ${workflows.length} workflow(s), expected at least ${MIN_WORKFLOWS}.`);
   console.error('  The scan is broken, not the tree. An empty scan reports clean.');

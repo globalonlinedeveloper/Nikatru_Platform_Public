@@ -45,7 +45,7 @@
 // Exit 0 = clean, 1 = violations (printed with file:line).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync } from 'node:fs';
-import { glob } from 'node:fs/promises';
+import { boundedGlob } from './tree-walk.mjs';
 
 /** Migration sets under guard. The brick's is included: it is the schema every
  *  future stamped app starts from, so a violation there scales to 50 apps.
@@ -224,7 +224,7 @@ const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 let violations = 0;
 const files = [];
 for (const pattern of PATTERNS) {
-  for await (const f of glob(pattern)) files.push(f);
+  for await (const f of boundedGlob(pattern)) files.push(f);
 }
 files.sort();
 

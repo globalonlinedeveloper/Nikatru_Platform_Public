@@ -53,9 +53,10 @@
 // Usage:  node tooling/ci/assert-release-provenance.mjs [repoRoot]
 // Exit 0 = every release build is gated and every publish is recorded.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const WORKFLOWS = '.github/workflows';
@@ -174,7 +175,7 @@ const GATE_CHECK = gateCheckMatch[1];
 // ── parse ────────────────────────────────────────────────────────────────────
 const wfDir = join(ROOT, WORKFLOWS);
 if (!existsSync(wfDir)) coverageLost([`${WORKFLOWS} does not exist.`]);
-const wfFiles = readdirSync(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
+const wfFiles = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
 if (wfFiles.length === 0) coverageLost([`${WORKFLOWS} contains no workflow files.`]);
 
 /**

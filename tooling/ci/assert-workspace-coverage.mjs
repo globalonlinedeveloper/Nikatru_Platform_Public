@@ -32,8 +32,9 @@
 // Usage:  node tooling/ci/assert-workspace-coverage.mjs
 // Exit 0 = clean, 1 = a package is ungated (or a member is missing).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 
@@ -81,7 +82,7 @@ for (const raw of afterWs) {
 function findPackages(dir, rel, out) {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return;
   }

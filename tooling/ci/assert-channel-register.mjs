@@ -69,9 +69,10 @@
 // Usage:  node tooling/ci/assert-channel-register.mjs [repoRoot]
 // Exit 0 = the register, the apps and the workflows agree. 1 = they do not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -542,7 +543,7 @@ if (existsSync(join(ROOT, RELEASE_DIR))) {
   const declaredScripts = new Set(
     channels.map((c) => c.submission?.script).filter((s) => typeof s === 'string' && s.trim() !== ''),
   );
-  for (const entry of readdirSync(join(ROOT, RELEASE_DIR))) {
+  for (const entry of listDir(join(ROOT, RELEASE_DIR))) {
     if (!entry.endsWith('.mjs')) continue;
     const rel = `${RELEASE_DIR}/${entry}`;
     if (declaredScripts.has(rel)) continue;
