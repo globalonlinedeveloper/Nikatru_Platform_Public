@@ -24,7 +24,30 @@ import type { AppEnv } from '../types';
 // every table carrying a `user_id` column is user-owned by definition — so a
 // migration that adds a user-owned table is covered by that migration alone.
 //
-// ⚠️ WHY `events` AND `consent_artifacts` ARE CORRECTLY ABSENT FROM THAT SET,
+// ── THE SECOND DERIVED SET: A REFERENCE IS NOT AN OWNERSHIP ──────────────────
+// 🔴 A table can hold the erased user's id without the ROW being theirs, and the
+// sweep above would leave it there forever. `unclaimed_payments.claimed_user_id`
+// (0004 section D) is the case: the row is the record of money that arrived and
+// could not be attributed — evidence that belongs to a support ticket, not to a
+// person — and deleting it destroys the only thing that could ever resolve that
+// ticket. But the COLUMN is the erased person's account id, and after erasure
+// that id must not survive anywhere: a dangling identifier is a row still
+// addressable by the person who asked to be forgotten.
+//
+// So the second rule is derived from the schema the same way the first is:
+//   ·  user_id   → the row IS this person's        → DELETE the row
+//   · *_user_id  → the row REFERENCES this person  → NULL the column
+// No list, no per-table knowledge. A future `linked_user_id` or
+// `resolved_by_user_id` is unlinked by this migration-free rule the day it is
+// created, and tooling/ci/assert-data-inventory.mjs is what refuses to let a new
+// table land with no erasure story at all.
+//
+// ⚠️ THE SIBLING TIMESTAMP IS DELIBERATELY LEFT. `claimed_at` stays set: "this
+// payment was claimed" remains true and is what stops it being re-claimed by
+// somebody else. What is erased is WHO. Nulling both would rewrite the money
+// record rather than unlink the person from it.
+//
+// ⚠️ WHY `events` AND `consent_artifacts` ARE CORRECTLY ABSENT FROM BOTH SETS,
 // and why "zero rows for this user" is a VACUOUS assertion about them: neither
 // table has a `user_id` column at all. That is deliberate and permanent —
 // [ADR 020] forbids ever writing an `anon_id -> user_id` map, because that map
@@ -33,7 +56,9 @@ import type { AppEnv } from '../types';
 // than by a hardcoded exclusion someone could "fix".
 //
 // ── THREE LIMBS, AND THE THIRD IS THE ONE ROW COUNTS CANNOT FAKE ─────────────
-//   1. every user-owned table in platform_db, emptied for this user_id
+//   1. every user-owned table in platform_db, emptied for this user_id — and
+//      every `*_user_id` REFERENCE to them nulled, so no dangling identifier of
+//      an erased person survives in a row that is not theirs
 //   2. entitlements specifically (it is one of the above; named because
 //      master §0.1 G2 names it)
 //   3. THE IDENTITY RECORD — after which the same credentials no longer sign in.
@@ -72,6 +97,44 @@ async function userOwnedTables(db: D1Database): Promise<string[]> {
     .filter((n) => typeof n === 'string' && !RESERVED.test(n));
 }
 
+/**
+ * Every (table, column) in the bound database where the column NAMES a user but
+ * does not make the row theirs — the `*_user_id` form.
+ *
+ * `LIKE '%\_user\_id' ESCAPE '\'` rather than a client-side filter, for the same
+ * reason [userOwnedTables] pushes its predicate into SQL: the schema answers.
+ * `user_id` itself cannot match (there is nothing before the first `_`), so the
+ * two sets are disjoint by construction rather than by a subtraction somebody
+ * could forget.
+ */
+async function userReferencingColumns(
+  db: D1Database,
+): Promise<Array<{ table: string; column: string }>> {
+  const res = await db
+    .prepare(
+      `SELECT m.name AS name, p.name AS col
+         FROM sqlite_master m
+         JOIN pragma_table_info(m.name) p
+        WHERE m.type = 'table' AND p.name LIKE '%\\_user\\_id' ESCAPE '\\'
+        ORDER BY m.name, p.name`,
+    )
+    .all<{ name: string; col: string }>();
+  return (res.results ?? [])
+    .filter(
+      (r) =>
+        typeof r.name === 'string' &&
+        typeof r.col === 'string' &&
+        !RESERVED.test(r.name) &&
+        // Identifier hygiene: the column name is interpolated into the UPDATE
+        // below (D1 cannot bind an identifier), so anything that is not a plain
+        // identifier is refused rather than quoted. Nothing user-controlled can
+        // reach here — it comes from the schema — but the string still gets
+        // built, and a schema is not a trust boundary anyone audits.
+        /^[A-Za-z_][A-Za-z0-9_$]*$/.test(r.col),
+    )
+    .map((r) => ({ table: r.name, column: r.col }));
+}
+
 // Mounted as `app.route('/v1', account)`, so the path declared HERE is the leaf.
 // Declaring it as `'/'` under `app.route('/v1/account', …)` produced the route
 // `/v1/account/` — with a trailing slash — which is a different path from the one
@@ -93,10 +156,13 @@ account.delete('/account', async (c) => {
   }
 
   const deleted: Record<string, number> = {};
+  const unlinked: Record<string, number> = {};
 
   let tables: string[];
+  let references: Array<{ table: string; column: string }>;
   try {
     tables = await userOwnedTables(c.env.PLATFORM_DB);
+    references = await userReferencingColumns(c.env.PLATFORM_DB);
   } catch (err) {
     console.error(`[account] rid=${rid} app=${c.env.APP_ID} schema read failed`, err);
     return c.json({ error: 'account_deletion_failed' }, 503);
@@ -123,6 +189,20 @@ account.delete('/account', async (c) => {
     deleted[table] = res.meta.changes ?? 0;
   }
 
+  // Then the REFERENCES. After this no `*_user_id` column anywhere in
+  // platform_db holds this person's id — which is what "erased" has to mean for
+  // a row that is evidence about a payment rather than a record about a person.
+  // Table and column both come from sqlite_master; there is no caller-controlled
+  // value in this string, and D1 cannot bind an identifier.
+  for (const { table, column } of references) {
+    const res = await c.env.PLATFORM_DB.prepare(
+      `UPDATE ${table} SET ${column} = NULL WHERE ${column} = ?`,
+    )
+      .bind(userId)
+      .run();
+    unlinked[`${table}.${column}`] = res.meta.changes ?? 0;
+  }
+
   // The IDENTITY record, LAST — the row that decides whether the login still
   // works. 404 counts as done: the user is gone, which is what was asked for,
   // and a retry after a partial failure must not fail on the second pass. The
@@ -145,7 +225,7 @@ account.delete('/account', async (c) => {
   }
   deleted['identity'] = 1;
 
-  return c.json({ ok: true, deleted });
+  return c.json({ ok: true, deleted, unlinked });
 });
 
 export default account;

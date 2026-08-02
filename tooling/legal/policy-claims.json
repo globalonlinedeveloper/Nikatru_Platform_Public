@@ -36,10 +36,58 @@
     "typed from memory; if a row here does not match, the page is what is right."
   ],
 
-  "pages": ["privacy.html", "terms.html", "refund.html"],
+  "pages": ["privacy.html", "terms.html", "refund.html", "delete-account.html"],
   "siteRoot": "sites/nikatru",
 
   "claims": [
+    {
+      "page": "delete-account.html",
+      "claim": "Delete account",
+      "type": "descriptive",
+      "why": "The name of the in-app control, as the chassis renders it: tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart builds a tile from l10n.deleteAccount, and the `account-deletion-works` REQUIRED_COVERAGE key in tooling/ci/assert-stamp-properties.mjs keeps it wired. The page says \"where an app shows a Delete account control\" rather than asserting every app has one, because apps/subly does not yet."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "Settings",
+      "type": "descriptive",
+      "why": "Where that control lives. Same screen file as above; the tile is built inside the settings screen and nowhere else."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "the same email address and password no longer sign in anywhere",
+      "type": "descriptive",
+      "why": "The identity limb of services/platform/src/routes/account.ts: the Supabase admin user record is deleted LAST, and the route answers 502 rather than ok:true when that call fails. services/platform/test/auth.test.ts asserts on the request the route MADE, which is the one limb row counts cannot fake. The route answers 501 while SUPABASE_SERVICE_ROLE_KEY is unset (an owner action), which is why this page tells the reader to email us and never offers a self-service button."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "Usage statistics and consent records.",
+      "type": "descriptive",
+      "why": "The two tables tooling/legal/data-inventory.json declares with erasure kind `pseudonymous`. The claim that follows is checkable and is checked there: neither table carries a user-shaped column, and the guard fails if one is ever added."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "never against your account",
+      "type": "descriptive",
+      "why": "[ADR 020]: no anon_id -> user_id map may ever be written. services/platform/migrations/0002_analytics.sql keys both tables on anon_id, and tooling/ci/assert-data-inventory.mjs fails the `pseudonymous` declaration the day either table grows a `user_id` or *_user_id column."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "Records of a payment we could not match to any account.",
+      "type": "descriptive",
+      "why": "`unclaimed_payments` (services/platform/migrations/0004_money_rail.sql section D). The sentence that follows it — the account link is removed, the record stays — is the `unlink` erasure kind, proven by services/platform/test/erasure-reach.test.ts, which asserts the row survives and the column is NULL."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "Anything the payment provider holds.",
+      "type": "descriptive",
+      "why": "Descriptive, and deliberately so: what a store does with its own records is outside this tree and nothing here can assert it. It is on the page because a reader who deletes an account and still sees a charge needs to know where to look."
+    },
+    {
+      "page": "delete-account.html",
+      "claim": "Deleting an account is not reversible.",
+      "type": "descriptive",
+      "why": "True of the route by construction: the purges are DELETEs and the identity call is a DELETE, with no soft-delete column anywhere in services/platform/migrations/. There is nothing to restore from."
+    },
     {
       "page": "privacy.html",
       "claim": "NIKATRU",

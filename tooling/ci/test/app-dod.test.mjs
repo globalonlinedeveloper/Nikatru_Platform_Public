@@ -130,6 +130,15 @@ class SettingsScreen {
 }
 `;
 
+/** Today as git will render it for a commit made right now: local calendar
+ *  date, zero-padded. See the note on `mutation.date` below for why UTC is the
+ *  wrong answer here. */
+const LOCAL_TODAY = (() => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+})();
+
 const record = (app, over = {}) => JSON.stringify({
   app,
   status: 'stamped',
@@ -148,7 +157,16 @@ const record = (app, over = {}) => JSON.stringify({
         symbol: 'lib/features/settings/settings_screen.dart:_deleteAccount',
         observedRed: 'deleting really goes through the seam, and signs the user out',
         // A fixture commits today, so a record dated today is exactly current.
-        date: new Date().toISOString().slice(0, 10),
+        //
+        // 🔴 LOCAL DATE, NOT `toISOString()`. The guard compares this against
+        // `git log -1 --format=%cs`, which git renders in the COMMIT'S OWN
+        // TIMEZONE, while `toISOString()` renders UTC. In any zone ahead of UTC
+        // the two disagree for the first hours of every local day — this suite
+        // went red at 05:00 IST on 2026-08-03 with the fixture claiming
+        // 2026-08-02 and git reporting 2026-08-03, i.e. a staleness failure
+        // manufactured entirely by the clock. A test that is red for part of
+        // every day is a test somebody learns to ignore.
+        date: LOCAL_TODAY,
       },
     },
   ],

@@ -165,6 +165,63 @@ for (const f of wranglerFiles) {
   }
 }
 
+/** `table:<db>.<name>` → Set of column names, accumulated across every migration
+ *  that touches the table. `ALTER TABLE … ADD COLUMN` counts: 0006 is the whole
+ *  reason the erasure limb below can be true of `provider_notifications`, and a
+ *  parser that only read CREATE TABLE would report the column absent and fail a
+ *  correct declaration. */
+const columnsByTable = new Map();
+const noteColumn = (db, table, col) => {
+  const id = `table:${db}.${table}`;
+  if (!columnsByTable.has(id)) columnsByTable.set(id, new Set());
+  columnsByTable.get(id).add(col.toLowerCase());
+};
+
+/** The balanced `( … )` that starts at or after `from`. Returns null when the
+ *  parens do not close — an unbalanced body is a parse failure, not an empty
+ *  column list, and the two must not be confused. */
+function balanced(text, from) {
+  const open = text.indexOf('(', from);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')') {
+      depth--;
+      if (depth === 0) return text.slice(open + 1, i);
+    }
+  }
+  return null;
+}
+
+/** Column names in a CREATE TABLE body. Split on TOP-LEVEL commas only, so
+ *  `CHECK (cycle IN ('monthly','yearly'))` and a composite `PRIMARY KEY (a, b)`
+ *  do not each contribute phantom columns — the first token of `yearly'))` would
+ *  otherwise be read as a column and a `user_id` inside a CHECK would be read as
+ *  a real one. Table-level constraints are dropped by keyword. */
+const TABLE_CONSTRAINT = /^(PRIMARY|UNIQUE|CHECK|FOREIGN|CONSTRAINT)$/i;
+function columnsIn(body) {
+  const parts = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of body) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      parts.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  parts.push(cur);
+  const out = [];
+  for (const p of parts) {
+    const m = p.trim().match(/^["'`[]?([A-Za-z_][\w$]*)/);
+    if (!m || TABLE_CONSTRAINT.test(m[1])) continue;
+    out.push(m[1]);
+  }
+  return out;
+}
+
 let tablesFound = 0;
 for (const f of migrationFiles) {
   const dir = f.slice(0, f.lastIndexOf(sep));
@@ -183,6 +240,21 @@ for (const f of migrationFiles) {
   for (const m of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`[]?([A-Za-z_][\w$]*)/gi)) {
     tablesFound++;
     add(`table:${db}.${m[1]}`, 'd1-table', m[1], rel(f));
+    const body = balanced(sql, m.index + m[0].length);
+    if (body === null) {
+      problems.push(
+        `${rel(f)} declares CREATE TABLE ${m[1]} and its column list has no closing parenthesis, so its columns ` +
+          'could not be read. The erasure limb below decides whether that table is reachable BY ITS COLUMNS; an ' +
+          'unreadable body would make every declaration about it vacuously satisfiable.',
+      );
+      continue;
+    }
+    for (const col of columnsIn(body)) noteColumn(db, m[1], col);
+  }
+  for (const m of sql.matchAll(
+    /ALTER\s+TABLE\s+["'`[]?([A-Za-z_][\w$]*)["'`\]]?\s+ADD\s+(?:COLUMN\s+)?["'`[]?([A-Za-z_][\w$]*)/gi,
+  )) {
+    noteColumn(db, m[1], m[2]);
   }
 }
 // ⚠️ ONLY WHEN NOTHING MORE SPECIFIC IS ALREADY WRONG. A migrations directory
@@ -273,8 +345,15 @@ for (const [id, s] of byId) {
 
 // ── per-row obligations ─────────────────────────────────────────────────────
 const KINDS = register.retentionKinds && typeof register.retentionKinds === 'object' ? register.retentionKinds : {};
+const ERASURE_KINDS =
+  register.erasureKinds && typeof register.erasureKinds === 'object' ? register.erasureKinds : {};
 let disclosuresChecked = 0;
 let writersChecked = 0;
+/** How many erasure declarations were actually compared to the schema. The one
+ *  counter that can silently empty out: a row-shape change, a renamed `kind`
+ *  field or a walk that stops filing tables would make "every table has an
+ *  erasure story" range over nothing while printing ok. */
+let erasureRowsChecked = 0;
 for (const s of stores) {
   const where = `inventory row ${JSON.stringify(s.id)}`;
   if (!s.retention || typeof s.retention !== 'object') {
@@ -340,6 +419,132 @@ for (const s of stores) {
     }
   }
 
+  // ── THE ERASURE RELATION ──────────────────────────────────────────────────
+  // 🔴 A DELETE ROUTE THAT SILENTLY MISSES ROWS IS WORSE THAN NO DELETE ROUTE,
+  // because the user is told their data is gone and stops asking. The route
+  // derives the tables it empties from the schema (every table with a `user_id`
+  // column), which is right — and means a table holding personal data WITHOUT
+  // one is invisible to it while the route still answers ok:true.
+  // `provider_notifications` was exactly that, holding the buyer's name and
+  // email verbatim, until migration 0006.
+  //
+  // So: every table, and every store holding personal data, declares HOW an
+  // erasure request reaches it — and the declaration is CHECKED AGAINST THE
+  // PARSED SCHEMA rather than believed. That is what makes this a relationship:
+  // `purge` asserts the column the route derives from is really there, and
+  // `pseudonymous` / `no-personal-data` assert that no user-shaped column is, so
+  // adding `user_id` to `events` tomorrow makes its declaration FALSE and fails
+  // the build instead of leaving a row that says "unreachable" about a table
+  // that has just become reachable.
+  const needsErasure = s.kind === 'd1-table' || s.personalData === true;
+  if (needsErasure) {
+    const e = s.erasure;
+    if (!e || typeof e !== 'object') {
+      problems.push(
+        `${where} declares no \`erasure\`. Every table, and every store that holds personal data, states how a ` +
+          'deletion request reaches it — including when the honest answer is "nothing reaches it, and here is ' +
+          'what blocks that". A store with no erasure story is the row that makes "your data has been deleted" ' +
+          'a sentence nobody can check.',
+      );
+    } else if (!Object.prototype.hasOwnProperty.call(ERASURE_KINDS, e.kind)) {
+      problems.push(
+        `${where} declares erasure kind ${JSON.stringify(e.kind)}, which is not in the register's own ` +
+          '`erasureKinds` dictionary. The vocabulary lives in the register so renaming a kind out from under the ' +
+          'rows using it fails instead of quietly meaning nothing.',
+      );
+    } else {
+      erasureRowsChecked++;
+      // The schema is only knowable for tables; a KV namespace has no columns.
+      const cols = columnsByTable.get(s.id);
+      const userOwned = cols ? cols.has('user_id') : null;
+      const refs = cols ? [...cols].filter((c) => c !== 'user_id' && c.endsWith('_user_id')) : [];
+
+      if (e.kind === 'purge') {
+        if (cols && !userOwned) {
+          problems.push(
+            `${where} declares erasure \`purge\`, and no migration gives ${JSON.stringify(s.name)} a \`user_id\` ` +
+              'column. The route does not carry a table list — it derives one from the schema — so a table with no ' +
+              '`user_id` is one the sweep never sees, and this row is claiming an erasure that does not happen.',
+          );
+        }
+      } else if (e.kind === 'unlink') {
+        if (typeof e.column !== 'string' || !e.column) {
+          problems.push(`${where} declares erasure \`unlink\` and names no \`column\` to null.`);
+        } else if (!/_user_id$/.test(e.column)) {
+          problems.push(
+            `${where} declares erasure \`unlink\` on column ${JSON.stringify(e.column)}, which does not end in ` +
+              '`_user_id`. The route\'s unlink set is derived from that spelling; a column outside it is nulled by ' +
+              'nothing, and this row would be describing a behaviour the route does not have.',
+          );
+        } else if (cols && !cols.has(e.column.toLowerCase())) {
+          problems.push(
+            `${where} declares erasure \`unlink\` on ${JSON.stringify(e.column)} and no migration gives ` +
+              `${JSON.stringify(s.name)} that column. Either it was renamed on one side only, or the row was ` +
+              'written from memory.',
+          );
+        }
+      } else if (e.kind === 'pseudonymous' || e.kind === 'no-personal-data') {
+        if (userOwned === true || refs.length > 0) {
+          problems.push(
+            `${where} declares erasure ${JSON.stringify(e.kind)} — "no erasure request can address this table" — ` +
+              `and the schema now gives it ${[userOwned ? 'user_id' : null, ...refs].filter(Boolean).join(', ')}. ` +
+              'The declaration has become FALSE: the table IS addressable now. This is the direction that matters ' +
+              'most, because a row saying "unreachable" about a reachable table is how a real erasure gap gets a ' +
+              'clean bill of health.',
+          );
+        }
+        if (e.kind === 'no-personal-data' && s.personalData === true) {
+          problems.push(
+            `${where} declares erasure \`no-personal-data\` while the row itself says \`personalData: true\`. One ` +
+              'of the two is wrong, and both are in this file.',
+          );
+        }
+      } else if (e.kind === 'no-route') {
+        if (typeof e.blockedBy !== 'string' || e.blockedBy.trim() === '') {
+          problems.push(
+            `${where} declares erasure \`no-route\` and names no \`blockedBy\`. An unreachable store with nothing ` +
+              'recorded about what would make it reachable is a permanent exemption with a polite label.',
+          );
+        } else {
+          prints.push(`ERASURE UNREACHABLE · ${s.id} (${s.name}) — ${e.blockedBy}`);
+        }
+      }
+
+      // `purge` and `unlink` both name the route that performs them, and it has
+      // to still be a file. A row pointing at a deleted route is a row claiming
+      // an erasure nothing runs.
+      if (e.kind === 'purge' || e.kind === 'unlink') {
+        if (typeof e.route !== 'string' || e.route.trim() === '') {
+          problems.push(`${where} declares erasure \`${e.kind}\` and names no \`route\` that performs it.`);
+        } else if (!existsSync(join(repoRoot, ...e.route.split('/')))) {
+          problems.push(
+            `${where} names erasure route ${e.route}, which does not exist. ⚠️ This limb proves the file is THERE, ` +
+              'not that it works — the behaviour is proven by services/platform/test/erasure-reach.test.ts, which ' +
+              'plants a row in every table this register names and runs the real route against the real migrations.',
+          );
+        }
+      }
+
+      // An UNVERIFIED legal question attached to an erasure decision prints
+      // every run. Never invent a retention period, a statute or a regulator:
+      // an unsourced number in a compliance rule fires on correct input while
+      // looking authoritative.
+      if (e.unverified && typeof e.unverified === 'object') {
+        if (typeof e.unverified.ownerItem !== 'string' || !e.unverified.ownerItem) {
+          problems.push(
+            `${where} attaches an \`unverified\` erasure question with no \`ownerItem\`. A question nobody owns is ` +
+              'one nobody answers.',
+          );
+        } else {
+          prints.push(
+            `ERASURE UNVERIFIED (${e.unverified.ownerItem}) · ${s.id} — ${e.unverified.question ?? '(no question recorded)'} ` +
+              `${e.unverified.status ?? ''}`.trim(),
+          );
+        }
+      }
+    }
+  }
+
   // A row must name the code that writes it, and that code must still exist and
   // still mention the store. Without this a row drifts off its implementation
   // and keeps describing a system nobody maintains.
@@ -384,6 +589,23 @@ if (disclosuresChecked === 0 && problems.length === 0) {
 if (writersChecked === 0 && problems.length === 0) {
   coverageLost('NOT ONE `writtenBy` file was read, so no row was connected to the code that fills it.');
 }
+const erasureFloor = Number(D.minErasureRowsChecked ?? 0);
+if (erasureRowsChecked < erasureFloor && problems.length === 0) {
+  coverageLost(
+    `only ${erasureRowsChecked} erasure declaration(s) were compared to the schema, floor ${erasureFloor}.`,
+    'Every table, and every store holding personal data, owes one. A run that checks fewer has stopped',
+    'reaching rows — and "every table has an erasure story" would then range over a subset while printing',
+    'ok, which is precisely how check-migrations.mjs once dropped from 5 files to 4 and reported PASS.',
+  );
+}
+if (columnsByTable.size === 0 && problems.length === 0) {
+  coverageLost(
+    'NOT ONE table\'s columns were parsed out of the migrations.',
+    'Every erasure declaration is checked against those columns, so with none of them read a `purge` row',
+    'claiming a `user_id` that does not exist, and a `pseudonymous` row about a table that has grown one,',
+    'would both pass.',
+  );
+}
 
 // ── report ──────────────────────────────────────────────────────────────────
 if (problems.length) {
@@ -404,6 +626,11 @@ console.log(
 console.log(
   `    ${personal} row(s) hold personal data, each quoting a sentence still published on the notice ` +
     `(${disclosuresChecked} checked); ${writersChecked} writer file(s) still mention the store they fill`,
+);
+console.log(
+  `    ${erasureRowsChecked} erasure declaration(s) checked against the columns of ${columnsByTable.size} table(s): ` +
+    'every `purge` names a table that really has a `user_id`, every `unlink` a column that really ends in ' +
+    '`_user_id`, and every "unreachable" a table that really has neither',
 );
 if (prints.length) {
   console.log('');
