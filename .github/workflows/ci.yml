@@ -414,6 +414,29 @@ jobs:
       - name: Every failure has a detector, a response and a cadence
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-ops-register.mjs
+      # …and every PINNED INPUT is still REACHED by the update mechanism.
+      #
+      # 🔴 NOT "is Renovate enabled". That question was the drafted acceptance and
+      # it is satisfied by `extends: config:recommended` — so it read GREEN
+      # throughout the weeks when all five customManagers were written with a
+      # REGEX where a GLOB was expected, matched nothing, and proposed no update
+      # for any toolchain pin. A configuration check cannot see that; only
+      # applying each pattern to real paths and each matchString to the real file
+      # can, which is what this guard does, offline and on every push.
+      #
+      # Its first run found `wrangler` — the tool that publishes production,
+      # already caught once a full major version behind and holding the account
+      # API token — declared in versions.json and advanced by nobody. Every pin
+      # now resolves to a manager or to a written exemption living beside it in
+      # versions.json, so removing a pin puts its excuse in the same diff.
+      #
+      # DELIBERATELY OFFLINE: the "did a proposal actually arrive" half is the
+      # Dependency Dashboard issue, which a human reads. A per-push gate that
+      # needed a network token would fail closed on every fork. What rots
+      # silently between those reads is the CONFIGURATION. [pipeline 14]O-9
+      - name: Every pinned input is reached by a live update manager
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-update-coverage.mjs
       # …and every STORE the portfolio holds has a declared retention rule. The
       # drafted acceptance said "for every store WITH a rule, no row is older
       # than that rule" — which excluded the one store it was written about, the

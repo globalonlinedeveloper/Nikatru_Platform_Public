@@ -58,6 +58,7 @@
   "stamp-wiring.test.mjs": 17,
   "store-metadata.test.mjs": 49,
   "text-reductions.test.mjs": 17,
+  "update-coverage.test.mjs": 28,
   "vendor-portability.test.mjs": 19,
   "windows-store-submission.test.mjs": 20,
   "worker-error-sink.test.mjs": 18
