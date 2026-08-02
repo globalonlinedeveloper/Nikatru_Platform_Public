@@ -334,6 +334,24 @@ jobs:
       - name: The shared server declares every route and every binding
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-platform-register.mjs
+      # …and when that server throws, somebody finds out. Measured at HEAD
+      # 2026-08-02: `grep -rn "sentry|glitchtip|toucan" services/` → ZERO HITS,
+      # while the Flutter app's crashes had been reaching GlitchTip since July.
+      # Both Workers' onError logged and returned 500, and on Free
+      # `console.error` goes to `wrangler tail` — a LIVE STREAM with no
+      # searchable history — so an unhandled error on the SHARED Worker was
+      # invisible the moment it happened and the only person who knew was the
+      # user who got the 500.
+      #
+      # This guard is the STRUCTURE (handler → sink → deploy vars, per job). The
+      # BEHAVIOUR — the envelope shape, its release id, its privacy invariants,
+      # its fail-open paths — is asserted by services/*/test/error-sink.test.ts
+      # driving the real onError through the real app. A source scan can say the
+      # wire is connected and can never say what travels down it.
+      # [pipeline 11]E-8
+      - name: A Worker's unhandled error reaches a sink, not just the log
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-worker-error-sink.mjs
       # Every free-tier ceiling recorded ONCE with the URL it was read from and
       # the date it was read, and every hard cap in the Worker source derives
       # from one. B-6's original criterion was "a ceilings file exists", which an

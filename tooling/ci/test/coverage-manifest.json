@@ -55,5 +55,6 @@
   "store-metadata.test.mjs": 49,
   "text-reductions.test.mjs": 17,
   "vendor-portability.test.mjs": 19,
-  "windows-store-submission.test.mjs": 20
+  "windows-store-submission.test.mjs": 20,
+  "worker-error-sink.test.mjs": 18
 }

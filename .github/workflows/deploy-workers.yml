@@ -129,7 +129,20 @@ jobs:
           wranglerVersion: '4.114.0'   # pinned: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/subly-api
-          command: deploy
+          # [pipeline 11]E-8 — the two vars the crash sink needs, supplied at
+          # DEPLOY time rather than committed.
+          #   GLITCHTIP_DSN  a `--var`, not a secret, deliberately: a DSN is a
+          #     write-only ingest key this factory already ships inside every web
+          #     build (deploy-web.yml passes the same value as a --dart-define,
+          #     which lands in a bundle browsers download). Making it a secret
+          #     would be ceremony around a public value AND would leave the sink
+          #     waiting on an owner running `wrangler secret put` — which is how
+          #     a fail-closed seam stays closed forever.
+          #   RELEASE  the deployed SHA. NOT `API_VERSION`, which is the literal
+          #     "v1" in both Workers and has never changed, so it would group
+          #     every error this factory ever reports into one bucket named after
+          #     a URL prefix. [9]R-2 replaces it with a real release id.
+          command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }}
       - name: Record the deployed SHA
         env:
           GH_TOKEN: ${{ github.token }}
@@ -171,7 +184,10 @@ jobs:
           wranglerVersion: '4.114.0'   # pinned: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
-          command: deploy
+          # [pipeline 11]E-8 — see the identical pair in the subly-api job above
+          # for why the DSN is a `--var` and why the release is the SHA rather
+          # than API_VERSION.
+          command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }}
       - name: Record the deployed SHA
         env:
           GH_TOKEN: ${{ github.token }}
