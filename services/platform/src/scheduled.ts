@@ -15,6 +15,27 @@ export const KEEPALIVE_JOB = 'supabase_keepalive';
 export const ANALYTICS_LIVENESS_JOB = 'analytics_liveness';
 
 /**
+ * [pipeline B-11] The per-app renewals fan-out.
+ *
+ * 🔴 THIS JOB RAN EVERY NIGHT FROM THE DAY THE CRON SHIPPED AND WROTE NOTHING.
+ * It is the reason "every configured target has a heartbeat row" was TRUE while
+ * being worth nothing: the only job that wrote rows was the keep-alive, so the
+ * assertion ranged over the keep-alive's targets and the renewals fan-out could
+ * have been deleted outright without moving a single number.
+ *
+ * ⚠️ THE NAMING CONVENTION IS LOad-BEARING, not cosmetic. `deriveWatchedJobs`
+ * in tooling/ops/check-heartbeats.mjs enumerates the portfolio's job set by
+ * reading the `export const <NAME>_JOB = '<literal>'` declarations in THIS FILE
+ * and requires the ops register to watch every one of them. A job added under
+ * some other spelling is invisible to that derivation — which is exactly the
+ * failure the derivation exists to prevent, so it also asserts that every
+ * declared constant reaches `recordHeartbeat` at a REAL CALL SITE. See the
+ * `_registerInWorkspace` lesson: a symbol that only ever matches its own
+ * declaration proves nothing.
+ */
+export const RENEWALS_JOB = 'renewals';
+
+/**
  * The trailing window the liveness limb counts over, in hours.
  *
  * 🔴 DERIVED, NOT CHOSEN. It is the interval between cron runs —
@@ -247,15 +268,54 @@ export async function analyticsLiveness(env: Env): Promise<void> {
   await recordHeartbeat(env, rows, ANALYTICS_LIVENESS_JOB);
 }
 
+/**
+ * [pipeline B-11] The renewals fan-out, with the row it never used to write.
+ *
+ * ONE ROW PER (job, target), where a target is an APP — matching the keep-alive's
+ * one-row-per-Supabase-project shape, so `cron_heartbeat` stays one table with
+ * one meaning and `check-heartbeats.mjs` needs no per-job special case.
+ *
+ * ⚠️ The fan-out is a `for` loop and not `Promise.all` on purpose, unchanged
+ * from before: D1 Free bounds queries per invocation, and N apps advancing
+ * concurrently against the shared connection is exactly the unbounded batch
+ * this stage is trying to stop being surprised by. Sequential is also what makes
+ * one app's failure containable — the loop continues, and every app gets a row
+ * saying which of them it was.
+ */
+export async function renewalsFanOut(env: Env): Promise<void> {
+  const targets = appTargets(env);
+  // Zero targets is a failure, not a no-op — the same rule the keep-alive
+  // already applies. An empty fan-out means the app list is broken, and the
+  // renewals of every app in the portfolio silently stopped being computed.
+  if (targets.length === 0) {
+    await recordHeartbeat(
+      env,
+      [{ target: '(none)', ok: false, detail: 'no app targets configured' }],
+      RENEWALS_JOB,
+    );
+    return;
+  }
+  const rows: { target: string; ok: boolean; detail: string }[] = [];
+  for (const t of targets) {
+    // A missing binding must not read as "ran fine, nothing due". `appTargets`
+    // hands back whatever `env` holds, and an unbound APP_DB is `undefined`.
+    if (!t.db) {
+      rows.push({ target: t.appId, ok: false, detail: 'no database binding for this app' });
+      continue;
+    }
+    const outcome = await recomputeRenewals(t.db, t.appId);
+    rows.push({ target: t.appId, ok: outcome.ok, detail: outcome.detail });
+  }
+  await recordHeartbeat(env, rows, RENEWALS_JOB);
+}
+
 /** Cron entrypoint. `ctx.waitUntil` keeps the isolate alive for the async work. */
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
       await keepAliveSupabase(env);
       await analyticsLiveness(env);
-      for (const t of appTargets(env)) {
-        await recomputeRenewals(t.db, t.appId);
-      }
+      await renewalsFanOut(env);
     })(),
   );
 };

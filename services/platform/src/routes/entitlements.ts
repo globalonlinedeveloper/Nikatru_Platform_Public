@@ -82,6 +82,7 @@ entitlements.get('/entitlements', async (c) => {
   if (!isKnownApp(appId)) {
     return c.json({ error: 'unknown_app' }, 404);
   }
+  c.set('appId', appId); // [pipeline B-16] attribution, post-validation.
 
   // This deploy's money world. Undeclared is a 503 for the same reason the
   // webhook refuses: there is no safe default, and a read that guessed 'live'

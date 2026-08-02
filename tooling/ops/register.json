@@ -192,7 +192,9 @@
       "response": "Open or refresh the durable ops-watch issue; the keep-alive failing means the shared auth project is drifting toward its ~7-day idle pause, which takes sign-in down portfolio-wide.",
       "cadence": "1d",
       "watchedJobs": [
-        "supabase_keepalive"
+        "supabase_keepalive",
+        "analytics_liveness",
+        "renewals"
       ],
       "mechanism": {
         "substrate": "cloudflare-cron",

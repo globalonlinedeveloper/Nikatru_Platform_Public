@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import app from '../src/index';
 import { buildEnvelope, parseDsn, reportWorkerError } from '../src/lib/error-sink';
+import { realPlatformDb } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [pipeline 11]E-8 — a Worker's unhandled error is CAPTURED, not console-only.
@@ -33,6 +34,12 @@ const NOW = new Date('2026-08-02T10:00:00.000Z');
 const CTX = {
   service: 'platform',
   release: 'deadbeefcafe',
+  // [pipeline B-16] REQUIRED on SinkContext rather than optional, and that is
+  // deliberate: `service` answers "which Worker", and on the one host the whole
+  // portfolio shares that is never the same question as "whose app". A field
+  // typed `string | undefined` but still REQUIRED makes a new caller state an
+  // answer — including "there wasn't one" — instead of inheriting silence.
+  appId: 'subly',
   requestId: 'rid-1',
   method: 'POST',
   path: '/v1/events',
@@ -110,6 +117,33 @@ describe('the envelope', () => {
     const [, , item] = buildEnvelope(new Error('x'), { ...CTX, requestId: undefined }, DSN, NOW).split('\n');
     expect(JSON.parse(item).tags).not.toHaveProperty('request_id');
   });
+
+  // ── [pipeline B-16] attribution ────────────────────────────────────────────
+  it('tags the report with the APP, not only the Worker', () => {
+    const [, , item] = buildEnvelope(new Error('x'), CTX, DSN, NOW).split('\n');
+    const { tags } = JSON.parse(item);
+    expect(tags.app_id).toBe('subly');
+    // `service` still says which Worker. The two are different questions and
+    // both must be answerable — this is the ONE Worker behind every app.
+    expect(tags.service).toBe('platform');
+  });
+
+  it('OMITS the app_id tag when the request failed before naming an app', () => {
+    // Malformed JSON, an over-cap body, a 404 on an unmounted path: all real,
+    // all reach onError with no app resolved. A placeholder here would invent a
+    // 51st app called "unknown" with its own error trend.
+    const [, , item] = buildEnvelope(new Error('x'), { ...CTX, appId: undefined }, DSN, NOW).split('\n');
+    expect(JSON.parse(item).tags).not.toHaveProperty('app_id');
+  });
+
+  it('carries a release that is NOT the API_VERSION constant', () => {
+    // B-16's other half. "v1" would put every error this factory ever reports
+    // into one bucket named after a URL prefix.
+    const [, , item] = buildEnvelope(new Error('x'), CTX, DSN, NOW).split('\n');
+    const event = JSON.parse(item);
+    expect(event.release).toBe('deadbeefcafe');
+    expect(event.release).not.toBe('v1');
+  });
 });
 
 describe('the privacy invariants of the payload', () => {
@@ -136,7 +170,14 @@ describe('the privacy invariants of the payload', () => {
       new Request('https://platform.example.test/v1/events?email=a@b.test', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ app_id: 'demo', events: [{ event_id: 'e1', event: 'app_open', anon_id: 'a1' }] }),
+        // A REGISTERED app_id. `'demo'` was fine until [4]B-4a landed
+        // (2026-08-03); the route now refuses an unregistered app with 404
+        // before it ever touches PLATFORM_DB, so the fixture would have stopped
+        // reaching `.prepare` — and this test needs a REAL unhandled throw to
+        // reach the REAL onError. A 404 would have made it pass for the wrong
+        // reason: no envelope is sent, so "the envelope has no query string" is
+        // trivially true.
+        body: JSON.stringify({ app_id: 'subly', events: [{ event_id: 'e1', event: 'app_open', anon_id: 'a1' }] }),
       }),
       // No PLATFORM_DB binding, so the handler throws on `.prepare` — a real
       // unhandled error reaching the real onError, not a stubbed one.
@@ -148,6 +189,176 @@ describe('the privacy invariants of the payload', () => {
     expect(sent[0]).not.toContain('email=');
     expect(sent[0]).toContain('"server_name":"platform"');
     expect(sent[0]).toContain('"release":"sha123"');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline B-16] ATTRIBUTION, THROUGH THE REAL APP.
+//
+// 🔴 THE PLAN'S RECORDED FAILING INPUT WAS THE TREE ITSELF: `app.onError` logged
+// `[unhandled] rid=…` and reported `service: 'platform'`, and NOTHING on either
+// path named the app. `service` is a compile-time constant — on the one Worker
+// the whole portfolio shares it is the same string for all 50 apps, so a error
+// report could be correlated to a request and never routed to a product.
+//
+// Driven through `app.fetch` rather than `buildEnvelope` on purpose: the unit
+// tests above prove the envelope CAN carry an app id, and that is a different
+// claim from the request path actually SETTING one. This repo has shipped four
+// capabilities that worked in isolation and were never called.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('[4]B-16 · the emitted report names the app AND the release', () => {
+  const throwingEnv = { GLITCHTIP_DSN: DSN, RELEASE: 'sha123' } as never;
+  const ctx = {
+    waitUntil: (p: Promise<unknown>) => void p,
+    passThroughOnException: () => {},
+  } as never;
+
+  it('an ingest failure is attributed to the app that caused it', async () => {
+    const sent: string[] = [];
+    vi.stubGlobal('fetch', async (_u: string, init: RequestInit) => {
+      sent.push(String(init.body));
+      return new Response('', { status: 200 });
+    });
+    // No PLATFORM_DB binding ⇒ the route throws on `.prepare`, exactly as a
+    // real D1 outage would, and the throw escapes to the real onError.
+    const res = await app.fetch(
+      new Request('https://platform.example.test/v1/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          app_id: 'subly',
+          events: [{ event_id: 'e1', event: 'app_open', anon_id: 'a1' }],
+        }),
+      }),
+      throwingEnv,
+      ctx,
+    );
+    expect(res.status).toBe(500);
+    expect(sent).toHaveLength(1);
+    const event = JSON.parse(sent[0].split('\n')[2]);
+    expect(event.tags.app_id).toBe('subly');
+    expect(event.release).toBe('sha123');
+  });
+
+  it('the log line carries app= and release=, not a bare request id', async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
+      lines.push(a.map(String).join(' '));
+    });
+    vi.stubGlobal('fetch', async () => new Response('', { status: 200 }));
+    await app.fetch(
+      new Request('https://platform.example.test/v1/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          app_id: 'subly',
+          events: [{ event_id: 'e1', event: 'app_open', anon_id: 'a1' }],
+        }),
+      }),
+      throwingEnv,
+      ctx,
+    );
+    spy.mockRestore();
+    const unhandled = lines.find((l) => l.includes('[unhandled]'));
+    expect(unhandled).toBeDefined();
+    expect(unhandled).toContain('app=subly');
+    expect(unhandled).toContain('release=sha123');
+  });
+
+  it('a route that CATCHES its own failure still emits an attributed record', async () => {
+    // ⚠️ THE CAUGHT PATHS ARE THE MAJORITY, AND THEY NEVER REACH `onError`.
+    // `/v1/consent` catches its D1 failure and answers 503, so no envelope is
+    // ever built for it — attribution there lives or dies on the route's OWN
+    // log line. A version of B-16 that only checked `app.onError` would report
+    // the requirement closed while every deliberately-handled failure on the
+    // shared Worker stayed anonymous. This is the recorded failing input:
+    // before 2026-08-03 the line read `[consent] rid=…` and nothing more.
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
+      lines.push(a.map(String).join(' '));
+    });
+    const res = await app.fetch(
+      new Request('https://platform.example.test/v1/consent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          consent_id: 'c1',
+          app_id: 'subly',
+          anon_id: 'a1',
+          purpose: 'analytics',
+          granted: true,
+          policy_version: '2026-07-25',
+        }),
+      }),
+      throwingEnv,
+      ctx,
+    );
+    spy.mockRestore();
+    // Caught, not unhandled: the client keeps its artifact and retries.
+    expect(res.status).toBe(503);
+    const consent = lines.find((l) => l.includes('[consent]'));
+    expect(consent).toBeDefined();
+    expect(consent).toContain('app=subly');
+    expect(consent).toContain('release=sha123');
+  });
+
+  it('the INGEST route\'s caught path is attributed as well', async () => {
+    // Same shape, the other write route — and it needs a DIFFERENT failure to
+    // reach. `/v1/events` calls `.prepare()` OUTSIDE its try block, so an
+    // unbound PLATFORM_DB throws past the route into `onError` (covered above)
+    // and never exercises the route's own catch. The catch wraps `.batch()`,
+    // so the failure has to be a write that fails after a successful prepare —
+    // which is what the real-engine harness's `throwOnWrite` models, and what a
+    // D1 outage mid-request actually looks like.
+    const db = realPlatformDb();
+    db.throwOnWrite = true;
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
+      lines.push(a.map(String).join(' '));
+    });
+    const res = await app.fetch(
+      new Request('https://platform.example.test/v1/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          app_id: 'subly',
+          events: [{ event_id: 'e1', event: 'app_open', anon_id: 'a1' }],
+        }),
+      }),
+      { GLITCHTIP_DSN: DSN, RELEASE: 'sha123', PLATFORM_DB: db } as never,
+      ctx,
+    );
+    spy.mockRestore();
+    expect(res.status).toBe(503); // the client KEEPS the batch and retries
+    const ingest = lines.find((l) => l.includes('[events]'));
+    expect(ingest).toBeDefined();
+    expect(ingest).toContain('app=subly');
+    expect(ingest).toContain('release=sha123');
+  });
+
+  it('a request that names NO app is reported with no app_id, not a placeholder', async () => {
+    // A body that is not JSON at all never reaches an app id. Asserted through
+    // the real app so the "absent" case is a fact about the request path rather
+    // than an inference from the envelope builder's signature.
+    const sent: string[] = [];
+    vi.stubGlobal('fetch', async (_u: string, init: RequestInit) => {
+      sent.push(String(init.body));
+      return new Response('', { status: 200 });
+    });
+    const res = await app.fetch(
+      new Request('https://platform.example.test/v1/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: 'not json at all',
+      }),
+      throwingEnv,
+      ctx,
+    );
+    // Malformed JSON is a clean 400 — the route refuses it, nothing throws, and
+    // so nothing is reported. Asserted rather than assumed: a test that expected
+    // an envelope here would be pinning a crash that should not happen.
+    expect(res.status).toBe(400);
+    expect(sent).toHaveLength(0);
   });
 });
 
