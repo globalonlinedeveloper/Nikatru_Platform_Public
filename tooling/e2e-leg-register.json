@@ -1,0 +1,107 @@
+{
+  "_readme": [
+    "THE GOLDEN-PATH LEG REGISTER — [pipeline N-6] company/pipeline/06-app-build.md",
+    "",
+    "N-6 names a SIX-LEG golden path — anonymous -> sign in -> purchase (sandbox) -> entitlement flips",
+    "-> feature unlocks -> account delete purges — and asks for exactly one integration E2E on web that",
+    "covers it, wired into a named workflow.",
+    "",
+    "THE DEFECT THIS FILE EXISTS FOR. Measured 2026-07-29 and re-measured 2026-08-02: the only",
+    "implementation of that path in the tree, apps/subly/integration_test/app_test.dart, declares TWO",
+    "tests and proves TWO of the six legs. There is no purchase, no entitlement flip, no feature unlock",
+    "and no account delete in it. So a green, non-skipped, fresh nightly still does not mean what N-6",
+    "says it means — and until this register existed, nothing anywhere wrote that number down. A",
+    "criterion whose right-hand side is undefined cannot reject anything.",
+    "",
+    "🔴 THE RULE THAT MAKES THIS FILE MEAN ANYTHING: A LEG IS 'asserted' ONLY IF THE SUITE PROVES IT.",
+    "Every `asserted` leg carries `anchors` — expressions that must appear in the E2E's",
+    "COMMENT-STRIPPED source. tooling/ci/assert-e2e-legs.mjs resolves each one; a leg that claims to be",
+    "asserted and whose anchors no longer resolve fails the build. That is the equality N-6 asks for:",
+    "the number of legs the record claims equals the number the suite actually proves.",
+    "",
+    "Comment-stripping is not a formality here. app_test.dart's own header narrates the six-night",
+    "outage and contains the string `tap('Skip')` inside a comment, so a raw-text scan would resolve",
+    "the onboarding anchor against the PROSE DESCRIBING THE BUG rather than against any test.",
+    "",
+    "🔴 A BLOCKED LEG'S EXCUSE IS ITSELF CHECKED. Every `blocked` leg names a `blockedBy` that",
+    "assert-e2e-legs.mjs re-evaluates against the real tree on every run (the BLOCKERS_STILL_REAL",
+    "pattern from assert-screen-set.mjs). If the blocker has shipped, the build FAILS — so 'blocked by",
+    "the money rail' cannot outlive the money rail, and the day apps/subly starts selling something the",
+    "three legs below stop being excusable in the same run. Blocked legs also PRINT on every run; a gap",
+    "that is silent is a gap nobody closes.",
+    "",
+    "⚠️ WEB ONLY, BY POLICY, AND DATED. The cut was taken 2026-07-29. Apple 3.1.1 and Play's billing",
+    "policy require IAP for digital goods, so a Paddle web checkout cannot be the unlock path on iOS or",
+    "Android AT ALL — the purchase->unlock leg is not merely unimplemented off web, it is structurally",
+    "invalid there, and the IAP rail is routed to [5]/[10]. The other four platforms' absence is a COST",
+    "choice and not a tooling limit: `flutter test integration_test/` is documented for Android, iOS,",
+    "Windows, macOS and Linux (Linux needs xvfb-run), and the cheapest widening is Linux desktop on the",
+    "ubuntu runner already paid for. MASTER_PLAN.md:163 (DoD §4-H) demands the integration E2E 'per",
+    "environment' — six. This keeps ONE. §4-H wins on intent, N-6 on cost, and the narrowing is",
+    "recorded here as an explicit dated cut rather than left as a silent overrule.",
+    "⚠️ The Apple/Play guideline numbers are carried from 00-STAGE-3-14-RESEARCH.md and were NOT re-read",
+    "from developer.apple.com in this environment. COULD-NOT-ESTABLISH, cited with the word attached.",
+    "",
+    "⚠️ ONE APP, STATED. e2e.yml is Subly-hardcoded and the brick stamps no integration_test/ at all, so",
+    "app #2 is born with no E2E and no harness to put one in. Generalising e2e.yml to a per-app matrix",
+    "is [9]R-1; stamping the E2E scaffold into the template is [3]S-2. This register describes the one",
+    "E2E that exists, and says so rather than implying a matrix."
+  ],
+  "e2e": {
+    "app": "apps/subly",
+    "test": "apps/subly/integration_test/app_test.dart",
+    "workflow": ".github/workflows/e2e.yml",
+    "platform": "web",
+    "declaredOn": "2026-08-02"
+  },
+  "legs": [
+    {
+      "id": "anonymous",
+      "asks": "a stranger with no account reaches the app and can move through first-run",
+      "status": "asserted",
+      "anchors": [
+        "shot('01-onboarding')",
+        "expectNothingCoveringTheApp('the onboarding screen')",
+        "tester.tap(find.text('Skip'))"
+      ]
+    },
+    {
+      "id": "sign-in",
+      "asks": "real credentials against live Supabase move the user off the login screen and into the app",
+      "status": "asserted",
+      "anchors": [
+        "E2EKeys.loginSubmit",
+        "shot('03-scan')",
+        "find.text('Go to dashboard')"
+      ]
+    },
+    {
+      "id": "purchase-sandbox",
+      "asks": "a sandbox purchase completes from inside the app",
+      "status": "blocked",
+      "blockedBy": "[5] apps/subly sells nothing",
+      "declaredOn": "2026-08-02"
+    },
+    {
+      "id": "entitlement-flip",
+      "asks": "the entitlement the purchase bought is read back and flips to active",
+      "status": "blocked",
+      "blockedBy": "[5] apps/subly sells nothing",
+      "declaredOn": "2026-08-02"
+    },
+    {
+      "id": "feature-unlock",
+      "asks": "a feature that was gated before the purchase is usable after it",
+      "status": "blocked",
+      "blockedBy": "[5] apps/subly sells nothing",
+      "declaredOn": "2026-08-02"
+    },
+    {
+      "id": "account-delete-purges",
+      "asks": "deleting the account from inside the app really erases the user and its rows",
+      "status": "blocked",
+      "blockedBy": "[6] apps/subly has no delete-account call site",
+      "declaredOn": "2026-08-02"
+    }
+  ]
+}

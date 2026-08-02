@@ -501,6 +501,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node tooling/ci/assert-platform-proof-fresh.mjs
+      # ── N-6 · the nightly golden-path proof ────────────────────────────────
+      # The same shape as the platform proof above, for the OTHER undated claim:
+      # e2e.yml walks the app's golden path against LIVE Supabase, the live Worker
+      # and live D1, and N-6's acceptance was satisfied by a done-record NAMING it
+      # — which stayed true through six consecutive red nights (2026-07-27 →
+      # 08-01) that nothing responded to.
+      #
+      # 🔴 DEFERRED BY PR #121 ON PURPOSE, AND UNBLOCKED BEFORE LANDING. At that
+      # point the only green runs were `workflow_dispatch`, which this guard
+      # family refuses to count, so landing it would have blocked every merge on a
+      # pre-existing product defect. PR #111 fixed the cause (ConsentGate's modal
+      # barrier silently swallowing the tap beneath it) and the 2026-08-02T06:13Z
+      # scheduled run is green — verified before this step was added.
+      #
+      # MAX_AGE_DAYS = 3 is DERIVED from e2e.yml's own daily cron, not chosen, and
+      # the guard re-checks that the cron is still daily on every run. It tolerates
+      # a bad night; from ~3 days without a green SCHEDULED run it blocks merges,
+      # which is the intended price. The remedy is never to raise it. [pipeline N-6]
+      - name: The nightly golden-path proof is fresh
+        working-directory: ${{ github.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node tooling/ci/assert-e2e-proof-fresh.mjs
+      # …and a fresh green tick is still not coverage. N-6 names a SIX-leg golden
+      # path; the only implementation of it proves TWO. This holds the equality
+      # between what tooling/e2e-leg-register.json CLAIMS and what the suite
+      # actually walks (anchors resolved in COMMENT-STRIPPED source — app_test.dart's
+      # own header contains `tap('Skip')` in prose describing the outage), and
+      # re-evaluates each blocked leg's excuse against the tree so "blocked by the
+      # money rail" cannot outlive the money rail. The four uncovered legs PRINT
+      # on every run rather than failing it. [pipeline N-6]
+      - name: The nightly exercised the legs it claims
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-e2e-legs.mjs
       # One declaration for every build version. Before this, "3.44.8" appeared in
       # six places and node 24 in eight; wsl-setup.sh carried the comment "keep in
       # lockstep with *.yml", i.e. maintained by hope. The guard compares PARSED
