@@ -93,6 +93,104 @@ function walk(dir) {
   return found;
 }
 
+// ── [pipeline 13]T-1a · NO PUSH-TOKEN DEPENDENCY IN A STAMPED APP ───────────
+//
+// The retention requirement is that reminders are LOCAL: scheduled by the OS on
+// the device, with no token, no push service, no per-app server pushing
+// anything. That premise holds today by accident — nobody has added
+// `firebase_messaging` — and nothing in the repo would notice if somebody did.
+//
+// A push dependency is not a style choice. It drags in a vendor account, a
+// server that must hold a token per install, a per-app credential in a console
+// only the owner can reach, and a privacy disclosure on both stores. The right
+// moment to refuse it is the one where it costs one line to refuse.
+//
+// The check is STRUCTURAL, per this file's own rule: the pubspec's dependency
+// BLOCKS are parsed and the names compared. A doc comment in the brick's
+// pubspec explaining why there is no push dependency must not trip it — that is
+// the exact `r2_buckets` bug this guard's header is about.
+const PUSH_PACKAGES = new Set([
+  'firebase_messaging',
+  'firebase_messaging_web',
+  'firebase_core', // messaging's mandatory companion; present only to carry it
+  'onesignal_flutter',
+  'huawei_push',
+  'pusher_beams',
+  'flutter_apns',
+  'flutter_apns_only',
+  'unifiedpush',
+  'web_push',
+  'webpush',
+]);
+/** The shapes a NEW push SDK arrives under. An exact-name list only ever knows
+ *  about the vendors somebody thought of; this catches the next one. A genuine
+ *  false positive is resolved by naming the package and its reason here, which
+ *  is a deliberate, reviewable act — not by widening the pattern. */
+const PUSH_NAME_SHAPES = /(?:^|_)(?:fcm|apns|push)(?:_|$)|firebase|onesignal|airship|braze|clevertap|vapid|pushy|pushwoosh/i;
+
+/** Dependency names declared under `dependencies:` / `dev_dependencies:`.
+ *  A two-space-indented `name:` inside one of those blocks — the only shape a
+ *  pubspec dependency takes. Returns [{ name, block }]. */
+function pubspecDeps(path) {
+  const out = [];
+  let block = null;
+  for (const raw of readFileSync(path, 'utf8').split('\n')) {
+    const line = raw.replace(/#.*$/, '').replace(/\s+$/, '');
+    if (!line.trim()) continue;
+    if (/^[a-z_]+:/i.test(line)) {
+      block = /^(dependencies|dev_dependencies|dependency_overrides):/.test(line) ? line.split(':')[0] : null;
+      continue;
+    }
+    if (!block) continue;
+    const m = line.match(/^ {2}([a-z0-9_]+)\s*:/i);
+    if (m) out.push({ name: m[1], block });
+  }
+  return out;
+}
+
+/** Assert a stamped app's dependency set carries no push rail. Shared by both
+ *  stamps: a backend stamp is not licensed to push either — the ONE Worker in
+ *  services/platform is not a push service, and a per-app one would be the
+ *  ceiling problem this whole file is about, wearing a new hat. */
+function assertNoPushDependency(appId) {
+  const pubspec = join('apps', appId, 'pubspec.yaml');
+  if (!existsSync(pubspec)) {
+    fail(`apps/${appId}/pubspec.yaml does not exist — the push-dependency scan had nothing to read, which reports exactly like a clean stamp.`);
+    return;
+  }
+  const deps = pubspecDeps(pubspec);
+  // COVERAGE, as a RELATIONSHIP between two readings of the same file rather
+  // than as a number somebody keeps. The raw text names the shared packages;
+  // if the parser above stops finding them, the scan has broken while still
+  // reporting "no push dependency" over an empty set.
+  const raw = readFileSync(pubspec, 'utf8');
+  const rawShared = [...raw.matchAll(/^ {2}(nikatru_[a-z0-9_]+)\s*:/gm)].map((m) => m[1]);
+  const parsed = new Set(deps.map((d) => d.name));
+  const missed = rawShared.filter((n) => !parsed.has(n));
+  if (deps.length === 0 || missed.length) {
+    fail(
+      `COVERAGE LOST — the dependency parse of apps/${appId}/pubspec.yaml found ${deps.length} entry(ies) ` +
+        `and missed ${missed.length} shared package(s) the file plainly declares (${missed.join(', ') || 'none'}). ` +
+        'A stamp that declares nothing reads identically to a stamp that declares no push rail.',
+    );
+    return;
+  }
+  const banned = deps.filter((d) => PUSH_PACKAGES.has(d.name) || PUSH_NAME_SHAPES.test(d.name));
+  if (banned.length) {
+    for (const d of banned) {
+      fail(
+        `apps/${appId}/pubspec.yaml declares \`${d.name}\` under \`${d.block}\`. [13]T-1 A stamped app's ` +
+          'reminders are LOCAL — scheduled by the OS on the device. A push rail needs a token per install, a ' +
+          'server that stores it, a vendor console only the owner can reach and a store privacy disclosure, ' +
+          'and none of that is affordable per app across a portfolio. If this package is genuinely not a push ' +
+          'SDK, name it and say why in PUSH_PACKAGES\' sibling comment rather than widening the pattern.',
+      );
+    }
+  } else {
+    ok(`no push-token dependency among the ${deps.length} declared by the stamped pubspec`);
+  }
+}
+
 /** The `_phApiBase = ...` line of a stamped app_config.dart, or null. */
 function apiBaseLine(appId) {
   const cfg = join('apps', appId, 'lib', 'core', 'app_config.dart');
@@ -162,6 +260,8 @@ if (clientApp) {
     } else {
       ok('_phApiBase points at the shared platform Worker');
     }
+
+    assertNoPushDependency(clientApp);
   }
 }
 
@@ -217,6 +317,8 @@ if (backendApp) {
   } else {
     ok('_phApiBase points at its own API host');
   }
+
+  assertNoPushDependency(backendApp);
 }
 
 // ── [pipeline S-6] NO `crons` OUTSIDE services/platform ─────────────────────

@@ -191,6 +191,13 @@ describe('AppConfig contract (mirrors packages/core AppConfig)', () => {
     'content_pack',
     'copy',
     'min_supported_version',
+    // [pipeline 13]T-6. Present here BEFORE anything sends a promotional touch,
+    // because the lever only exists while both sides are cheap to change: with
+    // the key in this list, adding it to the Dart AppConfig alone fails this
+    // test for every compiled-in default, and adding it to the server alone
+    // without listing it here fails the stray-key assertion below. One key, two
+    // writable failing inputs, both live today.
+    'max_promos_per_week',
   ] as const;
 
   it('every compiled-in default carries the full key set', () => {

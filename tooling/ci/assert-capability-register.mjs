@@ -46,7 +46,7 @@
 // Exit 0 = the register and the tree agree, 1 = they do not.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve, dirname, posix } from 'node:path';
+import { join, resolve, dirname, posix, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -137,6 +137,10 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
 const PACKAGES_DIR = join(ROOT, 'packages');
 const APPS_DIR = join(ROOT, 'apps');
+/** Whether the tree being scanned is the one this script lives in. Some checks
+ *  name real seams of THIS repository and must not be asserted against the
+ *  synthetic registers the guard tests build. */
+const SCANNING_OWN_REPO = (dirname(fileURLToPath(import.meta.url)) + sep).startsWith(ROOT + sep);
 
 /** A scan that matches nothing reports perfect coverage over an empty set. */
 const MIN_EXPECTED_PACKAGES = 5;
@@ -196,6 +200,72 @@ for (const dir of onDisk) {
         'one nobody can discover before writing a second copy.',
     );
   }
+}
+
+// ── [pipeline 13]T-9a · A DECLARED GAP THAT CAN BE DELETED IS NOT A GAP ──────
+//
+// 🔴 THE FINDING (2026-08-02). `missingMethods` was READ in exactly one place —
+// the print loop at the bottom — and validated NOWHERE. No required-field
+// check (contrast `violations`, which are validated), and nothing that stopped
+// the entry being deleted. Deleting the notification-tap entry made CI QUIETER,
+// not redder. That is this repo's own recurring failure: a guard that stopped
+// guarding, still printing "ok".
+//
+// Three things now hold, and each one has a recorded failing input:
+//   (a) shape — surface / why / fixOwner, and `fixOwner` must name a live
+//       PIPELINE ID rather than a sentence. `[G-7]` stayed open for months
+//       because its owner was prose;
+//   (b) it may not go STALE — every entry declares `closedIf`, the evidence
+//       whose arrival means the gap is closed. If any of it now matches, the
+//       entry is a stale waiver and the build says so. Same shape as the
+//       declared-violation staleness check at [5] below;
+//   (c) it may not DISAPPEAR — a seam on the list below owes a declared gap
+//       until the gap is really closed, and deleting the entry fails the build.
+//
+// (c) is a REQUIRED_COVERAGE list, the idiom this repo already uses wherever a
+// domain must not be allowed to shrink (assert-seams-wired.mjs,
+// check-migrations.mjs). It is deliberately NOT derived: the whole point is
+// that the tree cannot tell you a surface is missing — absence is exactly what
+// a derivation cannot see, which is why the gap needed declaring in the first
+// place.
+const SEAMS_OWING_A_DECLARED_GAP = [
+  {
+    symbol: 'NotificationService',
+    surface: /tap/i,
+    why:
+      'the seam can schedule and cancel and has no way to deliver a tap back to the app, so a ' +
+      'scheduled reminder cannot open anything and `notification_opened` has zero emitters. ' +
+      'Closing it is [2]C-3\'s seam extension; until then the gap is declared, not forgotten.',
+  },
+];
+
+/** `[<stage 1-14>]<Letter>-<number>` — the pipeline id form used across the
+ *  register and the plans. This checks the SHAPE and the stage range only, and
+ *  says so: company/pipeline/ is gitignored, so CI cannot resolve an id to a
+ *  real requirement. A shape check still rules out the failure that mattered —
+ *  a fix owner that is a sentence nobody is accountable for. */
+const PIPELINE_ID = /\[(?:[1-9]|1[0-4])\][A-Z]-\d+/;
+
+let missingMethodEntries = 0;
+const declaredGapSurfaces = new Map(); // seam symbol -> [surface strings]
+const gapPrints = [];
+
+/** Every .dart file under the trees a caller could live in — apps, the shared
+ *  packages and the brick template. Memoised; `dartFilesUnder` is a hoisted
+ *  function declaration further down this file. Tests are INCLUDED here on
+ *  purpose, and the difference matters: assert-seams-wired.mjs excludes them
+ *  because a seam whose only caller is a test is dead, whereas here a test
+ *  caller is still proof that a route to the method exists. */
+let _allDart = null;
+function allDartFiles() {
+  if (_allDart) return _allDart;
+  const out = [];
+  for (const top of ['apps', 'packages', join('tooling', 'bricks')]) {
+    const abs = join(ROOT, top);
+    if (existsSync(abs)) dartFilesUnder(abs, top.split(/[\\/]/).join('/'), out);
+  }
+  _allDart = out;
+  return out;
 }
 
 // ── 3. paths, seam symbols and seam methods are real ─────────────────────────
@@ -273,6 +343,117 @@ for (const cap of capabilities) {
         );
       }
     }
+
+    // ── [13]T-9a — the gap this seam DOES NOT have ───────────────────────────
+    for (const mm of s.missingMethods ?? []) {
+      missingMethodEntries++;
+      if (!declaredGapSurfaces.has(s.symbol)) declaredGapSurfaces.set(s.symbol, []);
+      declaredGapSurfaces.get(s.symbol).push(String(mm.surface ?? ''));
+
+      for (const field of ['surface', 'why', 'fixOwner']) {
+        if (!String(mm[field] ?? '').trim()) {
+          problems.push(
+            `${label} — seam \`${s.symbol}\` declares a missing surface with no \`${field}\`. A gap with ` +
+              'no owner and no reason is a note, and a note is what this entry exists instead of.',
+          );
+        }
+      }
+      if (mm.fixOwner && !PIPELINE_ID.test(mm.fixOwner)) {
+        problems.push(
+          `${label} — seam \`${s.symbol}\`'s missing-surface \`fixOwner\` is ${JSON.stringify(mm.fixOwner)}, ` +
+            'which names no pipeline id (form `[2]C-3`). A gap whose owner is a sentence is how G-7 stayed ' +
+            'open: nobody is accountable for a paragraph.',
+        );
+      }
+      if (!Array.isArray(mm.closedIf) || mm.closedIf.length === 0) {
+        problems.push(
+          `${label} — seam \`${s.symbol}\`'s missing-surface entry declares no \`closedIf\` evidence. ` +
+            'Without it the waiver outlives the thing it waives: the surface gets built somewhere else and ' +
+            'the register goes on saying it is missing, forever.',
+        );
+        continue;
+      }
+      for (const c of mm.closedIf) {
+        if (!c?.file || !c?.pattern || !c?.meaning) {
+          problems.push(`${label} — a \`closedIf\` clause on \`${s.symbol}\` needs \`file\`, \`pattern\` and \`meaning\`.`);
+          continue;
+        }
+        const p = join(ROOT, c.file);
+        if (!existsSync(p)) {
+          problems.push(
+            `${label} — \`closedIf\` on \`${s.symbol}\` watches \`${c.file}\`, which does not exist. The ` +
+              'evidence file moved and the waiver is now unfalsifiable.',
+          );
+          continue;
+        }
+        // Stripped, for the same reason every other check here is: the doc
+        // comments in these files DISCUSS the missing tap surface at length, so
+        // a raw-text match would report the gap closed by the prose describing it.
+        if (new RegExp(c.pattern).test(stripDart(readFileSync(p, 'utf8')))) {
+          problems.push(
+            `${label} — the declared gap on \`${s.symbol}\` (${mm.surface}) is CLOSED: \`${c.file}\` now ` +
+              `matches /${c.pattern}/ in code. ${c.meaning}. A stale waiver is how a closed gap keeps ` +
+              'excusing a new one.',
+          );
+        }
+      }
+      // The other half of the same staleness question, pointed at the caller
+      // side: a stranded emitter that gains a caller means somebody found a
+      // route the register does not know about.
+      const se = mm.strandedEmitter;
+      if (se) {
+        if (!se.file || !se.call || !se.why) {
+          problems.push(`${label} — \`strandedEmitter\` on \`${s.symbol}\` needs \`file\`, \`call\` and \`why\`.`);
+        } else if (!existsSync(join(ROOT, se.file))) {
+          problems.push(`${label} — \`strandedEmitter\` on \`${s.symbol}\` names \`${se.file}\`, which does not exist.`);
+        } else {
+          const declaring = posix.normalize(se.file.replace(/\\/g, '/'));
+          const callers = [];
+          for (const rel of allDartFiles()) {
+            if (rel === declaring) continue; // the declaration is not a caller
+            if (stripDart(readFileSync(join(ROOT, rel), 'utf8')).includes(se.call)) callers.push(rel);
+          }
+          if (callers.length > 0) {
+            problems.push(
+              `${label} — the declared gap on \`${s.symbol}\` says \`${se.call}\` has no emitter, and it now ` +
+                `has ${callers.length} (${callers.slice(0, 3).join(', ')}). ${se.why}`,
+            );
+          } else {
+            gapPrints.push(
+              `${label} — \`${s.symbol}\`: ${se.call.replace(/\($/, '')} has ZERO emitters tree-wide. ` +
+                `The event exists, the funnel method exists, and nothing can call it until ${mm.fixOwner}.`,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+// (c) the entry may not simply DISAPPEAR.
+//
+// Enforced only when scanning THIS repository, the same split check-site-integrity.mjs
+// uses for REQUIRED_LEGAL_ROOTS: the list names a seam of this tree, and the guard
+// fixtures are synthetic registers that legitimately owe nothing. The list lives in
+// this .mjs rather than in the register on purpose — a requirement stored in the same
+// JSON file as the entry it protects is removable by one edit to one file, which is
+// exactly the deletion this check exists to make loud. Weakening it here is a guard
+// edit, and assert-no-gate-weakening.mjs watches those.
+for (const owed of SCANNING_OWN_REPO ? SEAMS_OWING_A_DECLARED_GAP : []) {
+  if (!seamSymbols.has(owed.symbol)) {
+    problems.push(
+      `COVERAGE LOST — the register no longer declares a seam \`${owed.symbol}\`, so its required missing-surface ` +
+        'gap cannot even be looked for. Re-point this list or remove the seam deliberately.',
+    );
+    continue;
+  }
+  const surfaces = declaredGapSurfaces.get(owed.symbol) ?? [];
+  if (!surfaces.some((sf) => owed.surface.test(sf))) {
+    problems.push(
+      `\`${owed.symbol}\` must declare a missing surface matching ${owed.surface} and does not. ${owed.why} ` +
+        'Deleting the entry does not close the gap — it only stops anyone hearing about it, which is the ' +
+        'exact reason this check exists.',
+    );
   }
 }
 
@@ -445,10 +626,23 @@ for (const cap of capabilities) {
     }
   }
 }
+// [13]T-9a. The uncomfortable half, printed EVERY run rather than left to be
+// discovered: an event in the v1 set that nothing can emit. Printed, not failed,
+// because closing it is a seam extension owned by another stage — and a guard
+// that blocks all CI on work this branch may not do is one somebody switches off.
+for (const g of gapPrints) console.log(`⬜ ${g}`);
 
 const seamCount = seamSymbols.size;
 console.log(
   `ok  capability register — ${capabilities.length} capability(ies) over ${onDisk.length} package dir(s); ` +
     `${seamCount} seam symbol(s) verified in place, ${appFiles.length} app file(s) scanned for forks, ` +
     `${declaredViolations.size} declared violation(s), ${waived.length} unconsumed with a reason`,
+);
+// The COUNT, not merely the entries. Zero and one print identically once the
+// loop above has nothing to iterate, which is precisely how `missingMethods`
+// spent its whole life unvalidated: it was read once, printed, and an empty
+// array looked exactly like a healthy one.
+console.log(
+  `    ${missingMethodEntries} declared missing-surface gap(s), each with a pipeline owner and the evidence ` +
+    `that would close it; ${SEAMS_OWING_A_DECLARED_GAP.length} seam(s) may not have theirs deleted`,
 );

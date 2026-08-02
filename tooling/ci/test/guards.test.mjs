@@ -610,7 +610,9 @@ describe('assert-lane-coverage', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('check-site-integrity', () => {
-  const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
+  // Tracks REQUIRED_FILES in the guard. `sitemap.xml` and `llms.txt` joined it
+  // for [pipeline 12]W-3b: deleting either used to pass this lane and ship.
+  const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers', 'sitemap.xml', 'llms.txt'];
   const ESM_FN = 'export async function onRequestPost({ request, env }) {\n  return new Response("ok");\n}\n';
 
   const build = (name, { sites = ['a', 'b'], omit = null, fnBody = ESM_FN, fnCount = 1 } = {}) => {
@@ -1452,6 +1454,21 @@ Future<bool> applyReminderChoice({
 `;
   const BRICK_TOGGLE_CALLS = 'onChanged: (bool on) => c.applyReminderChoice(on: on),\n';
 
+  // [pipeline 12]W-7b — the review prompt is an EXCLUSIVE trigger: exactly one
+  // caller, no more and no fewer. iOS silently DISCARDS requests past its quota,
+  // so a second call site is not a second prompt — it is the one prompt the app
+  // ever gets, spent wherever that second caller happened to fire, with no error
+  // anywhere. The fixture carries the single legitimate call site so the cases
+  // below can add a second one, or take this one away.
+  const BRICK_REVIEW = `
+Future<void> maybeAsk() async {
+  final decision = gate.decide(state);
+  if (decision.shouldAsk) {
+    await prompter.requestReview();
+  }
+}
+`;
+
   // [pipeline 5]M-5 — the ENTITLEMENTS seam, wired 2026-08-01. It had read
   // `wired: false, deferred: 'stage 5'` with no `needs` array at all, and its
   // three needs are scoped to the brick: the FETCH must happen, the answer must
@@ -1488,11 +1505,13 @@ Future<void> _buy(Offering offering) async {
     money = BRICK_MONEY,
     gate = BRICK_GATE,
     checkout = BRICK_CHECKOUT,
+    review = BRICK_REVIEW,
+    settingsExtra = '',
   } = {}) => ({
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}`,
+      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}`,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
-      toggle,
+      toggle + settingsExtra,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart': money,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart': gate,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart':
@@ -1582,12 +1601,14 @@ Future<void> main() async {
       brickMain = BRICK_MAIN_INITS_AUTH,
       reminders = BRICK_SCHEDULES,
       toggle = BRICK_TOGGLE_CALLS,
+      review = BRICK_REVIEW,
+      settingsExtra = '',
     } = {},
   ) =>
     fixture(name, {
       ...filler(fillerCount),
       ...PACK_FILES,
-      ...brickFiles({ reminders, toggle }),
+      ...brickFiles({ reminders, toggle, review, settingsExtra }),
       'apps/subly/lib/state/analytics_providers.dart':
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
@@ -1670,6 +1691,104 @@ Future<void> main() async {
     });
     assert.equal(code, 0, out);
     assert.match(out, /crash sink wired/);
+  });
+
+  // ── [pipeline 12]W-7b · EXACTLY ONE CALLER, and zero is not "at most one" ──
+  //
+  // Everything above proves AT LEAST ONE caller. The review prompt needs the
+  // other bound too: iOS silently DISCARDS requests past its quota, so a second
+  // call site is not a second prompt — it is the one prompt the app ever gets,
+  // spent wherever that second caller happened to fire, with no error anywhere.
+  // The requirement's own wording ("exposes no public trigger a button could
+  // call") is a claim about SOURCE SHAPE that no unit test can express, which is
+  // precisely why it went unnoticed while `requestReview()` shipped public on
+  // the interface, on the NoOp and on the adapter.
+  //
+  // Mutation-proven on the REAL tree first (2026-08-02, each restored from
+  // memory and byte-compared, baseline re-verified green):
+  //   1. a rate-us button added to the stamped settings screen  → caught
+  //   2. a second caller added to apps/subly                    → caught
+  //   3. the ONE permitted caller commented out                 → NOT CAUGHT at
+  //      first. `hits()` matched the RAW source, so `// await prompter
+  //      .requestReview();` still counted — and that hole was not specific to
+  //      this new limb, it was live for EVERY seam in this file. Fixed by
+  //      stripping Dart comments and string literals before matching, and
+  //      re-proven by commenting out the reminders `scheduleDaily` call and the
+  //      entitlement `fetch` call on the real brick: both now caught, both green
+  //      before.
+  //   4. the caller renamed to requestReviewLater()             → caught
+  test('review_prompt — exactly one caller passes, and the guard says so', () => {
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: build('seams-review-ok') });
+    assert.equal(code, 0, out);
+    assert.match(out, /review_prompt — exactly one caller/);
+  });
+
+  test('FAILS on a SECOND caller — the one prompt the app gets, spent elsewhere', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-review-two', {
+        settingsExtra: 'onPressed: () => ref.read(p).requestReview(),\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /additional call site/);
+  });
+
+  // 🔴 ZERO SATISFIES "AT MOST ONE". Without this half, deleting the only caller
+  // turns the bound GREEN — the most obvious way for a rule like this to stop
+  // meaning anything.
+  test('FAILS when the only caller is deleted — zero is not "at most one"', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-review-none', { review: '// the prompt is asked nowhere\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /review_prompt — NOTHING calls it/);
+  });
+
+  // The mutation that exposed the raw-source hole in `hits()`.
+  test('a COMMENTED-OUT caller is not a caller — for this seam or any other', () => {
+    const commented = run('assert-seams-wired.mjs', {
+      cwd: build('seams-review-commented', {
+        review: 'Future<void> maybeAsk() async {\n  // await prompter.requestReview();\n}\n',
+      }),
+    });
+    assert.equal(commented.code, 1, 'a call behind a comment marker is not a call');
+    assert.match(commented.out, /review_prompt — NOTHING calls it/);
+
+    // …and the same edit against an OLDER limb, because the fix was to the
+    // shared matcher rather than to the new rule.
+    const seam = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sched-commented', {
+        reminders:
+          'Future<bool> applyReminderChoice({required bool on}) async {\n' +
+          '  await svc.init();\n' +
+          '  // await svc.scheduleDaily(core.DailyReminder(id: kDailyReminderId));\n' +
+          '  return true;\n}\n',
+      }),
+    });
+    assert.equal(seam.code, 1);
+    assert.match(seam.out, /a real scheduleDaily call site in the stamped chassis NOT FOUND/);
+  });
+
+  // …and a STRING that merely contains the call is not a call either.
+  test('the call name inside a string literal is not a caller', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-review-string', {
+        review: "const help = 'call .requestReview() from the gate';\n",
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /review_prompt — NOTHING calls it/);
+  });
+
+  test('FAILS when the permitted caller MOVES without the allowlist moving', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-review-moved', {
+        review: '// asked from the settings screen now\n',
+        settingsExtra: 'onPressed: () => ref.read(p).requestReview(),\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /no longer calls it/);
   });
 
   // ── [pipeline 11]E-7 — the SUPPLIER SET IS DERIVED, and it is per-JOB ──────
@@ -1975,7 +2094,11 @@ class Ed25519PackVerifier implements PackVerifier {
       'Future<bool> applyReminderChoice({required bool on}) async {\n' +
       '  await svc.init();\n' +
       '  await svc.scheduleDaily(core.DailyReminder(id: 1));\n' +
-      '  return on;\n}\n',
+      '  return on;\n}\n' +
+      // [pipeline 12]W-7b: the review prompt is an EXCLUSIVE trigger — exactly
+      // one caller, and "at most one" is satisfied by ZERO, so a fixture with no
+      // caller at all fails for a reason unrelated to whatever it is testing.
+      'Future<void> maybeAsk() async { await prompter.requestReview(); }\n',
     // …and the reminders seam, and the secure-session seam, for the same reason.
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
       'onChanged: (bool on) => c.applyReminderChoice(on: on),\n',

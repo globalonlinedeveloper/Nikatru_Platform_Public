@@ -60,7 +60,34 @@ const platformConfig = (crons = ['0 6 * * *']) =>
 
 /** A minimally valid stamped tree. `mutate` receives helpers to break exactly
  *  one thing, so each test differs from the passing case in one dimension. */
-function tree(app, { backend = false, mutate = null, platform = platformConfig() } = {}) {
+/** A stamped app's dependency block. [pipeline 13]T-1a parses this rather than
+ *  grepping it, so the fixture carries a COMMENT naming the banned packages —
+ *  the `r2_buckets` trap this guard's header is about, pointed at pubspecs.
+ *  `extra` inserts additional dependency lines verbatim. */
+const stampedPubspec = (app, { extra = '', devExtra = '', block = 'dependencies' } = {}) =>
+  `name: ${app}
+version: 0.1.0+1
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+${block}:
+  flutter:
+    sdk: flutter
+  # Deliberately absent: firebase_messaging, onesignal_flutter. A stamped app
+  # schedules LOCALLY — no token, no push service. [13]T-1
+  nikatru_core:
+    path: ../../packages/core
+  nikatru_platform_storage:
+    path: ../../packages/platform_storage
+  flutter_riverpod: ^2.5.0
+${extra}
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+${devExtra}`;
+
+function tree(app, { backend = false, mutate = null, platform = platformConfig(), pubspec = null } = {}) {
   const root = join(TMP, `r${seq++}`);
   const appDir = join(root, 'apps', app);
   const coreDir = join(appDir, 'lib', 'core');
@@ -74,7 +101,7 @@ function tree(app, { backend = false, mutate = null, platform = platformConfig()
   const files = {
     [join(coreDir, 'app_config.dart')]: `const String _phApiBase = '${host}';\n`,
     // Enough real source files to clear the coverage floor, as a stamped app has.
-    [join(appDir, 'pubspec.yaml')]: `name: ${app}\n`,
+    [join(appDir, 'pubspec.yaml')]: pubspec ?? stampedPubspec(app),
     [join(appDir, 'analysis_options.yaml')]: 'include: package:nikatru_lints/analysis_options.yaml\n',
     [join(appDir, 'lib', 'main.dart')]: 'void main() {}\n',
     [join(coreDir, 'router.dart')]: 'class Router {}\n',
@@ -276,6 +303,101 @@ describe('the guard itself', () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /COVERAGE LOST/);
     assert.match(r.stderr, /The scan is broken, not the tree/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 13]T-1a NO PUSH-TOKEN DEPENDENCY MAY ENTER A STAMPED APP.
+//
+// The premise held by luck: nobody had added `firebase_messaging`, and nothing
+// in the repo would have noticed if they had. A push rail is not a library — it
+// is a token per install, a server that stores it, a vendor console only the
+// owner can reach, and a store privacy disclosure, none of which is affordable
+// once per app across a portfolio.
+//
+// Mutation-proven against the REAL brick FIRST (2026-08-02) — each case adds the
+// dependency to `tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml`,
+// re-stamps `apps/probe` with mason, runs the guard, then restores from memory
+// and byte-compares:
+//   1. `firebase_messaging: ^15.0.0` in `dependencies`   → caught
+//   2. `pushwoosh_flutter` — a vendor no exact-name list knows → caught by shape
+//   3. `onesignal_flutter` in `dev_dependencies`         → caught
+//   4. the `dependencies:` key renamed, so the parse finds nothing → COVERAGE LOST
+//   5. a COMMENT naming all three banned packages        → STAYS GREEN
+// Case 5 is the one that separates this from a grep, and case 4 is the one that
+// stops "no push dependency" being printed over an empty parse.
+describe('[13]T-1a a stamped app carries no push rail', () => {
+  test('the ordinary stamp passes and NAMES how many dependencies it parsed', () => {
+    const r = run(tree('demo'), '--client', 'demo');
+    assert.equal(r.status, 0, r.stderr);
+    // The count, not a bare "ok": a stamp that declares nothing must not read
+    // the same as a stamp that declares no push rail.
+    assert.match(r.stdout, /no push-token dependency among the \d+ declared/);
+  });
+
+  test('FAILS when a push SDK is a real dependency', () => {
+    const root = tree('demo', { pubspec: stampedPubspec('demo', { extra: '  firebase_messaging: ^15.0.0\n' }) });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /declares `firebase_messaging` under `dependencies`/);
+    assert.match(r.stderr, /reminders are LOCAL/);
+  });
+
+  // The exact-name list only knows the vendors somebody thought of.
+  test('FAILS on a push SDK no exact-name list has heard of', () => {
+    const root = tree('demo', { pubspec: stampedPubspec('demo', { extra: '  pushwoosh_flutter: ^6.0.0\n' }) });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /declares `pushwoosh_flutter`/);
+  });
+
+  test('FAILS when the push SDK arrives as a dev dependency', () => {
+    const root = tree('demo', { pubspec: stampedPubspec('demo', { devExtra: '  onesignal_flutter: ^5.0.0\n' }) });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /declares `onesignal_flutter` under `dev_dependencies`/);
+  });
+
+  // 🔴 THE CASE THAT SEPARATES THIS FROM A GREP. The fixture pubspec's comment
+  // names firebase_messaging and onesignal_flutter, exactly as a real one
+  // explaining their absence would.
+  test('a COMMENT naming the banned packages is prose, not a dependency', () => {
+    const r = run(tree('demo'), '--client', 'demo');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /no push-token dependency/);
+  });
+
+  test('the backend stamp is scanned too — a Worker is not a licence to push', () => {
+    const root = tree('demoapi', {
+      backend: true,
+      pubspec: stampedPubspec('demoapi', { extra: '  firebase_core: ^3.0.0\n' }),
+      mutate: (t) =>
+        t.write(
+          'services/demoapi-api/wrangler.jsonc',
+          JSON.stringify({ d1_databases: [{ database_name: 'demoapi_db' }, { database_name: 'platform_db' }] }),
+        ),
+    });
+    const r = run(root, '--backend', 'demoapi');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /declares `firebase_core`/);
+  });
+
+  // COVERAGE: the parse and the raw text are two readings of ONE file, and they
+  // have to agree. Rename the block and the parse finds nothing — which without
+  // this reports "no push dependency" over an empty set.
+  test('COVERAGE LOST when the dependency parse stops finding what the file plainly declares', () => {
+    const root = tree('demo', { pubspec: stampedPubspec('demo', { block: 'xdependencies' }) });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /COVERAGE LOST — the dependency parse/);
+  });
+
+  test('a pubspec that is not there at all FAILS rather than reading as clean', () => {
+    const root = tree('demo');
+    rmSync(join(root, 'apps', 'demo', 'pubspec.yaml'), { force: true });
+    const r = run(root, '--client', 'demo');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /reports exactly like a clean stamp|COVERAGE LOST/);
   });
 });
 

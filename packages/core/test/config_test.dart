@@ -148,6 +148,59 @@ void main() {
     });
   });
 
+  // ── [pipeline 13]T-6 · the promo cap is on BOTH sides of the contract ──────
+  //
+  // The server declares `max_promos_per_week` and its contract test asserts the
+  // full key set in both directions. This is the client half: the key parses,
+  // it survives a round trip, and — the part that matters — a config body that
+  // omits it or sends rubbish resolves to ZERO rather than to "no opinion".
+  //
+  // "No opinion" is the wrong default for a cap. A cap that disappears when the
+  // server is unreachable is not a cap; it is a cap that stops applying exactly
+  // when nobody is watching.
+  group('[13]T-6 max_promos_per_week is read, and its absence means ZERO', () {
+    test('parses the value the server sends', () {
+      final Map<String, Object?> j = sublyServerJson()
+        ..['max_promos_per_week'] = 2;
+      expect(AppConfig.fromJson(j).maxPromosPerWeek, 2);
+    });
+
+    test('an ABSENT key is zero, not unlimited and not null', () {
+      // sublyServerJson() deliberately does not carry the key: an older cached
+      // body, or an offline fall back to a bundled default, looks exactly like
+      // this — and must not be a way to lift the cap.
+      expect(AppConfig.fromJson(sublyServerJson()).maxPromosPerWeek, 0);
+    });
+
+    test('a WRONG-TYPED value is zero, and does not throw', () {
+      final Map<String, Object?> j = sublyServerJson()
+        ..['max_promos_per_week'] = 'lots';
+      expect(AppConfig.fromJson(j).maxPromosPerWeek, 0);
+    });
+
+    test('a NEGATIVE value cannot make the cap smaller than off', () {
+      final Map<String, Object?> j = sublyServerJson()
+        ..['max_promos_per_week'] = -5;
+      expect(AppConfig.fromJson(j).maxPromosPerWeek, 0);
+    });
+
+    test('the key survives a toJson round trip, so a cache cannot drop it', () {
+      final Map<String, Object?> j = sublyServerJson()
+        ..['max_promos_per_week'] = 3;
+      final Map<String, Object?> out = AppConfig.fromJson(j).toJson();
+      expect(out['max_promos_per_week'], 3);
+      expect(AppConfig.fromJson(out).maxPromosPerWeek, 3);
+    });
+
+    test('copyWith carries it, so a merge cannot silently reset it', () {
+      final AppConfig c = AppConfig.fromJson(
+        sublyServerJson()..['max_promos_per_week'] = 4,
+      );
+      expect(c.copyWith(appId: 'other').maxPromosPerWeek, 4);
+      expect(c.copyWith(maxPromosPerWeek: 0).maxPromosPerWeek, 0);
+    });
+  });
+
   group('bundled defaults carry NO app-specific values', () {
     // [pipeline C-10] This group used to pin the hardcoded `'subly'` entry that
     // lived in core's kDefaultConfigs — an app name in shared code, exported from

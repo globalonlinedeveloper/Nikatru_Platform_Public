@@ -50,7 +50,22 @@ function run(root) {
 /** Writes a tree with 5 packages, one app consuming all of them, and a register.
  *  `core` declares one seam interface; `mutate(capabilities, files, root)` breaks
  *  exactly one thing. */
-function tree({ symbol = 'NotificationService', methods = ['init'], seamSrc = null, forkSrc = null, mutate = null } = {}) {
+/** A complete, valid `missingMethods` entry — [pipeline 13]T-9a. Each case in
+ *  the T-9a block below breaks exactly one field of it. Declared here rather
+ *  than inside that block because the print test above uses it too. */
+const gap = (over = {}) => ({
+  surface: 'notification tap / open',
+  why: 'the seam can schedule but cannot deliver a tap back',
+  fixOwner: '[2]C-3 de-forking increment',
+  closedIf: [{
+    file: 'packages/core/lib/seam.dart',
+    pattern: 'setTapHandler|onNotificationTap',
+    meaning: 'the seam grew a tap surface, so this waiver is stale',
+  }],
+  ...over,
+});
+
+function tree({ symbol = 'NotificationService', methods = ['init'], seamSrc = null, forkSrc = null, mutate = null, extraFiles = {} } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
   for (const id of BASE) {
@@ -76,6 +91,12 @@ function tree({ symbol = 'NotificationService', methods = ['init'], seamSrc = nu
     ...(id === 'core' ? {} : { noSeamReason: 'a plain library in this fixture' }),
     consumers: ['apps/app1'],
   }));
+
+  // A funnel file the T-9a `strandedEmitter` clause can name as the DECLARING
+  // file — the one place a match must not count as a caller.
+  files[join(root, 'packages', 'core', 'lib', 'funnel.dart')] =
+    'class Funnel {\n  void onNotificationOpened(String kind) {}\n}\n';
+  for (const [p, body] of Object.entries(extraFiles)) files[join(root, ...p.split('/'))] = body;
 
   if (mutate) mutate(capabilities, files, root);
 
@@ -213,17 +234,131 @@ describe('[C-1 · decision item 12] a seam METHOD must really exist', () => {
   });
 
   test('a missingMethods entry is PRINTED on a passing run, never silently held', () => {
-    const { code, out } = run(tree({
-      mutate: (caps) => {
-        caps[0].seams[0].missingMethods = [{
-          surface: 'notification tap / open',
-          why: 'the seam can schedule but cannot deliver a tap back',
-          fixOwner: '[2]C-3 de-forking increment',
-        }];
-      },
+    const { code, out } = run(tree({ mutate: (caps) => { caps[0].seams[0].missingMethods = [gap()]; } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /MISSING the notification tap \/ open surface/);
+    // The COUNT prints too. Zero and one used to print identically.
+    assert.match(out, /1 declared missing-surface gap\(s\)/);
+  });
+});
+
+// ── [pipeline 13]T-9a — A DECLARED GAP THAT CAN BE DELETED IS NOT A GAP ──────
+//
+// 🔴 THE FINDING (2026-08-02). `missingMethods` was READ in exactly one place —
+// the print loop — and validated NOWHERE: no required fields (contrast
+// `violations`, which are validated), and nothing that stopped the entry being
+// deleted. On the real tree, deleting the notification-tap entry made CI
+// QUIETER, not redder.
+//
+// Proven against the REAL tree first (seven mutations, each restored from
+// memory and byte-compared, baseline re-verified green after each):
+//   1. the whole entry renamed away                → caught (`must declare a
+//      missing surface matching`) — deletion is now RED, not quiet
+//   2. fixOwner replaced by a sentence             → caught
+//   3. `closedIf` renamed away                     → caught
+//   4. `why` renamed away                          → caught
+//   5. the SEAM grows `setTapHandler`              → caught (stale waiver)
+//   6. the ADAPTER registers onDidReceiveNotificationResponse → caught
+//   7. `onNotificationOpened(` gains a real caller → caught
+//
+// Mutations 1 and 5–7 are the ones that matter: 1 is the deletion the finding
+// is about, and 5–7 are the opposite failure — a waiver that outlives its truth.
+describe('[13]T-9a a declared missing surface is validated, not merely printed', () => {
+  const withGap = (over = {}, rest = {}) =>
+    tree({ ...rest, mutate: (caps) => { caps[0].seams[0].missingMethods = [gap(over)]; } });
+
+  for (const field of ['surface', 'why', 'fixOwner']) {
+    test(`FAILS when the entry has no \`${field}\``, () => {
+      const { code, out } = run(withGap({ [field]: undefined }));
+      assert.equal(code, 1);
+      assert.match(out, new RegExp(`declares a missing surface with no \`${field}\``));
+    });
+  }
+
+  // A gap whose owner is a sentence is how G-7 stayed open: nobody is
+  // accountable for a paragraph.
+  test('FAILS when fixOwner names no pipeline id', () => {
+    const { code, out } = run(withGap({ fixOwner: 'somebody should extend the seam one day' }));
+    assert.equal(code, 1);
+    assert.match(out, /names no pipeline id/);
+  });
+
+  test('FAILS when the entry declares no evidence that would close it', () => {
+    const { code, out } = run(withGap({ closedIf: undefined }));
+    assert.equal(code, 1);
+    assert.match(out, /declares no `closedIf` evidence/);
+  });
+
+  test('FAILS when closedIf watches a file that is gone (the waiver is unfalsifiable)', () => {
+    const { code, out } = run(withGap({
+      closedIf: [{ file: 'packages/core/lib/vanished.dart', pattern: 'x', meaning: 'y' }],
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /which does not exist/);
+  });
+
+  // 🔴 THE STALE-WAIVER CASE. The seam GREW the surface and the register still
+  // says it is missing. A closed gap that keeps being declared is how one
+  // waiver ends up excusing a different hole.
+  test('FAILS when the seam has grown the surface the entry says is missing', () => {
+    const { code, out } = run(withGap({}, {
+      methods: ['init'],
+      seamSrc:
+        'abstract interface class NotificationService {\n' +
+        '  Future<void> init();\n' +
+        '  Future<void> setTapHandler(void Function(String kind) onTap);\n' +
+        '}\n',
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /is CLOSED/);
+    assert.match(out, /stale waiver is how a closed gap keeps excusing a new one/);
+  });
+
+  // …and the same claim must NOT be satisfiable by the prose that describes it.
+  // Every file in this area carries a doc comment explaining the missing tap
+  // surface at length, so a raw-text scan would report the gap closed by its
+  // own explanation.
+  test('does NOT read the gap as closed when the surface appears only in a comment', () => {
+    const { code, out } = run(withGap({}, {
+      methods: ['init'],
+      seamSrc:
+        'abstract interface class NotificationService {\n' +
+        '  // No setTapHandler yet — see the register entry.\n' +
+        "  /// A doc comment naming onNotificationTap, which does not exist.\n" +
+        '  Future<void> init();\n' +
+        '}\n',
     }));
     assert.equal(code, 0, out);
     assert.match(out, /MISSING the notification tap \/ open surface/);
+  });
+
+  // The caller-side half of staleness: a stranded emitter that gains a caller
+  // means the surface was reached by some route the register does not know.
+  test('FAILS when the stranded emitter gains a caller', () => {
+    const { code, out } = run(withGap(
+      {
+        strandedEmitter: {
+          file: 'packages/core/lib/funnel.dart',
+          call: 'onNotificationOpened(',
+          why: 'the event has no emitter and cannot have one until the seam can deliver a tap',
+        },
+      },
+      { extraFiles: { 'apps/app1/lib/services/tap.dart': "void t(dynamic f) => f.onNotificationOpened('r');\n" } },
+    ));
+    assert.equal(code, 1);
+    assert.match(out, /and it now has 1/);
+  });
+
+  test('PRINTS the zero-emitter gap on a passing run', () => {
+    const { code, out } = run(withGap({
+      strandedEmitter: {
+        file: 'packages/core/lib/funnel.dart',
+        call: 'onNotificationOpened(',
+        why: 'the event has no emitter and cannot have one until the seam can deliver a tap',
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /onNotificationOpened has ZERO emitters tree-wide/);
   });
 });
 

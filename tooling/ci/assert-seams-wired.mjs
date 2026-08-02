@@ -68,7 +68,69 @@ if (files.length < MIN_FILES) {
   ok(`scan reaches ${files.length} non-test dart file(s)`);
 }
 
-const bodies = new Map(files.map((f) => [f, readFileSync(f, 'utf8')]));
+/**
+ * Blank Dart comments and string literals, preserving offsets and newlines.
+ *
+ * 🔴 ADDED 2026-08-02, AND IT WAS A LIVE HOLE. Every `needs` anchor in this file
+ * matched the RAW source, so commenting a call out — one `//`, the exact edit
+ * somebody makes while debugging — left this guard printing `ok` for a seam
+ * with no caller at all. Found by mutating the real brick: prefixing
+ * `await prompter.requestReview();` with `//` kept the whole guard at exit 0.
+ * That is the repo's own recorded rule ("assert on structure, never by grepping
+ * prose") applied to the one guard whose entire subject is whether real code
+ * calls a seam.
+ *
+ * Hand-rolled rather than a regex: a regex cannot tell `//` inside a string from
+ * a comment. It lives here rather than in a shared module because every `.mjs`
+ * directly under tooling/ci is a GUARD to assert-guard-coverage.mjs, and any
+ * `.mjs` in a subdirectory of tooling/ci is a hard COVERAGE LOST.
+ */
+function stripDart(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  const blank = (ch) => (ch === '\n' ? '\n' : ' ');
+  while (i < n) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '/' && c2 === '/') {
+      while (i < n && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      let depth = 0;
+      while (i < n) {
+        if (src[i] === '/' && src[i + 1] === '*') { depth++; out += '  '; i += 2; continue; }
+        if (src[i] === '*' && src[i + 1] === '/') { depth--; out += '  '; i += 2; if (depth === 0) break; continue; }
+        out += blank(src[i]); i++;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"' || (c === 'r' && (c2 === "'" || c2 === '"'))) {
+      const isRaw = c === 'r';
+      const q = isRaw ? c2 : c;
+      let j = isRaw ? i + 1 : i;
+      const triple = src[j] === q && src[j + 1] === q && src[j + 2] === q;
+      const closeLen = triple ? 3 : 1;
+      const start = i;
+      j += closeLen;
+      while (j < n) {
+        if (!isRaw && src[j] === '\\') { j += 2; continue; }
+        if (src[j] === q && (!triple || (src[j + 1] === q && src[j + 2] === q))) { j += closeLen; break; }
+        if (!triple && src[j] === '\n') break;
+        j++;
+      }
+      for (const ch of src.slice(start, j)) out += blank(ch);
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+const bodies = new Map(files.map((f) => [f, stripDart(readFileSync(f, 'utf8'))]));
 const rel = (f) => f.replace(repo + sep, '').replaceAll('\\', '/');
 
 // `declares` is not optional sugar. Searching for `foo(` finds the DECLARATION of
@@ -260,6 +322,71 @@ for (const seam of REQUIRED_COVERAGE) {
 
 if (liveSeams === 0) {
   fail('COVERAGE LOST — no seam in REQUIRED_COVERAGE is marked wired, so this guard asserted nothing.');
+}
+
+// ── [pipeline 12]W-7b · SOME SEAMS MAY HAVE EXACTLY ONE CALLER ───────────────
+//
+// Everything above proves AT LEAST ONE caller. A handful of seams need the
+// opposite bound as well, and this guard had no shape for it.
+//
+// The review prompt is the case. iOS silently DISCARDS requests beyond its
+// quota and shows nothing, so a second call site is not a second prompt — it is
+// the one prompt the app ever gets, spent at whatever moment that second caller
+// happened to fire, with no error anywhere. The requirement's wording ("exposes
+// no public trigger a button could call") is a claim about source shape that no
+// unit test can express, which is exactly why it went unnoticed while
+// `requestReview()` shipped public on the interface, on the NoOp and on the
+// adapter.
+//
+// 🔴 MATCH THE CALL, NEVER THE IDENTIFIER — the house rule this file already
+// paid for twice. `requestReview` appears in three declarations; an identifier
+// match is green against a codebase with zero callers AND against one with ten.
+// `allowed` names the ONE legitimate call site; anything else is a failure that
+// prints where it found it.
+const EXCLUSIVE_TRIGGERS = [
+  {
+    id: 'review_prompt',
+    // The call, through a receiver. The abstract declaration
+    // (review_prompter.dart), the NoOp override and the concrete @override all
+    // contain the bare name.
+    re: /\.requestReview\(/,
+    allowed: [`${BRICK_APP}/lib/state/providers.dart`],
+    why:
+      'ReviewPromptController.maybeAsk is the only thing allowed to ask, because the decision belongs to ' +
+      'ReviewGate and nothing else can know whether the quota is worth spending. iOS discards requests past ' +
+      'its quota SILENTLY, so a second caller does not produce a second prompt — it produces no prompt, and ' +
+      'no error, on the launch that mattered.',
+  },
+];
+
+for (const t of EXCLUSIVE_TRIGGERS) {
+  // No `scope`: the point is to find a caller ANYWHERE the scan reaches, which
+  // is what a narrower scan would hide.
+  const found = hits(t.re, undefined, undefined);
+  const extra = found.filter((f) => !t.allowed.includes(f));
+  const missing = t.allowed.filter((a) => !found.includes(a));
+  if (found.length === 0) {
+    // The at-least-one half. Without it, deleting the only caller turns this
+    // check GREEN — an "at most one" rule is satisfied by zero, which is the
+    // most obvious way for a bound like this to stop meaning anything.
+    fail(
+      `${t.id} — NOTHING calls it. ${t.why} An "at most one caller" rule is satisfied by zero callers, so ` +
+        'this half is what stops the bound certifying a dead seam.',
+    );
+  } else if (missing.length) {
+    fail(
+      `${t.id} — the one permitted call site ${missing.join(', ')} no longer calls it (found instead: ` +
+        `${found.join(', ')}). Either the caller moved, in which case update the allowlist deliberately, or ` +
+        'the prompt is now asked from somewhere that cannot know whether it is worth asking.',
+    );
+  } else if (extra.length) {
+    fail(
+      `${t.id} — ${extra.length} additional call site(s): ${extra.join(', ')}. ${t.why} If a second caller is ` +
+        'genuinely wanted, it belongs behind the same gate, not beside it.',
+    );
+  } else {
+    ok(`${t.id} — exactly one caller (${found[0]}), which is the bound this seam needs`);
+  }
 }
 
 // ── the pack verifier ───────────────────────────────────────────────────────
