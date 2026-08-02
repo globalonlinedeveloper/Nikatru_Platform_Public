@@ -191,6 +191,29 @@ export interface Variables {
   userId: string;
   /** The token's `email` claim when it carries one. Never required. */
   userEmail?: string;
+  /**
+   * [pipeline B-16] WHICH APP THIS REQUEST IS FOR, set by each route the moment
+   * it has resolved and VALIDATED one, and read by `app.onError`.
+   *
+   * 🔴 WHY IT IS A CONTEXT VARIABLE AND NOT `env.APP_ID`. `platform` is the ONE
+   * Worker behind the whole portfolio: `env.APP_ID` is the constant "platform",
+   * which answers "which Worker broke" and never "whose app broke". With 50 apps
+   * on one host, an error report that cannot name the app is a report nobody can
+   * route — and `onError` runs after the handler has thrown, so it cannot go and
+   * re-parse a body that was consumed.
+   *
+   * ⚠️ OPTIONAL, AND IT MUST STAY OPTIONAL. A request can fail BEFORE any app id
+   * exists — malformed JSON, a body over the cap, a 404 on an unmounted path. A
+   * required field would force a placeholder, and a placeholder that means both
+   * "no app was named" and "the app is literally called unknown" is worse than
+   * an absent one. The reports print `-` and mean it.
+   *
+   * ⚠️ SET IT ONLY AFTER VALIDATION. An unvalidated value here would put
+   * caller-controlled strings into the error sink's tags, which is a
+   * cardinality bomb and a light injection surface. Every writer below is
+   * downstream of `isKnownApp`.
+   */
+  appId?: string;
 }
 
 /** Convenience: the generics shape used across the worker + sub-routers. */

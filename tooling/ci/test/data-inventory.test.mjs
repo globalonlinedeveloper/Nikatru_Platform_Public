@@ -48,6 +48,18 @@ const DERIVATION = {
   pagesFunctionRoots: ['sites/nikatru/functions'],
   minPagesFunctionFiles: 1,
   minPagesKvBindings: 1,
+  // Two rows owe an erasure story in the baseline fixture (the table and the
+  // Pages KV namespace), so the floor is a real relationship here rather than a
+  // zero that could never fire.
+  minErasureRowsChecked: 2,
+};
+
+const ERASURE_KINDS = {
+  purge: 'a `user_id` column, deleted by the route',
+  unlink: 'a *_user_id reference, nulled by the route',
+  pseudonymous: 'no column resolves to an account',
+  'no-personal-data': 'nothing about a person',
+  'no-route': 'nothing reaches it; needs blockedBy; prints',
 };
 
 const RETENTION_KINDS = {
@@ -73,6 +85,7 @@ const DEFAULT_STORES = [
     personalData: true,
     retention: { kind: 'keep', reason: 'the user asked us to hold it' },
     writtenBy: ['services/api/migrations/0001_init.sql'],
+    erasure: { kind: 'purge', route: 'services/api/src/routes/account.ts', reason: 'the row is theirs' },
     disclosure: { page: 'privacy.html', quote: 'we store your email address' },
   },
   {
@@ -89,6 +102,7 @@ const DEFAULT_STORES = [
     name: 'SIGNUPS',
     personalData: true,
     retention: { kind: 'undecided', ownerItem: 'O-3', reason: 'no bound is set and none is invented here' },
+    erasure: { kind: 'no-route', blockedBy: 'nothing in this tree deletes a signup key' },
     writtenBy: ['sites/nikatru/functions/api/subscribe.js'],
     disclosure: { page: 'privacy.html', quote: 'we store your email address' },
   },
@@ -107,7 +121,7 @@ const WRANGLER = `{
 
 const MIGRATION = `-- A commented-out table is not a table.
 -- CREATE TABLE ghosts (id TEXT);
-CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, email TEXT);
+CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, email TEXT, user_id TEXT);
 INSERT INTO audit (note) VALUES ('CREATE TABLE not_a_table (x TEXT)');
 `;
 
@@ -128,6 +142,7 @@ function fixture({ stores, derivation = {}, wrangler = WRANGLER, migration = MIG
       {
         derivation: { ...DERIVATION, ...derivation },
         retentionKinds,
+        erasureKinds: ERASURE_KINDS,
         stores: stores ?? structuredClone(DEFAULT_STORES),
       },
       null,
@@ -138,6 +153,8 @@ function fixture({ stores, derivation = {}, wrangler = WRANGLER, migration = MIG
   if (migration !== null) write(root, join('services', 'api', 'migrations', '0001_init.sql'), migration);
   if (subscribe !== null) write(root, join('sites', 'nikatru', 'functions', 'api', 'subscribe.js'), subscribe);
   if (privacy !== null) write(root, join('sites', 'nikatru', 'privacy.html'), privacy);
+  // The erasure route a `purge` / `unlink` row names must exist as a file.
+  write(root, join('services', 'api', 'src', 'routes', 'account.ts'), 'export default {};\n');
   for (const [p, body] of Object.entries(extraFiles)) write(root, p.split('/').join(dirname('a/b') === 'a' ? '/' : '/'), body);
   return root;
 }
@@ -336,5 +353,210 @@ describe('coverage self-checks — a walk that under-reaches is not a pass', () 
     const r = run(root);
     assert.equal(r.status, 1);
     assert.match(out(r), /no wrangler config claims with a `migrations_dir`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ERASURE RELATION — [pipeline K-7].
+//
+// The gap this exists for was live in this repository: `provider_notifications`
+// held the buyer's name and email verbatim and carried no `user_id`, so the
+// schema-derived sweep in the account route could not see it — and the route
+// answered `{ok:true}` anyway. A delete route that silently misses rows is worse
+// than no delete route, because the user is told their data is gone.
+//
+// Every test below is a ONE-EDIT difference from the passing baseline, and the
+// direction that matters most is the third: a row DECLARING itself unreachable
+// about a table that has just become reachable. That is how a real gap gets a
+// clean bill of health, and it is the case a fixture written by the same person
+// who wrote the guard is least likely to think of, so it is written out here.
+// ─────────────────────────────────────────────────────────────────────────────
+const withStores = (mutate) => {
+  const stores = structuredClone(DEFAULT_STORES);
+  mutate(stores);
+  return stores;
+};
+const tableRow = (stores) => stores.find((s) => s.id === 'table:main_db.people');
+
+describe('every table declares how an erasure request reaches it', () => {
+  test('a table row with NO `erasure` at all FAILS', () => {
+    const r = run(fixture({ stores: withStores((s) => delete tableRow(s).erasure) }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /declares no `erasure`/);
+  });
+
+  test('a `purge` row whose table has no `user_id` FAILS — the sweep never sees it', () => {
+    const r = run(fixture({ migration: MIGRATION.replace(', user_id TEXT', '') }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /declares erasure `purge`, and no migration gives/);
+  });
+
+  test('a `pseudonymous` row whose table HAS a user column FAILS — the declaration went false', () => {
+    // 🔴 THE DIRECTION THAT MATTERS MOST. "Nothing here can be addressed to a
+    // person" is a claim about the schema, and a migration can falsify it
+    // tomorrow. Without this, the row would go on saying "unreachable" about a
+    // table an erasure request can now reach, and the gap would look closed.
+    const r = run(
+      fixture({
+        stores: withStores((s) => {
+          tableRow(s).erasure = { kind: 'pseudonymous', reason: 'keyed on an install id' };
+        }),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /The declaration has become FALSE/);
+  });
+
+  test('a `no-personal-data` row on a table holding personal data FAILS', () => {
+    const r = run(
+      fixture({
+        migration: MIGRATION.replace(', user_id TEXT', ''),
+        stores: withStores((s) => {
+          tableRow(s).erasure = { kind: 'no-personal-data', reason: 'nothing about anybody' };
+        }),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /declares erasure `no-personal-data` while the row itself says/);
+  });
+
+  test('an `unlink` row naming a column no migration creates FAILS', () => {
+    const r = run(
+      fixture({
+        stores: withStores((s) => {
+          tableRow(s).erasure = {
+            kind: 'unlink',
+            column: 'claimed_user_id',
+            route: 'services/api/src/routes/account.ts',
+          };
+        }),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /and no migration gives/);
+  });
+
+  test('an `unlink` row on a column outside the reference form FAILS — nothing nulls it', () => {
+    const r = run(
+      fixture({
+        migration: MIGRATION.replace(', user_id TEXT', ', owner TEXT'),
+        stores: withStores((s) => {
+          tableRow(s).erasure = {
+            kind: 'unlink',
+            column: 'owner',
+            route: 'services/api/src/routes/account.ts',
+          };
+        }),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /which does not end in/);
+  });
+
+  test('a column added by ALTER TABLE counts — this is how the real reach gap was closed', () => {
+    // Migration 0006 adds `user_id` to an existing table with ALTER TABLE. A
+    // column parser that only read CREATE TABLE would report the column absent
+    // and fail a declaration that is correct — sending the fix to the wrong file.
+    const r = run(
+      fixture({
+        migration: `${MIGRATION.replace(', user_id TEXT', '')}ALTER TABLE people ADD COLUMN user_id TEXT;\n`,
+      }),
+    );
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('a `user_id` inside a CHECK constraint is NOT a column', () => {
+    // Top-level comma splitting, not a regex over the whole body. Without it a
+    // constraint mentioning the column name would satisfy a `purge` declaration
+    // on a table that has no such column at all.
+    const r = run(
+      fixture({
+        migration: MIGRATION.replace(
+          ', user_id TEXT',
+          ", note TEXT, CHECK (note NOT IN ('user_id', 'x'))",
+        ),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /declares erasure `purge`, and no migration gives/);
+  });
+
+  test('a `purge` row naming a route file that does not exist FAILS', () => {
+    const r = run(
+      fixture({
+        stores: withStores((s) => {
+          tableRow(s).erasure.route = 'services/api/src/routes/gone.ts';
+        }),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /names erasure route/);
+  });
+
+  test("an erasure kind outside the register's own vocabulary FAILS", () => {
+    const r = run(
+      fixture({
+        stores: withStores((s) => {
+          tableRow(s).erasure = { kind: 'handled', route: 'services/api/src/routes/account.ts' };
+        }),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /erasureKinds` dictionary/);
+  });
+
+  test('`no-route` PRINTS with what blocks it, and does not fail the build', () => {
+    // Owner-gated and architecture-gated gaps print. A guard that reddens main
+    // on work nobody can do today is a guard somebody switches off.
+    const r = run(fixture());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /ERASURE UNREACHABLE/);
+    assert.match(out(r), /nothing in this tree deletes a signup key/);
+  });
+
+  test('`no-route` with no `blockedBy` FAILS — an exemption nobody owns', () => {
+    const r = run(
+      fixture({
+        stores: withStores((s) => {
+          s.find((x) => x.id === 'kv:site-signups').erasure = { kind: 'no-route' };
+        }),
+      }),
+    );
+    assert.equal(r.status, 1);
+    assert.match(out(r), /names no `blockedBy`/);
+  });
+
+  test('an `unverified` erasure question with no ownerItem FAILS, and with one PRINTS', () => {
+    // Never invent a retention period, a statute or a regulator. An open legal
+    // question is a legitimate declaration; an anonymous one is a permanent
+    // exemption with a polite label.
+    const nobody = run(
+      fixture({
+        stores: withStores((s) => {
+          tableRow(s).erasure.unverified = { question: 'is there a statutory basis to retain?' };
+        }),
+      }),
+    );
+    assert.equal(nobody.status, 1);
+    assert.match(out(nobody), /with no `ownerItem`/);
+
+    const owned = run(
+      fixture({
+        stores: withStores((s) => {
+          tableRow(s).erasure.unverified = {
+            question: 'is there a statutory basis to retain?',
+            ownerItem: 'O-3',
+          };
+        }),
+      }),
+    );
+    assert.equal(owned.status, 0, out(owned));
+    assert.match(out(owned), /ERASURE UNVERIFIED \(O-3\)/);
+  });
+
+  test('an erasure walk that checks fewer rows than the floor is COVERAGE LOST', () => {
+    const r = run(fixture({ derivation: { minErasureRowsChecked: 9 } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /erasure declaration\(s\) were compared to the schema, floor 9/);
   });
 });

@@ -199,10 +199,14 @@ function build(name, { sites = ['a', 'b'], legal = {}, appDirs = [], extra = {} 
   return fixture(name, files);
 }
 
+/** Every page in LEGAL_PAGES, as a real page. Named for the count it used to
+ *  be; `delete-account.html` joined the set on 2026-08-03 ([pipeline K-7]) and
+ *  the helper grew with it rather than the tests each gaining a fourth line. */
 const allThree = (site) => ({
   [`${site}/privacy.html`]: realPage('Privacy Policy'),
   [`${site}/terms.html`]: realPage('Terms of Service'),
   [`${site}/refund.html`]: realPage('Refund Policy'),
+  [`${site}/delete-account.html`]: realPage('Delete your account'),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,11 +220,26 @@ describe('check-site-integrity · legal pages', () => {
     assert.match(out, /legal pages enforced on 0 deploy root\(s\)/);
   });
 
-  test('PASSES when a site that ships apps/ publishes all three real pages', () => {
+  test('PASSES when a site that ships apps/ publishes every real legal page', () => {
     const dir = build('lp-ok', { appDirs: ['a'], legal: allThree('a') });
     const { code, out } = run(dir);
     assert.equal(code, 0, out);
-    assert.match(out, /sites\/a — 3 page\(s\)/);
+    assert.match(out, /sites\/a — 4 page\(s\)/);
+  });
+
+  test('FAILS when an app-facing site publishes no deletion page — [pipeline K-7]', () => {
+    // 🔴 THE NEGATIVE TEST FOR delete-account.html JOINING LEGAL_PAGES. Without
+    // it, dropping the page from that constant would leave every other case here
+    // green: they were all written when the set had three members, and a set
+    // that quietly shrinks is the failure this whole file exists for. A deletion
+    // route with no published way to find it is the orphan K-7 is named after,
+    // and it is the URL a store reviewer opens when an app offers accounts.
+    const legal = allThree('a');
+    delete legal['a/delete-account.html'];
+    const { code, out } = run(build('lp-nodelete', { appDirs: ['a'], legal }));
+    assert.equal(code, 1);
+    assert.match(out, /missing .*delete-account\.html/);
+    assert.match(out, /app-facing site/);
   });
 
   test('FAILS when an app-facing site is missing privacy.html, and names it', () => {
@@ -323,7 +342,7 @@ describe('check-site-integrity · legal pages', () => {
       const dir2 = build('lp-cov-ok', { sites: ['nikatru', 'b'], legal: allThree('nikatru') });
       const ok = run(dir2, { from: selfHosted(dir2, { root: 'nikatru' }) });
       assert.equal(ok.code, 0, ok.out);
-      assert.match(ok.out, /sites\/nikatru — 3 page\(s\)/);
+      assert.match(ok.out, /sites\/nikatru — 4 page\(s\)/);
     });
   });
 
@@ -799,6 +818,7 @@ describe('check-site-integrity · llms.txt vs the app registry', () => {
       // whole point — and app-facing roots owe the full legal set.
       'sites/nikatru/terms.html': legalPage,
       'sites/nikatru/refund.html': legalPage,
+      'sites/nikatru/delete-account.html': legalPage,
       'sites/_shared/_data/apps.json': LIVE,
       'sites/nikatru/llms.txt': honest,
       ...over,
