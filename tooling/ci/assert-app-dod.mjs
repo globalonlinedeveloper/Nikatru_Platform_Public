@@ -533,12 +533,36 @@ if (has('sites/_shared/_data/apps.json')) {
 const shallow = spawnSync('git', ['-C', ROOT, 'rev-parse', '--is-shallow-repository'], { encoding: 'utf8' });
 const isShallow = shallow.status === 0 && shallow.stdout.trim() === 'true';
 
-/** Last commit touching a path, ISO date only, or null when git knows nothing. */
+/** Last commit touching a path, ISO date only, or null when git knows nothing.
+ *
+ *  🔴 UTC, AND THE `slice` THAT USED TO BE HERE WAS A LATENT ONE-DAY FLAKE.
+ *  `%cI` renders the committer timestamp in the COMMITTER'S OWN UTC OFFSET, so
+ *  `.slice(0, 10)` returned a LOCAL day, while `today` above is `toISOString()`
+ *  — UTC. The two bases only coincide where the offset is zero, which is exactly
+ *  where CI runs, so the mismatch was invisible in the only place anyone looked.
+ *  On the owner's box (IST, +05:30) every commit made between 00:00 and 05:30
+ *  local reads one day LATER than its UTC day, and the staleness clause below
+ *  then fails a mutation record that is perfectly current: observed 2026-08-03
+ *  at 00:21 IST, where a record dated 2026-08-02 was compared against a commit
+ *  whose UTC day was also 2026-08-02 but whose `%cI` day was 2026-08-03. Four
+ *  fixture tests reddened for five and a half hours a day and nowhere else.
+ *
+ *  Parsing the offset-aware timestamp and re-emitting it as UTC puts both sides
+ *  of `mut.date < day` on ONE basis in EVERY timezone. Note the comparison is
+ *  one-sided — a record dated later than the code is fine — so pushing the code
+ *  side to UTC can only ever make the guard more forgiving by a day, never less
+ *  able to catch the thing it is for: a record describing code that has moved. */
 function lastCommitDay(relPath) {
   const r = spawnSync('git', ['-C', ROOT, 'log', '-1', '--format=%cI', '--', relPath], { encoding: 'utf8' });
   if (r.status !== 0) return null;
   const t = r.stdout.trim();
-  return t === '' ? null : t.slice(0, 10);
+  if (t === '') return null;
+  const parsed = new Date(t);
+  // A timestamp git rendered but Date could not parse must not silently become
+  // "1970-01-01", which compares older than every record and would turn the
+  // clause off. Unknown is `null` — the caller already prints that as an
+  // unverifiable, rather than treating it as a pass.
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
 /** Every Dart file under the app's own test trees — the files its test lane runs. */
