@@ -32,6 +32,22 @@ void main() {
     expect(flags.isOn('not_configured'), isFalse);
   });
 
+  // [pipeline 11]E-12. The chassis must hand out an OBSERVED flag set, not a
+  // raw one: a raw `core.FeatureFlags` decides on/off locally and emits
+  // nothing, so the rollout it serves can only be reconstructed from a percent
+  // that has since moved. The type IS the guarantee here, and it is asserted
+  // rather than assumed because every future stamped app inherits it.
+  test('the flag set is OBSERVED, and a read marks the flag exposed', () async {
+    final ProviderContainer c = harness();
+    addTearDown(c.dispose);
+    final core.ObservedFeatureFlags flags = await c.read(
+      featureFlagsProvider.future,
+    );
+    expect(flags.exposedFlags, isEmpty);
+    flags.isOn('some_rollout');
+    expect(flags.exposedFlags, contains('some_rollout'));
+  });
+
   test('entitlementCache is available', () {
     final ProviderContainer c = harness();
     addTearDown(c.dispose);

@@ -156,6 +156,28 @@ export interface Env {
    * `tooling/ci/assert-cors-allowlist.mjs` guards the list itself.
    */
   ALLOWED_ORIGINS?: string;
+  /**
+   * [pipeline 11]E-8 — the crash sink for UNHANDLED WORKER ERRORS.
+   *
+   * A `var`, not a secret, and deliberately so: a Sentry/GlitchTip DSN is a
+   * write-only ingest key that this factory ALREADY ships inside every web
+   * build (`deploy-web.yml` passes it as `--dart-define`, which lands in the
+   * JavaScript bundle a browser downloads). Treating it as a secret here would
+   * be a ceremony around a value that is public by construction, and it would
+   * make the sink depend on an owner running `wrangler secret put` — which is
+   * how a fail-closed seam stays closed forever.
+   *
+   * ABSENT ⇒ NO REPORT, silently. `lib/error-sink.ts` fails open by design.
+   */
+  GLITCHTIP_DSN?: string;
+  /**
+   * The commit this Worker was deployed from — `--var RELEASE:<sha>` in
+   * deploy-workers.yml. NOT `API_VERSION`: that is the literal "v1" and has
+   * never changed, so it groups every error the factory will ever report into
+   * one bucket named after a URL prefix. Replaced by [9]R-2's real release id
+   * when that lands.
+   */
+  RELEASE?: string;
 }
 
 /** Hono context Variables set by middleware. */

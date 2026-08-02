@@ -480,6 +480,33 @@ try {
   fail(`policy version check could not run: ${e.message}`);
 }
 
+/**
+ * The lines belonging to ONE job of a workflow, or null when no such job exists.
+ *
+ * Written rather than pulled from a YAML parser because tooling/ci has no
+ * dependencies by design, and because the question is narrow: workflow job keys
+ * sit at exactly two spaces under `jobs:`, so a job's body runs from its key to
+ * the next two-space key. Comment lines are not keys — `  # a note` would
+ * otherwise end a job's body early and hide every step below it, which is the
+ * same "a comment satisfied/defeated a check" defect this file already carries a
+ * scar from.
+ */
+function jobBody(yaml, jobName) {
+  const lines = yaml.split('\n');
+  const jobsAt = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
+  if (jobsAt === -1) return null;
+  const startsKey = (l) => /^ {2}[^\s#][^\n]*:/.test(l);
+  let start = -1;
+  for (let i = jobsAt + 1; i < lines.length; i++) {
+    if (start === -1) {
+      if (new RegExp(`^ {2}${jobName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`).test(lines[i])) start = i;
+      continue;
+    }
+    if (startsKey(lines[i]) || /^\S/.test(lines[i])) return lines.slice(start, i).join('\n');
+  }
+  return start === -1 ? null : lines.slice(start).join('\n');
+}
+
 // ── the crash sink is a fail-closed seam too, and it was closed ──────────────
 // TelemetryBootstrap falls back to a NoOp client when the DSN is empty — correct
 // behaviour, and indistinguishable from working. No workflow passed
@@ -491,33 +518,120 @@ try {
 // passing if main.dart stopped reading the value, and checking only main.dart
 // would keep passing if the deploy stopped supplying it. Either half alone is a
 // check watching one end of a pipe.
+//
+// 🔴 THE SUPPLIER SIDE IS NOW DERIVED, NOT HARDCODED (2026-08-02, [pipeline
+// 11]E-7 residue). It read one filename — `deploy-web.yml` — so it answered
+// "does the WEB deploy supply the DSN", and the requirement is that every lane
+// that produces a shippable artifact does. It printed `ok` while
+// build-platforms.yml built all six platforms with ZERO `--dart-define`s, and
+// that workflow is the declared `lane.workflow` for the `android-play` AND
+// `windows-store` rows of tooling/channel-register.json. Two artifact lanes,
+// no crash sink, guard green. The subject set is therefore taken from the
+// register: every row carrying `lane.workflow` + `lane.job` must have THAT JOB
+// supply the define — so a new channel acquires the obligation by being given a
+// lane, rather than when somebody remembers this file exists.
 {
-  const DEPLOY = 'deploy-web.yml';
-  const wfPath = join(repo, '.github', 'workflows', DEPLOY);
+  const REGISTER = join(repo, 'tooling', 'channel-register.json');
   const entry = join(repo, 'apps', 'subly', 'lib', 'main.dart');
-  if (!existsSync(wfPath)) {
-    fail(`COVERAGE LOST — ${DEPLOY} is gone, so the crash-sink check is watching a deploy that no longer exists.`);
+  /** Rows with a lane today. A DERIVED subject set can shrink to nothing — the
+   *  register losing its `lane` keys would leave this loop iterating zero jobs
+   *  and printing nothing at all — so the count is floored by what exists. */
+  const MIN_LANES = 3;
+
+  let lanes = [];
+  try {
+    const register = JSON.parse(readFileSync(REGISTER, 'utf8'));
+    lanes = (register.channels ?? [])
+      .filter((c) => typeof c?.lane?.workflow === 'string' && typeof c?.lane?.job === 'string')
+      .map((c) => ({ id: c.id, workflow: c.lane.workflow.split('/').pop(), job: c.lane.job }));
+  } catch (e) {
+    fail(`COVERAGE LOST — tooling/channel-register.json could not be read (${e.message}), so the set of artifact lanes that must supply GLITCHTIP_DSN is empty and this check asserts nothing.`);
+  }
+
+  if (lanes.length < MIN_LANES) {
+    fail(
+      `COVERAGE LOST — only ${lanes.length} channel row(s) declare a \`lane.workflow\` + \`lane.job\`, fewer than the ${MIN_LANES} that exist today. ` +
+        'The crash-sink check quantifies over that set; a shrunken one certifies the remaining lanes and says nothing about the rest.',
+    );
   } else if (!existsSync(entry)) {
     fail('COVERAGE LOST — apps/subly/lib/main.dart is gone; the consumer half of the crash-sink check cannot be verified.');
   } else {
-    const wf = readFileSync(wfPath, 'utf8');
-    const main = readFileSync(entry, 'utf8');
-    // 🔴 NO `#` BEFORE THE MATCH (2026-08-01 full-corpus review). This tested
-    // the RAW workflow text, so commenting the define out — one `#`, the exact
-    // edit somebody makes while debugging build flags — still counted as
-    // "supplied", and the shipped build initialised the NoOp client with this
-    // guard printing ok. Worse: the define sits in a `run: >` folded scalar,
-    // where that `#` is a SHELL comment that also swallows the rest of the
-    // line. A define behind a comment marker is prose, not a flag; the match
-    // must sit on a line with no `#` anywhere before it.
-    const supplied = /^[^#\n]*--dart-define=GLITCHTIP_DSN=/m.test(wf);
-    const consumed = /String\.fromEnvironment\(\s*'GLITCHTIP_DSN'/.test(main);
+    // BOTH ENDS are asserted on purpose. Checking only the workflow would keep
+    // passing if main.dart stopped reading the value, and checking only
+    // main.dart would keep passing if every deploy stopped supplying it. Either
+    // half alone is a check watching one end of a pipe.
+    const consumed = /String\.fromEnvironment\(\s*'GLITCHTIP_DSN'/.test(readFileSync(entry, 'utf8'));
     if (!consumed) {
-      fail("apps/subly/lib/main.dart no longer reads String.fromEnvironment('GLITCHTIP_DSN') — the deploy would be supplying a value nothing consumes.");
-    } else if (!supplied) {
-      fail(`${DEPLOY} does not pass --dart-define=GLITCHTIP_DSN. The shipped build initialises a NoOp telemetry client, so production crashes reach nobody and nothing goes red.`);
+      fail("apps/subly/lib/main.dart no longer reads String.fromEnvironment('GLITCHTIP_DSN') — the lanes would be supplying a value nothing consumes.");
+    }
+    let wired = 0;
+    for (const lane of lanes) {
+      const wfPath = join(repo, '.github', 'workflows', lane.workflow);
+      if (!existsSync(wfPath)) {
+        fail(`COVERAGE LOST — channel \`${lane.id}\` names lane workflow ${lane.workflow}, which does not exist, so its crash-sink obligation is unenforceable.`);
+        continue;
+      }
+      const wf = readFileSync(wfPath, 'utf8');
+      const body = jobBody(wf, lane.job);
+      if (body === null) {
+        fail(`COVERAGE LOST — channel \`${lane.id}\` names job \`${lane.job}\` in ${lane.workflow} and this scan could not find that job, so the define could be anywhere or nowhere.`);
+        continue;
+      }
+      // 🔴 NO `#` BEFORE THE MATCH (2026-08-01 full-corpus review). This tested
+      // the RAW workflow text, so commenting the define out — one `#`, the exact
+      // edit somebody makes while debugging build flags — still counted as
+      // "supplied", and the shipped build initialised the NoOp client with this
+      // guard printing ok. Worse: the define sits in a `run: >` folded scalar,
+      // where that `#` is a SHELL comment that also swallows the rest of the
+      // line. A define behind a comment marker is prose, not a flag; the match
+      // must sit on a line with no `#` anywhere before it.
+      //
+      // ⚠️ AND IT IS MATCHED INSIDE THE JOB'S OWN BODY, not the file's. The
+      // whole-file form would have let `deploy-web.yml`'s define satisfy a
+      // check about a job in the same file that supplies nothing.
+      if (!/^[^#\n]*--dart-define=GLITCHTIP_DSN=/m.test(body)) {
+        fail(
+          `${lane.workflow} job \`${lane.job}\` (the lane of channel \`${lane.id}\`) does not pass --dart-define=GLITCHTIP_DSN. ` +
+            'TelemetryBootstrap falls back to a NoOp client when the DSN is empty — correct behaviour, and ' +
+            'indistinguishable from working — so that artifact ships with crashes reaching nobody and nothing going red.',
+        );
+        continue;
+      }
+      wired++;
+    }
+    if (consumed && wired === lanes.length) {
+      ok(`crash sink wired — ${wired} artifact lane(s) supply GLITCHTIP_DSN (${lanes.map((l) => `${l.id}:${l.job}`).join(', ')}) and the app reads it`);
+    }
+  }
+
+  // ── …and the sink does not claim a concept the SERVER cannot honour ───────
+  // [pipeline 11]E-10. sentry_flutter defaults `enableAutoSessionTracking` ON,
+  // so the SDK computed and shipped session envelopes to GlitchTip, which does
+  // not implement Sentry's release health and stored none of them. The wasted
+  // bytes are the small half. The real cost is that "crash-free sessions" is
+  // the metric every crash-health conversation reaches for, and leaving this on
+  // implies the number is available when it can NEVER be computed here — so the
+  // one crash-health figure this factory can actually produce has to be defined
+  // against a denominator it holds (`app_open` rows), and nothing would have
+  // said so.
+  const BOOTSTRAP = 'packages/telemetry/lib/src/telemetry_bootstrap.dart';
+  const bootstrapPath = join(repo, ...BOOTSTRAP.split('/'));
+  if (!existsSync(bootstrapPath)) {
+    fail(`COVERAGE LOST — ${BOOTSTRAP} is gone, so the session-tracking check is watching a file that no longer exists.`);
+  } else {
+    // Comments stripped: this file's own prose explains the setting at length,
+    // and a raw-text match would be satisfied by the explanation.
+    const src = readFileSync(bootstrapPath, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    if (!/enableAutoSessionTracking\s*=\s*false/.test(src)) {
+      fail(
+        `${BOOTSTRAP} does not set \`options.enableAutoSessionTracking = false\`. The SDK default is ON and ` +
+          'GlitchTip does not implement release health, so the client computes and ships sessions nothing stores — ' +
+          'and implies a "crash-free sessions" number that cannot be computed against this backend.',
+      );
     } else {
-      ok('crash sink wired — deploy supplies GLITCHTIP_DSN and the app reads it');
+      ok('crash health — session tracking is OFF, so no metric implies a denominator GlitchTip cannot supply');
     }
   }
 }

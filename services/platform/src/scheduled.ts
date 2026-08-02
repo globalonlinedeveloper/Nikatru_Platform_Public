@@ -9,6 +9,30 @@ import { recomputeRenewals } from './renewals';
 /** The job name recorded in `cron_heartbeat`. */
 export const KEEPALIVE_JOB = 'supabase_keepalive';
 
+/** [pipeline 11]E-13 — the job that makes the analytics rail's own silence
+ *  visible. Rows land in the same `cron_heartbeat` table, so "is anything
+ *  broken" stays one query. */
+export const ANALYTICS_LIVENESS_JOB = 'analytics_liveness';
+
+/**
+ * The trailing window the liveness limb counts over, in hours.
+ *
+ * 🔴 DERIVED, NOT CHOSEN. It is the interval between cron runs —
+ * `triggers.crons` in wrangler.jsonc is `0 6 * * *`, once daily — so each run
+ * reports on exactly the period since the last one and no period is counted
+ * twice or missed. `test/analytics-liveness.test.ts` reads the deployed cron
+ * expression and fails if the two stop agreeing.
+ *
+ * ⚠️ IT IS NOT A THRESHOLD AND THERE IS NO THRESHOLD HERE. Nothing in this file
+ * decides that N events is too few. See the gap note in `analyticsLiveness`.
+ *
+ * @ceiling none — a REPORTING WINDOW, not a resource cap. Its right-hand side is
+ *   this Worker's own cron cadence (`triggers.crons`), which no vendor limit
+ *   moves with; the one query it bounds is a single GROUP BY, so the D1 ceilings
+ *   are untouched whether the window is an hour or a year.
+ */
+export const ANALYTICS_LIVENESS_WINDOW_HOURS = 24;
+
 /**
  * Apps the scheduler fans out to. Static today (subly only); as more apps ship,
  * add their APP_DB binding here (or drive it from a platform_db registry).
@@ -46,6 +70,7 @@ export function keepAliveTargets(env: Env): string[] {
 async function recordHeartbeat(
   env: Env,
   rows: { target: string; ok: boolean; detail: string }[],
+  job: string = KEEPALIVE_JOB,
 ): Promise<void> {
   if (rows.length === 0) return;
   const ranAt = new Date().toISOString();
@@ -54,7 +79,7 @@ async function recordHeartbeat(
       rows.map((r) =>
         env.PLATFORM_DB.prepare(
           'INSERT INTO cron_heartbeat (job, target, ok, detail, ran_at) VALUES (?,?,?,?,?)',
-        ).bind(KEEPALIVE_JOB, r.target, r.ok ? 1 : 0, r.detail.slice(0, 200), ranAt),
+        ).bind(job, r.target, r.ok ? 1 : 0, r.detail.slice(0, 200), ranAt),
       ),
     );
   } catch (err) {
@@ -134,11 +159,100 @@ export async function keepAliveSupabase(env: Env): Promise<void> {
   await recordHeartbeat(env, rows);
 }
 
+/**
+ * [pipeline 11]E-13 — THE RAIL'S OWN SILENCE IS DETECTABLE.
+ *
+ * 🔴 THE FAILURE THIS EXISTS FOR IS LIVE AND WAS DAYS OLD BEFORE ANYBODY
+ * COUNTED. `SELECT COUNT(*) FROM events` = 0 and `consent_artifacts` = 0 in
+ * production, measured 2026-07-29 and again 2026-08-01. The ingest route, the
+ * dedup, the consent rail and the client queue were all built, tested and
+ * green; the one thing nobody had built was the thing that would notice they
+ * were producing nothing. An empty table looks exactly like a quiet week.
+ *
+ * ONE QUERY, GROUPED BY APP, INSIDE THE EXISTING CRON. There are five cron
+ * triggers per account on Free and one is already spent, so this is a limb of
+ * the nightly run rather than a second schedule.
+ *
+ * ⚠️ A ROW IS WRITTEN ON EVERY RUN, INCLUDING WHEN THE RESULT SET IS EMPTY —
+ * and that is the whole design. A detector that only records when it found
+ * something is silent in precisely the situation it exists to report. The
+ * portfolio row below is unconditional for that reason.
+ *
+ * ⚠️ `ok` MEANS THE WORK SUCCEEDED, NEVER THAT A ROW WAS FOUND. That
+ * distinction is the same one `keepAliveSupabase` got wrong until 2026-07-30,
+ * when `ok` meant `status < 500` and recorded a nightly 401 as success. Here:
+ * the query ran ⇒ ok=1, even at zero events; the query threw ⇒ ok=0.
+ *
+ * 🔴 AND THE GAP, STATED IN THE DATA RATHER THAN IN A COMMENT NOBODY READS:
+ * THIS CANNOT DISTINGUISH "THE RAIL IS BROKEN" FROM "NOBODY OPENED THE APP".
+ * Doing so needs an independent liveness signal and this factory does not have
+ * one:
+ *   · Cloudflare's request analytics for the app hostname — UNVERIFIED whether
+ *     the Free plan exposes it through the GraphQL Analytics API. Not assumed.
+ *   · GlitchTip events for the same release — CONTAMINATED. The only issue on
+ *     record (SUBLY-2) carries `browser: Electron`, a Claude desktop
+ *     User-Agent and India Standard Time: it is the agent's own visits, not an
+ *     external user. Built on that, this alarm would report "active, zero
+ *     events" forever and be right for the wrong reason.
+ *   · Counting the pre-consent `GET /config/:app` launch fetch server-side —
+ *     workable, and a NEW COLLECTION POSTURE that needs a recorded owner
+ *     decision, not an agent's.
+ * So the honest form is this repository's established one for an unautomatable
+ * limb: measure what is measurable, write it down every run, and PRINT THE GAP
+ * rather than invent a threshold that would make the gap look closed.
+ */
+export async function analyticsLiveness(env: Env): Promise<void> {
+  const since = new Date(
+    Date.now() - ANALYTICS_LIVENESS_WINDOW_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+  const rows: { target: string; ok: boolean; detail: string }[] = [];
+  try {
+    // ONE query for the whole portfolio. `server_ts` is the edge receipt clock —
+    // the client's is untrusted and offline-queued, so grouping on it would put
+    // an event in whichever window the device's clock felt like.
+    const res = await env.PLATFORM_DB.prepare(
+      'SELECT app_id, COUNT(*) AS n FROM events WHERE server_ts >= ? GROUP BY app_id',
+    )
+      .bind(since)
+      .all<{ app_id: string; n: number }>();
+    const counts = res.results ?? [];
+    let total = 0;
+    for (const r of counts) {
+      total += Number(r.n) || 0;
+      rows.push({
+        target: r.app_id,
+        ok: true,
+        detail: `${r.n} event(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
+      });
+    }
+    // UNCONDITIONAL. This row is the detector's own proof of life, and it is
+    // the ONLY row that exists when the answer is zero.
+    rows.push({
+      target: '(portfolio)',
+      ok: true,
+      detail:
+        total === 0
+          ? `0 events from 0 app(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h — the rail is SILENT. Cannot yet distinguish a broken rail from no sessions: no independent liveness signal exists (see analyticsLiveness).`
+          : `${total} event(s) from ${counts.length} app(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
+    });
+  } catch (err) {
+    // ok=0 means THE WORK FAILED. A query that could not run tells us nothing
+    // about the rail, and must never be recorded as "nothing happened".
+    rows.push({
+      target: '(portfolio)',
+      ok: false,
+      detail: `liveness query failed: ${String(err)}`,
+    });
+  }
+  await recordHeartbeat(env, rows, ANALYTICS_LIVENESS_JOB);
+}
+
 /** Cron entrypoint. `ctx.waitUntil` keeps the isolate alive for the async work. */
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
       await keepAliveSupabase(env);
+      await analyticsLiveness(env);
       for (const t of appTargets(env)) {
         await recomputeRenewals(t.db, t.appId);
       }

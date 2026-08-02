@@ -144,12 +144,39 @@ jobs:
       # root, not in the app directory.
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # ── every artifact this job produces carries the crash sink ─────────────
+      # [pipeline 11]E-7. TelemetryBootstrap falls back to a NoOp client when the
+      # DSN is empty — correct behaviour, and INDISTINGUISHABLE FROM WORKING. So
+      # until this line existed, every artifact this workflow uploaded shipped
+      # with crashes reaching nobody, while assert-seams-wired.mjs printed ok:
+      # that guard read the filename `deploy-web.yml` and nothing else, so it
+      # answered "does the WEB deploy supply the DSN" rather than the question
+      # the requirement asks. It now derives the set of jobs that must supply it
+      # from the `lane` of every row in tooling/channel-register.json — this job
+      # is the lane of `android-play` — so a new channel acquires the obligation
+      # by being given a lane.
+      #
+      # ⚠️ On a fork PR `secrets.GLITCHTIP_DSN` is empty and the build falls back
+      # to the NoOp client. That is the correct outcome for an untrusted build,
+      # and it is why the guard checks the DEFINE rather than a non-empty value:
+      # a check on the value could only ever run where the secret exists.
+      #
+      # ⬜ RELEASE ATTRIBUTION IS NOT SUPPLIED HERE and that is recorded, not
+      # overlooked: `release: 'subly@${AppConfig.appVersion}'` (apps/subly/lib/
+      # main.dart:25) needs an APP_VERSION this workflow has no release line to
+      # derive one from. Crashes from these artifacts therefore reach GlitchTip
+      # attributed to the default version until [9]R-2 gives every lane a release
+      # id. A sink with a weak release string still beats no sink.
       - name: Build web
         working-directory: apps/subly
-        run: flutter build web --release
+        run: >
+          flutter build web --release
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: Build linux
         working-directory: apps/subly
-        run: flutter build linux --release
+        run: >
+          flutter build linux --release
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # Release APK with no keystore falls back to debug signing — fine for a
       # BUILD check, and a RECORDED owner decision rather than an unfinished
       # edge. See the `android-play` row's notes in tooling/channel-register.json:
@@ -165,7 +192,9 @@ jobs:
       # this upload is the ONLY way an Android build gets touched today.
       - name: Build android (apk — sideloadable build proof)
         working-directory: apps/subly
-        run: flutter build apk --release
+        run: >
+          flutter build apk --release
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── the android-play channel's artifact ─────────────────────────────────
       # THIS JOB IS THE `lane` OF tooling/channel-register.json's `android-play`
       # row, and this step is why. Before it, the register printed a FORMAT GAP
@@ -181,7 +210,9 @@ jobs:
       # artifactFormats to what its lane emits, and it is closed here.
       - name: Build android (aab — the Google Play artifact)
         working-directory: apps/subly
-        run: flutter build appbundle --release
+        run: >
+          flutter build appbundle --release
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: subly-linux-web-android
@@ -206,9 +237,19 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # [pipeline 11]E-7, and this job is the lane of the `windows-store` row.
+      # ⚠️ WINDOWS GETS THE DART LAYER ONLY. sentry_flutter's Windows support is
+      # the Dart error handler; a native crash in the C++ runner or in a plugin's
+      # native half is NOT captured, so "Windows crashes reach GlitchTip" is true
+      # of Dart exceptions and false of access violations. Written here and in
+      # tooling/channel-register.json so nobody reads the six green ticks as six
+      # covered platforms. Same fork-PR and release-attribution caveats as the
+      # linux_web_android job above.
       - name: Build windows
         working-directory: apps/subly
-        run: flutter build windows --release
+        run: >
+          flutter build windows --release
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── the windows-store channel's artifact ────────────────────────────────
       # THIS JOB IS THE `lane` OF tooling/channel-register.json's `windows-store`
       # row, and this step is why. Before it, the register printed a FORMAT GAP

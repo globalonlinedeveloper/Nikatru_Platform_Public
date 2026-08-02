@@ -10,6 +10,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
+import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { supabaseAuth } from './middleware/auth';
 import subscriptions from './routes/subscriptions';
@@ -54,8 +55,28 @@ app.route('/v1', api);
 
 // Fallback 404 as JSON to keep the error contract consistent.
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
+// [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log. See
+// lib/error-sink.ts; the report is handed to `waitUntil` so the caller's 500 is
+// not held open behind GlitchTip, and it never rejects.
 app.onError((err, c) => {
   console.error(`[unhandled] rid=${c.get('requestId') ?? '-'}`, err);
+  const url = new URL(c.req.url);
+  const report = reportWorkerError(
+    err,
+    {
+      service: 'subly-api',
+      release: c.env.RELEASE,
+      requestId: c.get('requestId'),
+      method: c.req.method,
+      path: url.pathname, // pathname only — never the query string
+    },
+    c.env,
+  );
+  try {
+    c.executionCtx.waitUntil(report);
+  } catch {
+    void report;
+  }
   return c.json({ error: 'internal_error' }, 500);
 });
 

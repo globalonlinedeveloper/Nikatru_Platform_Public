@@ -220,6 +220,7 @@
     "ALLOWED_ORIGINS": "our own domains — the CORS allowlist, guarded by assert-cors-allowlist.mjs",
     "APP_ENV": "build metadata",
     "APP_VERSION": "build metadata — injected at build time, deliberately not read from package_info_plus",
+    "RELEASE": "build metadata — the commit a WORKER was deployed from, supplied as `--var RELEASE:<sha>` by deploy-workers.yml and used as the release id on the crash reports services/*/src/lib/error-sink.ts sends ([pipeline 11]E-8). No external system is behind it: it is OUR OWN git SHA. It exists as a separate surface rather than reusing `API_VERSION` because that var is the literal \"v1\" in both Workers and has never changed, so using it as a release id would group every error this factory ever reports into one bucket named after a URL prefix. [9]R-2 replaces it with a real release id. Added 2026-08-02.",
     "APP_ID": "app identity",
     "API_VERSION": "our own API contract version",
     "SKIP_REMOTE_CONFIG": "test/demo switch, no external system behind it",
