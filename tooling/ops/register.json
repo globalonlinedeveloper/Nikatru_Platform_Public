@@ -410,23 +410,22 @@
     {
       "id": "duty.renovate",
       "kind": "duty",
-      "what": "Advances every pinned input — actions, npm, pub, and the four toolchain versions in tooling/versions.json — by proposal, never by memory.",
-      "detector": "The Dependency Dashboard issue and the `chore/renovate-*` branches Renovate opens on origin — both observable from outside this repo. ⚠️ NAMED HONESTLY: there is no in-tree guard over Renovate's reach. O-9's assert-update-coverage.mjs was planned and is NOT built, and this row said it was; a register that names a reader which does not exist reproduces the exact \"zero readers\" defect it was written to end.",
+      "what": "Advances every pinned input — actions, npm, pub, and the toolchain versions in tooling/versions.json — by proposal, never by memory.",
+      "detector": "tooling/ci/assert-update-coverage.mjs, on every push: it APPLIES each customManager's file pattern to the real repository paths and each matchString to the real file content, and fails when a manager reaches nothing or captures nothing. Every pin in tooling/versions.json must be reached by such a manager or carry a written exemption in that same file's `$updateExemptions`. The Dependency Dashboard issue and the `chore/renovate-*` branches on origin remain the observable half, read by a human.",
       "response": "Review and merge the proposal. NO AUTOMERGE, deliberately.",
       "cadence": "7d",
       "mechanism": {
         "substrate": "renovate-app",
         "anchor": "renovate.json",
-        "record": "the Dependency Dashboard issue + chore/renovate-* branches on origin",
-        "failingValue": "an ecosystem present in the tree that no manager reaches — which nothing computes today; the observable half is a dashboard entry or a proposal branch appearing inside the cadence",
-        "readBy": "a human reading the Dependency Dashboard issue. No CI guard reads it — that gap is this row."
+        "record": "the Dependency Dashboard issue + chore/renovate-* branches on origin, and — for the CONFIGURATION half — the guard's own exit status on every push",
+        "failingValue": "a customManager whose pattern matches no file, or matches a file and captures no currentValue, or a pin in tooling/versions.json that no manager reaches and no written exemption covers",
+        "readBy": "tooling/ci/assert-update-coverage.mjs for the configuration half; a human reading the Dependency Dashboard issue for the proposal half"
       },
       "accessProviders": [
         "github"
       ],
       "source": "verified",
-      "ownerGated": true,
-      "ownerGap": "The mechanism is SHIPPED (renovate.json, the dashboard issue, a live proposal branch); what is missing is the guard that proves the configuration still REACHES every ecosystem. Building it is [14]O-9 and it is not in this increment — so the gap prints rather than being described as covered."
+      "note": "🔬 CLOSED 2026-08-02 by [14]O-9. This row previously carried an ownerGap saying the guard 'was planned and is NOT built'. It is built, and its FIRST run found `wrangler` — the tool that publishes production — pinned in versions.json and reached by no manager at all. That is the value of running the matchers rather than asking whether the mechanism is enabled: all five customManagers were once written with a regex where a glob was expected, matched nothing for weeks, and 'is it enabled' stayed green throughout."
     },
     {
       "id": "duty.oci-console-session",

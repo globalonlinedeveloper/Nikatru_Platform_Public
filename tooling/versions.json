@@ -122,5 +122,38 @@
   "wrangler": "4.114.0",
   "runner_ubuntu": "ubuntu-24.04",
   "runner_windows": "windows-2025",
-  "runner_macos": "macos-26"
+  "runner_macos": "macos-26",
+
+  "$updateExemptions_comment": [
+    "[pipeline 14]O-9 — EVERY KEY ABOVE MUST BE REACHED BY AN UPDATE MECHANISM, OR APPEAR HERE WITH A",
+    "WRITTEN REASON. tooling/ci/assert-update-coverage.mjs enforces both directions: an unreached pin",
+    "with no exemption fails, and an exemption for a pin that no longer exists fails too, so a waiver",
+    "cannot outlive the thing it waived.",
+    "",
+    "THE WAIVER LIVES IN THIS FILE, BESIDE THE PIN, DELIBERATELY. A list of excuses in another file is",
+    "one that goes stale silently, because the diff that removes a pin never shows it.",
+    "",
+    "🔴 WHY THE GUARD RUNS THE MATCHERS INSTEAD OF READING THE CONFIG. All five customManagers in",
+    "renovate.json were once written with a REGEX where a GLOB was expected. They matched nothing and",
+    "proposed no update for any toolchain pin for weeks — while 'an update-mechanism configuration",
+    "exists and is enabled', the drafted acceptance, reported green the entire time. Only applying the",
+    "pattern to a real path, and the matchString to the real content, can see that.",
+    "",
+    "🔬 `wrangler` was UNCOVERED until 2026-08-02 and was found by that guard's first run: the tool",
+    "that publishes production, declared here and advanced by nobody. It now has a customManager."
+  ],
+  "$updateExemptions": [
+    {
+      "key": "runner_ubuntu",
+      "why": "A GitHub Actions RUNNER IMAGE LABEL, not a package. No datasource in this repo's Renovate config resolves runner labels, and whether Renovate ships a manager that would is UNVERIFIED — no primary page was read for this entry, so do not restate it as a fact anywhere else. It is also not a version in the usual sense: see $runners_comment above, where windows-latest AND windows-2025 both migrated to a new Visual Studio under an unchanged pin. A bot bumping the label would not have caught that either. Advanced by the owner when an image family is retired, which fails loudly rather than silently."
+    },
+    {
+      "key": "runner_windows",
+      "why": "Same as runner_ubuntu — and this is the exact pin the compiler changed underneath, so it is the case that PROVES a routine version bump would not have helped here."
+    },
+    {
+      "key": "runner_macos",
+      "why": "Same as runner_ubuntu. It also decides which Xcode compiles iOS and macOS, so moving it is a deliberate act with a six-platform build behind it, not a routine dependency PR."
+    }
+  ]
 }

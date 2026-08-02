@@ -139,6 +139,26 @@
     },
     {
       "customType": "regex",
+      "description": [
+        "tooling/versions.json - wrangler [pipeline F-2, 14]O-9",
+        "🔴 ADDED 2026-08-02 because tooling/ci/assert-update-coverage.mjs found it uncovered on its",
+        "very first run. wrangler is THE TOOL THAT PUBLISHES PRODUCTION, and $wrangler_comment in",
+        "versions.json records that it was already caught a full MAJOR version behind, chosen by a",
+        "third party's default, holding the account API token. It was declared once and advanced by",
+        "nobody: the npm manager reaches the ^4.0.0 range in each service's package.json, but nothing",
+        "reached this pin — and this pin is the value the deploy workflows actually install."
+      ],
+      "matchStrings": [
+        "\"wrangler\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "wrangler",
+      "datasourceTemplate": "npm",
+      "managerFilePatterns": [
+        "/^tooling\\/versions\\.json$/"
+      ]
+    },
+    {
+      "customType": "regex",
       "description": "tooling/versions.json - mason_cli [pipeline F-2]",
       "matchStrings": [
         "\"mason_cli\":\\s*\"(?<currentValue>[^\"]+)\""
