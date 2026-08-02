@@ -40,6 +40,18 @@ class TelemetryBootstrap {
         options.tracesSampleRate = config.tracesSampleRate;
         // Belt and braces: never attach default PII (ip address, ...).
         options.sendDefaultPii = false;
+        // 🔴 SESSIONS ARE OFF, AND THAT IS AN HONESTY FIX, NOT A SAVING.
+        // [pipeline 11]E-10. sentry_flutter defaults this ON, so the SDK was
+        // computing and shipping session start/end envelopes to a server that
+        // has no concept of them: GlitchTip does not implement Sentry's release
+        // health, so nothing on the receiving end ever stored one. The visible
+        // consequence is worse than the wasted bytes — "crash-free sessions" is
+        // the metric every crash-health conversation reaches for, and leaving
+        // this on implies the number is available when it can never be
+        // computed. Turning it off makes the gap explicit: crash health here
+        // has to be defined against a denominator we actually hold (`app_open`
+        // rows in `events`), not against a session count nobody records.
+        options.enableAutoSessionTracking = false;
         options.beforeSend = (event, hint) => scrubEvent(event);
       },
       appRunner: appRunner,

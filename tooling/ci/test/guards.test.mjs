@@ -46,6 +46,9 @@ after(() => {
 function fixture(name, files) {
   const dir = join(ROOT, name);
   for (const [rel, body] of Object.entries(files)) {
+    // `null` means the file is ABSENT — the only way to fixture a COVERAGE LOST
+    // case for a guard that reads a specific path.
+    if (body === null) continue;
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
@@ -1570,6 +1573,11 @@ Future<void> main() async {
       android = DEPLOY_WITH_DSN,
       windows = DEPLOY_WITH_DSN,
       register = CHANNEL_REGISTER,
+      // [pipeline 11]E-10. The fixture's COMMENT deliberately explains the
+      // setting in prose, so the passing case exercises the comment stripping
+      // rather than assuming it — the whole file this models is prose about
+      // exactly this line.
+      bootstrap = '// enableAutoSessionTracking is left at its default here.\noptions.enableAutoSessionTracking = false;\n',
       mainDart = MAIN_READS_DSN,
       brickMain = BRICK_MAIN_INITS_AUTH,
       reminders = BRICK_SCHEDULES,
@@ -1591,6 +1599,7 @@ Future<void> main() async {
         jobWith('windows', windows),
       ),
       'apps/subly/lib/main.dart': mainDart,
+      'packages/telemetry/lib/src/telemetry_bootstrap.dart': bootstrap,
       'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': brickMain,
     });
 
@@ -1705,6 +1714,38 @@ Future<void> main() async {
     });
     assert.equal(code, 1);
     assert.match(out, /names job `windows_build` .* and this scan could not find that job/);
+  });
+
+  // ── [pipeline 11]E-10 — the sink must not imply a metric the server cannot
+  //    supply. sentry_flutter defaults enableAutoSessionTracking ON and
+  //    GlitchTip does not implement release health, so the client shipped
+  //    session envelopes nothing stored — and "crash-free sessions", the metric
+  //    every crash-health conversation reaches for, read as available when it
+  //    can never be computed here.
+  test('FAILS when session tracking is left at the SDK default', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sessions-on', { bootstrap: 'options.sendDefaultPii = false;\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /does not set `options\.enableAutoSessionTracking = false`/);
+  });
+
+  test('a COMMENT about session tracking does not satisfy the check', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sessions-prose', {
+        bootstrap: '// options.enableAutoSessionTracking = false; // TODO\noptions.sendDefaultPii = false;\n',
+      }),
+    });
+    assert.equal(code, 1, 'a setting behind a comment marker is prose, not a setting');
+    assert.match(out, /does not set `options\.enableAutoSessionTracking = false`/);
+  });
+
+  test('COVERAGE LOST when the telemetry bootstrap is gone', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-bootstrap-gone', { bootstrap: null }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — .*telemetry_bootstrap\.dart is gone/s);
   });
 
   test('COVERAGE LOST when the channel register cannot be read at all', () => {
@@ -1921,6 +1962,10 @@ class Ed25519PackVerifier implements PackVerifier {
     '.github/workflows/build-platforms.yml':
       `name: f\njobs:\n${laneJob('linux_web_android')}${laneJob('windows')}`,
     'apps/subly/lib/main.dart': "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n",
+    // [pipeline 11]E-10 — another seam that must stay satisfied so these tests
+    // isolate the verifier rather than failing for an unrelated reason.
+    'packages/telemetry/lib/src/telemetry_bootstrap.dart':
+      'options.enableAutoSessionTracking = false;\n',
     'apps/subly/lib/state/analytics_providers.dart':
       "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
     'apps/subly/lib/features/consent/consent_prompt.dart': 'recordAnalyticsConsent(ref, granted: true);',

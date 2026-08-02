@@ -476,6 +476,37 @@ function jobBody(yaml, jobName) {
       ok(`crash sink wired — ${wired} artifact lane(s) supply GLITCHTIP_DSN (${lanes.map((l) => `${l.id}:${l.job}`).join(', ')}) and the app reads it`);
     }
   }
+
+  // ── …and the sink does not claim a concept the SERVER cannot honour ───────
+  // [pipeline 11]E-10. sentry_flutter defaults `enableAutoSessionTracking` ON,
+  // so the SDK computed and shipped session envelopes to GlitchTip, which does
+  // not implement Sentry's release health and stored none of them. The wasted
+  // bytes are the small half. The real cost is that "crash-free sessions" is
+  // the metric every crash-health conversation reaches for, and leaving this on
+  // implies the number is available when it can NEVER be computed here — so the
+  // one crash-health figure this factory can actually produce has to be defined
+  // against a denominator it holds (`app_open` rows), and nothing would have
+  // said so.
+  const BOOTSTRAP = 'packages/telemetry/lib/src/telemetry_bootstrap.dart';
+  const bootstrapPath = join(repo, ...BOOTSTRAP.split('/'));
+  if (!existsSync(bootstrapPath)) {
+    fail(`COVERAGE LOST — ${BOOTSTRAP} is gone, so the session-tracking check is watching a file that no longer exists.`);
+  } else {
+    // Comments stripped: this file's own prose explains the setting at length,
+    // and a raw-text match would be satisfied by the explanation.
+    const src = readFileSync(bootstrapPath, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    if (!/enableAutoSessionTracking\s*=\s*false/.test(src)) {
+      fail(
+        `${BOOTSTRAP} does not set \`options.enableAutoSessionTracking = false\`. The SDK default is ON and ` +
+          'GlitchTip does not implement release health, so the client computes and ships sessions nothing stores — ' +
+          'and implies a "crash-free sessions" number that cannot be computed against this backend.',
+      );
+    } else {
+      ok('crash health — session tracking is OFF, so no metric implies a denominator GlitchTip cannot supply');
+    }
+  }
 }
 
 if (failed) {
