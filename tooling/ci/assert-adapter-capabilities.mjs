@@ -26,8 +26,9 @@
 //   5. it has a test, and that test really exercises the descriptor
 //   6. it says what DEGRADES and what it was verified against, because a matrix
 //      with no version pin silently rots at the next dependency bump
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 /**
  * Blank Dart comments and string literals, preserving offsets and newlines.
@@ -200,7 +201,7 @@ function thirdPartyDeps(pkgDir) {
 const pkgRoot = join(ROOT, 'packages');
 const adapters = [];
 if (existsSync(pkgRoot)) {
-  for (const name of readdirSync(pkgRoot)) {
+  for (const name of listDir(pkgRoot)) {
     if (name === 'core' || name === 'design_system') continue;
     if (thirdPartyDeps(`packages/${name}`).length > 0) adapters.push(`packages/${name}`);
   }
@@ -499,7 +500,7 @@ if (adapters.length > 0 && checked === 0) {
   const senders = [];
   const dartUnder = (dir, rel, out) => {
     let entries;
-    try { entries = readdirSync(join(ROOT, dir), { withFileTypes: true }); } catch { return out; }
+    try { entries = listDir(join(ROOT, dir), { withFileTypes: true }); } catch { return out; }
     for (const e of entries) {
       if (e.name.startsWith('.') || e.name === 'build' || e.name === 'node_modules') continue;
       const p = `${dir}/${e.name}`;

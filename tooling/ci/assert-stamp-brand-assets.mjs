@@ -35,9 +35,10 @@
 //
 // Usage:  node tooling/ci/assert-stamp-brand-assets.mjs <appDir> [--seed RRGGBB]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { inflateSync } from 'node:zlib';
+import { listDir } from './tree-walk.mjs';
 
 const args = process.argv.slice(2);
 const appDir = resolve(args.find((a) => !a.startsWith('--')) ?? '.');
@@ -99,7 +100,7 @@ if (stockDirs.length === 0) {
  *  suffixes, which are stripped so the map keys match the stamped filenames. */
 const stock = new Map();
 for (const dir of stockDirs) {
-  for (const f of readdirSync(dir)) {
+  for (const f of listDir(dir)) {
     if (!f.includes('.png')) continue;
     const name = f.replace(/\.(copy|img)\.tmpl$/, '');
     if (!stock.has(name)) stock.set(name, readFileSync(join(dir, f)));

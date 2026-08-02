@@ -41,10 +41,11 @@
 //
 // Usage:  node tooling/ci/assert-policy-archive.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { visibleText } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 
@@ -125,10 +126,10 @@ const archiveDir = join(repoRoot, ARCHIVE_ROOT);
 /** version → Map(locale → { file, declared }) */
 const archived = new Map();
 if (existsSync(archiveDir)) {
-  for (const v of readdirSync(archiveDir, { withFileTypes: true })) {
+  for (const v of listDir(archiveDir, { withFileTypes: true })) {
     if (!v.isDirectory()) continue;
     const locales = new Map();
-    for (const l of readdirSync(join(archiveDir, v.name), { withFileTypes: true })) {
+    for (const l of listDir(join(archiveDir, v.name), { withFileTypes: true })) {
       if (!l.isDirectory()) continue;
       const file = join(archiveDir, v.name, l.name, DOC);
       const src = read(file);
@@ -355,7 +356,7 @@ if (archived.size === 0) {
   const l10nAbs = join(repoRoot, ...L10N_DIR.split('/'));
   let locales = [];
   if (existsSync(l10nAbs)) {
-    locales = readdirSync(l10nAbs)
+    locales = listDir(l10nAbs)
       .map((f) => f.match(/^app_([A-Za-z0-9_-]+)\.arb$/)?.[1])
       .filter((v) => typeof v === 'string')
       .map((v) => v.replace(/_/g, '-'))

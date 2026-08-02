@@ -121,7 +121,7 @@ const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
  *  behind does not fail the assertion under test, it fails to START, and the
  *  test then reports whatever the module loader said. (Found the moment
  *  `stripInert`/`visibleText` moved into the shared reduction module.) */
-const GUARD_IMPORTS = ['text-reductions.mjs'];
+const GUARD_IMPORTS = ['text-reductions.mjs', 'tree-walk.mjs'];
 
 function selfHosted(dir, { root = 'a' } = {}) {
   const to = join(dir, 'tooling', 'ci', GUARD);

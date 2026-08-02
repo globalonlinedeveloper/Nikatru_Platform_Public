@@ -37,9 +37,10 @@
 //
 // Usage:  node tooling/ci/assert-licence-register.mjs [repoRoot] [--bundle DIR]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { stripSourceComments } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 // ⚠️ ARGUMENT PARSING, AND IT ALREADY BIT ONCE. The first draft read
 // `argv.find((a, i) => !a.startsWith('--') && i !== bundleAt + 1)`; with no
@@ -84,7 +85,7 @@ const D = register.derivation ?? {};
 const walk = (dir, out = []) => {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return out;
   }
@@ -186,7 +187,7 @@ if (bundleDir === null) {
         continue;
       }
       const files = statSync(abs).isDirectory()
-        ? readdirSync(abs, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(abs, e.name))
+        ? listDir(abs, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(abs, e.name))
         : [abs];
       for (const file of files) {
         declaredAssetFiles++;
@@ -433,7 +434,7 @@ const appDirs = [];
 for (const root of D.appRoots ?? []) {
   const abs = join(repoRoot, ...root.split('/'));
   if (!existsSync(abs)) continue;
-  for (const e of readdirSync(abs, { withFileTypes: true })) {
+  for (const e of listDir(abs, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
     if (existsSync(join(abs, e.name, 'pubspec.yaml'))) appDirs.push(`${root}/${e.name}`);
   }

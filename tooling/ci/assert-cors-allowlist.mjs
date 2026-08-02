@@ -24,8 +24,9 @@
 //
 // Usage:  node tooling/ci/assert-cors-allowlist.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, posix } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? '.');
 const SERVICES = join(ROOT, 'services');
@@ -131,7 +132,7 @@ if (Object.keys(POLICY).length < MIN_SERVICES || policyOrigins < MIN_REQUIRED_OR
 
 // ── enumerate every Worker config under services/ ────────────────────────────
 const configs = [];
-for (const entry of readdirSync(SERVICES, { withFileTypes: true }).sort((a, b) =>
+for (const entry of listDir(SERVICES, { withFileTypes: true }).sort((a, b) =>
   a.name < b.name ? -1 : 1,
 )) {
   if (!entry.isDirectory() || entry.name.startsWith('.')) continue;

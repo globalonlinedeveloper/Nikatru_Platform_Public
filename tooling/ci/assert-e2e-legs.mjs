@@ -56,11 +56,12 @@
 //
 // Usage:  node tooling/ci/assert-e2e-legs.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { stripSourceComments } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/e2e-leg-register.json';
@@ -214,7 +215,7 @@ const readDartTree = (dir) => {
   const out = [];
   const walk = (d) => {
     if (!existsSync(d)) return;
-    for (const e of readdirSync(d, { withFileTypes: true })) {
+    for (const e of listDir(d, { withFileTypes: true })) {
       const p = join(d, e.name);
       if (e.isDirectory()) walk(p);
       else if (e.name.endsWith('.dart')) out.push(stripSourceComments(readFileSync(p, 'utf8'), '.dart'));

@@ -42,10 +42,11 @@
 //
 // Usage:  node tooling/ci/assert-flag-exposure.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -165,7 +166,7 @@ if (barrel === null || !barrel.includes('observed_feature_flags.dart')) {
 // ── the scan ────────────────────────────────────────────────────────────────
 function walk(dir, out = []) {
   let entries;
-  try { entries = readdirSync(dir); } catch { return out; }
+  try { entries = listDir(dir); } catch { return out; }
   for (const e of entries) {
     const p = join(dir, e);
     let s;

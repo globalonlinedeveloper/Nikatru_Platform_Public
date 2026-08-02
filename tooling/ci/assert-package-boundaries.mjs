@@ -33,8 +33,9 @@
 // non-fatal on purpose. So the gate is structurally blind here. A pubspec-only
 // guard would have caught NEITHER, which is the whole reason the criterion was
 // amended before a line of this file was written.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = process.cwd();
 const problems = [];
@@ -79,7 +80,7 @@ function packageImports(dir) {
   const found = new Map();
   const walk = (d) => {
     if (!existsSync(d)) return;
-    for (const entry of readdirSync(d)) {
+    for (const entry of listDir(d)) {
       const full = join(d, entry);
       if (statSync(full).isDirectory()) walk(full);
       else if (entry.endsWith('.dart')) {
@@ -185,7 +186,7 @@ const WRAPPED = new Map(); // vendor -> adapter package that wraps it
 const pkgRoot = join(ROOT, 'packages');
 const adapterNames = [];
 if (existsSync(pkgRoot)) {
-  for (const name of readdirSync(pkgRoot)) {
+  for (const name of listDir(pkgRoot)) {
     if (name === 'core' || name === 'design_system') continue;
     const deps = depsOf(`packages/${name}`);
     if (!deps) continue;
@@ -256,7 +257,7 @@ const KNOWN_BYPASSES = {
 
 const appRoots = [];
 if (existsSync(join(ROOT, 'apps'))) {
-  for (const a of readdirSync(join(ROOT, 'apps'))) {
+  for (const a of listDir(join(ROOT, 'apps'))) {
     // apps/probe is a gitignored local stamp — present on a dev box, never in
     // CI. Scanning it would make this guard's result depend on whether somebody
     // happened to stamp a probe, which is not a property of the repository.

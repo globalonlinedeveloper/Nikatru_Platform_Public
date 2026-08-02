@@ -59,9 +59,10 @@
 // Usage:  node tooling/ci/assert-monitor-coverage.mjs [repoRoot]
 // Exit 0 = every deployed hostname is declared, 1 = violation or lost coverage.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -145,7 +146,7 @@ const add = (source, host) => {
 if (!existsSync(rel(SERVICES))) {
   coverageLost(`no ${SERVICES}/ directory under ${ROOT}; the Worker half of the derivation ran over nothing.`);
 }
-for (const e of readdirSync(rel(SERVICES), { withFileTypes: true })) {
+for (const e of listDir(rel(SERVICES), { withFileTypes: true })) {
   if (!e.isDirectory() || e.name.startsWith('.')) continue;
   for (const name of ['wrangler.jsonc', 'wrangler.json']) {
     const path = `${SERVICES}/${e.name}/${name}`;
@@ -183,7 +184,7 @@ for (const app of Array.isArray(catalogue) ? catalogue : []) {
 if (!existsSync(rel(SITES))) {
   coverageLost(`no ${SITES}/ directory under ${ROOT}; the site half of the derivation ran over nothing.`);
 }
-for (const e of readdirSync(rel(SITES), { withFileTypes: true })) {
+for (const e of listDir(rel(SITES), { withFileTypes: true })) {
   if (!e.isDirectory() || e.name.startsWith('_') || e.name.startsWith('.')) continue;
   const html = readIf(`${SITES}/${e.name}/index.html`);
   if (html === null) continue;

@@ -42,9 +42,10 @@
 // Usage:  node tooling/ci/assert-entitlement-contract.mjs [repoRoot]
 // Exit 0 = the contract holds, 1 = it does not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -198,7 +199,7 @@ for (const { dir, label } of REQUIRED_COVERAGE) {
     console.error(`✗ COVERAGE LOST — ${dir} does not exist (${label}). The files did not become correct; the guard stopped looking at them.`);
     process.exit(1);
   }
-  const found = readdirSync(abs).filter((f) => f.endsWith('.sql')).sort();
+  const found = listDir(abs).filter((f) => f.endsWith('.sql')).sort();
   if (found.length === 0) {
     console.error(`✗ COVERAGE LOST — no .sql files under ${dir} (${label}).`);
     process.exit(1);

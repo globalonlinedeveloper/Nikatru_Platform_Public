@@ -43,9 +43,10 @@
 // Usage:  node tooling/ci/assert-platform-register.mjs [repoRoot]
 // Exit 0 = the register and the tree agree, 1 = they do not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'platform-register.json');
@@ -409,7 +410,7 @@ for (const entry of routes) {
 function wranglerConfigsOnDisk() {
   const found = [];
   if (existsSync(SERVICES_DIR)) {
-    for (const e of readdirSync(SERVICES_DIR, { withFileTypes: true })) {
+    for (const e of listDir(SERVICES_DIR, { withFileTypes: true })) {
       if (!e.isDirectory() || e.name.startsWith('.')) continue;
       for (const f of ['wrangler.jsonc', 'wrangler.json']) {
         const p = join(SERVICES_DIR, e.name, f);
@@ -421,7 +422,7 @@ function wranglerConfigsOnDisk() {
   // only ever inspects the throwaway CI probe stamp.
   const walk = (dir, base) => {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = listDir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (e.isDirectory()) walk(join(dir, e.name), `${base}/${e.name}`);
       else if (e.name === 'wrangler.jsonc' || e.name === 'wrangler.json') found.push(rel(`${base}/${e.name}`));

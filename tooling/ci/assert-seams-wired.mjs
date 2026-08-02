@@ -16,8 +16,9 @@
 // It also pins the privacy-policy version the app claims against the version the
 // published policy actually carries. A consent artifact naming a policy version
 // nobody was shown is worse than no artifact: it is a false compliance record.
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, sep } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const repo = process.cwd();
 let failed = false;
@@ -40,7 +41,7 @@ const SKIP_PATH = [join('apps', 'probe')];
 
 function walk(dir, out = []) {
   let entries;
-  try { entries = readdirSync(dir); } catch { return out; }
+  try { entries = listDir(dir); } catch { return out; }
   for (const e of entries) {
     const p = join(dir, e);
     let s;

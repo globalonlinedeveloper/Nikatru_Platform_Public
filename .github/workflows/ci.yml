@@ -131,6 +131,18 @@ jobs:
       - name: Every guard is tested and self-checking
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-guard-coverage.mjs
+      # No guard enumerates a directory itself. Reproduced on main 2026-08-02:
+      # with agent worktrees present under .claude/worktrees/, five guards walked
+      # into NESTED FULL COPIES of this repository and read their files as the
+      # tree's own — assert-ops-register exited 1 with sixteen problems. CI
+      # creates no worktrees, so THIS JOB WAS GREEN THROUGHOUT and only a
+      # developer machine was red, which is the shape that teaches people to stop
+      # believing a guard. Every listing now goes through tooling/ci/tree-walk.mjs
+      # and this step proves that helper still refuses, against a real nested
+      # checkout it builds in a temp directory on every run.
+      - name: Guard tree walks cannot leave the tree
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-walks-bounded.mjs
       # The repository's own legal posture. THREE limbs of deliberately different
       # strength (the guard says which is which): one support address across
       # SECURITY.md, every app's AppConfig and the published contact page; the two

@@ -77,8 +77,9 @@
 // truncated catalogue name, a missing derivation, or a probe that cannot detect
 // any of them.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -272,7 +273,7 @@ let scanned = 0;
 const walk = (dir) => {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return;
   }

@@ -53,9 +53,10 @@
 //
 // Usage:  node tooling/ci/assert-retention-coverage.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -98,7 +99,7 @@ export function findWranglerConfigs(root) {
   const excluded = [];
   const walk = (dir, rel) => {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = listDir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (e.name === 'node_modules' || e.name === '.git' || e.name === 'build') continue;
       const r = rel ? `${rel}/${e.name}` : e.name;
@@ -160,7 +161,7 @@ export function enumerateStores(root) {
           'Every table in that database would silently leave the domain.',
         ]);
       }
-      const sqls = readdirSync(migDir).filter((f) => f.endsWith('.sql'));
+      const sqls = listDir(migDir).filter((f) => f.endsWith('.sql'));
       if (sqls.length === 0) {
         coverageLost([`${rel}'s migrations directory ${db.migrations_dir} contains no .sql file, so ${db.database_name} contributes no tables.`]);
       }

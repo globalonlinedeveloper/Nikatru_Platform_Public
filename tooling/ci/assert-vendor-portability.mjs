@@ -37,9 +37,10 @@
 // SCOPE: services, not libraries — the checklist opens "before adopting any new
 // SERVICE". Dart package deps are C-5 limb (c)'s job; duplicating them here
 // would be two lists to keep in step.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
@@ -89,7 +90,7 @@ const svcRoot = join(ROOT, 'services');
 // DIRECTORIES ONLY. `services` is the set every per-service relationship below
 // ranges over, so a stray file in services/ must not become a phantom member.
 const services = existsSync(svcRoot)
-  ? readdirSync(svcRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+  ? listDir(svcRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
   : [];
 for (const s of services) {
   const p = join(svcRoot, s, 'src/types.ts');

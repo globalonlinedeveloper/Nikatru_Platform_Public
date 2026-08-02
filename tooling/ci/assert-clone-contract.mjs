@@ -20,8 +20,9 @@
 //   node tooling/ci/assert-clone-contract.mjs --client probe          # phase 1
 // Exit 0 = contract holds, 1 = violated.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync, lstatSync } from 'node:fs';
+import { existsSync, readFileSync, lstatSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const args = process.argv.slice(2);
 const argOf = (flag) => {
@@ -77,7 +78,7 @@ const kReadableExt = new Set(['.dart', '.yaml', '.yml', '.json', '.arb']);
 const MIN_CLIENT_SOURCES = 5;
 function walk(dir) {
   const found = [];
-  for (const entry of readdirSync(dir)) {
+  for (const entry of listDir(dir)) {
     if (entry === '.dart_tool' || entry === 'build' || entry === 'node_modules') continue;
     const p = join(dir, entry);
     let st;
@@ -352,7 +353,7 @@ const CRON_HOME = 'platform';
 {
   let dirs = null;
   try {
-    dirs = readdirSync('services', { withFileTypes: true })
+    dirs = listDir('services', { withFileTypes: true })
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
       .sort();

@@ -62,6 +62,7 @@
   "text-reductions.test.mjs": 17,
   "update-coverage.test.mjs": 28,
   "vendor-portability.test.mjs": 19,
+  "walks-bounded.test.mjs": 25,
   "windows-store-submission.test.mjs": 20,
   "worker-error-sink.test.mjs": 18
 }

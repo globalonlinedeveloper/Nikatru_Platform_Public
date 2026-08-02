@@ -109,10 +109,11 @@
 //
 // Usage:  node tooling/ci/assert-guard-coverage.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI = join(ROOT, 'tooling', 'ci');
@@ -146,6 +147,10 @@ const NOT_A_SCANNER = new Map([
   [
     'record-deployment.mjs',
     'writes a GitHub Deployment record. It performs an action rather than scanning anything, so there is no scope for it to silently cover less.',
+  ],
+  [
+    'tree-walk.mjs',
+    'is not a guard: it is the ONE directory listing — `listDir`, `boundedGlob` and the `.git`/`.claude` rule that decides what is not part of the tree under test — imported by every guard in tooling/ci that reads a directory. It scans nothing of its own, so "did my scan still reach the tree" belongs to those importers, each of which carries its own COVERAGE LOST over what it reads. What it CAN lose is its refusal, and that is not left to prose: assert-walks-bounded.mjs builds a real nested checkout in a temp directory on every run and fails if listDir or boundedGlob returns anything from inside it.',
   ],
   [
     'text-reductions.mjs',
@@ -202,11 +207,11 @@ if (!existsSync(CI) || !existsSync(TESTS)) {
   ]);
 }
 
-const guards = readdirSync(CI).filter((f) => f.endsWith('.mjs')).sort();
-const testFiles = readdirSync(TESTS).filter((f) => f.endsWith('.test.mjs')).sort();
+const guards = listDir(CI).filter((f) => f.endsWith('.mjs')).sort();
+const testFiles = listDir(TESTS).filter((f) => f.endsWith('.test.mjs')).sort();
 
 // ── the scan is FLAT by design, so a subfolder must be LOUD, not a leak ──────
-// readdirSync(CI) does not recurse. Triage 2026-07-31 (mutation-proven): a
+// listDir(CI) does not recurse. Triage 2026-07-31 (mutation-proven): a
 // "tidy into tooling/ci/guards/" refactor moved 22 guards into a subfolder and
 // this guard printed its intended pass message over the 15 that remained —
 // every moved guard silently left BOTH per-guard checks. Guards live flat in
@@ -215,12 +220,12 @@ const testFiles = readdirSync(TESTS).filter((f) => f.endsWith('.test.mjs')).sort
 // longer see or a new layout this guard was never taught.
 const strayMjs = [];
 const findStray = (dir, rel) => {
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
+  for (const e of listDir(dir, { withFileTypes: true })) {
     if (e.isDirectory()) findStray(join(dir, e.name), `${rel}${e.name}/`);
     else if (e.name.endsWith('.mjs')) strayMjs.push(`${rel}${e.name}`);
   }
 };
-for (const e of readdirSync(CI, { withFileTypes: true })) {
+for (const e of listDir(CI, { withFileTypes: true })) {
   if (e.isDirectory() && e.name !== 'test') findStray(join(CI, e.name), `${e.name}/`);
 }
 if (strayMjs.length) {
@@ -256,7 +261,7 @@ if (!existsSync(WORKFLOWS)) {
   ]);
 }
 
-const workflowFiles = readdirSync(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f)).sort();
+const workflowFiles = listDir(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f)).sort();
 
 // (i) SCAN vs MANIFEST, the assert-workflow-hardening pattern. `git ls-files` is
 //     the committed truth about which workflows exist; `workflowFiles` is what
@@ -362,9 +367,29 @@ const importsOf = (file) => {
   // this is the guard that audits which modules are reachable, and having it
   // depend on one of its own subjects is a circularity nobody should have to
   // reason about at 2am.
+  //
+  // 🔴 2026-08-02 — THIS WAS `.replace(/\/\*[\s\S]*?\*\//g, ' ')` AND IT ATE THIS
+  // FILE'S OWN IMPORTS. Line 70 of this very file is a LINE comment containing
+  // the text `services/*`; a block-comment regex reads that as an opening
+  // delimiter and deletes everything up to the next `*/` — here, sixty lines
+  // including the entire import block. `importsOf` therefore returned NOTHING
+  // for assert-guard-coverage.mjs, and every module reachable only through it
+  // was reported as reached by nobody. It surfaced the day a second shared
+  // module (tree-walk.mjs) was imported by this guard alone in a fixture; until
+  // then the graph had been quietly missing edges and printing ok.
+  //
+  // The repair is to stop reducing and filter by LINE: a line is discounted only
+  // if it OPENS with a comment marker, which no real import statement does. That
+  // can over-discount (a `*`-prefixed continuation line) but cannot silently
+  // miss an edge — and a missing edge here reports MORE coverage than exists,
+  // which is the only direction that matters.
   const src = readFileSync(join(CI, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    .split('\n')
+    .filter((l) => {
+      const t = l.trim();
+      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+    })
+    .join('\n');
   const out = new Set();
   // Static `import … from './x.mjs'` and dynamic `import('./x.mjs')`. Relative
   // and flat: a nested path is already COVERAGE LOST above.

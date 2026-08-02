@@ -32,6 +32,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
@@ -310,10 +311,10 @@ let permitted = [];
       fileOfRoute.set(m[1], m[2]);
     }
 
-    const { readdirSync, statSync } = await import('node:fs');
+    const { statSync } = await import('node:fs');
     const files = [];
     const walk = (d) => {
-      for (const e of readdirSync(d)) {
+      for (const e of listDir(d)) {
         const f = join(d, e);
         if (statSync(f).isDirectory()) walk(f);
         else if (e.endsWith('.dart')) files.push(f);

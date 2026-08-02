@@ -48,9 +48,10 @@
 //
 // Usage:  node tooling/ci/assert-data-inventory.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { visibleText, normaliseForMatch, stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const REGISTER = join(repoRoot, 'tooling', 'legal', 'data-inventory.json');
@@ -85,7 +86,7 @@ const D = register.derivation ?? {};
 const walk = (dir, out = []) => {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return out;
   }

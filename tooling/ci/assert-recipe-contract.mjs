@@ -26,8 +26,9 @@
 //
 // Usage:  node tooling/ci/assert-recipe-contract.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 import {
   IMPLEMENTED_MODALITIES,
@@ -51,7 +52,7 @@ const coverageLost = (...lines) => {
 // ── the domain ───────────────────────────────────────────────────────────────
 const recipes = [];
 if (existsSync(EXAMPLES)) {
-  for (const e of readdirSync(EXAMPLES, { withFileTypes: true })) {
+  for (const e of listDir(EXAMPLES, { withFileTypes: true })) {
     const p = join(EXAMPLES, e.name, 'recipe.json');
     if (e.isDirectory() && existsSync(p) && statSync(p).isFile()) recipes.push(p);
   }

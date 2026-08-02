@@ -50,8 +50,9 @@
 // Usage:  node tooling/ci/assert-deploy-triggers.mjs [repoRoot]
 // Exit 0 = every path-filtered Flutter deploy lane lists its real inputs.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const WF_DIR = join(ROOT, '.github', 'workflows');
@@ -161,7 +162,7 @@ function covers(paths, file) {
   return hit;
 }
 
-const files = readdirSync(WF_DIR).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+const files = listDir(WF_DIR).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
 const problems = [];
 const graded = [];
 let checks = 0;

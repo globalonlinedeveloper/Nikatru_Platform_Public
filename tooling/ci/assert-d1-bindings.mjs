@@ -40,8 +40,9 @@
 //
 // Usage:  node tooling/ci/assert-d1-bindings.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, posix } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const SERVICES = join(ROOT, 'services');
@@ -99,7 +100,7 @@ function parseJsonc(text, where) {
   }
 }
 
-const services = readdirSync(SERVICES, { withFileTypes: true })
+const services = listDir(SERVICES, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
   .map((e) => e.name)
   .sort();

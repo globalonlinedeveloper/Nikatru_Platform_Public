@@ -37,9 +37,10 @@
 // Usage:  node tooling/ci/assert-no-seam-forks.mjs [repoRoot]
 // Exit 0 = no forks, 1 = a capability exists twice.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
@@ -87,7 +88,7 @@ if (contracts.size < MIN_CONTRACTS) {
 function dartFiles(absDir, rel, out) {
   let entries;
   try {
-    entries = readdirSync(absDir, { withFileTypes: true });
+    entries = listDir(absDir, { withFileTypes: true });
   } catch {
     return;
   }

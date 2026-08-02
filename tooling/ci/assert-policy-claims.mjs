@@ -45,8 +45,9 @@
 // Exit 0 = clean, 1 = a pairing broke, an assertion failed, or the scan lost its
 // coverage.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 import {
   emphasisedSpans,
   visibleText,
@@ -197,7 +198,7 @@ for (const [page, byClaim] of rowsByPage) {
 const walk = (dir, out = []) => {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return out;
   }

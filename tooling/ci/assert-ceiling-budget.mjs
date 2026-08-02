@@ -47,9 +47,10 @@
 // Usage:  node tooling/ci/assert-ceiling-budget.mjs [repoRoot]
 // Exit 0 = every cap derives from a sourced ceiling; 1 = one does not.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CEILINGS = 'tooling/ceilings.json';
@@ -283,7 +284,7 @@ for (const r of byId.values()) {
 function walk(rel, out = []) {
   const a = abs(rel);
   if (!existsSync(a) || !statSync(a).isDirectory()) return out;
-  for (const e of readdirSync(a, { withFileTypes: true })) {
+  for (const e of listDir(a, { withFileTypes: true })) {
     const child = posix.join(rel, e.name);
     if (e.isDirectory()) walk(child, out);
     else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) out.push(child);
@@ -292,7 +293,7 @@ function walk(rel, out = []) {
 }
 
 const serviceDirs = existsSync(abs('services'))
-  ? readdirSync(abs('services'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `services/${e.name}`)
+  ? listDir(abs('services'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `services/${e.name}`)
   : [];
 const sourceFiles = serviceDirs.flatMap((d) => walk(`${d}/src`));
 if (sourceFiles.length === 0) {

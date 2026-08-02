@@ -37,9 +37,10 @@
 //
 // Usage:  node tooling/ci/assert-money-config.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -103,7 +104,7 @@ if (!existsSync(SERVICES)) {
   console.error('✗ COVERAGE LOST — no services/ directory. Every limb would range over nothing.');
   process.exit(1);
 }
-for (const e of readdirSync(SERVICES, { withFileTypes: true })) {
+for (const e of listDir(SERVICES, { withFileTypes: true })) {
   if (!e.isDirectory() || e.name.startsWith('.')) continue;
   for (const f of ['wrangler.jsonc', 'wrangler.json']) {
     const p = join(SERVICES, e.name, f);
@@ -277,7 +278,7 @@ if (!existsSync(routePath)) {
 // The two together are what make limb 4 more than a shape.
 {
   const testDir = join(ROOT, 'services', 'platform', 'test');
-  const files = existsSync(testDir) ? readdirSync(testDir).filter((f) => f.endsWith('.test.ts')) : [];
+  const files = existsSync(testDir) ? listDir(testDir).filter((f) => f.endsWith('.test.ts')) : [];
   if (files.length === 0) {
     fail('COVERAGE LOST — no test files under services/platform/test, so nothing exercises the money rail\'s fail-closed branch.');
   } else {

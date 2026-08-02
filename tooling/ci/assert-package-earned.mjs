@@ -39,8 +39,9 @@
 // SEPARATE guard. Verified before relying on it — the register guard ignores
 // unknown top-level keys, so this costs zero edits to a working guard. Recorded
 // as a deliberate deviation, not an oversight.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
@@ -75,7 +76,7 @@ if (!declared || typeof declared !== 'object') {
 //    listed here, so a new package cannot arrive unnoticed. ──────────────────
 const pkgRoot = join(ROOT, 'packages');
 const onDisk = existsSync(pkgRoot)
-  ? readdirSync(pkgRoot).filter((d) => statSync(join(pkgRoot, d)).isDirectory()).map((d) => `packages/${d}`)
+  ? listDir(pkgRoot).filter((d) => statSync(join(pkgRoot, d)).isDirectory()).map((d) => `packages/${d}`)
   : [];
 
 // Coverage self-check. A domain scan that quietly returns nothing reads exactly

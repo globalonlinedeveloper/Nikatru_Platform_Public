@@ -63,9 +63,10 @@
 // Exit 0 = every aggregate verdict is complete, no job can green-skip, and every
 //          drift check proves its artifact was written.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -344,7 +345,7 @@ const wfDir = join(ROOT, '.github', 'workflows');
 if (!existsSync(wfDir)) {
   coverageLost([`no .github/workflows under ${ROOT}.`, 'Section B scanned nothing and would have reported clean.']);
 }
-const wfFiles = readdirSync(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
+const wfFiles = listDir(wfDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
 
 /** Reads a secret into an env var? Returns the var names bound to `secrets.*`. */
 const secretVars = (step) => [...step.env.entries()].filter(([, v]) => /\$\{\{\s*secrets\./.test(v)).map(([k]) => k);

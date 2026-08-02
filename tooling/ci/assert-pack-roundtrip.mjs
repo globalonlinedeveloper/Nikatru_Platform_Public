@@ -32,9 +32,10 @@
 //
 // Usage:  node tooling/ci/assert-pack-roundtrip.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 import { PROVENANCE_REQUIRED_FIELDS, emitPack, writeManifest } from '../content_pipeline/src/pack.mjs';
 import { TEST_KEY_ID, keyPairFromSeed, signPack, testSeed, verifyWithPinnedKey } from '../content_pipeline/src/sign.mjs';
@@ -68,7 +69,7 @@ const coverageLost = (...lines) => {
 // ── the produced-pack set must not be empty ─────────────────────────────────
 if (!existsSync(RECIPE)) coverageLost(`${relative(repoRoot, RECIPE)} does not exist, so nothing was produced and "the round trip passed" would mean "it ran on nothing".`);
 const frozen = existsSync(FIXTURES)
-  ? readdirSync(FIXTURES, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort()
+  ? listDir(FIXTURES, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort()
   : [];
 if (frozen.length === 0) {
   coverageLost(

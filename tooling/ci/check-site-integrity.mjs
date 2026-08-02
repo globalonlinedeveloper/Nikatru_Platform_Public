@@ -43,7 +43,7 @@
 // claimed root is not actually among the deploy roots it scans, so the claim
 // cannot outlive the thing it claims.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +51,7 @@ import { spawnSync } from 'node:child_process';
 // ONE reading of "what a person saw on this page", shared with the archive and
 // claims guards. See tooling/ci/text-reductions.mjs for why it is not four copies.
 import { stripInert, visibleText } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 const claimedRoots = process.argv.slice(3);
@@ -160,7 +161,7 @@ const prints = [];
 function walk(dir, out = []) {
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return out;
   }
@@ -178,7 +179,7 @@ if (!existsSync(SITES)) {
   process.exit(1);
 }
 
-const siteRoots = readdirSync(SITES, { withFileTypes: true })
+const siteRoots = listDir(SITES, { withFileTypes: true })
   .filter((e) => e.isDirectory() && existsSync(join(SITES, e.name, 'index.html')))
   .map((e) => join(SITES, e.name));
 

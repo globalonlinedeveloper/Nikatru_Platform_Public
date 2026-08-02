@@ -28,9 +28,10 @@
 //
 // Usage:  node tooling/ci/assert-pack-inert.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 
 import { FORMAT_ALLOWLIST, KNOWN_REFUSED } from '../content_pipeline/src/formats.mjs';
 import { inspectPack } from '../content_pipeline/src/inert.mjs';
@@ -48,7 +49,7 @@ const coverageLost = (...lines) => {
 
 // ── the domain ───────────────────────────────────────────────────────────────
 const packs = existsSync(FIXTURES)
-  ? readdirSync(FIXTURES, { withFileTypes: true })
+  ? listDir(FIXTURES, { withFileTypes: true })
       .filter((e) => e.isDirectory() && existsSync(join(FIXTURES, e.name, 'manifest.json')))
       .map((e) => join(FIXTURES, e.name))
   : [];
