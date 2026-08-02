@@ -882,6 +882,122 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
   }
 }
 
+// ── 6b. every RELEASE_CHANNEL a workflow stamps resolves to a row ────────────
+// [9]R-10 limb 3. `--dart-define=RELEASE_CHANNEL=<id>` is compiled into the
+// artifact — it is a fact ABOUT the binary, in the same class as the version
+// string, and unlike `update_url` (runtime, owner decision #19) a value fetched
+// at runtime could not distinguish two artifacts built from one commit for two
+// channels.
+//
+// A free-text define has exactly one failure mode: a typo, which produces an
+// artifact that reports a channel nobody serves and that no query will ever
+// group correctly. `=webb` deploys perfectly and is wrong forever. This is the
+// check that makes it a build failure instead.
+//
+// Comments are stripped, and the workflow set is DERIVED from the directory —
+// a new lane acquires the obligation by existing.
+{
+  const wfDir = '.github/workflows';
+  const wfAbs = abs(wfDir);
+  const rowIds = new Set(channels.map((c) => c.id));
+  const stamps = [];
+  let scanned = 0;
+  if (existsSync(wfAbs)) {
+    for (const f of listDir(wfAbs).filter((x) => /\.ya?ml$/.test(x)).sort()) {
+      const raw = read(`${wfDir}/${f}`);
+      if (raw === null) continue;
+      scanned++;
+      const stripped = raw.replace(/^\s*#.*$/gm, '').replace(/\s#.*$/gm, '');
+      stripped.split('\n').forEach((line, i) => {
+        const m = /--dart-define(?:=|\s+)RELEASE_CHANNEL=(\S+)/.exec(line);
+        if (m) stamps.push({ at: `${wfDir}/${f}:${i + 1}`, value: m[1].replace(/^['"]|['"]$/g, '') });
+      });
+    }
+  }
+  if (scanned === 0) {
+    coverageLost([
+      `no workflow file was read under ${wfDir}, so the RELEASE_CHANNEL check ranged over nothing.`,
+      'A stamp that resolves to no row would then pass, which is the whole failure mode this limb has.',
+    ]);
+  }
+  for (const s of stamps) {
+    if (rowIds.has(s.value)) continue;
+    problems.push(
+      `${s.at} stamps --dart-define=RELEASE_CHANNEL=${s.value}, and ${REGISTER} declares no channel with that id (it has: ${[...rowIds].join(', ')}). The value is compiled into the artifact, so a typo here deploys perfectly and produces a binary that reports a channel nobody serves — for the life of that build.`,
+    );
+  }
+  if (!problems.length && stamps.length) {
+    ok(`${stamps.length} RELEASE_CHANNEL stamp(s) across ${scanned} workflow(s), each resolving to a register row`);
+  } else if (!stamps.length) {
+    prints.push(
+      `NO RELEASE_CHANNEL STAMP: ${scanned} workflow(s) scanned and none passes --dart-define=RELEASE_CHANNEL. Every artifact this factory builds therefore reports the compiled-in default ('dev'), so a crash or an analytics row cannot be attributed to the channel it came from. [9]R-10 limb 3.`,
+    );
+  }
+}
+
+// ── 6c. the channel↔account status, published into the tree ──────────────────
+// [10]D-4's AGENT SLICE. The register already maps every store row to its
+// OWNER_QUEUE id, and CI can never read OWNER_QUEUE.md (`company/` is
+// gitignored, .gitignore:15) — so the mapping was data with no status beside
+// it, and "which of these accounts exists?" had no answer any machine could
+// give.
+//
+// `accountStatus` is an OWNER-ASSERTED, DATED claim: `none | applied |
+// verified`. It cannot be derived — no API this repo can reach knows whether a
+// Partner Center verification has completed — so it is a value a human writes
+// and this guard holds to a relationship:
+//
+//   · served: true  + accountStatus != verified  ⇒ FAIL. A channel cannot be
+//     SERVED through an account that does not exist; that state is the register
+//     claiming a distribution path nobody can publish through.
+//   · every other gap                            ⇒ PRINT, never fail. Failing
+//     the build on work only the owner can do blocks every merge on something
+//     no agent can unblock — the standing posture, and the reason
+//     assert-seams-wired.mjs prints rather than fails.
+{
+  const STATUSES = new Set(['none', 'applied', 'verified']);
+  const storeRows = channels.filter((c) => c.kind === 'store');
+  if (storeRows.length === 0) {
+    coverageLost([
+      `${REGISTER} declares no \`kind: "store"\` row, so the account-status check has no domain.`,
+      'Five store rows exist today; a register with none is a scan that has lost its subject, not a',
+      'portfolio that stopped needing publisher accounts.',
+    ]);
+  }
+  for (const c of storeRows) {
+    const st = c.accountStatus;
+    if (st === undefined || st === null || typeof st !== 'object') {
+      problems.push(
+        `channel "${c.id}" is kind:"store" and carries no \`accountStatus\` {status, asOf, note}. The register maps it to OWNER_QUEUE ${c.ownerQueue ?? '(none)'} and CI cannot open that file, so without this field "does a publisher account exist for this channel?" has no answer anywhere a machine can read.`,
+      );
+      continue;
+    }
+    if (!STATUSES.has(st.status)) {
+      problems.push(
+        `channel "${c.id}" has accountStatus.status "${st.status}"; expected one of ${[...STATUSES].join(', ')}. A free-text status is a status nobody can compare.`,
+      );
+      continue;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(st.asOf ?? ''))) {
+      problems.push(
+        `channel "${c.id}" has accountStatus.status "${st.status}" with no \`asOf\` date. An undated claim about an external account is a claim nobody can tell has gone stale — the same defect the restore-drill dates exist to avoid.`,
+      );
+      continue;
+    }
+    if (c.served === true && st.status !== 'verified') {
+      problems.push(
+        `channel "${c.id}" is SERVED and its accountStatus is "${st.status}" (as of ${st.asOf}). A served channel is one this factory publishes through; publishing needs the account. One of the two fields is wrong and the register cannot say which.`,
+      );
+      continue;
+    }
+    if (st.status !== 'verified') {
+      prints.push(
+        `ACCOUNT ${st.status.toUpperCase()}: ${c.id} — OWNER_QUEUE ${c.ownerQueue ?? '(none)'}, as of ${st.asOf}${st.note ? ` · ${st.note}` : ''}`,
+      );
+    }
+  }
+}
+
 // ── 7. disqualified channels ─────────────────────────────────────────────────
 // The ADR check is MODE-AWARE, and the mode is decided by the harness ROOT, not
 // by the individual file. `knowledge/` is gitignored, so in a CI checkout every
@@ -930,10 +1046,33 @@ for (const d of disqualified) {
 }
 
 // ── non-channel signing identities: shape only, printed ──────────────────────
+//
+// The ADR limb here is the same one `disqualified` rows carry, extended to
+// these entries on 2026-08-03. It is the MECHANICAL half of the doc-rot sweep:
+// this file's pack-key entry cited [ADR 022] three times IN PROSE and named no
+// path, so nothing could tell whether the decision it rests on still says what
+// the entry claims. A citation nobody can open is a citation that rots.
+//
+// MODE-AWARE, exactly as the disqualified check is: where `knowledge/` is
+// checked out the ADR must exist and record itself LOCKED; in a CI checkout the
+// harness is gitignored, so the limit is PRINTED rather than passed over.
 for (const s of register.nonChannelSigningIdentities ?? []) {
   if (!KEY_KINDS.has(s.keyKind)) {
     problems.push(`signing identity "${s.id ?? '(unnamed)'}" has keyKind "${s.keyKind}"; expected one of ${[...KEY_KINDS].join(', ')}.`);
     continue;
+  }
+  if (typeof s.adr !== 'string' || s.adr === '' || !s.adr.includes('/')) {
+    problems.push(
+      `signing identity "${s.id ?? '(unnamed)'}" cites no \`adr\` path. Its custody model is a DECISION, and a decision cited only in prose is one nobody can open to check it still says what this row claims.`,
+    );
+  } else if (!harnessPresent(adrRoot(s.adr))) {
+    prints.push(
+      `IDENTITY ADR UNVERIFIABLE IN THIS CHECKOUT: ${s.id} — ${s.adr}; \`${adrRoot(s.adr)}/\` is not present (gitignored, .gitignore:14-15). The citation's CONTENT is checked only where the harness is checked out. A stated limit, not a pass.`,
+    );
+  } else if (!existsSync(abs(s.adr))) {
+    problems.push(`signing identity "${s.id}" names ADR "${s.adr}", which is not on disk although \`${adrRoot(s.adr)}/\` is.`);
+  } else if (!/LOCKED/.test(read(s.adr) ?? '')) {
+    problems.push(`signing identity "${s.id}" cites ${s.adr}, which does not record itself as LOCKED. A custody model resting on an unlocked decision is one that can change under the key.`);
   }
   const drill = s.restoreDrill ?? {};
   if (drill.required !== false && !/^\d{4}-\d{2}-\d{2}$/.test(String(drill.date ?? ''))) {

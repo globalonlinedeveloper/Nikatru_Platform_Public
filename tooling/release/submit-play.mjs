@@ -47,6 +47,8 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { readGradleApplicationId } from '../ci/read-identity.mjs';
 
 const CHANNEL_ID = 'android-play';
 const REGISTER = 'tooling/channel-register.json';
@@ -294,6 +296,33 @@ if (!problems.length) {
   ok(`metadata tree ${metaDir} — ${filesChecked} field(s) present and non-empty, ${limitsChecked} within a SOURCED Play limit`);
 }
 
+// ── [10]D-6 PREFLIGHT — the portfolio-safety gate, run by the RELEASE PATH ────
+// 🔴 IN THE SCRIPT AND NOT ONLY IN CI, and the difference is the whole point.
+// CI runs assert-submission-safety.mjs on every push in its PORTFOLIO mode; that
+// proves the taglines are distinct across apps, and it proves nothing about the
+// app somebody is submitting RIGHT NOW. The `--submitting` mode's
+// web-prove-first rule can only be asked at the moment of a submission — so it
+// is asked here, by the path that would do it, rather than by a lane that ran
+// hours earlier on a different question.
+//
+// A strike attaches to the PUBLISHER, so the cost of getting this wrong is every
+// other app in the portfolio losing distribution at once (L21).
+{
+  // Resolved from THIS FILE, never from ROOT: `--repo-root` points the CHECKS
+  // at another tree (that is how the tests drive this script), and the guard
+  // itself always lives beside the release scripts. Resolving it from ROOT
+  // meant a fixture root had to contain a copy of tooling/ci to be testable.
+  const safety = join(dirname(fileURLToPath(import.meta.url)), '..', 'ci', 'assert-submission-safety.mjs');
+  const r = spawnSync(process.execPath, [safety, ROOT, '--submitting', '--app', app.slug], { encoding: 'utf8' });
+  if (r.status !== 0) {
+    die([
+      'FAIL the [10]D-6 submission-safety preflight refused this submission:',
+      `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd(),
+    ]);
+  }
+  ok('[10]D-6 preflight — distinct tagline, and the app is live on the web before a store sees it');
+}
+
 // ── 2. the package name ──────────────────────────────────────────────────────
 // 🔴 IMMUTABLE AFTER THE FIRST UPLOAD. Play binds the listing to the
 // applicationId permanently — there is no rename, only a second listing with a
@@ -307,16 +336,22 @@ if (gradleText === null) {
     `FAIL ${gradleRel} does not exist — nothing declares this app's Android package name or how it is signed.`,
   ]);
 }
-const appIdMatch = gradleText.match(/^\s*applicationId\s*=\s*"([^"]+)"/m);
-if (!appIdMatch) {
+// 🔴 THE READER IS SHARED WITH tooling/ci/assert-store-identity.mjs since
+// 2026-08-03 (tooling/ci/read-identity.mjs). It used to be a private regex
+// here, which made this script the ONLY thing that ever read the Android
+// package name — and only when somebody ran it with `--app subly`. A second
+// implementation inherits none of the other's tests, and the failure mode of a
+// duplicated identity reader is that it reports agreement between two things it
+// read wrongly.
+const idRead = readGradleApplicationId(gradleText, gradleRel);
+if (idRead.missing) {
   coverageLost([
-    `${gradleRel} declares no \`applicationId\`.`,
+    idRead.missing,
     'Without it the package name this submission would claim is undefined, and both checks below',
-    'would compare undefined to undefined and agree. Play binds the package name permanently at the',
-    'first upload; there is no version of "we will fix it later".',
+    'would compare undefined to undefined and agree.',
   ]);
 }
-const packageName = appIdMatch[1];
+const packageName = idRead.value;
 const expectedPackage = `com.nikatru.${app.slug}`;
 if (packageName !== expectedPackage) {
   problems.push(

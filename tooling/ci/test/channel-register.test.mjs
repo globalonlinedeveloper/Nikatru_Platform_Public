@@ -55,9 +55,10 @@ const BUILD_WORKFLOW = '.github/workflows/build-platforms.yml';
  *  `laneBuilds:false` strips the build step: section 3b then has no artifact to
  *  compare the served row's formats against, which must be COVERAGE LOST rather
  *  than a quiet pass. */
-const laneWorkflow = ({ laneBuilds = true } = {}) => `name: Deploy web
+const laneWorkflow = ({ laneBuilds = true, releaseChannel = 'web' } = {}) => `name: Deploy web
 # The aggregating job all_platforms and the job ghost-job are named here in a
-# comment only. Nothing below declares them.
+# comment only. Nothing below declares them. So is --dart-define=RELEASE_CHANNEL=ghost-channel,
+# which must never be read as a stamp.
 on:
   push:
 jobs:
@@ -65,7 +66,9 @@ jobs:
     name: Build & deploy
     runs-on: ubuntu-24.04
     steps:
-      - run: ${laneBuilds ? 'flutter build web --release' : 'echo deploy'}
+      - run: >
+          ${laneBuilds ? 'flutter build web --release' : 'echo deploy'}${releaseChannel === null ? '' : `
+          --dart-define=RELEASE_CHANNEL=${releaseChannel}`}
 `;
 
 /** A build workflow shaped like the real one: three platform jobs plus an
@@ -163,6 +166,12 @@ const deferredWindowsStore = () => ({
   deploymentEnvironment: '{app}-windows-store',
   storeMetadataDir: 'apps/{app}/store/windows-store',
   ownerQueue: 'A-2',
+  // [10]D-4's agent slice, added 2026-08-03. `ownerQueue` is a pointer into a
+  // file CI can never open (company/ is gitignored), so this is the only place
+  // a machine can answer "does a publisher account exist for this channel?".
+  // Owner-asserted and dated because it cannot be derived; the guard holds it
+  // to a RELATIONSHIP — served ⇒ verified, everything else PRINTS.
+  accountStatus: { status: 'none', asOf: '2026-08-03', note: 'no Partner Center account' },
 });
 
 /** [10]D-10 limb (i)'s fixture: a submission workflow whose `dry-run` job really
@@ -203,6 +212,7 @@ function tree({
   extraJob = '',
   windowsRun = 'echo windows',
   laneBuilds = true,
+  releaseChannel = 'web',
   adrLocked = true,
   adrOnDisk = true,
   // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
@@ -214,6 +224,9 @@ function tree({
   submissionScriptOnDisk = true,
   submissionWorkflowOnDisk = true,
   jobRunsScript = true,
+  // Extra files written into the fixture root, for cases that need a real ADR
+  // on disk beside the harness marker.
+  extraFiles = {},
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -261,7 +274,7 @@ function tree({
 
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
-  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds }));
+  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel }));
   write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob, windowsRun }));
   if (harnessPresent) {
     // The harness root exists even when the cited ADR does not — that is the
@@ -276,6 +289,7 @@ function tree({
     if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, '// the submission path\n');
     if (submissionWorkflowOnDisk) write(SUBMIT_WORKFLOW, submitWorkflow({ jobRunsScript }));
   }
+  for (const [rel, body] of Object.entries(extraFiles)) write(rel, body);
   if (!omitRegister) {
     write('tooling/channel-register.json', registerRaw ?? JSON.stringify(register, null, 2));
   }
@@ -905,5 +919,197 @@ describe('assert-channel-register — direction B is PER PLATFORM (pins PR #83)'
     assert.equal(code, 1, out);
     assert.match(out, /channel "web" is SERVED and declares platform "linux", which no app/);
     assert.doesNotMatch(out, /declares platform "web", which no app/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [9]R-10 limb 3 — every RELEASE_CHANNEL stamped into an artifact resolves to a
+// row. A free-text define has exactly ONE failure mode: a typo, which deploys
+// perfectly and produces a binary reporting a channel nobody serves, for the
+// life of that build. Mutation-proven against a copy of the real tree
+// 2026-08-03: `=webb` ⇒ exit 1; removing the stamp ⇒ PRINTS, never fails.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — the RELEASE_CHANNEL stamp resolves to a row', () => {
+  test('PASSES when the stamped channel is a declared row id', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /RELEASE_CHANNEL stamp\(s\) across .* each resolving to a register row/);
+  });
+
+  test('FAILS on a typo — the one failure mode a free-text define has', () => {
+    const { code, out } = run(tree({ releaseChannel: 'webb' }));
+    assert.equal(code, 1);
+    assert.match(out, /RELEASE_CHANNEL=webb, and tooling\/channel-register\.json declares no channel with that id/);
+    assert.match(out, /for the life of that build/);
+  });
+
+  test('FAILS when the stamp names a DISQUALIFIED channel', () => {
+    const { code, out } = run(tree({ releaseChannel: 'flathub' }));
+    assert.equal(code, 1);
+    assert.match(out, /declares no channel with that id/);
+  });
+
+  test('a DEFERRED row id is a legal stamp — a build proof is still built for a channel', () => {
+    const { code, out } = run(tree({ releaseChannel: 'windows-store' }));
+    assert.equal(code, 0, out);
+  });
+
+  test('no stamp anywhere PRINTS the gap rather than failing', () => {
+    const { code, out } = run(tree({ releaseChannel: null }));
+    assert.equal(code, 0, out);
+    assert.match(out, /NO RELEASE_CHANNEL STAMP/);
+    assert.match(out, /reports the compiled-in default/);
+  });
+
+  test('a COMMENT naming a RELEASE_CHANNEL value is not a stamp', () => {
+    // laneWorkflow's header comment carries `RELEASE_CHANNEL=ghost-channel`,
+    // which is not a declared row id. If comments were read, every case above
+    // would already be red.
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /ghost-channel/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [10]D-4's agent slice — the channel↔account status is IN THE TREE.
+// `ownerQueue` points into company/OWNER_QUEUE.md, which CI can never open
+// (.gitignore:15), so before this field "does a publisher account exist for
+// this channel?" had no answer a machine could give. The status cannot be
+// derived — no API this repo can reach knows whether an enrolment completed —
+// so it is owner-asserted and dated, and the GUARD holds it to a relationship.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — the channel↔account status', () => {
+  test('PASSES and PRINTS an unserved store row whose account does not exist', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /ACCOUNT NONE: windows-store — OWNER_QUEUE A-2, as of 2026-08-03/);
+  });
+
+  test('FAILS when a kind:store row carries no accountStatus at all', () => {
+    const { code, out } = run(tree({ mutate: (r) => { delete r.channels[1].accountStatus; } }));
+    assert.equal(code, 1);
+    assert.match(out, /carries no `accountStatus`/);
+    assert.match(out, /CI cannot open that file/);
+  });
+
+  // THE RELATIONSHIP. This is the limb that expires by itself.
+  test("FAILS when a SERVED store row's account is not verified", () => {
+    const { code, out } = run(
+      tree({
+        platforms: ['web', 'windows'],
+        mutate: (r) => { r.channels[1].served = true; },
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /is SERVED and its accountStatus is "none"/);
+  });
+
+  // The mirror image, and it is asserted on the MESSAGE rather than the exit
+  // code on purpose: a row flipped to `served` in a fixture owes everything
+  // else a served row owes (a lane, a submission block), so exit 0 would be
+  // testing those instead. What this pins is that `verified` removes THIS
+  // problem and stops printing THIS gap.
+  test('a SERVED store row that IS verified draws neither the failure nor the print', () => {
+    const { out } = run(
+      tree({
+        platforms: ['web', 'windows'],
+        mutate: (r) => {
+          r.channels[1].served = true;
+          r.channels[1].accountStatus = { status: 'verified', asOf: '2026-08-03', note: 'Partner Center, company account' };
+        },
+      }),
+    );
+    assert.doesNotMatch(out, /accountStatus is "verified"/);
+    assert.doesNotMatch(out, /ACCOUNT VERIFIED/);
+  });
+
+  test('FAILS on a free-text status — a status nobody can compare', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].accountStatus.status = 'in progress'; } }));
+    assert.equal(code, 1);
+    assert.match(out, /expected one of none, applied, verified/);
+  });
+
+  test('FAILS on an undated status — nobody can tell an undated claim has gone stale', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].accountStatus.asOf = ''; } }));
+    assert.equal(code, 1);
+    assert.match(out, /with no `asOf` date/);
+  });
+
+  test('PRINTS `applied` as a gap, and still passes', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].accountStatus.status = 'applied'; } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ACCOUNT APPLIED: windows-store/);
+  });
+
+  test('COVERAGE LOST when the register declares no store row at all', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].kind = 'direct'; r.channels[1].storeMetadataDir = null; } }));
+    assert.equal(code, 1);
+    assert.match(out, /no `kind: "store"` row/);
+  });
+
+  test('a non-store row is not asked for an accountStatus', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /channel "web".*accountStatus/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The ADR limb, extended to `nonChannelSigningIdentities` 2026-08-03 — the
+// MECHANICAL half of the stage-9 doc-rot sweep. The pack-key entry cited
+// [ADR 022] three times IN PROSE and named no path, so nothing could tell
+// whether the decision its custody model rests on still says what it claims.
+// Same MODE-AWARE shape as `disqualified`: the harness ROOT decides, and a CI
+// checkout PRINTS its limit rather than passing over it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — a signing identity cites an openable, LOCKED decision', () => {
+  const withIdentity = (over = {}) => (r) => {
+    r.nonChannelSigningIdentities = [
+      {
+        id: 'content-pack-k1',
+        keyKind: 'app-signing-key',
+        adr: 'knowledge/decisions/022-pack.md',
+        restoreDrill: { date: null, required: true, note: 'never drilled' },
+        ...over,
+      },
+    ];
+  };
+  const withAdrFile = (root, locked = true) => ({
+    'knowledge/decisions/022-pack.md': locked ? '# 022\n**Status:** LOCKED 2026-07-27\n' : '# 022\n**Status:** proposed\n',
+  });
+
+  test('PASSES and PRINTS the undrilled key when the ADR is LOCKED and on disk', () => {
+    const { code, out } = run(tree({ mutate: withIdentity(), extraFiles: withAdrFile() }));
+    assert.equal(code, 0, out);
+    assert.match(out, /UNDRILLED IDENTITY: content-pack-k1/);
+    assert.doesNotMatch(out, /IDENTITY ADR UNVERIFIABLE/);
+  });
+
+  test('FAILS when a signing identity cites no ADR path at all — prose is not a citation', () => {
+    const { code, out } = run(tree({ mutate: withIdentity({ adr: undefined }) }));
+    assert.equal(code, 1);
+    assert.match(out, /cites no `adr` path/);
+    assert.match(out, /nobody can open/);
+  });
+
+  test('FAILS when the cited ADR is not on disk although the harness IS', () => {
+    const { code, out } = run(tree({ mutate: withIdentity() }));
+    assert.equal(code, 1);
+    assert.match(out, /which is not on disk although `knowledge\/` is/);
+  });
+
+  test('FAILS when the cited ADR does not record itself LOCKED', () => {
+    const { code, out } = run(tree({ mutate: withIdentity(), extraFiles: withAdrFile(null, false) }));
+    assert.equal(code, 1);
+    assert.match(out, /does not record itself as LOCKED/);
+    assert.match(out, /can change under the key/);
+  });
+
+  test('PRINTS the stated limit in a checkout with no harness, and does not fail', () => {
+    const { code, out } = run(tree({ mutate: withIdentity(), harnessPresent: false }));
+    assert.equal(code, 0, out);
+    assert.match(out, /IDENTITY ADR UNVERIFIABLE IN THIS CHECKOUT: content-pack-k1/);
+    assert.match(out, /A stated limit, not a pass/);
   });
 });

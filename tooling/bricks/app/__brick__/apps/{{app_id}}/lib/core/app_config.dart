@@ -65,10 +65,37 @@ class AppConfig {
   );
 
   // Where the force-update screen sends users (store listing / download page).
-  // Owner overrides per platform via --dart-define=UPDATE_URL.
+  //
+  // 🔴 THE COMPILED-IN FALLBACK, NOT THE ANSWER. `app.dart` resolves
+  // `appConfigProvider…updateUrl ?? AppConfig.updateUrl` — the RUNTIME value
+  // from the config service wins, and this is what a build uses when the
+  // service is unreachable. Owner decision #19 moved the real value to runtime
+  // because a compiled-in destination means shipping an update to change where
+  // updates come from, and the builds that need the change most are exactly the
+  // ones that cannot receive it. The server half landed 2026-08-03
+  // (`services/platform/src/types.ts` `update_url`); before that the runtime
+  // branch was unreachable in production and nothing went red, because falling
+  // back is the correct behaviour when the value is absent.
   static const String updateUrl = String.fromEnvironment(
     'UPDATE_URL',
     defaultValue: companyUrl,
+  );
+
+  // Which CHANNEL this binary was built for — [pipeline 9]R-10.
+  //
+  // COMPILE-TIME, and deliberately the OPPOSITE of `updateUrl` above. The
+  // channel is a fact ABOUT THE BINARY: the same commit built for `web` and for
+  // `windows-store` produces two artifacts identical in everything else, so a
+  // value fetched at runtime could not tell them apart. It identifies the
+  // artifact exactly as the crash-sink release id does.
+  //
+  // Every value a workflow passes must resolve to a row id in
+  // `tooling/channel-register.json` — `assert-channel-register.mjs` fails on a
+  // typo, which is the one failure mode a free-text string has. `dev` is the
+  // default because an unstamped build IS a developer build.
+  static const String releaseChannel = String.fromEnvironment(
+    'RELEASE_CHANNEL',
+    defaultValue: 'dev',
   );
 
   // ── STORE IDENTITY ─────────────────────────────────────────────────────────

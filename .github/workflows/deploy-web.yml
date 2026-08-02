@@ -122,6 +122,24 @@ jobs:
       # NOT ORDERED, so it can identify a build and never rank two of them. Its
       # version core is the same string as --build-name on purpose: the number the
       # store shows and the number the kill-switch compares must be one number.
+      #
+      # RELEASE_CHANNEL is [pipeline 9]R-10's third limb and it stays COMPILE-TIME
+      # on purpose, unlike `update_url` which owner decision #19 moved to runtime.
+      # The two look alike and are opposites: an update DESTINATION baked into a
+      # binary means shipping an update to change where updates come from, while
+      # the CHANNEL is a fact about the binary — the same commit built for `web`
+      # and for `windows-store` differs in nothing else, so a runtime value could
+      # not tell the two artifacts apart. Every value passed here must resolve to
+      # a row id in tooling/channel-register.json; assert-channel-register.mjs
+      # fails the build on `webb`, which is the one failure mode a free-text
+      # string has.
+      #
+      # ⬜ `--pwa-strategy=none` is [ADR 023] (LOCKED 2026-07-31), not an
+      # oversight: no service worker, no offline support, and the HTTP cache is
+      # therefore the whole update mechanism on this channel — which is why
+      # apps/subly/web/_headers exists and why assert-web-cache-policy.mjs
+      # asserts it. ADR 023 explicitly REJECTS guarding this flag in CI as
+      # over-encoding; this citation is the consequence it did ask for.
       - name: Build web (release, no service worker)
         run: >
           flutter build web --release --pwa-strategy=none
@@ -133,6 +151,7 @@ jobs:
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
           --dart-define=APP_ENV=production
+          --dart-define=RELEASE_CHANNEL=web
 
       - name: Deploy to Cloudflare Pages (project subly)
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3

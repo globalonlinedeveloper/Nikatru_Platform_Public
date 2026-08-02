@@ -69,6 +69,8 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { readAppleBundleId } from '../ci/read-identity.mjs';
 
 const CHANNELS = ['ios-appstore', 'macos-appstore'];
 const REGISTER = 'tooling/channel-register.json';
@@ -295,6 +297,33 @@ if (filesChecked === 0) {
 }
 if (!problems.length) ok(`metadata tree ${metaDir} — ${filesChecked} field(s) present and non-empty`);
 
+// ── [10]D-6 PREFLIGHT — the portfolio-safety gate, run by the RELEASE PATH ────
+// 🔴 IN THE SCRIPT AND NOT ONLY IN CI, and the difference is the whole point.
+// CI runs assert-submission-safety.mjs on every push in its PORTFOLIO mode; that
+// proves the taglines are distinct across apps, and it proves nothing about the
+// app somebody is submitting RIGHT NOW. The `--submitting` mode's
+// web-prove-first rule can only be asked at the moment of a submission — so it
+// is asked here, by the path that would do it, rather than by a lane that ran
+// hours earlier on a different question.
+//
+// A strike attaches to the PUBLISHER, so the cost of getting this wrong is every
+// other app in the portfolio losing distribution at once (L21).
+{
+  // Resolved from THIS FILE, never from ROOT: `--repo-root` points the CHECKS
+  // at another tree (that is how the tests drive this script), and the guard
+  // itself always lives beside the release scripts. Resolving it from ROOT
+  // meant a fixture root had to contain a copy of tooling/ci to be testable.
+  const safety = join(dirname(fileURLToPath(import.meta.url)), '..', 'ci', 'assert-submission-safety.mjs');
+  const r = spawnSync(process.execPath, [safety, ROOT, '--submitting', '--app', app.slug], { encoding: 'utf8' });
+  if (r.status !== 0) {
+    die([
+      'FAIL the [10]D-6 submission-safety preflight refused this submission:',
+      `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd(),
+    ]);
+  }
+  ok('[10]D-6 preflight — distinct tagline, and the app is live on the web before a store sees it');
+}
+
 // ── 2. the bundle identifier ─────────────────────────────────────────────────
 // Read from BOTH declarations and compare, for the same reason the Microsoft
 // path compares the MSIX identity: two copies of an identity is how the wrong
@@ -325,22 +354,23 @@ if (declaredBundle === '' || declaredInTemplate === '') {
   if (projectText === null) {
     problems.push(`${declaredInRel} does not exist, so channel "${CHANNEL_ID}"'s bundle identifier cannot be compared to what Xcode actually builds.`);
   } else {
-    // Every PRODUCT_BUNDLE_IDENTIFIER assignment in the file, test bundles
-    // included — then the TEST ones are dropped explicitly rather than by
-    // picking "the first match", which is order-dependent and silently wrong.
-    const all = [...projectText.matchAll(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*"?([A-Za-z0-9.$()_-]+)"?\s*;?/g)].map((m) => m[1]);
-    const appBundles = [...new Set(all.filter((b) => !/\.(RunnerTests|RunnerUITests)$/.test(b)))];
-    if (all.length === 0) {
+    // 🔴 THE READER IS SHARED with tooling/ci/assert-store-identity.mjs since
+    // 2026-08-03 (tooling/ci/read-identity.mjs). It drops the TEST bundles
+    // EXPLICITLY rather than by taking "the first match" — order-dependent and
+    // silently wrong — and the macOS pbxproj contains nothing but RunnerTests,
+    // so that distinction is the difference between checking the app and
+    // checking the test target. One declaration: a second copy of an identity
+    // reader fails by reporting agreement between two things it read wrongly.
+    const bundleRead = readAppleBundleId(projectText, declaredInRel);
+    if (bundleRead.lost) {
       coverageLost([
-        `${declaredInRel} contains ZERO \`PRODUCT_BUNDLE_IDENTIFIER\` assignments.`,
-        'The reader has stopped reaching them, so the comparison below would compare the register to',
-        'nothing and agree. Either the file layout changed or this script is reading the wrong file.',
+        bundleRead.lost,
+        'Either the file layout changed or this script is reading the wrong file.',
       ]);
     }
-    if (appBundles.length === 0) {
-      problems.push(`${declaredInRel} declares a PRODUCT_BUNDLE_IDENTIFIER only for test bundles (${all.join(', ')}). The app target has none, so there is no identifier to submit under.`);
-    } else if (appBundles.length > 1) {
-      problems.push(`${declaredInRel} declares ${appBundles.length} DIFFERENT app bundle identifiers (${appBundles.join(', ')}). Only one can be submitted and nothing says which.`);
+    const appBundles = bundleRead.value === null ? [] : [bundleRead.value];
+    if (bundleRead.missing) {
+      problems.push(bundleRead.missing);
     } else if (appBundles[0] !== declaredBundle) {
       problems.push(
         `bundle identifier DISAGREES for app "${app.slug}" on channel "${CHANNEL_ID}": ${REGISTER} says ${JSON.stringify(declaredBundle)}, ${declaredInRel} builds ${JSON.stringify(appBundles[0])}. App Store Connect binds a record to ONE bundle id — an upload under the other is rejected, and changing it after a release makes a different app.`,

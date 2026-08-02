@@ -45,6 +45,27 @@ class AppConfig {
     defaultValue: 'dev',
   );
 
+  /// Which CHANNEL this binary was built for — [pipeline 9]R-10.
+  ///
+  /// 🔴 COMPILE-TIME, AND DELIBERATELY UNLIKE `updateUrl`. The two look
+  /// similar and are opposites. `update_url` is runtime config because baking
+  /// in the destination means shipping an update to change where updates come
+  /// from (owner decision #19). This is the reverse: the channel is a FACT
+  /// ABOUT THE BINARY — the same commit built for `web` and for `windows-store`
+  /// produces two artifacts that differ in nothing else, so a value fetched at
+  /// runtime could not distinguish them at all. It identifies the artifact
+  /// exactly as the GlitchTip release id does.
+  ///
+  /// Every value any workflow passes must resolve to a row id in
+  /// `tooling/channel-register.json`; `tooling/ci/assert-channel-register.mjs`
+  /// fails the build on a typo, which is the one failure mode a free-text
+  /// string has. `'dev'` is the default because an unstamped build IS a
+  /// developer build, and saying so is better than claiming a channel.
+  static const String releaseChannel = String.fromEnvironment(
+    'RELEASE_CHANNEL',
+    defaultValue: 'dev',
+  );
+
   /// The SHARED platform Worker: first-party analytics ingest + the consent
   /// artifact (G-12), and in future entitlements and account deletion. Every
   /// app in the portfolio points here — it is not per-app ([ADR 020]).

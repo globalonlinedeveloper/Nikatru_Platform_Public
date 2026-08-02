@@ -569,7 +569,15 @@ const isShallow = shallow.status === 0 && shallow.stdout.trim() === 'true';
  *  `feat/stage4-remaining` before this fix landed from #130; the two arrived at
  *  the same normalisation. Note the comparison is one-sided — a record dated
  *  later than the code is fine — so moving the code side to UTC can only forgive
- *  by a day, never miss a record describing code that has moved. */
+ *  by a day, never miss a record describing code that has moved.
+ *
+ *  🔴 AND A THIRD TIME, INDEPENDENTLY, IN `feat/stage9-10-remaining` — same
+ *  measurement (00:51 IST, the same four fixtures), same diagnosis, same
+ *  one-line normalisation, resolved here as a merge conflict between two
+ *  identical fixes. Three agents finding one bug in one night is not
+ *  redundancy, it is the signal that a TIME-DEPENDENT test is a test that goes
+ *  red on a clock rather than on a change. Any future comparison between a
+ *  `today` and a git date belongs on one calendar from the first line. */
 function lastCommitDay(relPath) {
   const r = spawnSync('git', ['-C', ROOT, 'log', '-1', '--format=%cI', '--', relPath], { encoding: 'utf8' });
   if (r.status !== 0) return null;

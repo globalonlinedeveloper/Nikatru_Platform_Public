@@ -49,10 +49,29 @@ after(() => {
   rmSync(ROOT, { recursive: true, force: true });
 });
 
+// ── the lane set is DERIVED FROM THE REGISTER since 2026-08-03 ───────────────
+// `RELEASE_LANES` used to be a one-entry array inside the guard. It is now every
+// `channels[]` row in tooling/channel-register.json that carries a `lane`, with
+// `served` deciding whether the row is CHECKED or merely PRINTED. So every
+// fixture needs a register, and `fixture()` writes the minimal one unless the
+// case supplies its own — a case that omits it is testing the absent-register
+// COVERAGE LOST, not the rule it thinks it is testing.
+const registerJson = (channels) => JSON.stringify({ channels }, null, 2);
+const WEB_ROW = {
+  id: 'web',
+  served: true,
+  lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' },
+};
+const DEFAULT_REGISTER = registerJson([WEB_ROW]);
+
 function fixture(name, files) {
   const dir = join(ROOT, name);
   mkdirSync(dir, { recursive: true });
-  for (const [rel, body] of Object.entries(files)) {
+  const withRegister = Object.prototype.hasOwnProperty.call(files, 'tooling/channel-register.json')
+    ? files
+    : { 'tooling/channel-register.json': DEFAULT_REGISTER, ...files };
+  for (const [rel, body] of Object.entries(withRegister)) {
+    if (body === null) continue;
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
@@ -334,6 +353,127 @@ describe('assert-app-versioning — coverage self-check', () => {
     const { code, out } = run({ args: [lane('cov-nobuild', { wf: { flutterBuild: false } })] });
     assert.equal(code, 1);
     assert.match(out, /runs no `flutter build`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 9]R-2's NATIVE HALF — the lane set is DERIVED, not typed.
+//
+// 🔴 THE REAL-TREE RUN CAME FIRST. Before this change the guard printed
+// "1 release lane(s)" over a hardcoded array while build-platforms.yml's .aab
+// and .msix carried `versionCode 1` and nothing could say so. After it, the
+// same real tree prints THREE lanes — one served and checked, two deferred and
+// PRINTED by row id — and the printed lines are what expire the exemption the
+// day somebody flips `served`.
+//
+// Mutations run against a full copy of the repository, 2026-08-03:
+//   · `android-play.served` → true with the .aab's `--build-number` deleted ⇒
+//     exit 1 naming the missing flag. (Flipping `served` alone now PASSES,
+//     because the flag really is there — which is the point of adding it.)
+//   · a lane's `job:` renamed ⇒ COVERAGE LOST naming the jobs that DO exist.
+//   · the register's `lane` blocks all removed ⇒ COVERAGE LOST, not "0 lanes, ok".
+//   · the register deleted ⇒ COVERAGE LOST.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-app-versioning — the lane set is derived from the channel register', () => {
+  const deferredNativeRow = (served, buildNumber) => ({
+    register: registerJson([
+      WEB_ROW,
+      { id: 'android-play', served, lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+    ]),
+    workflow:
+      'name: Build all\npermissions:\n  contents: read\njobs:\n  linux_web_android:\n    runs-on: ubuntu-24.04\n' +
+      '    steps:\n      - name: Build android\n        working-directory: apps/subly\n        run: >\n' +
+      '          flutter build appbundle --release\n' +
+      (buildNumber ? '          --build-number=${{ github.run_number }}\n' : '') +
+      '      - uses: actions/upload-artifact@abc\n',
+  });
+
+  test('a DEFERRED lane is exempt and its exemption is PRINTED, naming the row', () => {
+    const d = deferredNativeRow(false, false);
+    const dir = lane('reg-deferred', {
+      extra: { '.github/workflows/build-platforms.yml': d.workflow, 'tooling/channel-register.json': d.register },
+    });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /deferred lanes, EXEMPT and printed not hidden/);
+    assert.match(out, /"android-play"/);
+    assert.match(out, /1 served and checked, 1 deferred and printed/);
+  });
+
+  // THE RECORDED FAILING CASE: flip `served` AND remove the flag. Flipping
+  // alone must pass, because the flag is really in build-platforms.yml now.
+  test('FAILS the moment a lane is SERVED and its build passes no --build-number', () => {
+    const d = deferredNativeRow(true, false);
+    const dir = lane('reg-served-nobn', {
+      extra: { '.github/workflows/build-platforms.yml': d.workflow, 'tooling/channel-register.json': d.register },
+    });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /build-platforms\.yml/);
+    assert.match(out, /passes no --build-number/);
+  });
+
+  test('a SERVED native lane that does pass --build-number is judged on the rest, not on the flag', () => {
+    const d = deferredNativeRow(true, true);
+    const dir = lane('reg-served-bn', {
+      extra: { '.github/workflows/build-platforms.yml': d.workflow, 'tooling/channel-register.json': d.register },
+    });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1, out);
+    assert.ok(!/passes no --build-number/.test(out), 'the build-number rule is satisfied');
+    assert.match(out, /never derives the version from|passes no --build-name/);
+  });
+
+  test('COVERAGE LOST when a lane names a job the workflow does not declare', () => {
+    const dir = lane('reg-nojob', {
+      extra: {
+        'tooling/channel-register.json': registerJson([
+          { id: 'web', served: true, lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-webb' } },
+        ]),
+      },
+    });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /names job "deploy-webb"/);
+    assert.match(out, /it has: deploy-web/);
+  });
+
+  test('COVERAGE LOST when the register carries channels but none resolves to a lane', () => {
+    const dir = lane('reg-nolanes', {
+      extra: { 'tooling/channel-register.json': registerJson([{ id: 'web', served: true }]) },
+    });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /NONE resolved to a lane/);
+  });
+
+  test('COVERAGE LOST when the register declares no channels at all', () => {
+    const dir = lane('reg-empty', { extra: { 'tooling/channel-register.json': registerJson([]) } });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /declares no `channels`/);
+  });
+
+  test('COVERAGE LOST when the register is not there', () => {
+    const dir = lane('reg-gone', { extra: { 'tooling/channel-register.json': null } });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /does not exist, so the lane set is derived from nothing/);
+  });
+
+  test('COVERAGE LOST when every resolved lane is deferred — nothing would be asserted', () => {
+    const d = deferredNativeRow(false, false);
+    const dir = lane('reg-all-deferred', {
+      extra: {
+        '.github/workflows/build-platforms.yml': d.workflow,
+        'tooling/channel-register.json': registerJson([
+          { id: 'android-play', served: false, lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
+        ]),
+      },
+    });
+    const { code, out } = run({ args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /NONE is served/);
   });
 });
 
