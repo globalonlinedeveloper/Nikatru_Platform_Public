@@ -51,12 +51,19 @@
 // red while the merge goes through.
 //
 // ⚠️ THERE IS DELIBERATELY NO `e2e.yml` EXCEPTION HERE, though the stage doc names
-// one. No register row is enforced by `e2e.yml` today: N-6's freshness clause is
-// not built (the nightly E2E has failed on every scheduled run since 2026-07-26,
-// so landing a freshness guard would block every merge on a pre-existing defect).
-// An exception nothing reaches is an unreachable branch, and by this repo's own
-// rule an assertion that cannot fail is worse than none because it inflates
+// one. An exception nothing reaches is an unreachable branch, and by this repo's
+// own rule an assertion that cannot fail is worse than none because it inflates
 // apparent coverage. Add it WITH the row that needs it.
+//
+// 🔄 UPDATED 2026-08-02. The parenthetical this note used to carry — "N-6's
+// freshness clause is not built (the nightly E2E has failed on every scheduled
+// run since 2026-07-26, so landing a freshness guard would block every merge on
+// a pre-existing defect)" — is now STALE and would have been read as current.
+// N-6's freshness and leg-coverage clauses shipped as
+// `assert-e2e-proof-fresh.mjs` and `assert-e2e-legs.mjs`, both wired into
+// `ci.yml`. The CONCLUSION is unchanged and the exception still must not exist:
+// those two guards run in `ci.yml` like every other, so no register row is
+// enforced by `e2e.yml` even now.
 //
 // 🔴 RESOLVE, DO NOT MATCH (N-5). A feature row naming a test is satisfied by that
 // string appearing anywhere — in a comment, in a TODO, in the spec — and by
