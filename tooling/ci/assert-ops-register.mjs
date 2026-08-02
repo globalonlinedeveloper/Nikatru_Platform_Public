@@ -1,0 +1,750 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// assert-ops-register.mjs — the operations register is COMPLETE, BOUNDED and
+// still describes the tree it claims to describe.
+//
+// [pipeline O-1] "Every failure the factory can suffer has a named detector,
+// response and cadence." Stage 14 audited its own twenty-one acceptance criteria
+// and found EIGHTEEN that cannot fail — the largest concentration in the
+// pipeline — and every one of them for the same reason: they quantify over an
+// operations register that did not exist. `ls tooling/ops` returned "No such
+// file or directory", so eighteen criteria ranged over the empty set and all
+// eighteen reported clean. An undefined right-hand side rejects nothing.
+//
+// This guard is what makes the register mean something. Creating the file was
+// never the hard part; the hard part is that a hand-written register drifts away
+// from the tree silently, and a register that no longer matches reality is worse
+// than none, because it reads as coverage.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// COVERAGE IS A RELATIONSHIP, NEVER A COUNT. This is the single rule the file
+// exists to obey, and this repo has paid for it repeatedly.
+//
+//   watched workflows  ≡  .github/workflows/*.yml       (both directions)
+//   cron duties        ⊇  every `triggers.crons` in every wrangler config
+//   rows               ⊇  _requiredCoverage.ids          (the external half)
+//
+// "At least twelve rows" would be a floor somebody lowers. The temptation is
+// acute here precisely BECAUSE the register is hand-written — so nothing in this
+// guard is a threshold on the register's own size.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️ WHAT THIS REGISTER DELIBERATELY DOES **NOT** CONTAIN: HOSTNAMES.
+//
+// The first draft of this file carried six `surface` rows — one per live
+// hostname — each restating which GlitchTip monitor watches it and which of them
+// are unwatched. Every one of those facts is already derived and enforced by
+// [11]E-9's `tooling/monitor-register.json` + `assert-monitor-coverage.mjs`,
+// whose derivation is STRICTLY WIDER than the one here was (Worker custom
+// domains ∪ the app catalogue ∪ every site's own canonical URL, against custom
+// domains alone). Two registers of the same set is precisely the drift this repo
+// exists to prevent: they would have disagreed the first time a site canonical
+// moved, and the monitor register's own header already says
+// "[14]O-2 must CONSUME this register rather than re-enumerate the hostnames."
+//
+// So the surface rows were CUT, and what replaces them is a seam that fails:
+// `_delegated` names the register that owns hostnames, and this guard refuses to
+// run if that file is absent, unparseable or empty. Deleting the monitor
+// register therefore reddens BOTH guards instead of quietly leaving hostnames
+// owned by nobody — which is what "delegated" means when it is worth anything.
+//
+// BOTH DIRECTIONS MATTER, and the second one is the one that gets forgotten. A
+// duty row anchored at a workflow file that has been deleted is COVERAGE LOST,
+// not a harmless stale line: the register would keep asserting that a duty is
+// performed by a mechanism that is gone. That is the exact failure
+// check-migrations.mjs shipped with — it silently dropped from five files to
+// four and printed PASS.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ESCAPE HATCHES, AND WHY EACH ONE COSTS SOMETHING
+//
+//   `cadence: on-demand`   requires a non-empty `why`, and the COUNT PRINTS on
+//                          every run. In the drafted acceptance this single word
+//                          disabled the staleness limb per row, so a register of
+//                          all-on-demand rows was green.
+//   `cadence: trigger`     requires a named `trigger` event. Added because the
+//                          parked fresh-host drill is neither on a clock nor
+//                          on-demand: it fires when the next machine is set up.
+//                          A third honest state beats a dishonest second one.
+//   `ownerGated: true`     requires a non-empty `ownerGap`, and every gap is
+//                          PRINTED IN FULL on every run. It never blocks —
+//                          CLAUDE.md's C-6 rule: a guard that blocks all of CI
+//                          on work only the owner can do gets disabled, and a
+//                          disabled guard checks nothing.
+//   `degradedUntil`        a DATED tripwire for a gap another stage owns:
+//                          printed until the date, hard failure after it. The
+//                          assert-platform-proof-fresh.mjs precedent. A gap that
+//                          only ever prints is one nobody closes.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TWO CHECKS THAT ARE NOT SCHEMA VALIDATION, i.e. the ones worth reading:
+//
+// 1. O-8 — `path: "cannot-revert"` REQUIRES A NAMED MITIGATION THAT IS ITSELF A
+//    ROW WITH ITS OWN CADENCE. Without this, marking every surface cannot-revert
+//    made the criterion green. With it, "we have a kill switch" stops being an
+//    assertion and becomes a row that can go stale, and the cannot-revert COUNT
+//    prints every run so the set cannot grow quietly.
+//
+// 2. O-14 — THE INTERSECTION IS COMPUTED OVER TWO INDEPENDENTLY WRITTEN LISTS.
+//    A `failure-mode` row names the providers it TAKES DOWN; the `recovery-path`
+//    row it points at names the providers IT NEEDS. The guard intersects them.
+//    The drafted version compared two sets written by the same hand in the same
+//    row, so a row declaring an empty dependency set could never intersect
+//    anything — the sharpest cannot-fail instance in the whole stage. Both lists
+//    resolve against a FIXED VOCABULARY, never free text, and a row that
+//    resolves to NO provider FAILS as "cannot be checked" rather than passing.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️ THE ONE BLIND SPOT, STATED RATHER THAN PAPERED OVER. `company/` is
+// gitignored and INVISIBLE TO CI. A row may anchor there — the runbooks
+// legitimately live in company/ — but this guard CANNOT check that such an
+// anchor exists, and it says so out loud with a count on every run instead of
+// pretending the check happened. Anchors anywhere else MUST exist. This is why
+// the register itself is in the public tree: a register under company/ would be
+// unenforceable, which is precisely what blocked four stage-8 increments.
+//
+// Usage:  node tooling/ci/assert-ops-register.mjs [repoRoot]
+// ─────────────────────────────────────────────────────────────────────────────
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+const REGISTER_REL = 'tooling/ops/register.json';
+const WORKFLOW_DIR_REL = '.github/workflows';
+
+/** Any repo-relative path a row NAMES, in the fields that make a claim about a
+ *  mechanism: the detector, the record, and the thing that reads it. `company/`
+ *  is excluded because it is gitignored and CI genuinely cannot see it — that
+ *  blind spot is counted and printed rather than pretended away. */
+// ⚠️ THE LEADING BOUNDARY IS A LOOKBEHIND, NOT `\b`, AND A NEGATIVE TEST IS WHY.
+// `\b(?:…|\.github|…)` can NEVER match `.github/...`: `\b` needs a word boundary,
+// and a space followed by `.` is two non-word characters, so there is none. The
+// alternative silently matched nothing for the entire workflow half of the
+// domain — a check that reported ok because it was looking at an empty set.
+const NAMED_PATH = /(?<![\w/.-])(?:tooling|\.github|services|sites|packages|apps|scripts)\/[A-Za-z0-9_.\-/]*[A-Za-z0-9_-]\.(?:mjs|js|ts|yml|yaml|json|jsonc|sql|ps1|dart|py)\b/g;
+
+/** No argument means CI's own invocation against the real repository, where the
+ *  git manifest MUST be readable. A fixture root is a weaker situation and says
+ *  so rather than silently skipping the cross-check. */
+const scanningRealRepo = process.argv[2] === undefined;
+
+/** Kinds whose "when was this last done" is performed BY A HUMAN, and therefore
+ *  cannot be derived from any record a machine writes. Everything else must
+ *  instead name a machine record whose failing value is reachable — see the XOR
+ *  below, and the register's own header for why a hand-typed date on a nightly
+ *  cron is the antipattern this stage exists to remove. */
+const HUMAN_DATED = new Map([
+  ['recovery-path', 'lastDrill'],
+  ['revert', 'lastDone'],
+  ['failure-mode', 'lastDone'],
+]);
+
+const RETENTION_RULES = new Set(['keep', 'ttl', 'cache', 'period', 'period-undeclared']);
+
+/** Structural failure — the scan itself is broken, so nothing below it means
+ *  anything. Exits immediately rather than joining the problem list. */
+const coverageLost = (lines) => {
+  console.error(`✗ COVERAGE LOST — ${lines[0]}`);
+  for (const l of lines.slice(1)) console.error(`  ${l}`);
+  process.exit(1);
+};
+
+// ── jsonc, because every wrangler config in this repo is heavily commented ────
+// Comments are stripped OUTSIDE string literals only. A naive `//` strip would
+// eat the `//` in every "https://…" value and turn a valid config into a parse
+// error that reads like a missing file.
+export function parseJsonc(text) {
+  let out = '';
+  let i = 0;
+  let inStr = false;
+  while (i < text.length) {
+    const c = text[i];
+    const c2 = text[i + 1];
+    if (inStr) {
+      if (c === '\\') { out += c + (c2 ?? ''); i += 2; continue; }
+      if (c === '"') inStr = false;
+      out += c; i++; continue;
+    }
+    if (c === '"') { inStr = true; out += c; i++; continue; }
+    if (c === '/' && c2 === '/') { while (i < text.length && text[i] !== '\n') i++; continue; }
+    if (c === '/' && c2 === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++;
+      i += 2; continue;
+    }
+    out += c; i++;
+  }
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+}
+
+/** Every LIVE wrangler config. The brick template is excluded BY NAME and the
+ *  exclusion is counted, because `tooling/bricks/**` is a mustache template
+ *  whose `{{#needs_backend}}` path segments are not a deployed surface — but a
+ *  silent exclusion is how a domain shrinks without anybody noticing. */
+export function findWranglerConfigs(root) {
+  const found = [];
+  const excluded = [];
+  const walk = (dir, rel) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'build') continue;
+      const abs = join(dir, e.name);
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(abs, r);
+      else if (/^wrangler\.(jsonc|json|toml)$/.test(e.name)) {
+        if (r.includes('bricks/')) excluded.push(r);
+        else found.push(r);
+      }
+    }
+  };
+  walk(root, '');
+  return { found: found.sort(), excluded: excluded.sort() };
+}
+
+const isIsoDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
+const nonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
+
+/** `8h` / `1d` / `120d` → days. Anything else is not a duration. */
+export function cadenceDays(cadence) {
+  const m = /^(\d+)(h|d)$/.exec(cadence ?? '');
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (n <= 0) return null;
+  return m[2] === 'h' ? n / 24 : n;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE PURE HALF. Everything that can go wrong in the register itself is decided
+// here, so the failing cases are exercisable without a repo on disk.
+// ─────────────────────────────────────────────────────────────────────────────
+export function evaluate(reg, tree, nowMs) {
+  const errors = [];
+  const prints = [];
+  const bad = (m) => errors.push(m);
+
+  if (!reg || typeof reg !== 'object') return { errors: ['register is not an object'], prints };
+  for (const key of ['_kinds', '_providers', '_maxCadenceDays', '_requiredCoverage', 'rows']) {
+    if (!(key in reg)) return { errors: [`register has no \`${key}\``], prints };
+  }
+  const kinds = new Set(reg._kinds);
+  const providers = new Set(reg._providers);
+  const rows = reg.rows;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { errors: ['register `rows` is not a non-empty array — a register of nothing is what eighteen acceptance criteria were already quantifying over'], prints };
+  }
+
+  const byId = new Map();
+  for (const r of rows) {
+    if (!nonEmpty(r?.id)) { bad('a row has no `id`'); continue; }
+    if (byId.has(r.id)) bad(`duplicate row id \`${r.id}\` — two rows claiming the same duty means one of them is never read`);
+    byId.set(r.id, r);
+  }
+
+  let onDemand = 0;
+  let unverified = 0;
+  let cannotRevert = 0;
+  let companyAnchored = 0;
+  const gaps = [];
+
+  for (const r of rows) {
+    const id = r.id ?? '<no id>';
+    if (!kinds.has(r.kind)) {
+      bad(`${id} — kind \`${r.kind}\` is not one of ${[...kinds].join(' · ')}. Free text here would let a row opt out of every per-kind rule by inventing a ninth kind nothing checks.`);
+      continue;
+    }
+    for (const f of ['what', 'detector', 'response']) {
+      if (!nonEmpty(r[f])) bad(`${id} — \`${f}\` is empty. A failure with no named ${f} is the thing this register exists to make impossible.`);
+    }
+
+    // ── cadence ──────────────────────────────────────────────────────────────
+    const days = cadenceDays(r.cadence);
+    if (r.cadence === 'on-demand') {
+      onDemand++;
+      if (!nonEmpty(r.why)) bad(`${id} — \`cadence: on-demand\` with no \`why\`. This one word disabled the staleness limb per row in the drafted acceptance, so it is not free.`);
+    } else if (r.cadence === 'trigger') {
+      if (!nonEmpty(r.trigger)) bad(`${id} — \`cadence: trigger\` with no named \`trigger\` event.`);
+    } else if (days === null) {
+      bad(`${id} — \`cadence\` must be a duration like \`8h\`/\`120d\`, or \`on-demand\` with a \`why\`, or \`trigger\` with a named event. Got: ${JSON.stringify(r.cadence)}`);
+    } else {
+      const max = reg._maxCadenceDays?.[r.kind];
+      if (typeof max !== 'number') bad(`${id} — no \`_maxCadenceDays\` entry for kind \`${r.kind}\`, so its cadence is unbounded.`);
+      else if (days > max) bad(`${id} — cadence ${r.cadence} (${days}d) exceeds the stage maximum for \`${r.kind}\` (${max}d). A row cannot declare its own shelf life.`);
+    }
+
+    // ── mechanism ────────────────────────────────────────────────────────────
+    const mech = r.mechanism;
+    if (!mech || typeof mech !== 'object') {
+      bad(`${id} — no \`mechanism\`. A duty with no named substrate is a duty performed by somebody remembering.`);
+    } else {
+      for (const f of ['substrate', 'anchor', 'record', 'failingValue', 'readBy']) {
+        if (!nonEmpty(mech[f])) bad(`${id} — \`mechanism.${f}\` is empty.`);
+      }
+      if (nonEmpty(mech.anchor)) {
+        if (mech.anchor.startsWith('company/')) {
+          companyAnchored++;
+        } else if (!tree.paths.has(mech.anchor)) {
+          bad(`${id} — \`mechanism.anchor\` names \`${mech.anchor}\`, which is not in the tree. A mechanism that names a substrate that does not exist is a mechanism that does not exist.`);
+        }
+      }
+    }
+
+    // ── EVERY NAMED READER MUST EXIST. ───────────────────────────────────────
+    // `.anchor` was the only path this guard checked, and `.readBy` is the field
+    // that carries the claim that actually matters: WHO LOOKS. The first draft
+    // of this register named `tooling/ci/assert-update-coverage.mjs` as the
+    // reader for the dependency duty, and that file has never existed — the row
+    // asserted a live reader for a duty nothing reads, which is the precise
+    // shape ("zero readers") the whole stage was written about, reproduced
+    // inside the register meant to end it. Prose is checked here rather than
+    // trusted because a named file is not prose: it either exists or it does not.
+    for (const f of ['detector', 'response', 'mechanism.record', 'mechanism.readBy', 'mechanism.failingValue']) {
+      const v = f.startsWith('mechanism.') ? r.mechanism?.[f.slice(10)] : r[f];
+      if (typeof v !== 'string') continue;
+      for (const p of v.match(NAMED_PATH) ?? []) {
+        if (!tree.paths.has(p)) {
+          bad(
+            `${id} — \`${f}\` names \`${p}\`, which is not in the tree. A row that names a reader, a record or a detector that does not exist ` +
+              'is the register asserting coverage it does not have — the "zero readers" defect, wearing the clothes of the file that was supposed to end it.',
+          );
+        }
+      }
+    }
+
+    // ── access providers, from a fixed vocabulary ────────────────────────────
+    const ap = r.accessProviders;
+    if (!Array.isArray(ap) || ap.length === 0) {
+      bad(`${id} — \`accessProviders\` is empty. A row whose access path resolves to NO provider cannot be checked against any failure, so it must fail rather than pass. This is what makes O-14 falsifiable.`);
+    } else {
+      for (const p of ap) {
+        if (!providers.has(p)) bad(`${id} — access provider \`${p}\` is not in the fixed vocabulary (${[...providers].join(' · ')}). Free text here makes the intersection uncomputable.`);
+      }
+    }
+
+    // ── source ───────────────────────────────────────────────────────────────
+    if (r.source === 'unverified') {
+      unverified++;
+      if (!nonEmpty(r.unverifiedWhy)) bad(`${id} — \`source: unverified\` with no \`unverifiedWhy\`. An unverified number nobody labels becomes a fact by repetition.`);
+    } else if (r.source !== 'verified') {
+      bad(`${id} — \`source\` must be \`verified\` or \`unverified\`, got ${JSON.stringify(r.source)}.`);
+    }
+
+    // ── owner-gated / degraded ───────────────────────────────────────────────
+    if (r.ownerGated === true) {
+      if (!nonEmpty(r.ownerGap)) bad(`${id} — \`ownerGated: true\` with no \`ownerGap\`. A gap nobody describes is a waiver.`);
+      else gaps.push(`${id} — ${r.ownerGap}`);
+    }
+    if ('degradedUntil' in r) {
+      if (!isIsoDate(r.degradedUntil)) bad(`${id} — \`degradedUntil\` must be an ISO date (YYYY-MM-DD).`);
+      else if (!nonEmpty(r.degradedWhy)) bad(`${id} — \`degradedUntil\` with no \`degradedWhy\`. A deadline with no reason attached is a deadline somebody extends.`);
+      else if (nowMs >= Date.parse(`${r.degradedUntil}T00:00:00Z`)) {
+        bad(`${id} — the dated tripwire \`degradedUntil: ${r.degradedUntil}\` has PASSED and the gap is still open. It was printed rather than blocking precisely so it could not rot; the date is here.`);
+      } else {
+        prints.push(`${id} — DEGRADED, hard failure on ${r.degradedUntil}: ${r.degradedWhy}`);
+      }
+    }
+
+    // ── the date XOR: a human date, or a machine record. Never neither. ──────
+    const dateField = HUMAN_DATED.get(r.kind);
+    if (dateField && r.cadence !== 'trigger') {
+      if (!(dateField in r)) {
+        bad(`${id} — kind \`${r.kind}\` must carry \`${dateField}\` (a date, or null with an ownerGap / degradedUntil saying why not). Omitting the key is how a claim about the past becomes true forever.`);
+      } else if (r[dateField] === null) {
+        if (r.ownerGated !== true && !('degradedUntil' in r)) {
+          bad(`${id} — \`${dateField}\` is null with neither \`ownerGated\` + \`ownerGap\` nor a dated \`degradedUntil\`. "Never done" must cost something.`);
+        }
+      } else if (!isIsoDate(r[dateField])) {
+        bad(`${id} — \`${dateField}\` is not an ISO date: ${JSON.stringify(r[dateField])}`);
+      } else {
+        const t = Date.parse(`${r[dateField]}T00:00:00Z`);
+        if (t > nowMs) bad(`${id} — \`${dateField}\` is in the FUTURE (${r[dateField]}). A drill that has not happened cannot be dated.`);
+        else if (days !== null) {
+          const age = (nowMs - t) / 86_400_000;
+          if (age > days) {
+            bad(`${id} — \`${dateField}\` is ${age.toFixed(0)} days old and the declared cadence is ${r.cadence} (${days}d). This is the whole of O-13: the same fact expires.`);
+          }
+        }
+      }
+    }
+
+    // ── O-8: cannot-revert requires a mitigation that is itself a row ────────
+    if (r.kind === 'revert' && r.path === 'cannot-revert') {
+      cannotRevert++;
+      const m = byId.get(r.mitigation);
+      if (!nonEmpty(r.mitigation)) {
+        bad(`${id} — \`path: cannot-revert\` with no named \`mitigation\`. Unbounded cannot-revert is how marking every surface unrevertable made the drafted criterion green.`);
+      } else if (!m) {
+        bad(`${id} — \`mitigation\` names \`${r.mitigation}\`, which is not a row in this register. A mitigation that is not a checkable row is a sentence.`);
+      } else if (m.kind !== 'revert') {
+        bad(`${id} — \`mitigation\` \`${r.mitigation}\` is kind \`${m.kind}\`, not \`revert\`.`);
+      } else if (cadenceDays(m.cadence) === null && m.cadence !== 'trigger') {
+        bad(`${id} — the mitigation \`${r.mitigation}\` has no cadence of its own (${JSON.stringify(m.cadence)}), so it can never go stale. That is what turns "we have a kill switch" back into an assertion.`);
+      }
+    }
+
+    // ── O-14: the intersection, over two independently written lists ────────
+    if (r.kind === 'failure-mode') {
+      const td = r.takesDown;
+      if (!Array.isArray(td) || td.length === 0) {
+        bad(`${id} — a \`failure-mode\` row must name the providers it \`takesDown\`.`);
+      } else {
+        for (const p of td) if (!providers.has(p)) bad(`${id} — \`takesDown\` value \`${p}\` is not in the fixed vocabulary.`);
+      }
+      const via = byId.get(r.respondsVia);
+      if (!nonEmpty(r.respondsVia)) {
+        bad(`${id} — no \`respondsVia\`. A failure with no named response is the thing O-14 exists to catch.`);
+      } else if (!via) {
+        bad(`${id} — \`respondsVia\` names \`${r.respondsVia}\`, which is not a row in this register.`);
+      } else if (via.kind !== 'recovery-path') {
+        bad(`${id} — \`respondsVia\` \`${r.respondsVia}\` is kind \`${via.kind}\`, not \`recovery-path\`.`);
+      } else if (Array.isArray(td) && Array.isArray(via.accessProviders)) {
+        const clash = td.filter((p) => via.accessProviders.includes(p));
+        if (clash.length) {
+          bad(
+            `${id} — THE RESPONSE PATH DEPENDS ON THE THING THAT IS DOWN. \`${r.respondsVia}\` needs [${via.accessProviders.join(', ')}] and this failure takes down [${td.join(', ')}]; they share: ${clash.join(', ')}. ` +
+              'The two lists are written in two different rows on purpose — that is the only reason this can fail at all.',
+          );
+        }
+      }
+    }
+
+    // ── expiring ─────────────────────────────────────────────────────────────
+    if (r.kind === 'expiring') {
+      if (!(Number.isInteger(r.leadDays) && r.leadDays > 0)) {
+        bad(`${id} — \`leadDays\` must be a positive integer: the lead time is what makes an expiry ACTIONABLE rather than merely recorded.`);
+      }
+      if (!('expires' in r)) {
+        bad(`${id} — an \`expiring\` row must carry \`expires\` (a date, or null with an ownerGap).`);
+      } else if (r.expires === null) {
+        // Two honest reasons for a null expiry, and only two. Either nobody has
+        // read the date yet (a gap somebody owns), or there IS no fixed date
+        // because another duty resets the clock — a non-use window rather than a
+        // calendar expiry. The second still has to name that duty, so "satisfied
+        // by construction" stays a checkable claim rather than a reassurance.
+        if (r.ownerGated !== true && !nonEmpty(r.satisfiedBy)) {
+          bad(`${id} — \`expires: null\` with neither \`ownerGated\` + \`ownerGap\` nor a \`satisfiedBy\` row that resets the clock. An unknown expiry is a gap, not an absence.`);
+        }
+      } else if (!isIsoDate(r.expires)) {
+        bad(`${id} — \`expires\` is not an ISO date: ${JSON.stringify(r.expires)}`);
+      } else {
+        const t = Date.parse(`${r.expires}T00:00:00Z`);
+        const daysLeft = (t - nowMs) / 86_400_000;
+        if (daysLeft < 0) bad(`${id} — \`expires: ${r.expires}\` is in the PAST.`);
+        else if (daysLeft <= r.leadDays) bad(`${id} — \`expires: ${r.expires}\` is ${daysLeft.toFixed(0)} day(s) away, inside its own ${r.leadDays}-day lead window. Renew it.`);
+      }
+      if ('satisfiedBy' in r) {
+        const s = byId.get(r.satisfiedBy);
+        if (!s) bad(`${id} — \`satisfiedBy\` names \`${r.satisfiedBy}\`, which is not a row in this register.`);
+        else if (!(Number.isInteger(r.windowDays) && r.windowDays > 0)) {
+          bad(`${id} — \`satisfiedBy\` without a \`windowDays\`: "satisfied by construction" is only checkable against the window it is inside.`);
+        } else {
+          const sd = cadenceDays(s.cadence);
+          // A MARGIN, not merely "inside the window". A non-use clock has to
+          // survive SEVERAL missed cycles, not exactly one — a duty running at
+          // 179d inside a 180d window is satisfied-by-construction on paper and
+          // one late run from being armed. The divisor is a JUDGEMENT CALL and
+          // is recorded as one: eight missed cycles. It is reachable today —
+          // lengthening the backup duty from 8h to the duty maximum of 31d trips
+          // it against the 180d window, which is the mutation that proved it.
+          const margin = r.windowDays / 8;
+          if (sd === null) bad(`${id} — the satisfying row \`${r.satisfiedBy}\` has no duration cadence, so it cannot be shown to keep this inside its window.`);
+          else if (sd > margin) {
+            bad(
+              `${id} — \`${r.satisfiedBy}\` runs every ${sd}d, and a ${r.windowDays}d non-use window needs a cadence at or under ${margin}d to survive several missed cycles. ` +
+                'It no longer satisfies this by construction. This is exactly the silent RE-ARMING the row was written to catch: what makes the clock safe is the DUTY, not the token.',
+            );
+          }
+        }
+      }
+    }
+
+    // ── review ───────────────────────────────────────────────────────────────
+    if (r.kind === 'review') {
+      if (!Number.isInteger(r.dayCount) || r.dayCount <= 0) bad(`${id} — \`dayCount\` must be a positive integer.`);
+      if (!r.outcomes || typeof r.outcomes !== 'object' || Object.keys(r.outcomes).length < 2) {
+        bad(`${id} — \`outcomes\` must name at least two named actions. A review that can only decide one thing is not a review.`);
+      }
+      if (!('day0' in r)) {
+        bad(`${id} — a \`review\` row must carry \`day0\` (a date, or null).`);
+      } else if (r.day0 === null) {
+        if (r.ownerGated !== true) bad(`${id} — \`day0: null\` with no \`ownerGated\` + \`ownerGap\`.`);
+        prints.push(`${id} — Day 0 PENDING. Trigger: ${r.trigger ?? '<none>'}. No date may be written until it fires.`);
+      } else if (!isIsoDate(r.day0)) {
+        bad(`${id} — \`day0\` is not an ISO date: ${JSON.stringify(r.day0)}`);
+      } else {
+        const due = Date.parse(`${r.day0}T00:00:00Z`) + r.dayCount * 86_400_000;
+        if (nowMs > due && !isIsoDate(r.lastDone)) {
+          bad(`${id} — Day 0 (${r.day0}) + ${r.dayCount} days has passed with no recorded review.`);
+        }
+      }
+    }
+
+    // ── retention ────────────────────────────────────────────────────────────
+    if (r.kind === 'retention') {
+      if (!nonEmpty(r.store)) bad(`${id} — a \`retention\` row must name the \`store\` it covers.`);
+      if (!RETENTION_RULES.has(r.rule)) {
+        bad(`${id} — \`rule\` must be one of ${[...RETENTION_RULES].join(' · ')}, got ${JSON.stringify(r.rule)}.`);
+      }
+      if (r.rule === 'keep' && !nonEmpty(r.keepWhy)) {
+        bad(`${id} — \`rule: keep\` with no \`keepWhy\`. A keep with no written reason is how "we never got round to it" becomes a policy.`);
+      }
+      if (r.rule === 'period' && !(Number.isInteger(r.periodDays) && r.periodDays > 0)) {
+        bad(`${id} — \`rule: period\` needs a positive integer \`periodDays\`.`);
+      }
+      if (r.rule === 'period-undeclared' && r.ownerGated !== true) {
+        bad(`${id} — \`rule: period-undeclared\` must be \`ownerGated\` with an \`ownerGap\`. An undeclared period is a gap somebody owns, not a state of nature.`);
+      }
+    }
+  }
+
+  // ── coverage: workflows, both directions ──────────────────────────────────
+  const anchored = new Map();
+  for (const r of rows) {
+    if (r.kind === 'duty' && nonEmpty(r?.mechanism?.anchor)) anchored.set(r.mechanism.anchor, r);
+  }
+  for (const wf of tree.workflows) {
+    const path = `${WORKFLOW_DIR_REL}/${wf}`;
+    if (!anchored.has(path)) {
+      bad(
+        `${path} has NO \`duty\` row anchored at it. Every workflow is a recurring duty and must declare a cadence or a written on-demand reason — ` +
+          'an unclassified new workflow fails the build on purpose, because the alternative is a workflow whose silence nobody can read.',
+      );
+    }
+  }
+
+  return {
+    errors,
+    prints,
+    stats: { rows: rows.length, onDemand, unverified, cannotRevert, companyAnchored, gaps },
+    anchored,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The impure half: read the tree, run the coverage self-checks that only make
+// sense against a real repository, then hand the pure half its inputs.
+// ─────────────────────────────────────────────────────────────────────────────
+function main() {
+  const registerPath = join(ROOT, REGISTER_REL);
+  if (!existsSync(registerPath)) {
+    coverageLost([
+      `${REGISTER_REL} does not exist under ${ROOT}.`,
+      'Eighteen of stage 14\'s acceptance criteria quantify over this file. Without it they range over the',
+      'empty set and every one of them reports clean — which is the state this guard was built to end.',
+    ]);
+  }
+
+  let reg;
+  try {
+    reg = JSON.parse(readFileSync(registerPath, 'utf8'));
+  } catch (e) {
+    coverageLost([`${REGISTER_REL} could not be parsed (${e.message}).`, 'An unreadable register is an absent register.']);
+  }
+
+  // ── the workflow set, cross-checked against what git actually tracks ──────
+  const wfDir = join(ROOT, WORKFLOW_DIR_REL);
+  if (!existsSync(wfDir)) {
+    coverageLost([`${WORKFLOW_DIR_REL} does not exist, so the workflow coverage relationship ranged over nothing.`]);
+  }
+  const workflows = readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f)).sort();
+  if (workflows.length === 0) {
+    coverageLost([`${WORKFLOW_DIR_REL} contains no workflow files, so every duty row would be trivially satisfied.`]);
+  }
+  const ls = spawnSync('git', ['-C', ROOT, 'ls-files', '--', WORKFLOW_DIR_REL], { encoding: 'utf8' });
+  const tracked =
+    ls.status === 0
+      ? [...new Set(ls.stdout.split('\n').map((l) => l.trim()).filter((l) => /\.ya?ml$/.test(l)).map((l) => l.split('/').pop()))]
+      : [];
+  if (tracked.length === 0) {
+    if (scanningRealRepo) {
+      coverageLost([
+        `\`git ls-files -- ${WORKFLOW_DIR_REL}\` returned no tracked workflow under ${ROOT}.`,
+        'The committed manifest is what anchors "did I see every workflow"; without it the relationship below',
+        'is computed over whatever happened to be on disk and still prints ok.',
+      ]);
+    }
+  } else {
+    const unseen = tracked.filter((t) => !workflows.includes(t));
+    if (unseen.length) {
+      coverageLost([
+        `git tracks ${tracked.length} workflow(s) and this scan opened ${workflows.length}; it never saw: ${unseen.join(', ')}.`,
+        'An unseen workflow is a duty nobody has to classify, and the register would still report full coverage.',
+      ]);
+    }
+  }
+
+  // ── wrangler configs: crons and custom-domain routes ──────────────────────
+  const { found: wranglers, excluded } = findWranglerConfigs(ROOT);
+  if (wranglers.length === 0) {
+    coverageLost([
+      `no live wrangler config found under ${ROOT}.`,
+      'The cron-duty and surface relationships both derive from these files, so an empty set makes both',
+      'vacuously true — the shape check-migrations.mjs shipped with when it silently dropped a file.',
+    ]);
+  }
+
+  const cronConfigs = [];
+  const customDomains = [];
+  for (const rel of wranglers) {
+    let cfg;
+    try {
+      cfg = parseJsonc(readFileSync(join(ROOT, rel), 'utf8'));
+    } catch (e) {
+      coverageLost([`${rel} could not be parsed (${e.message}), so its crons and routes are invisible to this scan.`]);
+    }
+    if (Array.isArray(cfg?.triggers?.crons) && cfg.triggers.crons.length) cronConfigs.push(rel);
+    for (const r of cfg?.routes ?? []) {
+      if (r?.custom_domain === true && nonEmpty(r.pattern)) customDomains.push(r.pattern);
+    }
+  }
+
+  // Every file the register anchors to must be checkable, so build the path set
+  // once. `company/` is excluded from the tree by .gitignore and is handled
+  // separately and loudly in the pure half.
+  const paths = new Set();
+  const collect = (dir, rel) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'build') continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      paths.add(r);
+      if (e.isDirectory()) collect(join(dir, e.name), r);
+    }
+  };
+  collect(ROOT, '');
+
+  const now = Date.now();
+  const { errors, prints, stats, anchored } = evaluate(reg, { workflows, paths }, now);
+
+  // ── the OTHER direction: a duty row anchored at a workflow that is gone ───
+  for (const [anchor, row] of anchored) {
+    if (anchor.startsWith(`${WORKFLOW_DIR_REL}/`) && !workflows.includes(anchor.split('/').pop())) {
+      coverageLost([
+        `${row.id} anchors at ${anchor}, which is not among the ${workflows.length} workflow(s) on disk.`,
+        'The register would keep asserting a duty performed by a mechanism that no longer exists — a stale row',
+        'reads as coverage, which is strictly worse than an absent one.',
+      ]);
+    }
+  }
+
+  // ── cron duties ⊇ every wrangler cron ─────────────────────────────────────
+  for (const cfg of cronConfigs) {
+    const row = [...anchored.values()].find((r) => r.mechanism.anchor === cfg && r.mechanism.substrate === 'cloudflare-cron');
+    if (!row) {
+      errors.push(
+        `${cfg} declares \`triggers.crons\` and has no \`duty\` row with \`mechanism.substrate: cloudflare-cron\` anchored at it. ` +
+          'A scheduled job nothing enumerates is a job whose silence is unreadable — the state cron_heartbeat sat in for three red nights with zero readers.',
+      );
+    }
+  }
+
+  // ── THE OTHER DIRECTION for crons. Deleting `triggers.crons` from a wrangler
+  //    config empties `cronConfigs`, and a loop over an empty set prints ok — the
+  //    exact vacuous shape this guard exists to refuse. So a row that CLAIMS to
+  //    be a cron duty must find its cron in the config it anchors.
+  for (const row of anchored.values()) {
+    if (row.mechanism.substrate !== 'cloudflare-cron') continue;
+    if (!cronConfigs.includes(row.mechanism.anchor)) {
+      coverageLost([
+        `${row.id} declares \`substrate: cloudflare-cron\` and ${row.mechanism.anchor} declares no \`triggers.crons\`.`,
+        'The register asserts a scheduled job that the config no longer schedules. Checking only the forward',
+        'direction would make DELETING the cron the way to make this guard pass — a domain that shrinks to',
+        'nothing while every remaining check still prints ok.',
+      ]);
+    }
+  }
+
+  // ── hostnames are DELEGATED, and the delegation is checkable ──────────────
+  // Not "not checked here" — DELEGATED, which is only a different thing if the
+  // target is verified to exist and to be non-empty. Otherwise "stage 11 owns
+  // it" degrades into nobody owning it, silently, the moment that file moves.
+  const delegated = reg._delegated?.hostnames;
+  if (!nonEmpty(delegated)) {
+    coverageLost([
+      '`_delegated.hostnames` is missing. This register deliberately holds NO hostname rows, so without a',
+      'named owner for that set the surfaces this factory serves are enumerated by nothing at all — which',
+      'is exactly the state stage 14 was written to end, reached by deleting one line instead of many.',
+    ]);
+  }
+  const delegatedPath = join(ROOT, delegated);
+  if (!existsSync(delegatedPath)) {
+    coverageLost([
+      `\`_delegated.hostnames\` names ${delegated}, which does not exist.`,
+      'Hostname coverage is [11]E-9\'s and is enforced by tooling/ci/assert-monitor-coverage.mjs against a',
+      'strictly wider derivation than this file ever had. Deleting it must redden BOTH guards.',
+    ]);
+  }
+  let hostCount = 0;
+  try {
+    const hosts = JSON.parse(readFileSync(delegatedPath, 'utf8'))?.hosts;
+    if (!Array.isArray(hosts) || hosts.length === 0) throw new Error('no `hosts` array');
+    hostCount = hosts.length;
+  } catch (e) {
+    coverageLost([
+      `${delegated} could not be read as a host register (${e.message}).`,
+      'An empty delegate is worse than none: this guard would report ok while the set it points at covers nothing.',
+    ]);
+  }
+  // Both directions still matter, cheaply: the delegate must at least see every
+  // custom domain this repo deploys. If it did not, "delegated" would be a
+  // one-way pointer at a smaller set.
+  {
+    const delegatedHosts = new Set(
+      (JSON.parse(readFileSync(delegatedPath, 'utf8')).hosts ?? []).map((h) => h.hostname),
+    );
+    for (const host of customDomains) {
+      if (!delegatedHosts.has(host)) {
+        errors.push(
+          `\`${host}\` is a custom_domain route in a wrangler config and is not among the ${delegatedHosts.size} host(s) in ${delegated}. ` +
+            'Hostname coverage is delegated there; a delegate that does not see a deployed surface is a pointer at a smaller set.',
+        );
+      }
+    }
+  }
+
+  // ── rows ⊇ _requiredCoverage.ids (the half no tree walk can see) ──────────
+  const ids = new Set(reg.rows.map((r) => r.id));
+  const requiredIds = reg._requiredCoverage?.ids;
+  if (!Array.isArray(requiredIds) || requiredIds.length === 0) {
+    coverageLost([
+      '`_requiredCoverage.ids` is empty or missing.',
+      'It is the literal half of the domain — two registrars, the Origin CA cert, the Oracle box, the store',
+      'enrolments, the laptop duties. Emptying it removes every external surface from the register at once',
+      'while every remaining check still prints ok.',
+    ]);
+  }
+  for (const id of requiredIds) {
+    if (!ids.has(id)) {
+      errors.push(`_requiredCoverage names \`${id}\` and no row has that id. This is the external half of the domain — the part the worst risks live in and no tree walk will ever reach.`);
+    }
+  }
+
+  // ── report ────────────────────────────────────────────────────────────────
+  for (const p of prints) console.log(`⬜  ${p}`);
+  console.log(
+    `⬜  register: ${stats.rows} rows · ${stats.onDemand} on-demand · ${stats.cannotRevert} cannot-revert · ` +
+      `${stats.unverified} unverified · ${stats.companyAnchored} anchored in company/ (gitignored — this guard CANNOT verify those anchors exist)`,
+  );
+  if (stats.gaps.length) {
+    console.log(`⬜  ${stats.gaps.length} OWNER-GATED gap(s) — printed every run, never blocking (CLAUDE.md C-6):`);
+    for (const g of stats.gaps) console.log(`      · ${g}`);
+  }
+
+  if (errors.length) {
+    console.error(`✗ ${REGISTER_REL} — ${errors.length} problem(s):`);
+    for (const e of errors) console.error(`    ${e}`);
+    process.exit(1);
+  }
+
+  console.log(
+    `ok  operations register — ${stats.rows} rows; ${workflows.length} workflow(s) and ${cronConfigs.length} cron config(s) all classified; ` +
+      `${requiredIds.length} external ids present; ${customDomains.length} custom domain(s) delegated to ${delegated} (${hostCount} hosts) [pipeline O-1]`,
+  );
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  main();
+}

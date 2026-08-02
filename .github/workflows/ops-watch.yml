@@ -1,0 +1,134 @@
+name: Ops watch
+
+# [pipeline O-4] The reader for the run records nothing was reading.
+#
+# 🔴 WHY THIS EXISTS. `platform_db.cron_heartbeat` carried `ok = 0` — "HTTP 401
+# — REJECTED … no SUPABASE_ANON_KEY configured" — for three consecutive nights,
+# and `grep -rn cron_heartbeat` across the whole tree returned the DDL, the
+# INSERT, two comments and a test comment. ZERO READERS. The instrument had
+# already been repaired and nobody had plugged anything into it. Four independent
+# duties were failing simultaneously the day this was written, every one of them
+# had a durable record, and not one of those records had a consumer.
+#
+# 🔴 A DIFFERENT PROVIDER, DELIBERATELY. This runs on GitHub Actions and watches
+# a Cloudflare cron. A watcher hosted inside the system it watches goes down with
+# it and reports nothing — which is indistinguishable from "everything is fine".
+# The one provably complete alarm chain in this portfolio (backup script →
+# GlitchTip heartbeat → alert rule → email) has exactly this shape; it is being
+# copied, not reinvented.
+#
+# SCHEDULE: 07:30 UTC. The Cloudflare cron it watches runs at 06:00 UTC, so this
+# reads a table that has had 90 minutes to settle — inside the 1.5x staleness
+# ceiling the reader applies, and far enough after that a slow run is not read as
+# a dead one.
+#
+# Required repo secrets: CLOUDFLARE_API_TOKEN (D1 read), CLOUDFLARE_ACCOUNT_ID.
+# A MISSING SECRET IS A FAILED RUN, NOT A SKIPPED ONE. The reader fails closed on
+# an absent token, a non-200, or unparseable JSON: "I could not tell" must never
+# read as "it is fine", which is exactly how the claim it replaces became
+# unfalsifiable. There is no secretless audience to protect — this workflow has
+# no `push` or `pull_request` trigger, so it never runs on a fork PR.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 7 * * *' # 07:30 UTC daily, 90 minutes after the cron it watches
+
+permissions: {}
+
+concurrency:
+  group: ops-watch
+  cancel-in-progress: false
+
+jobs:
+  heartbeats:
+    name: Every declared cron duty is fresh and reporting success
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Read the heartbeat table from OUTSIDE Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tooling/ops/check-heartbeats.mjs
+
+  # ── Alerting ────────────────────────────────────────────────────────────────
+  # Copied from e2e.yml's `alert` job, which is the shape that works here: ONE
+  # durable issue, reused, never auto-closed. A notification is read once and
+  # gone; an open issue sits on the repo until a human closes it — and closing it
+  # IS the disposition. [pipeline O-5]
+  #
+  # 🔴 AUTO-CLOSING IS FORBIDDEN. Teaching this job to close its own issue on a
+  # later green run would satisfy any "every alert has a disposition" criterion
+  # and DESTROY the requirement, because the only evidence anyone looked is a
+  # human having looked.
+  #
+  # SCHEDULED RUNS ONLY: a workflow_dispatch failure is attended by definition.
+  alert:
+    name: Open or refresh the ops-watch issue
+    needs: heartbeats
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: File the failure against one durable issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # THE MARKER. Matched exactly, so rewording it means the next failure
+          # opens a second issue next to the one already open.
+          TITLE: 'Scheduled duty is not reporting healthy'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          note="Failed: [run ${GITHUB_RUN_ID}, attempt ${GITHUB_RUN_ATTEMPT}](${RUN_URL}) at $(date -u '+%Y-%m-%d %H:%M UTC')."
+
+          # Quoted heredoc on purpose — the body is markdown full of backticks,
+          # and an unquoted one would execute them as commands.
+          body="${RUNNER_TEMP}/ops-alert.md"
+          { printf '%s\n\n' "$note"; cat <<'BODY'
+          A scheduled duty is **absent, stale or explicitly failing**. The run log names which,
+          and which of the three it is:
+
+          - **ABSENT** — no heartbeat row inside 1.5x the job's declared cron interval. The timer
+            has stopped, or the job can no longer write its own record.
+          - **RED** — a fresh row that says the job FAILED. ⚠️ Note that a check asking only
+            "did a row land today" would be **green on exactly this**.
+          - **UNKNOWN** — no token, a non-200, unparseable JSON. Failing closed is deliberate:
+            "I could not tell" must never read as "it is fine".
+
+          **Why this matters beyond the tick.** The Supabase keep-alive is the only thing standing
+          between the shared auth project and its idle pause, and a paused auth project takes
+          sign-in down across the whole portfolio.
+
+          **This issue is reused.** Every later failure is added here as a comment instead of
+          opening a new one, and it is **not closed automatically**. It stays open until a human
+          closes it; closing it *is* the acknowledgement that someone looked.
+
+          Filed automatically by the `alert` job in `.github/workflows/ops-watch.yml`.
+          BODY
+          } > "$body"
+
+          # Looked up through the LIST api, not the search index: search lags
+          # behind writes, and a lookup that misses opens a duplicate.
+          existing="$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title == env.TITLE) | .number] | first // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still red. ${note}"
+            echo "::warning title=Ops watch still failing::commented on the already-open issue #${existing}"
+          else
+            url="$(gh issue create --title "$TITLE" --body-file "$body")"
+            echo "::error title=Ops watch failed::opened ${url}"
+          fi
