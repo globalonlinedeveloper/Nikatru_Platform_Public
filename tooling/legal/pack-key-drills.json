@@ -1,0 +1,50 @@
+{
+  "_readme": [
+    "[pipeline 7]P-10 — no production pack is signed before key custody is drill-proven.",
+    "",
+    "🔴 THE ORIGINAL ACCEPTANCE CRITERION IS DROPPED, NOT SATISFIED. It demanded a recorded restore",
+    "FROM SHARES drill. [ADR 022] (LOCKED 2026-07-27) states that Shamir splitting is NOT required:",
+    "there are no shares, there never will be, and splitting was rejected precisely because it puts a",
+    "tool dependency in the restore path — the same trap [ADR 021] and [1]F-7b exist to remove. A",
+    "criterion naming an artifact a locked decision abolished is permanently unsatisfiable. Correct the",
+    "evidence, not the decision.",
+    "",
+    "WHAT REPLACES IT: tooling/content_pipeline/src/sign.mjs REFUSES a production key_id unless this",
+    "file records a dated restore drill for it. That refusal runs LOCALLY, never in CI — the seed must",
+    "never reach a runner, so CI signs as the derived `test-k1` and the production canary is owner-run.",
+    "assert-publish-gate.mjs PRINTS the gap on every CI run instead of failing, because a guard that",
+    "blocks all CI on work only the owner can physically do is a guard somebody switches off.",
+    "",
+    "WHAT A DRILL IS, exactly (it is short): take each stored copy IN TURN — .claude/pack-signing.seed",
+    "and the printed paper copy — restore the seed from it alone, sign a message with the restored key,",
+    "and verify that signature through the production Ed25519PackVerifier against the k1 pinned in",
+    "packages/core/lib/src/content/pack_verifier.dart. Then write today's date into drilled_on below.",
+    "Two copies that fail differently are only two copies once BOTH have been read back.",
+    "",
+    "⚠️ THE PAPER COPY IS ALSO STILL OWED and this file does not pretend otherwise. [ADR 022]'s own",
+    "'What is still owed' section says so: until it exists the seed has one copy plus a backup sharing",
+    "one Google account, which is the failure that ADR spends most of its length arguing against."
+  ],
+  "productionKeyIds": ["k1"],
+  "drills": [
+    {
+      "key_id": "k1",
+      "drilled_on": null,
+      "copies": [
+        {
+          "copy": ".claude/pack-signing.seed",
+          "covers": "this laptop dying — the likely failure",
+          "restoredOn": null
+        },
+        {
+          "copy": "paper, offline, two locations",
+          "covers": "losing the Google account",
+          "restoredOn": null,
+          "note": "NOT YET CREATED — [ADR 022] 'What is still owed'. Print, never handwrite: the seed is a single case-sensitive 44-character base64 string and 0/O, 1/l/I and +/= are the usual casualties."
+        }
+      ],
+      "ownerItem": "OWNER_QUEUE S-3 remnant, routed to [9]R-3",
+      "blocks": "signing ANY pack as key_id k1 — i.e. every pack a shipped binary would accept"
+    }
+  ]
+}

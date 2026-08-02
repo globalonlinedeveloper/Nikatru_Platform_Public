@@ -1,0 +1,263 @@
+{
+  "_readme": [
+    "[pipeline 7]P-5 / G-36 — no asset ships in a content pack without a cleared licence row.",
+    "",
+    "🔴 WHY THIS IS IN tooling/legal/ AND NOT company/compliance/. The stage-7 requirement specifies the",
+    "licence register 'under company/'. company/ is GITIGNORED (.gitignore line 15) and is not in the",
+    "public repository at all, so a CI guard pointed there reads NOTHING: existsSync returns false, the",
+    "row set is empty, and the guard reports a clean tree over an empty domain. That is this repo's most",
+    "repeated failure, and it is the same defect that stopped four stage-8 increments (PR #114) until the",
+    "in-tree home was settled — see tooling/legal/README.md. Nothing in a third-party font, model or",
+    "vendor licence is private business data.",
+    "",
+    "THIS REGISTER AND asset-register.json ARE DIFFERENT QUESTIONS, deliberately not merged:",
+    "  asset-register.json  — what a BUILT APP BUNDLE ships (fonts, shaders, images in the binary)",
+    "  this file            — what the CONTENT PIPELINE consumes to PRODUCE a pack (generator models,",
+    "                         TTS voices, QA models, and any third-party asset family a pack carries)",
+    "An app can ship a font it never generated with; a pack can carry a voice the app binary never sees.",
+    "",
+    "EVERY VERDICT CARRIES A `basis`, and that is the rule that makes the row worth having:",
+    "  clause:<n>  — the licence says so, at that numbered condition. Quote it in `clauseText`.",
+    "  absence     — the licence is SILENT and silence is being read as permission. [ADR 019] accepts",
+    "                exactly this for the Gemini route: 'commercial use is permitted by absence of",
+    "                prohibition, not by explicit grant', with no IP indemnity behind it.",
+    "  owner-lock  — an owner decision accepted the risk. Names the ADR.",
+    "  UNVERIFIED  — nobody has read the primary text. Treated as NOT CLEARED.",
+    "A row that records `commercial_use: yes` and nothing else certifies the wrong thing. OFL 1.1 is the",
+    "worked example: subsetting a face makes it a Modified Version (the definition covers 'deleting … in",
+    "part or in whole'), and condition 3 then forbids shipping it under a Reserved Font Name. Both facts",
+    "have to be in the row or the row is a decoration.",
+    "",
+    "PRINT vs FAIL, the split tooling/legal/README.md already established:",
+    "  FAIL — a REQUIRED_COVERAGE family with no row · a row missing any verdict field · a row whose",
+    "         archived_text path is not on disk · a banned licence id (CC-BY-NC*, CC-BY-SA*) · a recipe",
+    "         naming a family that is absent or NOT CLEARED · a `tripwire` family that has entered the",
+    "         tree while still uncleared",
+    "  PRINT — an UNVERIFIED row for a family nothing consumes yet. Per-row legal sign-off is owner",
+    "         judgement; failing every CI run on it blocks all other work and teaches people to switch",
+    "         the guard off. Each printed row names what would settle it.",
+    "",
+    "🔴 CC-BY-NC AND CC-BY-SA ARE REFUSED AT INTAKE, not printed. NC excludes commercial distribution",
+    "outright. SA's anti-ETM term is refuted by the Ed25519 signature on our packs, which exists to make",
+    "shipped content verifiable and cannot be removed without removing the fail-closed verifier. The",
+    "A–S synthesis found several piper/VITS voices under exactly these terms; [ADR 017] chose Chirp 3 HD",
+    "to resolve that, and this is the check that keeps it resolved."
+  ],
+
+  "requiredCoverage": [
+    "hand-authored-content",
+    "google/gemini-text",
+    "google/gemini-image",
+    "google/chirp-3-hd",
+    "noto-fonts",
+    "awesome_notifications_fcm"
+  ],
+
+  "bannedLicencePrefixes": ["CC-BY-NC", "CC-BY-SA"],
+
+  "verdictFields": [
+    "commercial_use",
+    "redistribution_of_rendered_output",
+    "store_sale",
+    "attribution_NOTICE",
+    "modification_subsetting",
+    "reserved_font_name"
+  ],
+
+  "families": [
+    {
+      "family": "hand-authored-content",
+      "kind": "first-party",
+      "what": "Text, phrases and deterministic container bytes written by a person or assembled by tooling in this repository. No third party and no model is involved.",
+      "source": {
+        "url": null,
+        "readOn": "2026-08-02",
+        "note": "First-party work; the source is this repository's own history. tooling/content_pipeline/examples/lingo-phrases/make-assets.mjs is committed precisely so the binary bytes are accountable rather than 'a file somebody had'."
+      },
+      "licence_id": "first-party",
+      "archived_text": null,
+      "verdicts": {
+        "commercial_use": { "value": "yes", "basis": "owner-lock", "clauseText": "Sole-proprietorship work product. NIKATRU holds whatever rights exist." },
+        "redistribution_of_rendered_output": { "value": "yes", "basis": "owner-lock", "clauseText": "Same." },
+        "store_sale": { "value": "yes", "basis": "owner-lock", "clauseText": "Same." },
+        "attribution_NOTICE": { "value": "not-required", "basis": "owner-lock", "clauseText": "No third-party notice to carry." },
+        "modification_subsetting": { "value": "yes", "basis": "owner-lock", "clauseText": "Same." },
+        "reserved_font_name": { "value": "n/a", "basis": "owner-lock", "clauseText": "Not a font." }
+      },
+      "cleared_by": "in-tree, first-party — no third-party term to interpret",
+      "cleared_on": "2026-08-02",
+      "consumedBy": ["tooling/content_pipeline/examples/lingo-phrases/recipe.json"]
+    },
+
+    {
+      "family": "google/gemini-text",
+      "kind": "generator-model",
+      "what": "Text and phrase generation on the consumer Gemini subscription ([ADR 019], the locked content stack).",
+      "source": {
+        "url": "https://policies.google.com/terms",
+        "readOn": "2026-07-24",
+        "note": "Read during [ADR 019]'s lock, not re-read today. Two documents: Google's main Terms of Service ('Google won't claim ownership over that content') and the Generative AI Additional Terms (no clause prohibits commercial use, sale or redistribution; the one substantive restriction forbids using the services to develop machine-learning models, which does not bind us — we ship content, we do not train on it)."
+      },
+      "licence_id": "google-consumer-subscription",
+      "archived_text": null,
+      "verdicts": {
+        "commercial_use": { "value": "yes", "basis": "absence", "clauseText": "🔴 PERMITTED BY ABSENCE OF PROHIBITION, NOT BY EXPLICIT GRANT. [ADR 019] verified there is no commercial-use grant anywhere in the consumer terms, and no IP indemnity on this tier (Vertex/GCP does offer generative-AI indemnification; the subscription does not). The owner accepted R3 knowingly." },
+        "redistribution_of_rendered_output": { "value": "yes", "basis": "absence", "clauseText": "No clause prohibits redistribution of output." },
+        "store_sale": { "value": "yes", "basis": "absence", "clauseText": "No clause prohibits sale. Same absence, same accepted risk." },
+        "attribution_NOTICE": { "value": "not-required", "basis": "absence", "clauseText": "No attribution clause in the consumer terms." },
+        "modification_subsetting": { "value": "n/a", "basis": "absence", "clauseText": "Not a distributable work with components to subset." },
+        "reserved_font_name": { "value": "n/a", "basis": "absence", "clauseText": "Not a font." }
+      },
+      "cleared_by": "[ADR 019] owner lock 2026-07-24 — R3 accepted, not solved",
+      "cleared_on": "2026-07-24",
+      "residualRisk": "🔴 The realistic exposure is a TAKEDOWN, not a lawsuit: a rights-holder's DMCA complaint can pull an app from a store within hours with no hearing, and repeat strikes threaten the single store identity per platform that L21 depends on. The mitigation is the NO-IP-PROMPTING rule (enforced by tooling/content_pipeline/src/prompts.mjs and assert-prompt-provenance.mjs) plus the human review sample.",
+      "consumedBy": []
+    },
+
+    {
+      "family": "google/gemini-image",
+      "kind": "generator-model",
+      "what": "Image generation on the consumer Gemini subscription ([ADR 019]).",
+      "source": {
+        "url": "https://policies.google.com/terms",
+        "readOn": "2026-07-24",
+        "note": "Same two documents as google/gemini-text; the terms do not distinguish modality."
+      },
+      "licence_id": "google-consumer-subscription",
+      "archived_text": null,
+      "verdicts": {
+        "commercial_use": { "value": "yes", "basis": "absence", "clauseText": "As google/gemini-text." },
+        "redistribution_of_rendered_output": { "value": "yes", "basis": "absence", "clauseText": "As google/gemini-text." },
+        "store_sale": { "value": "yes", "basis": "absence", "clauseText": "As google/gemini-text." },
+        "attribution_NOTICE": { "value": "not-required", "basis": "absence", "clauseText": "As google/gemini-text." },
+        "modification_subsetting": { "value": "n/a", "basis": "absence", "clauseText": "Not a distributable work with components to subset." },
+        "reserved_font_name": { "value": "n/a", "basis": "absence", "clauseText": "Not a font." }
+      },
+      "cleared_by": "[ADR 019] owner lock 2026-07-24 — R3 accepted, not solved",
+      "cleared_on": "2026-07-24",
+      "markingDuty": "KEEP SYNTHID INTACT. [ADR 019] consequence (2): the mark doubles as the EU AI Act Art. 50 machine-readable marking (G-33) and costs nothing. src/pack.mjs's GENERATOR_MARKING declares this generator as `synthid`, so an image row claiming `none` is a contradiction the emitter refuses.",
+      "residualRisk": "🟠 [ADR 019] risk tier: photorealistic images and video are moderate (style / likeness / recognisable characters), above the 🟡 of simple UI illustrations. The flagship content type is 🟢.",
+      "consumedBy": []
+    },
+
+    {
+      "family": "google/chirp-3-hd",
+      "kind": "tts-voice",
+      "what": "Google Cloud Chirp 3 HD text-to-speech, the locked audio generation route ([ADR 017] + [ADR 019]'s L11 amendment). Metered API, generated ONCE and banked as a static asset — a one-time production cost, not per-user runtime.",
+      "source": {
+        "url": "https://cloud.google.com/terms/service-terms",
+        "readOn": "2026-07-25",
+        "note": "Terms verified at [ADR 017]'s lock: redistribution in paid apps permitted, no watermarking, no user-count limit. ⚠️ The PRICE was COULD-NOT-ESTABLISH — the pricing page truncated on two independent attempts — and is deliberately absent from this register. An indicative figure repeated here would become a budget input that looks sourced."
+      },
+      "licence_id": "google-cloud-service-terms",
+      "archived_text": null,
+      "verdicts": {
+        "commercial_use": { "value": "yes", "basis": "owner-lock", "clauseText": "[ADR 017]: Chirp 3 HD resolves R2 outright — one commercial vendor agreement replaces a pile of CC-BY-NC / research-only piper-VITS checkpoints." },
+        "redistribution_of_rendered_output": { "value": "yes", "basis": "owner-lock", "clauseText": "Redistribution of synthesised audio in paid apps permitted; verified 2026-07-25." },
+        "store_sale": { "value": "yes", "basis": "owner-lock", "clauseText": "Same verification — no user-count limit." },
+        "attribution_NOTICE": { "value": "UNVERIFIED", "basis": "UNVERIFIED", "clauseText": "Not established. The 2026-07-25 pass covered redistribution, watermarking and user counts; it did not settle whether a synthesised-speech attribution notice is required." },
+        "modification_subsetting": { "value": "n/a", "basis": "owner-lock", "clauseText": "Not a distributable work with components to subset." },
+        "reserved_font_name": { "value": "n/a", "basis": "owner-lock", "clauseText": "Not a font." }
+      },
+      "cleared_by": null,
+      "cleared_on": null,
+      "wouldNeed": "The Google Cloud Service Specific Terms for Text-to-Speech, read for an attribution requirement on synthesised speech. Until then this row is NOT CLEARED and no pack may declare this family.",
+      "markingDuty": "🔴 NO SYNTHID, AND THAT IS SETTLED IN THE NEGATIVE. Chirp 3 HD applies no watermark; the vendor doc mentions neither SynthID nor watermarking. So PROVENANCE.json is the ONLY marking evidence that exists for audio, and a QA check asserting 'SynthID survived' on a Chirp asset would assert that an absent mark was not removed — it can only pass. src/pack.mjs keys marking on the GENERATOR for exactly this reason.",
+      "consumedBy": []
+    },
+
+    {
+      "family": "noto-fonts",
+      "kind": "font",
+      "what": "The Noto script families — the fallback plan for every script the portfolio's locales need. Not consumed by any pack today; G-36 requires the row to exist BEFORE the first font-bearing pack, because a font is the one asset class whose terms bite at redistribution rather than at use.",
+      "source": {
+        "url": "https://openfontlicense.org/open-font-license-official-text/",
+        "readOn": "2026-08-02",
+        "note": "SIL OPEN FONT LICENSE Version 1.1, dated 26 February 2007, read directly from the licence steward's own site. ⚠️ THIS IS THE LICENCE, NOT THE FONT. Whether a given Noto release specifies a Reserved Font Name is stated in the copyright line of the OFL.txt shipped WITH that release, and that file has not been read — see reserved_font_name below."
+      },
+      "licence_id": "OFL-1.1",
+      "archived_text": null,
+      "verdicts": {
+        "commercial_use": {
+          "value": "yes",
+          "basis": "clause:0",
+          "clauseText": "Grant: 'Permission is hereby granted, free of charge, to any person obtaining a copy of the Font Software, to use, study, copy, merge, embed, modify, redistribute, and sell modified and unmodified copies of the Font Software, subject to the following conditions'."
+        },
+        "redistribution_of_rendered_output": {
+          "value": "yes",
+          "basis": "absence",
+          "clauseText": "The licence governs the Font Software. No condition reaches text rendered with it. Recorded as `absence` rather than `clause` because that is a reading of silence, not a stated permission."
+        },
+        "store_sale": {
+          "value": "yes",
+          "basis": "clause:2",
+          "clauseText": "Condition 2: 'Original or Modified Versions of the Font Software may be bundled, redistributed and/or sold with any software, provided that each copy contains the above copyright notice and this license.' ⚠️ Condition 1 forbids selling the Font Software BY ITSELF — an app that bundles it is not that case, a font pack sold on its own would be."
+        },
+        "attribution_NOTICE": {
+          "value": "required",
+          "basis": "clause:2",
+          "clauseText": "Condition 2 requires each copy to contain the copyright notice AND this licence. This is a NOTICE.md / in-app-licences obligation, not a nicety — condition 5's TERMINATION clause makes the whole licence 'null and void if any of the above conditions are not met'."
+        },
+        "modification_subsetting": {
+          "value": "yes-but-becomes-a-modified-version",
+          "basis": "clause:definition",
+          "clauseText": "'Modified Version' refers to any derivative made by adding to, deleting, or substituting – in part or in whole – any of the components of the Original Version, by changing formats or by porting the Font Software to a new environment. 🔴 SUBSETTING DELETES COMPONENTS, so a subset face IS a Modified Version and condition 3 then applies to its name."
+        },
+        "reserved_font_name": {
+          "value": "UNVERIFIED",
+          "basis": "UNVERIFIED",
+          "clauseText": "Condition 3: 'No Modified Version of the Font Software may use the Reserved Font Name(s) unless explicit written permission is granted by the corresponding Copyright Holder.' Whether the Noto releases we would ship specify one is stated after the copyright statement in THEIR OFL.txt, which has not been read. Guessing here is the whole failure this register exists to prevent: if a Reserved Font Name is specified, a subset shipped under the name 'Noto…' breaches condition 3 and condition 5 voids the licence."
+        }
+      },
+      "cleared_by": null,
+      "cleared_on": null,
+      "wouldNeed": "The OFL.txt bundled in the specific notofonts release to be shipped, read for the copyright line's 'with Reserved Font Name' clause; and a decision on whether the build subsets (Flutter's font tree-shaking does — see the flutter-icon-tree-shaking-scope row in tooling/legal/duty-matrix.json, which is the same question for a different font).",
+      "consumedBy": []
+    },
+
+    {
+      "family": "awesome_notifications_fcm",
+      "kind": "tripwire",
+      "what": "A pub.dev package the A–S synthesis flagged with licence 'unknown' at v0.12.0. NOT IN THIS TREE — `grep -rn awesome_notifications` over every pubspec returns nothing, verified 2026-08-02.",
+      "source": {
+        "url": null,
+        "readOn": null,
+        "note": "Not read, because there is nothing to clear yet. A row that certified a package we do not use would be judgement over nothing — the exact defect tooling/ci/assert-guard-coverage.mjs's own exemption self-check exists to catch."
+      },
+      "licence_id": "UNVERIFIED",
+      "archived_text": null,
+      "verdicts": {
+        "commercial_use": { "value": "UNVERIFIED", "basis": "UNVERIFIED", "clauseText": "pub.dev reports the licence as unknown for v0.12.0." },
+        "redistribution_of_rendered_output": { "value": "UNVERIFIED", "basis": "UNVERIFIED", "clauseText": "Unknown." },
+        "store_sale": { "value": "UNVERIFIED", "basis": "UNVERIFIED", "clauseText": "Unknown." },
+        "attribution_NOTICE": { "value": "UNVERIFIED", "basis": "UNVERIFIED", "clauseText": "Unknown." },
+        "modification_subsetting": { "value": "n/a", "basis": "UNVERIFIED", "clauseText": "Not a font or a subsettable work." },
+        "reserved_font_name": { "value": "n/a", "basis": "UNVERIFIED", "clauseText": "Not a font." }
+      },
+      "cleared_by": null,
+      "cleared_on": null,
+      "tripwire": {
+        "token": "awesome_notifications_fcm",
+        "scanGlobs": ["pubspec.yaml", "apps/*/pubspec.yaml", "packages/*/pubspec.yaml", "tooling/bricks/**/pubspec.yaml"],
+        "why": "🔴 THIS ROW IS AN ASSERTION, NOT A NOTE. The guard FAILS the moment this package appears in any pubspec while the row is uncleared. A licence that is 'unknown' on the package index is not a small gap: it means nobody has published terms under which we may redistribute it in a paid app, and the notifications capability is one the brick stamps into every app."
+      },
+      "wouldNeed": "The LICENSE file in the package's own repository at the exact version to be pinned. pub.dev's 'unknown' means its scanner could not classify the file, not that no licence exists.",
+      "consumedBy": []
+    }
+  ],
+
+  "qaModels": {
+    "_note": [
+      "Every LOCAL QA model needs a row here before it runs (29-SYNTHESIS-A-S.md:373) — the ASR that",
+      "computes word-error rate on a Chirp asset, the per-language NER that finds leaked personal data,",
+      "and the NSFW classifier on images are each a downloaded, licensed model.",
+      "",
+      "THE LIST IS EMPTY TODAY AND THAT IS ACCURATE, NOT A STUB. The QA stage implements the TEXT limb",
+      "only (QA_IMPLEMENTED_MODALITIES in tooling/content_pipeline/src/recipe.mjs), and the text limb uses",
+      "no third-party model at all. The guard PRINTS this every run so 'no model rows' cannot be mistaken",
+      "for 'the model limbs are cleared'. Land each model-bearing limb in the SAME increment as its",
+      "register row, never before."
+    ],
+    "models": []
+  }
+}

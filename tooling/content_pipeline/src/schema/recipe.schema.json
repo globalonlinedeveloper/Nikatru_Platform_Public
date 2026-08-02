@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikatru.com/schema/content-recipe/1",
+  "title": "NIKATRU content-pack recipe",
+  "_readme": [
+    "[pipeline 7]P-1. THE REQUIRED SET LIVES HERE, IN THE REPOSITORY, and it is the",
+    "right-hand side of assert-recipe-contract.mjs's fixture-parity check: one recorded",
+    "failing recipe per entry in `required` below, and COVERAGE LOST the moment",
+    "required[].length exceeds the fixture count. The original acceptance criterion was",
+    "'refuses a recipe missing any required field', which names no set and is satisfied",
+    "by validating exactly one field.",
+    "",
+    "This is deliberately NOT a JSON-Schema-library schema. Nothing in this repo's",
+    "tooling has a JSON Schema validator and adding one would be a dependency for a",
+    "dozen rules; recipe.mjs walks these declarations directly. The vocabulary is kept",
+    "JSON-Schema-shaped so it can be handed to a real validator later without a rewrite."
+  ],
+  "type": "object",
+  "required": [
+    "recipe_version",
+    "pack_id",
+    "pack_version",
+    "locales",
+    "modalities",
+    "licence_families",
+    "review",
+    "items"
+  ],
+  "properties": {
+    "recipe_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "The recipe grammar this file is written against. An integer, not the pack's semver — a recipe and the pack it produces version independently."
+    },
+    "pack_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Becomes manifest.pack_id, which the client binds to what it asked for (ContentPackLoader.loadFrom expectPackId). Usually the app id."
+    },
+    "pack_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "The immutable semver of the pack this recipe produces (ADR 007)."
+    },
+    "locales": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$" },
+      "description": "BCP-47 tags. minItems 1 is P-8's REQUIRED_COVERAGE: an empty locales array is itself a failure, because the original criterion compared content.json against a list the same author wrote and an empty list matches anything."
+    },
+    "modalities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "enum": ["text", "image", "audio", "video", "music"] },
+      "description": "🔴 THIS ENUM IS THE GRAMMAR, NOT THE CAPABILITY. `video` and `music` are legal WORDS and are not implemented: 39-CHASSIS §4 cut 8 leaves video dormant on an unanswered owner scope question, and [ADR 019] keeps music (Drift) deferred at the 🔴 risk tier. The gate is IMPLEMENTED_MODALITIES in src/recipe.mjs, which REFUSES anything outside it. Keeping the two lists separate is deliberate: if the grammar were the capability, deleting the implementation check would change no outcome and the check would be dead code reporting health. Mutation-proven 2026-08-02 — with the enums merged, disabling the implementation check was NOT CAUGHT."
+    },
+    "licence_families": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "Every family in tooling/legal/content-licence-register.json this pack consumes. G-36: no asset ships without a cleared row, and the register is the left-hand side of that comparison."
+    },
+    "review": {
+      "type": "object",
+      "required": ["tier", "sample_floor"],
+      "properties": {
+        "tier": { "type": "string", "enum": ["standard", "expert"] },
+        "sample_floor": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      },
+      "description": "P-4. `expert` forces 100% coverage regardless of sample_floor. The sample itself is DERIVED from the pack's content hash (src/sample.mjs), so a free-hand sample fails."
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "modality"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$" },
+          "modality": { "type": "string", "enum": ["text", "image", "audio", "video", "music"] },
+          "asset": { "type": "string", "description": "Relative path under the recipe's assets/ dir. Required for image and audio items, forbidden for text items." }
+        }
+      }
+    },
+    "tts": {
+      "type": "object",
+      "required": ["endpoint", "audio_encoding"],
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "enum": ["batch"],
+          "description": "🔴 BATCH ONLY, and it is a validate-time refusal on purpose. [ADR 017] locks MP3; the streaming synthesis endpoint cannot emit MP3 at all, so a streaming recipe can NEVER satisfy the format lock. Catching that here costs nothing; catching it asset-by-asset at the end of an expensive metered run costs the run."
+        },
+        "audio_encoding": {
+          "type": "string",
+          "enum": ["MP3"],
+          "description": "[ADR 017]: MP3, whose patents expired April 2017 — the only format definitively unencumbered and natively decodable on all six platforms. Declared explicitly because LINEAR16 is the vendor default, i.e. the off-format asset arrives precisely when nobody set this."
+        }
+      },
+      "description": "Required when `modalities` contains `audio`."
+    }
+  }
+}

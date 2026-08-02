@@ -14,6 +14,8 @@ importers:
         specifier: ^3.1.6
         version: 3.1.6
 
+  tooling/content_pipeline: {}
+
 packages:
 
   '@11ty/dependency-tree-esm@2.0.4':

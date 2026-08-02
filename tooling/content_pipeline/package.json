@@ -1,0 +1,17 @@
+{
+  "name": "@nikatru/content-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The producer half of the content-pack rail (ADR 007): recipe -> validate -> pack -> sign -> gate. Pure Node stdlib, no dependencies.",
+  "license": "UNLICENSED",
+  "bin": {
+    "nikatru-content": "./cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

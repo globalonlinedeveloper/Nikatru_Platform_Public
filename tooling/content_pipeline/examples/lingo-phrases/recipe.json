@@ -1,0 +1,38 @@
+{
+  "_readme": [
+    "The example recipe, and REAL INPUT rather than a fixture: assert-pack-roundtrip.mjs rebuilds",
+    "packages/core/test/fixtures/pack/v1/ from this file on every push and fails on any drift, and",
+    "packages/core/test/content_pack_fixture_test.dart loads that same committed pack through the REAL",
+    "ContentPackLoader. So every guard in the content_gate lane has a non-empty domain on a clean",
+    "checkout, before a single generated pack exists.",
+    "",
+    "The content is hand-authored travel phrases — [ADR 019]'s 🟢 near-zero risk tier (short functional",
+    "phrases and facts are not copyrightable by anyone) — and hand-authored precisely so this repository",
+    "carries no model output it cannot account for. `generation-log.json` records that honestly rather",
+    "than claiming a model that never ran."
+  ],
+  "recipe_version": 1,
+  "pack_id": "lingo",
+  "pack_version": "1.0.0",
+  "locales": ["en", "fr", "hi"],
+  "modalities": ["text", "image", "audio"],
+  "licence_families": ["hand-authored-content"],
+  "review": {
+    "tier": "standard",
+    "sample_floor": 0.7
+  },
+  "tts": {
+    "endpoint": "batch",
+    "audio_encoding": "MP3"
+  },
+  "items": [
+    { "id": "greeting.hello", "modality": "text" },
+    { "id": "greeting.thank_you", "modality": "text" },
+    { "id": "travel.where_is_the_station", "modality": "text" },
+    { "id": "travel.how_much_does_this_cost", "modality": "text" },
+    { "id": "food.water_please", "modality": "text" },
+    { "id": "help.i_need_a_doctor", "modality": "text" },
+    { "id": "badge.streak", "modality": "image", "asset": "badge/streak.webp" },
+    { "id": "tone.confirm", "modality": "audio", "asset": "tone/confirm.mp3" }
+  ]
+}
