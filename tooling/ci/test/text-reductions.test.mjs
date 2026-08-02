@@ -2,18 +2,28 @@
 // text-reductions.test.mjs — the shared reductions, exercised directly.
 //
 // tooling/ci/text-reductions.mjs is not a guard: it is the ONE answer to "what
-// does this text actually say", imported by check-site-integrity,
-// assert-policy-archive, assert-policy-claims, assert-data-inventory and
-// assert-licence-register. It has no tree to scan, so it carries no COVERAGE
-// LOST and is exempt in assert-guard-coverage.mjs's NOT_A_SCANNER — but it still
-// owes a failing case, because five guards' correctness passes through it.
+// does this text actually say", imported by NINE guards — check-site-integrity,
+// assert-policy-archive, assert-policy-claims, assert-data-inventory,
+// assert-licence-register, assert-analytics-contract, assert-e2e-legs,
+// assert-flag-exposure and assert-worker-error-sink, of which SEVEN take
+// stripSourceComments (all but check-site-integrity and assert-policy-archive,
+// which take only the HTML reductions). It has no tree to scan, so it carries no
+// COVERAGE LOST and is exempt in assert-guard-coverage.mjs's NOT_A_SCANNER — but
+// it still owes a failing case, because nine guards' correctness passes
+// through it. (This header said "five" until 2026-08-02, and an undercounted
+// blast radius is how a shared defect gets triaged as a small one.)
 //
-// The two cases that are NOT stylistic:
+// The cases that are NOT stylistic:
 //   · a comment must not satisfy (or refute) a source check. Found by mutation:
 //     an `absent` assertion over `cf-connecting-ip` fired on the line
 //     "CF-Connecting-IP is NEVER read and NEVER stored".
 //   · `//` inside a URL is not a comment. Naively stripping it would delete the
 //     rest of every line containing an https:// literal.
+//   · and the converse, which cost more: the stripper must never delete code it
+//     did not comment out. Every test in the "never deletes code" block below is
+//     a shape that was live in this repository on 2026-08-02 and was being
+//     deleted from what five guards could see, silently, with all of them
+//     exiting 0.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +132,134 @@ describe('stripSourceComments — prose must not satisfy a code check', () => {
   test('line numbering survives, so line-oriented patterns still work', () => {
     const src = 'one\n// two\nthree\n';
     assert.equal(stripSourceComments(src, '.ts').split('\n').length, src.split('\n').length);
+  });
+
+  test('byte offsets survive, because a caller reporting a line slices the reduction', () => {
+    const src = 'const a = 1; // note\n/* block */ const b = 2;\n';
+    assert.equal(stripSourceComments(src, '.ts').length, src.length);
+  });
+});
+
+describe('stripSourceComments — NEVER DELETES CODE IT DID NOT COMMENT OUT', () => {
+  // Every input below was live in this repository on 2026-08-02 and was being
+  // deleted from the reduction handed to the guards. None of them failed.
+
+  test('a `//` line mentioning a path glob is not a block-comment opener', () => {
+    // services/subly-api/src/middleware/cors.ts, verbatim in shape. The old
+    // block-comment regex read the `/*` in this line comment as an opener and
+    // ran to the next close delimiter — the end of the doc comment on the
+    // `allowlist` function, sixty lines down — deleting the imports and the
+    // LOCALHOST constant on the way.
+    const ts = [
+      '// The guard now iterates every services/*/wrangler.jsonc, and the rule',
+      '// is identical in all three implementations.',
+      '',
+      "import { cors } from 'hono/cors';",
+      '',
+      'const LOCALHOST = /^https?:\\/\\/localhost(:\\d+)?$/;',
+      '',
+      '/** Exact origins. */',
+      'export function allowlist() { return []; }',
+    ].join('\n');
+    const out = stripSourceComments(ts, '.ts');
+    assert.ok(out.includes("import { cors } from 'hono/cors';"), 'the import must survive');
+    assert.ok(out.includes('const LOCALHOST ='), 'the constant must survive');
+    assert.ok(out.includes('export function allowlist()'), 'the declaration must survive');
+    assert.ok(!out.includes('wrangler.jsonc'), 'and the comment must still go');
+  });
+
+  test('`//` inside a template literal is not a line comment', () => {
+    // services/{platform,subly-api}/src/lib/error-sink.ts. The `[^:]` hack only
+    // spared `https://`; the character before `//` here is `}`, so the endpoint
+    // the Worker posts to was blanked out of the guard's view.
+    const ts = 'const endpoint = `${u.protocol}//${u.host}/api/${id}/envelope/`; // build it\n';
+    const out = stripSourceComments(ts, '.ts');
+    assert.ok(out.includes('/api/${id}/envelope/`'), 'the URL must survive');
+    assert.ok(!out.includes('build it'), 'the trailing comment must still go');
+  });
+
+  test('a `/*` inside a string literal does not open a comment', () => {
+    const ts = ["const glob = 'services/*/wrangler.jsonc';", '', 'const keep = 1;', '/* end */'].join('\n');
+    const out = stripSourceComments(ts, '.ts');
+    assert.ok(out.includes('const keep = 1;'), 'a string is not a comment opener');
+  });
+
+  test('a nested template inside `${…}` does not end the outer literal', () => {
+    // Without walking the substitution, the outer literal ends at the INNER
+    // backtick, the URL after it is read as code, and its `//` blanks the rest
+    // of the line — the join, the closing quote and the semicolon.
+    const ts = [
+      'const msg = `see ${items.map((i) => `https://x/${i}`).join(", ")} for detail`;',
+      'const keep = 1;',
+    ].join('\n');
+    const out = stripSourceComments(ts, '.ts');
+    assert.ok(out.includes('.join(", ")} for detail`;'), 'the tail of the line must survive');
+    assert.ok(out.includes('const keep = 1;'));
+  });
+
+  test('a regex literal is a literal, not two operators and a comment opener', () => {
+    // Both of PR #128's traps in one input. `/['"]/` — a reducer with no notion
+    // of regex literals reads the `'` as a string opener (that one is bounded
+    // here, because a string cannot cross a newline). `/[/*]x/` is the unbounded
+    // one: the `/*` inside the character class opens a block comment that runs
+    // to the next close delimiter — the doc comment below — taking the body of
+    // the function with it. And the `return` in front of it is trap two: read as
+    // a division, the literal is never recognised at all.
+    const js = [
+      'const f = (s) => {',
+      "  if (/['\"]/.test(s)) return /[/*]x/.test(s);",
+      '  return false;',
+      '};',
+      'const keep = 1;',
+      '/** doc */',
+    ].join('\n');
+    const out = stripSourceComments(js, '.mjs');
+    assert.ok(out.includes("if (/['\"]/.test(s)) return /[/*]x/.test(s);"), 'the literal must survive whole');
+    assert.ok(out.includes('return false;'));
+    assert.ok(out.includes('const keep = 1;'));
+    assert.ok(!out.includes('doc'), 'and the real doc comment must still go');
+  });
+
+  test('a `/` inside a character class does not close the regex early', () => {
+    // `/[^/]+/` — everything up to a slash — is an ordinary shape. Ending the
+    // literal at the `/` inside the class desynchronises the scan, and the
+    // trailing comment on the line then survives into the reduction.
+    const js = ['const seg = /[^/]+/; // the path segment', 'const keep = 1;'].join('\n');
+    const out = stripSourceComments(js, '.mjs');
+    assert.ok(out.includes('const seg = /[^/]+/;'));
+    assert.ok(!out.includes('path segment'), 'the trailing comment must still be stripped');
+    assert.ok(out.includes('const keep = 1;'));
+  });
+
+  test("a Dart '''block''' containing // keeps its content", () => {
+    const dart = ["const q = '''", 'https://example.test // not a comment', "''';", 'const keep = 1;'].join('\n');
+    const out = stripSourceComments(dart, '.dart');
+    assert.ok(out.includes('not a comment'));
+    assert.ok(out.includes('const keep = 1;'));
+  });
+
+  test('`--` inside a SQL string is data, not a comment', () => {
+    const sql = "INSERT INTO t (note) VALUES ('a -- b'); CREATE TABLE real (id TEXT);";
+    const out = stripSourceComments(sql, '.sql');
+    assert.ok(out.includes('CREATE TABLE real'));
+  });
+
+  test('`#` inside a quoted YAML scalar is not a comment', () => {
+    const yaml = 'description: "sharp # sign"\nhttp: ^1.0.0 # a real comment\n';
+    const out = stripSourceComments(yaml, '.yaml');
+    assert.ok(out.includes('sharp # sign'));
+    assert.ok(!out.includes('a real comment'));
+    assert.ok(out.includes('http: ^1.0.0'));
+  });
+
+  test('AN UNTERMINATED `/*` IS KEPT — the direction of error, stated as a test', () => {
+    // The property the module promises: where it cannot be certain, it keeps the
+    // text. The cost is a comment that survives (an `absent` check cries wolf,
+    // loudly); the alternative is deleting the rest of the file, silently.
+    const ts = 'const keep = 1;\n/* this never closes\nconst alsoKeep = 2;\n';
+    const out = stripSourceComments(ts, '.ts');
+    assert.ok(out.includes('const alsoKeep = 2;'), 'code after an unclosed opener must survive');
+    assert.equal(out.length, ts.length);
   });
 });
 

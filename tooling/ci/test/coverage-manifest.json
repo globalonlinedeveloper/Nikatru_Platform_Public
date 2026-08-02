@@ -59,7 +59,7 @@
   "stamp-text-fidelity.test.mjs": 32,
   "stamp-wiring.test.mjs": 17,
   "store-metadata.test.mjs": 49,
-  "text-reductions.test.mjs": 17,
+  "text-reductions.test.mjs": 28,
   "update-coverage.test.mjs": 28,
   "vendor-portability.test.mjs": 19,
   "walks-bounded.test.mjs": 25,

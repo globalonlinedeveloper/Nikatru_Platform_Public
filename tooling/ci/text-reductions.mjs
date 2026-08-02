@@ -36,6 +36,13 @@
 // page text, one of them would be enforcing a document nobody serves. They now
 // cannot disagree.
 //
+// The SOURCE reduction has a wider blast radius than that list, and knowing its
+// real size matters — on 2026-08-02 a defect in it was triaged against a stale
+// "five callers" and the true number is SEVEN: assert-analytics-contract,
+// assert-data-inventory, assert-e2e-legs, assert-flag-exposure,
+// assert-licence-register, assert-policy-claims and assert-worker-error-sink
+// all take stripSourceComments. Nine guards import this module in total.
+//
 // ⚠️ IT SCANS NOTHING AND OWNS NO COVERAGE CLAIM. Every function here is pure:
 // text in, text out. The "did my scan still reach the tree" question belongs to
 // the callers, and each of them carries its own coverage self-check. (Which is
@@ -67,34 +74,266 @@ const COMMENT_STYLES = new Map([
   ['.yml', 'hash'],
 ]);
 
-/** Source with its comments blanked out.
- *
- *  🔴 THE REASON THIS EXISTS: a comment explaining that something never happens
- *  matches a pattern looking for it happening. This repository has been bitten
- *  by that shape twice — a `grep '"r2_buckets"'` that matched the template
- *  comment explaining why there is no r2_buckets, and (found while building
- *  assert-policy-claims.mjs) an `absent` assertion over `cf-connecting-ip` that
- *  fired on the line "CF-Connecting-IP is NEVER read and NEVER stored".
- *
- *  ⚠️ WHAT IT DOES NOT DO: it does not strip string literals, and it does not
- *  parse. `//` is treated as a line comment unless it is preceded by `:` — which
- *  keeps `https://…` inside a string intact and is the whole of its cleverness.
- *  A caller that needs literals gone as well (SQL column scanning does) must say
- *  so; pretending this is a tokeniser would be the second mistake in the class
- *  it exists to prevent.
- *
- *  Replaced with spaces, never deleted, so nothing joins across a removed
- *  comment and line-oriented patterns keep working. */
+/** Keywords after which a `/` opens a REGEX rather than dividing. Without this
+ *  set, `return /x/.test(s)` reads as a division — the exact mis-parse recorded
+ *  in PR #128, where it silently mis-read four files. */
+const REGEX_MAY_FOLLOW = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+  'throw', 'case', 'do', 'else', 'yield', 'await',
+]);
+
+/** End of a quoted run beginning at `start`, or -1 if it never closes.
+ *  Dart's triple quotes and JS template literals span lines; a plain JS/Dart
+ *  quote does not, and hitting a newline means we mis-read the opener — which
+ *  is reported as "unterminated" so the caller can KEEP the text. */
+function scanQuoted(source, start, isSql) {
+  const q = source[start];
+  const n = source.length;
+  if (!isSql && (q === "'" || q === '"') && source.startsWith(q + q + q, start)) {
+    const e = source.indexOf(q + q + q, start + 3);
+    return e === -1 ? -1 : e + 3;
+  }
+  if (q === '`') return scanTemplate(source, start);
+  let i = start + 1;
+  while (i < n) {
+    const c = source[i];
+    if (isSql) {
+      // No `''`-is-an-escaped-quote branch, deliberately. Mutation-proven
+      // redundant 2026-08-02: consuming `''` as close-then-reopen leaves the
+      // set of in-string characters identical, and this function's only
+      // consumer never blanks a string — so the branch changed no output on any
+      // input, terminated or not. A branch that cannot change an outcome is the
+      // shape this repo deletes rather than keeps "for safety".
+      if (c === q) return i + 1;
+      i++;
+      continue;
+    }
+    if (c === '\\') { i += 2; continue; }
+    if (c === q) return i + 1;
+    if (c === '\n') return -1;
+    i++;
+  }
+  return -1;
+}
+
+/** End of a template literal, `${…}` substitutions walked as code so a nested
+ *  string or template inside one does not end the outer literal early. */
+function scanTemplate(source, start) {
+  const n = source.length;
+  let i = start + 1;
+  while (i < n) {
+    const c = source[i];
+    if (c === '\\') { i += 2; continue; }
+    if (c === '`') return i + 1;
+    if (c === '$' && source[i + 1] === '{') {
+      const e = scanBraced(source, i + 1);
+      if (e === -1) return -1;
+      i = e;
+      continue;
+    }
+    i++;
+  }
+  return -1;
+}
+
+/** End of a `{…}` run, counting depth and skipping quoted runs inside it. */
+function scanBraced(source, start) {
+  const n = source.length;
+  let depth = 0;
+  let i = start;
+  while (i < n) {
+    const c = source[i];
+    if (c === '"' || c === "'" || c === '`') {
+      const e = scanQuoted(source, i, false);
+      if (e === -1) return -1;
+      i = e;
+      continue;
+    }
+    if (c === '{') { depth++; i++; continue; }
+    if (c === '}') {
+      depth--;
+      i++;
+      if (depth === 0) return i;
+      continue;
+    }
+    i++;
+  }
+  return -1;
+}
+
+/** End of a regex literal (flags included), or -1 if the `/` was division after
+ *  all. `[…]` is tracked because a `/` inside a character class does not close
+ *  the literal, and quotes inside one — `/['"]/` — are not string openers. */
+function scanRegex(source, start) {
+  const n = source.length;
+  let i = start + 1;
+  let inClass = false;
+  while (i < n) {
+    const c = source[i];
+    if (c === '\\') { i += 2; continue; }
+    if (c === '\n') return -1;
+    if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) {
+      i++;
+      while (i < n && /[a-z]/i.test(source[i])) i++;
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+/** C-family and SQL: one left-to-right pass that knows the difference between a
+ *  comment marker and the same two characters inside something else. */
+function blankCFamily(source, isSql) {
+  const n = source.length;
+  const out = source.split('');
+  const blankRange = (a, b) => {
+    for (let k = a; k < b && k < n; k++) if (out[k] !== '\n') out[k] = ' ';
+  };
+  let i = 0;
+  // The last significant token, only to the resolution the `/` question needs:
+  // 'value' (an identifier, literal, `)` or `]`) means division; anything else
+  // means a regex may open here.
+  let prev = 'operator';
+
+  while (i < n) {
+    const c = source[i];
+    const d = i + 1 < n ? source[i + 1] : '';
+
+    if ((isSql && c === '-' && d === '-') || (!isSql && c === '/' && d === '/')) {
+      const e = source.indexOf('\n', i);
+      blankRange(i, e === -1 ? n : e);
+      i = e === -1 ? n : e;
+      continue;
+    }
+
+    if (c === '/' && d === '*') {
+      const e = source.indexOf('*/', i + 2);
+      if (e === -1) { prev = 'operator'; i += 2; continue; } // never closes → KEEP
+      blankRange(i, e + 2);
+      i = e + 2;
+      continue;
+    }
+
+    if (c === "'" || c === '"' || (!isSql && c === '`')) {
+      const e = scanQuoted(source, i, isSql);
+      prev = 'value';
+      i = e === -1 ? i + 1 : e; // unterminated → KEEP, and step one char
+      continue;
+    }
+
+    if (!isSql && c === '/' && prev !== 'value') {
+      const e = scanRegex(source, i);
+      if (e !== -1) { prev = 'value'; i = e; continue; }
+    }
+
+    if (/[A-Za-z_$]/.test(c)) {
+      let j = i + 1;
+      while (j < n && /[A-Za-z0-9_$]/.test(source[j])) j++;
+      prev = REGEX_MAY_FOLLOW.has(source.slice(i, j)) ? 'operator' : 'value';
+      i = j;
+      continue;
+    }
+    if (c >= '0' && c <= '9') {
+      let j = i + 1;
+      while (j < n && /[0-9a-fA-FxXoO._]/.test(source[j])) j++;
+      prev = 'value';
+      i = j;
+      continue;
+    }
+    if (!/\s/.test(c)) prev = c === ')' || c === ']' ? 'value' : 'operator';
+    i++;
+  }
+  return out.join('');
+}
+
+/** YAML: `#` opens a comment only at the start of a line or after whitespace AND
+ *  outside a quoted scalar, so `description: "a # b"` keeps its text. Quoting is
+ *  tracked per LINE — a YAML scalar that spans lines is not quoted. */
+function blankHash(source) {
+  return source
+    .split('\n')
+    .map((line) => {
+      let quote = null;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (quote) {
+          if (c === '\\' && quote === '"') i++;
+          else if (c === quote) quote = null;
+          continue;
+        }
+        if (c === '"' || c === "'") { quote = c; continue; }
+        if (c === '#' && (i === 0 || /\s/.test(line[i - 1]))) {
+          return line.slice(0, i) + ' '.repeat(line.length - i);
+        }
+      }
+      return line;
+    })
+    .join('\n');
+}
+
+// Source with its comments blanked out.
+//
+// (Written as LINE comments, not a block one, because the delimiters ARE the
+// subject: a block comment cannot contain the close delimiter it is describing,
+// and the last person who worked around that with a zero-width space left an
+// invisible character in a shared module.)
+//
+// 🔴 THE REASON THIS EXISTS: a comment explaining that something never happens
+// matches a pattern looking for it happening. This repository has been bitten
+// by that shape twice — a `grep '"r2_buckets"'` that matched the template
+// comment explaining why there is no r2_buckets, and (found while building
+// assert-policy-claims.mjs) an `absent` assertion over `cf-connecting-ip` that
+// fired on the line "CF-Connecting-IP is NEVER read and NEVER stored".
+//
+// 🔴 2026-08-02 — IT USED TO DELETE CODE IT HAD NOT COMMENTED OUT, in exactly
+// the shape PR #128 found one level up in assert-guard-coverage.mjs. The old
+// body ran a block-comment regex FIRST, over raw text, so any `/*` — inside a
+// `//` line, inside a string, inside a regex literal — opened a block comment
+// that ran to the next `*/` anywhere in the file.
+//
+//   · services/subly-api/src/middleware/cors.ts line 15 is a LINE comment
+//     naming the glob `services/*/wrangler.jsonc`. The reduction handed to the
+//     seven importing guards had that file's `import { cors } …`, its two type
+//     imports and `const LOCALHOST = /…/` blanked out — 158 characters of real
+//     code, deleted by a comment that mentions a path.
+//   · separately, the `[^:]` line-comment hack blanked the rest of
+//     `` `${u.protocol}//${u.host}/api/${projectId}/envelope/` `` in BOTH
+//     error-sink.ts files: the character before `//` there is `}`, not `:`, so
+//     the endpoint the Worker actually posts to was invisible to the guard
+//     whose job is to check it.
+//
+// Neither surfaced as a failure. Every importing guard exited 0.
+//
+// ⚠️ DIRECTION OF ERROR — THE ONE PROPERTY TO PRESERVE. This reduction ERRS
+// TOWARDS KEEPING TEXT. Where it cannot be certain, it does not delete: a `/*`
+// that never closes, a quote with no partner, a `/` it cannot classify as regex
+// or division — each is left exactly as written, so the worst case is that a
+// COMMENT SURVIVES. That direction is deliberate, because the two failure modes
+// are not equally visible: a surviving comment makes an `absent` assertion CRY
+// WOLF, which a human sees and fixes, while deleted code makes every check over
+// it quietly pass. This module exists to stop prose satisfying a check; it must
+// not do that by deleting the code the check is about.
+//
+// WHAT IT NOW KNOWS, because every one of these was a real mis-read: `//` and
+// `/*` inside a `//` line comment · `*/` and `//` inside a string, a template
+// literal (including `${…}` substitutions) or a Dart `'''` block · a regex
+// literal containing quotes or slashes, `/['"]/` · `return /x/.test(s)` as a
+// regex and not a division · `--` inside a SQL string · `#` inside a quoted
+// YAML scalar. It is still NOT a type-aware parser and it still does not strip
+// string literals — a caller that needs literals gone (the SQL column scan
+// does) says so with stripStringLiterals, because in a .ts file the SQL LIVES
+// in the literals and blanking them would blank the subject.
+//
+// Replaced with spaces, never deleted, so nothing joins across a removed
+// comment, byte offsets are unchanged and line-oriented patterns keep working.
 export function stripSourceComments(source, extension) {
   const style = COMMENT_STYLES.get(String(extension).toLowerCase());
   if (!style) return source;
-  const blank = (m) => m.replace(/[^\n]/g, ' ');
-  let out = source;
-  if (style === 'c' || style === 'sql') out = out.replace(/\/\*[\s\S]*?\*\//g, blank);
-  if (style === 'c') out = out.replace(/(^|[^:])\/\/[^\n]*/g, (m, lead) => lead + blank(m.slice(lead.length)));
-  if (style === 'sql') out = out.replace(/--[^\n]*/g, blank);
-  if (style === 'hash') out = out.replace(/(^|\s)#[^\n]*/g, (m, lead) => lead + blank(m.slice(lead.length)));
-  return out;
+  if (style === 'hash') return blankHash(source);
+  return blankCFamily(source, style === 'sql');
 }
 
 /** Single- and double-quoted string literals blanked out, on top of comments.
