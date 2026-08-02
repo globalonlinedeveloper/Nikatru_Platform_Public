@@ -73,6 +73,11 @@ export interface SinkContext {
    *  release id this reads that instead; until then it is the deployed SHA,
    *  which is at least monotonic and at least resolvable to a diff. */
   release: string | undefined;
+  /** [pipeline B-16] The app this request was for, when the route got far
+   *  enough to resolve and validate one. `undefined` on the paths that failed
+   *  before any app was named — see `Variables.appId` for why that is not
+   *  filled in with a placeholder. */
+  appId: string | undefined;
   requestId: string | undefined;
   method: string;
   /** PATHNAME ONLY. Never the full URL — the query string is where the personal
@@ -95,6 +100,14 @@ export function buildEnvelope(err: unknown, ctx: SinkContext, dsn: string, now: 
     transaction: `${ctx.method} ${ctx.path}`,
     tags: {
       service: ctx.service,
+      // [pipeline B-16] WHOSE app broke, not merely which Worker. A TAG rather
+      // than a body field because tags are what the sink can group and filter
+      // by, and "show me every error for app X" is the question this exists to
+      // make answerable across a 50-app portfolio on one shared host.
+      // Omitted entirely when the request failed before naming an app — an
+      // absent tag is honest, a placeholder tag is a second app called
+      // "unknown" with its own error trend.
+      ...(ctx.appId ? { app_id: ctx.appId } : {}),
       ...(ctx.requestId ? { request_id: ctx.requestId } : {}),
     },
     exception: {

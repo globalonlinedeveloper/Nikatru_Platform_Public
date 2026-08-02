@@ -558,7 +558,18 @@ const isShallow = shallow.status === 0 && shallow.stdout.trim() === 'true';
  *  ⚠️ NORMALISED TO UTC. `%cI` carries the commit's OWN offset, so slicing the
  *  first ten characters yields the committer's local calendar date — which is a
  *  different clock from `today` above, and the two disagree east of Greenwich
- *  for the first hours of every day. See the note on `inTheFuture`. */
+ *  for the first hours of every day. See the note on `inTheFuture`.
+ *
+ *  🔴 THE RED THIS PREVENTS, MEASURED: on 2026-08-03 at 00:21 IST (+05:30) a
+ *  clean checkout of `main` had FOUR `app-dod.test.mjs` fixture tests red, with a
+ *  mutation record dated 2026-08-02 graded against a commit whose UTC day was
+ *  also 2026-08-02 but whose `%cI` day was 2026-08-03. The guard run against the
+ *  real tree passed at the same moment — only the fixtures, which re-commit at
+ *  test time, could see it. Reproduced and diagnosed independently in
+ *  `feat/stage4-remaining` before this fix landed from #130; the two arrived at
+ *  the same normalisation. Note the comparison is one-sided — a record dated
+ *  later than the code is fine — so moving the code side to UTC can only forgive
+ *  by a day, never miss a record describing code that has moved. */
 function lastCommitDay(relPath) {
   const r = spawnSync('git', ['-C', ROOT, 'log', '-1', '--format=%cI', '--', relPath], { encoding: 'utf8' });
   if (r.status !== 0) return null;

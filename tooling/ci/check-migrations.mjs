@@ -248,6 +248,98 @@ for (const { fragment, label } of REQUIRED_COVERAGE) {
 }
 if (coverageMissing > 0) process.exit(1);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline B-8] THE OTHER HALF OF COVERAGE, AND IT SELF-EXTENDS.
+//
+// `REQUIRED_COVERAGE` above is a written list, deliberately, because a derived
+// list loses an entry at exactly the moment the directory it names disappears —
+// which is the failure that let this guard drop from 6 files to 4 and still
+// print "clean". But a written list has the mirror-image blind spot: it cannot
+// know about a migration set that DID NOT EXIST when it was written. App #2
+// stamping a backend creates `services/<app>-api/migrations/` and this guard
+// would keep reporting clean over a set that silently excludes it.
+//
+// So the two limbs are pointed in opposite directions and neither substitutes
+// for the other:
+//   · the written list catches a set that VANISHED,
+//   · this one catches a set that ARRIVED.
+//
+// The arrival set is derived from the DEPLOYABLE CONFIG rather than from
+// directories on disk: `migrations_dir` in a wrangler config is the declaration
+// that a database has migrations WRANGLER WILL APPLY. A bare `migrations/`
+// folder nothing is bound to applies to nothing; a `migrations_dir` that this
+// scanner has never read is a schema going to production unscanned.
+// ─────────────────────────────────────────────────────────────────────────────
+const CONFIG_PATTERNS = ['services/*/wrangler.jsonc', 'tooling/bricks/**/wrangler.jsonc'];
+
+/** JSONC → JSON. Comments only; these configs carry no trailing commas. */
+function stripJsonc(text) {
+  let out = '';
+  let i = 0;
+  let inStr = false;
+  while (i < text.length) {
+    const c = text[i];
+    const two = text.slice(i, i + 2);
+    if (inStr) {
+      if (c === '\\') { out += c + (text[i + 1] ?? ''); i += 2; continue; }
+      if (c === '"') inStr = false;
+      out += c; i++; continue;
+    }
+    if (c === '"') { inStr = true; out += c; i++; continue; }
+    if (two === '//') { while (i < text.length && text[i] !== '\n') i++; continue; }
+    if (two === '/*') { const e = text.indexOf('*/', i + 2); i = e === -1 ? text.length : e + 2; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+
+const configs = [];
+for (const pattern of CONFIG_PATTERNS) {
+  for await (const f of boundedGlob(pattern)) configs.push(f);
+}
+if (configs.length === 0) {
+  console.error(
+    'check-migrations: COVERAGE LOST — no wrangler config matched, so the "a new migration set arrived"\n' +
+      '    limb ranges over NOTHING and cannot fail. Fix CONFIG_PATTERNS.',
+  );
+  process.exit(1);
+}
+
+const declaring = [];
+for (const cfgPath of configs) {
+  let cfg;
+  try {
+    cfg = JSON.parse(stripJsonc(readFileSync(cfgPath, 'utf8')));
+  } catch (e) {
+    // Unparseable is a FAILURE, not a skip. A config this scanner cannot read is
+    // a config whose `migrations_dir` it cannot see, which is indistinguishable
+    // from one that has none — and that reads as green.
+    console.error(`check-migrations: COVERAGE LOST — ${cfgPath} could not be parsed (${e.message}).`);
+    process.exit(1);
+  }
+  const dirs = (cfg.d1_databases ?? []).filter((d) => d?.migrations_dir);
+  if (dirs.length > 0) declaring.push(cfgPath.replaceAll('\\', '/'));
+}
+
+const unlisted = declaring.filter(
+  (cfgPath) => !REQUIRED_COVERAGE.some(({ fragment }) => cfgPath.includes(fragment)),
+);
+if (unlisted.length > 0) {
+  console.error(
+    'check-migrations: COVERAGE LOST — a wrangler config declares a `migrations_dir` that REQUIRED_COVERAGE does not name:',
+  );
+  for (const f of unlisted) console.error(`    ${f}`);
+  console.error(
+    '    Wrangler will apply that schema to a real database and this scanner has never read it.\n' +
+      '    Add a REQUIRED_COVERAGE entry (and make sure PATTERNS actually matches its .sql files).',
+  );
+  process.exit(1);
+}
+console.log(
+  `check-migrations: ${declaring.length} wrangler config(s) declare a migrations_dir, all named by REQUIRED_COVERAGE ` +
+    `(${declaring.join(', ')}).`,
+);
+
 const approved = [];
 for (const file of files) {
   const raw = readFileSync(file, 'utf8');

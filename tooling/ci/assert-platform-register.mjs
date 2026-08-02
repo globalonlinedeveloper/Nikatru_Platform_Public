@@ -457,6 +457,55 @@ for (const c of declaredConfigs) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline B-15] EVERY DEPLOYABLE WORKER DECLARES THE HOST IT ANSWERS ON.
+//
+// 🔴 TWO OF THE THREE CONFIGS DECLARED NO `routes` AT ALL UNTIL 2026-08-03, AND
+// BOTH FAILURES WERE INVISIBLE FOR OPPOSITE REASONS:
+//   · the BRICK template had none, so a stamped backend deployed to a
+//     `*.workers.dev` name and `api-<app>.nikatru.com` bound to nothing — the
+//     "no manual step" half of B-15 was a manual dashboard step nobody wrote
+//     down, and it would have been repeated for every app that ever stamps one;
+//   · `services/subly-api` had none while `api.nikatru.com` SERVED LIVE TRAFFIC
+//     as a dashboard-created Custom Domain. The deployable config and the
+//     deployed reality disagreed, exactly like the `EXPORTS` bucket that was
+//     bound for two weeks with every guard green.
+//
+// ⚠️ ASSERTED ON PARSED STRUCTURE, and on `custom_domain` specifically. A
+// `routes` key that exists is not the property — an empty array satisfies "has
+// routes" while binding nothing, and this repo has already shipped one check
+// that a template COMMENT satisfied. `custom_domain: true` is what
+// auto-provisions the DNS record and the certificate; a pattern route without it
+// needs a DNS record somebody remembered to create.
+//
+// ⚠️ Scoped to configs that declare a `main` entrypoint. A wrangler config with
+// no `main` is not a Worker that answers requests, and requiring a host of it
+// would be noise — and noise is how a real signal gets muted.
+// ─────────────────────────────────────────────────────────────────────────────
+const hostless = [];
+let hostBearing = 0;
+for (const cfgRel of onDiskConfigs) {
+  const cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'), cfgRel);
+  if (typeof cfg.main !== 'string' || cfg.main === '') continue;
+  hostBearing++;
+  const routes = Array.isArray(cfg.routes) ? cfg.routes : [];
+  const custom = routes.filter((r) => r?.custom_domain === true && typeof r?.pattern === 'string' && r.pattern);
+  if (custom.length === 0) {
+    hostless.push(
+      `${cfgRel} — declares \`main\` (it is a Worker that answers requests) and NO \`routes\` entry with ` +
+        '`custom_domain: true`. It will deploy to a *.workers.dev name, and whatever host it is supposed to ' +
+        'answer on is bound in a dashboard where no diff can review it and no stamp can reproduce it.',
+    );
+  }
+}
+if (hostBearing === 0) {
+  fail([
+    `✗ COVERAGE LOST — parsed ${onDiskConfigs.length} wrangler config(s) and NOT ONE declares \`main\`.`,
+    '  The host limb ranges over zero Workers and cannot fail.',
+  ]);
+}
+for (const h of hostless) problems.push(h);
+
 /** binding -> Set(config paths declaring it), derived from the parsed configs. */
 const declaredBindings = new Map();
 for (const cfgRel of onDiskConfigs) {

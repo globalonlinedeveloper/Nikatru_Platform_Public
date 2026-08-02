@@ -303,11 +303,20 @@ describe('the /v1/events cost circuit breaker is keyed on server-derived values'
     // This is the bypass itself. With the old single key each of these three
     // requests got its own 120/min bucket, so the ceiling was "120 requests per
     // minute PER REQUEST" — no ceiling at all.
+    // ⚠️ ROTATES `anon_id` ONLY, AND app_id IS NOW A REGISTERED ONE. Until
+    // [4]B-4a landed (2026-08-03) this loop rotated `app_id: app-${i}` too, and
+    // it could: the route took any string. It now answers 404 for an
+    // unregistered app BEFORE reaching the fairness limiter, so the old fixture
+    // measured zero limiter calls and the assertion below became vacuous rather
+    // than false. `anon_id` is still entirely caller-picked and still moves the
+    // fairness bucket, which is the bypass this test exists to pin — the
+    // property is unchanged, only the fixture stopped using a side door that no
+    // longer opens.
     const { fairness, ceiling, post } = harness();
     for (let i = 0; i < 3; i++) {
       await post(
         '/v1/events',
-        { app_id: `app-${i}`, events: [ev({ anon_id: `rotating-${i}` })] },
+        { app_id: 'subly', events: [ev({ anon_id: `rotating-${i}` })] },
         cf,
       );
     }
@@ -785,21 +794,69 @@ describe('the route is executed against platform_db, not asserted about', () => 
     expect(db.count('events')).toBe(0);
   });
 
-  it('🔴 RECORDED RED FOR [4]B-4a: an UNREGISTERED app_id writes a real row TODAY', async () => {
-    // This is not an aspiration, it is the current behaviour, asserted so that
-    // the increment which fixes it has a test to flip rather than a paragraph to
-    // remember. `services/platform/src/routes/events.ts` accepts any string of
-    // ≤64 chars as `app_id` and binds it straight into `events.app_id`, while
-    // `routes/config.ts` rejects an unknown app with 404 — the asymmetry is the
-    // defect. When the app registry lands, this expectation becomes `0` and the
-    // status becomes 4xx; until then the honest number is 1.
+  // ───────────────────────────────────────────────────────────────────────────
+  // ✅ [4]B-4a CLOSED 2026-08-03. The test above this one used to read "🔴
+  // RECORDED RED: an UNREGISTERED app_id writes a real row TODAY" and asserted
+  // `status === 200` with a row count of `1`. It was left as a test to FLIP
+  // rather than a note to remember, and this is the flip: the same request, the
+  // same table, the opposite numbers.
+  //
+  // Both directions are asserted below, because only one of them is the
+  // requirement. "Returns 4xx" is satisfiable by a route that rejects AFTER
+  // writing; "writes zero rows" is satisfiable by a route that is simply broken
+  // for everyone. Neither alone is B-4a.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('[4]B-4a · an UNREGISTERED app_id is REFUSED and writes ZERO rows', async () => {
     const { db, post } = harness();
     const res = await post('/v1/events', {
       app_id: 'zzz-not-a-real-app',
       events: [ev()],
     });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'unknown_app' });
+    // The post-condition the requirement is actually written in, run against the
+    // real engine: not "batch() was not called", a COUNT against the table.
+    expect(db.count('events', 'app_id = ?', 'zzz-not-a-real-app')).toBe(0);
+    // …and the table is empty overall, so the count above cannot be passing
+    // because the row landed under some other app_id.
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('[4]B-4a · a REGISTERED app_id still writes — the guard is not a wall', async () => {
+    // The failure this pins: `isKnownApp` reduced to `() => false` refuses the
+    // unregistered app AND the real one, which passes the test above while
+    // taking the analytics rail off the air for every shipped app.
+    const { db, post } = harness();
+    const res = await post('/v1/events', { app_id: 'subly', events: [ev()] });
     expect(res.status).toBe(200);
-    expect(db.count('events', "app_id = ?", 'zzz-not-a-real-app')).toBe(1);
+    expect(db.count('events', 'app_id = ?', 'subly')).toBe(1);
+  });
+
+  it('[4]B-4a · an unregistered app posting ZERO events is refused, not told ok', async () => {
+    // The empty-list short-circuit returns `{ ok: true, received: 0 }`. Ordered
+    // after the registry check on purpose: a caller wiring up a new app id must
+    // not read a 200 here as "the rail accepts me" and ship on it.
+    const { post } = harness();
+    const res = await post('/v1/events', { app_id: 'zzz-not-a-real-app', events: [] });
+    expect(res.status).toBe(404);
+  });
+
+  it('[4]B-4a · the SECOND write route refuses too — consent is not a side door', async () => {
+    // `/v1/consent` writes to a different table on the same unauthenticated
+    // surface. A fix applied to one route and not the other leaves the defect
+    // reachable, and `consent_artifacts` is the DPDP §6(3) trail.
+    const { db, post } = harness();
+    const res = await post('/v1/consent', {
+      consent_id: '33333333-3333-4333-8333-333333333333',
+      app_id: 'zzz-not-a-real-app',
+      anon_id: 'install-1',
+      purpose: 'analytics',
+      granted: true,
+      policy_version: '2026-07-25',
+    });
+    expect(res.status).toBe(404);
+    expect(db.count('consent_artifacts', 'app_id = ?', 'zzz-not-a-real-app')).toBe(0);
+    expect(db.count('consent_artifacts')).toBe(0);
   });
 
   it('the consent artifact lands, append-only and idempotent on consent_id', async () => {

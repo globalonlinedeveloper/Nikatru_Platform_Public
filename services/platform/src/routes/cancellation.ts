@@ -81,6 +81,7 @@ cancellation.post('/plan/cancel', async (c) => {
   if (typeof appId !== 'string' || !isKnownApp(appId)) {
     return c.json({ error: 'unknown_app' }, 404);
   }
+  c.set('appId', appId); // [pipeline B-16] attribution, post-validation.
 
   // Same refusal as every other money surface: there is no safe default for
   // which money world this deploy is, so an undeclared one answers 503 rather

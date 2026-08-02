@@ -236,6 +236,60 @@ export function deriveWatchedJobs(root) {
       }
       jobs.push({ id: row.id, job, intervalHours, databaseId: dbId, cron: crons[0] });
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // [pipeline B-11] THE OTHER DIRECTION, AND IT IS THE ONE THAT WAS MISSING.
+    //
+    // The loop above asks "does every WATCHED job exist in the source?" — which
+    // can only catch a stale register entry. It cannot catch the opposite and
+    // far more likely drift: a job the scheduler RUNS that the register never
+    // learned about. That is not hypothetical. `analytics_liveness` shipped in
+    // stage 11, ran nightly, wrote rows to `cron_heartbeat` — and `watchedJobs`
+    // named only `supabase_keepalive`, so nothing on earth was reading its
+    // results. The register was "complete" by the only test anyone had.
+    //
+    // The job set is DERIVED from the declarations rather than kept by hand:
+    // every `export const <NAME>_JOB = '<literal>'` in the Worker's source is a
+    // job, by the convention scheduled.ts documents. Adding a job therefore
+    // fails this check until the register watches it.
+    //
+    // ⚠️ AND THE DECLARATION MUST BE USED. A constant that is exported and never
+    // passed to `recordHeartbeat` writes no rows, so watching it would produce a
+    // permanently "absent" job and a red that no code change can clear. This
+    // repo has been burned by exactly one symbol matching only its own
+    // declaration (`_registerInWorkspace`, six times), so the call-site test
+    // strips the declaration line before looking for a usage.
+    // ─────────────────────────────────────────────────────────────────────────
+    const declared = [...src.matchAll(/export\s+const\s+(\w*_JOB)\s*=\s*['"]([^'"]+)['"]/g)].map(
+      (m) => ({ constName: m[1], job: m[2] }),
+    );
+    if (declared.length === 0) {
+      problems.push(
+        `COVERAGE LOST — no \`export const <NAME>_JOB = '…'\` declaration was found anywhere in ${dirname(cfgRel)}/src, ` +
+          'so the derived job set is EMPTY and the completeness check below compares the register against nothing. ' +
+          'Either the naming convention scheduled.ts documents was abandoned, or the source moved.',
+      );
+      continue;
+    }
+    // Strip each declaration so a "usage" cannot be the declaration itself.
+    const usageSrc = src.replace(/export\s+const\s+\w*_JOB\s*=\s*['"][^'"]+['"]/g, '');
+    for (const { constName, job } of declared) {
+      if (!new RegExp(`\\b${constName}\\b`).test(usageSrc)) {
+        problems.push(
+          `${row.id}: \`${constName}\` (job "${job}") is declared in ${dirname(cfgRel)}/src and NEVER USED — it appears nowhere ` +
+            'but its own declaration, so no heartbeat row can ever carry that job name. A watched job that nothing writes is ' +
+            'permanently absent; an unwatched job that nothing writes is dead code. Wire it to `recordHeartbeat` or delete it.',
+        );
+        continue;
+      }
+      if (!watched.includes(job)) {
+        problems.push(
+          `COVERAGE LOST — the scheduler declares and uses job "${job}" (\`${constName}\`), and ${row.id}.watchedJobs does NOT name it. ` +
+            'It runs every night and NOTHING reads its outcome. This is the direction that stayed silent while `analytics_liveness` ' +
+            `went unwatched from the day it shipped. Add "${job}" to watchedJobs in ${REGISTER_REL}.`,
+        );
+      }
+    }
   }
   return { jobs, problems };
 }

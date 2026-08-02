@@ -176,7 +176,14 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
         d1_databases: [{ binding: 'DB', database_name: 'demo', database_id: 'abc', migrations_dir: 'migrations' }],
         triggers: { crons: ['0 6 * * *'] },
       },
-      source: "export const KEEPALIVE_JOB = 'demo_job';\n",
+      // Declaration AND a call site. The declaration alone used to be enough
+      // here, which is precisely the shape the [pipeline B-11] usage limb was
+      // added to reject: an exported `*_JOB` constant nothing passes to
+      // `recordHeartbeat` writes no rows, so watching it produces a permanent
+      // "absent" that no code change can clear.
+      source:
+        "export const KEEPALIVE_JOB = 'demo_job';\n" +
+        'await recordHeartbeat(env, rows, KEEPALIVE_JOB);\n',
       row: {
         id: 'duty.cron',
         kind: 'duty',
@@ -199,6 +206,68 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
     assert.equal(jobs[0].job, 'demo_job');
     assert.equal(jobs[0].intervalHours, 24);
     assert.equal(jobs[0].databaseId, 'abc');
+  });
+
+  // ── [pipeline B-11] the OTHER direction: a job the scheduler runs that the
+  //    register never learned about. This is the limb that stayed silent while
+  //    `analytics_liveness` ran unwatched from the day it shipped.
+  test('a job the SOURCE declares and uses but the register does NOT watch is COVERAGE LOST', () => {
+    const { problems } = deriveWatchedJobs(
+      makeRepo((s) => {
+        s.source +=
+          "export const SECOND_JOB = 'second_job';\n" +
+          'await recordHeartbeat(env, rows, SECOND_JOB);\n';
+      }),
+    );
+    assert.match(problems.join(' '), /declares and uses job "second_job".*does NOT name it/s);
+  });
+
+  test('…and that unwatched job is caught even when every WATCHED job is perfectly fine', () => {
+    // The failure mode being excluded: an implementation that only reports the
+    // gap when something else is already wrong. The watched job here is healthy
+    // and correctly wired; the ONLY problem is the unwatched one.
+    const { problems } = deriveWatchedJobs(
+      makeRepo((s) => {
+        s.source +=
+          "export const SECOND_JOB = 'second_job';\n" +
+          'await recordHeartbeat(env, rows, SECOND_JOB);\n';
+      }),
+    );
+    assert.equal(problems.length, 1, problems.join('\n'));
+  });
+
+  test('an exported *_JOB constant that is NEVER USED is reported — a name nothing writes', () => {
+    const { problems } = deriveWatchedJobs(
+      makeRepo((s) => {
+        // Declared, watched, and never passed to anything.
+        s.source += "export const GHOST_JOB = 'ghost_job';\n";
+        s.row.watchedJobs = ['demo_job', 'ghost_job'];
+      }),
+    );
+    assert.match(problems.join(' '), /`GHOST_JOB` \(job "ghost_job"\) is declared .* and NEVER USED/s);
+  });
+
+  test('a usage must not be the declaration itself — the _registerInWorkspace trap', () => {
+    // If the declaration line were not stripped before looking for a usage,
+    // EVERY declared constant would resolve to itself and the limb above could
+    // never fire. This asserts the stripping, by giving the constant nothing but
+    // its own declaration and requiring the complaint anyway.
+    const { problems } = deriveWatchedJobs(
+      makeRepo((s) => {
+        s.source = "export const KEEPALIVE_JOB = 'demo_job';\n";
+      }),
+    );
+    assert.match(problems.join(' '), /NEVER USED/);
+  });
+
+  test('source with no *_JOB declaration at all is COVERAGE LOST, not an empty derived set', () => {
+    const { problems } = deriveWatchedJobs(
+      makeRepo((s) => {
+        s.source = 'export const SOMETHING_ELSE = 1;\n';
+        s.row.watchedJobs = ['demo_job'];
+      }),
+    );
+    assert.match(problems.join(' '), /the derived job set is EMPTY/);
   });
 
   test('a job name that appears NOWHERE in the Worker source is COVERAGE LOST', () => {
@@ -260,32 +329,70 @@ describe('check-heartbeats — end to end through the real register', () => {
   const run = (rowsFile, now) =>
     spawnSync(process.execPath, [READER, '--rows-file', rowsFile, '--now', now], { cwd: REPO, encoding: 'utf8' });
 
+  // ⚠️ DERIVED FROM THE REAL REGISTER, NOT A LITERAL `{ supabase_keepalive: … }`.
+  // These fixtures used to name the one job by hand and assert "watching 1 cron
+  // job(s)". That made the END-TO-END test a hand-kept list of exactly the kind
+  // the reader exists to replace: when `renewals` joined the watched set on
+  // 2026-08-03 every test here went red, not because anything was wrong but
+  // because the fixture had been written to a number. Worse, it had been GREEN
+  // for the whole period `analytics_liveness` ran unwatched — a fixture naming
+  // only the job it knew about cannot notice a job it does not.
+  const WATCHED = deriveWatchedJobs(REPO).jobs.map((j) => j.job);
+  /** A healthy row set covering EVERY watched job, whatever that set becomes. */
+  const healthy = (over = {}) =>
+    Object.fromEntries(WATCHED.map((job) => [job, [row({ job, ...over })]]));
+
+  test('the real register derives a NON-EMPTY watched set — the floor every test below stands on', () => {
+    // Without this, an accidentally-empty derivation makes `healthy()` an empty
+    // object, the reader watches nothing, exits 0, and every assertion in this
+    // describe block passes while checking nothing at all.
+    assert.ok(WATCHED.length > 0, 'COVERAGE LOST — the real register derived ZERO watched jobs');
+    // Every job the scheduler declares must be in it. Named explicitly because
+    // this is the regression that hid for a whole stage.
+    for (const expected of ['supabase_keepalive', 'analytics_liveness', 'renewals']) {
+      assert.ok(WATCHED.includes(expected), `the watched set is missing "${expected}"`);
+    }
+  });
+
   test('the real register derives a watched set, and a healthy fixture passes', () => {
-    const f = fixture({ supabase_keepalive: [row({ job: 'supabase_keepalive' })] });
-    const r = run(f, '2026-08-02T09:00:00Z');
+    const r = run(fixture(healthy()), '2026-08-02T09:00:00Z');
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
-    assert.match(r.stdout, /watching 1 cron job\(s\) derived from tooling\/ops\/register\.json/);
+    assert.match(
+      r.stdout,
+      new RegExp(`watching ${WATCHED.length} cron job\\(s\\) derived from tooling/ops/register\\.json`),
+    );
   });
 
   test('the fixture mode announces itself loudly, so it can never pass unnoticed in a real log', () => {
-    const f = fixture({ supabase_keepalive: [row({ job: 'supabase_keepalive' })] });
-    assert.match(run(f, '2026-08-02T09:00:00Z').stdout, /OFFLINE FIXTURE MODE/);
+    assert.match(run(fixture(healthy()), '2026-08-02T09:00:00Z').stdout, /OFFLINE FIXTURE MODE/);
   });
 
   test('a fresh-but-failed row exits non-zero through the real derivation', () => {
-    const f = fixture({ supabase_keepalive: [row({ job: 'supabase_keepalive', ok: 0, detail: 'HTTP 401' })] });
-    const r = run(f, '2026-08-02T09:00:00Z');
+    const r = run(fixture(healthy({ ok: 0, detail: 'HTTP 401' })), '2026-08-02T09:00:00Z');
     assert.equal(r.status, 1);
     assert.match(r.stderr, /is not reporting healthy/);
   });
 
+  test('EVERY watched job is graded — a failure in ANY ONE of them is caught', () => {
+    // The point of the derivation: with a hand-written fixture, a job added to
+    // the register but never exercised by a test is watched on paper only. Here
+    // each job in turn is the ONLY unhealthy one, and each must be caught.
+    for (const job of WATCHED) {
+      const rows = healthy();
+      rows[job] = [row({ job, ok: 0, detail: 'broken' })];
+      const r = run(fixture(rows), '2026-08-02T09:00:00Z');
+      assert.equal(r.status, 1, `a failing "${job}" was NOT caught`);
+      assert.match(r.stderr, new RegExp(job));
+    }
+  });
+
   test('an empty result set exits non-zero through the real derivation', () => {
-    const f = fixture({ supabase_keepalive: [] });
-    assert.equal(run(f, '2026-08-02T09:00:00Z').status, 1);
+    const empty = Object.fromEntries(WATCHED.map((job) => [job, []]));
+    assert.equal(run(fixture(empty), '2026-08-02T09:00:00Z').status, 1);
   });
 
   test('an unreadable --now is refused rather than silently becoming "now"', () => {
-    const f = fixture({ supabase_keepalive: [row({ job: 'supabase_keepalive' })] });
+    const f = fixture(healthy());
     const r = spawnSync(process.execPath, [READER, '--rows-file', f, '--now', 'lunchtime'], { cwd: REPO, encoding: 'utf8' });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /not a parseable date/);

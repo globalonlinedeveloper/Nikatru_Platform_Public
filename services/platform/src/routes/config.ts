@@ -29,6 +29,7 @@ app.get('/:app', async (c) => {
   // malformed id is answered from the compiled-in registry with zero I/O, so it
   // never reaches KV and never consumes the breaker's budget either.
   if (!isKnownApp(appId)) return c.json({ error: 'unknown_app' }, 404);
+  c.set('appId', appId); // [pipeline B-16] attribution, post-validation.
 
   // The SAME server-derived ceiling /v1/events got in PR #91, on its own
   // namespace so it cannot spend that route's budget (and that route cannot
