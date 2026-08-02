@@ -1,0 +1,91 @@
+{
+  "_readme": [
+    "[pipeline 7]P-2 + P-6. One row per produced item, and the relationship the guard checks is",
+    "count(rows) == count(items) in BOTH directions — because the failure mode P-2 exists for is NOT",
+    "logging, and a criterion satisfied by an empty log rewards exactly that.",
+    "",
+    "🔴 EVERY ROW HERE SAYS `none/hand-authored` OR `none/hand-constructed`, AND THAT IS THE TRUTH RATHER",
+    "THAN A PLACEHOLDER. This example pack was written by a person and its two binary assets are",
+    "deterministic container headers assembled by tooling. No model produced any of it, so no row claims",
+    "a model, no row claims a SynthID mark, and no row claims a licence it cannot support. A generated",
+    "pack's rows name a real generator_model_id and a real prompt; the shape is identical.",
+    "",
+    "`prompt` is REQUIRED on every row, including these — an authoring instruction is what was asked for,",
+    "and the [ADR 019] ban-list scan applies to it exactly as it would to a model prompt. Allowing an",
+    "empty prompt 'because no model ran' is how the field becomes optional in practice."
+  ],
+  "items": [
+    {
+      "item_id": "greeting.hello",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the single most common everyday greeting in each declared locale, in the form a traveller would say it to a stranger.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#greeting.hello"
+    },
+    {
+      "item_id": "greeting.thank_you",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the ordinary spoken form of thanks in each declared locale, neutral register, no honorific escalation.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#greeting.thank_you"
+    },
+    {
+      "item_id": "travel.where_is_the_station",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the question a traveller asks to locate the railway station, in each declared locale, as a complete spoken sentence.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#travel.where_is_the_station"
+    },
+    {
+      "item_id": "travel.how_much_does_this_cost",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the question asking the price of an item being pointed at, in each declared locale, market register.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#travel.how_much_does_this_cost"
+    },
+    {
+      "item_id": "food.water_please",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the shortest polite request for drinking water in each declared locale, as said to a server.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#food.water_please"
+    },
+    {
+      "item_id": "help.i_need_a_doctor",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the plain urgent statement that the speaker needs medical help, in each declared locale, no idiom.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#help.i_need_a_doctor"
+    },
+    {
+      "item_id": "badge.streak",
+      "generator_model_id": "none/hand-constructed",
+      "generated_at": "2026-08-02",
+      "prompt": "Assemble a minimal lossless WebP container: RIFF header, WEBP form type, one VP8L chunk. Structure only — this asset exists to give the format allowlist a real subject, not to be looked at.",
+      "marking": "none",
+      "marking_reason": "not model output — deterministic bytes assembled by tooling, no model involved, so there is no SynthID to preserve and none is claimed",
+      "review_verdict_ref": "review.jsonl#badge.streak"
+    },
+    {
+      "item_id": "tone.confirm",
+      "generator_model_id": "none/hand-constructed",
+      "generated_at": "2026-08-02",
+      "prompt": "Assemble one MPEG-1 Layer III frame at 128 kbps / 44.1 kHz with a zero payload. Structure only — this asset exists to give the format allowlist a real subject.",
+      "marking": "none",
+      "marking_reason": "not model output — deterministic bytes assembled by tooling. Note that a REAL Chirp 3 HD asset would also read `none` here: Chirp applies no watermark at all, so PROVENANCE.json is audio's only marking evidence either way",
+      "review_verdict_ref": "review.jsonl#tone.confirm"
+    }
+  ]
+}

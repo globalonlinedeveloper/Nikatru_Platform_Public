@@ -10,6 +10,7 @@
   "channel-claims.test.mjs": 45,
   "channel-register.test.mjs": 77,
   "clone-contract.test.mjs": 26,
+  "content-pipeline.test.mjs": 45,
   "d1-bindings.test.mjs": 7,
   "data-inventory.test.mjs": 26,
   "deploy-triggers.test.mjs": 17,

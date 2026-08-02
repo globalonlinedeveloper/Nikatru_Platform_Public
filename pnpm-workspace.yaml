@@ -2,3 +2,9 @@
 # Members grow as services/ and more sites join; packages/tokens is hermetic npm (not here).
 packages:
   - 'sites/_shared'
+  # The content-pack producer ([pipeline 7], ADR 007). Zero runtime dependencies
+  # — pure Node stdlib — so it adds nothing to the lockfile but a workspace
+  # importer. It is a member so that `assert-lane-coverage.mjs` sees a claimable
+  # unit rather than a directory of loose scripts, and so a future dependency
+  # here resolves under the same pinned pnpm as everything else.
+  - 'tooling/content_pipeline'

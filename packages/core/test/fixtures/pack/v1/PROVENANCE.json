@@ -1,0 +1,91 @@
+{
+  "pack_id": "lingo",
+  "version": "1.0.0",
+  "content_hash": "5637a866c30aab6df7e0de9c8ad7727edf8c4f181116a12238b56e4fd477af1c",
+  "generator_marking": {
+    "none/hand-authored": "none:not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+    "none/hand-constructed": "none:not model output — deterministic bytes assembled by tooling, no model involved"
+  },
+  "items": [
+    {
+      "item_id": "badge.streak",
+      "modality": "image",
+      "generator_model_id": "none/hand-constructed",
+      "generated_at": "2026-08-02",
+      "prompt": "Assemble a minimal lossless WebP container: RIFF header, WEBP form type, one VP8L chunk. Structure only — this asset exists to give the format allowlist a real subject, not to be looked at.",
+      "marking": "none",
+      "marking_reason": "not model output — deterministic bytes assembled by tooling, no model involved, so there is no SynthID to preserve and none is claimed",
+      "review_verdict_ref": "review.jsonl#badge.streak"
+    },
+    {
+      "item_id": "food.water_please",
+      "modality": "text",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the shortest polite request for drinking water in each declared locale, as said to a server.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#food.water_please"
+    },
+    {
+      "item_id": "greeting.hello",
+      "modality": "text",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the single most common everyday greeting in each declared locale, in the form a traveller would say it to a stranger.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#greeting.hello"
+    },
+    {
+      "item_id": "greeting.thank_you",
+      "modality": "text",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the ordinary spoken form of thanks in each declared locale, neutral register, no honorific escalation.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#greeting.thank_you"
+    },
+    {
+      "item_id": "help.i_need_a_doctor",
+      "modality": "text",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the plain urgent statement that the speaker needs medical help, in each declared locale, no idiom.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#help.i_need_a_doctor"
+    },
+    {
+      "item_id": "tone.confirm",
+      "modality": "audio",
+      "generator_model_id": "none/hand-constructed",
+      "generated_at": "2026-08-02",
+      "prompt": "Assemble one MPEG-1 Layer III frame at 128 kbps / 44.1 kHz with a zero payload. Structure only — this asset exists to give the format allowlist a real subject.",
+      "marking": "none",
+      "marking_reason": "not model output — deterministic bytes assembled by tooling. Note that a REAL Chirp 3 HD asset would also read `none` here: Chirp applies no watermark at all, so PROVENANCE.json is audio's only marking evidence either way",
+      "review_verdict_ref": "review.jsonl#tone.confirm"
+    },
+    {
+      "item_id": "travel.how_much_does_this_cost",
+      "modality": "text",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the question asking the price of an item being pointed at, in each declared locale, market register.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#travel.how_much_does_this_cost"
+    },
+    {
+      "item_id": "travel.where_is_the_station",
+      "modality": "text",
+      "generator_model_id": "none/hand-authored",
+      "generated_at": "2026-08-02",
+      "prompt": "Write the question a traveller asks to locate the railway station, in each declared locale, as a complete spoken sentence.",
+      "marking": "none",
+      "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
+      "review_verdict_ref": "review.jsonl#travel.where_is_the_station"
+    }
+  ]
+}

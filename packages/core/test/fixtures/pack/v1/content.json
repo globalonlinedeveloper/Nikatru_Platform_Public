@@ -1,0 +1,26 @@
+{
+  "en": {
+    "greeting.hello": "Hello",
+    "greeting.thank_you": "Thank you",
+    "travel.where_is_the_station": "Where is the station?",
+    "travel.how_much_does_this_cost": "How much does this cost?",
+    "food.water_please": "Water, please",
+    "help.i_need_a_doctor": "I need a doctor"
+  },
+  "fr": {
+    "greeting.hello": "Bonjour",
+    "greeting.thank_you": "Merci",
+    "travel.where_is_the_station": "Où est la gare ?",
+    "travel.how_much_does_this_cost": "Combien ça coûte ?",
+    "food.water_please": "De l'eau, s'il vous plaît",
+    "help.i_need_a_doctor": "J'ai besoin d'un médecin"
+  },
+  "hi": {
+    "greeting.hello": "नमस्ते",
+    "greeting.thank_you": "धन्यवाद",
+    "travel.where_is_the_station": "स्टेशन कहाँ है?",
+    "travel.how_much_does_this_cost": "इसकी कीमत कितनी है?",
+    "food.water_please": "पानी चाहिए",
+    "help.i_need_a_doctor": "मुझे डॉक्टर चाहिए"
+  }
+}

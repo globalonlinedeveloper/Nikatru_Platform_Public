@@ -120,7 +120,12 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   });
 
   test('dropping a lane from `needs` fails — the lane added and forgotten', () => {
-    const root = mutant([['ci.yml', 'needs: [subly_api, platform, tokens, site_shared, app_brick, sites, workspace_gate]', 'needs: [subly_api, platform, tokens, site_shared, app_brick, sites]']]);
+    // ⚠️ THIS MUTATION IS A LITERAL OF ci.yml's REAL `needs:` LINE, so it stops
+    // being a mutation the moment a lane is added and the line is not updated
+    // here — and a no-op mutation passes the guard, which reads as the guard
+    // failing rather than as the test rotting. Caught 2026-08-02 when the
+    // content_gate lane landed. Keep both halves in step with ci.yml.
+    const root = mutant([['ci.yml', 'needs: [subly_api, platform, tokens, site_shared, content_gate, app_brick, sites, workspace_gate]', 'needs: [subly_api, platform, tokens, site_shared, content_gate, app_brick, sites]']]);
     caught(run(root), /job "ci-gate" does not `need` "workspace_gate"/);
   });
 

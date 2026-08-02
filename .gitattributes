@@ -8,3 +8,17 @@
 *.ttf binary
 *.otf binary
 
+# ── CONTENT-PACK MEMBERS ([ADR 007]) — and `manifest.sig` is the dangerous one ─
+# `text=auto` classifies a file as binary by looking for a NUL byte in its first
+# 8000. An Ed25519 signature is 64 bytes of uniform noise: the committed one
+# happens to contain no NUL, so git calls it TEXT and `eol=lf` becomes live on it.
+# Today that is harmless because it also contains no 0x0D and no 0x0A — but the
+# signature changes every time the pack does, and roughly one in four carries a
+# CR or an LF. On the run where it does, checkout would rewrite the signature
+# bytes and every client would reject a pack that was signed correctly, with the
+# repository showing no diff. Marked explicitly rather than left to a heuristic
+# that is right by luck. tooling/ci/assert-pack-inert.mjs asserts these stay here.
+*.sig binary
+*.webp binary
+*.mp3 binary
+

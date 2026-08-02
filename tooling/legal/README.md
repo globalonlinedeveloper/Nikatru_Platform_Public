@@ -68,6 +68,21 @@ to switch the guard off — and each printed gap is written so that it flips to 
 | `data-inventory.json` | `tooling/ci/assert-data-inventory.mjs` | K-8 — one declared personal-data inventory behind every disclosure |
 | `duty-matrix.json` | `tooling/ci/assert-legal-tripwires.mjs` | K-13 — the per-market duty matrix cannot silently rot |
 | `asset-register.json` | `tooling/ci/assert-licence-register.mjs` | K-10 / K-11 — rights evidence for every third-party asset shipped |
+| `content-licence-register.json` | `tooling/ci/assert-content-licences.mjs` | [7]P-5 / G-36 — no asset ships in a CONTENT PACK without a cleared licence row |
+| `pack-key-drills.json` | `tooling/ci/assert-publish-gate.mjs` | [7]P-10 — no production pack is signed before key custody is drill-proven |
+
+`content-licence-register.json` is a different question from `asset-register.json` and the two are
+deliberately not merged: the asset register covers what a **built app bundle** ships (fonts, shaders,
+images inside the binary); the content register covers what the **pipeline consumes to produce a pack**
+(generator models, TTS voices, QA models, and any third-party asset family a pack carries). An app can
+ship a font it never generated with, and a pack can carry a voice the app binary never sees.
+
+`pack-key-drills.json` is a register with no third party in it at all — it records whether the
+content-pack signing key's stored copies have been **read back**. It lives here because it is the same
+shape: a declared fact a guard compares to the tree, with the sensitive value (the seed) named rather
+than held. Its `drilled_on` is `null` today and the pipeline refuses to sign a production `key_id`
+while it stays that way; CI **prints** the gap rather than failing, because restoring a printed seed is
+physical owner work and a guard that blocks every run on it is a guard somebody switches off.
 
 ## What these registers are NOT
 

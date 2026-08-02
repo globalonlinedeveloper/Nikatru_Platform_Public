@@ -1,0 +1,25 @@
+{
+  "pack_id": "lingo",
+  "version": "1.0.0",
+  "key_id": "test-k1",
+  "content_hash": "5637a866c30aab6df7e0de9c8ad7727edf8c4f181116a12238b56e4fd477af1c",
+  "assets": [
+    {
+      "path": "badge/streak.webp",
+      "sha256": "b272624df3480ad7567e629f5beead548a1ecf8d86e781ad067b811a7f8f140d"
+    },
+    {
+      "path": "tone/confirm.mp3",
+      "sha256": "22f8d8481771815a9233ad9791c81da4cded20a7329df75856927ae45a5446bc"
+    }
+  ],
+  "generators": [
+    "none/hand-authored",
+    "none/hand-constructed"
+  ],
+  "locales": [
+    "en",
+    "fr",
+    "hi"
+  ]
+}

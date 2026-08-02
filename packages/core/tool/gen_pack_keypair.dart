@@ -15,19 +15,35 @@
 //      This laptop is networked and syncs `.claude/` to Google Drive, so a seed
 //      written here is a seed that has left the machine. `--print-seed` exists so
 //      the private half never has to touch disk at all.
-//   2. SHAMIR-SPLIT the seed and back the shares up offsite BEFORE importing to
-//      any hardware token. A key generated ON a YubiKey is non-exportable and
-//      therefore CANNOT be split — start there and you have permanently opted
-//      out of loss protection. `key_id` (ADR 016) covers COMPROMISE; only the
-//      split covers LOSS.
+//   2. 🔴 DO NOT SHAMIR-SPLIT THE SEED. This step used to say the opposite, in
+//      capitals, and [ADR 022] (LOCKED 2026-07-27) overturned it: splitting puts
+//      a working Shamir implementation IN THE RESTORE PATH, which is the same
+//      trap [ADR 021] and [1]F-7b exist to remove — you need a tool to recover
+//      the thing you need in order to recover. For a sole founder the realistic
+//      threat is LOSING the key, not an attacker obtaining one share.
+//      The custody model is TWO COPIES THAT FAIL DIFFERENTLY, and neither needs
+//      software to restore:
+//        · `.claude/pack-signing.seed` — and therefore the Drive backup. Covers
+//          this laptop dying, which is the likely failure.
+//        · A PRINTED paper copy, offline, in two locations. Covers losing the
+//          Google account. PRINT, never handwrite: the seed is a single
+//          case-sensitive 44-character base64 string and `0/O`, `1/l/I` and
+//          `+/=` are the usual casualties. Read it back to verify.
+//      `key_id` ([ADR 016]) covers COMPROMISE — ship a new id in an app update.
+//      Only LOSS is unrecoverable, and a backup is exactly what prevents loss.
 //   3. Paste the printed public key into `kContentPackPublicKeys` in
 //      packages/core/lib/src/content/pack_verifier.dart as {'k1': '<key>'}.
-//   4. Run a RESTORE DRILL from the shares before the first pack is signed. An
-//      untested split is the same class of belief as an untested backup — and
-//      this repo has already been bitten by exactly that.
+//   4. Run a RESTORE DRILL — from each stored COPY in turn, not from shares.
+//      Restore the seed, sign a message with the restored key, verify it through
+//      the production Ed25519PackVerifier against the pinned `k1`, and record
+//      the date in `tooling/legal/pack-key-drills.json`. Until that date is
+//      there, `tooling/content_pipeline` REFUSES to sign as a production key id
+//      ([pipeline 7]P-10) — the refusal is the enforcement, this comment is not.
+//      Two copies that fail differently are only two copies once BOTH have been
+//      read back.
 //
 // Losing the private key means no pack signed under that `key_id` can ever be
-// updated. There is no recovery path. That is why steps 2 and 4 are not optional.
+// updated. There is no recovery path. That is why step 4 is not optional.
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Usage:
@@ -49,9 +65,8 @@ import 'package:cryptography/cryptography.dart';
 Future<void> main(List<String> args) async {
   final bool printSeed = args.contains('--print-seed');
   final int outIdx = args.indexOf('--out');
-  final String? outPath = outIdx >= 0 && outIdx + 1 < args.length
-      ? args[outIdx + 1]
-      : null;
+  final String? outPath =
+      outIdx >= 0 && outIdx + 1 < args.length ? args[outIdx + 1] : null;
 
   if (printSeed == (outPath != null)) {
     stderr.writeln('Choose exactly one of --print-seed or --out <path>.');
@@ -130,10 +145,18 @@ Future<void> main(List<String> args) async {
     stdout.writeln('');
     stdout.writeln('    $seedB64');
     stdout.writeln('');
+    // [ADR 022] — NOT Shamir. Two copies that fail differently, neither of
+    // which needs software to restore.
     stdout.writeln(
-      'Shamir-split this NOW and back the shares up offsite before you',
+      'MAKE TWO COPIES NOW, before you close this terminal — it cannot be recovered:',
     );
-    stdout.writeln('close this terminal. It cannot be recovered.');
+    stdout.writeln(
+        '  1. .claude/pack-signing.seed (and therefore the Drive backup)');
+    stdout.writeln(
+        '  2. PRINT it on paper, offline, in two locations — never handwrite it');
+    stdout.writeln('Then run the restore drill from EACH copy and date it in');
+    stdout.writeln(
+        'tooling/legal/pack-key-drills.json, or the pipeline will refuse to sign.');
   } else {
     final File f = File(outPath!);
     await f.writeAsString('$seedB64\n', flush: true);

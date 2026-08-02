@@ -66,6 +66,17 @@ for (const d of dirs('packages')) {
   // Node packages living under packages/ (e.g. the design-token emitter).
   if (has(d, 'package.json') && !has(d, 'pubspec.yaml')) units.push({ path: d, type: 'node' });
 }
+// 🔴 tooling/ IS A SCAN ROOT (2026-08-02, [pipeline 7]P-1). It was not, and that
+// was invisible rather than deliberate: `tooling/` held only loose scripts run
+// from other lanes, so nothing there was a UNIT. The content pipeline is a real
+// node package with its own CI lane and its own test suite, and had this root
+// stayed out it would have been the F-9 defect all over again — a deployable unit
+// checked by nothing while CI printed "all claimed". The predicate is the same
+// one packages/ uses (a package.json, no pubspec.yaml), so a future tooling
+// package acquires the requirement by existing rather than by being remembered.
+for (const d of dirs('tooling')) {
+  if (has(d, 'package.json') && !has(d, 'pubspec.yaml')) units.push({ path: d, type: 'node' });
+}
 
 // ── what covers each type ────────────────────────────────────────────────────
 // 🔴 COMMENTS AND EXCLUSIONS ARE NOT CLAIMS (2026-08-01 full-corpus review).
@@ -134,6 +145,41 @@ if (units.length < MIN_UNITS) {
   console.error(`✗ COVERAGE LOST — found only ${units.length} deployable unit(s), expected at least ${MIN_UNITS}.`);
   console.error(`  The scan is broken, not the tree. repo root used: ${repoRoot}`);
   process.exit(1);
+}
+
+// 🔴 THE SCAN ROOTS ARE THEMSELVES CHECKED, against a manifest this guard does
+// not own. Mutation-proven 2026-08-02: deleting the `tooling/` root above made
+// tooling/content_pipeline stop being a unit, so it stopped being unclaimed, and
+// this guard printed "16 deployable unit(s), all claimed" over a package no lane
+// covered. A floor cannot see that — the count simply goes down — which is the
+// "a scanner that silently stopped scanning" shape CLAUDE.md names first.
+//
+// pnpm-workspace.yaml is a SEPARATE, independently maintained list of node
+// packages, so it can be compared: every member it declares must have been
+// enumerated above. Dropping a scan root now fails naming the member it lost;
+// dropping the member from the workspace instead is a change a reviewer sees.
+const pnpmWorkspace = join(repoRoot, 'pnpm-workspace.yaml');
+if (existsSync(pnpmWorkspace)) {
+  const members = [];
+  let inPackages = false;
+  for (const raw of readFileSync(pnpmWorkspace, 'utf8').split('\n')) {
+    const line = raw.replace(/#.*$/, '');
+    if (/^packages\s*:/.test(line)) { inPackages = true; continue; }
+    if (inPackages) {
+      const m = line.match(/^\s*-\s*['"]?([^'"\s]+)['"]?\s*$/);
+      if (m) members.push(m[1].replace(/\/+$/, ''));
+      else if (line.trim() !== '') break;
+    }
+  }
+  const paths = new Set(units.map((u) => u.path));
+  const unseen = members.filter((m) => !m.includes('*') && !paths.has(m));
+  if (unseen.length) {
+    console.error(`✗ COVERAGE LOST — pnpm-workspace.yaml declares ${unseen.length} member(s) this scan never enumerated:`);
+    for (const m of unseen) console.error(`    ${m}`);
+    console.error('  A member that is not a UNIT here cannot be reported unclaimed, so removing a scan root looks');
+    console.error('  exactly like a smaller tree. Add the scan root back, or remove the member in the same change.');
+    process.exit(1);
+  }
 }
 
 const unclaimed = units.filter((u) => !isClaimed(u));

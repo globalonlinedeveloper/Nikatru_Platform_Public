@@ -871,6 +871,91 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  # ── THE CONTENT LANE ([pipeline 7], the producer half of the pack rail) ─────
+  # A lane of its own rather than more steps in `platform`, for the reason F-9
+  # exists: `tooling/content_pipeline` is a deployable unit, and until this job
+  # existed nothing claimed it. assert-lane-coverage.mjs now scans `tooling/` as a
+  # root, so deleting this job turns that guard RED naming the package — which is
+  # the negative test this lane was built with, run against the real tree.
+  #
+  # The consumer half (loader, Ed25519 verifier, pinned k1) is Dart and is covered
+  # by workspace_gate; packages/core/test/content_pack_fixture_test.dart loads the
+  # SAME committed pack these guards produce, through the real ContentPackLoader.
+  # Two lanes, one artifact, and neither alone is the proof.
+  content_gate:
+    name: Content pipeline (recipe -> pack -> sign -> gate)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      # The pipeline's own suite first: the guards below IMPORT its modules, so a
+      # broken emitter would otherwise surface as a confusing guard failure rather
+      # than as the unit failure it is.
+      - name: The pipeline's own tests
+        run: node --test "tooling/content_pipeline/test/*.test.mjs"
+      # 🔴 THE REAL CLI, on the real recipe, exactly as an operator would run it.
+      # A pipeline only ever exercised through its exported functions rots at the
+      # argument layer — which is where assert-licence-register.mjs's own
+      # off-by-one lived, and it made nine mutation runs report NOT CAUGHT.
+      # --test-key signs as `test-k1`, which pack_verifier.dart does NOT pin, so
+      # nothing CI can sign is a pack any shipped binary would accept.
+      - name: The pipeline builds and signs the example pack, through the CLI
+        run: |
+          node tooling/content_pipeline/cli.mjs validate --recipe tooling/content_pipeline/examples/lingo-phrases/recipe.json
+          node tooling/content_pipeline/cli.mjs build --recipe tooling/content_pipeline/examples/lingo-phrases/recipe.json --out "$RUNNER_TEMP/pack" --test-key
+      # [pipeline 7]P-1 + P-8. The required-field set is recipe.schema.json's
+      # `required[]`, and every entry is proven to refuse by DELETING it from the
+      # committed recipe — no fixture to remember, no count to ratchet. Also the
+      # three locale relationships, including the one the client cannot rescue: a
+      # shard missing a key renders as the base language, silently.
+      - name: A recipe is a validated input contract, and the shards agree
+        run: node tooling/ci/assert-recipe-contract.mjs
+      # [pipeline 7]P-5 / G-36. The register is in tooling/legal/ and NOT under
+      # company/, which is gitignored — a guard pointed there reads nothing and
+      # reports a clean tree over an empty domain. Uncleared rows for families
+      # nothing consumes PRINT; a recipe declaring an uncleared family FAILS.
+      - name: No pack ships a licence family nobody cleared
+        run: node tooling/ci/assert-content-licences.mjs
+      # [pipeline 7]P-9 + P-6 + P-11. The pack is REBUILT from the recipe and
+      # compared byte for byte with the frozen fixture, signature included —
+      # Ed25519 is deterministic and the test key is derived, so any drift in the
+      # emitter or the canonical serialiser is red here. This is what catches a
+      # signer that signs a re-serialisation: such a pack verifies perfectly on
+      # the machine that made it and fails on every installed app.
+      - name: The pipeline reproduces the frozen pack, and the signature binds the bytes
+        run: node tooling/ci/assert-pack-roundtrip.mjs
+      # [pipeline 7]P-7 + P-14. Member whitelist over the WHOLE pack (the original
+      # scope let its own worked example — a root-level .js — walk past), and
+      # magic bytes rather than extensions. AVIF's absence from the allowlist IS
+      # the 2026-07-29 cut; video stays dormant (39-CHASSIS §4 cut 8).
+      - name: A pack is inert data in only the locked formats
+        run: node tooling/ci/assert-pack-inert.mjs
+      # [pipeline 7]P-2. PARSED, never grepped — the ban list contains the strings
+      # it bans, so a raw-text scan flags the guard itself and every honest
+      # refusal note. The relationship is count(prompts) == count(items), because
+      # the failure mode is NOT LOGGING and the original criterion rewarded it.
+      - name: Every produced item has an IP-clean, logged prompt
+        run: node tooling/ci/assert-prompt-provenance.mjs
+      # [pipeline 7]P-4. A review.jsonl with ONE passing verdict over the right
+      # content hash satisfies all three original criteria, so the sample is
+      # RE-DERIVED from the pack's content hash and the named human checklist —
+      # reverse-image-search, text-in-pixels, G3 do-no-harm — is a real list with
+      # a per-item verdict. It existed in no file before this.
+      - name: The human sample is deterministic, covered and checklisted
+        run: node tooling/ci/assert-review-gate.mjs
+      # [pipeline 7]P-13 + P-10. Five gates, five recorded failing cases, and a
+      # content-hash binding on all five — an artifact naming a different pack is
+      # what a re-run leaves behind. The publish TARGET is [4]B-18's and does not
+      # exist; a gate is about refusing, and refusing needs no destination. The
+      # undrilled production key PRINTS (owner work) while the sign step's refusal
+      # is proven to still fire on every run.
+      - name: Publish is a gate, and an undrilled signing key cannot sign
+        run: node tooling/ci/assert-publish-gate.mjs
+
   app_brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-24.04
@@ -1244,7 +1329,7 @@ jobs:
   ci-gate:
     name: ci-gate
     runs-on: ubuntu-24.04
-    needs: [subly_api, platform, tokens, site_shared, app_brick, sites, workspace_gate]
+    needs: [subly_api, platform, tokens, site_shared, content_gate, app_brick, sites, workspace_gate]
     # LOAD-BEARING. Without `always()` this job inherits the default `success()`
     # and would itself report SKIPPED whenever a lane failed — and GitHub counts
     # a skipped required check as SATISFIED, so branch protection would go green
@@ -1254,7 +1339,7 @@ jobs:
     steps:
       - name: Require all lanes green
         run: |
-          echo "subly_api=${{ needs.subly_api.result }} platform=${{ needs.platform.result }} tokens=${{ needs.tokens.result }} site_shared=${{ needs.site_shared.result }} app_brick=${{ needs.app_brick.result }} sites=${{ needs.sites.result }} workspace_gate=${{ needs.workspace_gate.result }}"
+          echo "subly_api=${{ needs.subly_api.result }} platform=${{ needs.platform.result }} tokens=${{ needs.tokens.result }} site_shared=${{ needs.site_shared.result }} content_gate=${{ needs.content_gate.result }} app_brick=${{ needs.app_brick.result }} sites=${{ needs.sites.result }} workspace_gate=${{ needs.workspace_gate.result }}"
           # 🔴 'skipped' IS A VERDICT, NOT AN ABSENCE — added 2026-08-01, the
           # same fix build-platforms.yml's aggregator got on 2026-07-31 and this
           # one did not. One added line — a paths filter to shave the ~6-minute

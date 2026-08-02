@@ -1,0 +1,23 @@
+{
+  "_readme": [
+    "[pipeline 7]P-5's gate artifact. The pack declares which licence families it consumes; this record",
+    "says those families were checked against tooling/legal/content-licence-register.json and every one",
+    "was CLEARED. assert-content-licences.mjs re-derives the same verdict from the register and the",
+    "recipe on every push, so this file cannot drift into a claim nobody re-checks.",
+    "",
+    "content_hash BINDS IT TO ONE PACK. An artifact naming a different pack is the same defect as a",
+    "missing one, and it is the one that happens after a re-run leaves five stale reports behind."
+  ],
+  "content_hash": "5637a866c30aab6df7e0de9c8ad7727edf8c4f181116a12238b56e4fd477af1c",
+  "pack_id": "lingo",
+  "version": "1.0.0",
+  "families": [
+    {
+      "family": "hand-authored-content",
+      "cleared": true,
+      "cleared_by": "in-tree, first-party — no third-party term to interpret",
+      "cleared_on": "2026-08-02"
+    }
+  ],
+  "checkedOn": "2026-08-02"
+}
