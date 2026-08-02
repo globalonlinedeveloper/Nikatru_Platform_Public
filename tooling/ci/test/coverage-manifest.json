@@ -1,5 +1,6 @@
 {
   "adapter-capabilities.test.mjs": 16,
+  "analytics-contract.test.mjs": 22,
   "app-dod.test.mjs": 33,
   "app-versioning.test.mjs": 30,
   "appstore-submission.test.mjs": 37,

@@ -233,6 +233,23 @@ jobs:
       - name: Schema evolution is additive-only
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/check-migrations.mjs
+      # …and the ANALYTICS half of that schema is one contract written down in
+      # four places that cannot import each other: the migrations, the ingest
+      # route, the Dart event object and the Dart wire envelope. E-1's acceptance
+      # ("one locked taxonomy and envelope serves every app") could not fail —
+      # events.test.ts posts one fixture batch and nothing compared the sets.
+      #
+      # It also makes the two privacy invariants STRUCTURAL. events.test.ts:141
+      # and :663 assert "no ip column" by searching the INSERT *string*, so a
+      # migration adding `ip TEXT` to the schema passes both; and
+      # check-migrations above reads migrations only and exempts WHERE-filtered
+      # statements by design, so a filtered `DELETE FROM consent_artifacts` in
+      # route code is invisible to it — measured, not argued: it printed
+      # "8 migration file(s) clean" over exactly that mutation.
+      # [pipeline 11]E-1, E-2, E-3
+      - name: One analytics envelope, and the consent trail stays append-only
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-analytics-contract.mjs
       # …and the money rail's half of that schema is COMPLETE, which the step
       # above cannot ask. check-migrations is a DESTRUCTIVE-CHANGE scanner with
       # no concept of a required column: it passes precisely when nobody has
