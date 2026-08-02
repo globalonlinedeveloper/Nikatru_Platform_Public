@@ -60,6 +60,34 @@
   ],
   "kv_namespaces": [
     { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
+  ],
+  // ───────────────────────────────────────────────────────────────────────────
+  // [pipeline B-15] THE STAMPED BACKEND BINDS ITS OWN HOST — NO MANUAL STEP.
+  //
+  // 🔴 THIS BLOCK WAS MISSING UNTIL 2026-08-03, AND WITHOUT IT A stamped backend
+  // deployed to a `*.workers.dev` name and `api-{{app_id}}.nikatru.com` bound to
+  // NOTHING. `services/platform/wrangler.jsonc` has always declared its two
+  // hosts this way; the template every future app is stamped from declared none,
+  // so "answers on its declared API host" was a manual dashboard step nobody
+  // wrote down — the exact class of per-app toil the factory exists to remove.
+  //
+  // `custom_domain: true` auto-provisions the DNS record AND the edge
+  // certificate, which is why `platform.nikatru.com` resolves without anyone
+  // creating a record. nikatru.com is a zone in this account.
+  //
+  // ✅ THE WILDCARD DOES NOT BLOCK THIS — MEASURED, NOT ASSUMED. The plan flagged
+  // it UNVERIFIED: Cloudflare documents that Custom Domains do not support
+  // wildcard DNS records and cannot be created over an existing CNAME, and
+  // `*.nikatru.com` has existed since 2026-07-27. Read back from the live account
+  // on 2026-08-03 via GET /accounts/:id/workers/domains — THREE Custom Domains
+  // exist under that wildcarded zone (config + platform → `platform`,
+  // api.nikatru.com → `subly-api`) and the zone's Routes list is EMPTY. So a
+  // specific subdomain provisions fine alongside the wildcard.
+  //
+  // ⚠️ The WEB host `{{app_id}}.nikatru.com` is stage 9/10's and stays out.
+  // ───────────────────────────────────────────────────────────────────────────
+  "routes": [
+    { "pattern": "api-{{app_id}}.nikatru.com", "custom_domain": true }
   ]
   // NO "r2_buckets" HERE ON PURPOSE. Object storage is ONE portfolio-wide
   // bucket bound in `services/platform`, addressed with an `<app_id>/` key

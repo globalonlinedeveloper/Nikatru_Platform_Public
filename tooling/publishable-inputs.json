@@ -1,0 +1,81 @@
+{
+  "_readme": [
+    "THE PUBLISHABLE-INPUTS ALLOWLIST — [pipeline 9]R-12 company/pipeline/09-release-engineering.md",
+    "",
+    "Every value any workflow compiles INTO a Flutter artifact, with the reason it is safe to ship and",
+    "the residual risk of shipping it. A `--dart-define` is not a secret store: the value is written",
+    "into the AOT snapshot or the JS bundle, so on web it is one `view-source` away and on every other",
+    "platform it is one `strings` away. 'It came from `secrets.`' says where the value was KEPT, never",
+    "where it ENDS UP.",
+    "",
+    "WHY AN ALLOWLIST AND NOT A SCANNER. A scanner for 'things that look like secrets' cannot be",
+    "written: SUPABASE_ANON_KEY is a JWT and is designed to ship; GLITCHTIP_DSN contains what reads",
+    "like a password and is designed to ship; E2E_PASSWORD is a real password and must NEVER reach a",
+    "published artifact. The three are indistinguishable by shape. What CAN be checked is that a human",
+    "wrote down, once, why each one is here — and that the written-down set and the shipped set are",
+    "THE SAME SET.",
+    "",
+    "🔴 SET EQUALITY, BOTH DIRECTIONS, AND THE SECOND ONE IS THE POINT.",
+    "  · a define no entry covers        -> FAIL. Nobody ships a value without stating what it costs.",
+    "  · an entry no workflow passes     -> FAIL. Otherwise a name can be PRE-APPROVED — approved",
+    "    today, added months later by somebody who reads the entry as permission and never re-asks the",
+    "    question. It is also how a dead entry survives the removal of the thing it justified.",
+    "",
+    "`reason` answers 'why may this be read by anyone who downloads the app'. `residual` answers 'and",
+    "what does it still cost us that it can be'. An entry with a reason and no residual is the shape",
+    "that gets waved through, so the guard requires both and refuses a blank one.",
+    "",
+    "⚠️ THIS IS NOT tooling/capability-register.json's QUESTION. That register classifies E2E_EMAIL /",
+    "E2E_PASSWORD for VENDOR review — 'which third party sees this'. This file asks 'does this end up",
+    "in bytes a stranger downloads'. Same two names, two different questions, two different answers."
+  ],
+
+  "scope": {
+    "_why": [
+      "The workflows scanned for `--dart-define` and `--dart-define-from-file`. Derived from the",
+      "directory rather than listed, so a NEW workflow acquires the obligation by existing. The guard",
+      "folds `run: >` blocks before matching — a line-based scan finds a fraction of the real surface,",
+      "and ci.yml documents that exact trap in its own comment beside assert-vendor-portability."
+    ],
+    "workflowDir": ".github/workflows"
+  },
+
+  "inputs": {
+    "SUPABASE_URL": {
+      "reason": "The project URL is the address of a public API endpoint. Every browser request to Supabase carries it in the clear, so it is public the moment the app makes its first call — compiling it in changes nothing about who can see it.",
+      "residual": "It names our project to anyone reading the bundle, which is a target for credential-stuffing and for enumeration of the anon-key surface. The protection is Row Level Security on the tables, not obscurity of the host."
+    },
+    "SUPABASE_ANON_KEY": {
+      "reason": "Supabase's anon key is DESIGNED to ship in clients — it is the browser-side identity every Supabase web app publishes. It grants exactly what Row Level Security lets it grant and nothing more.",
+      "residual": "It is a working key for unauthenticated access, so every RLS policy is the ONLY thing between it and the data. A table shipped with RLS off is fully readable by anyone who reads the bundle, and the key cannot be rotated without a release."
+    },
+    "API_BASE_URL": {
+      "reason": "The hostname of our own Worker, which the app contacts on every launch. It is in DNS and in every request; a client cannot call an address it does not know.",
+      "residual": "It hands an attacker the endpoint list to probe without having to install the app first. Mitigated by the Worker's own auth and CORS allowlist, never by hiding the host."
+    },
+    "APP_VERSION": {
+      "reason": "The build's own version string. It IS the artifact's identity — it is what analytics rows, consent artifacts and crash reports are attributed to, and a version nobody can read is a build nobody can attribute.",
+      "residual": "It discloses the exact build a user is running, which narrows a search for known defects in that build. Accepted: the alternative is untraceable production data."
+    },
+    "GLITCHTIP_DSN": {
+      "reason": "A Sentry/GlitchTip DSN is a WRITE-ONLY ingest key and is designed to ship inside every client — that is how a crash reporter reports. It cannot read an issue, a project or an event.",
+      "residual": "Anyone who reads it out of the bundle can POST events into our project: spam, noise, and quota burn on a self-hosted instance with finite storage. The remedy is rate limiting and rotation, not concealment."
+    },
+    "APP_ENV": {
+      "reason": "The literal string `production`. It selects which config branch the app takes and is not a credential in any sense.",
+      "residual": "None beyond confirming the build is the production one, which the version already says."
+    },
+    "RELEASE_CHANNEL": {
+      "reason": "The id of the channel this artifact was built for — a row id in tooling/channel-register.json, e.g. `web`. It is a fact ABOUT the binary, in the same class as the version string, and a user can read it off their own copy of the app with no consequence.",
+      "residual": "It tells a reader which distribution channel a given binary came from, which narrows a search for channel-specific defects in that build. Accepted for the same reason as APP_VERSION: the alternative is artifacts that cannot be told apart."
+    },
+    "E2E_EMAIL": {
+      "reason": "🔴 NOT A PUBLISHED VALUE. It reaches only `e2e.yml`'s `flutter drive` build — a DEBUG web build served to a headless Chrome on the runner and destroyed with the runner. Nothing that carries it is uploaded, deployed or published. The account itself is created by tooling/e2e/provision_user.mjs at the start of the run and purged by tooling/e2e/purge.mjs at the end.",
+      "residual": "If the purge ever fails, the account outlives the run. The address is throwaway and carries no data, but a stale account accumulates in the auth table where nobody is looking for it."
+    },
+    "E2E_PASSWORD": {
+      "reason": "🔴 THE ENTRY THAT MATTERS MOST, AND ITS REASON IS ENTIRELY ABOUT SCOPE. This is a real password for a real Supabase account, and it is acceptable ONLY because it is generated per run for a throwaway user, is passed to a build that is never published, and is purged at `e2e.yml`'s teardown. There is no reading under which this value may be compiled into a shipped artifact.",
+      "residual": "If the purge ever fails — a cancelled run, a runner killed mid-job, a Supabase outage during teardown — a live account's password sits in the build logs and the process table of a public repository's workflow. It is scoped to one throwaway user with no data, but it is a working credential and it does not expire on its own. Writing that down is most of this entry's value: the day somebody reuses this define on a lane that publishes, the reason above is what makes the mistake obvious."
+    }
+  }
+}

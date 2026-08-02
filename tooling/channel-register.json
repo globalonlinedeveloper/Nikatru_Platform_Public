@@ -308,7 +308,18 @@
         "Verified live: apps.json carries subly platforms:[\"web\"] status:\"live\"; the deployment ledger",
         "holds subly-web.",
         "⚠️ deploy-web.yml builds with --pwa-strategy=none, so there is no service worker and no offline",
-        "support on the one platform the $0 desktop story rests on. Recorded, not fixed here."
+        "support on the one platform the $0 desktop story rests on.",
+        "🔒 THAT IS [ADR 023] (knowledge/decisions/023-web-pwa-strategy.md, LOCKED 2026-07-31), NOT AN",
+        "OVERSIGHT — this citation is the Consequences item ADR 023 itself asked for, and it was",
+        "unexecuted until 2026-08-03. ADR 023 also EXPLICITLY REJECTS guarding the flag in CI by name as",
+        "over-encoding, so no guard asserts `--pwa-strategy=none` and none should be re-derived.",
+        "🔴 WHAT IT LEAVES BEHIND IS REAL AND IS NOW COVERED: with no service worker there is no",
+        "client-side update machinery at all, so the HTTP CACHE is the entire update mechanism on the only",
+        "served channel. apps/subly/web/_headers declares that policy and tooling/ci/",
+        "assert-web-cache-policy.mjs holds the stable-named entry points (/, /index.html,",
+        "/flutter_bootstrap.js) to a revalidating Cache-Control. Before it, nothing in the repository chose",
+        "one, so a returning visitor could run the PREVIOUS build while reporting the previous version",
+        "honestly — the one client the CFG-1 force-update gate cannot see. [9]R-9 cache limb."
       ]
     },
     {
@@ -359,6 +370,37 @@
       "deploymentEnvironment": "{app}-android-play",
       "storeMetadataDir": "apps/{app}/store/android-play",
       "ownerQueue": "A-3",
+      "identity": {
+        "_why": [
+          "[10]D-3 — one app_id derives every store identity, and this is where the ANDROID one is",
+          "declared. Until 2026-08-03 the path and the expected value lived INSIDE",
+          "tooling/release/submit-play.mjs, so the only thing that checked the package name was the",
+          "submission script, and only when somebody ran it with --app subly.",
+          "",
+          "🔴 PLAY BINDS THE PACKAGE NAME AT THE FIRST UPLOAD AND IT CAN NEVER BE CHANGED. A wrong value",
+          "here is not a bug that gets patched — it is a second app in the store, with its own reviews,",
+          "its own install count and its own ratings, and no way to merge them."
+        ],
+        "kind": "gradle-application-id",
+        "declaredIn": "apps/{app}/android/app/build.gradle.kts"
+      },
+      "accountStatus": {
+        "_why": [
+          "[10]D-4's agent slice. The `ownerQueue` id above is a POINTER into a file CI can never open",
+          "(company/ is gitignored, .gitignore:15), so until this field existed 'does a publisher account",
+          "exist for this channel?' had no answer any machine could give — and the question is the whole",
+          "of D-4.",
+          "",
+          "OWNER-ASSERTED AND DATED, because it cannot be derived: no API this repo can reach knows",
+          "whether an enrolment has completed. assert-channel-register.mjs holds it to a RELATIONSHIP",
+          "instead — a `served: true` row whose status is not `verified` FAILS the build (a channel",
+          "cannot be served through an account that does not exist), and every other gap PRINTS on every",
+          "run. Failing on the rest would block every merge on work only the owner can do."
+        ],
+        "status": "none",
+        "asOf": "2026-08-03",
+        "note": "No Play Console account. OWNER_QUEUE A-3 is waiting on the free D-U-N-S for an Organization account; the ₹32,000 paid package is recorded DO NOT BUY. Individual ($25) is available now and costs the 12-tester / 14-day closed-testing window instead."
+      },
       "submission": {
         "_why": [
           "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
@@ -438,6 +480,11 @@
       "deploymentEnvironment": "{app}-ios-appstore",
       "storeMetadataDir": "apps/{app}/store/ios-appstore",
       "ownerQueue": "A-4",
+      "accountStatus": {
+        "status": "none",
+        "asOf": "2026-08-03",
+        "note": "No Apple Developer account. DEFERRED by owner (OWNER_QUEUE A-4) until non-Apple revenue exists: $99/yr, no Apple hardware for device testing or submission, and no ORGANIZATION path exists for a sole proprietorship (Apple's instruction is to enrol as an individual)."
+      },
       "bundleIdentifier": {
         "_why": [
           "🔴 THE APPLE ANALOGUE OF windows-store's `packageIdentity`, AND UNLIKE THAT ONE IT IS",
@@ -455,6 +502,17 @@
           "'wherever it lives'."
         ],
         "value": "com.nikatru.subly",
+        "declaredIn": "apps/{app}/ios/Runner.xcodeproj/project.pbxproj"
+      },
+      "identity": {
+        "_why": [
+          "[10]D-3's uniform view of the SAME declaration `bundleIdentifier` above already carries. The",
+          "two are deliberately not merged: `bundleIdentifier.value` is the VALUE this factory chose and",
+          "submit-appstore.mjs compares the project to it, while this block is the (kind, file) pair the",
+          "cross-platform identity guard needs so that iOS is checked by the same relationship as Android,",
+          "Linux and Windows rather than by one script somebody has to remember to run."
+        ],
+        "kind": "apple-bundle-id",
         "declaredIn": "apps/{app}/ios/Runner.xcodeproj/project.pbxproj"
       },
       "submission": {
@@ -510,6 +568,11 @@
       "deploymentEnvironment": "{app}-macos-appstore",
       "storeMetadataDir": "apps/{app}/store/macos-appstore",
       "ownerQueue": "A-4",
+      "accountStatus": {
+        "status": "none",
+        "asOf": "2026-08-03",
+        "note": "The SAME Apple Developer account as ios-appstore (OWNER_QUEUE A-4). One account, two App Store Connect records — so this row's status can never legitimately differ from the iOS row's, and two rows carrying it is how a reader sees that both are blocked on one action."
+      },
       "bundleIdentifier": {
         "_why": [
           "Same identifier as ios-appstore — one app, one bundle id across Apple platforms — but",
@@ -519,6 +582,16 @@
           "compare against it happily. `declaredIn` exists so that cannot happen."
         ],
         "value": "com.nikatru.subly",
+        "declaredIn": "apps/{app}/macos/Runner/Configs/AppInfo.xcconfig"
+      },
+      "identity": {
+        "_why": [
+          "A DIFFERENT FILE from the iOS row and that is the whole reason the path is data. Flutter's",
+          "macOS template puts the bundle id in an xcconfig; the macOS pbxproj carries only the",
+          "RunnerTests id, so a reader that assumed one location per platform family would compare",
+          "against the TEST bundle and agree with itself."
+        ],
+        "kind": "apple-bundle-id",
         "declaredIn": "apps/{app}/macos/Runner/Configs/AppInfo.xcconfig"
       },
       "submission": {
@@ -582,6 +655,11 @@
       "deploymentEnvironment": "{app}-windows-store",
       "storeMetadataDir": "apps/{app}/store/windows-store",
       "ownerQueue": "A-2",
+      "accountStatus": {
+        "status": "none",
+        "asOf": "2026-08-03",
+        "note": "🔴 THE CHEAPEST REAL CHANNEL AND THE ONE WITH A ONE-WAY DOOR. $0 for either account type, no D-U-N-S required, and GST + Udyam are live and accepted as the business-verification document — so nothing external blocks this. What blocks it is a DECISION: publishing as NIKATRU needs a COMPANY account, OWNER_QUEUE A-2 currently points at Individual, and Microsoft does not support converting one to the other. The only remedy for choosing wrong is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid. Register only via storedeveloper.microsoft.com (other entry points show the legacy paid flow) and only with a work email on our own domain."
+      },
       "packageIdentity": {
         "_why": [
           "🔴 THE SINGLE DECLARATION OF THE MSIX PACKAGE IDENTITY — this row's field, per the note",
@@ -701,6 +779,25 @@
       "deploymentEnvironment": "{app}-linux-snap",
       "storeMetadataDir": "apps/{app}/store/linux-snap",
       "ownerQueue": "A-6",
+      "identity": {
+        "_why": [
+          "🔴 THE ONE NOTHING COMPARED. `set(APPLICATION_ID \"…\")` in the Linux CMakeLists is the id GTK",
+          "registers the application under and the id a .desktop entry and a Snap must agree with — and",
+          "before [10]D-3 no check in this repository read it at all. Windows had the same hole and it",
+          "was worse than a wrong value: having NO identity read exactly like having the right one, so a",
+          "Linux build could carry any id and every guard stayed green.",
+          "",
+          "That is why assert-store-identity.mjs treats a DECLARED platform whose identity file yields",
+          "nothing as COVERAGE LOST rather than as a pass."
+        ],
+        "kind": "cmake-application-id",
+        "declaredIn": "apps/{app}/linux/CMakeLists.txt"
+      },
+      "accountStatus": {
+        "status": "none",
+        "asOf": "2026-08-03",
+        "note": "⚠️ THE OWNER-GATED STEP HERE IS NOT AN ACCOUNT, IT IS A NAME. `snapcraft register <name>` claims a GLOBAL namespace, one per app, and that is the whole of OWNER_QUEUE A-6. `none` therefore reads as 'the name is unclaimed'; the snap name we intend to claim is in apps/{app}/store/linux-snap/snap-name.txt so it is reviewable and diffable BEFORE it is claimed at a terminal prompt."
+      },
       "submission": {
         "_why": [
           "[10]D-10 limb (i) for the Snap channel. `snapcraft upload` is the real submission verb and",
@@ -804,6 +901,15 @@
       "id": "content-pack-k1",
       "name": "Content-pack Ed25519 signing key",
       "keyKind": "app-signing-key",
+      "_adrWhy": [
+        "The `adr` path below is the MECHANICAL half of the same rule `disqualified` rows already carry:",
+        "a decision cited only in prose is a decision that cannot be opened, and this entry's own notes",
+        "cite [ADR 022] three times without ever naming a file. assert-channel-register.mjs now checks it",
+        "the same MODE-AWARE way — where `knowledge/` is checked out the ADR must exist and record itself",
+        "LOCKED; in a CI checkout, where the harness is gitignored, the limit is PRINTED rather than",
+        "passed over silently."
+      ],
+      "adr": "knowledge/decisions/022-pack-signing-key-custody.md",
       "custody": "recorded in [ADR 022] (LOCKED 2026-07-27, private SSoT). Public fact only: `k1` is pinned in packages/core/lib/src/content/pack_verifier.dart. Redacted here 2026-07-31 — seed locations belong in the private record, not a public register.",
       "restoreDrill": {
         "date": null,

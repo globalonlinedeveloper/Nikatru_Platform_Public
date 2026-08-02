@@ -208,10 +208,33 @@ jobs:
       # written; it became something a build could fail on when [pipeline F-2]'s
       # hardening taught assert-channel-register.mjs to compare a row's
       # artifactFormats to what its lane emits, and it is closed here.
+      #
+      # 🔴 `--build-number` COSTS ONE LINE AND REMOVES THE ONLY IRREVERSIBLE
+      # FAILURE IN STAGE 9. Play reads it as `versionCode`. A versionCode must
+      # strictly increase and CAN NEVER BE REUSED — so the first .aab uploaded
+      # under the pubspec default of `+1` burns `1` forever, and the second
+      # upload is rejected with nothing in the app to explain it. Passing
+      # `github.run_number` here while nothing ships is free; retrofitting it
+      # after the first upload is not possible at all.
+      #
+      # ⚠️ `github.run_number` COUNTS RUNS OF THIS WORKFLOW FILE. Rename or
+      # replace build-platforms.yml and the counter restarts at 1, below a code
+      # Play has already consumed. If this file is ever renamed, the number has
+      # to be offset past the old file's high-water mark in the same commit.
+      # Recorded in tooling/ci/assert-app-versioning.mjs beside MAX_RUN_DIGITS.
+      #
+      # ⬜ NO `--build-name` HERE, deliberately. That is the number
+      # version_gate.dart compares, it must be DERIVED from pubspec by
+      # assert-app-versioning.mjs --emit, and this workflow has no release-line
+      # step. Adding a literal would be a second copy of the version free to
+      # drift from pubspec — the exact defect [9]R-2 exists for. The row is
+      # `served: false`, the guard PRINTS that exemption on every run, and the
+      # emit step lands with the lane, not before it.
       - name: Build android (aab — the Google Play artifact)
         working-directory: apps/subly
         run: >
           flutter build appbundle --release
+          --build-number=${{ github.run_number }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -245,10 +268,18 @@ jobs:
       # tooling/channel-register.json so nobody reads the six green ticks as six
       # covered platforms. Same fork-PR and release-attribution caveats as the
       # linux_web_android job above.
+      # `--build-number` for the same reason as the .aab lane below-left: the
+      # MSIX packaged from this build carries the version, and the Microsoft
+      # Store rejects a submission whose version is not higher than the last
+      # accepted one. `dart run msix:create` reads what `flutter build` produced,
+      # so the number has to arrive here rather than at packaging time.
+      # No `--build-name` — see the note on the appbundle step for why a literal
+      # would be a second copy of pubspec's version.
       - name: Build windows
         working-directory: apps/subly
         run: >
           flutter build windows --release
+          --build-number=${{ github.run_number }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── the windows-store channel's artifact ────────────────────────────────
       # THIS JOB IS THE `lane` OF tooling/channel-register.json's `windows-store`

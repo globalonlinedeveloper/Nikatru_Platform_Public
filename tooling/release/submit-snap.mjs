@@ -55,6 +55,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const CHANNEL_ID = 'linux-snap';
 const REGISTER = 'tooling/channel-register.json';
@@ -252,6 +253,33 @@ if (filesChecked === 0) {
   ]);
 }
 if (!problems.length) ok(`metadata tree ${metaDir} — ${filesChecked} field(s) present and non-empty`);
+
+// ── [10]D-6 PREFLIGHT — the portfolio-safety gate, run by the RELEASE PATH ────
+// 🔴 IN THE SCRIPT AND NOT ONLY IN CI, and the difference is the whole point.
+// CI runs assert-submission-safety.mjs on every push in its PORTFOLIO mode; that
+// proves the taglines are distinct across apps, and it proves nothing about the
+// app somebody is submitting RIGHT NOW. The `--submitting` mode's
+// web-prove-first rule can only be asked at the moment of a submission — so it
+// is asked here, by the path that would do it, rather than by a lane that ran
+// hours earlier on a different question.
+//
+// A strike attaches to the PUBLISHER, so the cost of getting this wrong is every
+// other app in the portfolio losing distribution at once (L21).
+{
+  // Resolved from THIS FILE, never from ROOT: `--repo-root` points the CHECKS
+  // at another tree (that is how the tests drive this script), and the guard
+  // itself always lives beside the release scripts. Resolving it from ROOT
+  // meant a fixture root had to contain a copy of tooling/ci to be testable.
+  const safety = join(dirname(fileURLToPath(import.meta.url)), '..', 'ci', 'assert-submission-safety.mjs');
+  const r = spawnSync(process.execPath, [safety, ROOT, '--submitting', '--app', app.slug], { encoding: 'utf8' });
+  if (r.status !== 0) {
+    die([
+      'FAIL the [10]D-6 submission-safety preflight refused this submission:',
+      `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd(),
+    ]);
+  }
+  ok('[10]D-6 preflight — distinct tagline, and the app is live on the web before a store sees it');
+}
 
 // ── 2. the snap name — the one irreversible field ────────────────────────────
 // It is not validated against the store (that would BE the claim). What is

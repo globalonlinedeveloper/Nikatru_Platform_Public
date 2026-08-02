@@ -53,11 +53,30 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { parseWorkflow } from './workflow-scan.mjs';
 
-// ── The release lanes: a workflow that BUILDS a Flutter app and SHIPS it. ─────
-// Declared rather than sniffed, so the guard can name the app each lane ships.
-// The coverage self-check below refuses to let this list fall behind the tree.
-const RELEASE_LANES = [{ workflow: 'deploy-web.yml', app: 'apps/subly' }];
+// ── The release lanes are DERIVED FROM THE REGISTER, never typed here ─────────
+//
+// 🔴 THIS WAS `const RELEASE_LANES = [{ workflow: 'deploy-web.yml', app:
+// 'apps/subly' }]` — a one-entry hardcoded array — until 2026-08-03, and that
+// array was the whole of R-2's native half being unbuilt. The register already
+// carries a `lane: {workflow, job}` on three rows; a private second list here
+// could only ever describe the one lane somebody remembered, and the day a
+// native lane started shipping it would have been checked by nothing while this
+// guard printed "ok  app versioning — 1 release lane(s)".
+//
+// The relation now is: every `channels[]` row in tooling/channel-register.json
+// that has a `lane` IS a lane this guard knows about.
+//   · `served: true`   ⇒ every `flutter build` in that job answers for its
+//                        version, exactly as deploy-web.yml always has.
+//   · `served: false`  ⇒ EXEMPT, and the exemption is PRINTED on every run
+//                        naming the row. It expires by itself the day somebody
+//                        flips `served` — nobody has to remember this file
+//                        exists. (The standing posture for owner-gated work:
+//                        failing the build on a channel only the owner can open
+//                        blocks every merge on something no agent can do.)
+const REGISTER_REL = 'tooling/channel-register.json';
+
 
 // Steps that put a build in front of users. Deliberately does NOT include
 // actions/upload-artifact: build-platforms.yml compiles all six platforms as a
@@ -72,6 +91,25 @@ const DEPLOY_MARKERS =
 // two different builds can then land in analytics under the same string. Bound
 // the run number generously; 9 digits is ~1000x more deploys than this factory
 // will ever run, and the point is the bound holds without anyone checking.
+//
+// ⚠️ MAX_RUN_DIGITS HAS A SECOND REASON, AND IT IS THE IRREVERSIBLE ONE. The
+// same number becomes Play's `versionCode`, which Play caps and which can NEVER
+// BE REUSED — an upload at or above the ceiling, or at a code already used, is
+// rejected outright with nothing in the app to explain it. The ceiling is
+// recorded in company/pipeline/09-release-engineering.md as 2,100,000,000 and
+// is marked **UNVERIFIED** here on purpose: it was carried from the stage
+// document and was NOT re-fetched from a Google primary source. Do not restate
+// it as fact and do not hard-code it — 9 digits sits an order of magnitude
+// under the smallest plausible reading of it, which is the safe direction.
+//
+// 🔴 AND `github.run_number` IS PER-WORKFLOW-FILE, WHICH IS A TRAP WITH NO
+// DIAGNOSTIC. It counts runs of the workflow FILE. Rename `deploy-web.yml`,
+// replace it, or move the build into a new workflow, and the counter RESTARTS
+// AT 1 — so the next store upload carries a versionCode lower than one already
+// consumed and is rejected, while the app source shows no change at all to
+// explain it. There is no way to raise Play's high-water mark back down. If a
+// release lane is ever renamed, the build number has to be offset past the
+// highest value the old file reached, deliberately and in the same commit.
 const APP_VERSION_MAX = 32;
 const MAX_RUN_DIGITS = 9;
 const SHA_LEN = 7;
@@ -192,36 +230,19 @@ const flag = (cmd, name) => {
 // switched off. Same reasoning the DEPLOY_MARKERS comment gives for
 // upload-artifact.
 const SHIPS_NOTHING = new Set(['ci.yml']);
-const declaredWorkflows = new Set(RELEASE_LANES.map((l) => l.workflow));
 const lostCoverage = [];
-for (const f of wfFiles) {
-  const lines = stripAll(readFileSync(join(wfDir, f), 'utf8'));
-  const text = lines.join('\n');
-  const ships = DEPLOY_MARKERS.test(text) && /\bflutter build\b/.test(text);
-  if (ships && !declaredWorkflows.has(f) && !SHIPS_NOTHING.has(f)) {
-    lostCoverage.push(
-      `${f} builds a Flutter app AND deploys it, but is not in RELEASE_LANES — it ships unversioned`,
-    );
-  }
-}
-for (const lane of RELEASE_LANES) {
-  if (!existsSync(join(wfDir, lane.workflow))) {
-    lostCoverage.push(`RELEASE_LANES names .github/workflows/${lane.workflow}, which does not exist`);
-  }
-  if (!existsSync(join(repoRoot, lane.app, 'pubspec.yaml'))) {
-    lostCoverage.push(`RELEASE_LANES names ${lane.app}, which has no pubspec.yaml`);
-  }
-}
 
 // Every app on disk must at least declare a version pub can read. Independent of
 // the lanes, so an app that is not yet deployed still cannot ship malformed.
 const appsDir = join(repoRoot, 'apps');
+const appsOnDisk = [];
 let appsChecked = 0;
 if (existsSync(appsDir)) {
   for (const a of listDir(appsDir)) {
     const p = join(appsDir, a, 'pubspec.yaml');
     if (!existsSync(p) || !statSync(p).isFile()) continue;
     appsChecked++;
+    appsOnDisk.push(`apps/${a}`);
     const pv = readPubspecVersion(p);
     if (!pv) problems.push(`apps/${a}/pubspec.yaml declares no \`version:\` at all`);
     else if (pv.bad) problems.push(`apps/${a}/pubspec.yaml version "${pv.raw}" is not \`X.Y.Z\` — pub will reject it`);
@@ -230,8 +251,109 @@ if (existsSync(appsDir)) {
 if (appsChecked === 0) {
   lostCoverage.push('COVERAGE LOST — scanned apps/ and found no pubspec.yaml to check');
 }
-if (RELEASE_LANES.length === 0) {
-  lostCoverage.push('COVERAGE LOST — RELEASE_LANES is empty, so this guard checks nothing');
+
+// ── the lanes, DERIVED from the channel register ─────────────────────────────
+const regAbs = join(repoRoot, REGISTER_REL);
+let register = null;
+if (!existsSync(regAbs)) {
+  lostCoverage.push(
+    `COVERAGE LOST — ${REGISTER_REL} does not exist, so the lane set is derived from nothing.` +
+      ' Every check below quantifies over "the release lanes"; with no register that set is empty and' +
+      ' this guard would report clean over a tree with any number of unversioned lanes in it.',
+  );
+} else {
+  try {
+    register = JSON.parse(readFileSync(regAbs, 'utf8'));
+  } catch (e) {
+    lostCoverage.push(`COVERAGE LOST — ${REGISTER_REL} could not be parsed (${e.message})`);
+  }
+}
+
+/** The apps a lane ships. Derived from the workflow, never declared here.
+ *
+ *  A workflow that NAMES an app directory (a `working-directory: apps/x`, an
+ *  `--emit apps/x`, a path under `apps/x/build/…`) ships that app. A workflow
+ *  that names none is building whatever the pub workspace resolves, which is
+ *  every app on disk — so that is what it answers for. The fallback is not a
+ *  shrug: it is the reading that can only ever check MORE, and a lane that
+ *  names no app while still shipping is exactly the shape nobody would think to
+ *  add to a hand-written list. */
+const appsOf = (text) => {
+  const named = appsOnDisk.filter((a) => text.includes(a));
+  return named.length ? named : appsOnDisk;
+};
+
+const RELEASE_LANES = [];
+if (register !== null) {
+  const rows = Array.isArray(register.channels) ? register.channels : [];
+  if (rows.length === 0) {
+    lostCoverage.push(`COVERAGE LOST — ${REGISTER_REL} declares no \`channels\`, so no lane could be derived`);
+  }
+  for (const row of rows) {
+    const lane = row?.lane;
+    if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
+    // The register writes the lane as a REPO-RELATIVE path and this guard has
+    // always worked in workflow basenames. Take the basename so both spellings
+    // resolve to one file rather than inventing a third convention.
+    const wfFile = lane.workflow.split('/').pop();
+    if (!existsSync(join(wfDir, wfFile))) {
+      lostCoverage.push(
+        `the register's "${row.id}" row names .github/workflows/${wfFile}, which does not exist`,
+      );
+      continue;
+    }
+    const parsed = parseWorkflow(repoRoot, `.github/workflows/${wfFile}`);
+    const jobNames = parsed ? [...parsed.jobs.keys()] : [];
+    if (!parsed || !parsed.jobs.has(lane.job)) {
+      lostCoverage.push(
+        `the register's "${row.id}" row names job "${lane.job}" in ${wfFile}, and that workflow declares` +
+          ` no such job (it has: ${jobNames.join(', ') || 'none'}). A lane that resolves to no job is a` +
+          ' lane nothing checks.',
+      );
+      continue;
+    }
+    const jobText = parsed.jobs.get(lane.job).logical.map((l) => l.text).join('\n');
+    RELEASE_LANES.push({
+      id: row.id,
+      workflow: wfFile,
+      job: lane.job,
+      served: row.served === true,
+      apps: appsOf(`${jobText}\n${readFileSync(join(wfDir, wfFile), 'utf8')}`),
+    });
+  }
+  if (rows.length > 0 && RELEASE_LANES.length === 0) {
+    lostCoverage.push(
+      `COVERAGE LOST — ${REGISTER_REL} has ${rows.length} channel(s) and NONE resolved to a lane, so this` +
+        ' guard checks nothing. A register whose rows all lost their `lane` block is not a tree with no' +
+        ' release lanes; it is a scan with no subject.',
+    );
+  }
+}
+
+// A workflow that BUILDS and SHIPS but that no register row names as a lane.
+// The register is the declaration; this is the direction that catches an
+// undeclared one, and it is the reason a new native release lane cannot arrive
+// unversioned and silent.
+const laneWorkflows = new Set(RELEASE_LANES.map((l) => l.workflow));
+for (const f of wfFiles) {
+  const text = stripAll(readFileSync(join(wfDir, f), 'utf8')).join('\n');
+  const ships = DEPLOY_MARKERS.test(text) && /\bflutter build\b/.test(text);
+  if (ships && !laneWorkflows.has(f) && !SHIPS_NOTHING.has(f)) {
+    lostCoverage.push(
+      `${f} builds a Flutter app AND deploys it, but no ${REGISTER_REL} row names it as a lane —` +
+        ' it ships unversioned',
+    );
+  }
+}
+
+const servedLanes = RELEASE_LANES.filter((l) => l.served);
+const deferredLanes = RELEASE_LANES.filter((l) => !l.served);
+if (register !== null && RELEASE_LANES.length > 0 && servedLanes.length === 0) {
+  lostCoverage.push(
+    `COVERAGE LOST — ${RELEASE_LANES.length} lane(s) resolved and NONE is served, so every per-lane` +
+      ' check below is exempt and this guard asserts nothing at all. That is a real state to be in only' +
+      ' if the factory ships to nobody; say so by removing the lanes, not by leaving the checks inert.',
+  );
 }
 
 if (lostCoverage.length) {
@@ -243,8 +365,11 @@ if (lostCoverage.length) {
 
 // ── the per-lane checks ──────────────────────────────────────────────────────
 let buildsChecked = 0;
+const exemptions = [];
 
-for (const lane of RELEASE_LANES) {
+for (const laneRow of servedLanes) {
+ for (const laneApp of laneRow.apps) {
+  const lane = { ...laneRow, app: laneApp };
   const rel = `.github/workflows/${lane.workflow}`;
   const lines = stripAll(readFileSync(join(wfDir, lane.workflow), 'utf8'));
   const text = lines.join('\n');
@@ -388,6 +513,28 @@ for (const lane of RELEASE_LANES) {
       }
     }
   }
+ }
+}
+
+// ── the deferred lanes: EXEMPT, and the exemption expires by itself ──────────
+// A row with a lane and `served: false` builds an artifact nobody receives, so
+// holding it to a version rule would fail the build over a number no user can
+// see. What must NOT happen is the exemption becoming invisible: it is printed
+// on every run, naming the row, so the day somebody flips `served` the guard
+// starts asking and nobody has to remember this file exists.
+for (const lane of deferredLanes) {
+  const lines = stripAll(readFileSync(join(wfDir, lane.workflow), 'utf8'));
+  const parsed = parseWorkflow(repoRoot, `.github/workflows/${lane.workflow}`);
+  const jobLines = parsed.jobs.get(lane.job).logical;
+  const builds = jobLines.filter((l) => /\bflutter build\b/.test(l.text)).map((l) => l.text);
+  const withNumber = builds.filter((c) => /--build-number=/.test(c)).length;
+  exemptions.push(
+    `"${lane.id}" — .github/workflows/${lane.workflow} job "${lane.job}" builds ${builds.length} artifact(s), ` +
+      `${withNumber} of them passing --build-number. The row is served: false, so this lane is EXEMPT from ` +
+      'the version rules above and this line is the exemption. Flip `served` to true and every check the ' +
+      'web lane answers becomes this lane\'s to answer too.' +
+      (lines.length ? '' : ''),
+  );
 }
 
 // NOTE — there is deliberately NO `if (buildsChecked === 0) COVERAGE LOST` here.
@@ -411,7 +558,14 @@ if (problems.length) {
   process.exit(1);
 }
 
+if (exemptions.length) {
+  console.log('⬜ deferred lanes, EXEMPT and printed not hidden:');
+  for (const e of exemptions) console.log(`    ${e}`);
+}
+
 console.log(
-  `ok  app versioning — ${RELEASE_LANES.length} release lane(s), ${buildsChecked} build command(s),` +
-    ` ${appsChecked} app pubspec(s); version derived from pubspec + github.run_number`,
+  `ok  app versioning — ${RELEASE_LANES.length} release lane(s) derived from ${REGISTER_REL}` +
+    ` (${servedLanes.length} served and checked, ${deferredLanes.length} deferred and printed),` +
+    ` ${buildsChecked} build command(s), ${appsChecked} app pubspec(s);` +
+    ' version derived from pubspec + github.run_number',
 );

@@ -1,0 +1,59 @@
+# Cloudflare Pages headers for the Flutter web build.
+# https://developers.cloudflare.com/pages/configuration/headers/
+#
+# 🔴 WHY THIS FILE EXISTS — [pipeline 9]R-9, the cache limb.
+#
+# deploy-web.yml builds with `--pwa-strategy=none` ([ADR 023], LOCKED
+# 2026-07-31: the service worker was rejected deliberately, it is not an
+# oversight). So there is NO service worker and no client-side update
+# machinery on the ONLY channel this factory serves. That leaves the HTTP
+# cache as the entire update mechanism, and until this file existed nothing in
+# the repository CHOSE a policy for it — `flutter build web` emits no
+# `_headers` and the deploy ships `build/web` straight to Pages, so whatever
+# the platform defaults to was what a returning visitor got.
+#
+# The failure that produces is not a slow update. It is a client running the
+# PREVIOUS build with no way to know: the force-update gate (CFG-1) compares
+# the version the app REPORTS, and a stale `flutter_bootstrap.js` reports the
+# old one honestly. The kill-switch cannot see a client the cache is hiding
+# from it.
+#
+# Flutter copies `web/` verbatim into `build/web`, so this file is deployed as
+# a sibling of index.html and Pages reads it from the deployed directory.
+#
+# ⚠️ THE SPLIT IS BY WHETHER THE NAME CARRIES A HASH, not by file type.
+# `index.html` and `flutter_bootstrap.js` have STABLE names and CHANGING
+# content — they are the entry points every build rewrites, so they must be
+# revalidated every time. Everything under `assets/` and the `.js` chunks
+# Flutter emits with a content hash in the name have the opposite property:
+# the name changes when the bytes change, so they can be cached forever and a
+# new build simply asks for different names.
+#
+# `must-revalidate` with `max-age=0` is a conditional request, not a full
+# download: the browser asks, the edge answers 304 when nothing moved. The
+# cost of correctness here is one round trip.
+
+# The stable-named entry points. A new deploy MUST be visible immediately.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/flutter_bootstrap.js
+  Cache-Control: public, max-age=0, must-revalidate
+/version.json
+  Cache-Control: public, max-age=0, must-revalidate
+/manifest.json
+  Cache-Control: public, max-age=0, must-revalidate
+
+# main.dart.js is emitted under a STABLE name by `flutter build web`, so it is
+# an entry point by the rule above even though it is compiled output.
+/main.dart.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Content-addressed output: the name changes when the bytes do.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/canvaskit/*
+  Cache-Control: public, max-age=31536000, immutable
+/icons/*
+  Cache-Control: public, max-age=31536000, immutable

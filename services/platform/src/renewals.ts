@@ -94,9 +94,29 @@ export function rollForward(
 /**
  * For every subscription whose next_renewal is in the past, roll it forward and
  * record a payment_history row per crossed charge. Batched per DB. Errors are
- * swallowed so one app never aborts the others in the fan-out.
+ * contained so one app never aborts the others in the fan-out.
+ *
+ * 🔴 RETURNS ITS OUTCOME AS OF 2026-08-03 ([pipeline B-11]) — IT USED TO RETURN
+ * `void`, AND THAT WAS THE WHOLE DEFECT. Every failure path here ended at
+ * `console.log`, and `wrangler tail` is a live stream that Free keeps no
+ * searchable history of. So the second of the portfolio's two cron jobs could
+ * fail every night — a missing table, a schema drift, a D1 outage — and the
+ * ONLY instrument that outlives the invocation, `cron_heartbeat`, would carry
+ * not one row about it. `check-heartbeats.mjs` would still report clean, because
+ * it can only grade rows that exist.
+ *
+ * ⚠️ THE SUBTLE HALF: "nothing due" is a SUCCESS, not a silence. A night with no
+ * renewals to advance and a night where the query threw must produce DIFFERENT
+ * rows, or the heartbeat means "the code got this far" rather than "the job
+ * worked". Both land `ok`, with a `detail` that distinguishes them.
+ *
+ * Still never throws: the caller is a `for` loop over every app, and one app's
+ * broken database must not take the rest of the fan-out down with it.
  */
-export async function recomputeRenewals(db: D1Database, appId: string): Promise<void> {
+export async function recomputeRenewals(
+  db: D1Database,
+  appId: string,
+): Promise<{ ok: boolean; detail: string }> {
   const today = todayYmd();
   try {
     const due = await allRows<Subscription>(
@@ -112,7 +132,7 @@ export async function recomputeRenewals(db: D1Database, appId: string): Promise<
 
     if (due.length === 0) {
       console.log(`[cron] renewals(${appId}): nothing due`);
-      return;
+      return { ok: true, detail: 'nothing due' };
     }
 
     const ts = nowIso();
@@ -138,7 +158,16 @@ export async function recomputeRenewals(db: D1Database, appId: string): Promise<
 
     await db.batch(ops);
     console.log(`[cron] renewals(${appId}): advanced ${due.length} subscription(s)`);
+    return {
+      ok: true,
+      // The counts are the point: "advanced 0 subscription(s)" would be a
+      // contradiction against a non-empty `due`, and a night that suddenly
+      // advances thousands is worth seeing in the same table as a night that
+      // advances three.
+      detail: `advanced ${due.length} subscription(s), ${ops.length} statement(s)`,
+    };
   } catch (err) {
     console.log(`[cron] renewals(${appId}) failed: ${String(err)}`);
+    return { ok: false, detail: String(err) };
   }
 }

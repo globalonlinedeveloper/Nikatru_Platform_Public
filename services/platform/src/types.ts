@@ -191,6 +191,29 @@ export interface Variables {
   userId: string;
   /** The token's `email` claim when it carries one. Never required. */
   userEmail?: string;
+  /**
+   * [pipeline B-16] WHICH APP THIS REQUEST IS FOR, set by each route the moment
+   * it has resolved and VALIDATED one, and read by `app.onError`.
+   *
+   * 🔴 WHY IT IS A CONTEXT VARIABLE AND NOT `env.APP_ID`. `platform` is the ONE
+   * Worker behind the whole portfolio: `env.APP_ID` is the constant "platform",
+   * which answers "which Worker broke" and never "whose app broke". With 50 apps
+   * on one host, an error report that cannot name the app is a report nobody can
+   * route — and `onError` runs after the handler has thrown, so it cannot go and
+   * re-parse a body that was consumed.
+   *
+   * ⚠️ OPTIONAL, AND IT MUST STAY OPTIONAL. A request can fail BEFORE any app id
+   * exists — malformed JSON, a body over the cap, a 404 on an unmounted path. A
+   * required field would force a placeholder, and a placeholder that means both
+   * "no app was named" and "the app is literally called unknown" is worse than
+   * an absent one. The reports print `-` and mean it.
+   *
+   * ⚠️ SET IT ONLY AFTER VALIDATION. An unvalidated value here would put
+   * caller-controlled strings into the error sink's tags, which is a
+   * cardinality bomb and a light injection surface. Every writer below is
+   * downstream of `isKnownApp`.
+   */
+  appId?: string;
 }
 
 /** Convenience: the generics shape used across the worker + sub-routers. */
@@ -243,6 +266,37 @@ export interface AppConfig {
    * separately opt-outable channel — and prints that its domain is empty today.
    */
   max_promos_per_week: number;
+  /**
+   * Where a NON-STORE build sends a user whose version is below
+   * `min_supported_version` — [pipeline 9]R-10 / [10]D-8, and owner decision
+   * #19 (2026-07-27).
+   *
+   * 🔴 THIS KEY EXISTED ON THE CLIENT AND NOWHERE ELSE, AND THAT IS A DEAD
+   * SEAM THAT REPORTS HEALTHY. `packages/core`'s AppConfig has parsed
+   * `update_url` since the force-update work landed, and the brick's app.dart
+   * resolves `appConfigProvider…updateUrl ?? AppConfig.updateUrl` — runtime
+   * first, compiled-in fallback. But the server had no such field, so the
+   * runtime branch could never be taken in production: the client was parsing
+   * a key this server was structurally incapable of sending, and every test
+   * passed because the compile-time fallback answered instead. Nothing went
+   * red, because falling back is the correct behaviour when the value is
+   * absent. That is instance five of the shape [pipeline C-6] exists for.
+   *
+   * ⚠️ IT IS RUNTIME AND NOT COMPILE-TIME BECAUSE THE ALTERNATIVE IS CIRCULAR.
+   * Owner decision #19 moved it here deliberately: baking the update
+   * destination into the binary means shipping an update in order to change
+   * where updates come from — and the binaries that need the change most are
+   * exactly the ones that cannot receive it. A store channel does not use this
+   * at all (the store owns the update path); a direct-download channel has
+   * nothing else.
+   *
+   * `null` is the honest default and the ONLY defensible one today: no
+   * non-store channel is served, `dl.nikatru.com` exists in documents and in
+   * no DNS record, and a plausible-looking URL here would send the first
+   * force-updated user to a 404 at the moment the app has already refused to
+   * run. Null ⇒ the gate shows its message with no action, which is true.
+   */
+  update_url: string | null;
   theme?: Record<string, unknown>;
 }
 

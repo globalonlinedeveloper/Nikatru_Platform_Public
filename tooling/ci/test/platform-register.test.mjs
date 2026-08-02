@@ -150,6 +150,12 @@ const PLATFORM_CFG = `{
     { "name": "EVENTS_CEILING_LIMITER", "namespace_id": "1002" },
     { "name": "CONFIG_CEILING_LIMITER", "namespace_id": "1003" },
   ],
+  // [pipeline B-15] A Worker that declares \`main\` answers requests, so it must
+  // declare the host it answers on. Present in the PASSING fixture because the
+  // real services/platform/wrangler.jsonc has always had it — a fixture missing
+  // what the real tree has cannot notice the omission, which is the exact defect
+  // that let check-migrations' own fixture bless a tree with no subly-api.
+  "routes": [{ "pattern": "platform.nikatru.com", "custom_domain": true }],
 }`;
 
 const baseRegister = () => ({
@@ -442,6 +448,71 @@ describe('assert-platform-register', () => {
     const { code, out } = run(tree({ register: reg }));
     assert.equal(code, 1, out);
     assert.match(out, /GONE_DB — in the register but no wrangler config declares it/);
+  });
+
+  // ── [pipeline B-15] the host limb ─────────────────────────────────────────
+  // Mutation-proven against the REAL tree 2026-08-03, both directions:
+  //   · brick template `"routes": []`            -> exit 1 naming the brick config
+  //   · subly-api `{ "pattern": "…" }` (no       -> exit 1 naming subly-api
+  //     custom_domain)
+  // Both restored from memory and byte-compared; the guard returned to exit 0.
+  test('FAILS when a Worker declaring `main` has NO routes at all', () => {
+    const cfg = PLATFORM_CFG.replace(
+      /"routes": \[\{ "pattern": "platform\.nikatru\.com", "custom_domain": true \}\],/,
+      '',
+    );
+    const { code, out } = run(tree({ files: { 'services/platform/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /NO `routes` entry with `custom_domain: true`/);
+  });
+
+  test('FAILS on an EMPTY routes array — a key that exists is not the property', () => {
+    // The failure this excludes: asserting `routes` is present. `[]` satisfies
+    // that and binds nothing, and this repo has shipped a check a template
+    // COMMENT satisfied.
+    const cfg = PLATFORM_CFG.replace(
+      /"routes": \[\{ "pattern": "platform\.nikatru\.com", "custom_domain": true \}\],/,
+      '"routes": [],',
+    );
+    const { code, out } = run(tree({ files: { 'services/platform/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /NO `routes` entry with `custom_domain: true`/);
+  });
+
+  test('FAILS on a pattern route with no custom_domain — that needs a DNS record somebody remembered', () => {
+    const cfg = PLATFORM_CFG.replace(
+      /"routes": \[\{ "pattern": "platform\.nikatru\.com", "custom_domain": true \}\],/,
+      '"routes": [{ "pattern": "platform.nikatru.com" }],',
+    );
+    const { code, out } = run(tree({ files: { 'services/platform/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /NO `routes` entry with `custom_domain: true`/);
+  });
+
+  test('a config with NO `main` is not a request-answering Worker and is not flagged', () => {
+    // Requiring a host of a config that serves nothing would be noise, and noise
+    // is how a real signal gets muted.
+    const { code } = run(
+      tree({
+        register: {
+          ...baseRegister(),
+          bindingSources: {
+            configs: ['services/platform/wrangler.jsonc', 'services/nomain/wrangler.jsonc'],
+          },
+        },
+        files: { 'services/nomain/wrangler.jsonc': '{ "name": "nomain" }' },
+      }),
+    );
+    assert.equal(code, 0);
+  });
+
+  test('COVERAGE LOST when NOT ONE config declares `main`', () => {
+    // The empty-domain failure: with no Workers the host limb ranges over
+    // nothing and cannot fail.
+    const cfg = PLATFORM_CFG.replace('"main": "src/index.ts",', '');
+    const { code, out } = run(tree({ files: { 'services/platform/wrangler.jsonc': cfg } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /NOT ONE declares `main`/);
   });
 
   test('FAILS when a config on disk is missing from bindingSources.configs  [MR9]', () => {

@@ -46,6 +46,31 @@
   "kv_namespaces": [
     // Caches the Supabase JWKS document (cuts JWT-verify latency). Shared.
     { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
+  ],
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // [pipeline B-15] THE ROUTE THIS WORKER HAS ANSWERED ON SINCE LAUNCH, FINALLY
+  // WRITTEN DOWN.
+  //
+  // 🔴 `api.nikatru.com` WAS BOUND ONLY IN THE DASHBOARD. It served live traffic
+  // while this file said nothing about it, so the deployable config and the
+  // deployed reality disagreed and no guard could see the gap — the same shape
+  // as the `EXPORTS` bucket that was live for two weeks with every check green.
+  // A hostname that exists only in a dashboard cannot be reviewed in a diff, is
+  // not reproducible from the repo, and disappears silently if anyone clicks the
+  // wrong thing.
+  //
+  // ✅ DECLARING IT IS IDEMPOTENT, AND THAT WAS VERIFIED BEFORE WRITING IT rather
+  // than assumed. Read back from the live account 2026-08-03 via
+  // GET /accounts/:id/workers/domains: `api.nikatru.com` is already a CUSTOM
+  // DOMAIN attached to `subly-api`, and GET /zones/:id/workers/routes for
+  // nikatru.com returns an EMPTY list. So this declares exactly what is already
+  // there. Had it been a pattern-based Route instead, `custom_domain: true`
+  // would have fought the existing binding on the next deploy — which is why the
+  // check came first.
+  // ───────────────────────────────────────────────────────────────────────────
+  "routes": [
+    { "pattern": "api.nikatru.com", "custom_domain": true }
   ]
 
   // 🔴 NO "r2_buckets". The per-app `EXPORTS` → `subly-exports` binding was

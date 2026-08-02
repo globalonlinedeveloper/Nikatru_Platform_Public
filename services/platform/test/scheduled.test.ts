@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { keepAliveTargets, keepAliveSupabase, KEEPALIVE_JOB } from '../src/scheduled';
+import {
+  keepAliveTargets,
+  keepAliveSupabase,
+  renewalsFanOut,
+  KEEPALIVE_JOB,
+  ANALYTICS_LIVENESS_JOB,
+  RENEWALS_JOB,
+} from '../src/scheduled';
 import type { Env } from '../src/types';
+import { realPlatformDb } from './harness';
 
 /**
  * The keep-alive is the only thing standing between a low-traffic free-tier
@@ -278,5 +286,96 @@ describe('keep-alive: a rejected request is not a success', () => {
       } as never),
     );
     expect(rows).toHaveLength(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline B-11] THE SECOND CRON JOB WRITES ITS OWN RECORD.
+//
+// 🔴 THE RED THIS BLOCK WAS WRITTEN AGAINST, VERIFIED ON THE TREE AT 3982c41:
+// `scheduled` ran `recomputeRenewals` for every app target, that function
+// returned `void`, and `cron_heartbeat` received NOT ONE ROW from it — ever.
+// The consequence is the one this whole discipline exists for: the requirement
+// "every configured target has a heartbeat row" was TRUE, and true for a reason
+// that had nothing to do with renewals. It ranged over the keep-alive's targets
+// only, so the renewals fan-out could have been deleted from the cron outright
+// and no assertion anywhere would have moved.
+//
+// Asserted against the REAL SQL engine with the REAL migrations, so "a row
+// landed" is a COUNT against `cron_heartbeat` and not a record of which methods
+// a double was asked for.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('[4]B-11 · the renewals fan-out writes a heartbeat per target', () => {
+  /** An app DB with the two tables `recomputeRenewals` reads, and nothing due. */
+  function appDb() {
+    return realPlatformDb([
+      `CREATE TABLE subscriptions (
+         id TEXT PRIMARY KEY, user_id TEXT, price REAL, cycle TEXT, next_renewal TEXT, updated_at TEXT
+       )`,
+      `CREATE TABLE payment_history (
+         id TEXT PRIMARY KEY, subscription_id TEXT, user_id TEXT, amount REAL, paid_at TEXT
+       )`,
+    ]);
+  }
+
+  it('writes a row for the app it fanned out to — the claim that was false before', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    await renewalsFanOut({ PLATFORM_DB: platform, SUBLY_DB: app } as unknown as Env);
+
+    expect(platform.count('cron_heartbeat', 'job = ?', RENEWALS_JOB)).toBe(1);
+    const [row] = platform.rows('SELECT target, ok, detail FROM cron_heartbeat WHERE job = ?', RENEWALS_JOB);
+    expect(row.target).toBe('subly');
+    expect(row.ok).toBe(1);
+    // "nothing due" is a SUCCESS with its own detail — a quiet night and a
+    // thrown query must not produce the same row.
+    expect(String(row.detail)).toContain('nothing due');
+  });
+
+  it('a FAILING app database is recorded as ok=0, not swallowed into silence', async () => {
+    const platform = realPlatformDb();
+    // No `subscriptions` table at all — the SELECT throws, exactly as a schema
+    // drift or a D1 outage would.
+    const broken = realPlatformDb();
+    await renewalsFanOut({ PLATFORM_DB: platform, SUBLY_DB: broken } as unknown as Env);
+
+    const [row] = platform.rows('SELECT ok, detail FROM cron_heartbeat WHERE job = ?', RENEWALS_JOB);
+    expect(row.ok).toBe(0);
+    expect(String(row.detail)).not.toBe('');
+  });
+
+  it('an UNBOUND app database is a failure row, never "ran fine, nothing due"', async () => {
+    const platform = realPlatformDb();
+    await renewalsFanOut({ PLATFORM_DB: platform, SUBLY_DB: undefined } as unknown as Env);
+    const [row] = platform.rows('SELECT ok, detail FROM cron_heartbeat WHERE job = ?', RENEWALS_JOB);
+    expect(row.ok).toBe(0);
+    expect(String(row.detail)).toContain('no database binding');
+  });
+
+  it('the job name is DISTINCT from the keep-alive\'s — one table, three meanings', async () => {
+    // If both jobs wrote under one name, "is the keep-alive healthy" and "are
+    // renewals healthy" would be the same query and neither could be answered.
+    const platform = realPlatformDb();
+    await renewalsFanOut({ PLATFORM_DB: platform, SUBLY_DB: appDb() } as unknown as Env);
+    expect(platform.count('cron_heartbeat', 'job = ?', KEEPALIVE_JOB)).toBe(0);
+    expect(new Set([KEEPALIVE_JOB, ANALYTICS_LIVENESS_JOB, RENEWALS_JOB]).size).toBe(3);
+  });
+
+  it('a real due subscription is advanced AND the detail reports the counts', async () => {
+    // The success path with actual work in it: "nothing due" passing is not
+    // evidence that a night with work records anything sensible.
+    const platform = realPlatformDb();
+    const app = appDb();
+    app.db.exec(
+      `INSERT INTO subscriptions (id, user_id, price, cycle, next_renewal)
+       VALUES ('s1', 'u1', 9.99, 'monthly', '2020-01-15')`,
+    );
+    await renewalsFanOut({ PLATFORM_DB: platform, SUBLY_DB: app } as unknown as Env);
+
+    const [row] = platform.rows('SELECT ok, detail FROM cron_heartbeat WHERE job = ?', RENEWALS_JOB);
+    expect(row.ok).toBe(1);
+    expect(String(row.detail)).toContain('advanced 1 subscription(s)');
+    // …and the work really happened, not just the row about it.
+    expect(app.count('payment_history')).toBeGreaterThan(0);
   });
 });

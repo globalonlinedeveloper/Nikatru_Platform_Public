@@ -107,13 +107,22 @@ app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // handed to `waitUntil` so the caller's 500 is not held open behind GlitchTip,
 // and `reportWorkerError` never rejects — see lib/error-sink.ts.
 app.onError((err, c) => {
-  console.error(`[unhandled] rid=${c.get('requestId') ?? '-'}`, err);
+  // [pipeline B-16] THE LOG LINE NAMES THE APP AND THE RELEASE. It used to be
+  // `rid=` and nothing else, which on the one Worker every app in the portfolio
+  // shares meant an unhandled error could be read, correlated to a request —
+  // and never attributed to a product. `-` where the request failed before an
+  // app was named, deliberately: see `Variables.appId`.
+  console.error(
+    `[unhandled] rid=${c.get('requestId') ?? '-'} app=${c.get('appId') ?? '-'} release=${c.env.RELEASE ?? '-'}`,
+    err,
+  );
   const url = new URL(c.req.url);
   const report = reportWorkerError(
     err,
     {
       service: 'platform',
       release: c.env.RELEASE,
+      appId: c.get('appId'),
       requestId: c.get('requestId'),
       method: c.req.method,
       path: url.pathname, // pathname only — never the query string

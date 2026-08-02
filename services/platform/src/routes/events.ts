@@ -3,6 +3,11 @@ import type { AnalyticsBatch, AnalyticsEvent, AppEnv, EdgeGeo } from '../types';
 import { nowIso } from '../lib/d1';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
+// ONE registry predicate for the whole Worker. `routes/config.ts`,
+// `routes/entitlements.ts` and both write routes here now ask the same question
+// of the same source — an app the shared server will answer for is one thing,
+// not four spellings of it that can drift apart.
+import { isKnownApp } from '../config';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // G-12 — first-party product analytics ingest ([ADR 011]).
@@ -208,6 +213,25 @@ events.post('/events', async (c) => {
   const appId = str(body?.app_id, MAX_ID_LEN);
   const list = Array.isArray(body?.events) ? body.events : [];
   if (!appId) return c.json({ error: 'missing_app_id' }, 400);
+  // [pipeline B-4a] AN UNREGISTERED app_id IS A 404, AND WRITES NOTHING.
+  // Until 2026-08-03 this route took ANY string of ≤64 chars and bound it
+  // straight into `events.app_id`, while `routes/config.ts` has always answered
+  // 404 for an app it does not know. That asymmetry meant the ONE shared
+  // database behind the whole portfolio accepted rows attributed to apps that
+  // do not exist — unattributable storage against a 5 GB account-wide ceiling,
+  // on an unauthenticated route, with no way to tell a typo from a probe.
+  //
+  // 404 rather than 400: it is the same answer `GET /config/<unknown>` already
+  // gives for the same question ("is this an app?"), and a caller that cannot
+  // distinguish "unknown app" from "malformed request" cannot act differently on
+  // them anyway. Placed BEFORE the empty-list short-circuit below on purpose —
+  // an unregistered app posting zero events must not receive `{ ok: true }` and
+  // conclude the rail is working.
+  if (!isKnownApp(appId)) return c.json({ error: 'unknown_app' }, 404);
+  // [pipeline B-16] Attribution, set the moment the id is VALIDATED and not
+  // before — everything downstream (this route's own catch, and `app.onError`
+  // for anything it does not catch) can now name the app.
+  c.set('appId', appId);
   if (list.length === 0) return c.json({ ok: true, received: 0 });
   if (list.length > MAX_EVENTS_PER_BATCH) {
     return c.json({ error: 'batch_too_large' }, 413);
@@ -273,7 +297,14 @@ events.post('/events', async (c) => {
   try {
     await c.env.PLATFORM_DB.batch(rows);
   } catch (err) {
-    console.error(`[events] rid=${c.get('requestId') ?? '-'}`, err);
+    // [pipeline B-16] `app=` and `release=`. This line was the plan's recorded
+    // failing input: an ingest failure on the shared Worker logged a request id
+    // and nothing else, so "the analytics rail is dropping batches" could be
+    // seen but never attributed to an app or to a deploy.
+    console.error(
+      `[events] rid=${c.get('requestId') ?? '-'} app=${appId} release=${c.env.RELEASE ?? '-'} ingest failed`,
+      err,
+    );
     // 503 so the client KEEPS the batch and retries — dedup makes that safe.
     return c.json({ error: 'ingest_failed' }, 503);
   }
@@ -312,6 +343,13 @@ events.post('/consent', async (c) => {
   if (!consentId || !appId || !anonId || !purpose || !policyVersion) {
     return c.json({ error: 'missing_fields' }, 400);
   }
+  // [pipeline B-4a], the second write route. `consent_artifacts` is the table
+  // the DPDP §6(3) trail is kept in, so an unattributable row here is worse than
+  // an unattributable analytics row: a consent record naming an app that does
+  // not exist is evidence of nothing, and it cannot be cleaned up without
+  // deciding whether it was ever real.
+  if (!isKnownApp(appId)) return c.json({ error: 'unknown_app' }, 404);
+  c.set('appId', appId); // [pipeline B-16], same rule as /v1/events above.
   // Same two-key breaker as /v1/events: the consent row is a D1 write on the
   // same unauthenticated surface, so a rotating caller must be shed here too.
   if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `consent:${appId}:${anonId}`))) {
@@ -342,7 +380,10 @@ events.post('/consent', async (c) => {
       )
       .run();
   } catch (err) {
-    console.error(`[consent] rid=${c.get('requestId') ?? '-'}`, err);
+    console.error(
+      `[consent] rid=${c.get('requestId') ?? '-'} app=${appId} release=${c.env.RELEASE ?? '-'} write failed`,
+      err,
+    );
     return c.json({ error: 'consent_failed' }, 503);
   }
   return c.json({ ok: true });

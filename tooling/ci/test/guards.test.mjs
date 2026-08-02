@@ -116,11 +116,29 @@ describe('check-migrations', () => {
   // literally the suite's definition of clean, and the guard's REQUIRED_COVERAGE
   // omitted subly-api to match. A passing fixture that is missing what the real
   // tree has cannot ever notice the omission.
+  /** A wrangler config declaring a `migrations_dir` — the DECLARATION that makes
+   *  a migrations directory something wrangler will apply to a real database.
+   *  The fixture needs these because the guard's second coverage limb derives
+   *  the "a new migration set arrived" set from the deployable configs, not from
+   *  folders on disk: a bare `migrations/` nothing is bound to applies to
+   *  nothing. A fixture with SQL but no config would have made that limb range
+   *  over an empty set in every test here. */
+  const CFG = (dbName) =>
+    JSON.stringify({
+      name: dbName,
+      d1_databases: [
+        { binding: 'DB', database_name: dbName, database_id: 'id', migrations_dir: 'migrations' },
+      ],
+    });
+
   const build = (name, platformSql, brickSql = ADDITIVE, extra = {}) =>
     fixture(name, {
       'services/platform/migrations/0001_init.sql': platformSql,
+      'services/platform/wrangler.jsonc': CFG('platform_db'),
       'services/subly-api/migrations/0001_init.sql': ADDITIVE,
+      'services/subly-api/wrangler.jsonc': CFG('subly_db'),
       'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': brickSql,
+      'tooling/bricks/app/__brick__/svc/wrangler.jsonc': CFG('app_db'),
       ...extra,
     });
 
@@ -207,6 +225,65 @@ describe('check-migrations', () => {
     assert.equal(code, 1, 'the files did not become safe; the guard stopped looking at them');
     assert.match(out, /COVERAGE LOST/i);
     assert.match(out, /services\/subly-api/);
+  });
+
+  // ── [pipeline B-8] the coverage limb that points the OTHER way ────────────
+  // The two tests above catch a migration set that VANISHED. Nothing caught one
+  // that ARRIVED: `REQUIRED_COVERAGE` is a written list, and a written list
+  // cannot know about the backend app #2 stamps. Mutation-proven against the
+  // REAL tree 2026-08-03 — a `services/probe-api/wrangler.jsonc` carrying a
+  // `migrations_dir`, dropped in beside the real ones, produced
+  // "COVERAGE LOST — a wrangler config declares a `migrations_dir` that
+  // REQUIRED_COVERAGE does not name: services/probe-api/wrangler.jsonc", exit 1;
+  // removing it returned the guard to exit 0 over the real 3 configs.
+  test('FAILS when a NEW service declares a migrations_dir nothing names', () => {
+    const dir = build('mig-new-service', ADDITIVE, ADDITIVE, {
+      'services/probe-api/wrangler.jsonc': CFG('probe_db'),
+      'services/probe-api/migrations/0001_init.sql': ADDITIVE,
+    });
+    const { code, out } = run('check-migrations.mjs', { cwd: dir });
+    assert.equal(code, 1, 'a schema wrangler will apply that this scanner has never read');
+    assert.match(out, /COVERAGE LOST/i);
+    assert.match(out, /services\/probe-api/);
+  });
+
+  test('a new service with NO migrations_dir is not flagged — the limb is about applied schema', () => {
+    // A Worker with no migrations of its own is a normal thing to add. Flagging
+    // it would make the guard noise, and noise is how a real signal gets muted.
+    const dir = build('mig-new-service-nomig', ADDITIVE, ADDITIVE, {
+      'services/probe-api/wrangler.jsonc': JSON.stringify({
+        name: 'probe',
+        d1_databases: [{ binding: 'SHARED', database_name: 'platform_db', database_id: 'id' }],
+      }),
+    });
+    const { code } = run('check-migrations.mjs', { cwd: dir });
+    assert.equal(code, 0);
+  });
+
+  test('an UNPARSEABLE wrangler config is COVERAGE LOST, never a silent skip', () => {
+    // A config the scanner cannot read is one whose migrations_dir it cannot
+    // see — indistinguishable from one that has none, which reads as green.
+    const dir = build('mig-badcfg', ADDITIVE, ADDITIVE, {
+      'services/probe-api/wrangler.jsonc': '{ this is not json',
+    });
+    const { code, out } = run('check-migrations.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/i);
+    assert.match(out, /could not be parsed/);
+  });
+
+  test('COVERAGE LOST when NO wrangler config matches at all', () => {
+    // The empty-domain failure: with no configs the arrival limb ranges over
+    // nothing and cannot fail, which is exactly the shape this repo keeps
+    // getting caught by.
+    const dir = fixture('mig-nocfg', {
+      'services/platform/migrations/0001_init.sql': ADDITIVE,
+      'services/subly-api/migrations/0001_init.sql': ADDITIVE,
+      'tooling/bricks/app/__brick__/svc/migrations/0001_init.sql': ADDITIVE,
+    });
+    const { code, out } = run('check-migrations.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /ranges over NOTHING/);
   });
 
   // ── the destructive DML class ─────────────────────────────────────────────
