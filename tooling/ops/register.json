@@ -1,0 +1,1641 @@
+{
+  "_readme": [
+    "THE OPERATIONS REGISTER — [pipeline O-1] company/pipeline/14-operations.md",
+    "",
+    "Every failure this factory can suffer, every recurring duty it performs, every surface it serves,",
+    "every revert path, every recovery drill, every expiring thing and every retention obligation — each",
+    "with a detector, a response, an owner, a cadence and a date. One person cannot hold this; a file can.",
+    "",
+    "WHY IT EXISTS, AND WHY IT IS THE SIXTH REGISTER RATHER THAN A SECTION OF ONE OF THE OTHER FIVE.",
+    "Eighteen of stage 14's twenty-one acceptance criteria quantify over 'the operations register'. Until",
+    "this file landed that set did not exist (`ls tooling/ops` -> No such file or directory), so all",
+    "eighteen ranged over nothing and reported clean. An undefined right-hand side cannot reject anything.",
+    "The other five registers answer different questions and are read by other stages' guards:",
+    "  tooling/capability-register.json  — what shared capability exists and who consumes it   [2]/[3]",
+    "  tooling/channel-register.json     — what channel is SERVED and with which identity      [9]/[10]",
+    "  tooling/screen-register.json      — which non-app-specific screens ship in the chassis   [2]/[5]",
+    "  tooling/platform-register.json    — the shared server's routes and bindings              [4]",
+    "  tooling/dod-register.json         — the definition of done, per app                      [6]",
+    "  tooling/monitor-register.json     — every HOSTNAME served, and whether anything watches it [11]",
+    "  tooling/ceilings.json             — the sourced free-tier ceilings the budgets derive from [4]",
+    "Merging this one into any of them would put four other stages' guards on the same file.",
+    "",
+    "🔴 AND THIS REGISTER HOLDS NO HOSTNAMES, ON PURPOSE — THE ONE PLACE IT NEARLY BECAME A SECOND",
+    "SOURCE OF TRUTH. Its first draft carried six `surface` rows, one per live hostname, each restating",
+    "which GlitchTip monitor watches it and which two are unwatched. [11]E-9's monitor-register.json had",
+    "landed the same day with the same facts and a WIDER derivation (Worker custom domains ∪ the app",
+    "catalogue ∪ every site's canonical URL, against custom domains alone here) — and its own header says",
+    "\"[14]O-2 must CONSUME this register rather than re-enumerate the hostnames\". Two registers of one set",
+    "drift the first time a canonical URL moves and nobody edits both. The rows were CUT and",
+    "`_delegated.hostnames` replaces them: assert-ops-register.mjs refuses to run if that file is absent,",
+    "unparseable, empty, or blind to a custom domain this repo deploys. Delegation that cannot fail is",
+    "just an absence with better manners.",
+    "",
+    "WHY THE PUBLIC REPO AND NOT company/. CI cannot read company/ — it is gitignored and invisible to",
+    "every workflow, which is exactly what blocked four stage-8 increments. This file holds surface names,",
+    "cadences and dates. No credential, no business identifier, no PII. The private CONTENT (the runbooks",
+    "themselves, the owner queue) stays in company/; the STRUCTURAL FACTS a guard must read live here.",
+    "",
+    "Enforced by tooling/ci/assert-ops-register.mjs (schema, coverage, staleness, revert mitigations,",
+    "access-path intersection) and tooling/ci/assert-retention-coverage.mjs (the `retention` rows against",
+    "the stores actually enumerated from the tree).",
+    "",
+    "── THE FIELDS, AND THE DEFECT EACH ONE KILLS ──────────────────────────────────────────────────────",
+    "",
+    "`kind`      one of the eight in `_kinds`. Free text here would let a row opt out of every per-kind",
+    "            rule below by inventing a ninth kind nothing checks.",
+    "",
+    "`cadence`   a duration (`8h`, `1d`, `7d`, `120d`), OR `on-demand` — WHICH REQUIRES A NON-EMPTY",
+    "            `why` — OR `trigger`, which requires a named `trigger` event. Three kinds, because the",
+    "            first draft had only the first two and the parked fresh-host drill fits neither: it is",
+    "            not on a clock and it is not on-demand, it fires when the next Windows machine is set up.",
+    "            EVERY duration IS BOUNDED BY `_maxCadenceDays` PER KIND, so a row cannot declare its own",
+    "            ten-year shelf life and pass. `on-demand` is the escape hatch this stage's audit found in",
+    "            eighteen criteria; the `why` and the printed count are what stop it being free.",
+    "",
+    "`lastDone`  ⚠️ REQUIRED ONLY FOR THE KINDS A HUMAN PERFORMS — `recovery-path`, `revert`, `review`,",
+    "`lastDrill` `failure-mode`. THIS IS A DELIBERATE DEVIATION from the drafted 'absent is a failure for",
+    "            every kind'. A hand-typed `lastDone` on a nightly cron is a date nobody updates: it would",
+    "            be written once, go stale in a day, and then either fail CI forever or be bumped by hand",
+    "            in every unrelated commit — which is the 'record that records success unconditionally'",
+    "            this stage exists to eliminate, wearing a register's clothes. A MACHINE duty must instead",
+    "            declare `mechanism.record` + `mechanism.failingValue` — a place a reader can go and a",
+    "            value that reader can find there and go red on. Duties therefore satisfy an XOR: a human",
+    "            date, or a machine record whose failing value is reachable. Neither is optional.",
+    "",
+    "`mechanism` `.substrate` names WHAT runs it, `.anchor` a repo-relative path THAT MUST EXIST (a",
+    "            mechanism naming a file that is gone is a mechanism that is gone), `.record` where its",
+    "            run history is readable, `.failingValue` the value in that record that means FAILED, and",
+    "            `.readBy` the thing that actually looks. `grep -rn cron_heartbeat` returning zero readers",
+    "            while the table carried three consecutive red nights is why `.readBy` is a field.",
+    "",
+    "`accessProviders` resolved from `_providers`, NEVER free text. This is the whole of what makes O-14",
+    "            computable: a `failure-mode` row names the providers it TAKES DOWN, and the recovery row",
+    "            it points at names the providers it NEEDS — two independently written lists, and the",
+    "            guard intersects them. The drafted version compared two sets written by the same hand in",
+    "            the same row, so a row declaring an empty dependency set could never intersect anything.",
+    "",
+    "`source`    `verified` (measured or read from the thing itself) or `unverified` (corroborated only",
+    "            by secondary sources — the OCI 30-day abandonment clause, the two statutory breach",
+    "            clocks). The unverified count PRINTS on every run. Never restate an unverified number as",
+    "            a fact somewhere else in the repo on the strength of its being written down here.",
+    "",
+    "`ownerGated` the row's missing half can only be supplied from a vendor console, a laptop, or the",
+    "            proprietor's own knowledge. The guard PRINTS these on every run and does not block —",
+    "            CLAUDE.md's C-6 rule: a guard that blocks all of CI on work only the owner can do gets",
+    "            disabled, and a disabled guard checks nothing. It is not a waiver: the gap is counted and",
+    "            named in every single log line, and rows carrying a DATED tripwire fail after that date.",
+    "",
+    "── THREE THINGS THAT ARE SETTLED AND MUST NOT BE RE-LITIGATED HERE ────────────────────────────────",
+    "  · [ADR 021] backup destination + the deliberate REMOVAL of encryption.",
+    "  · [ADR 022] pack-signing key custody — paper + .claude/, Shamir NOT required.",
+    "  · OWNER_QUEUE S-1 — the GitHub PAT stays broad-scoped and never-expiring, deliberately. It is",
+    "    referenced by no workflow, so it contributes NO `expiring` row at all: out of the domain by",
+    "    fact, not by policy. Do not add one, and do not add a rotation reminder."
+  ],
+  "_delegated": {
+    "_why": [
+      "One set, one owner. `hostnames` is [11]E-9's: tooling/monitor-register.json enumerates every host",
+      "this factory serves and whether a monitor watches it, derived from the tree by",
+      "tooling/ci/assert-monitor-coverage.mjs on every run. This register names the delegate rather than",
+      "restating its rows, and its guard fails if the delegate is missing, unparseable, empty, or blind to",
+      "a custom domain this repo deploys — so \"stage 11 owns it\" stays a fact instead of becoming nobody's."
+    ],
+    "hostnames": "tooling/monitor-register.json"
+  },
+  "_kinds": [
+    "duty",
+    "expiring",
+    "recovery-path",
+    "revert",
+    "retention",
+    "review",
+    "failure-mode"
+  ],
+  "_providers": [
+    "github",
+    "google",
+    "cloudflare",
+    "oci",
+    "supabase",
+    "laptop",
+    "apple",
+    "microsoft",
+    "canonical",
+    "hostinger",
+    "india-gov",
+    "owner"
+  ],
+  "_maxCadenceDays": {
+    "_why": [
+      "A stage-level ceiling per kind, so a row cannot buy itself an unreachable shelf life. These are",
+      "JUDGEMENT CALLS AND ARE RECORDED AS SUCH — none is a vendor SLA and none may be cited as one.",
+      "Each is set at the point where 'we last checked' stops being a useful sentence for that kind of",
+      "thing, and each is one number, changed deliberately."
+    ],
+    "duty": 31,
+    "expiring": 180,
+    "recovery-path": 180,
+    "revert": 365,
+    "retention": 365,
+    "review": 120,
+    "failure-mode": 365
+  },
+  "_requiredCoverage": {
+    "_why": [
+      "The domain is the UNION of (a) what a tree walk can see — workflows, wrangler crons, wrangler",
+      "custom-domain routes, D1 tables, KV bindings — and (b) THIS LIST, the external things no tree walk",
+      "will ever reach. (a) alone is the exact defect that made O-1's drafted acceptance unfalsifiable:",
+      "it enumerated 'from the repo' while every worst-risk surface — two registrars, the Origin CA cert,",
+      "the Oracle box, the Google accounts, the GlitchTip monitors — is outside it.",
+      "(HOSTNAMES are absent from this list on purpose: they are `_delegated.hostnames`, i.e. [11]E-9's.)"
+    ],
+    "ids": [
+      "duty.oci-console-session",
+      "duty.laptop.nikatru-daily-backup",
+      "duty.laptop.claude-transcript-backup",
+      "duty.laptop.nikatru-project-backup",
+      "duty.renovate",
+      "expiring.domain.nikatru.com",
+      "expiring.domain.rajasekarselvam.com",
+      "expiring.cert.origin-ca",
+      "expiring.drive-oauth-app",
+      "expiring.drive-refresh-token-non-use",
+      "expiring.keystore.android-upload",
+      "expiring.gst-lut",
+      "expiring.awfis-lease",
+      "expiring.store-enrolment.play",
+      "expiring.store-enrolment.appstore",
+      "expiring.store-enrolment.microsoft",
+      "expiring.store-enrolment.snap",
+      "recovery.git-bundle-restore",
+      "recovery.vault-only-rebuild",
+      "recovery.glitchtip-postgres",
+      "recovery.oci-boot-volume",
+      "recovery.worker-d1-export",
+      "recovery.fresh-host",
+      "failure.laptop-lost",
+      "failure.github-account-lost",
+      "failure.google-account-lost",
+      "review.kill-or-keep",
+      "retention.kv.nikatru-signups.rate-limit",
+      "retention.kv.nikatru-signups.signup",
+      "retention.kv.ratel-cache"
+    ]
+  },
+  "rows": [
+    {
+      "id": "duty.platform-cron",
+      "kind": "duty",
+      "what": "The one consolidated Cloudflare cron for the whole portfolio: Supabase keep-alive + the per-app renewals fan-out, 06:00 UTC.",
+      "detector": "tooling/ops/check-heartbeats.mjs, run by .github/workflows/ops-watch.yml — deliberately a DIFFERENT provider from the thing it watches.",
+      "response": "Open or refresh the durable ops-watch issue; the keep-alive failing means the shared auth project is drifting toward its ~7-day idle pause, which takes sign-in down portfolio-wide.",
+      "cadence": "1d",
+      "watchedJobs": [
+        "supabase_keepalive"
+      ],
+      "mechanism": {
+        "substrate": "cloudflare-cron",
+        "anchor": "services/platform/wrangler.jsonc",
+        "record": "platform_db.cron_heartbeat (append-only, one row per job/target per run)",
+        "failingValue": "ok = 0 — reachable, and reached: three consecutive nights carried it while nothing read the table",
+        "readBy": "tooling/ops/check-heartbeats.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.ci.yml",
+      "kind": "duty",
+      "what": "The full gate: every guard, both Workers, the brick stamp, the sites.",
+      "detector": "A red check on the push or PR that caused it — attended by definition.",
+      "response": "Fix before merge. Branch protection is the enforcement, not a person.",
+      "cadence": "trigger",
+      "trigger": "every push to main and every pull request",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/ci.yml",
+        "record": "GitHub Actions run history for ci.yml",
+        "failingValue": "conclusion = failure",
+        "readBy": "branch protection + the PR check list"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.build-platforms.yml",
+      "kind": "duty",
+      "what": "The six-platform compile proof — the ONLY place macOS, iOS, Windows, Linux and Android are ever compiled.",
+      "detector": "tooling/ci/assert-platform-proof-fresh.mjs, on every push: the newest SCHEDULED green run must be inside 14 days, and the workflow must still build all six targets.",
+      "response": "A platform we CLAIM to support has stopped building. Fix the platform, not the guard.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/build-platforms.yml",
+        "record": "GitHub Actions run history, filtered to event = schedule",
+        "failingValue": "no scheduled success inside the window — and a manual dispatch deliberately does NOT satisfy it",
+        "readBy": "tooling/ci/assert-platform-proof-fresh.mjs"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.e2e.yml",
+      "kind": "duty",
+      "what": "The nightly end-to-end run against LIVE Supabase auth, the live Worker and live D1 — the factory's only integration proof.",
+      "detector": "The workflow's own `alert` job files or refreshes ONE durable GitHub issue on any scheduled failure; the preflight fails closed on a missing secret rather than green-skipping.",
+      "response": "Treat as production until proven otherwise; the issue is closed by a human, never automatically — closing it IS the acknowledgement that someone looked.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/e2e.yml",
+        "record": "GitHub Actions run history + the reused issue titled 'Nightly E2E (live) is failing against production'",
+        "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
+        "readBy": "the alert job in e2e.yml; disposition is a human closing the issue"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.deploy-web.yml",
+      "kind": "duty",
+      "what": "Ships the Subly web build to Cloudflare Pages and records a GitHub Deployment.",
+      "detector": "A red deploy job on the push that triggered it.",
+      "response": "Re-run, or roll the Pages deployment back (see revert.web.subly).",
+      "cadence": "trigger",
+      "trigger": "push touching apps/subly/** or packages/**, or a manual dispatch",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/deploy-web.yml",
+        "record": "GitHub Deployments (written by tooling/ci/record-deployment.mjs) + the run history",
+        "failingValue": "conclusion = failure, or no Deployment record for the SHA",
+        "readBy": "tooling/ci/assert-release-provenance.mjs"
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.deploy-workers.yml",
+      "kind": "duty",
+      "what": "Ships the platform and subly-api Workers, applies D1 migrations, records a GitHub Deployment.",
+      "detector": "A red deploy job on the push that triggered it.",
+      "response": "Re-deploy the previous green SHA (see revert.worker.platform / revert.worker.subly-api).",
+      "cadence": "trigger",
+      "trigger": "push touching services/** or the shared migrations, or a manual dispatch",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/deploy-workers.yml",
+        "record": "GitHub Deployments + the run history",
+        "failingValue": "conclusion = failure, or no Deployment record for the SHA",
+        "readBy": "tooling/ci/assert-release-provenance.mjs"
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.ops-watch.yml",
+      "kind": "duty",
+      "what": "The reader for the run records nothing was reading. Queries platform_db.cron_heartbeat from OUTSIDE Cloudflare and files a durable issue when a declared job is absent, stale or red.",
+      "detector": "Itself. Its own absence is caught by this register: the row exists, so a deleted workflow file fails assert-ops-register.mjs on the anchor.",
+      "response": "The issue names which job, and whether it was absent, stale or explicitly failed.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/ops-watch.yml",
+        "record": "GitHub Actions run history + the reused issue titled 'Scheduled duty is not reporting healthy'",
+        "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
+        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue"
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.submit-play.yml",
+      "kind": "duty",
+      "what": "The Google Play submission path.",
+      "detector": "Attended: a human dispatches it and watches the run.",
+      "response": "Read the run; the dry-run half is exercised on every CI push regardless.",
+      "cadence": "on-demand",
+      "why": "A store submission happens when there is a release to submit. Putting it on a clock would either submit builds nobody asked for or record a cadence nothing honours — and its walkability is already proven on EVERY push by the dry-run step in ci.yml, which is the half that can rot.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/submit-play.yml",
+        "record": "GitHub Actions run history for submit-play.yml",
+        "failingValue": "conclusion = failure",
+        "readBy": "the dispatching human, plus the dry-run step in ci.yml on every push"
+      },
+      "accessProviders": [
+        "github",
+        "google"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.submit-appstore.yml",
+      "kind": "duty",
+      "what": "The Apple App Store submission path (iOS + macOS).",
+      "detector": "Attended: a human dispatches it and watches the run.",
+      "response": "Read the run; the dry-run half is exercised on every CI push regardless.",
+      "cadence": "on-demand",
+      "why": "Same reason as submit-play.yml: submission is event-driven, and the part that can silently rot — the path still walking — is on every push in ci.yml.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/submit-appstore.yml",
+        "record": "GitHub Actions run history for submit-appstore.yml",
+        "failingValue": "conclusion = failure",
+        "readBy": "the dispatching human, plus the dry-run steps in ci.yml on every push"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.submit-snap.yml",
+      "kind": "duty",
+      "what": "The Snap Store submission path.",
+      "detector": "Attended: a human dispatches it and watches the run.",
+      "response": "Read the run; the dry-run half is exercised on every CI push regardless.",
+      "cadence": "on-demand",
+      "why": "Same reason as submit-play.yml.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/submit-snap.yml",
+        "record": "GitHub Actions run history for submit-snap.yml",
+        "failingValue": "conclusion = failure",
+        "readBy": "the dispatching human, plus the dry-run step in ci.yml on every push"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.submit-windows-store.yml",
+      "kind": "duty",
+      "what": "The Microsoft Store submission path.",
+      "detector": "Attended: a human dispatches it and watches the run.",
+      "response": "Read the run; the dry-run half is exercised on every CI push regardless.",
+      "cadence": "on-demand",
+      "why": "Same reason as submit-play.yml.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/submit-windows-store.yml",
+        "record": "GitHub Actions run history for submit-windows-store.yml",
+        "failingValue": "conclusion = failure",
+        "readBy": "the dispatching human, plus the dry-run step in ci.yml on every push"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.renovate",
+      "kind": "duty",
+      "what": "Advances every pinned input — actions, npm, pub, and the four toolchain versions in tooling/versions.json — by proposal, never by memory.",
+      "detector": "The Dependency Dashboard issue and the `chore/renovate-*` branches Renovate opens on origin — both observable from outside this repo. ⚠️ NAMED HONESTLY: there is no in-tree guard over Renovate's reach. O-9's assert-update-coverage.mjs was planned and is NOT built, and this row said it was; a register that names a reader which does not exist reproduces the exact \"zero readers\" defect it was written to end.",
+      "response": "Review and merge the proposal. NO AUTOMERGE, deliberately.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "renovate-app",
+        "anchor": "renovate.json",
+        "record": "the Dependency Dashboard issue + chore/renovate-* branches on origin",
+        "failingValue": "an ecosystem present in the tree that no manager reaches — which nothing computes today; the observable half is a dashboard entry or a proposal branch appearing inside the cadence",
+        "readBy": "a human reading the Dependency Dashboard issue. No CI guard reads it — that gap is this row."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified",
+      "ownerGated": true,
+      "ownerGap": "The mechanism is SHIPPED (renovate.json, the dashboard issue, a live proposal branch); what is missing is the guard that proves the configuration still REACHES every ecosystem. Building it is [14]O-9 and it is not in this increment — so the gap prints rather than being described as covered."
+    },
+    {
+      "id": "duty.oci-console-session",
+      "kind": "duty",
+      "what": "The recurring Oracle Cloud console session: the memory-utilisation alarm, a CUSTOM boot-volume backup policy, Docker log rotation, the >=80% disk alert, and the console login itself.",
+      "detector": "This row. 🔴 Nothing in this repository can reach that host, so the register row IS the detector — the alternative is the state it replaces, where company/runbooks/operations.md §0 PRIME DIRECTIVE sat entirely unexecuted and nothing said so.",
+      "response": "Owner performs the session and records the date. ⚠️ The free boot-volume backup cap is 5 TOTAL and the stock Bronze/Silver/Gold policies all overflow it, so a custom policy is required rather than a stock one.",
+      "cadence": "30d",
+      "mechanism": {
+        "substrate": "oci-console",
+        "anchor": "company/runbooks/operations.md",
+        "record": "the OCI console's own audit + the runbook checkboxes",
+        "failingValue": "the 30-day abandonment clock elapsing with no login, or the alarms still absent",
+        "readBy": "nothing in this repo can read a vendor console — this row is the only enumeration, which is why it prints on every run"
+      },
+      "accessProviders": [
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "The whole session is owner work in a console this repo cannot reach. Also the reason the crash rail is silent about its own death: every monitor and the alert path run on this one box, which is [11]E-9b, undecided.",
+      "source": "unverified",
+      "unverifiedWhy": "The 30-day abandonment clause is corroborated only by this repo's own runbook — Oracle's FAQ returned 403 to every read attempt. The cadence is set INSIDE the claimed window rather than at it, so the row is safe whether or not the number is right; do not restate 30 days as a vendor fact elsewhere."
+    },
+    {
+      "id": "duty.laptop.nikatru-daily-backup",
+      "kind": "duty",
+      "what": "The 8-hourly Windows task that bundles the repos and pushes the offsite copy.",
+      "detector": "A GlitchTip heartbeat monitor: the script POSTs on success, and the monitor goes red on ABSENCE. This is the one provably complete alarm chain in the portfolio and is the template every other row is measured against.",
+      "response": "Email from the GlitchTip alert rule; run the task by hand and read its log.",
+      "cadence": "8h",
+      "mechanism": {
+        "substrate": "windows-task-scheduler",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": "Windows Task Scheduler LastTaskResult + the GlitchTip heartbeat monitor",
+        "failingValue": "LastTaskResult != 0, or the heartbeat not arriving inside its grace window",
+        "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop)"
+      },
+      "accessProviders": [
+        "laptop",
+        "google",
+        "github",
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "CI cannot see a laptop. The run record is real and is watched from outside, but no in-tree guard can read it; the register row is what makes the duty enumerable at all.",
+      "source": "verified"
+    },
+    {
+      "id": "duty.laptop.claude-transcript-backup",
+      "kind": "duty",
+      "what": "The nightly Windows task that copies Claude Code transcripts offsite.",
+      "detector": "🔴 NOTHING TODAY. Its exit code is the only record and nobody reads it.",
+      "response": "🔴 FAILING as of 2026-08-01 (LastTaskResult 1) and has been unwatched. Diagnose on the laptop, then point it at the same heartbeat mechanism duty.laptop.nikatru-daily-backup uses.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "windows-task-scheduler",
+        "anchor": "company/runbooks/scheduled-tasks.md",
+        "record": "Windows Task Scheduler LastTaskResult — and NOTHING reads it",
+        "failingValue": "LastTaskResult != 0 — currently 1",
+        "readBy": "nothing yet — this is the gap, named rather than hidden"
+      },
+      "accessProviders": [
+        "laptop",
+        "google"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Both the diagnosis and the heartbeat wiring happen on the laptop, which no workflow can reach. Two of three laptop duties are failing right now and are watched by nothing; that is the sentence this row exists to keep printing.",
+      "source": "verified"
+    },
+    {
+      "id": "duty.laptop.nikatru-project-backup",
+      "kind": "duty",
+      "what": "The nightly Windows task that backs up the project folder.",
+      "detector": "🔴 NOTHING TODAY. Its exit code is the only record and nobody reads it.",
+      "response": "🔴 FAILING as of 2026-08-01 (LastTaskResult 1). Same remedy as duty.laptop.claude-transcript-backup.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "windows-task-scheduler",
+        "anchor": "company/runbooks/scheduled-tasks.md",
+        "record": "Windows Task Scheduler LastTaskResult — and NOTHING reads it",
+        "failingValue": "LastTaskResult != 0 — currently 1",
+        "readBy": "nothing yet — this is the gap, named rather than hidden"
+      },
+      "accessProviders": [
+        "laptop",
+        "google"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Laptop-side. See duty.laptop.claude-transcript-backup.",
+      "source": "verified"
+    },
+    {
+      "id": "revert.worker.platform",
+      "kind": "revert",
+      "what": "Re-deploy the previous green SHA of the platform Worker.",
+      "path": "workflow_dispatch on deploy-workers.yml against the last green SHA",
+      "detector": "assert-ops-register.mjs: the exercise date is bounded by this row's cadence, so a revert path drilled once never stays green.",
+      "response": "Dispatch the workflow at the previous SHA and confirm /v1/health.",
+      "cadence": "365d",
+      "lastDone": null,
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/deploy-workers.yml",
+        "record": "GitHub Actions run history for deploy-workers.yml, event = workflow_dispatch",
+        "failingValue": "no dispatch run on record that was an UNDO rather than a forward deploy",
+        "readBy": "a human reading the run list — every dispatch on record to date is a forward deploy"
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Deliberately re-deploying an older SHA over live production is a destructive act against a live surface; it is not something an agent performs unasked.",
+      "source": "verified"
+    },
+    {
+      "id": "revert.worker.subly-api",
+      "kind": "revert",
+      "what": "Re-deploy the previous green SHA of the subly-api Worker.",
+      "path": "workflow_dispatch on deploy-workers.yml against the last green SHA",
+      "detector": "Same as revert.worker.platform.",
+      "response": "Dispatch the workflow at the previous SHA.",
+      "cadence": "365d",
+      "lastDone": null,
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/deploy-workers.yml",
+        "record": "GitHub Actions run history for deploy-workers.yml, event = workflow_dispatch",
+        "failingValue": "no dispatch run on record that was an UNDO",
+        "readBy": "a human reading the run list"
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "As revert.worker.platform.",
+      "source": "verified"
+    },
+    {
+      "id": "revert.web.subly",
+      "kind": "revert",
+      "what": "Roll the Cloudflare Pages deployment for subly.nikatru.com back to a previous build.",
+      "path": "Cloudflare Pages → Deployments → Rollback, or re-run deploy-web.yml at the previous SHA",
+      "detector": "Same cadence bound as the Worker reverts.",
+      "response": "Roll back, then confirm /version.json's build_number is the expected one.",
+      "cadence": "365d",
+      "lastDone": null,
+      "mechanism": {
+        "substrate": "cloudflare-pages",
+        "anchor": ".github/workflows/deploy-web.yml",
+        "record": "the Pages deployment list + /version.json",
+        "failingValue": "version.json's build_number not matching the deployment believed to be live",
+        "readBy": "a human comparing /version.json against the deployment believed to be live. ⚠️ There is NO post-deploy smoke step in .github/workflows/deploy-web.yml — the row claimed one and it has never existed. Building it is [14]O-7 and it is not in this increment."
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Rolling live production back is a destructive act against a live surface.",
+      "source": "verified"
+    },
+    {
+      "id": "revert.d1.schema",
+      "kind": "revert",
+      "what": "A D1 schema change, once applied to production.",
+      "path": "cannot-revert",
+      "mitigation": "revert.mitigation.additive-only-migrations",
+      "detector": "assert-ops-register.mjs prints the cannot-revert COUNT on every run, so the set cannot grow quietly — marking every surface cannot-revert was the drafted acceptance's escape hatch.",
+      "response": "There is no undo. The mitigation is that a migration can never require one.",
+      "cadence": "365d",
+      "lastDone": null,
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations",
+        "record": "the migrations directory + tooling/ci/check-migrations.mjs",
+        "failingValue": "a non-additive statement in a migration",
+        "readBy": "tooling/ci/check-migrations.mjs"
+      },
+      "ownerGated": true,
+      "ownerGap": "There is nothing to exercise: the path genuinely does not exist. The row is here so the COUNT of unrevertable surfaces is visible.",
+      "source": "verified"
+    },
+    {
+      "id": "revert.mitigation.additive-only-migrations",
+      "kind": "revert",
+      "what": "The named mitigation for revert.d1.schema: schema evolution is additive-only, enforced on every push, so no migration can ever need undoing.",
+      "path": "tooling/ci/check-migrations.mjs, on every push",
+      "detector": "The guard itself. It is not a promise; it is a build failure.",
+      "response": "A non-additive migration fails CI before it can reach production.",
+      "cadence": "trigger",
+      "trigger": "every push and pull request, via ci.yml",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ci/check-migrations.mjs",
+        "record": "ci.yml run history",
+        "failingValue": "the guard exiting non-zero",
+        "readBy": "ci.yml on every push"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "revert.client.installed-binary",
+      "kind": "revert",
+      "what": "A shipped native client on a user's device.",
+      "path": "cannot-revert",
+      "mitigation": "revert.mitigation.force-update",
+      "detector": "The mitigation is required to BE a register row with its own cadence, which is what turns 'we have a kill switch' from an assertion into something checkable.",
+      "response": "Ship a forward fix and force the install base onto it.",
+      "cadence": "365d",
+      "lastDone": null,
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "mechanism": {
+        "substrate": "app-stores",
+        "anchor": "tooling/channel-register.json",
+        "record": "the store release tracks",
+        "failingValue": "a bad build already installed — there is no recall",
+        "readBy": "nothing can undo it; only the mitigation reaches a shipped client"
+      },
+      "ownerGated": true,
+      "ownerGap": "Nothing has shipped to a store yet, so there is no install base to exercise this against.",
+      "source": "verified"
+    },
+    {
+      "id": "revert.mitigation.force-update",
+      "kind": "revert",
+      "what": "The force-update kill-switch: the ONLY channel that reaches an already-installed client.",
+      "path": "the config chassis (GET /config/<app>) carrying a minimum-version floor the client enforces",
+      "detector": "🔴 KNOWN-DEGRADED. deploy-web.yml builds the web target with --pwa-strategy=none, so an installed web client has no service worker to update through. [ADR 023] / stage 9 own the fix; stage 14 owns NOTICING.",
+      "response": "Stage 9 restores the PWA update strategy. Until then the web half of the kill-switch is not proven.",
+      "cadence": "365d",
+      "lastDone": null,
+      "degradedUntil": "2026-09-01",
+      "degradedWhy": "A guard that hard-failed today would block ALL of CI on another stage's file — deploy-web.yml is stage 9's. A gap that only ever prints is one nobody closes, so this is a DATED tripwire on the assert-platform-proof-fresh.mjs precedent: printed loudly now, a hard failure after the date. The date is ARBITRARY and recorded as arbitrary — a month, long enough for stage 9 to land and short enough that it cannot rot.",
+      "mechanism": {
+        "substrate": "cloudflare-worker-route",
+        "anchor": "services/platform/wrangler.jsonc",
+        "record": "the config payload served at config.nikatru.com",
+        "failingValue": "a client that does not pick up a new minimum version — which is exactly what --pwa-strategy=none produces on web",
+        "readBy": "nothing proves the web half today; that is what degradedUntil is counting down"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "recovery.git-bundle-restore",
+      "kind": "recovery-path",
+      "what": "Rebuild every repository from the offsite git bundles, with no GitHub account and no laptop.",
+      "detector": "This row's cadence against lastDrill. The mechanism it copies already exists in miniature: backup-knowledge.ps1 compares a $DrillMaxDays ceiling against .claude/last-restore-drill.txt and WARNS rather than fails, deliberately, because only a human can perform a drill.",
+      "response": "Follow company/runbooks/backup-liveness.md.",
+      "cadence": "120d",
+      "lastDrill": "2026-07-26",
+      "mechanism": {
+        "substrate": "google-drive",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": ".claude/last-restore-drill.txt on the laptop",
+        "failingValue": "a drill date older than the ceiling",
+        "readBy": "backup-knowledge.ps1 on every run (warn, not fail)"
+      },
+      "accessProviders": [
+        "google"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "recovery.vault-only-rebuild",
+      "kind": "recovery-path",
+      "what": "Rebuild working access from the credential vault alone.",
+      "detector": "This row's cadence against lastDrill.",
+      "response": "Follow company/runbooks/backup-liveness.md.",
+      "cadence": "120d",
+      "lastDrill": "2026-07-26",
+      "mechanism": {
+        "substrate": "google-drive",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": ".claude/last-restore-drill.txt on the laptop",
+        "failingValue": "a drill date older than the ceiling",
+        "readBy": "backup-knowledge.ps1 on every run (warn, not fail)"
+      },
+      "accessProviders": [
+        "laptop",
+        "google"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "recovery.local-working-tree",
+      "kind": "recovery-path",
+      "what": "The laptop's own clones and the local vault — the path that survives losing the Google account.",
+      "detector": "This row's cadence against lastDrill.",
+      "response": "Re-push from the local clones to a fresh remote; re-establish an offsite destination.",
+      "cadence": "180d",
+      "lastDrill": null,
+      "mechanism": {
+        "substrate": "laptop",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": ".claude/last-restore-drill.txt on the laptop",
+        "failingValue": "no dated drill",
+        "readBy": "backup-knowledge.ps1 (warn, not fail)"
+      },
+      "accessProviders": [
+        "laptop"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Only a human performs a drill. The date has never been set for this path.",
+      "source": "verified"
+    },
+    {
+      "id": "recovery.glitchtip-postgres",
+      "kind": "recovery-path",
+      "what": "Restore the GlitchTip Postgres database from its dump.",
+      "detector": "This row's cadence against lastDrill.",
+      "response": "company/runbooks/glitchtip.md.",
+      "cadence": "180d",
+      "lastDrill": null,
+      "mechanism": {
+        "substrate": "oci-docker",
+        "anchor": "company/runbooks/glitchtip.md",
+        "record": "the dump files and their timestamps on the Oracle box",
+        "failingValue": "no dated restore drill",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "oci",
+        "google"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Never drilled. ⚠️ Residual risk recorded rather than hidden: the Postgres dumps have exactly ONE offsite copy.",
+      "source": "verified"
+    },
+    {
+      "id": "recovery.oci-boot-volume",
+      "kind": "recovery-path",
+      "what": "Restore the Oracle box's boot volume.",
+      "detector": "This row's cadence against lastDrill.",
+      "response": "company/runbooks/operations.md §0.",
+      "cadence": "180d",
+      "lastDrill": null,
+      "mechanism": {
+        "substrate": "oci",
+        "anchor": "company/runbooks/operations.md",
+        "record": "the OCI console's backup list",
+        "failingValue": "no backup policy, or no dated restore drill",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "⚠️ RESTORE-BY-REPLACEMENT IS THE ONLY CORRECT PROCEDURE HERE — the wrong one silently downgrades the grandfathered instance shape and is irreversible. Also: the free backup cap is 5 TOTAL and the stock Bronze/Silver/Gold policies all overflow it, so a custom policy is required. Owner action in the OCI console.",
+      "source": "verified"
+    },
+    {
+      "id": "recovery.worker-d1-export",
+      "kind": "recovery-path",
+      "what": "Restore a Worker plus its D1 contents from an export.",
+      "detector": "This row's cadence against lastDrill.",
+      "response": "Blocked: the export half is [4]B-10's and does not exist yet.",
+      "cadence": "180d",
+      "lastDrill": null,
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations",
+        "record": "[4]B-10's export, which does not exist yet",
+        "failingValue": "no export to restore from",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Blocked on stage 4's [4]B-10 export. Listed so the gap is counted, not so somebody starts it here.",
+      "source": "verified"
+    },
+    {
+      "id": "recovery.fresh-host",
+      "kind": "recovery-path",
+      "what": "Rebuild the whole working environment on a brand-new machine.",
+      "detector": "Not on a clock — deliberately. PARKED by the owner.",
+      "response": "Run the drill when the trigger fires.",
+      "cadence": "trigger",
+      "trigger": "the next Windows machine setup",
+      "mechanism": {
+        "substrate": "laptop",
+        "anchor": "tooling/windows-setup.ps1",
+        "record": ".claude/last-restore-drill.txt on the laptop",
+        "failingValue": "the setup script not completing on a clean machine",
+        "readBy": "the human performing the setup"
+      },
+      "accessProviders": [
+        "laptop",
+        "google",
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "failure.laptop-lost",
+      "kind": "failure-mode",
+      "what": "The laptop is destroyed, stolen or unbootable.",
+      "detector": "Self-evident.",
+      "response": "recovery.git-bundle-restore",
+      "takesDown": [
+        "laptop"
+      ],
+      "respondsVia": "recovery.git-bundle-restore",
+      "cadence": "365d",
+      "lastDone": "2026-07-26",
+      "mechanism": {
+        "substrate": "google-drive",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": ".claude/last-restore-drill.txt",
+        "failingValue": "the response path needing a provider this failure takes down",
+        "readBy": "tooling/ci/assert-ops-register.mjs — it intersects takesDown against the response row's own accessProviders, two lists written independently"
+      },
+      "accessProviders": [
+        "google"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "failure.github-account-lost",
+      "kind": "failure-mode",
+      "what": "The GitHub account is locked out or compromised.",
+      "detector": "Self-evident.",
+      "response": "recovery.vault-only-rebuild — the vault is local and on Drive, neither of which is GitHub.",
+      "takesDown": [
+        "github"
+      ],
+      "respondsVia": "recovery.vault-only-rebuild",
+      "cadence": "365d",
+      "lastDone": "2026-07-26",
+      "mechanism": {
+        "substrate": "laptop",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": ".claude/last-restore-drill.txt",
+        "failingValue": "the response path needing github",
+        "readBy": "tooling/ci/assert-ops-register.mjs"
+      },
+      "accessProviders": [
+        "laptop",
+        "google"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "failure.google-account-lost",
+      "kind": "failure-mode",
+      "what": "The Google account holding the offsite backups is lost.",
+      "detector": "Self-evident, and the reason the previous two responses must not both route through Drive.",
+      "response": "recovery.local-working-tree — the laptop's own clones, which touch no Google product.",
+      "takesDown": [
+        "google"
+      ],
+      "respondsVia": "recovery.local-working-tree",
+      "cadence": "365d",
+      "lastDone": null,
+      "mechanism": {
+        "substrate": "laptop",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": ".claude/last-restore-drill.txt",
+        "failingValue": "the response path needing google",
+        "readBy": "tooling/ci/assert-ops-register.mjs"
+      },
+      "accessProviders": [
+        "laptop"
+      ],
+      "ownerGated": true,
+      "ownerGap": "The response path exists and does not depend on Google — but it has never been drilled. ⚠️ Do NOT re-fix the 2FA/Drive chain: OWNER_QUEUE S-6 is CLOSED, GitHub 2FA is on with paper codes in two locations, and the Drive account and the GitHub account are two DIFFERENT Google accounts. The drafted 'provable chain' was wrong on both legs.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.domain.nikatru.com",
+      "kind": "expiring",
+      "what": "The nikatru.com domain registration (Cloudflare Registrar).",
+      "detector": "This row: a missing or past `expires`, or one inside `leadDays`, fails.",
+      "response": "Confirm auto-renew is ON and record the renewal date.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "cloudflare-registrar",
+        "anchor": "company/runbooks/operations.md",
+        "record": "the registrar console",
+        "failingValue": "auto-renew off, or a renewal date inside the lead window",
+        "readBy": "nothing yet — the console is not machine-readable from CI"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "🔴 ~$10 and a date nobody is watching takes down every checkout return URL, every API hostname and every config fetch AT ONCE. Owner: confirm auto-renew and record the date.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.domain.rajasekarselvam.com",
+      "kind": "expiring",
+      "what": "The rajasekarselvam.com domain registration (Hostinger) — a DIFFERENT registrar with different renewal behaviour from the one above.",
+      "detector": "This row.",
+      "response": "Confirm auto-renew is ON and record the renewal date.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "hostinger",
+        "anchor": "company/runbooks/operations.md",
+        "record": "the registrar console",
+        "failingValue": "auto-renew off, or a renewal date inside the lead window",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "hostinger"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Two registrars, two behaviours, both unchecked since ~17 July. Owner action.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.cert.origin-ca",
+      "kind": "expiring",
+      "what": "The Cloudflare Origin CA certificate on the Oracle box, in front of glitchtip.nikatru.com.",
+      "detector": "This row.",
+      "response": "🟡 READ THE CERTIFICATE, never a remembered validity period: `openssl x509 -enddate` against the INSTALLED cert is the only source that cannot drift.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "oci",
+        "anchor": "company/runbooks/glitchtip.md",
+        "record": "the certificate file's own notAfter",
+        "failingValue": "notAfter inside the lead window",
+        "readBy": "nothing yet — the cert is on a host this repo cannot reach"
+      },
+      "accessProviders": [
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "🔴 Cloudflare states it sends NO expiry notification for Origin CA certificates, so a lapse takes out the very channel that would have told you. Owner: run openssl on the box and record notAfter.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.drive-oauth-app",
+      "kind": "expiring",
+      "what": "The Google Drive OAuth application's publication state.",
+      "detector": "This row.",
+      "response": "Confirm the app is published rather than in testing; a testing-mode app expires its tokens.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "google-cloud-console",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": "the Google Cloud console's OAuth consent screen",
+        "failingValue": "publication state = testing",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "google"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Console-only. Owner action.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.drive-refresh-token-non-use",
+      "kind": "expiring",
+      "what": "Google's non-use clock on the Drive refresh token: a token unused for six months stops working.",
+      "detector": "🟢 SATISFIED BY CONSTRUCTION at the current backup cadence — the token is exercised every 8 hours, which is three orders of magnitude inside the window.",
+      "response": "None needed today. ⚠️ WRITE IT DOWN ANYWAY, because a future cadence change silently RE-ARMS it: the reason this is safe is the 8-hour duty, not the token.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "windowDays": 180,
+      "satisfiedBy": "duty.laptop.nikatru-daily-backup",
+      "mechanism": {
+        "substrate": "google-drive",
+        "anchor": "company/runbooks/backup-liveness.md",
+        "record": "the backup task's own run record — every success is a token use",
+        "failingValue": "the backup duty's cadence lengthening past the non-use window",
+        "readBy": "tooling/ci/assert-ops-register.mjs — it checks satisfiedBy resolves to a real row whose cadence is inside the window"
+      },
+      "accessProviders": [
+        "google"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The six-month figure comes from this repo's own runbook, not from a primary Google page read for this row. Treat it as unconfirmed; the mitigation is orders of magnitude larger than the uncertainty, which is why it is recorded rather than researched again."
+    },
+    {
+      "id": "expiring.keystore.android-upload",
+      "kind": "expiring",
+      "what": "The Android upload keystore's own validity period.",
+      "detector": "This row. ⚠️ The drafted claim 'not yet generated' is FALSE — release-keystore/release.keystore exists (2,638 B, 11 Jun 2026).",
+      "response": "Standing decision #25: adopt it or replace it, then drill a restore. Read the validity with keytool; do not assume the default.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "laptop",
+        "anchor": "tooling/channel-register.json",
+        "record": "keytool -list -v against the keystore file",
+        "failingValue": "a validity end date inside the lead window",
+        "readBy": "nothing yet — the keystore is not in the repo, deliberately"
+      },
+      "accessProviders": [
+        "laptop",
+        "google"
+      ],
+      "ownerGated": true,
+      "ownerGap": "🔴 OWNER_QUEUE S-10 — release-keystore/ holds release.keystore, KEYSTORE_PASSWORD.txt and KEYSTORE_B64.txt IN ONE DIRECTORY, ONE BACKUP SET, reaching ONE Google account. A leaked PAT is rotatable; an Android upload keystore is NOT, once an app has shipped. Nothing has shipped, so the window to separate them is open TODAY.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.gst-lut",
+      "kind": "expiring",
+      "what": "The GST Letter of Undertaking, which is renewed per financial year.",
+      "detector": "This row.",
+      "response": "Renew; company/business/compliance-calendar.md carries the deadline.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "company/business",
+        "record": "the GST portal",
+        "failingValue": "a validity end inside the lead window",
+        "readBy": "nothing in this repo — and nothing should be: the date lives in company/, which CI cannot read"
+      },
+      "accessProviders": [
+        "india-gov",
+        "owner"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Owner-supplied date. Deliberately NOT mirrored into this public file with a real value — the row's existence is the structural fact CI needs; the date itself is business content that stays private.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.awfis-lease",
+      "kind": "expiring",
+      "what": "The registered-office lease.",
+      "detector": "This row.",
+      "response": "Renew; company/business/compliance-calendar.md carries the deadline.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "company/business",
+        "record": "the lease agreement",
+        "failingValue": "an end date inside the lead window",
+        "readBy": "nothing in this repo, deliberately"
+      },
+      "accessProviders": [
+        "owner"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Owner-supplied date; the value stays in company/.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.store-enrolment.play",
+      "kind": "expiring",
+      "what": "The Google Play developer enrolment.",
+      "detector": "This row.",
+      "response": "Confirm the enrolment is current before a submission depends on it.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/channel-register.json",
+        "record": "the Play Console",
+        "failingValue": "enrolment lapsed or unverified",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "google"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Console-only. Owner action.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.store-enrolment.appstore",
+      "kind": "expiring",
+      "what": "The Apple Developer Program membership (annual).",
+      "detector": "This row.",
+      "response": "Confirm the membership is current before a submission depends on it.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/channel-register.json",
+        "record": "App Store Connect",
+        "failingValue": "membership lapsed",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "apple"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Console-only. Owner action.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.store-enrolment.microsoft",
+      "kind": "expiring",
+      "what": "The Microsoft Partner Center developer account.",
+      "detector": "This row.",
+      "response": "Confirm the account is current before a submission depends on it.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/channel-register.json",
+        "record": "Partner Center",
+        "failingValue": "account lapsed",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "microsoft"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Console-only. Owner action; see company/runbooks/microsoft-store-registration.md.",
+      "source": "verified"
+    },
+    {
+      "id": "expiring.store-enrolment.snap",
+      "kind": "expiring",
+      "what": "The Snapcraft developer account and its store credentials.",
+      "detector": "This row.",
+      "response": "Confirm the credentials are current before a submission depends on them.",
+      "cadence": "180d",
+      "expires": null,
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "external-registry",
+        "anchor": "tooling/channel-register.json",
+        "record": "the Snapcraft dashboard",
+        "failingValue": "credentials expired — snap store credentials are time-limited by default",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "canonical"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Console-only. Owner action.",
+      "source": "verified"
+    },
+    {
+      "id": "review.kill-or-keep",
+      "kind": "review",
+      "what": "The 90-day review that can decide to KILL an app rather than keep carrying it.",
+      "detector": "This row. 🔴 THE DAY-0 DATE DOES NOT EXIST AND MUST NOT BE INVENTED — reconciliation decision #21 binds Day 0 to 'Paddle approved + paywall live', and OWNER_QUEUE A-1 is still PENDING and gates ALL revenue. The only move that makes a 'carries a Day-0 date' criterion pass today is to fabricate one.",
+      "response": "Keep, change, or withdraw (see the retirement contract). The row carries the TRIGGER definition and the day count; the dates populate when the trigger fires.",
+      "cadence": "trigger",
+      "trigger": "Paddle approved + paywall live — reconciliation decision #21, not reopened",
+      "dayCount": 90,
+      "day0": null,
+      "outcomes": {
+        "keep": "no action; the next review is Day 0 + 180",
+        "change": "record what changes and re-set the clock",
+        "kill": "execute the retirement contract — orderly withdrawal, NOT an emergency takedown"
+      },
+      "mechanism": {
+        "substrate": "owner-decision",
+        "anchor": "company/OWNER_QUEUE.md",
+        "record": "the decision itself, recorded in company/decisions/decisions-log.md",
+        "failingValue": "Day 0 + 90 passing with no recorded review",
+        "readBy": "tooling/ci/assert-ops-register.mjs — it PRINTS the pending state every run and becomes a hard failure once day0 is set and dayCount has elapsed"
+      },
+      "accessProviders": [
+        "owner"
+      ],
+      "ownerGated": true,
+      "ownerGap": "OWNER_QUEUE A-1 (PENDING, 🔴 gates ALL revenue). Nothing else in stage 14 waits on it.",
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.entitlements",
+      "kind": "retention",
+      "store": "d1:platform_db:entitlements",
+      "what": "Entitlement rows — who is entitled to what.",
+      "rule": "keep",
+      "keepWhy": "An entitlement IS the purchase record. Deleting it revokes something the user paid for, and a lifetime unlock has no expiry by definition. Erasure on request is a different mechanism (account deletion) and is stage 8's.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0001_entitlements.sql",
+        "record": "the table itself",
+        "failingValue": "rows older than a declared period — not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.events",
+      "kind": "retention",
+      "store": "d1:platform_db:events",
+      "what": "Analytics events. Pseudonymous: anon_id only, no ip column.",
+      "rule": "period-undeclared",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "🔴 Stage 8 owns the PERIOD; stage 14 owns the job that makes it true. The published privacy policy says only 'as long as necessary', which is not a number a guard can check, and an agent inventing one would be writing policy.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0002_analytics.sql",
+        "record": "the table itself",
+        "failingValue": "rows older than the declared period — once a period exists",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half) — the sweep half needs the period first"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "The retention PERIOD is a policy decision. ⚠️ Note the trap this row exists to avoid: the table holds ZERO rows today, so any 'no rows older than the period' query is VACUOUSLY GREEN. That is a fact about traffic, not about retention, which is why the coverage limb is enumeration-driven and never row-driven.",
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.consent_artifacts",
+      "kind": "retention",
+      "store": "d1:platform_db:consent_artifacts",
+      "what": "One record per consent decision: that a decision was made, when, and which policy version was shown.",
+      "rule": "keep",
+      "keepWhy": "The published privacy policy states the record exists so the choice can be demonstrated to have been the user's. Deleting the evidence of consent destroys the only proof the processing was lawful. It carries no IP address and no device fingerprint, by the policy's own words.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0002_analytics.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.cron_heartbeat",
+      "kind": "retention",
+      "store": "d1:platform_db:cron_heartbeat",
+      "what": "One append-only row per (job, target) per run.",
+      "rule": "keep",
+      "keepWhy": "The migration's own header carries the reasoning and is the model of what a reasoned keep looks like: append-only so a RUN of consecutive failures is visible rather than overwritten, ~365 rows/year/target so no pruning is needed, and the additive-only schema rule forbids dropping it anyway. It holds no personal data.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0003_cron_heartbeat.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "🔴 Two halves, neither of them an engineering call. (a) No retention PERIOD is declared — stage 8 owns periods. (b) It carries no `user_id` column, and services/platform/src/routes/account.ts derives the tables it erases from exactly that column, so THE ACCOUNT-DELETION SWEEP DOES NOT REACH THIS TABLE. That is a measured fact about the schema, not a bug being asserted: the derivation is deliberate and correct for `events`; whether it should be extended here is stage 8's decision.",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.provider_notifications",
+      "store": "d1:platform_db:provider_notifications",
+      "what": "🔴 The verbatim money-rail notifications. The migration says so in its own header: this table holds whatever the provider sent, INCLUDING BUYER PERSONAL DATA (name, email, billing country), and it is the one table in platform_db that is not pseudonymous.",
+      "rule": "period-undeclared",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0004_money_rail.sql",
+        "record": "the table itself",
+        "failingValue": "a payload older than the declared period — once a period exists",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half only)"
+      },
+      "ownerGated": true,
+      "ownerGap": "🔴 Personal data, verbatim, with no declared period AND outside the user_id-derived erasure sweep (services/platform/src/routes/account.ts). Owner/stage 8: declare the period and decide whether erasure must reach a table whose whole purpose is to be the unaltered evidence of a payment."
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.provider_accounts",
+      "store": "d1:platform_db:provider_accounts",
+      "what": "The subscription-to-account map: which provider subscription belongs to which user.",
+      "rule": "keep",
+      "keepWhy": "It is the only durable answer to \"why do we believe this subscription belongs to this account\", written once on the event that provably carries the metadata. A timer here would silently orphan a LIVE subscription, and the row carries `user_id`, so it already leaves when the account does via the derived erasure sweep — which is a different mechanism from retention.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0004_money_rail.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.unclaimed_payments",
+      "store": "d1:platform_db:unclaimed_payments",
+      "what": "Money arrived and no account could be resolved.",
+      "rule": "keep",
+      "keepWhy": "The migration states the intent and the reason together: a row that is never claimed stays forever ON PURPOSE, because it is the evidence that someone paid, and deleting it leaves the payer with a support ticket nobody can resolve. The email is stored as a SHA-256 hash rather than an address, so the queryable column is not a list of customers.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0004_money_rail.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.revocation_reasons",
+      "store": "d1:platform_db:revocation_reasons",
+      "what": "A seeded lookup table: the set of reasons access can be withdrawn, and which of them gives it back.",
+      "rule": "keep",
+      "keepWhy": "Reference data with no personal content and no growth — a seeded vocabulary, extended by an additive INSERT. Deleting a member would make historical rows unclassifiable forever.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0004_money_rail.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
+      "id": "retention.d1.platform_db.cancellation_requests",
+      "store": "d1:platform_db:cancellation_requests",
+      "what": "One row per \"I pressed cancel\", including the ones the rail has not executed.",
+      "rule": "keep",
+      "keepWhy": "Between the press and the provider acting, this row is the ONLY evidence the user asked at all — the migration's own reasoning. A second press writes a second row deliberately, because \"asked three times and nothing happened\" is the fact a support conversation needs. It carries `user_id`, so it leaves with the account through the derived erasure sweep rather than on a timer.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0005_cancellation_requests.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "id": "retention.d1.subly_db.subscriptions",
+      "kind": "retention",
+      "store": "d1:subly_db:subscriptions",
+      "what": "The user's own subscription records — the app's primary content.",
+      "rule": "keep",
+      "keepWhy": "This is the user's data, not telemetry: deleting it on a timer would delete the product. It leaves when the account does, via account deletion, which is stage 8's mechanism and not a retention sweep.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subly-api/migrations/0001_init.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subly_db.budgets",
+      "kind": "retention",
+      "store": "d1:subly_db:budgets",
+      "what": "The user's own budgets.",
+      "rule": "keep",
+      "keepWhy": "User content. Same reasoning as retention.d1.subly_db.subscriptions.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subly-api/migrations/0001_init.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subly_db.budget_categories",
+      "kind": "retention",
+      "store": "d1:subly_db:budget_categories",
+      "what": "The user's own budget categories.",
+      "rule": "keep",
+      "keepWhy": "User content. Same reasoning as retention.d1.subly_db.subscriptions.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subly-api/migrations/0001_init.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subly_db.payment_history",
+      "kind": "retention",
+      "store": "d1:subly_db:payment_history",
+      "what": "The user's own payment history for their tracked subscriptions.",
+      "rule": "keep",
+      "keepWhy": "User content, and the app's whole point is the history. Same reasoning as retention.d1.subly_db.subscriptions.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subly-api/migrations/0001_init.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.platform.CONFIG_KV",
+      "kind": "retention",
+      "store": "kv:platform:CONFIG_KV",
+      "what": "Per-app config overrides, keyed config:<app>.",
+      "rule": "keep",
+      "keepWhy": "Configuration, not personal data. A TTL here would silently un-configure a live app.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "services/platform/wrangler.jsonc",
+        "record": "the namespace itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.platform.JWKS_CACHE",
+      "kind": "retention",
+      "store": "kv:platform:JWKS_CACHE",
+      "what": "A warm cache of the Supabase JWKS document — one PUBLIC document, shared by every Worker.",
+      "rule": "cache",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a — a cache holds nothing that is not re-fetchable, and holds no personal data.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "services/platform/wrangler.jsonc",
+        "record": "the namespace itself",
+        "failingValue": "a cache entry outliving its usefulness — a correctness question, not a retention one",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.subly-api.JWKS_CACHE",
+      "kind": "retention",
+      "store": "kv:subly-api:JWKS_CACHE",
+      "what": "The SAME namespace the platform Worker binds — one identity project, one copy of one public document.",
+      "rule": "cache",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "services/subly-api/wrangler.jsonc",
+        "record": "the namespace itself",
+        "failingValue": "n/a",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.nikatru-signups.rate-limit",
+      "kind": "retention",
+      "store": "kv:nikatru-signups:rl-prefix",
+      "what": "The soft per-fingerprint rate-limit keys written by the signup endpoint.",
+      "rule": "ttl",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — and the TTL is IN THE CODE, at sites/nikatru/functions/api/subscribe.js, so the guard reads the mechanism rather than a claim about it.",
+      "response": "n/a — every key carries expirationTtl: RATE_WINDOW_SECONDS and expires inside the window.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "sites/nikatru/functions/api/subscribe.js",
+        "record": "the expirationTtl on the put",
+        "failingValue": "a put without expirationTtl",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.nikatru-signups.signup",
+      "kind": "retention",
+      "store": "kv:nikatru-signups:sub-prefix",
+      "what": "🔴 THE SIGNUP RECORDS THEMSELVES — an email address and a timestamp, written with NO expirationTtl. This is the store O-17 was written about, and the drafted acceptance excluded it by construction because it quantified over 'every store WITH a retention rule'.",
+      "rule": "period-undeclared",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — this row is in _requiredCoverage, so it cannot leave the domain by having no rule.",
+      "response": "🔴 The PERIOD is the missing half and it is a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 days would be WRITING POLICY under the appearance of fixing a bug. Owner declares the period; the expirationTtl then follows in one line.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "sites/nikatru/functions/api/subscribe.js",
+        "record": "the namespace itself",
+        "failingValue": "a sub: key older than the declared period — once a period exists",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half)"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "🔴 THIS IS THE ONE STORE IN THE PORTFOLIO HOLDING A CONTACTABLE IDENTITY WITH NO EXPIRY. It is also, with Supabase auth, one of the two stores that determine the notifiable population in a breach — the D1 tables are pseudonymous and notifiable only by public notice. Owner: declare the period.",
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.ratel-cache",
+      "kind": "retention",
+      "store": "kv:external:ratel-cache",
+      "what": "A KV namespace in the Cloudflare account that NO wrangler config in this repo binds.",
+      "rule": "keep",
+      "keepWhy": "Nothing in this repo writes it, so this repo cannot declare a period for it. It is listed so the account's store count and the repo's store count can be reconciled rather than silently differing — an unbound namespace is exactly the kind of thing a tree walk can never see.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs, via _requiredCoverage.",
+      "response": "n/a from this repo.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "tooling/ops/register.json",
+        "record": "the Cloudflare dashboard",
+        "failingValue": "n/a",
+        "readBy": "nothing — recorded so it is counted"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "Belongs to a project this repo does not build. Owner decides whether it should still exist.",
+      "source": "unverified",
+      "unverifiedWhy": "Its existence is reported by the stage-14 plan's live account read, not by anything in this tree. Marked unverified because no in-tree artefact corroborates it."
+    }
+  ]
+}

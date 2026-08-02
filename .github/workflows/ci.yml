@@ -400,6 +400,32 @@ jobs:
       - name: Every deployed hostname is declared, and its monitor gap is visible
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-monitor-coverage.mjs
+      # …and every FAILURE the factory can suffer has a named detector, response
+      # and cadence. Stage 14 audited its own twenty-one acceptance criteria and
+      # found EIGHTEEN that could not fail, all for one reason: they quantified
+      # over an operations register that did not exist, so `ls tooling/ops`
+      # returned "No such file or directory" and eighteen criteria ranged over
+      # the empty set and reported clean. This is the right-hand side, and this
+      # step is what stops it drifting away from the tree it describes: every
+      # workflow must carry a duty row and every duty row a live anchor, BOTH
+      # DIRECTIONS, plus every named reader having to exist. Hostnames are NOT
+      # here — they are the monitor register's above, delegated and checked.
+      # [pipeline 14]O-1
+      - name: Every failure has a detector, a response and a cadence
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-ops-register.mjs
+      # …and every STORE the portfolio holds has a declared retention rule. The
+      # drafted acceptance said "for every store WITH a rule, no row is older
+      # than that rule" — which excluded the one store it was written about, the
+      # signup KV that holds an email address with no expiry. So the domain is
+      # enumerated from wrangler bindings and migrations rather than from the
+      # register, in both directions: a rule whose store is gone is COVERAGE
+      # LOST, because otherwise deleting a binding is how you make this pass.
+      # It caught five real stores the money rail added while stage 14 sat
+      # unmerged. [pipeline 14]O-17
+      - name: Every store the portfolio holds has a declared retention rule
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-retention-coverage.mjs
       # …and the claim is worth what the lane's TRIGGER is worth. deploy-web.yml
       # filtered on `apps/subly/**` + `packages/**` only, so a dependency bump —
       # a transitive patch landing in the root pubspec.lock with no source change
