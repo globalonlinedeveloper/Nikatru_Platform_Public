@@ -17,6 +17,7 @@
   "deploy-triggers.test.mjs": 17,
   "dod-sync.test.mjs": 18,
   "entitlement-contract.test.mjs": 22,
+  "flag-exposure.test.mjs": 18,
   "green-means-ran.test.mjs": 25,
   "guard-coverage.test.mjs": 38,
   "guards.test.mjs": 230,
