@@ -1784,7 +1784,8 @@ void main() {
       expect(
         notes.scheduled,
         isEmpty,
-        reason: 'OFF is a promise that nothing fires, not a promise about a bool',
+        reason:
+            'OFF is a promise that nothing fires, not a promise about a bool',
       );
     });
 
@@ -1933,9 +1934,7 @@ void main() {
           child: MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(
-              body: CatchUpNudgeBanner(clock: () => now),
-            ),
+            home: Scaffold(body: CatchUpNudgeBanner(clock: () => now)),
           ),
         ),
       );
@@ -1962,11 +1961,11 @@ void main() {
       }
     }
 
-    testWidgets(
-      'every platform gets EITHER an OS schedule OR the in-app nudge',
-      (WidgetTester tester) async {
-        for (final TargetPlatform p in TargetPlatform.values) {
-          await onPlatform(p, () async {
+    testWidgets('every platform gets EITHER an OS schedule OR the in-app nudge', (
+      WidgetTester tester,
+    ) async {
+      for (final TargetPlatform p in TargetPlatform.values) {
+        await onPlatform(p, () async {
           final _MemStore store = _MemStore();
           store.data['nikatru.reminders_enabled'] = 'true';
           final ProviderContainer c = _container(store);
@@ -1983,9 +1982,13 @@ void main() {
           await pumpBanner(
             tester,
             c,
-            now: DateTime(2026, 8, 3, AppConfig.reminderHour, 0).add(
-              const Duration(hours: 1),
-            ),
+            now: DateTime(
+              2026,
+              8,
+              3,
+              AppConfig.reminderHour,
+              0,
+            ).add(const Duration(hours: 1)),
           );
 
           final bool shown = find.byType(MaterialBanner).evaluate().isNotEmpty;
@@ -1998,10 +2001,9 @@ void main() {
                 'neither is a switch that reads ON over a device that never '
                 'says anything',
           );
-          });
-        }
-      },
-    );
+        });
+      }
+    });
 
     // 🔴 THE MOUNT, ASSERTED AGAINST THE REAL RUNNING APP. Everything else in
     // this group pumps the banner directly, which proves the DECISION and proves
@@ -2100,10 +2102,13 @@ void main() {
       await onPlatform(TargetPlatform.windows, () async {
         final _MemStore store = _MemStore();
         store.data['nikatru.reminders_enabled'] = 'true';
-        store.data['nikatru.last_nudge_shown_at'] =
-            DateTime(2026, 8, 3, AppConfig.reminderHour, 30)
-                .toUtc()
-                .toIso8601String();
+        store.data['nikatru.last_nudge_shown_at'] = DateTime(
+          2026,
+          8,
+          3,
+          AppConfig.reminderHour,
+          30,
+        ).toUtc().toIso8601String();
         final ProviderContainer c = _container(store);
         addTearDown(c.dispose);
         c.read(remindersEnabledProvider);
