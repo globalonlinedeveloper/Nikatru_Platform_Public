@@ -10,5 +10,6 @@ export 'src/dio_cancellation_transport.dart';
 export 'src/dio_config_transport.dart';
 export 'src/dio_entitlement_transport.dart';
 export 'src/dio_consent_transport.dart';
+export 'src/dio_content_pack_source.dart';
 export 'src/dio_event_transport.dart';
 export 'src/rest_client.dart';

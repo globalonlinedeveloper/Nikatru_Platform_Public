@@ -24,10 +24,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
 import 'dart:convert';
+// The screen set is DERIVED from lib/core/router.dart rather than written down
+// (see `_declaredRoutes`), so this file reads one source file off disk.
+import 'dart:io';
 
+// Test-only: `content-pack-consumed` needs a REAL content hash, so the loader's
+// integrity check runs rather than being handed a digest it cannot refuse.
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart'
     show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
+// SemanticsNode — the icon-label limb asserts on what a SCREEN READER receives,
+// not on a widget field a screen reader never sees.
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
@@ -381,12 +390,284 @@ ProviderContainer _reviewContainer(
 /// silently relying on the app opening on Home. Establishing the state a test
 /// needs is the test's job; the alternative is a chassis that cannot add an auth
 /// gate without breaking its own assertions.
+/// Stands in for the Ed25519 mathematics, which is proven for real in `core`
+/// (`ed25519_pack_verifier_test.dart`, against a throwaway keypair).
+///
+/// 🔴 IT DOES NOT STAND IN FOR THE LOADER. Everything `ContentPackLoader` does
+/// around the signature — requiring a pinned `key_id`, binding `pack_id` to what
+/// the caller asked for, and verifying `content_hash` against the real bytes —
+/// still runs in every limb of `content-pack-consumed`. Replacing the loader
+/// instead would assert that a fake returns what the fake was told to return.
+class _AcceptingVerifier implements core.PackVerifier {
+  @override
+  Future<bool> verify({
+    required String keyId,
+    required List<int> message,
+    required List<int> signature,
+  }) async => true;
+}
+
 Future<ProviderContainer> _signedInContainer(_MemStore store) async {
   final ProviderContainer c = _container(_onboardedStore(store));
   await c
       .read(authRepositoryProvider)
       .signInWithEmail(email: 'a@b.com', password: 'pw');
   return c;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SCREEN SET, DERIVED FROM THE ROUTER — never a hand-kept list.
+//
+// 🔴 [pipeline 6/N-7] WHY THIS IS PARSED AND NOT WRITTEN DOWN. The UI-invariant
+// limbs below used to range over `find.byType(NavigationDestination)`, so they
+// measured the navigation bar and nothing else. The router declares seven routes
+// plus an `errorBuilder`; six of those eight surfaces were outside every limb,
+// and adding a ninth route would have changed no assertion anywhere. A
+// hand-maintained screen list has the same defect one step later: it is a number
+// somebody lowers when a screen is inconvenient.
+//
+// The coverage floor is therefore a RELATIONSHIP — `routes visited == GoRoute
+// declarations + errorBuilder` — which has no number in it to lower. Deleting a
+// route from the list is impossible; the list is the router.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// What `lib/core/router.dart` declares, read from the file itself.
+class _DeclaredRoutes {
+  const _DeclaredRoutes({required this.paths, required this.hasErrorBuilder});
+
+  /// Every `path:` on a `GoRoute(` declaration, in declaration order.
+  final List<String> paths;
+
+  /// Whether the router installs its own not-found screen. It is a real
+  /// surface a user reaches — on web by typing a URL — so it is covered too.
+  final bool hasErrorBuilder;
+
+  /// Every surface that must be visited. `errorBuilder` has no path, so an
+  /// unroutable location stands in for it.
+  List<String> get surfaces => <String>[
+    ...paths,
+    if (hasErrorBuilder) '/__nikatru_no_such_route__',
+  ];
+}
+
+/// Strip Dart comments WITHOUT eating string literals.
+///
+/// 🔴 A plain `//` cut would corrupt any route path containing one, and a naive
+/// regex over the raw source counts a `GoRoute(` that appears inside a comment.
+/// [pipeline F-10] shipped a scanner that matched a name inside a comment; this
+/// is the same class of defect and the same fix — parse, then scan.
+String _stripDartComments(String src) {
+  final StringBuffer out = StringBuffer();
+  int i = 0;
+  String? quote;
+  while (i < src.length) {
+    final String ch = src[i];
+    final String next = i + 1 < src.length ? src[i + 1] : '';
+    if (quote != null) {
+      out.write(ch);
+      if (ch == r'\') {
+        if (next.isNotEmpty) out.write(next);
+        i += 2;
+        continue;
+      }
+      if (ch == quote) quote = null;
+      i++;
+      continue;
+    }
+    if (ch == "'" || ch == '"') {
+      quote = ch;
+      out.write(ch);
+      i++;
+      continue;
+    }
+    if (ch == '/' && next == '/') {
+      while (i < src.length && src[i] != '\n') {
+        i++;
+      }
+      continue;
+    }
+    if (ch == '/' && next == '*') {
+      i += 2;
+      while (i < src.length && !(src[i] == '*' && i + 1 < src.length && src[i + 1] == '/')) {
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+    out.write(ch);
+    i++;
+  }
+  return out.toString();
+}
+
+/// Read the router's own declarations off disk.
+///
+/// `flutter test` runs with the package root as its working directory, so this
+/// resolves inside a stamped app exactly as it does in the brick's own tree.
+_DeclaredRoutes _declaredRoutes() {
+  final File f = File('lib/core/router.dart');
+  if (!f.existsSync()) {
+    fail(
+      'lib/core/router.dart not found from ${Directory.current.path} — the '
+      'screen set below would be derived from nothing and every coverage limb '
+      'would range over an empty list',
+    );
+  }
+  final String src = _stripDartComments(f.readAsStringSync());
+  final List<String> paths = <String>[];
+  // Anchored on the DECLARATION, not on the word `path`: `GoRoute(` followed by
+  // this route's own `path:`. A `path:` belonging to something else cannot be
+  // mistaken for a route, and a route with no path cannot be silently skipped —
+  // it changes the declaration count and the relationship goes red.
+  final RegExp decl = RegExp(
+    r"GoRoute\s*\(\s*path\s*:\s*(['\x22])([^'\x22]*)\1",
+    multiLine: true,
+  );
+  for (final RegExpMatch m in decl.allMatches(src)) {
+    paths.add(m.group(2)!);
+  }
+  final int goRouteCount = RegExp(r'GoRoute\s*\(').allMatches(src).length;
+  // A `GoRoute(` whose `path:` this scanner could not read is a screen that
+  // would silently leave the domain. Refuse rather than under-count.
+  expect(
+    paths.length,
+    goRouteCount,
+    reason:
+        'router.dart declares $goRouteCount GoRoute(...) but only '
+        '${paths.length} paths could be parsed — a screen would drop out of '
+        'every UI-invariant limb below without any of them going red',
+  );
+  return _DeclaredRoutes(
+    paths: paths,
+    hasErrorBuilder: RegExp(r'errorBuilder\s*:').hasMatch(src),
+  );
+}
+
+/// Does anything under [root] render real text?
+///
+/// This is what separates the icon-only class DoD §4-F names from a labelled
+/// button: a control whose meaning is carried by a glyph alone is the one a
+/// screen reader cannot announce and an imprecise tap cannot hit.
+///
+/// 🔴 AN `Icon` IS NOT TEXT, however it is implemented. Flutter builds `Icon`
+/// out of `RichText` carrying the glyph's code point, so a subtree walk that
+/// counts `RichText` finds "text" under every icon in the app — which made the
+/// icon-only domain EMPTY and both limbs below vacuous. Measured, not reasoned:
+/// with a deliberate 20x20 icon-only `InkWell` planted on the home screen the
+/// limb reported `iconOnly=0` and passed. `Icon` subtrees are therefore not
+/// descended into at all.
+bool _hasTextDescendant(Element root) {
+  bool found = false;
+  void visit(Element e) {
+    if (found) return;
+    final Widget w = e.widget;
+    // A glyph is the thing being looked for, not evidence against it.
+    if (w is Icon || w is ImageIcon) return;
+    if (w is Text && (w.data ?? '').trim().isNotEmpty) {
+      found = true;
+      return;
+    }
+    if (w is RichText && w.text.toPlainText().trim().isNotEmpty) {
+      found = true;
+      return;
+    }
+    e.visitChildren(visit);
+  }
+
+  root.visitChildren(visit);
+  return found;
+}
+
+bool _isInteractive(Widget w) =>
+    w is IconButton ||
+    w is InkWell ||
+    w is GestureDetector ||
+    w is ListTile ||
+    w is ButtonStyleButton ||
+    w is NavigationDestination;
+
+/// Does [e] sit INSIDE another interactive control?
+bool _hasInteractiveAncestor(Element e) {
+  bool found = false;
+  e.visitAncestorElements((Element a) {
+    if (_isInteractive(a.widget)) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+/// Every control on the CURRENT screen whose only affordance is a glyph.
+///
+/// 🔴 THE OUTERMOST CONTROL IS THE TAP TARGET, and getting this wrong makes the
+/// limb cry wolf. Measured, not reasoned: the first version matched every
+/// `GestureDetector` and went red on a 40x40 one inside `/settings` — Material's
+/// own `Radio`, nested in a `RadioListTile` that carries a perfectly good text
+/// label and a 56px tap area. The framework internal has no text BELOW it; the
+/// control the user actually hits is its labelled ancestor. A guard that fails
+/// on correct input is one somebody switches off within a week.
+///
+/// `IconButton` is exempt from the ancestor rule and stays in the domain
+/// wherever it appears: Material builds its internals out of `InkResponse` and
+/// `GestureDetector`, never `IconButton`, so an `IconButton` is always somebody
+/// in this repository putting a control on a screen.
+List<Element> _iconOnlyControls(WidgetTester tester) {
+  final Finder candidates = find.byWidgetPredicate(
+    (Widget w) => w is IconButton || w is InkWell || w is GestureDetector,
+  );
+  return candidates
+      .evaluate()
+      .where(
+        (Element e) =>
+            e.widget is IconButton || !_hasInteractiveAncestor(e),
+      )
+      .where((Element e) => !_hasTextDescendant(e))
+      .toList();
+}
+
+/// Every control on the CURRENT screen a user can act on at all.
+///
+/// Used only to assert the screen is not blank: "every icon-only control is big
+/// enough" over a screen that rendered nothing is the vacuous shape these limbs
+/// exist to replace, and a redirect that quietly lands somewhere empty looks
+/// exactly like a clean pass.
+int _interactiveControlCount(WidgetTester tester) => find
+    .byWidgetPredicate(
+      (Widget w) =>
+          w is IconButton ||
+          w is InkWell ||
+          w is GestureDetector ||
+          w is NavigationDestination ||
+          w is ButtonStyleButton ||
+          w is ListTile ||
+          w is TextField ||
+          w is Switch,
+    )
+    .evaluate()
+    .length;
+
+/// Pump the app on a phone-sized surface and drive the router to [location].
+///
+/// A PHONE window explicitly: Flutter's 800x600 default test surface resolves to
+/// `medium` — a rail, not a bottom bar — and tap-target size matters most on
+/// touch. Returns the location the router actually settled on, which is not
+/// always the one asked for: the redirect guard owns `/onboarding` and the auth
+/// screens, and covering a route means visiting it, not overruling the guard.
+Future<String> _pumpAt(
+  WidgetTester tester,
+  ProviderContainer c,
+  String location,
+) async {
+  c.read(routerProvider).go(location);
+  await _turnsAndSettleRoute(tester);
+  return c
+      .read(routerProvider)
+      .routerDelegate
+      .currentConfiguration
+      .uri
+      .toString();
 }
 
 void main() {
@@ -636,9 +917,13 @@ void main() {
       );
     });
 
-    // LIMB 2 — REACHABILITY. A control smaller than 48x48 is one a person with
-    // imprecise touch cannot reliably hit; both platforms' own guidance says so.
-    testWidgets('every navigation target is at least 48px', (
+    // LIMB 2 — REACHABILITY, ON EVERY SCREEN THE ROUTER DECLARES.
+    //
+    // A control smaller than 48x48 is one a person with imprecise touch cannot
+    // reliably hit; both platforms' own guidance says so. This limb used to
+    // range over `find.byType(NavigationDestination)` on ONE screen, so the
+    // other seven surfaces the router declares were outside it entirely.
+    testWidgets('every tap target on every declared route is at least 48px', (
       WidgetTester tester,
     ) async {
       // A PHONE-sized window, explicitly. Flutter's default test surface is
@@ -654,23 +939,54 @@ void main() {
       );
       await _turns(tester);
 
-      final Finder targets = find.byType(NavigationDestination);
-      // A non-empty domain is asserted FIRST. "Every target is big enough" over
-      // zero targets is the vacuous check this property exists to replace.
-      expect(
-        targets,
-        findsWidgets,
-        reason:
-            'no navigation destinations found — the size check below would '
-            'range over nothing and pass without examining anything',
-      );
-      for (final Element e in targets.evaluate()) {
-        expect(
-          tester.getSize(find.byWidget(e.widget)).height,
-          greaterThanOrEqualTo(48.0),
-          reason: 'tap target below the 48px floor',
-        );
+      final _DeclaredRoutes routes = _declaredRoutes();
+      final List<String> visited = <String>[];
+      int examined = 0;
+      for (final String surface in routes.surfaces) {
+        final String landed = await _pumpAt(tester, c, surface);
+        visited.add(surface);
+        examined += _interactiveControlCount(tester);
+        for (final Element e in _iconOnlyControls(tester)) {
+          final Size size = tester.getSize(find.byWidget(e.widget));
+          expect(
+            size.shortestSide,
+            greaterThanOrEqualTo(48.0),
+            reason:
+                'route "$surface" (landed on "$landed") carries a '
+                '${e.widget.runtimeType} of ${size.width}x${size.height} whose '
+                'only affordance is a glyph — below the 48px floor both '
+                'platforms publish',
+          );
+        }
       }
+
+      // ── NON-EMPTY DOMAIN, asserted in AGGREGATE and not per route. ────────
+      // 🔴 Measured, not reasoned. The per-route version of this went red on
+      // `/paywall`, and `/paywall` was right: with no purchase rail configured
+      // the screen correctly renders one sentence saying so, and nothing to
+      // press. A screen may legitimately have nothing to tap; the LIMB may not
+      // legitimately have inspected nothing. So the floor sits here, where it
+      // catches a pump that silently stopped rendering anything at all.
+      expect(
+        examined,
+        greaterThan(0),
+        reason:
+            'not one interactive control was found across '
+            '${routes.surfaces.length} routes — the size check ranged over ∅ '
+            'and reported clean',
+      );
+      // NOT `expect(covered, greaterThan(n))`. A count is a number somebody
+      // lowers; this is the relationship, and the only way to shrink the domain
+      // is to delete a route from the router itself.
+      expect(
+        visited.length,
+        routes.paths.length + (routes.hasErrorBuilder ? 1 : 0),
+        reason:
+            'visited ${visited.length} surfaces but router.dart declares '
+            '${routes.paths.length} GoRoute(s)'
+            '${routes.hasErrorBuilder ? ' plus an errorBuilder' : ''} — a '
+            'screen would be outside every UI invariant above',
+      );
     });
 
     // LIMB 3 — ADAPTIVE LAYOUT at Material's exact boundaries. Asserted on the
@@ -696,15 +1012,28 @@ void main() {
       );
     });
 
-    // LIMB 4 — the ICON-LABEL check, made real. Every navigation destination
-    // must carry a non-empty text label, and the domain must be non-empty. The
-    // vacuous version of this check asserted labels on "icon-only controls", of
-    // which the tree contains zero — so it passed by having nothing to inspect.
-    testWidgets('every icon in the navigation carries a real label', (
+    // LIMB 4 — the ICON-LABEL check, on every declared route.
+    //
+    // Every navigation destination must carry a non-empty text label, AND every
+    // icon-only control on every screen must be announceable. The first half
+    // used to be the whole limb, so a glyph-only button anywhere outside the
+    // navigation bar was invisible to it.
+    //
+    // ⚠️ THE SECOND HALF IS ASSERTED ON THE SEMANTICS TREE, not on the widget.
+    // A screen reader reads semantics; a `tooltip:` that never reaches the
+    // semantics node is a label only the source code has. Reading the widget's
+    // own field would certify exactly that.
+    testWidgets('every icon-only control carries a screen-reader label', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
+      // 🔴 `try/finally`, NOT `addTearDown`. flutter_test verifies that no
+      // SemanticsHandle outlives the test BEFORE tear-downs run, so a handle
+      // released in `addTearDown` reports as leaked and buries the real failure
+      // under a second, unrelated one.
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
       final ProviderContainer c = await _signedInContainer(_MemStore());
       addTearDown(c.dispose);
       await tester.pumpWidget(
@@ -729,6 +1058,39 @@ void main() {
           isNotEmpty,
           reason: 'an unlabelled icon is unusable with a screen reader',
         );
+      }
+
+      final _DeclaredRoutes routes = _declaredRoutes();
+      for (final String surface in routes.surfaces) {
+        final String landed = await _pumpAt(tester, c, surface);
+        for (final Element e in _iconOnlyControls(tester)) {
+          // No semantics node AT ALL is the strongest form of the defect: a
+          // screen reader is handed nothing. `getSemantics` throws in that
+          // case, so the throw is the finding, not an error in the test.
+          String label = '';
+          String tooltip = '';
+          try {
+            final SemanticsNode node = tester.getSemantics(
+              find.byWidget(e.widget),
+            );
+            label = node.label.trim();
+            tooltip = node.tooltip.trim();
+          } on StateError {
+            // leave both empty — the expectation below reports it
+          }
+          expect(
+            label.isNotEmpty || tooltip.isNotEmpty,
+            isTrue,
+            reason:
+                'route "$surface" (landed on "$landed") carries a '
+                '${e.widget.runtimeType} whose only affordance is a glyph and '
+                'which announces nothing — DoD §4-F. Give it a `tooltip:` or '
+                'wrap it in Semantics(label:)',
+          );
+        }
+      }
+      } finally {
+        handle.dispose();
       }
     });
   });
@@ -964,6 +1326,144 @@ void main() {
   // Asserted on the SEAM rather than by tapping through the dialog: the seam is
   // what the store requirement is really about, and a widget-level test would
   // pass against a dialog wired to the wrong repository.
+  // ── PROPERTY: content-pack-consumed ───────────────────────────────────────
+  // [pipeline 7]P-9 (consumer half) · [pipeline 8]K-9.
+  //
+  // 🔴 THE ANTECEDENT USED TO BE EMPTY, AND THAT WAS THE DEFECT. `contentPack`
+  // was the literal `null` in the brick AND in apps/subly, so every check
+  // phrased as "if an app declares a pack, then …" ranged over nothing and got
+  // GREENER THE LESS WAS BUILT. `ContentPackLoader` had zero non-test call
+  // sites tree-wide. The rail was fail-closed with no proven open path — the
+  // exact shape [pipeline C-6] exists to catch, and no test went red because
+  // refusing to serve a pack nobody asked for is correct behaviour.
+  //
+  // These two limbs cannot be made green by declining to act: the first needs a
+  // pack to really arrive through the real loader, and the second needs it to
+  // really stop arriving.
+  //
+  // ⚠️ WHAT THIS DOES AND DOES NOT PROVE, stated rather than implied. The
+  // Ed25519 signature mathematics is proven in `core` against a real throwaway
+  // keypair (`ed25519_pack_verifier_test.dart`); it is not re-proven here, and
+  // the verifier below is a stand-in for it. What IS proven here is the WIRING
+  // the repository had never had — pointer → source → loader → served pack —
+  // together with the loader's identity binding and content-hash check, which
+  // run for real in both limbs.
+  group('property: content-pack-consumed', () {
+    // A pack whose content hash is genuinely correct, so the loader's own
+    // integrity check runs for real rather than being skipped.
+    Map<String, List<int>> packBytes({
+      required String packId,
+      required String phrase,
+    }) {
+      final List<int> content = utf8.encode(
+        jsonEncode(<String, Object?>{'greeting': phrase}),
+      );
+      final List<int> manifest = utf8.encode(
+        jsonEncode(<String, Object?>{
+          'pack_id': packId,
+          'version': '1.0.0',
+          'key_id': 'test-key',
+          'content_hash': sha256.convert(content).toString(),
+        }),
+      );
+      return <String, List<int>>{
+        'manifest.json': manifest,
+        'manifest.sig': <int>[1, 2, 3],
+        'content.json': content,
+      };
+    }
+
+    ProviderContainer packContainer({required String? pointer, required Map<String, List<int>> entries}) =>
+        ProviderContainer(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+            // The POINTER is what a takedown changes, so it is what the test
+            // changes. Overriding `contentPackProvider` directly would assert
+            // that a fake returns what the fake was told to return.
+            appConfigProvider.overrideWith(
+              (_) async => core.AppConfig(
+                appId: AppConfig.appId,
+                apiBaseUrl: AppConfig.apiBaseUrl,
+                features: const <String, bool>{},
+                paywall: const core.PaywallConfig(enabled: false),
+                contentPack: pointer,
+                copy: const <String, String>{},
+                minSupportedVersion: '1.0.0',
+              ),
+            ),
+            // The BYTES are replaced; the LOADER is not. Everything the loader
+            // does — key pinning, identity binding, hash verification — still
+            // runs.
+            contentPackSourceProvider.overrideWith(
+              (ref) => entries.isEmpty
+                  ? null
+                  : core.InMemoryContentPackSource(entries),
+            ),
+            contentPackLoaderProvider.overrideWith(
+              (ref) => core.ContentPackLoader(
+                verifier: _AcceptingVerifier(),
+                pinnedKeys: const <String, String>{'test-key': 'x'},
+              ),
+            ),
+          ],
+        );
+
+    test('a configured pointer really SERVES a pack', () async {
+      final ProviderContainer c = packContainer(
+        pointer: 'https://packs.example/${AppConfig.appId}/v1',
+        entries: packBytes(packId: AppConfig.appId, phrase: 'hello'),
+      );
+      addTearDown(c.dispose);
+
+      final core.ContentPack? pack = await c.read(contentPackProvider.future);
+      expect(
+        pack,
+        isNotNull,
+        reason:
+            'the pointer named a pack and nothing arrived — the rail is still '
+            'the dead seam P-9 was written about',
+      );
+      expect(pack!.manifest.packId, AppConfig.appId);
+      expect(pack.content['greeting'], 'hello');
+    });
+
+    // 🔴 THE TAKEDOWN LIMB. [pipeline 8]K-9 requires a rights complaint to be
+    // actionable in HOURS without a store release, which is only true if
+    // retiring the pointer really stops the pack being served.
+    test('flipping the pointer STOPS it being served', () async {
+      final ProviderContainer c = packContainer(
+        pointer: null,
+        entries: const <String, List<int>>{},
+      );
+      addTearDown(c.dispose);
+      expect(
+        await c.read(contentPackProvider.future),
+        isNull,
+        reason:
+            'the pointer was retired and the app went on serving the pack — a '
+            'takedown would need a store release',
+      );
+    });
+
+    // The other half of "stops serving": the pointer still names a pack, but
+    // the pack that answers is not the one this app asked for. A signature says
+    // who made a pack, never which pack it is.
+    test("another app's pack is refused, not served", () async {
+      final ProviderContainer c = packContainer(
+        pointer: 'https://packs.example/someone-else/v1',
+        entries: packBytes(packId: 'not_this_app', phrase: 'wrong'),
+      );
+      addTearDown(c.dispose);
+      expect(
+        await c.read(contentPackProvider.future),
+        isNull,
+        reason:
+            'a pack belonging to another app was served — the identity binding '
+            'did not run',
+      );
+    });
+  });
+
   group('property: account-deletion-works', () {
     test(
       'deleting really goes through the seam, and signs the user out',

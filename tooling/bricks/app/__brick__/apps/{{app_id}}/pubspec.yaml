@@ -83,6 +83,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # TEST-ONLY. `content-pack-consumed` builds a pack whose `content_hash` is
+  # genuinely correct, so the loader's own integrity check runs for real instead
+  # of being handed a hash it cannot refuse. A hard-coded digest would be a
+  # magic constant that goes stale the moment the fixture's text changes.
+  crypto: ^3.0.0
 
 flutter:
   uses-material-design: true

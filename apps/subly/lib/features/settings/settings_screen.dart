@@ -219,6 +219,35 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        // ── OPEN-SOURCE LICENCES ([pipeline 8]K-11) ─────────────────────────
+        //
+        // 🔴 THE BRICK HAD THIS AND THE ONE SHIPPING APP DID NOT. Every app the
+        // factory stamps is born with an `AboutListTile` into Flutter's own
+        // `LicensePage`; `apps/subly` predates the brick and had ZERO licences
+        // surface — `AboutListTile`, `showLicensePage`, `LicensePage` and
+        // `LicenseRegistry` all had no match anywhere under `apps/subly/lib/`.
+        //
+        // This is not decoration. Several packages this app ships (and the
+        // MaterialIcons font `uses-material-design: true` bundles) carry
+        // attribution obligations that are discharged by DISPLAYING the notice,
+        // and both stores may ask for evidence of rights on demand. The answer
+        // has to be a screen, not a search.
+        //
+        // `LicensePage` is the framework's own aggregator: it reads
+        // `LicenseRegistry`, which every package registers into automatically,
+        // so this stays correct as dependencies change instead of being a list
+        // somebody has to remember to update.
+        Container(
+          decoration: cardDecoration(),
+          clipBehavior: Clip.antiAlias,
+          child: AboutListTile(
+            icon: const Icon(Icons.copyright_outlined),
+            applicationName: AppConfig.appName,
+            applicationLegalese: '© ${AppConfig.companyName}',
+            child: const Text('Open-source licences'),
+          ),
+        ),
         const SizedBox(height: 14),
         SoftButton(
           label: 'Log out',

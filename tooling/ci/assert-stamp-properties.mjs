@@ -112,6 +112,144 @@ const ACCOUNT_ROUTE =
 // itself. `group` is the marker the test file must declare; `sources` are the
 // lines in the app that the property is about, so a deleted implementation is
 // caught even if somebody leaves a hollow test behind.
+// ── [pipeline 8]K-6 · THE IN-APP LEGAL SET EQUALS THE PUBLISHED LEGAL SET ────
+//
+// 🔴 THE DEFECT THIS REPLACES. The brick declared TWO legal URLs
+// (`privacyUrl`, `termsUrl`); `check-site-integrity.mjs` publishes FOUR; and
+// NOTHING compared the two lists. So every app the factory stamps shipped a
+// legal surface silently missing the refund policy — the page a store reviewer
+// opens first when a charge is disputed — and no guard anywhere could say so.
+//
+// A RELATIONSHIP BETWEEN TWO ARTEFACTS, in both directions, never a count.
+// Publishing a fifth legal page fails the build until the chassis links it or
+// the exclusion below is extended with a reason; deleting a link fails too.
+// There is no number here to lower.
+const SITE_INTEGRITY = 'tooling/ci/check-site-integrity.mjs';
+const APP_CONFIG = 'lib/core/app_config.dart';
+
+// The ONE named exclusion, with its reason attached — not a silent filter.
+// `delete-account.html` is reached from a real in-app CONTROL rather than from
+// a link (the erasure path performs the deletion; the page explains it), and
+// that control is already asserted by the `account-deletion-works` key
+// including its `ACCOUNT_ROUTE` identity-delete anchor. Linking it as a third
+// document as well would put two different affordances for the same
+// irreversible action next to each other, which [pipeline C-13] deliberately
+// avoided when it ordered sign-out above delete.
+const LINK_EXEMPT_LEGAL_PAGES = new Map([
+  [
+    'delete-account.html',
+    'reached by the in-app delete control, asserted by the account-deletion-works key, not by a link',
+  ],
+]);
+
+function checkLegalLinkSet() {
+  let published;
+  try {
+    const src = readFileSync(join(repo, SITE_INTEGRITY), 'utf8');
+    // Parsed off the declaration, not grepped for the filenames: the file's own
+    // prose names `pricing.html` and `LEGAL_PAGES` several times while
+    // explaining why pricing is NOT in the list, and a text search would
+    // happily "find" it. [pipeline F-10]'s recorded lesson.
+    const decl = src.match(/const\s+LEGAL_PAGES\s*=\s*\[([^\]]*)\]/);
+    if (!decl) {
+      fail(
+        `COVERAGE LOST — could not parse LEGAL_PAGES out of ${SITE_INTEGRITY}. ` +
+          `The in-app legal set would be compared against nothing and this check would report clean.`,
+      );
+      return;
+    }
+    published = [...decl[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  } catch (e) {
+    fail(`COVERAGE LOST — ${SITE_INTEGRITY} unreadable: ${e.message}`);
+    return;
+  }
+  if (published.length === 0) {
+    fail(`COVERAGE LOST — LEGAL_PAGES parsed as EMPTY, so set equality below is vacuously true.`);
+    return;
+  }
+
+  const brickConfig = join(repo, BRICK, APP_CONFIG);
+  let declared;
+  try {
+    const src = readFileSync(brickConfig, 'utf8');
+    // Only `nikatru.com/<page>.html` constants count. `companyUrl` is the site
+    // root and is not a legal document; `apiBaseUrl` is not a page at all.
+    declared = [...src.matchAll(/static\s+const\s+String\s+(\w+)\s*=\s*'https:\/\/nikatru\.com\/([\w-]+\.html)'/g)].map(
+      (m) => ({ name: m[1], page: m[2] }),
+    );
+  } catch (e) {
+    fail(`COVERAGE LOST — ${BRICK}/${APP_CONFIG} unreadable: ${e.message}`);
+    return;
+  }
+
+  const mustLink = published.filter((p) => !LINK_EXEMPT_LEGAL_PAGES.has(p));
+  if (mustLink.length === 0) {
+    fail(
+      `COVERAGE LOST — every published legal page is on the link-exemption list, so the ` +
+        `set equality below ranges over nothing. An exemption list that has eaten its own domain ` +
+        `is the self-disabling shape this guard exists to catch.`,
+    );
+    return;
+  }
+
+  // ── A CONSTANT IS NOT A LINK. ────────────────────────────────────────────
+  // [pipeline 3]S-2's recorded lesson, one level down: declaring
+  // `refundUrl` and never putting it on a screen leaves the page exactly as
+  // unreachable as not declaring it, while making the set equality above go
+  // green. So each constant must also be OPENED from the settings screen.
+  //
+  // ⚠️ HONEST LIMIT, stated rather than implied: this proves a call site exists
+  // on the screen the settings register row claims, NOT that a tap reaches the
+  // platform URL launcher. Proving that needs a launcher SEAM the chassis does
+  // not have (`_openUrl` calls `url_launcher` directly), which is a stage-2/3
+  // chassis change and is not claimed here.
+  let settingsSrc = '';
+  try {
+    settingsSrc = readFileSync(join(repo, BRICK, SETTINGS), 'utf8');
+  } catch (e) {
+    fail(`COVERAGE LOST — ${BRICK}/${SETTINGS} unreadable: ${e.message}`);
+    return;
+  }
+
+  const declaredSet = new Set(declared.map((d) => d.page));
+  for (const { name, page } of declared) {
+    if (LINK_EXEMPT_LEGAL_PAGES.has(page)) continue;
+    if (!new RegExp(`_openUrl\\(\\s*AppConfig\\.${name}\\s*\\)`).test(settingsSrc)) {
+      fail(
+        `[8]K-6 — ${BRICK}/${APP_CONFIG} declares '${name}' for '${page}' but ` +
+          `${BRICK}/${SETTINGS} never opens it. A constant nobody links leaves the page as ` +
+          `unreachable as not declaring it at all, while making the set equality go green.`,
+      );
+    }
+  }
+  for (const page of mustLink) {
+    if (!declaredSet.has(page)) {
+      fail(
+        `[8]K-6 — sites/nikatru publishes '${page}' and ${BRICK}/${APP_CONFIG} declares no URL for it. ` +
+          `Every stamped app would ship a legal surface missing a page the site publishes. ` +
+          `Add the constant and link it from the settings LEGAL section, or add '${page}' to ` +
+          `LINK_EXEMPT_LEGAL_PAGES with the reason it is reached another way.`,
+      );
+    }
+  }
+  // The OTHER direction, and the one that stops the chassis pointing at pages
+  // that do not exist: a link to an unpublished page is a 404 in front of a
+  // user looking for the refund policy.
+  const publishedSet = new Set(published);
+  for (const page of declaredSet) {
+    if (!publishedSet.has(page)) {
+      fail(
+        `[8]K-6 — ${BRICK}/${APP_CONFIG} links 'https://nikatru.com/${page}' but ${SITE_INTEGRITY} ` +
+          `does not publish it. Every stamped app would send a user to a 404.`,
+      );
+    }
+  }
+  ok(
+    `[8]K-6 legal set: ${mustLink.length} published page(s) linked in the chassis` +
+      `${LINK_EXEMPT_LEGAL_PAGES.size ? `, ${LINK_EXEMPT_LEGAL_PAGES.size} reached by an in-app control instead` : ''}`,
+  );
+}
+
 const REQUIRED_COVERAGE = [
   {
     key: 'theme-mode-persisted',
@@ -178,6 +316,39 @@ const REQUIRED_COVERAGE = [
       { file: SCAFFOLD, re: /enum WindowClass \{\s*compact,\s*medium,\s*expanded,\s*large,\s*extraLarge\s*\}/, what: 'all FIVE Material window classes must exist — the tree covered three' },
     ],
     why: 'these are near-free in the chassis and near-impossible to retrofit across 50 shipped apps',
+  },
+  {
+    // [pipeline 7]P-9 consumer half · [pipeline 8]K-9.
+    //
+    // 🔴 THE SHAPE THIS REPLACES. K-9's own acceptance was "fail if any shipped
+    // app declares the content-pack chassis live while its resolved config has
+    // no consumer" — an antecedent NO app could satisfy, because `contentPack`
+    // was the literal `null` in the brick and in apps/subly both. Empty
+    // antecedent, vacuously true, and it got greener the less was built. The
+    // replacement is red for a reason nobody can remove by declining to act:
+    // the brick now names a pack, and something has to serve it.
+    key: 'content-pack-consumed',
+    group: /group\(\s*'property: content-pack-consumed'/,
+    sources: [
+      // NOT `contentPack:` alone — that matches the `null` this property exists
+      // to have replaced. The anchor is a non-null pointer.
+      {
+        file: PROVIDERS,
+        re: /contentPack:\s*'https:\/\//,
+        what: 'the brick must NAME a pack — `contentPack: null` is the empty antecedent that made every content-pack check vacuously true',
+      },
+      {
+        file: PROVIDERS,
+        re: /ContentPackLoader\(\s*\n?\s*verifier:/,
+        what: 'the loader must be CONSTRUCTED in the stamped chassis — it had zero non-test call sites tree-wide while being fully implemented and exported',
+      },
+      {
+        file: PROVIDERS,
+        re: /\.load\(\s*\n?\s*expectPackId:/,
+        what: 'something must actually ASK for a pack, and ask for THIS app’s pack — a signature says who made a pack, never which pack it is',
+      },
+    ],
+    why: 'a rights complaint has to be actionable in hours without a store release, which is only true if a pointer flip really stops the pack being served',
   },
   {
     key: 'auth-seam-wired',
@@ -459,6 +630,19 @@ const COVERED_BY = {
   // Driven by the onboarding property: it is what lets the router look again
   // once the first-run flag resolves from disk.
   routerRefreshProvider: 'onboarding-shown-once',
+  // [pipeline 7]P-9 · [8]K-9. DRIVEN, not merely constructed: the property
+  // overrides the pointer and the pack BYTES and leaves the real loader in
+  // place, so the key pinning, the identity binding and the content-hash check
+  // all run — then flips the pointer and asserts the pack stops arriving.
+  contentPackSourceProvider: 'content-pack-consumed',
+  contentPackLoaderProvider: 'content-pack-consumed',
+  contentPackProvider: 'content-pack-consumed',
+  // The verifier is SUBSTITUTED by that property rather than exercised: the
+  // Ed25519 mathematics is proven for real in core's own suite against a
+  // throwaway keypair, and re-proving it here would need the signing key the
+  // owner has not generated (OWNER_QUEUE S-3). Named here so the substitution
+  // is a recorded choice rather than a gap nobody noticed.
+  packVerifierProvider: 'content-pack-consumed',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
   // Driven, not constructed: the property taps the banner's dismiss action and
@@ -719,6 +903,8 @@ if (domainSrc) {
   } else {
     ok(`tracked domain: ${domain.length} chassis behaviour(s) in ${DOMAIN_FILES.length} providers file(s)`);
   }
+
+  checkLegalLinkSet();
 
   const known = new Set([...Object.keys(COVERED_BY), ...Object.keys(UNASSERTED)]);
   const propertyKeys = new Set(REQUIRED_COVERAGE.map((p) => p.key));

@@ -36,7 +36,17 @@ final core.AppConfig kAppDefaultConfig = core.AppConfig(
   apiBaseUrl: AppConfig.apiBaseUrl,
   features: const <String, bool>{},
   paywall: const core.PaywallConfig(enabled: false),
-  contentPack: null,
+  // 🔴 NON-NULL, AND THAT IS THE WHOLE POINT ([pipeline 7]P-9, [8]K-9). This
+  // read `null` in the brick AND in apps/subly, so `contentPackProvider` below
+  // had an empty antecedent everywhere and the entire pack rail was green by
+  // inaction — the self-disabling shape K-16 was diagnosed for. A pack that
+  // cannot be fetched yet still has to be ASKED for, or nothing ever exercises
+  // the verifier, the hash check or the identity binding.
+  //
+  // Server-overridable: `AppConfig.contentPack` comes from the resolved runtime
+  // config, so pointing a build at an immutable versioned path is a config
+  // change rather than a release.
+  contentPack: 'https://packs.nikatru.com/${AppConfig.appId}/latest',
   copy: const <String, String>{},
   minSupportedVersion: '1.0.0',
 );
@@ -75,6 +85,76 @@ final FutureProvider<core.AppConfig> appConfigProvider =
         (core.AppConfig c) => c,
         (core.Failure _) => loader.peek(AppConfig.appId) ?? kAppDefaultConfig,
       );
+    });
+
+// ── THE CONTENT-PACK RAIL, WIRED ([pipeline 7]P-9 · [8]K-9 · [2]C-1) ─────────
+//
+// 🔴 WHAT WAS WRONG. `ContentPackLoader` existed, complete and well tested, with
+// ZERO non-test call sites in the entire repository — its own class declaration
+// and its constructor were the only occurrences outside `test/`. `PackVerifier`
+// sat in `assert-seams-wired.mjs` as `wired: false`. So the pack rail was a
+// fail-closed seam with no proven open path: every check passed, because
+// refusing to serve a pack nobody asked for is correct. Nothing was red and
+// nothing worked.
+//
+// These three providers are the consumer half. They are deliberately separate
+// so a test can replace the SOURCE (the bytes) without replacing the LOADER
+// (the verification) — swapping the loader would assert that a fake returns
+// what the fake was told to return, which is how `PaywallGate` came to exist
+// for months with no consumer.
+
+/// The Ed25519 verifier this build trusts (ADR 016).
+///
+/// Injected rather than defaulted inside the loader so the key pinning is
+/// visible at the app layer — and so a test can prove the OPEN path with a
+/// throwaway keypair. Production must never narrow or widen the pinned map.
+final Provider<core.PackVerifier> packVerifierProvider =
+    Provider<core.PackVerifier>((ref) => core.Ed25519PackVerifier());
+
+/// Where pack bytes come from, or null when this app is configured with no pack.
+///
+/// Derived from the RESOLVED config rather than from [AppConfig], so the server
+/// decides which pack a shipped binary reads.
+final Provider<core.ContentPackSource?> contentPackSourceProvider =
+    Provider<core.ContentPackSource?>((ref) {
+      final core.AppConfig cfg =
+          ref.watch(appConfigProvider).value ?? kAppDefaultConfig;
+      final String? pointer = cfg.contentPack;
+      if (pointer == null || pointer.isEmpty) return null;
+      return DioContentPackSource(packBaseUrl: pointer);
+    });
+
+/// The loader itself — CONSTRUCTED here, which is the thing that had never
+/// happened anywhere outside a test.
+final Provider<core.ContentPackLoader> contentPackLoaderProvider =
+    Provider<core.ContentPackLoader>(
+      (ref) =>
+          core.ContentPackLoader(verifier: ref.watch(packVerifierProvider)),
+    );
+
+/// The pack this app is currently serving, or null when it has none.
+///
+/// 🔴 NULL WHEN THE POINTER IS NULL, AND NULL AGAIN WHEN IT FLIPS TO ONE THAT
+/// DOES NOT VERIFY. Both matter, and the second is the one a takedown depends
+/// on ([pipeline 8]K-9): retiring a pack has to actually stop it being served,
+/// within hours and without a store release. `ref.watch` on the config is what
+/// makes that true — the pointer changing re-runs this provider.
+///
+/// `expectPackId` is the app's own id: the loader refuses a pack that is
+/// perfectly valid and simply not ours.
+final FutureProvider<core.ContentPack?> contentPackProvider =
+    FutureProvider<core.ContentPack?>((ref) async {
+      final core.ContentPackSource? source = ref.watch(
+        contentPackSourceProvider,
+      );
+      if (source == null) return null;
+      final core.Result<core.ContentPack> r = await ref
+          .watch(contentPackLoaderProvider)
+          .load(expectPackId: AppConfig.appId, remote: source);
+      // A failed load is NOT an error the app shows. The pack is optional
+      // content; the app must run without it. What must never happen is a
+      // failed load being served as though it succeeded.
+      return r.fold((core.ContentPack p) => p, (core.Failure _) => null);
     });
 
 /// The running app version (e.g. "1.2.0"), or null when it can't be determined

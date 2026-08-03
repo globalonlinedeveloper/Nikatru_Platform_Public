@@ -238,14 +238,49 @@ const REQUIRED_COVERAGE = [
       },
     ],
   },
-  // Checked by `checkPackVerifier()` below rather than by the caller scan: the
-  // implementation lives in packages/core, which is not an app tree, and its
-  // "on-switch" has two halves with different owners.
   {
     id: 'pack_verifier',
-    what: 'PackVerifier — content packs cannot load without a real impl',
-    wired: false,
-    deferred: 'checked separately — see the pack_verifier section below',
+    what: 'PackVerifier — content packs cannot load without a real impl AND a real consumer',
+    wired: true,
+    // 🔴 WIRED 2026-08-03 ([pipeline 7]P-9 consumer half, [8]K-9, [2]C-1).
+    // This row read `wired: false, deferred: "checked separately"` and the
+    // separate check below verified only that an IMPLEMENTATION exists and is
+    // exported. Both were true, and had been for months, while
+    // `ContentPackLoader` had ZERO non-test occurrences anywhere in the tree
+    // beyond its own class declaration and constructor — so the rail was a
+    // complete, well-tested, exported capability that nothing on earth called.
+    // The half the old check could not see is the half that matters: a verifier
+    // nobody reaches verifies nothing.
+    //
+    // The key-pinning half stays in `checkPackVerifier()` below, still PRINTING
+    // rather than failing, because generating the production signing keypair is
+    // owner-gated (OWNER_QUEUE S-3) and a guard on owner-only work must not
+    // block every CI run.
+    //
+    // TWO needs, because the seam has two separable halves and deleting either
+    // one silently re-breaks the rail: the loader must be CONSTRUCTED with a
+    // real verifier, and something must actually ASK it for a pack.
+    needs: [
+      {
+        re: /ContentPackLoader\(\s*\n?\s*verifier:/,
+        // packages/ is outside SCAN_ROOTS so the class's own declaration is not
+        // in scope — but an anchor that would match a declaration if the scan
+        // ever widened is an anchor that stops meaning anything.
+        declares: /class\s+ContentPackLoader\b/,
+        // Scoped to the brick: this is the CHASSIS's pack rail, inherited by
+        // every app the factory stamps. A caller in apps/ would say nothing
+        // about that and would keep this green with the template's own
+        // construction deleted.
+        scope: BRICK_APP,
+        label: 'a real ContentPackLoader construction in the stamped chassis',
+      },
+      {
+        re: /\.load\(\s*\n?\s*expectPackId:/,
+        declares: /Future<Result<ContentPack>>\s+load\(/,
+        scope: BRICK_APP,
+        label: 'something that actually asks the loader for a pack',
+      },
+    ],
   },
   {
     id: 'entitlements',
