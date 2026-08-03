@@ -208,6 +208,8 @@
   "@privacyPolicy": { "description": "Opens the privacy policy. Both stores require it to be reachable in-app." },
   "termsOfService": "Terms of service",
   "@termsOfService": { "description": "Opens the terms of service." },
+  "refundPolicy": "Refund policy",
+  "@refundPolicy": { "description": "Opens the refund policy. [pipeline 8]K-6 — the third published legal page; the in-app set must equal the published set." },
   "language": "Language",
   "@language": { "description": "Settings section for the app language." },
   "languageSystem": "System",

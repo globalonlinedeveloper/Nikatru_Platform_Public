@@ -217,6 +217,18 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => _openUrl(AppConfig.termsUrl),
           ),
+          // [pipeline 8]K-6. The third published legal page, and the one that
+          // was missing: the site publishes privacy, terms AND refund, the
+          // brick linked the first two, and nothing compared the sets. A refund
+          // policy a buyer cannot reach from inside the app they bought in is
+          // the page a store reviewer looks for first when a charge is
+          // disputed.
+          ListTile(
+            leading: const Icon(Icons.currency_exchange_outlined),
+            title: Text(l10n.refundPolicy),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () => _openUrl(AppConfig.refundUrl),
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.mail_outline),

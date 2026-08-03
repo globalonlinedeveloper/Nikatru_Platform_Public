@@ -38,8 +38,16 @@ class AppConfig {
   static const String companyName = 'Nikatru';
   static const String companyUrl = 'https://nikatru.com';
   static const String supportEmail = 'support@nikatru.com';
+  // 🔴 THE SET HERE MUST EQUAL `LEGAL_PAGES` IN check-site-integrity.mjs
+  // ([pipeline 8]K-6). It declared TWO while the site publishes FOUR, so every
+  // stamped app shipped a legal surface that silently omitted the refund policy
+  // — the one page a store reviewer opens when a purchase is disputed, and the
+  // one a paying user needs. `assert-stamp-properties.mjs` now asserts the two
+  // sets are equal in BOTH directions, so publishing a fourth page without
+  // linking it, or dropping one of these, fails the build.
   static const String privacyUrl = 'https://nikatru.com/privacy.html';
   static const String termsUrl = 'https://nikatru.com/terms.html';
+  static const String refundUrl = 'https://nikatru.com/refund.html';
 
   // The API this app calls. Soft via CFG: the host can change with no app
   // release (API_BASE_URL --dart-define overrides the default).

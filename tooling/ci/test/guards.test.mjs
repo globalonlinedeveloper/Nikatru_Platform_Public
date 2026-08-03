@@ -1576,6 +1576,32 @@ Future<void> _buy(Offering offering) async {
 }
 `;
 
+  // [pipeline 7]P-9 consumer half · [8]K-9 — the CONTENT-PACK rail, wired
+  // 2026-08-03. `pack_verifier` had read `wired: false, deferred:` and the
+  // separate check below proved only that an implementation existed and was
+  // exported; both were true for months while `ContentPackLoader` had zero
+  // non-test call sites anywhere. The seam now carries two `needs` scoped to
+  // the brick, so the fixture has to carry BOTH halves — the loader being
+  // CONSTRUCTED with a real verifier, and something actually ASKING it for a
+  // pack. Split into two constants rather than one blob precisely so the cases
+  // below can remove either half on its own and prove each limb can fail.
+  const BRICK_PACK_LOADER = `
+final Provider<core.ContentPackLoader> contentPackLoaderProvider =
+    Provider<core.ContentPackLoader>(
+      (ref) =>
+          core.ContentPackLoader(verifier: ref.watch(packVerifierProvider)),
+    );
+`;
+  const BRICK_PACK_LOAD = `
+final FutureProvider<core.ContentPack?> contentPackProvider =
+    FutureProvider<core.ContentPack?>((ref) async {
+      final core.Result<core.ContentPack> r = await ref
+          .watch(contentPackLoaderProvider)
+          .load(expectPackId: AppConfig.appId, remote: source);
+      return r.fold((core.ContentPack p) => p, (core.Failure _) => null);
+    });
+`;
+
   const brickFiles = ({
     reminders = BRICK_SCHEDULES,
     toggle = BRICK_TOGGLE_CALLS,
@@ -1583,10 +1609,12 @@ Future<void> _buy(Offering offering) async {
     gate = BRICK_GATE,
     checkout = BRICK_CHECKOUT,
     review = BRICK_REVIEW,
+    packLoader = BRICK_PACK_LOADER,
+    packLoad = BRICK_PACK_LOAD,
     settingsExtra = '',
   } = {}) => ({
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}`,
+      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}${packLoader}${packLoad}`,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
       toggle + settingsExtra,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart': money,
@@ -1679,13 +1707,15 @@ Future<void> main() async {
       reminders = BRICK_SCHEDULES,
       toggle = BRICK_TOGGLE_CALLS,
       review = BRICK_REVIEW,
+      packLoader = BRICK_PACK_LOADER,
+      packLoad = BRICK_PACK_LOAD,
       settingsExtra = '',
     } = {},
   ) =>
     fixture(name, {
       ...filler(fillerCount),
       ...PACK_FILES,
-      ...brickFiles({ reminders, toggle, review, settingsExtra }),
+      ...brickFiles({ reminders, toggle, review, packLoader, packLoad, settingsExtra }),
       'apps/subly/lib/state/analytics_providers.dart':
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
@@ -2146,6 +2176,29 @@ class Ed25519PackVerifier implements PackVerifier {
   // the guard now asks.
   const laneJob = (name) =>
     `  ${name}:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: flutter build --release --dart-define=GLITCHTIP_DSN=\${{ secrets.GLITCHTIP_DSN }}\n`;
+  // [pipeline 7]P-9 consumer half · [8]K-9. Since 2026-08-03 `pack_verifier` is
+  // `wired: true` with two brick-scoped needs, so the consumer half belongs in
+  // this fixture for the same "isolate the verifier" reason as everything else
+  // here — without it every test below fails on the consumer, not on the key
+  // pinning it is actually about. Kept as two separate strings so the cases at
+  // the end can delete each half on its own.
+  const PACK_LOADER_CONSTRUCTED =
+    'final p = core.ContentPackLoader(verifier: ref.watch(packVerifierProvider));\n';
+  const PACK_ASKED_FOR =
+    'final r = await ref.watch(contentPackLoaderProvider).load(expectPackId: AppConfig.appId, remote: s);\n';
+  const brickProviders = ({ packLoader = PACK_LOADER_CONSTRUCTED, packLoad = PACK_ASKED_FOR } = {}) =>
+    "const String kPrivacyPolicyVersion = '2026-07-26';\n" +
+    'Future<bool> applyReminderChoice({required bool on}) async {\n' +
+    '  await svc.init();\n' +
+    '  await svc.scheduleDaily(core.DailyReminder(id: 1));\n' +
+    '  return on;\n}\n' +
+    // [pipeline 12]W-7b: the review prompt is an EXCLUSIVE trigger — exactly
+    // one caller, and "at most one" is satisfied by ZERO, so a fixture with no
+    // caller at all fails for a reason unrelated to whatever it is testing.
+    'Future<void> maybeAsk() async { await prompter.requestReview(); }\n' +
+    packLoader +
+    packLoad;
+
   const consentOk = {
     'tooling/channel-register.json': JSON.stringify({
       channels: [
@@ -2166,16 +2219,7 @@ class Ed25519PackVerifier implements PackVerifier {
       "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
     'apps/subly/lib/features/consent/consent_prompt.dart': 'recordAnalyticsConsent(ref, granted: true);',
     'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
-    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      "const String kPrivacyPolicyVersion = '2026-07-26';\n" +
-      'Future<bool> applyReminderChoice({required bool on}) async {\n' +
-      '  await svc.init();\n' +
-      '  await svc.scheduleDaily(core.DailyReminder(id: 1));\n' +
-      '  return on;\n}\n' +
-      // [pipeline 12]W-7b: the review prompt is an EXCLUSIVE trigger — exactly
-      // one caller, and "at most one" is satisfied by ZERO, so a fixture with no
-      // caller at all fails for a reason unrelated to whatever it is testing.
-      'Future<void> maybeAsk() async { await prompter.requestReview(); }\n',
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart': brickProviders(),
     // …and the reminders seam, and the secure-session seam, for the same reason.
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
       'onChanged: (bool on) => c.applyReminderChoice(on: on),\n',
@@ -2192,10 +2236,23 @@ class Ed25519PackVerifier implements PackVerifier {
       'final CheckoutStart s = await rail.startCheckout(offering);\n',
   };
 
-  const build = (name, { impl = REAL_IMPL, barrel = BARREL, keys = keysFile('') } = {}) =>
+  const build = (
+    name,
+    {
+      impl = REAL_IMPL,
+      barrel = BARREL,
+      keys = keysFile(''),
+      packLoader = PACK_LOADER_CONSTRUCTED,
+      packLoad = PACK_ASKED_FOR,
+    } = {},
+  ) =>
     fixture(name, {
       ...filler(14),
       ...consentOk,
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart': brickProviders({
+        packLoader,
+        packLoad,
+      }),
       'packages/core/lib/src/content/ed25519_pack_verifier.dart': impl,
       'packages/core/lib/nikatru_core.dart': barrel,
       'packages/core/lib/src/content/pack_verifier.dart': keys,
@@ -2244,6 +2301,55 @@ class Ed25519PackVerifier implements PackVerifier {
     });
     assert.equal(code, 0);
     assert.match(out, /2 production key\(s\) pinned/);
+  });
+
+  // ── THE CONSUMER HALF, which is the half that was missing for months. ─────
+  // A perfect, exported, key-pinned verifier that nothing constructs verifies
+  // nothing — the "fail-closed seam with no proven open path" shape. Each half
+  // is deleted on its own here, because a single test that removes both would
+  // still pass with one of the two `needs` neutered.
+  test('FAILS when the loader is never CONSTRUCTED in the stamped chassis', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-noloader', { packLoader: '// the construction was deleted\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real ContentPackLoader construction in the stamped chassis NOT FOUND/);
+  });
+
+  test('FAILS when nothing ever ASKS the loader for a pack', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-noload', { packLoad: '// nothing calls load()\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /something that actually asks the loader for a pack NOT FOUND/);
+  });
+
+  // `expectPackId` is the limb that makes the load about THIS app's pack. A
+  // signature says who MADE a pack, never which pack it is, so a load without
+  // the identity binding accepts any pack the same key ever signed — including
+  // one already retired for a rights complaint. Dropping just the named
+  // argument leaves a perfectly valid `.load(...)` call behind.
+  test('FAILS when the load drops the expectPackId identity binding', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-noid', {
+        packLoad: 'final r = await ref.watch(contentPackLoaderProvider).load(remote: s);\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /something that actually asks the loader for a pack NOT FOUND/);
+  });
+
+  // The anchor must not match the class's own DECLARATION. packages/ is outside
+  // SCAN_ROOTS today, but an anchor that would accept a declaration if the scan
+  // ever widened is an anchor that has stopped meaning "somebody calls this".
+  test('a bare ContentPackLoader declaration is NOT a construction', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('pv-decl-only', {
+        packLoader: 'class ContentPackLoader {\n  ContentPackLoader({required this.verifier});\n}\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real ContentPackLoader construction in the stamped chassis NOT FOUND/);
   });
 });
 
@@ -2358,6 +2464,11 @@ group('property: analytics-on-switch-mounted', () {
   testWidgets('l', (t) async {});
   test('m', () {});
 });
+group('property: content-pack-consumed', () {
+  test('xx', () {});
+  test('yy', () {});
+  test('zz', () {});
+});
 `;
   // [pipeline C-11] BOTH themes carry the seed. A fixture with only the light
   // one seeded would agree with the first version of that anchor, which passed
@@ -2418,6 +2529,38 @@ enum WindowClass { compact, medium, expanded, large, extraLarge }
   //
   // All 23 chassis behaviours (C-15 added four), plus the two theme-persistence limbs and the
   // consent record() call the property anchors point at.
+  // [pipeline 7]P-9 consumer half · [8]K-9 — the CONTENT-PACK rail. Both a
+  // property (`content-pack-consumed`, three anchors all in this file) and four
+  // rows of COVERED_BY, which the guard reconciles against the tree in BOTH
+  // directions: a classified provider that no longer exists is a FAIL, so the
+  // fixture has to declare all four by name as well as carry the three anchors.
+  //
+  // 🔴 `contentPack:` ALONE IS NOT THE ANCHOR — the anchor is a non-null
+  // pointer. This value read the literal `null` in the brick and in apps/subly,
+  // which is the empty antecedent that made every content-pack check vacuously
+  // true, so the fixture models the pointer as well as the plumbing.
+  const goodPackRail = `
+final core.AppConfig kAppDefaultConfig = core.AppConfig(
+  contentPack: 'https://packs.nikatru.com/\${AppConfig.appId}/latest',
+);
+final Provider<core.PackVerifier> packVerifierProvider =
+    Provider<core.PackVerifier>((ref) => core.Ed25519PackVerifier());
+final Provider<core.ContentPackSource?> contentPackSourceProvider =
+    Provider<core.ContentPackSource?>((ref) => DioContentPackSource(packBaseUrl: p));
+final Provider<core.ContentPackLoader> contentPackLoaderProvider =
+    Provider<core.ContentPackLoader>(
+      (ref) =>
+          core.ContentPackLoader(verifier: ref.watch(packVerifierProvider)),
+    );
+final FutureProvider<core.ContentPack?> contentPackProvider =
+    FutureProvider<core.ContentPack?>((ref) async {
+      final core.Result<core.ContentPack> r = await ref
+          .watch(contentPackLoaderProvider)
+          .load(expectPackId: AppConfig.appId, remote: source);
+      return r.fold((core.ContentPack p) => p, (core.Failure _) => null);
+    });
+`;
+
   const goodProviders = `
 final Provider<core.ConfigTransport> configTransportProvider = X();
 final Provider<core.ConfigLoader> configLoaderProvider = X();
@@ -2792,8 +2935,54 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
   const WORKSPACE = 'pubspec.yaml';
   const goodWorkspace = 'name: nikatru_workspace\nworkspace:\n  - packages/core\n  - apps/subly\n';
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, workspace = goodWorkspace, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [WORKSPACE]: workspace, ...extra };
+  // ── [pipeline 8]K-6 · THE IN-APP LEGAL SET vs THE PUBLISHED LEGAL SET ──────
+  //
+  // 🔴 The defect: the brick declared TWO legal URLs, the site publishes FOUR,
+  // and nothing compared the lists — so every stamped app shipped without the
+  // refund policy, the page a store reviewer opens first on a disputed charge.
+  // The guard now reconciles them in BOTH directions plus "a constant is not a
+  // link", so the fixture needs three artefacts: the published list, the
+  // chassis constants, and the settings screen that opens them.
+  //
+  // The published list is PARSED off the `LEGAL_PAGES` declaration, never
+  // grepped, so this fixture deliberately carries prose naming `pricing.html`
+  // and `refund.html` OUTSIDE the array — a text search would "find" both and
+  // report a set that does not exist. That is the recorded [pipeline F-10]
+  // lesson, and the case below turns it into a failing input.
+  const SITE_INTEGRITY = 'tooling/ci/check-site-integrity.mjs';
+  const legalPages = (pages) =>
+    `// Prose that names pricing.html and refund.html while explaining that\n` +
+    `// pricing.html is deliberately NOT one of the LEGAL_PAGES below.\n` +
+    `const LEGAL_PAGES = [${pages.map((p) => `'${p}'`).join(', ')}];\n`;
+  const goodSiteIntegrity = legalPages(['privacy.html', 'terms.html', 'refund.html', 'delete-account.html']);
+
+  // Only `nikatru.com/<page>.html` constants count as legal links. `companyUrl`
+  // is the site root and `apiBaseUrl` is not a page at all — both are in the
+  // fixture so the parser has to discriminate rather than match any URL.
+  const APP_CONFIG = `${BRICK}/lib/core/app_config.dart`;
+  const goodAppConfig = `
+class AppConfig {
+  static const String companyUrl = 'https://nikatru.com';
+  static const String apiBaseUrl = 'https://api.nikatru.com';
+  static const String privacyUrl = 'https://nikatru.com/privacy.html';
+  static const String termsUrl = 'https://nikatru.com/terms.html';
+  static const String refundUrl = 'https://nikatru.com/refund.html';
+}
+`;
+  // …and the LEGAL section that actually opens them. A declared constant no
+  // screen links leaves the page exactly as unreachable as never declaring it,
+  // while making the set equality above go green.
+  const goodLegalLinks = `
+onTap: () => _openUrl(AppConfig.privacyUrl),
+onTap: () => _openUrl(AppConfig.termsUrl),
+onTap: () => _openUrl(AppConfig.refundUrl),
+`;
+
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
+    // The pack rail is APPENDED rather than folded into `goodProviders` so the
+    // many cases that replace `providers` wholesale keep satisfying it — and so
+    // the cases that are ABOUT the pack rail can drop it on its own.
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -2906,9 +3095,13 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
   const stampedApp = (dir, over = {}) => ({
     [`${dir}/test/chassis_properties_test.dart`]: over.propTest ?? goodTest,
     [`${dir}/lib/app.dart`]: over.app ?? goodApp,
-    [`${dir}/lib/state/providers.dart`]: over.providers ?? goodProviders,
+    // The pack rail is appended for the same reason it is in `build`: a stamped
+    // app inherits it from the chassis, so a fixture without it fails on the
+    // consumer rather than on whatever the case is about.
+    [`${dir}/lib/state/providers.dart`]: (over.providers ?? goodProviders) + (over.packRail ?? goodPackRail),
     [`${dir}/lib/state/money_providers.dart`]: over.moneyProviders ?? goodMoneyProviders,
-    [`${dir}/lib/features/settings/settings_screen.dart`]: over.settings ?? goodSettings,
+    [`${dir}/lib/features/settings/settings_screen.dart`]:
+      (over.settings ?? goodSettings) + (over.legalLinks ?? goodLegalLinks),
     [`${dir}/lib/features/home/home_screen.dart`]: over.home ?? goodHome,
     [`${dir}/lib/core/router.dart`]: over.router ?? goodRouter,
     [`${dir}/lib/main.dart`]: over.brickMain ?? goodMain,
@@ -3536,9 +3729,13 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      // 41 since 2026-08-03: the domain reads BOTH providers files, and
-      // [pipeline 13]T-8 added catchUpNudgeProvider to the first of them.
-      assert.match(out, /tracked domain: 41 chassis behaviour\(s\)/);
+      // 40 since 2026-08-01: the domain reads BOTH providers files, and
+      // [pipeline 5]M-13's money_providers.dart carries eight. 41 since
+      // 2026-08-03: [pipeline 13]T-8 added catchUpNudgeProvider to the first of
+      // them. 45 since 2026-08-03: the content-pack rail added four more, all
+      // four DRIVEN by the `content-pack-consumed` property rather than
+      // admitted as gaps.
+      assert.match(out, /tracked domain: 45 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -3575,7 +3772,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 40/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 44/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
@@ -3587,10 +3784,170 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
         cwd: build('sp-blind', {
           providers: '// every provider declaration gone\n',
           moneyProviders: '// …and the money ones too\n',
+          // …including the content-pack rail, which `build` otherwise appends.
+          packRail: '',
         }),
       });
       assert.equal(code, 1);
       assert.match(out, /COVERAGE LOST — the domain parse found 0/);
+    });
+  });
+
+  // ── [pipeline 7]P-9 · [8]K-9 — the CONTENT-PACK property. ─────────────────
+  // The shape this replaced was "fail if any app declares the chassis live
+  // while its config has no consumer" — an antecedent NO app could satisfy,
+  // because `contentPack` was the literal `null` everywhere. Vacuously true,
+  // and greener the less was built. Each of the three anchors is broken on its
+  // own below, because a single case that breaks all three would still pass
+  // with two of them neutered.
+  describe('content-pack-consumed', () => {
+    test('FAILS when the pointer goes back to null — the empty antecedent', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-null', {
+          packRail: goodPackRail.replace(
+            "contentPack: 'https://packs.nikatru.com/${AppConfig.appId}/latest',",
+            'contentPack: null,',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /the brick must NAME a pack/);
+    });
+
+    test('FAILS when the loader is no longer constructed', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-noloader', {
+          packRail: goodPackRail.replace(
+            'core.ContentPackLoader(verifier: ref.watch(packVerifierProvider)),',
+            'throw UnimplementedError(),',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /the loader must be CONSTRUCTED in the stamped chassis/);
+    });
+
+    test('FAILS when the load drops expectPackId — a signature is not an identity', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-noid', {
+          packRail: goodPackRail.replace('.load(expectPackId: AppConfig.appId, remote: source)', '.load(remote: source)'),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /something must actually ASK for a pack/);
+    });
+
+    test('FAILS when the inherited assertion group is dropped', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-nogroup', {
+          propTest: goodTest.replace("group('property: content-pack-consumed'", "group('property: something-else'"),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /'content-pack-consumed' is NOT asserted/);
+    });
+  });
+
+  // ── [pipeline 8]K-6 — the in-app legal set equals the published legal set. ─
+  // The defect: two declared URLs against four published pages, with nothing
+  // comparing them, so every stamped app shipped without the refund policy.
+  // A RELATIONSHIP in both directions, never a count — so both directions get
+  // a failing input here, as do all three COVERAGE-LOST self-checks.
+  describe('the legal set is a relationship, not a count', () => {
+    test('names the legal set on the happy path', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('legal-ok') });
+      assert.equal(code, 0, out);
+      assert.match(out, /\[8\]K-6 legal set: 3 published page\(s\) linked in the chassis/);
+      assert.match(out, /1 reached by an in-app control instead/);
+    });
+
+    // DIRECTION 1 — the site publishes a page the chassis does not link. This
+    // is the live defect, reproduced: refund.html published, no `refundUrl`.
+    test('FAILS when the site publishes a legal page the chassis never links', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('legal-unlinked', {
+          appConfig: goodAppConfig.replace(
+            "  static const String refundUrl = 'https://nikatru.com/refund.html';\n",
+            '',
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /publishes 'refund\.html' and .* declares no URL for it/);
+    });
+
+    // DIRECTION 2 — the chassis links a page the site does not publish, which
+    // is a 404 in front of a user looking for the refund policy.
+    test('FAILS when the chassis links a page the site does not publish', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('legal-404', {
+          siteIntegrity: legalPages(['privacy.html', 'terms.html', 'delete-account.html']),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /does not publish it\. Every stamped app would send a user to a 404/);
+    });
+
+    // A CONSTANT IS NOT A LINK. Declaring `refundUrl` and never putting it on a
+    // screen leaves the page as unreachable as not declaring it, while making
+    // both set-equality directions above go green.
+    test('FAILS when a declared legal URL is never opened from settings', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('legal-unlinked-ui', {
+          legalLinks: goodLegalLinks.replace('onTap: () => _openUrl(AppConfig.refundUrl),\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /declares 'refundUrl' for 'refund\.html' but .* never opens it/);
+    });
+
+    // The parse is off the DECLARATION. The fixture's prose names both
+    // pricing.html and refund.html; a grep would "find" a set the array does
+    // not contain, which is exactly how a CORS guard once matched a comment
+    // explaining an absence.
+    test('COVERAGE LOST when LEGAL_PAGES cannot be parsed, prose notwithstanding', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('legal-unparseable', {
+          siteIntegrity:
+            '// LEGAL_PAGES used to be here and named privacy.html, terms.html,\n' +
+            '// refund.html and delete-account.html in this very comment.\n' +
+            'const PAGES_LEGAL = [];\n',
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — could not parse LEGAL_PAGES/);
+    });
+
+    test('COVERAGE LOST when LEGAL_PAGES parses as EMPTY', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('legal-empty', { siteIntegrity: legalPages([]) }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /LEGAL_PAGES parsed as EMPTY/);
+    });
+
+    // An exemption list that has eaten its own domain is the self-disabling
+    // shape this whole guard exists to catch: every published page exempt means
+    // the set equality ranges over nothing and reports clean.
+    test('COVERAGE LOST when every published page is link-exempt', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('legal-all-exempt', {
+          siteIntegrity: legalPages(['delete-account.html']),
+          // …and the chassis links nothing, or DIRECTION 2 fires first and this
+          // case would pass for the wrong reason.
+          appConfig: 'class AppConfig {\n  static const String companyUrl = 1;\n}\n',
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /every published legal page is on the link-exemption list/);
+    });
+
+    test('COVERAGE LOST when the published list is unreadable at all', () => {
+      const files = build('legal-gone');
+      rmSync(join(files, SITE_INTEGRITY), { force: true });
+      const { code, out } = run('assert-stamp-properties.mjs', { cwd: files });
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — tooling\/ci\/check-site-integrity\.mjs unreadable/);
     });
   });
 });
