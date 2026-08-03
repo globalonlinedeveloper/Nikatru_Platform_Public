@@ -41,6 +41,13 @@ on:
       - 'tooling/ci/assert-gate-passed.mjs'
       - 'tooling/ci/assert-app-versioning.mjs'
       - 'tooling/ci/record-deployment.mjs'
+      # [pipeline 9]R-13's launch smoke. Listed for the same reason as the three
+      # above — this lane EXECUTES it, and it is the one step that can stop a
+      # publish. assert-deploy-triggers.mjs derives its requirement from
+      # `tooling/ci/**` only, so this entry is deliberate rather than enforced:
+      # a smoke that changed and never ran again would be a gate that quietly
+      # stopped gating, which is this repository's most repeated failure.
+      - 'tooling/smoke/smoke-web-artifact.mjs'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
@@ -152,6 +159,43 @@ jobs:
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
           --dart-define=APP_ENV=production
           --dart-define=RELEASE_CHANNEL=web
+
+      # ── [pipeline 9]R-13 · THE ARTIFACT IS STARTED ONCE, BEFORE PUBLICATION ──
+      # Every other gate in this repository proves a build COMPLETES and stops
+      # there. Until this step existed nothing in the tree had EVER run a built
+      # artifact: build-platforms.yml uploads six builds without launching one,
+      # ci.yml analyzes and unit-tests a stamped app without starting it, and
+      # e2e.yml drives a DEBUG `web-server` target — not the released bundle. So
+      # a build producing a non-starting artifact was green everywhere: a wrong
+      # `base href`, an asset declared in pubspec and missing from build/web, an
+      # exception thrown in main() before the first frame. Each fails at first
+      # launch and NOWHERE EARLIER.
+      #
+      # ⚠️ IT SITS HERE, BETWEEN THE BUILD AND THE DEPLOY, AND THAT PLACEMENT IS
+      # THE REQUIREMENT. R-13's subject is the artifact BEFORE publication, where
+      # there is nothing to roll back because nothing has shipped; smoking after
+      # the deploy is `[14]O-7`'s question, asked of users. Duplicate D-14 was
+      # re-confirmed on that distinction, and assert-launch-smoke.mjs fails the
+      # build if this step ever moves below the deploy.
+      #
+      # The signal is `flutter-first-frame`, dispatched by the engine once the
+      # first frame has been RASTERIZED — so it is true only after main() ran to
+      # completion and runApp produced a frame. Not a zero exit code (headless
+      # Chrome exits 0 on a page that rendered nothing) and not a DOM node the
+      # engine creates during bootstrap (those exist even when the app's first
+      # build throws).
+      #
+      # No new action and no chromedriver: the script speaks the DevTools
+      # Protocol over Node's built-in WebSocket and finds the Chrome the runner
+      # image already ships — the same binary e2e.yml drives nightly. `setup-node`
+      # is explicit because that WebSocket needs Node >= 22 and the smoke must
+      # never fail for the harness's own reasons.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Launch the built bundle once, before it is published
+        working-directory: .
+        run: node tooling/smoke/smoke-web-artifact.mjs apps/subly/build/web
 
       - name: Deploy to Cloudflare Pages (project subly)
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3

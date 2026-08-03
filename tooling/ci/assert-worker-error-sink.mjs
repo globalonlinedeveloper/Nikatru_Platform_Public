@@ -45,6 +45,13 @@
 // that a Worker reports its errors matches every pattern looking for it doing
 // so, and this repository has shipped that defect twice.
 //
+// LANE-BOUND: deploy-workers.yml — the supplier half (rule 5) is asserted against the ONE workflow that
+// deploys `services/*`, and Workers are not a release CHANNEL: no row in tooling/channel-register.json
+// names this file, because the register enumerates the channels an APP ships to. The subject set that IS
+// derived here is the Workers themselves (every `services/*` entrypoint, floored by MIN_WORKERS), so a
+// new Worker acquires the obligation automatically; what cannot be derived is the single lane that
+// deploys them. A second Workers deploy lane would have to be added here deliberately. [pipeline 9]R-1 limb B.
+//
 // Usage:  node tooling/ci/assert-worker-error-sink.mjs [repoRoot]
 // Exit 0 = every Worker's unhandled error reaches a declared sink.
 // ─────────────────────────────────────────────────────────────────────────────

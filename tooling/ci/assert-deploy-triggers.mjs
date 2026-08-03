@@ -47,6 +47,12 @@
 // inside the directory its filter already names. Flutter is the odd one out
 // precisely because the workspace resolves from the repository ROOT.
 //
+// LANE-BOUND: deploy-web.yml — but ONLY as a REQUIRED_COVERAGE floor, not as the subject set. The scan
+// grades every path-filtered workflow that builds a Flutter artifact; naming this one is what stops the
+// grade being computed over an empty set when the lane is renamed or its trigger restructured, which is
+// the failure this repo has hit more often than a broken check. A second path-filtered Flutter deploy is
+// graded automatically the day it lands and needs no edit here. [pipeline 9]R-1 limb B.
+//
 // Usage:  node tooling/ci/assert-deploy-triggers.mjs [repoRoot]
 // Exit 0 = every path-filtered Flutter deploy lane lists its real inputs.
 // ─────────────────────────────────────────────────────────────────────────────

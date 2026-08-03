@@ -744,6 +744,35 @@ jobs:
       - name: The web channel declares a cache policy a deploy can be seen through
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-web-cache-policy.mjs
+      # [pipeline 9]R-1. The criterion this replaces banned a STRING — "no
+      # hard-coded `apps/<id>` in a release workflow" — and a rule about a string
+      # is satisfied by moving the string: `env: APP: apps/subly` plus
+      # `${{ env.APP }}` passes it exactly, one app, nothing generic. So the
+      # references are RESOLVED (env and matrix expanded) and compared to the
+      # root pubspec `workspace:` list, which already exists and is already
+      # policed. Equality, not "resolves to one app": with one app in the
+      # workspace those are indistinguishable, and the doc's form would have
+      # demanded a matrix refactor on day one to satisfy an assertion proving
+      # nothing. It also closes the criterion's blind spot — a GUARD can bind a
+      # lane just as fatally, and one did (`const DEPLOY = 'deploy-web.yml'` in
+      # assert-seams-wired.mjs, which printed ok while build-platforms.yml
+      # shipped two artifact lanes with no crash sink).
+      - name: Release lanes cover every app, and no guard hides a lane
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-release-lane-generic.mjs
+      # [pipeline 9]R-13. Nothing in this tree had EVER started a built
+      # artifact: six `flutter build` invocations upload their output, the stamp
+      # lane analyzes and never runs, and e2e.yml drives a DEBUG `web-server`
+      # target rather than the released bundle. So a wrong `base href`, an asset
+      # declared and missing, or an exception in main() before the first frame
+      # was green in every lane and failed at first launch. Build-failing for the
+      # served + headless-capable set DERIVED from tooling/channel-register.json
+      # (today: `web`); every other row PRINTS a dated who/what/why, because a
+      # build-failing rule on Apple — deferred by owner decision — would block
+      # all of CI on work only the owner can unblock.
+      - name: Nothing is published without being launched once
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-launch-smoke.mjs
       # [pipeline 10]D-3. Three identity checks already existed and each was
       # real; three holes were not. Linux's `APPLICATION_ID` was compared by
       # NOTHING; every existing check runs as `--app subly`, hardcoded, so app #2
