@@ -17,6 +17,7 @@
   "deletion-control.test.mjs": 18,
   "deploy-triggers.test.mjs": 17,
   "deployment-record.test.mjs": 28,
+  "discovery-surface.test.mjs": 33,
   "dod-sync.test.mjs": 18,
   "e2e-legs.test.mjs": 26,
   "e2e-proof-fresh.test.mjs": 30,

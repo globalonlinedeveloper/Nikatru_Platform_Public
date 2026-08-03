@@ -1,14 +1,29 @@
 <!DOCTYPE html>
 <!-- ============================================================
      PER-APP DETAIL PAGE — TEMPLATE (not linked, noindex).
-     To launch an app page:
-       1. Copy this file to  apps/<slug>.html  (e.g. apps/notes.html)
-       2. Replace every [PLACEHOLDER], incl. the JSON-LD block
-       3. Add real screenshots to  apps/shots/<slug>-1.webp  etc.
-       4. Remove the noindex meta + set the canonical URL
-       5. Add the page to sitemap.xml
-       6. Add the app to the APPS array in index.html
-          (links.web can point to this page or the live web app)
+
+     🔴 THIS IS NO LONGER THE WAY TO LAUNCH AN APP PAGE, and the six manual
+     steps that used to be listed here are gone because they were wrong from
+     2026-08-03 onward, not merely tedious.
+
+     Landings and the /apps/ hub are now GENERATED from the one registry:
+         sites/_shared/_data/apps.json
+       -> node tooling/sites/generate-discovery.mjs   (writes, commit the result)
+       -> tooling/ci/assert-discovery-surface.mjs     (regenerates in CI, diffs)
+     Add the app to the registry and run the generator. Copying this file by
+     hand produces a page the guard reports as one it would never write.
+
+     THIS FILE IS KEPT ON PURPOSE, for two reasons:
+       · it is the DESIGN REFERENCE for the fuller layout a landing grows into
+         once screenshots, features and store links exist as registry data;
+       · its bracketed slots are the CANARY that proves the generator's
+         placeholder scanner still matches. assert-discovery-surface.mjs names
+         [APP NAME], [SLUG], [WEB APP URL], [0 or price] and the Linux slot in
+         REQUIRED_TEMPLATE_TOKENS — editing them fails the build until that list
+         is updated in the same commit.
+
+     ⚠️ It is SERVED (nikatru.com/apps/_template resolves), so the noindex below
+     is load-bearing, not decoration.
      ============================================================ -->
 <html lang="en">
 <head>

@@ -36,4 +36,10 @@
     <changefreq>yearly</changefreq>
     <priority>0.6</priority>
   </url>
+  <url>
+    <loc>https://nikatru.com/apps/</loc>
+  </url>
+  <url>
+    <loc>https://nikatru.com/apps/subly.html</loc>
+  </url>
 </urlset>
