@@ -488,7 +488,8 @@ String _stripDartComments(String src) {
     }
     if (ch == '/' && next == '*') {
       i += 2;
-      while (i < src.length && !(src[i] == '*' && i + 1 < src.length && src[i + 1] == '/')) {
+      while (i < src.length &&
+          !(src[i] == '*' && i + 1 < src.length && src[i + 1] == '/')) {
         i++;
       }
       i += 2;
@@ -620,8 +621,7 @@ List<Element> _iconOnlyControls(WidgetTester tester) {
   return candidates
       .evaluate()
       .where(
-        (Element e) =>
-            e.widget is IconButton || !_hasInteractiveAncestor(e),
+        (Element e) => e.widget is IconButton || !_hasInteractiveAncestor(e),
       )
       .where((Element e) => !_hasTextDescendant(e))
       .toList();
@@ -1034,61 +1034,61 @@ void main() {
       // under a second, unrelated one.
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
-      final ProviderContainer c = await _signedInContainer(_MemStore());
-      addTearDown(c.dispose);
-      await tester.pumpWidget(
-        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
-      );
-      await _turns(tester);
-
-      final Iterable<NavigationDestination> found = tester
-          .widgetList<NavigationDestination>(
-            find.byType(NavigationDestination),
-          );
-      expect(
-        found,
-        isNotEmpty,
-        reason:
-            'nothing to check — a label assertion over an empty set is the '
-            'vacuous check this limb replaces',
-      );
-      for (final NavigationDestination d in found) {
-        expect(
-          d.label.trim(),
-          isNotEmpty,
-          reason: 'an unlabelled icon is unusable with a screen reader',
+        final ProviderContainer c = await _signedInContainer(_MemStore());
+        addTearDown(c.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
         );
-      }
+        await _turns(tester);
 
-      final _DeclaredRoutes routes = _declaredRoutes();
-      for (final String surface in routes.surfaces) {
-        final String landed = await _pumpAt(tester, c, surface);
-        for (final Element e in _iconOnlyControls(tester)) {
-          // No semantics node AT ALL is the strongest form of the defect: a
-          // screen reader is handed nothing. `getSemantics` throws in that
-          // case, so the throw is the finding, not an error in the test.
-          String label = '';
-          String tooltip = '';
-          try {
-            final SemanticsNode node = tester.getSemantics(
-              find.byWidget(e.widget),
+        final Iterable<NavigationDestination> found = tester
+            .widgetList<NavigationDestination>(
+              find.byType(NavigationDestination),
             );
-            label = node.label.trim();
-            tooltip = node.tooltip.trim();
-          } on StateError {
-            // leave both empty — the expectation below reports it
-          }
+        expect(
+          found,
+          isNotEmpty,
+          reason:
+              'nothing to check — a label assertion over an empty set is the '
+              'vacuous check this limb replaces',
+        );
+        for (final NavigationDestination d in found) {
           expect(
-            label.isNotEmpty || tooltip.isNotEmpty,
-            isTrue,
-            reason:
-                'route "$surface" (landed on "$landed") carries a '
-                '${e.widget.runtimeType} whose only affordance is a glyph and '
-                'which announces nothing — DoD §4-F. Give it a `tooltip:` or '
-                'wrap it in Semantics(label:)',
+            d.label.trim(),
+            isNotEmpty,
+            reason: 'an unlabelled icon is unusable with a screen reader',
           );
         }
-      }
+
+        final _DeclaredRoutes routes = _declaredRoutes();
+        for (final String surface in routes.surfaces) {
+          final String landed = await _pumpAt(tester, c, surface);
+          for (final Element e in _iconOnlyControls(tester)) {
+            // No semantics node AT ALL is the strongest form of the defect: a
+            // screen reader is handed nothing. `getSemantics` throws in that
+            // case, so the throw is the finding, not an error in the test.
+            String label = '';
+            String tooltip = '';
+            try {
+              final SemanticsNode node = tester.getSemantics(
+                find.byWidget(e.widget),
+              );
+              label = node.label.trim();
+              tooltip = node.tooltip.trim();
+            } on StateError {
+              // leave both empty — the expectation below reports it
+            }
+            expect(
+              label.isNotEmpty || tooltip.isNotEmpty,
+              isTrue,
+              reason:
+                  'route "$surface" (landed on "$landed") carries a '
+                  '${e.widget.runtimeType} whose only affordance is a glyph and '
+                  'which announces nothing — DoD §4-F. Give it a `tooltip:` or '
+                  'wrap it in Semantics(label:)',
+            );
+          }
+        }
       } finally {
         handle.dispose();
       }
@@ -1373,40 +1373,41 @@ void main() {
       };
     }
 
-    ProviderContainer packContainer({required String? pointer, required Map<String, List<int>> entries}) =>
-        ProviderContainer(
-          overrides: <Override>[
-            keyValueStoreProvider.overrideWith((_) async => _MemStore()),
-            // The POINTER is what a takedown changes, so it is what the test
-            // changes. Overriding `contentPackProvider` directly would assert
-            // that a fake returns what the fake was told to return.
-            appConfigProvider.overrideWith(
-              (_) async => core.AppConfig(
-                appId: AppConfig.appId,
-                apiBaseUrl: AppConfig.apiBaseUrl,
-                features: const <String, bool>{},
-                paywall: const core.PaywallConfig(enabled: false),
-                contentPack: pointer,
-                copy: const <String, String>{},
-                minSupportedVersion: '1.0.0',
-              ),
-            ),
-            // The BYTES are replaced; the LOADER is not. Everything the loader
-            // does — key pinning, identity binding, hash verification — still
-            // runs.
-            contentPackSourceProvider.overrideWith(
-              (ref) => entries.isEmpty
-                  ? null
-                  : core.InMemoryContentPackSource(entries),
-            ),
-            contentPackLoaderProvider.overrideWith(
-              (ref) => core.ContentPackLoader(
-                verifier: _AcceptingVerifier(),
-                pinnedKeys: const <String, String>{'test-key': 'x'},
-              ),
-            ),
-          ],
-        );
+    ProviderContainer packContainer({
+      required String? pointer,
+      required Map<String, List<int>> entries,
+    }) => ProviderContainer(
+      overrides: <Override>[
+        keyValueStoreProvider.overrideWith((_) async => _MemStore()),
+        // The POINTER is what a takedown changes, so it is what the test
+        // changes. Overriding `contentPackProvider` directly would assert
+        // that a fake returns what the fake was told to return.
+        appConfigProvider.overrideWith(
+          (_) async => core.AppConfig(
+            appId: AppConfig.appId,
+            apiBaseUrl: AppConfig.apiBaseUrl,
+            features: const <String, bool>{},
+            paywall: const core.PaywallConfig(enabled: false),
+            contentPack: pointer,
+            copy: const <String, String>{},
+            minSupportedVersion: '1.0.0',
+          ),
+        ),
+        // The BYTES are replaced; the LOADER is not. Everything the loader
+        // does — key pinning, identity binding, hash verification — still
+        // runs.
+        contentPackSourceProvider.overrideWith(
+          (ref) =>
+              entries.isEmpty ? null : core.InMemoryContentPackSource(entries),
+        ),
+        contentPackLoaderProvider.overrideWith(
+          (ref) => core.ContentPackLoader(
+            verifier: _AcceptingVerifier(),
+            pinnedKeys: const <String, String>{'test-key': 'x'},
+          ),
+        ),
+      ],
+    );
 
     test('a configured pointer really SERVES a pack', () async {
       final ProviderContainer c = packContainer(

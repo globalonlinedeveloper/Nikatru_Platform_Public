@@ -599,11 +599,19 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-// 41 since 2026-08-03: [pipeline 13]T-8 added `catchUpNudgeProvider`. This
-// moves ONLY when a capability is deliberately added or removed — it is the
-// floor that makes a silently-shrinking domain an explicit edit rather than a
-// drift, so raising it is part of adding the capability, never a fix for a red.
-const MIN_DOMAIN = 41;
+//
+// This moves ONLY when a capability is deliberately added or removed — it is
+// the floor that makes a silently-shrinking domain an explicit edit rather than
+// a drift, so raising it is part of adding the capability, never a fix for a red.
+//
+// 41 since 2026-08-03: [pipeline 13]T-8 added `catchUpNudgeProvider`.
+// 45 since 2026-08-03: the content-pack rail added four more providers
+// (packVerifier, contentPackSource, contentPackLoader, contentPack). Landing
+// them without moving this number would have left FOUR capabilities' worth of
+// slack under the floor — the scan could have stopped seeing a quarter of the
+// rail it was just given and still reported clean, which is the precise
+// failure this self-check exists to make impossible.
+const MIN_DOMAIN = 45;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
