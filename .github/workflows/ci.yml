@@ -818,6 +818,24 @@ jobs:
       - name: Every shared capability has one home and a real consumer
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-capability-register.mjs
+      # POST-INCIDENT GUARD, 2026-08-04. A one-field PATCH to Supabase's
+      # /config/auth REPLACES the auth config instead of merging it: changing only
+      # smtp_admin_email emptied host/port/user/pass/sender, reset the send rate
+      # limit 100 -> 2, and reverted all three branded auth email templates to
+      # Supabase defaults. It recovered byte-for-byte ONLY because
+      # docs/platform/supabase/email-templates/ happened to hold matching copies.
+      # Nothing required that, and nothing noticed those files were load-bearing --
+      # luck was standing in for a backup. This makes them enforceable DR material.
+      # It asserts STRUCTURE, never a byte floor: an invented size threshold fires
+      # on correct input while a whitespace-padded stub sails through, and a
+      # template with no {{ .ConfirmationURL }} is dead however long it is.
+      # ⚠️ It CANNOT see drift against the live project -- that needs SUPABASE_PAT,
+      # which CI does not hold -- so it prints that limitation on every run rather
+      # than letting green be mistaken for safe. Drift is checked by
+      # tooling/ops/verify-supabase-templates.mjs, run with the PAT.
+      - name: The Supabase auth email templates stay restorable
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-supabase-templates.mjs
       # The companion to the step above, and deliberately not folded into it: that
       # guard verifies `consumers` against real pubspecs in both directions, which
       # proves a package was DOWNLOADED and never that a line of it runs. Every
