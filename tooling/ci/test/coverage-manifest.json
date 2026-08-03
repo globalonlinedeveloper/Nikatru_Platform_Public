@@ -72,6 +72,7 @@
   "store-identity.test.mjs": 24,
   "store-metadata.test.mjs": 49,
   "submission-safety.test.mjs": 20,
+  "supabase-templates.test.mjs": 17,
   "text-reductions.test.mjs": 28,
   "update-coverage.test.mjs": 28,
   "vendor-portability.test.mjs": 19,
