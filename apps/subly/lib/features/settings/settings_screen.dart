@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../core/config/app_config.dart';
@@ -256,13 +255,32 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 14),
+        // 🔴 SIGN OUT AND NAVIGATE NOWHERE. The router owns this, and it is the
+        // only thing that can own it correctly.
+        //
+        // This used to `await signOut()` and then `context.go('/onboarding')`,
+        // which raced `app_router.dart`'s own redirect. gotrue notifies its
+        // subscribers of `signedOut` BEFORE awaiting `POST /logout`, so the auth
+        // stream fires first and the router sends /settings → /login; the
+        // awaited continuation then resumed and pushed /onboarding on top. And
+        // because `/onboarding` sits inside the router's `authFlow` allowlist,
+        // the redirect does NOT correct it — so a user who tapped Log out was
+        // left in the first-run marketing carousel and had to tap Skip to reach
+        // the login form. The handler was written that way from the initial
+        // commit; it has always been wrong.
+        //
+        // The brick chassis never had this bug — it calls `signOut()` and stops
+        // (`__brick__/…/settings_screen.dart`). Subly had forked from it.
+        //
+        // ⚠️ The nightly E2E polled for 'Welcome back' and returned on the first
+        // match, so it could pass on the /login frame the app was merely passing
+        // THROUGH — a screenshot from a *green* run shows the carousel sliding
+        // in over the login screen. `test/sign_out_destination_test.dart` asserts
+        // after a settle instead, at two different logout latencies.
         SoftButton(
           label: 'Log out',
           color: AppColors.danger,
-          onPressed: () async {
-            await ref.read(authRepositoryProvider).signOut();
-            if (context.mounted) context.go('/onboarding');
-          },
+          onPressed: () => ref.read(authRepositoryProvider).signOut(),
         ),
         // ── DELETE ACCOUNT ───────────────────────────────────────────────────
         //
