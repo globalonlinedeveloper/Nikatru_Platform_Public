@@ -37,6 +37,13 @@
 // decision logic is genuinely exercised without network. It prints a loud banner
 // so its presence in a real CI log is unmistakable.
 //
+// LANE-BOUND: build-platforms.yml — this guard's SUBJECT is that one workflow's run history, not a
+// channel's artifact. There is exactly one 6-platform proof in this factory and build-platforms.yml IS
+// it; a second lane would not dilute this check, it would be a second proof needing its own freshness
+// row. Deriving the file from tooling/channel-register.json would be wrong twice over: two rows name
+// this workflow as their lane, and the `web` row does not name it at all while this guard asserts a web
+// build inside it. [pipeline 9]R-1 limb B.
+//
 // Usage:  node tooling/ci/assert-platform-proof-fresh.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';

@@ -99,6 +99,12 @@
 // decision logic is genuinely exercised without network. It prints a loud banner
 // so its presence in a real CI log is unmistakable.
 //
+// LANE-BOUND: e2e.yml — the subject is the nightly LIVE end-to-end proof, and there is exactly one of
+// it. e2e.yml is not a channel lane at all: it appears in no `lane` block of tooling/channel-register.json
+// and ships no artifact, so there is nothing to derive the name from. A second live-e2e workflow would
+// need its own freshness row with its own cadence, not a share of this one — an age check quantified over
+// a SET reports the newest run and hides a dead sibling. [pipeline 9]R-1 limb B.
+//
 // Usage:  node tooling/ci/assert-e2e-proof-fresh.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';

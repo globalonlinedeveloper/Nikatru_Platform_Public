@@ -93,6 +93,14 @@ export function joinBlockScalars(jobLines) {
  *
  * Returns `null` when the file is not there, so a caller decides whether an
  * absent workflow is a coverage loss or simply not its business.
+ *
+ * `lines` is the WHOLE comment-blanked file, jobs and header alike, because a
+ * workflow's `env:` and `defaults:` blocks sit ABOVE `jobs:` and are therefore
+ * in none of the per-job line arrays. A caller that needs them would otherwise
+ * re-read and re-strip the file itself — a second reduction, drifting from this
+ * one in the way this module's header says such copies always drift: which
+ * lines it can see. [pipeline 9]R-1 needs exactly that region to expand
+ * `${{ env.X }}` before deciding which app a lane resolves to.
  */
 export function parseWorkflow(root, rel) {
   const abs = join(root, rel);
@@ -167,7 +175,14 @@ export function parseWorkflow(root, rel) {
 
   const rawStepCount = (raw.match(/^\s+-\s+(name|run|uses):/gm) ?? []).length;
   const strippedStepCount = lines.join('\n').match(/^\s+-\s+(name|run|uses):/gm)?.length ?? 0;
-  return { rel, jobs, rawStepCount, strippedStepCount };
+  return {
+    rel,
+    jobs,
+    rawStepCount,
+    strippedStepCount,
+    lines: lines.map((text, i) => ({ n: i + 1, text })),
+    jobsAt: jobsAt === -1 ? null : jobsAt + 1,
+  };
 }
 
 /** Every workflow under `.github/workflows`, parsed, sorted by filename. */
