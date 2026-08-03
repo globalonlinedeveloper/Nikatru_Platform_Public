@@ -145,6 +145,29 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
       await review.recordLaunch();
       if (!mounted) return;
       await review.maybeAsk();
+      if (!mounted) return;
+
+      // 🔴 [pipeline T-5/T-7] THE REMINDER REPAIR PATH, and the reason it is a
+      // start-up call rather than a native boot receiver: the brick stamps no
+      // native folders, so `RECEIVE_BOOT_COMPLETED` is not available to it. An
+      // Android reboot drops every pending alarm, and a DST shift or a flight
+      // moves the wall-clock hour the schedule was built against — after either,
+      // a switch that reads ON is attached to nothing. Re-arming from the
+      // PERSISTED intent on every launch repairs all three, and `scheduleDaily`
+      // replaces by a stable id so it can never accumulate a second pending
+      // notification.
+      //
+      // It also re-asserts the OFF direction, which is what makes "reminders
+      // off" survive a restore from a backup taken while they were on.
+      //
+      // ⚠️ It must NEVER ask for permission — this is the boot path, and Android
+      // 13+ makes a second denial permanent. `resyncOnStart` does not, and
+      // `chassis_properties_test.dart` asserts the count is zero across a full
+      // boot so it cannot start to.
+      final AppLocalizations l10n = AppLocalizations.of(context);
+      await ref
+          .read(remindersEnabledProvider.notifier)
+          .resyncOnStart(title: l10n.reminderTitle, body: l10n.reminderBody);
     });
   }
 

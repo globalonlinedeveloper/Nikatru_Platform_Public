@@ -26,6 +26,7 @@ export 'src/config/flag_resolver.dart';
 export 'src/config/observed_feature_flags.dart';
 export 'src/config/version_gate.dart';
 export 'src/models/entitlement.dart';
+export 'src/notifications/catch_up_nudge.dart';
 export 'src/notifications/notification_service.dart';
 export 'src/review/review_gate.dart';
 export 'src/review/review_prompter.dart';

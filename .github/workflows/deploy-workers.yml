@@ -143,6 +143,22 @@ jobs:
           #     every error this factory ever reports into one bucket named after
           #     a URL prefix. [9]R-2 replaces it with a real release id.
           command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }}
+      # ── [pipeline 14]O-7 · THE DEPLOY IS NOT TRUSTED UNTIL THE WORKER AGREES ─
+      # `build` is a SEPARATE field from `version` on /v1/health: `version` is
+      # the literal "v1" API-contract version and can never equal a build
+      # identity, so a smoke joined to it would have passed forever. `build` is
+      # threaded from the same `--var RELEASE:${{ github.sha }}` the crash sink
+      # groups by, so a deploy cannot set one and not the other.
+      #
+      # `--require-ok` is a separate conjunct on purpose: a Worker serving the
+      # right build with `ok:false` has deployed AND is unwell, and collapsing
+      # the two would report a bad deploy as a good one.
+      - name: Smoke — the live Worker answers at THIS commit
+        run: >
+          node tooling/ops/post-deploy-smoke.mjs
+          --url https://api.nikatru.com/v1/health
+          --field build --expect ${{ github.sha }} --require-ok
+
       - name: Record the deployed SHA
         env:
           GH_TOKEN: ${{ github.token }}
@@ -223,6 +239,16 @@ jobs:
             SUPABASE_ANON_KEY
         env:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      # ── [pipeline 14]O-7 · see the identical step in the subly-api job ───────
+      # This is the Worker every future app depends on for config, analytics,
+      # consent and the single cron, and until this line nothing ever asked it
+      # whether it had actually come up.
+      - name: Smoke — the live Worker answers at THIS commit
+        run: >
+          node tooling/ops/post-deploy-smoke.mjs
+          --url https://platform.nikatru.com/v1/health
+          --field build --expect ${{ github.sha }} --require-ok
 
       - name: Record the deployed SHA
         env:

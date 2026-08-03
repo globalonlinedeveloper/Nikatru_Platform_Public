@@ -2294,6 +2294,22 @@ group('property: reminder-intent-persisted', () {
   test('ee', () {});
   test('ff', () {});
 });
+group('property: reminders-resync-on-start', () {
+  test('xx1', () {});
+  test('xx2', () {});
+  test('xx3', () {});
+});
+// [pipeline T-8] The platform loop is an ANCHOR, not decoration: the guard
+// requires the enumeration over TargetPlatform.values, because a hand-written
+// list is a list somebody shortens back to Android.
+group('property: no-silent-channel', () {
+  testWidgets('yy1', (t) async {
+    for (final TargetPlatform p in TargetPlatform.values) {
+      expect(p, isNotNull);
+    }
+  });
+  testWidgets('yy2', (t) async {});
+});
 group('property: account-deletion-works', () {
   test('aa', () {});
   test('bb', () {});
@@ -2352,6 +2368,11 @@ void initState() {
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await review.recordLaunch();
     await review.maybeAsk();
+    // [pipeline T-5/T-7] The reboot/DST repair path. set(false) alone used to
+    // leave every schedule armed and there was no re-arm at all, so the anchor
+    // is the CALL SITE — the declaration lives in providers.dart.
+    await ref.read(remindersEnabledProvider.notifier)
+        .resyncOnStart(title: l10n.reminderTitle, body: l10n.reminderBody);
   });
 }
 
@@ -2486,6 +2507,10 @@ class RemindersEnabledController extends Notifier<bool> {
   }
   Future<void> set(bool on) async {
     await kv.write(_remindersKey, on ? 'true' : 'false');
+    // [pipeline T-5] OFF is a promise about the OS, not about a boolean. With
+    // the cancel only in applyReminderChoice, a settings sync or a restore left
+    // every schedule armed behind a switch reading OFF.
+    if (!on) await _cancelSchedules();
   }
   // 🔴 THE HALF THAT WAS MISSING UNTIL 2026-08-01. Persisting the flag was
   // always right and was never the feature; without these two lines the toggle
@@ -2496,7 +2521,19 @@ class RemindersEnabledController extends Notifier<bool> {
     await svc.scheduleDaily(core.DailyReminder(id: kDailyReminderId, title: title, body: body, hour: 20, minute: 0));
     return on;
   }
+  // [pipeline T-7] The reboot / DST / timezone-change repair path.
+  Future<void> resyncOnStart({required String title, required String body}) async {
+    await ref.read(notificationServiceProvider).init();
+  }
 }
+
+// [pipeline T-8] The in-app catch-up nudge's persisted dismissal.
+class CatchUpNudgeController extends Notifier<DateTime?> {
+  Future<void> markShown(DateTime at) async {
+    await kv.write(_lastNudgeShownKey, at.toUtc().toIso8601String());
+  }
+}
+final NotifierProvider<CatchUpNudgeController, DateTime?> catchUpNudgeProvider = X();
 
 class ThemeModeController extends Notifier<ThemeMode> {
   Future<void> _hydrate() async {
@@ -2701,11 +2738,33 @@ final FutureProvider<core.Entitlements> entitlementsProvider =
 final Provider<bool> paywallLockedProvider = X();
 `;
   const HOME = `${BRICK}/lib/features/home/home_screen.dart`;
+  // [pipeline T-8] The nudge is anchored to its MOUNT and to the shared
+  // predicate: a widget declared and never placed is the dead-control shape, and
+  // on Web/Windows/Linux it is the only delivery mechanism there is.
   const goodHome = `
-Widget build(BuildContext context) => PaywallGate(
-  locked: ref.watch(paywallLockedProvider),
-  child: const SizedBox.shrink(),
+Widget build(BuildContext context) => Column(
+  children: <Widget>[
+    const CatchUpNudgeBanner(),
+    Expanded(child: PaywallGate(
+      locked: ref.watch(paywallLockedProvider),
+      child: const SizedBox.shrink(),
+    )),
+  ],
 );
+
+class CatchUpNudgeBanner extends ConsumerWidget {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final core.CatchUpNudgeVerdict verdict = const core.CatchUpNudge().decide(
+      now: now,
+      lastShownAt: ref.watch(catchUpNudgeProvider),
+      reminderHour: AppConfig.reminderHour,
+      reminderMinute: AppConfig.reminderMinute,
+      remindersEnabled: ref.watch(remindersEnabledProvider),
+      platformCanSchedule: caps.canSchedule,
+    );
+    return const SizedBox.shrink();
+  }
+}
 `;
   const CORE_CACHE = 'packages/core/lib/src/entitlement_cache.dart';
   const goodCoreCache = 'const Duration kEntitlementStalenessCeiling = Duration(days: 7);\n';
@@ -3477,9 +3536,9 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
     test('the domain is read from the template, and the gaps are named', () => {
       const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-domain') });
       assert.equal(code, 0);
-      // 40 since 2026-08-01: the domain reads BOTH providers files, and
-      // [pipeline 5]M-13's money_providers.dart carries eight.
-      assert.match(out, /tracked domain: 40 chassis behaviour\(s\)/);
+      // 41 since 2026-08-03: the domain reads BOTH providers files, and
+      // [pipeline 13]T-8 added catchUpNudgeProvider to the first of them.
+      assert.match(out, /tracked domain: 41 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -3516,7 +3575,7 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 39/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 40/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

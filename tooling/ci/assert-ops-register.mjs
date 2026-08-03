@@ -135,6 +135,10 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+// The ONE workflow parser. Four copies of it drift in the way that reports
+// "clean" — which lines they can see — so [14]O-7's deploy-job derivation goes
+// through the same one assert-release-provenance and assert-no-secret-defines use.
+import { parseAllWorkflows } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -232,6 +236,16 @@ export function findWranglerConfigs(root) {
 
 const isIsoDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 const nonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
+
+/** Comments out, so a check about BEHAVIOUR can never be satisfied by a
+ *  paragraph. Full-line `//`, trailing `//`, and `/* … *​/` blocks. See the
+ *  [14]O-10 limb, whose first version was satisfied by another guard's header. */
+const stripComments = (s) =>
+  s
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((l) => l.replace(/(^|\s)\/\/.*$/, '$1'))
+    .join('\n');
 
 /** `8h` / `1d` / `120d` → days. Anything else is not a duration. */
 export function cadenceDays(cadence) {
@@ -540,6 +554,112 @@ export function evaluate(reg, tree, nowMs) {
     }
   }
 
+  // ── [14]O-10 · A CADENCE IS A CLAIM UNTIL SOMETHING READS IT ──────────────
+  //
+  // 🔴 THE PROMOTION. Until this limb, a `duty` row could declare `cadence:
+  // "1d"` and NOTHING in the tree checked whether the thing ran daily. The
+  // register enumerated the duties — a real advance over the hand-kept checklist
+  // it replaced — and then took every cadence on trust, which is the same shape
+  // as the undated proof `assert-platform-proof-fresh.mjs` exists to remove, one
+  // level up. Two workflows genuinely have readers; nothing held them there, so
+  // deleting either guard file would have left a cadence nobody checks and this
+  // register still printing full coverage.
+  //
+  // Scoped to `github-actions` rows with a TIME cadence on purpose: a `trigger`
+  // duty (ci.yml, the deploys) has no timer that can silently die, and an
+  // `on-demand` one is not claimed to happen at all. Widening it to those would
+  // manufacture obligations that cannot be discharged, which is how a guard
+  // acquires exemptions and stops meaning anything.
+  //
+  // ⬜ A row with no reader does not FAIL — it must declare `freshnessGap` and
+  // is PRINTED with a count on every run. `ops-watch.yml` is that row today: it
+  // is the watcher, and nothing watches the watcher's ABSENCE. Failing on it
+  // would block every merge on work that needs a second provider to host the
+  // check, which is not this branch's to build. Zero gaps and three gaps must
+  // never read alike, so the count is printed, not just the entries.
+  const TIME_CADENCE = /^\d+[hd]$/;
+  let freshnessRead = 0;
+  for (const [anchor, row] of anchored) {
+    if (row?.mechanism?.substrate !== 'github-actions') continue;
+    if (!TIME_CADENCE.test(String(row.cadence ?? ''))) continue;
+    const wfFile = anchor.split('/').pop();
+    const readBy = String(row.mechanism.readBy ?? '');
+    // The reader must be a PATH THAT EXISTS, not a sentence. "the alert job in
+    // X.yml" is a description of a mechanism, and a description cannot be
+    // deleted by accident — which means it also cannot notice being deleted.
+    const readerPath = [...readBy.matchAll(NAMED_PATH)].map((m) => m[0]).find((p) => tree.paths.has(p));
+    if (!readerPath) {
+      if (!nonEmpty(row.freshnessGap)) {
+        bad(
+          `${row.id} declares \`cadence: ${row.cadence}\` and its \`mechanism.readBy\` names no in-tree file that exists. ` +
+            'A cadence nothing reads is a claim: the timer can stop and the register goes on asserting the duty happens. ' +
+            'Name the reader, or declare a `freshnessGap` saying who owns the absence — which prints on every run and never blocks.',
+        );
+      } else {
+        prints.push(`[14]O-10 — ${row.id} (cadence ${row.cadence}) has NO in-tree freshness reader: ${row.freshnessGap}`);
+      }
+      continue;
+    }
+    // ⚠️ AND IT MUST NAME **THIS** WORKFLOW, IN CODE. A reader that exists
+    // proves nothing about the row that points at it: each of the two freshness
+    // guards watches exactly one workflow by name, so pointing one row at the
+    // other's guard leaves that cadence read by nobody.
+    //
+    // 🔴 THE FIRST VERSION OF THIS CHECK DID NOT CATCH THAT, AND THE MUTATION
+    // RUN IS THE ONLY REASON IT IS KNOWN. Repointing build-platforms.yml's row
+    // at `assert-e2e-proof-fresh.mjs` returned exit 0 — because that guard's
+    // HEADER explains at length why it is a sibling of
+    // `assert-platform-proof-fresh.mjs` and names `build-platforms.yml` four
+    // times in prose. A comment satisfied a check about behaviour, which is the
+    // exact defect a `grep '"r2_buckets"'` once hit against the template comment
+    // explaining why there is no r2_buckets. Comments are stripped now.
+    const readerSrc = stripComments(tree.readerSource?.get(readerPath) ?? '');
+    if (!readerSrc.includes(wfFile)) {
+      bad(
+        `${row.id} names ${readerPath} as its freshness reader, and that file never mentions \`${wfFile}\`. ` +
+          'A reader watching some OTHER workflow satisfies "a reader exists" and reads this cadence never — the ' +
+          'guard-that-stopped-guarding shape, arriving through a pointer instead of through a regex.',
+      );
+      continue;
+    }
+    freshnessRead += 1;
+  }
+  prints.push(
+    `[14]O-10 — ${freshnessRead} scheduled workflow duty(ies) have their cadence READ by a named in-tree guard that really names them`,
+  );
+
+  // ── [14]O-7 · A DEPLOY IS NOT TRUSTED UNTIL THE LIVE SURFACE AGREES ───────
+  //
+  // 🔴 THE MEASURED STATE. The last step of every deploy job was
+  // `record-deployment.mjs` — a step that WRITES a claim about what is live.
+  // Nothing anywhere read one. So the domain here is derived from the claims
+  // themselves: every job that records a deployment must also probe the surface
+  // it just deployed, in THE SAME JOB. Job-level, not workflow-level, because
+  // deploy-workers.yml ships two independent Workers and a single smoke
+  // anywhere in the file would certify both while touching one.
+  for (const d of tree.deployJobs ?? []) {
+    if (d.smokes > 0) continue;
+    const exemption = reg._deploySmokeExemptions?.[d.environment];
+    if (nonEmpty(exemption)) {
+      prints.push(`[14]O-7 — ${d.workflow}:${d.job} records \`${d.environment}\` with no smoke, exempt: ${exemption}`);
+      continue;
+    }
+    bad(
+      `${d.workflow}:${d.job} records a deployment for \`${d.environment}\` and never probes it. ` +
+        'A deploy job whose last act is to WRITE a claim about what is live, with nothing reading one, is how an upload ' +
+        'that shipped nothing produces a green tick and a deployment record naming the new SHA. Add a ' +
+        '`tooling/ops/post-deploy-smoke.mjs` step to this job, or declare a written `_deploySmokeExemptions` entry.',
+    );
+  }
+  // `_`-prefixed keys are the block's own prose, not exemptions. Counting them
+  // would inflate the number that exists precisely so the exemption list cannot
+  // grow quietly.
+  const exemptCount = Object.keys(reg._deploySmokeExemptions ?? {}).filter((k) => !k.startsWith('_')).length;
+  prints.push(
+    `[14]O-7 — ${(tree.deployJobs ?? []).length} deploy job(s) derived from record-deployment calls; ` +
+      `${(tree.deployJobs ?? []).filter((d) => d.smokes > 0).length} probe the surface they ship; ${exemptCount} written exemption(s)`,
+  );
+
   return {
     errors,
     prints,
@@ -642,8 +762,61 @@ function main() {
   };
   collect(ROOT, '');
 
+  // ── [14]O-7 · the deploy-job domain, DERIVED from the recorded claims ─────
+  // Parsed through the shared workflow parser rather than grepped: a `run: |`
+  // block is joined with ` ; ` and a `run: >` block folded with spaces, so a
+  // flat regex sees different text depending on which block style the step
+  // happens to use — four copies of a workflow parser drift in exactly the way
+  // that reports "clean".
+  const deployJobs = [];
+  for (const wf of parseAllWorkflows(ROOT)) {
+    for (const [jobName, job] of wf.jobs) {
+      const text = (job.lines ?? []).map((l) => l.text ?? String(l)).join('\n');
+      const envs = [...text.matchAll(/record-deployment\.mjs\s+([A-Za-z0-9._-]+)/g)].map((m) => m[1]);
+      if (envs.length === 0) continue;
+      const smokes = (text.match(/post-deploy-smoke\.mjs/g) ?? []).length;
+      for (const environment of new Set(envs)) {
+        deployJobs.push({ workflow: wf.rel ?? wf.file ?? '?', job: jobName, environment, smokes });
+      }
+    }
+  }
+
+  // ⚠️ THE SURFACES WITH NO DEPLOY JOB AT ALL. Deriving the domain from
+  // `record-deployment.mjs` calls alone would make DELETING a deploy job the way
+  // to satisfy this check — the vacuous shape the cron limb above is written
+  // against. `sites/nikatru` and `sites/rajasekarselvam` ship through Cloudflare
+  // Git integration and [F-9] decided AGAINST migrating them into Actions, so
+  // they have no job to add a step to and are covered by O-2's external prober
+  // instead. That is a real answer and it has to be WRITTEN DOWN: each such site
+  // must carry an exemption naming the covering mechanism, so a new site arrives
+  // unclassified and red rather than unwatched and quiet.
+  const sitesDir = join(ROOT, 'sites');
+  if (existsSync(sitesDir)) {
+    for (const e of listDir(sitesDir, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name.startsWith('_')) continue;
+      deployJobs.push({ workflow: `sites/${e.name}`, job: '(cloudflare git integration — no job)', environment: `site:${e.name}`, smokes: 0 });
+    }
+  }
+
+  // ── [14]O-10 · the text of every file a row names as a freshness reader ───
+  // Read here rather than in the pure half so the pure half stays testable with
+  // fixture text, and so a reader that exists but watches a DIFFERENT workflow
+  // is caught by content rather than by the existence of a path.
+  const readerSource = new Map();
+  for (const r of reg.rows ?? []) {
+    for (const m of String(r?.mechanism?.readBy ?? '').matchAll(NAMED_PATH)) {
+      const p = m[0];
+      if (readerSource.has(p)) continue;
+      try {
+        readerSource.set(p, readFileSync(join(ROOT, p), 'utf8'));
+      } catch {
+        // Absent: `paths` already knows, and the pure half reports it.
+      }
+    }
+  }
+
   const now = Date.now();
-  const { errors, prints, stats, anchored } = evaluate(reg, { workflows, paths }, now);
+  const { errors, prints, stats, anchored } = evaluate(reg, { workflows, paths, deployJobs, readerSource }, now);
 
   // ── the OTHER direction: a duty row anchored at a workflow that is gone ───
   for (const [anchor, row] of anchored) {
