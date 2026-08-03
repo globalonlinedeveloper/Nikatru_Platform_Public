@@ -32,11 +32,17 @@ app.use('*', async (c, next) => {
 app.use('*', corsMiddleware);
 
 // ── Public: health check (VERIFICATION ENDPOINT — must not require auth) ──────
+// 🔴 `build` IS A SEPARATE FIELD FROM `version` — see the note on the same route
+// in services/platform/src/index.ts. `version` is the literal "v1" API-contract
+// version; `build` is the commit this Worker was deployed from, and it is what
+// the post-deploy smoke joins a deploy to. Without it, "the Worker answered" and
+// "the OLD Worker answered" are the same observation. [pipeline 14]O-7.
 app.get('/v1/health', (c) =>
   c.json({
     ok: true,
     app: c.env.APP_ID,
     version: c.env.API_VERSION,
+    build: c.env.RELEASE ?? null,
     time: nowIso(),
   }),
 );

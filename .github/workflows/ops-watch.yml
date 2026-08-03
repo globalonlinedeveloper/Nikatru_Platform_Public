@@ -33,6 +33,11 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '30 7 * * *' # 07:30 UTC daily, 90 minutes after the cron it watches
+    # [pipeline O-2] The DIGEST slot. A second entry rather than a day-of-week
+    # test inside the job, because `github.event.schedule` reports which cron
+    # fired and that is a fact the workflow can read; deriving "is it Monday"
+    # from a timestamp inside a shell step is a calculation that can be wrong.
+    - cron: '45 7 * * 1' # Mondays, 15 minutes after the daily run has settled
 
 permissions: {}
 
@@ -60,6 +65,52 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tooling/ops/check-heartbeats.mjs
 
+  # ── [pipeline O-2] "IS ANYTHING BROKEN NOW?" — ONE COMMAND, ON A CADENCE ────
+  #
+  # 🔴 THE THING IT REFUSES TO DO IS THE POINT. Every analytics surface in this
+  # portfolio answers `{"ok":true}` while `events` and `consent_artifacts` hold
+  # ZERO rows, and three of the six GlitchTip monitors are `Ping` — a ping proves
+  # a socket opened. So "healthy" here means the surface produced its EXPECTED
+  # OUTPUT, and a data-bearing surface additionally has to return a non-vacuous
+  # body. A green tick over a broken pipe is the specific failure this stage
+  # exists to make impossible.
+  #
+  # The probed set is DERIVED from tooling/monitor-register.json — [11]E-9's
+  # enumeration, which is strictly wider than anything restated here. No
+  # hostname literal lives in this repo's ops layer.
+  #
+  # ⬜ It runs in its OWN job, not as a second step of `heartbeats`. A failing
+  # heartbeat read would otherwise skip the status probe entirely, and "the part
+  # that would have told you is the part that did not run" is the shape the whole
+  # stage is written against. `alert` needs both, so it depends on both.
+  status:
+    name: Every enumerated surface produced its expected output
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # EXIT 2 IS NOT EXIT 1, AND THE DISTINCTION IS LOAD-BEARING: 1 means a
+      # surface answered wrongly, 2 means nothing was probed at all. Both fail
+      # the job — "I could not look" must never read as "I looked and it was
+      # fine" — but the log has to say which, or the response is a guess.
+      - name: Probe every surface the register enumerates
+        run: |
+          set +e
+          node tooling/ops/status.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Ops status could not look::exit 2 — NOTHING was probed. This is not a healthy portfolio and it is not an unhealthy one; it is an unreadable register or an unreachable prober, and it must be treated as the more serious of the two."
+          fi
+          exit "$code"
+
   # ── Alerting ────────────────────────────────────────────────────────────────
   # Copied from e2e.yml's `alert` job, which is the shape that works here: ONE
   # durable issue, reused, never auto-closed. A notification is read once and
@@ -74,7 +125,7 @@ jobs:
   # SCHEDULED RUNS ONLY: a workflow_dispatch failure is attended by definition.
   alert:
     name: Open or refresh the ops-watch issue
-    needs: heartbeats
+    needs: [heartbeats, status]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -131,4 +182,94 @@ jobs:
           else
             url="$(gh issue create --title "$TITLE" --body-file "$body")"
             echo "::error title=Ops watch failed::opened ${url}"
+          fi
+
+  # ── [pipeline O-2] THE WEEKLY DIGEST — "delivered unasked on a cadence" ─────
+  #
+  # 🔴 A COMMAND NOBODY RUNS IS A COMMAND THAT DOES NOT EXIST. O-2 is two halves:
+  # one command that answers "is anything broken now?", and that answer ARRIVING
+  # without somebody remembering to ask. The daily jobs above are the alarm — they
+  # speak only when something is wrong, which is correct and is also why a
+  # portfolio can be quietly degrading with nothing red: every gap in this stage
+  # PRINTS rather than fails, by design, and a print nobody reads is a note.
+  #
+  # SCOPE IS PRE-CUT, and deliberately not widened here. MASTER_PLAN §10 says
+  # "ship the 10-line version": a plaintext owner queue (exists) plus ONE weekly
+  # digest. No scoreboard, no cadence file, no four cron agents.
+  #
+  # ⚠️ THIS JOB IS A DELIVERY MECHANISM, NOT AN ASSERTION, and it says so rather
+  # than looking like a check that cannot fail. The verdicts are produced by the
+  # two jobs above, which DO fail; this one collects what they printed — gaps
+  # included — and puts it somewhere a person will see it. It exits 0 even when
+  # the readers are red, because a digest that disappears exactly when there is
+  # something to report is the failure mode it exists to remove.
+  #
+  # ONE REUSED ISSUE, commented rather than reopened: a notification is read once
+  # and gone; an issue keeps the history, so "when did this gap first appear" is
+  # answerable. It is never auto-closed, for the same reason the alert issue is
+  # not — closing it is a person saying they looked.
+  digest:
+    name: Weekly digest
+    if: github.event.schedule == '45 7 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Collect what the readers say
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          {
+            echo '## Surfaces'
+            echo '```'
+            node tooling/ops/status.mjs 2>&1
+            echo "exit: $?"
+            echo '```'
+            echo '## Scheduled duties'
+            echo '```'
+            node tooling/ops/check-heartbeats.mjs 2>&1
+            echo "exit: $?"
+            echo '```'
+            echo '## Declared gaps in the operations register'
+            echo '```'
+            node tooling/ci/assert-ops-register.mjs 2>&1 | grep -E '^(⬜|⚠)' || echo '(none printed)'
+            echo '```'
+          } > "${RUNNER_TEMP}/digest-body.md"
+          set -e
+
+      - name: Deliver it to one durable issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # THE MARKER. Matched exactly, so rewording it starts a second thread
+          # next to the one already open.
+          TITLE: 'Weekly ops digest'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/digest.md"
+          {
+            printf '### %s — [run](%s)\n\n' "$(date -u '+%Y-%m-%d')" "${RUN_URL}"
+            cat "${RUNNER_TEMP}/digest-body.md"
+            printf '\n_Posted by the `digest` job in `.github/workflows/ops-watch.yml`. This issue is REUSED and is never closed automatically._\n'
+          } > "$body"
+
+          existing="$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title == env.TITLE) | .number] | first // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$body"
+          else
+            gh issue create --title "$TITLE" --body-file "$body"
           fi

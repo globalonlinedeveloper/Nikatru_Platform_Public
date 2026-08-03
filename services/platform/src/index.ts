@@ -37,11 +37,25 @@ app.use('*', async (c, next) => {
 app.use('*', corsMiddleware);
 
 // Public health check — VERIFICATION ENDPOINT, must not require auth.
+//
+// 🔴 `build` IS A SEPARATE FIELD FROM `version`, AND OVERLOADING THEM WOULD BE
+// THE BUG. `version` is `API_VERSION` — the literal "v1", a PUBLIC API-CONTRACT
+// version that must not change when a commit ships. A build identity is the
+// opposite: it changes on every deploy and is meaningless to a client. Until
+// this line existed, the only thing `/v1/health` could say was "v1", so the
+// post-deploy smoke had nothing to join a deploy to and "the Worker answered"
+// was indistinguishable from "the OLD Worker answered". [pipeline 14]O-7.
+//
+// It is the same `RELEASE` var the crash sink already groups by, so a deploy
+// cannot set one and not the other. NULL rather than absent when unset: a
+// missing key and a key set to nothing read identically to a JSON consumer, and
+// the smoke has to be able to say "this deploy did not thread its build id".
 app.get('/v1/health', (c) =>
   c.json({
     ok: true,
     app: c.env.APP_ID,
     version: c.env.API_VERSION,
+    build: c.env.RELEASE ?? null,
     time: nowIso(),
   }),
 );

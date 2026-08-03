@@ -93,6 +93,18 @@
     "    referenced by no workflow, so it contributes NO `expiring` row at all: out of the domain by",
     "    fact, not by policy. Do not add one, and do not add a rotation reminder."
   ],
+  "_deploySmokeExemptions": {
+    "_why": [
+      "[14]O-7. A deployable surface must be PROBED after it ships, in the job that shipped it — the domain is",
+      "derived from `record-deployment.mjs` calls plus every directory under sites/, so deleting a deploy job",
+      "cannot be the way to satisfy the check. These two surfaces have no deploy job to add a step to, and that",
+      "is a decision rather than an omission: [F-9] rejected migrating the Cloudflare Git-integration sites into",
+      "Actions. Their coverage is O-2's external prober, named here so a NEW site arrives unclassified and red",
+      "rather than unwatched and quiet."
+    ],
+    "site:nikatru": "Deployed by Cloudflare Git integration, not by a workflow — there is no job to probe from. Covered by O-2's external prober (tooling/ops/status.mjs) against the hostname enumerated in tooling/monitor-register.json, which is stage 11's derivation and strictly wider than anything this file would restate. ⚠️ Two of that register's monitors are still `Ping` rather than `GET`+expectedStatus, and a Pages project serving a 500 or a blank shell answers a ping — OWNER_QUEUE S-8.",
+    "site:rajasekarselvam": "Same mechanism and the same caveat as site:nikatru: Cloudflare Git integration, no workflow job, covered by O-2's external prober over the delegated hostname set."
+  },
   "_delegated": {
     "_why": [
       "One set, one owner. `hostnames` is [11]E-9's: tooling/monitor-register.json enumerates every host",
@@ -259,7 +271,7 @@
         "anchor": ".github/workflows/e2e.yml",
         "record": "GitHub Actions run history + the reused issue titled 'Nightly E2E (live) is failing against production'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
-        "readBy": "the alert job in e2e.yml; disposition is a human closing the issue"
+        "readBy": "tooling/ci/assert-e2e-proof-fresh.mjs on every push — the newest SCHEDULED green run must be inside its derived window, and a workflow_dispatch deliberately does not satisfy it; plus the alert job in e2e.yml, whose issue is closed by a human because closing it IS the disposition"
       },
       "accessProviders": [
         "github"
@@ -322,6 +334,7 @@
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
         "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue"
       },
+      "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03.",
       "accessProviders": [
         "github",
         "cloudflare"
@@ -722,6 +735,34 @@
         "google"
       ],
       "source": "verified"
+    },
+    {
+      "id": "recovery.breach-response",
+      "kind": "recovery-path",
+      "what": "[14]O-18 — the response to a PERSONAL-DATA BREACH, rehearsed against the clock in force. Not a systems-recovery path: the thing that has to happen inside the window is a statutory FILING and a notification, and the systems half is only step 1 of six.",
+      "detector": "This row's cadence against lastDrill, plus the ownerGap below, which prints on every CI run.",
+      "response": "docs/runbooks/breach-response.md — start the clock at NOTICING, contain without destroying evidence, determine the notifiable population from measurement (the D1 tables are pseudonymous; Supabase auth and the un-TTL'd nikatru-signups KV are not; the crash rail is a THIRD case because GlitchTip fills user.ip_address server-side), file, notify, disposition.",
+      "cadence": "180d",
+      "lastDrill": null,
+      "mechanism": {
+        "substrate": "runbook",
+        "anchor": "docs/runbooks/breach-response.md",
+        "record": "the incident issue, closed by a person; and lastDrill on this row",
+        "failingValue": "a lastDrill older than the cadence, or absent — which is the state today",
+        "readBy": "tooling/ci/assert-ops-register.mjs"
+      },
+      "accessProviders": [
+        "owner",
+        "india-gov",
+        "google",
+        "supabase",
+        "cloudflare"
+      ],
+      "ownerGated": true,
+      "ownerGap": "🔴 NEVER REHEARSED, AND INCOMPLETE AT ITS MOST TIME-CRITICAL STEP. ⚠️ The clock in force is SIX HOURS (CERT-In s.70B(6)), not DPDP Rule 7's seventy-two — and BOTH are marked UNVERIFIED in the runbook because neither primary text could be opened (the CERT-In PDF would not parse; the DPDP commencement rests on two secondary sources). Do not restate either as fact. TWO OWNER SENTENCES are required and cannot be written by an agent: (a) WHO files the CERT-In report and FROM WHICH ADDRESS — an irreversible statutory filing in the proprietor's name, inside six hours, is not a decision to make during an incident; (b) what the PUBLIC NOTICE says for the pseudonymous stores, and where it is published. ⚠️ A third fact that is not a gap but a finding: this factory has NO bulk email channel at all, so the newsletter population in nikatru-signups CANNOT be reached today — [4]B-12 owns only transactional auth mail and is blocked on owner-only credentials. Declared 2026-08-03.",
+      "source": "unverified",
+      "unverifiedWhy": "The two CLOCKS this procedure is written against could not be confirmed from a primary text. The CERT-In direction under s.70B(6) — six hours, claimed live since 2022-06-27 — was corroborated only by secondary legal summaries; the primary PDF would not parse. The DPDP Act Rule 7 commencement, claimed 2027-05-14, rests on two secondary sources and the gazette text could not be opened. The row ships `unverified` rather than shipping a confident number, because a rehearsal timed against the wrong clock is worse than an admitted uncertainty: the shorter of the two is assumed throughout, which is the safe direction.",
+      "cannotVerifyUntil": "the regulator's own published text is read directly — an owner action, not a lookup an agent can complete"
     },
     {
       "id": "recovery.local-working-tree",

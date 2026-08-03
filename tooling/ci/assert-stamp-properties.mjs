@@ -79,6 +79,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const repo = process.cwd();
+/** Declared, dated limbs of a property that this guard cannot assert. */
+const propertyGaps = new Set();
 let failed = false;
 const fail = (m) => { console.error(`FAIL ${m}`); failed = true; };
 const ok = (m) => console.log(`ok   ${m}`);
@@ -321,6 +323,60 @@ const REQUIRED_COVERAGE = [
     why: 'a toggle that reads ON while every notification is dropped is the C-6 shape',
   },
   {
+    // [pipeline T-5/T-7] The measured finding this closes: `set(false)` persisted
+    // OFF and left every schedule ARMED, because the only route to `cancelAll`
+    // was `applyReminderChoice`, reachable from one `SwitchListTile.onChanged`.
+    // And there was no repair path at all — an Android reboot drops pending
+    // alarms, a DST shift moves the wall-clock hour a schedule was built
+    // against, so "reminders are on" decayed to "reminders were on once" with
+    // nothing red anywhere.
+    key: 'reminders-resync-on-start',
+    group: /group\(\s*'property: reminders-resync-on-start'/,
+    sources: [
+      // THE CALL SITE, not the declaration. The reconciler exists to be RUN at
+      // start-up; a method nobody calls is the C-6 shape with extra steps, and a
+      // declaration-matching anchor is the exact trap assert-seams-wired shipped.
+      { file: APP_ROOT, re: /\.resyncOnStart\(/, what: 'app.dart must re-arm from the persisted intent at start-up — without a call site the reboot/DST repair path is dead code' },
+      { file: PROVIDERS, re: /Future<void> resyncOnStart\(/, what: 'the chassis must own the reconciler; an app-local one is a fork of the seam' },
+      // The cancel must hang off the PERSISTED INTENT, not off the widget
+      // callback. This is the line whose absence let the schedule outlive the
+      // switch for every writer of the flag other than the toggle itself.
+      { file: PROVIDERS, re: /if \(!on\) await _cancelSchedules\(\);/, what: 'set(false) must itself cancel — with the cancel only in applyReminderChoice, a settings sync or a restore leaves every schedule armed behind a switch reading OFF' },
+    ],
+    why: 'an opt-out that only holds when a particular widget was tapped is not an opt-out, and a schedule with no repair path silently stops existing after the first reboot',
+  },
+  {
+    // [pipeline T-8] Half of this requirement — the matrix-honest settings tile —
+    // has been green since the toggle landed. This is the OTHER half: three of
+    // the six platforms cannot schedule a repeating local notification and NO
+    // version of the pinned plugin family can (its own limitations text records
+    // that Windows throws on repeating notifications, Linux has no scheduler
+    // API, and browsers support neither), so the in-app catch-up is a standing
+    // part of the chassis rather than a bridge. It was promised in six doc
+    // comments and implemented in zero places.
+    key: 'no-silent-channel',
+    group: /group\(\s*'property: no-silent-channel'/,
+    sources: [
+      // The MOUNT, not the class. A widget declared and never placed is the
+      // dead-control shape, and `class CatchUpNudgeBanner` would match with the
+      // banner deleted from the tree it is supposed to appear in.
+      { file: HOME, re: /const CatchUpNudgeBanner\(\),/, what: 'the home shell must MOUNT the nudge — a banner nothing places is the dead-control shape, and on Web/Windows/Linux it is the only delivery mechanism there is' },
+      { file: HOME, re: /core\.CatchUpNudge\(\)\.decide\(/, what: 'the banner must decide through the shared predicate; a local `if` re-derives the rule per app and drifts' },
+      { file: PROVIDERS, re: /kv\.write\(_lastNudgeShownKey/, what: 'the dismissal must be PERSISTED — an in-memory one comes straight back at the next launch, which is a nag rather than a nudge' },
+      // The RELATIONSHIP, asserted in the test rather than named here: the loop
+      // must range over the enum, so a platform Flutter adds later cannot arrive
+      // with neither half of the promise and nothing red.
+      { file: PROP_TEST, re: /for \(final TargetPlatform p in TargetPlatform\.values\)/, what: 'the platform loop must enumerate TargetPlatform.values — a hand-written list is a list somebody shortens, and it would keep passing over Android alone' },
+    ],
+    gap:
+      'the WEB row of no-silent-channel cannot be exercised from a widget test — `kIsWeb` is a ' +
+      'compile-time constant, and web is the only live platform this factory ships to. The DECISION is ' +
+      'covered for that row in packages/core/test/catch_up_nudge_test.dart (platformCanSchedule is a ' +
+      'parameter); the widget\'s own kIsWeb read is not. Closing it needs `isWeb` as an injectable seam ' +
+      'value — a [2]C-1/C-7 edit. Declared 2026-08-03.',
+    why: 'a reminder the platform cannot schedule and the app never mentions is a switch that reads ON over a device that says nothing, on three of six platforms',
+  },
+  {
     key: 'locale-actually-switches',
     group: /group\(\s*'property: locale-actually-switches'/,
     sources: [
@@ -372,7 +428,11 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the analytics rail landed, and a regex that silently matches nothing is the
 // exact failure mode this repo keeps hitting. A shrinking domain is a real
 // event — deleting a capability — so it must be an explicit edit, not a drift.
-const MIN_DOMAIN = 40;
+// 41 since 2026-08-03: [pipeline 13]T-8 added `catchUpNudgeProvider`. This
+// moves ONLY when a capability is deliberately added or removed — it is the
+// floor that makes a silently-shrinking domain an explicit edit rather than a
+// drift, so raising it is part of adding the capability, never a fix for a red.
+const MIN_DOMAIN = 41;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -401,6 +461,10 @@ const COVERED_BY = {
   routerRefreshProvider: 'onboarding-shown-once',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',
+  // Driven, not constructed: the property taps the banner's dismiss action and
+  // asserts the stamp really persisted it, then that tomorrow's reminder brings
+  // it back. [pipeline T-8]
+  catchUpNudgeProvider: 'no-silent-channel',
   localeProvider: 'locale-actually-switches',
   keyValueStoreProvider: 'theme-mode-persisted',
   themeModeProvider: 'theme-mode-persisted',
@@ -625,6 +689,11 @@ for (const root of roots) {
       continue;
     }
     ok(`${root} — property '${p.key}' asserted and implemented (${sources.length} anchor${sources.length > 1 ? 's' : ''})`);
+    // A limb of the property that CANNOT be exercised here, printed every run
+    // rather than left in a comment nobody opens. Never blocking: the fix is
+    // another stage's seam edit, and a guard that reddens CI over work this
+    // branch may not do is one somebody switches off. [CLAUDE.md C-6]
+    if (p.gap) propertyGaps.add(`${p.key} — ${p.gap}`);
   }
 }
 
@@ -687,6 +756,15 @@ if (domainSrc) {
     console.log('   (printed, not failed: per the C-16 lock new properties arrive WITH their features.)');
   }
 }
+
+// Limbs of a declared property that cannot be exercised where the property
+// lives, printed on EVERY run. The count is printed too: zero and one read
+// identically once the loop has nothing to iterate, which is exactly how
+// `missingMethods` spent its whole life unvalidated next door.
+console.log(
+  `\n⬜ ${propertyGaps.size} property limb(s) that cannot be exercised in the stamp:`,
+);
+for (const g of propertyGaps) console.log(`   · ${g}`);
 
 if (failed) {
   console.error('\nassert-stamp-properties: FAILED');

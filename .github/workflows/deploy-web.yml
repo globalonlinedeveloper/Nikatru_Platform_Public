@@ -48,6 +48,10 @@ on:
       # a smoke that changed and never ran again would be a gate that quietly
       # stopped gating, which is this repository's most repeated failure.
       - 'tooling/smoke/smoke-web-artifact.mjs'
+      # [pipeline 14]O-7's post-deploy smoke, listed for the same reason and
+      # subject to the same non-enforcement: it is the step that decides whether
+      # the deployment record below is allowed to be written at all.
+      - 'tooling/ops/post-deploy-smoke.mjs'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
@@ -211,6 +215,39 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/subly
           command: pages deploy build/web --project-name=subly --branch=main
+
+      # ── [pipeline 14]O-7 · THE DEPLOY IS NOT TRUSTED UNTIL THE SITE AGREES ──
+      # 🔴 BEFORE THIS STEP, THE LAST THING EVERY DEPLOY JOB DID WAS WRITE A
+      # CLAIM. `record-deployment.mjs` below records "subly-web is live at
+      # <sha>" — and no workflow in this repository had ever performed a single
+      # request against a surface it had just deployed. An upload that went to
+      # the wrong project, shipped nothing, or was rolled back by the platform
+      # produced a green tick AND a deployment record naming the new SHA.
+      #
+      # IT RUNS BEFORE THE RECORD, DELIBERATELY. Recording first and verifying
+      # second would leave a marker asserting a state that was never true.
+      #
+      # ⚠️ THE JOIN KEY IS THE RUN NUMBER, NOT THE SHA. `version.json` carries
+      # `build_number`; the SHA appears only inside `main.dart.js`. The build
+      # step above passes `--build-number=${{ github.run_number }}`, so this
+      # asserts against the field that is actually there rather than the one it
+      # would be tidier to have.
+      #
+      # ⚠️ THIS IS NOT A SECOND COPY OF [9]R-13's LAUNCH SMOKE, and the two must
+      # not be merged. R-13 serves `build/web` on loopback BEFORE the deploy and
+      # requires `flutter-first-frame` — it answers "do these bytes RUN?". This
+      # answers "did those bytes REACH PRODUCTION?", over the network, after the
+      # upload. Each is green in the exact situation the other catches: a bundle
+      # that starts perfectly and was uploaded to the wrong project, and a
+      # correct upload of a bundle that throws in `main()`. They compose, and
+      # the order — launch smoke, deploy, post-deploy smoke — is the composition.
+      - name: Smoke — the live site serves THIS build
+        working-directory: .
+        run: >
+          node tooling/ops/post-deploy-smoke.mjs
+          --url https://subly.nikatru.com/version.json
+          --field build_number
+          --expect ${{ github.run_number }}
 
       # "What is live right now?" must be answerable without inference.
       # CLAUDE.md: never assert done/live/working from memory. [pipeline F-5b]

@@ -531,6 +531,151 @@ describe('assert-ops-register — retention rules, whose DOMAIN is assert-retent
   });
 });
 
+// ── [14]O-10 · a cadence is a claim until something reads it ────────────────
+// ⚠️ MUTATION-PROVEN ON THE REAL TREE FIRST (2026-08-03), and the run found a
+// defect in the guard: repointing `duty.workflow.build-platforms.yml`'s
+// `readBy` at `assert-e2e-proof-fresh.mjs` returned exit 0, because that
+// guard's HEADER names `build-platforms.yml` four times while explaining why it
+// is a sibling. A comment satisfied a check about behaviour. Comments are
+// stripped now, and the last case below is that exact input.
+describe('assert-ops-register — O-10: a cadence must be READ, not merely declared', () => {
+  const scheduled = (over = {}) => {
+    const reg = baseRegister();
+    reg.rows.push({
+      id: 'duty.workflow.nightly.yml',
+      kind: 'duty',
+      what: 'a nightly proof',
+      detector: 'a guard',
+      response: 'fix it',
+      cadence: '1d',
+      mechanism: {
+        substrate: 'github-actions',
+        anchor: '.github/workflows/nightly.yml',
+        record: 'run history',
+        failingValue: 'no scheduled success',
+        readBy: 'tooling/ci/assert-nightly-fresh.mjs',
+        ...over.mechanism,
+      },
+      accessProviders: ['github'],
+      source: 'verified',
+      ...over.row,
+    });
+    return reg;
+  };
+  const withReader = (src) =>
+    evaluate(
+      scheduled(),
+      {
+        workflows: ['ci.yml', 'nightly.yml'],
+        paths: new Set([...tree.paths, '.github/workflows/nightly.yml', 'tooling/ci/assert-nightly-fresh.mjs']),
+        readerSource: new Map([['tooling/ci/assert-nightly-fresh.mjs', src]]),
+      },
+      NOW,
+    );
+
+  test('PASSES when the named reader exists and names the workflow in code', () => {
+    const v = withReader("const WORKFLOW = 'nightly.yml';");
+    assert.equal(v.errors.length, 0, v.errors.join(' | '));
+    assert.ok(v.prints.some((p) => /O-10 — 1 scheduled workflow duty/.test(p)));
+  });
+
+  test('🔴 FAILS when `readBy` is a SENTENCE rather than a file that exists', () => {
+    const v = evaluate(
+      scheduled({ mechanism: { readBy: 'somebody remembering to look' } }),
+      { workflows: ['ci.yml', 'nightly.yml'], paths: new Set([...tree.paths, '.github/workflows/nightly.yml']), readerSource: new Map() },
+      NOW,
+    );
+    assert.match(v.errors.join(' | '), /names no in-tree file that exists/);
+  });
+
+  test('a declared `freshnessGap` PRINTS instead, and never blocks', () => {
+    const v = evaluate(
+      scheduled({ mechanism: { readBy: 'nothing yet' }, row: { freshnessGap: 'needs a monitor only the owner can create' } }),
+      { workflows: ['ci.yml', 'nightly.yml'], paths: new Set([...tree.paths, '.github/workflows/nightly.yml']), readerSource: new Map() },
+      NOW,
+    );
+    assert.equal(v.errors.length, 0, v.errors.join(' | '));
+    assert.match(v.prints.join(' | '), /has NO in-tree freshness reader: needs a monitor/);
+  });
+
+  test('🔴 FAILS when the reader exists but names ANOTHER workflow', () => {
+    const v = withReader("const WORKFLOW = 'some-other.yml';");
+    assert.match(v.errors.join(' | '), /never mentions `nightly\.yml`/);
+  });
+
+  test('🔴 a COMMENT naming the workflow does not count — the real-tree defect', () => {
+    const v = withReader("// this is the sibling of the guard that watches nightly.yml\nconst WORKFLOW = 'some-other.yml';");
+    assert.match(v.errors.join(' | '), /never mentions `nightly\.yml`/);
+  });
+
+  test('a `trigger` duty owes no reader — it has no timer that can die', () => {
+    const reg = scheduled({ row: { cadence: 'trigger', trigger: 'on push' }, mechanism: { readBy: 'a red check' } });
+    const v = evaluate(
+      reg,
+      { workflows: ['ci.yml', 'nightly.yml'], paths: new Set([...tree.paths, '.github/workflows/nightly.yml']), readerSource: new Map() },
+      NOW,
+    );
+    assert.equal(v.errors.length, 0, v.errors.join(' | '));
+  });
+});
+
+// ── [14]O-7 · a deploy is not trusted until the live surface agrees ──────────
+// ⚠️ MUTATION-PROVEN ON THE REAL TREE FIRST: renaming the smoke invocation in
+// `.github/workflows/deploy-web.yml` produced
+// "deploy-web records a deployment for `subly-web` and never probes it".
+describe('assert-ops-register — O-7: every recorded deployment is probed', () => {
+  const withJobs = (deployJobs, exemptions) => {
+    const reg = baseRegister();
+    if (exemptions) reg._deploySmokeExemptions = exemptions;
+    return evaluate(reg, { ...tree, deployJobs }, NOW);
+  };
+
+  test('PASSES when the job that records also probes', () => {
+    const v = withJobs([{ workflow: 'deploy-web.yml', job: 'deploy-web', environment: 'subly-web', smokes: 1 }]);
+    assert.equal(v.errors.length, 0, v.errors.join(' | '));
+    assert.match(v.prints.join(' | '), /1 deploy job\(s\) derived .*1 probe the surface they ship/);
+  });
+
+  test('🔴 FAILS when a job records a deployment and probes nothing', () => {
+    const v = withJobs([{ workflow: 'deploy-web.yml', job: 'deploy-web', environment: 'subly-web', smokes: 0 }]);
+    assert.match(v.errors.join(' | '), /records a deployment for `subly-web` and never probes it/);
+  });
+
+  test('🔴 a smoke in a SIBLING job does not cover this one', () => {
+    // deploy-workers.yml ships two independent Workers; a file-level check would
+    // certify both while touching one.
+    const v = withJobs([
+      { workflow: 'deploy-workers.yml', job: 'platform', environment: 'platform', smokes: 1 },
+      { workflow: 'deploy-workers.yml', job: 'subly-api', environment: 'subly-api', smokes: 0 },
+    ]);
+    assert.match(v.errors.join(' | '), /records a deployment for `subly-api`/);
+    assert.doesNotMatch(v.errors.join(' | '), /`platform`/);
+  });
+
+  test('a WRITTEN exemption prints instead of failing', () => {
+    const v = withJobs([{ workflow: 'sites/nikatru', job: '(no job)', environment: 'site:nikatru', smokes: 0 }], {
+      'site:nikatru': 'Cloudflare Git integration; covered by the external prober.',
+    });
+    assert.equal(v.errors.length, 0, v.errors.join(' | '));
+    assert.match(v.prints.join(' | '), /exempt: Cloudflare Git integration/);
+  });
+
+  test('an EMPTY exemption is not an exemption', () => {
+    const v = withJobs([{ workflow: 'sites/x', job: '(no job)', environment: 'site:x', smokes: 0 }], { 'site:x': '   ' });
+    assert.match(v.errors.join(' | '), /records a deployment for `site:x`/);
+  });
+
+  test('the exemption COUNT ignores the block\'s own prose keys', () => {
+    // `0 exemptions` and `3 exemptions` must not read alike, and `_why` is not
+    // an exemption.
+    const v = withJobs([{ workflow: 'sites/x', job: '(no job)', environment: 'site:x', smokes: 0 }], {
+      _why: ['a paragraph'],
+      'site:x': 'covered by the prober',
+    });
+    assert.match(v.prints.join(' | '), /1 written exemption\(s\)/);
+  });
+});
+
 describe('assert-ops-register — structural refusals', () => {
   test('a register with no rows is refused', () => {
     const r = baseRegister();

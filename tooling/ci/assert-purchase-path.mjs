@@ -45,6 +45,7 @@ const CONVERGENCE = 'packages/purchases/lib/src/entitlement_convergence.dart';
 const CACHE = 'packages/core/lib/src/entitlement_cache.dart';
 const CHANNELS = 'tooling/channel-register.json';
 const SERVER_CONFIG = 'services/platform/src/config.ts';
+const SERVER_TYPES = 'services/platform/src/types.ts';
 const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 
@@ -437,6 +438,99 @@ let permitted = [];
         );
       } else {
         ok('restore control present and backed by a server read');
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// E · A QUALIFYING AUTO-RENEWING SKU MAY NOT GO LIVE WITH NO RENEWAL NOTICE
+//     [pipeline 13]T-11
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 WHY THIS COULD NOT BE WRITTEN BEFORE AND CAN BE NOW. T-11 was deferred
+// with the reason "no SKU declaration surface exists anywhere" — the predicate
+// had no domain, and a guard printing `0 of 0 SKUs match` against a file that
+// does not exist is the unfalsifiable shape this repo keeps deleting. [5]M-11
+// landed the surface: `services/platform/src/config.ts`'s rail config now
+// declares real offerings with a `term` and a `trial_days`, and
+// `packages/purchases` parses them. The domain is non-empty and enumerable, so
+// the tripwire is writable.
+//
+// ⚠️ WHAT THIS DELIBERATELY DOES **NOT** ENCODE. No notice window, no lead
+// time, no cadence, no "N days before renewal". Whether an on-device
+// notification can satisfy §17602(h)(1)'s medium clause given the statute's
+// non-exhaustive wording, and whether a merchant of record's own renewal mail
+// discharges the duty for these apps, are LEGAL DETERMINATIONS routed to
+// [8]K-13. Writing a number here would be inventing the very thing that is
+// under determination. What this asserts is only the conditional: a qualifying
+// SKU must not reach a live paywall while the notice mechanism is undeclared.
+//
+// ⚠️ AND THE HONEST CONSEQUENCE, PRINTED RATHER THAN HIDDEN: this factory has
+// NO qualifying notice medium at all today. Stage 13 deliberately cut an email
+// channel, and [4]B-12 owns only transactional auth mail and is itself blocked
+// on owner-only credentials. So a qualifying SKU cannot ship on the current
+// stack — that is a stronger statement than "its timers are missing", and it is
+// the one that should be read before anybody flips the switch.
+{
+  const cfgRaw = read(SERVER_CONFIG);
+  const typesRaw = read(SERVER_TYPES);
+  if (cfgRaw === null || typesRaw === null) {
+    problems.push(
+      `COVERAGE LOST — ${SERVER_CONFIG} or ${SERVER_TYPES} is missing, so the qualifying-SKU domain was computed over nothing. An empty domain reads exactly like a compliant one.`,
+    );
+  } else {
+    const cfg = code(cfgRaw);
+    // Parsed per offering, not by two independent greps: `[...trial_days]` and
+    // `[...term]` collected separately cannot tell WHICH sku has which, so a
+    // one-time sku with a trial and a renewing one without would classify as
+    // the reverse and the count would still look right.
+    const offerings = [...cfg.matchAll(/\{\s*product_id:\s*'([^']+)'[^}]*\}/g)].map((m) => {
+      const body = m[0];
+      return {
+        id: m[1],
+        term: /term:\s*'(\w+)'/.exec(body)?.[1] ?? null,
+        trialDays: Number(/trial_days:\s*(\d+)/.exec(body)?.[1] ?? 0),
+      };
+    });
+    if (offerings.length === 0) {
+      problems.push(
+        `COVERAGE LOST — no offering could be parsed out of ${SERVER_CONFIG}'s rail config. T-11's domain is the declared SKU set; with nothing parsed the tripwire below is satisfied by having no products, which is not the same as having compliant ones.`,
+      );
+    } else {
+      // Qualifying = it renews by itself, or it starts free and then charges.
+      // Both are the shape consumer-renewal law is written about; a genuine
+      // one-time purchase with no trial is not.
+      const qualifying = offerings.filter((o) => (o.term !== null && o.term !== 'one_time') || o.trialDays > 0);
+      // The one readable "is it live" signal in the tree. A stamped app is born
+      // with the paywall off, so today this is false for every app.
+      const paywallLive = /paywall:\s*\{[^}]*enabled:\s*true/.test(cfg);
+      // What would close the gap, named so the waiver cannot outlive it: a
+      // typed `renewal_notice` on the config contract AND a non-null value.
+      // Naming the closing evidence is what stops "we are still deciding" from
+      // becoming permanent.
+      const noticeDeclared =
+        /renewal_notice/.test(code(typesRaw)) && /renewal_notice\s*:\s*(?!null)/.test(cfg);
+
+      if (qualifying.length > 0 && paywallLive && !noticeDeclared) {
+        problems.push(
+          `A QUALIFYING AUTO-RENEWING SKU IS LIVE WITH NO RENEWAL-NOTICE MECHANISM — ${qualifying.length} of ${offerings.length} offering(s) in ${SERVER_CONFIG} renew automatically or start with a free trial (${qualifying.map((o) => `${o.id}: term=${o.term ?? 'none'}, trial=${o.trialDays}d`).join('; ')}), and \`paywall.enabled\` is true. ` +
+            `Nothing in this repo declares how, or through what medium, a renewal or end-of-trial notice reaches the buyer: there is no \`renewal_notice\` on the config contract in ${SERVER_TYPES}, and this factory has NO notice medium at all — stage 13 cut an email channel and [4]B-12 is blocked on owner-only credentials. ` +
+            `The window and the medium are legal determinations for [8]K-13 and must NOT be invented here; what must not happen is the switch being flipped before either exists.`,
+        );
+      } else if (qualifying.length > 0) {
+        // The uncomfortable half, printed EVERY run. The count is printed too:
+        // "0 of 0" and "2 of 2" read identically once only a verdict is shown,
+        // and that ambiguity is the exact reason T-11 was deferred.
+        console.log(
+          `⬜ [13]T-11 — ${qualifying.length} of ${offerings.length} declared offering(s) would qualify for a consumer renewal/trial notice ` +
+            `(${qualifying.map((o) => `${o.id}: term=${o.term ?? 'none'}, trial=${o.trialDays}d`).join('; ')}), and NO notice mechanism exists: ` +
+            `no \`renewal_notice\` on the config contract, and no notice medium in the portfolio at all (no email channel — [4]B-12 is owner-blocked). ` +
+            `\`paywall.enabled\` is false, so nothing is live and this prints rather than fails. The medium question is [8]K-13's legal determination; ` +
+            `the honest consequence is that a qualifying SKU cannot ship on the current stack, not merely that its timers are missing.`,
+        );
+        ok(`T-11 tripwire armed over ${offerings.length} declared offering(s); paywall not live`);
+      } else {
+        ok(`T-11 — no declared offering renews automatically or carries a trial (${offerings.length} scanned)`);
       }
     }
   }

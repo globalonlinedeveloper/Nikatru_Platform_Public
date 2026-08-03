@@ -179,6 +179,16 @@ export const DEFAULT_CONFIGS = {
 };
 `;
 
+// [pipeline 13]T-11. The config CONTRACT, which is where a renewal-notice
+// declaration would have to be typed. Deliberately without one, because that is
+// the tree's real state.
+const SERVER_TYPES = `
+export interface AppConfig {
+  paywall: PaywallConfig;
+  max_promos_per_week: number;
+}
+`;
+
 const CONVERGENCE = `
 const List<Duration> kCheckoutConvergenceDelays = <Duration>[
   Duration(seconds: 2),
@@ -271,6 +281,7 @@ function run(o = {}) {
   write(root, 'packages/purchases/lib/src/entitlement_convergence.dart', o.convergence ?? CONVERGENCE);
   write(root, 'packages/core/lib/src/entitlement_cache.dart', o.cache ?? CACHE);
   write(root, 'services/platform/src/config.ts', o.serverConfig ?? SERVER_CONFIG);
+  if (o.serverTypes !== null) write(root, 'services/platform/src/types.ts', o.serverTypes ?? SERVER_TYPES);
   write(root, `${BRICK}/lib/core/router.dart`, o.router ?? ROUTER);
   write(root, `${BRICK}/lib/features/home/home_screen.dart`, o.home ?? HOME);
   write(root, `${BRICK}/lib/features/settings/settings_screen.dart`, o.settings ?? SETTINGS);
@@ -447,6 +458,84 @@ describe('assert-purchase-path — the client money rail', () => {
     });
     assert.equal(r.code, 1);
     assert.match(r.out, /NO RESTORE CONTROL/);
+  });
+
+  // ── [13]T-11 · the renewal-notice tripwire ────────────────────────────────
+  // ⚠️ Mutation-proven on the REAL tree first (2026-08-03): flipping
+  // `paywall.enabled` to true in services/platform/src/config.ts turned CI red
+  // with the message below; deleting both offering literals produced BOTH
+  // COVERAGE LOST lines (M-8's and T-11's). The fixtures re-encode those inputs;
+  // they are not the evidence.
+  test('🔴 FAILS when a qualifying SKU goes LIVE with no declared notice mechanism', () => {
+    const r = run({ serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true') });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /QUALIFYING AUTO-RENEWING SKU IS LIVE/);
+    assert.match(r.out, /2 of 2 offering\(s\)/);
+    assert.match(r.out, /pro_monthly: term=month, trial=30d/);
+  });
+
+  test('PASSES live once the notice mechanism is declared on both sides', () => {
+    // The tripwire must be SATISFIABLE, or it is a permanent block rather than a
+    // gate — and a permanent block is one somebody deletes.
+    const r = run({
+      serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true').replace(
+        'offerings: [',
+        "renewal_notice: { medium: 'email' },\n      offerings: [",
+      ),
+      serverTypes: `${SERVER_TYPES}\nexport interface PaywallConfig { renewal_notice: RenewalNotice | null; }\n`,
+    });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('a live paywall selling only ONE-TIME, trial-free products does not trip it', () => {
+    // The classifier must not fire on every product that exists. A genuine
+    // one-off purchase carries no renewal to give notice of.
+    const r = run({
+      serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true').replace(
+        /offerings: \[[\s\S]*?\],/,
+        "offerings: [\n        { product_id: 'lifetime', amount_minor: 4999, currency_code: 'USD', term: 'one_time', trial_days: 0 },\n      ],",
+      ),
+      // M-8's bound is relative to the shortest trial, and this catalogue has no
+      // trial at all — so the ceiling has to come down with it or that
+      // (unrelated) limb fires and the case stops isolating T-11.
+      cache: CACHE.replace('Duration(days: 7)', 'Duration(days: 0)'),
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /no declared offering renews automatically or carries a trial/);
+  });
+
+  test('a trial on a one-time product still qualifies', () => {
+    // "Free now, charged later" is the other half of the shape, and a rule
+    // keyed only on `term` would miss it.
+    const r = run({
+      serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true').replace(
+        /offerings: \[[\s\S]*?\],/,
+        "offerings: [\n        { product_id: 'lifetime', amount_minor: 4999, currency_code: 'USD', term: 'one_time', trial_days: 14 },\n      ],",
+      ),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 of 1 offering\(s\)/);
+  });
+
+  test('PRINTS the gap, and the COUNT, while the paywall is off', () => {
+    // The reason T-11 was deferred: "0 of 0 SKUs match" and "2 of 2 SKUs match"
+    // read identically from a verdict alone.
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /⬜ \[13\]T-11 — 2 of 2 declared offering\(s\)/);
+    assert.match(r.out, /K-13/);
+  });
+
+  test('COVERAGE LOST when the config contract itself is missing', () => {
+    const r = run({ serverTypes: null });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /the qualifying-SKU domain was computed over nothing/);
+  });
+
+  test('COVERAGE LOST when no offering can be parsed at all', () => {
+    const r = run({ serverConfig: SERVER_CONFIG.replace(/\{ product_id:[\s\S]*?\},\n/g, '') });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /no offering could be parsed/);
   });
 
   test('COVERAGE LOST when the capability declaration is gone entirely', () => {

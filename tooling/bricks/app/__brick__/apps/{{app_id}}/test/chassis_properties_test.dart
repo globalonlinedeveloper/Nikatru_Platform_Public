@@ -25,6 +25,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,7 +39,11 @@ import 'package:{{app_id.snakeCase()}}/l10n/app_localizations.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/core/router.dart';
 import 'package:{{app_id.snakeCase()}}/features/firstrun/onboarding_screen.dart';
+import 'package:{{app_id.snakeCase()}}/features/home/home_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/settings/settings_screen.dart';
+// [pipeline T-8] The platform capability matrix, so the no-silent-channel loop
+// derives its expectation from the same source the widget reads.
+import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:{{app_id.snakeCase()}}/state/money_providers.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
@@ -76,20 +82,40 @@ class _FakeNotifications implements core.NotificationService {
   Future<void> init() async => initCalls++;
 
   @override
-  Future<bool> requestPermission() async => permission;
+  Future<bool> requestPermission() async {
+    requestPermissionCalls++;
+    return permission;
+  }
 
   @override
   Future<void> showNow({required String title, required String body}) async {}
 
-  @override
-  Future<void> scheduleDaily(core.DailyReminder reminder) async =>
-      scheduled.add(reminder);
+  int requestPermissionCalls = 0;
 
   @override
-  Future<void> cancel(int id) async {}
+  // Replaces by id, because the real one does — `scheduleDaily` overwrites a
+  // pending notification with the same id. A fake that only APPENDED made the
+  // idempotence assertion below meaningless: re-arming on every launch would
+  // have grown the list here while the device held exactly one.
+  Future<void> scheduleDaily(core.DailyReminder reminder) async {
+    scheduled.removeWhere((core.DailyReminder r) => r.id == reminder.id);
+    scheduled.add(reminder);
+  }
 
   @override
-  Future<void> cancelAll() async => cancelAllCalls++;
+  Future<void> cancel(int id) async =>
+      scheduled.removeWhere((core.DailyReminder r) => r.id == id);
+
+  @override
+  // 🔴 IT REALLY DROPS THEM. Counting the call and leaving the list populated is
+  // how "OFF still leaves schedules alive" passed for an entire increment: the
+  // count went up, the assertion was on the count, and the device would still
+  // have fired. The only assertion that can tell the two apart is one made
+  // against what is left.
+  Future<void> cancelAll() async {
+    cancelAllCalls++;
+    scheduled.clear();
+  }
 }
 
 ProviderContainer _container(
@@ -1714,6 +1740,395 @@ void main() {
         expect(c.read(remindersEnabledProvider), isFalse);
       },
     );
+  });
+
+  // ── PROPERTY: reminders-resync-on-start ───────────────────────────────────
+  // [pipeline T-5/T-7] The intent is reconciled with the OS at every launch.
+  //
+  // 🔴 THE MEASURED DEFECT THIS REPLACES. `set(false)` — the plain flag writer —
+  // persisted OFF and left every schedule armed, because the only route to
+  // `cancelAll` was `applyReminderChoice`, reachable from exactly one
+  // `SwitchListTile.onChanged`. Any other writer (a settings sync, a restore, a
+  // future prefs screen, the permission-refusal branch) produced a switch reading
+  // OFF over a device that still fired. And there was no repair path at all: an
+  // Android reboot drops pending alarms and a DST shift moves the wall-clock hour
+  // a schedule was built against, so "reminders are on" decayed to "reminders
+  // were on once" with nothing red anywhere.
+  //
+  // ⚠️ The `_FakeNotifications` change is half of this property. Its `cancelAll`
+  // used to increment a counter and leave the list populated — so an assertion on
+  // the COUNT passed against a device that would still have fired. Everything
+  // below is asserted against what is LEFT.
+  group('property: reminders-resync-on-start', () {
+    test('set(false) ALONE cancels — not just the toggle path', () async {
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = _container(_MemStore(), notifications: notes);
+      addTearDown(c.dispose);
+      final RemindersEnabledController controller = c.read(
+        remindersEnabledProvider.notifier,
+      );
+
+      await controller.applyReminderChoice(on: true, title: 'T', body: 'B');
+      expect(notes.scheduled, hasLength(1));
+
+      // The plain flag writer, with no widget and no dialog anywhere near it.
+      await controller.set(false);
+
+      expect(
+        notes.cancelAllCalls,
+        greaterThan(0),
+        reason:
+            'a second writer of the intent must reach the OS; before this it '
+            'did not, and the schedule outlived the switch',
+      );
+      expect(
+        notes.scheduled,
+        isEmpty,
+        reason:
+            'OFF is a promise that nothing fires, not a promise about a bool',
+      );
+    });
+
+    test('intent ON is re-armed from the store at start-up', () async {
+      final _MemStore store = _MemStore();
+      store.data['nikatru.reminders_enabled'] = 'true';
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = _container(store, notifications: notes);
+      addTearDown(c.dispose);
+
+      await c
+          .read(remindersEnabledProvider.notifier)
+          .resyncOnStart(title: 'T', body: 'B');
+
+      expect(notes.scheduled, hasLength(1));
+      expect(notes.scheduled.single.id, kDailyReminderId);
+      expect(notes.scheduled.single.hour, AppConfig.reminderHour);
+      expect(notes.scheduled.single.minute, AppConfig.reminderMinute);
+      expect(
+        notes.requestPermissionCalls,
+        0,
+        reason:
+            'the boot path must never spend the OS ask — Android 13+ makes a '
+            'SECOND denial permanent, so a launch-time prompt can burn the '
+            'permission for the life of the install',
+      );
+    });
+
+    test('intent OFF is re-asserted from the store at start-up', () async {
+      final _MemStore store = _MemStore();
+      store.data['nikatru.reminders_enabled'] = 'false';
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = _container(store, notifications: notes);
+      addTearDown(c.dispose);
+      // Something else armed it — a previous install, a restored backup.
+      await notes.scheduleDaily(
+        const core.DailyReminder(
+          id: kDailyReminderId,
+          title: 'stale',
+          body: 'stale',
+          hour: 9,
+          minute: 0,
+        ),
+      );
+
+      await c
+          .read(remindersEnabledProvider.notifier)
+          .resyncOnStart(title: 'T', body: 'B');
+
+      expect(notes.cancelAllCalls, greaterThan(0));
+      expect(notes.scheduled, isEmpty);
+    });
+
+    test('an unreadable store at start-up changes NOTHING', () async {
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith(
+            (_) async => throw StateError('disk gone'),
+          ),
+          notificationServiceProvider.overrideWithValue(notes),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await c
+          .read(remindersEnabledProvider.notifier)
+          .resyncOnStart(title: 'T', body: 'B');
+
+      expect(
+        notes.cancelAllCalls,
+        0,
+        reason:
+            'a transient disk error is not an instruction to disable the '
+            'feature; cancelling here would silently turn reminders off',
+      );
+      expect(notes.scheduled, isEmpty);
+    });
+
+    // ⚠️ NOT "≤ 64 pending". The stamp's id set has size one, so a 64 assertion
+    // has no writable failing input — and the 64 figure itself is UNVERIFIED
+    // (observed platform behaviour from a forum post, not reference
+    // documentation). What CAN fail is the id going non-stable: make it a
+    // counter and this reddens immediately, because the re-arm stops replacing.
+    test('re-arming repeatedly keeps exactly ONE distinct id', () async {
+      final _MemStore store = _MemStore();
+      store.data['nikatru.reminders_enabled'] = 'true';
+      final _FakeNotifications notes = _FakeNotifications();
+      final ProviderContainer c = _container(store, notifications: notes);
+      addTearDown(c.dispose);
+      final RemindersEnabledController controller = c.read(
+        remindersEnabledProvider.notifier,
+      );
+
+      await controller.resyncOnStart(title: 'T', body: 'B');
+      await controller.resyncOnStart(title: 'T', body: 'B');
+      await controller.applyReminderChoice(on: true, title: 'T', body: 'B');
+
+      expect(
+        notes.scheduled.map((core.DailyReminder r) => r.id).toSet(),
+        <int>{kDailyReminderId},
+        reason:
+            'a non-stable id turns every launch into another pending '
+            'notification, and the OS drops the oldest silently once its own '
+            'budget is reached',
+      );
+      expect(notes.scheduled, hasLength(1));
+    });
+  });
+
+  // ── PROPERTY: no-silent-channel ───────────────────────────────────────────
+  // [pipeline T-8] EVERY platform row either gets a real OS schedule or gets the
+  // in-app catch-up nudge. Never neither.
+  //
+  // 🔴 THE RELATIONSHIP IS THE ASSERTION, and it is why this loop enumerates
+  // `TargetPlatform.values` instead of naming platforms. A hand-written list is a
+  // list somebody shortens: it would have kept passing over Android alone, and a
+  // platform Flutter adds later would arrive with neither half of the promise and
+  // nothing red. Enumerating the enum makes the domain grow with the framework.
+  //
+  // ⚠️ THE FALLBACK IS PERMANENT, NOT A BRIDGE. The pinned plugin family's own
+  // limitations text records that Windows throws on repeating notifications,
+  // Linux has no scheduler API, and browsers support neither scheduled nor
+  // repeating notifications. No version of it schedules on those three.
+  //
+  // ⬜ DECLARED GAP: the WEB row cannot be driven from here. `kIsWeb` is a
+  // compile-time constant, so `debugDefaultTargetPlatformOverride` cannot reach
+  // it — and web is the only live platform this factory ships to today. The
+  // decision itself is covered for that row in
+  // `packages/core/test/catch_up_nudge_test.dart`, which takes
+  // `platformCanSchedule` as a parameter; what is NOT covered is this widget's
+  // own `kIsWeb` read. Closing it needs `isWeb` as an injectable seam value, a
+  // [2]C-1/C-7 edit. `tooling/ci/assert-stamp-properties.mjs` prints it on every
+  // run rather than asserting something nobody here can satisfy.
+  group('property: no-silent-channel', () {
+    /// Pumps the banner alone — deliberately not the whole app, so the platform
+    /// override is the only variable and no router/auth state can mask the row.
+    Future<void> pumpBanner(
+      WidgetTester tester,
+      ProviderContainer c, {
+      required DateTime now,
+    }) async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(body: CatchUpNudgeBanner(clock: () => now)),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    /// Sets the platform override for [body] and ALWAYS clears it inside the
+    /// test body.
+    ///
+    /// ⚠️ `tearDown` is TOO LATE and looks like it works. flutter_test asserts
+    /// "no foundation debug variable was left changed" at the end of the body,
+    /// before any tearDown runs, so every test in this group failed on that
+    /// invariant rather than on anything it asserts — a red that says nothing
+    /// about the feature.
+    Future<void> onPlatform(
+      TargetPlatform p,
+      Future<void> Function() body,
+    ) async {
+      debugDefaultTargetPlatformOverride = p;
+      try {
+        await body();
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+
+    testWidgets('every platform gets EITHER an OS schedule OR the in-app nudge', (
+      WidgetTester tester,
+    ) async {
+      for (final TargetPlatform p in TargetPlatform.values) {
+        await onPlatform(p, () async {
+          final _MemStore store = _MemStore();
+          store.data['nikatru.reminders_enabled'] = 'true';
+          final ProviderContainer c = _container(store);
+          addTearDown(c.dispose);
+          c.read(remindersEnabledProvider);
+          // `tester.pump()`, never `Future.delayed` — testWidgets runs in a fake
+          // async zone, so a real delay never completes and the whole file hangs.
+          await tester.pump();
+
+          final NotificationCapabilities caps =
+              NotificationCapabilities.forPlatform(p, isWeb: false);
+          // An hour past the configured reminder, so the nudge is genuinely due
+          // on any row that cannot schedule.
+          await pumpBanner(
+            tester,
+            c,
+            now: DateTime(
+              2026,
+              8,
+              3,
+              AppConfig.reminderHour,
+              0,
+            ).add(const Duration(hours: 1)),
+          );
+
+          final bool shown = find.byType(MaterialBanner).evaluate().isNotEmpty;
+          expect(
+            shown,
+            !caps.canSchedule,
+            reason:
+                'on $p canSchedule=${caps.canSchedule}; the reminder must be '
+                'delivered by exactly one of the two mechanisms — a row with '
+                'neither is a switch that reads ON over a device that never '
+                'says anything',
+          );
+        });
+      }
+    });
+
+    // 🔴 THE MOUNT, ASSERTED AGAINST THE REAL RUNNING APP. Everything else in
+    // this group pumps the banner directly, which proves the DECISION and proves
+    // nothing about the app containing it — deleting the widget from the home
+    // shell left all four of those tests green. Same distinction
+    // `analytics-on-switch-mounted` exists for, learned the same way.
+    //
+    // Asserted on the widget's PRESENCE, not on the banner it renders, so it is
+    // independent of the wall clock: `HomeScreen` mounts it with the real
+    // `DateTime.now()`, and a test that required the reminder to be due would
+    // assert nothing for twenty hours a day and then start failing at 20:00.
+    testWidgets('the running app really MOUNTS the nudge on home', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: _FakeEntitlements(),
+      );
+      addTearDown(c.dispose);
+      await c
+          .read(authRepositoryProvider)
+          .signInWithEmail(email: 'a@b.com', password: 'pw');
+      await c.read(appConfigProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(CatchUpNudgeBanner),
+        findsOneWidget,
+        reason:
+            'on Web, Windows and Linux this widget is the ONLY delivery '
+            'mechanism there is, so an unmounted one is a reminder feature that '
+            'silently does nothing on three of six platforms',
+      );
+    });
+
+    testWidgets('a platform that cannot schedule still respects the opt-out', (
+      WidgetTester tester,
+    ) async {
+      await onPlatform(TargetPlatform.windows, () async {
+        final ProviderContainer c = _container(_MemStore());
+        addTearDown(c.dispose);
+
+        await pumpBanner(
+          tester,
+          c,
+          now: DateTime(2026, 8, 3, AppConfig.reminderHour, 30),
+        );
+
+        expect(
+          find.byType(MaterialBanner),
+          findsNothing,
+          reason:
+              'an in-app banner is still a notification; showing one to '
+              'somebody who turned reminders off routes around the switch',
+        );
+      });
+    });
+
+    testWidgets('dismissing it persists, and it does not come back today', (
+      WidgetTester tester,
+    ) async {
+      await onPlatform(TargetPlatform.windows, () async {
+        final _MemStore store = _MemStore();
+        store.data['nikatru.reminders_enabled'] = 'true';
+        final ProviderContainer c = _container(store);
+        addTearDown(c.dispose);
+        c.read(remindersEnabledProvider);
+        await tester.pump();
+
+        final DateTime now = DateTime(2026, 8, 3, AppConfig.reminderHour, 30);
+        await pumpBanner(tester, c, now: now);
+        expect(find.byType(MaterialBanner), findsOneWidget);
+
+        await tester.tap(find.text('Got it'));
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          store.data['nikatru.last_nudge_shown_at'],
+          isNotNull,
+          reason:
+              'an in-memory dismissal comes straight back at the next launch',
+        );
+        await pumpBanner(tester, c, now: now.add(const Duration(hours: 1)));
+        expect(find.byType(MaterialBanner), findsNothing);
+      });
+    });
+
+    testWidgets('it comes back for TOMORROW\'s reminder', (
+      WidgetTester tester,
+    ) async {
+      await onPlatform(TargetPlatform.windows, () async {
+        final _MemStore store = _MemStore();
+        store.data['nikatru.reminders_enabled'] = 'true';
+        store.data['nikatru.last_nudge_shown_at'] = DateTime(
+          2026,
+          8,
+          3,
+          AppConfig.reminderHour,
+          30,
+        ).toUtc().toIso8601String();
+        final ProviderContainer c = _container(store);
+        addTearDown(c.dispose);
+        c.read(remindersEnabledProvider);
+        c.read(catchUpNudgeProvider);
+        await tester.pump();
+
+        await pumpBanner(
+          tester,
+          c,
+          now: DateTime(2026, 8, 4, AppConfig.reminderHour, 5),
+        );
+        expect(
+          find.byType(MaterialBanner),
+          findsOneWidget,
+          reason:
+              'a daily reminder has a daily catch-up; suppressing on "ever '
+              'shown" would fire once in the life of the install',
+        );
+      });
+    });
   });
 
   // ── PROPERTY: locale-actually-switches ────────────────────────────────────
