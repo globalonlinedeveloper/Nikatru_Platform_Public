@@ -241,11 +241,18 @@ class SettingsScreen extends ConsumerWidget {
         Container(
           decoration: cardDecoration(),
           clipBehavior: Clip.antiAlias,
-          child: AboutListTile(
-            icon: const Icon(Icons.copyright_outlined),
-            applicationName: AppConfig.appName,
-            applicationLegalese: '© ${AppConfig.companyName}',
-            child: const Text('Open-source licences'),
+          // The Material is REQUIRED, not decoration. `ListTile` paints its
+          // background and ink splashes on the nearest Material ancestor, and
+          // `cardDecoration()` puts a DecoratedBox in between — Flutter asserts
+          // on exactly that, which turned four delete-account tests red.
+          child: Material(
+            color: Colors.transparent,
+            child: AboutListTile(
+              icon: const Icon(Icons.copyright_outlined),
+              applicationName: AppConfig.appName,
+              applicationLegalese: '© ${AppConfig.companyName}',
+              child: const Text('Open-source licences'),
+            ),
           ),
         ),
         const SizedBox(height: 14),
