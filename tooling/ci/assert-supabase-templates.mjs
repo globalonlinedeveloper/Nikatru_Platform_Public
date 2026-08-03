@@ -32,8 +32,15 @@
 //
 // Usage:  node tooling/ci/assert-supabase-templates.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+// ⚠️ NOT `readdirSync`. `assert-walks-bounded.mjs` rejected the first version of
+// this guard for importing it directly, and it was right: a raw listing descends
+// into a nested checkout — a git worktree, a submodule, a stray clone — and reads
+// another repository's files as this tree's. That is green in CI, which creates no
+// worktrees, and red on the one machine actually looking at it. `listDir` is the
+// single place that knows which entries belong to the tree under test.
+import { listDir } from './tree-walk.mjs';
 
 const repoRoot = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd());
 const DIR = join(repoRoot, 'docs', 'platform', 'supabase', 'email-templates');
@@ -57,7 +64,7 @@ if (!existsSync(DIR)) {
   process.exit(1);
 }
 
-const present = readdirSync(DIR).filter((f) => f.endsWith('.html')).sort();
+const present = listDir(DIR).filter((f) => f.endsWith('.html')).sort();
 
 // COVERAGE LOST, not "pass": a guard that evaluates nothing must never be green.
 if (present.length === 0) {
