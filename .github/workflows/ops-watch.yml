@@ -111,6 +111,81 @@ jobs:
           fi
           exit "$code"
 
+  # ── [pipeline O-4] SUPABASE AUTH DRIFT — the half CI cannot see ─────────────
+  #
+  # 🔴 WHY THIS JOB EXISTS. tooling/ci/assert-supabase-templates.mjs proves the DR
+  # copies exist and are structurally sound, and assert-mail-transport-claims.mjs
+  # proves the corpus describes the transport consistently. NEITHER CAN SEE LIVE.
+  # Both hold no credential, and both say so on every run. So the one question
+  # that actually matters — "does the live project still match what we recorded?"
+  # — was answered by a script only a human ever ran. A command nobody runs is a
+  # command that does not exist, and this repository has the receipts: the DR
+  # copies went two weeks unchecked and were load-bearing the day it mattered.
+  #
+  # BOTH failures this watches are documented and both already happened:
+  #   · 2026-08-04 — a one-field PATCH to /config/auth REPLACED the auth config,
+  #     emptying the whole SMTP block, resetting rate_limit_email_sent 100 -> 2
+  #     and reverting all three branded templates to Supabase defaults.
+  #   · 2026-08-03 — seven repo documents claimed the project was on the
+  #     provider's own sender when it was not, and one audit turned that into a
+  #     false store-submission blocker.
+  # The first is drift the repo can detect. The second is what a record checked
+  # against live prevents from becoming believable.
+  #
+  # ⚠️ THE MISSING SECRET IS A FAILED RUN, NOT A SKIPPED ONE — and that was a
+  # DELIBERATE REVERSAL of how this job was first written.
+  #
+  # It originally tested whether SUPABASE_PAT was set and, when it was not,
+  # printed a ::warning:: and exited 0, on the reasoning that supplying the
+  # secret is an owner action and CI must not block on work only one person can
+  # do. `tooling/ci/assert-green-means-ran.mjs` §B rejected exactly that shape,
+  # correctly: *"A run that discovers it cannot do its job and then reports
+  # success is a green tick over an untested tree — and a `failure()`-gated alert
+  # job cannot fire on it."* That guard exists because e2e.yml gated all nine of
+  # its real steps behind a secret-presence preflight and, once the secret was
+  # rotated, ran one `echo` and concluded SUCCESS for six unattended nights.
+  #
+  # The PRINT-DO-NOT-FAIL convention is real, but it belongs to ci.yml, which
+  # gates every push: blocking a developer's build on an owner's console action
+  # is what that convention prevents. THIS WORKFLOW IS SCHEDULED AND GATES
+  # NOTHING. Failing here costs no one a merge; it files one durable issue that
+  # names the owner action — which is the whole point of the `alert` job, and is
+  # what this file's own header already says about the heartbeat reader four
+  # jobs up: "A MISSING SECRET IS A FAILED RUN, NOT A SKIPPED ONE."
+  #
+  # So there is NO secret-presence branch. The script is run unconditionally and
+  # its three-valued exit is passed through: 0 in sync · 1 drift · 2 no
+  # credential. The shell below branches on the EXIT CODE, never on the secret,
+  # purely to annotate which of the two failures happened.
+  supabase-drift:
+    name: The live auth config still matches what the repo recorded
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Compare the live Supabase auth config against tooling/mail-transport.json
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set +e
+          node tooling/ops/verify-supabase-templates.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Supabase drift is UNKNOWN — the duty did not run::The script found no SUPABASE_PAT / SUPABASE_PROJECT_REF, so NOTHING compared the live auth config against tooling/mail-transport.json or the DR templates in docs/platform/supabase/email-templates/. This fails on purpose: 'I could not look' must never read as 'I looked and it was fine'. OWNER ACTION — add SUPABASE_PAT and SUPABASE_PROJECT_REF as repository secrets. Until then this duty is unperformed, and on 2026-08-04 a one-field PATCH wiped the live SMTP block and reverted all three branded templates, recovering byte-for-byte only because those files happened to still match."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=Supabase auth config has DRIFTED::The live project no longer matches what the repo recorded. Decide which side is wrong before editing either — the log above names every field and file that differs."
+          fi
+          exit "$code"
+
   # ── Alerting ────────────────────────────────────────────────────────────────
   # Copied from e2e.yml's `alert` job, which is the shape that works here: ONE
   # durable issue, reused, never auto-closed. A notification is read once and
@@ -125,7 +200,11 @@ jobs:
   # SCHEDULED RUNS ONLY: a workflow_dispatch failure is attended by definition.
   alert:
     name: Open or refresh the ops-watch issue
-    needs: [heartbeats, status]
+    # `supabase-drift` joins the two readers: drift in the live auth config is a
+    # scheduled duty reporting unhealthy, which is exactly what this issue is
+    # for. When the owner has not supplied the secret that job exits 0 with a
+    # ::warning::, so an owner gap never opens an issue nobody can close.
+    needs: [heartbeats, status, supabase-drift]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -158,6 +237,13 @@ jobs:
             "did a row land today" would be **green on exactly this**.
           - **UNKNOWN** — no token, a non-200, unparseable JSON. Failing closed is deliberate:
             "I could not tell" must never read as "it is fine".
+          - **DRIFT** — the live Supabase auth config no longer matches `tooling/mail-transport.json`
+            or the DR templates in `docs/platform/supabase/email-templates/`. On 2026-08-04 a
+            one-field `PATCH /config/auth` emptied the entire SMTP block and reverted all three
+            branded templates; it recovered byte-for-byte only because those files still matched.
+            **Decide which side is wrong before editing either** — if live is correct, update the
+            repo copies *and* the register together; if live is wrong, restore it by sending the
+            COMPLETE config, never one field.
 
           **Why this matters beyond the tick.** The Supabase keep-alive is the only thing standing
           between the shared auth project and its idle pause, and a paused auth project takes

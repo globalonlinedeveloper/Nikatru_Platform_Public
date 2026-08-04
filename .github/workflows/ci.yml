@@ -836,6 +836,27 @@ jobs:
       - name: The Supabase auth email templates stay restorable
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-supabase-templates.mjs
+      # POST-INCIDENT GUARD, 2026-08-04, and a DIFFERENT incident from the one
+      # above. On 2026-08-03 an audit agent read FOUR repo documents that all
+      # agreed Supabase Auth was on the provider's own sender, concluded no real
+      # user could sign up, and escalated that to a 🔴🔴 blocker on the first store
+      # submission. It was false. `smtp_host` reads smtp.resend.com and had all
+      # along -- and SUPABASE_PAT, which answers it in one GET, was in the vault
+      # the whole time. FOUR AGREEING DOCUMENTS ARE NOT EVIDENCE; THEY ARE ONE
+      # STALE FACT COPIED FOUR TIMES. So the fact has ONE home a machine can parse
+      # (tooling/mail-transport.json) and no document may restate the superseded
+      # transport without the current one in the same Markdown SECTION -- a unit
+      # the document declares, not an invented line window. The phrases are NOT
+      # banned: ADR 029 and both Supabase guards describe the old state on
+      # purpose, and a guard that fires on correct input gets deleted by whoever
+      # hits it next. Because the rule is satisfied by CONTENT, there is no
+      # exemption list to go stale. ⚠️ It CANNOT see live drift (no PAT in CI) and
+      # in CI it CANNOT see knowledge/ or company/, where three of the four stale
+      # documents lived -- it prints which of those two situations it was in on
+      # every run rather than letting green read as "clean".
+      - name: One record of how mail is sent, and no document contradicts it
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-mail-transport-claims.mjs
       # Two shipped defects, 2026-08-04: Runner.rc carried CompanyName
       # "com.nikatru" and AppInfo.xcconfig carried the same string in
       # PRODUCT_COPYRIGHT. Both are USER-VISIBLE -- Windows Properties -> Details,

@@ -33,6 +33,7 @@
   "legal-tripwires.test.mjs": 26,
   "licence-register.test.mjs": 39,
   "lint-inheritance.test.mjs": 12,
+  "mail-transport-claims.test.mjs": 35,
   "money-config.test.mjs": 20,
   "monitor-coverage.test.mjs": 21,
   "mor-adapters.test.mjs": 34,
