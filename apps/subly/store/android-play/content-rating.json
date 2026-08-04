@@ -1,0 +1,186 @@
+{
+  "_readme": [
+    "THE CONTENT RATING (IARC) QUESTIONNAIRE ANSWERS — Subly, channel `android-play`.",
+    "",
+    "🔴 THIS FILE RECORDS ANSWERS. IT DOES NOT RECORD A RATING, AND IT MUST NOT.",
+    "Google is explicit that the developer does not decide the rating: 'Your app's content ratings are",
+    "assigned by separate rating authorities and determined by your questionnaire responses', and 'each",
+    "rating authority uses its own methodology to assign ratings' (see `sources`). A rating written into",
+    "this file before the questionnaire has been submitted would be a number nobody computed, sitting in",
+    "the repository looking authoritative — the exact failure this codebase has already deleted an",
+    "invented store limit for. `assignedRating` is therefore null, `status` says why, and",
+    "tooling/ci/assert-play-declarations.mjs FAILS if a rating string appears without an IARC certificate",
+    "and its citation beside it.",
+    "",
+    "⚠️ THE EXACT CONSOLE WORDING OF EACH QUESTION IS UNVERIFIED — see `questionnaireWording`. The IARC",
+    "questionnaire is only rendered inside the Play Console after it is started; it is not on a public",
+    "page and it was not fetched. So this file records SUBSTANTIVE CLAIMS ABOUT THE APP'S CONTENT, each",
+    "with the basis for it, rather than pretending to mirror a form nobody here has read. When the",
+    "questionnaire is actually opened, each console question maps onto one or more claims below, and any",
+    "question that maps onto none is a gap this file has to grow a row for.",
+    "",
+    "Google: 'Make sure to provide accurate responses to the content rating questionnaire' and",
+    "'Misrepresentation of your app's content may result in its removal or suspension.' Every claim below",
+    "is therefore either DERIVED from the tree — with `tells` a guard checks — or marked `humanOwned`",
+    "with the reason it cannot be derived. There is no third category, and a claim with neither is a",
+    "build failure.",
+    "",
+    "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER, the same disclaimer tooling/legal/README.md carries."
+  ],
+
+  "app": "subly",
+  "channel": "android-play",
+
+  "assignedRating": null,
+  "status": "pending-questionnaire-submission",
+  "statusReason": "The questionnaire has not been submitted. The Play organisation account was verified 2026-08-04 and the questionnaire is a per-app, one-time Console action. Until it is submitted there is no rating, no IARC certificate, and nothing here that could honestly be filled in — which is the state this file is designed to represent rather than paper over.",
+
+  "sources": {
+    "allowedHosts": ["support.google.com", "developer.android.com", "play.google.com"],
+    "ratingIsAssignedNotChosen": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/9859655",
+      "fetched": "2026-08-04",
+      "quote": "Your app's content ratings are assigned by separate rating authorities and determined by your questionnaire responses; each rating authority uses its own methodology to assign ratings."
+    },
+    "accuracyRule": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/9859655",
+      "fetched": "2026-08-04",
+      "quote": "Make sure to provide accurate responses to the content rating questionnaire. Misrepresentation of your app's content may result in its removal or suspension."
+    }
+  },
+
+  "authorities": {
+    "_why": "Recorded because one questionnaire yields SEVERAL ratings, one per authority, and a later 'what rating did we get' question has more than one answer. Listed from the same fetch as `sources.ratingIsAssignedNotChosen`.",
+    "list": ["ESRB", "PEGI", "USK", "ACB", "ClassInd", "GRAC", "IARC Generic", "Google Play Rating"]
+  },
+
+  "questionnaireWording": {
+    "status": "UNVERIFIED",
+    "why": "The IARC questionnaire is rendered inside the Play Console after the developer starts it and is not published on any page that could be fetched and cited. No verbatim question text is reproduced here, because inventing plausible question wording would make this file look like a filled-in form while being a guess about someone else's UI.",
+    "consequence": "The claims below are about the APP, not about the form. Mapping them onto the console's actual questions is a human step, and `humanOwned.mapClaimsToConsoleQuestions` records it as one."
+  },
+
+  "claims": [
+    {
+      "id": "not-a-game",
+      "claim": "Subly is an application, not a game. The questionnaire branches on this at the first question and the whole downstream question set differs.",
+      "answer": false,
+      "derivation": "listing-category",
+      "categoryFile": "apps/subly/store/android-play/category.txt",
+      "categoryValue": "Productivity",
+      "gameCategories": ["Games", "Game", "Action", "Arcade", "Puzzle", "Racing", "Role Playing", "Simulation", "Strategy", "Casino", "Card", "Board", "Casual", "Trivia", "Word"],
+      "basis": "The listing category this repository submits is the one in category.txt, checked here for equality — so a change to a game category makes this claim fail rather than leaving a questionnaire answered as 'app' for a listing filed under Games."
+    },
+    {
+      "id": "digital-purchases",
+      "claim": "The app offers no digital purchases.",
+      "answer": false,
+      "derivation": "dependency-tells",
+      "tells": {
+        "dartPackages": ["in_app_purchase", "in_app_purchase_android", "purchases_flutter", "nikatru_purchases", "flutter_stripe", "razorpay_flutter"],
+        "androidPermissions": ["com.android.vending.BILLING"]
+      },
+      "evidence": ["apps/subly/pubspec.yaml"],
+      "basis": "Subly has no purchase path at all. packages/purchases is deliberately not a dependency of this app, the RevenueCat dependency was removed with a tombstone at apps/subly/pubspec.yaml:92-97 recording [ADR 026] and [ADR 004], and PaywallGate has no call site here. Mechanically enforced: any of the tells appearing as a direct dependency, or the BILLING permission appearing in a manifest, makes this claim false and fails the build."
+    },
+    {
+      "id": "contains-ads",
+      "claim": "The app contains no advertising of any kind, and no advertising or attribution SDK.",
+      "answer": false,
+      "derivation": "dependency-tells",
+      "tells": {
+        "dartPackages": ["google_mobile_ads", "admob_flutter", "appsflyer_sdk", "adjust_sdk", "flutter_branch_sdk", "facebook_app_events", "app_tracking_transparency", "advertising_id"],
+        "androidPermissions": ["com.google.android.gms.permission.AD_ID"]
+      },
+      "evidence": ["apps/subly/pubspec.yaml", "apps/subly/lib/state/analytics_providers.dart"],
+      "basis": "No ads SDK, no attribution SDK, no advertising-ID permission. The app's own analytics code states the rule positively — analytics_providers.dart:56, 'Never a device ad-ID' — and the consent prompt tells the user 'No name, no email, no advertising ID and no IP address.' The tells make it a build failure rather than a promise."
+    },
+    {
+      "id": "gambling",
+      "claim": "The app contains no gambling, simulated gambling, loot boxes, or real-money wagering.",
+      "answer": false,
+      "derivation": "dependency-tells",
+      "tells": {
+        "dartPackages": ["in_app_purchase", "purchases_flutter", "nikatru_purchases", "flutter_stripe", "razorpay_flutter"],
+        "androidPermissions": ["com.android.vending.BILLING"]
+      },
+      "evidence": ["apps/subly/pubspec.yaml"],
+      "basis": "There is no chance mechanic and no wagering surface anywhere in the app; the screens are a subscription list, a calendar grid of renewal dates, a budget figure and settings. The tells are the same money-path set as `digital-purchases` — they cannot prove the absence of a gambling THEME, which is content and is covered by `content-descriptors` below, but they do prove no path exists by which money could be staked."
+    },
+    {
+      "id": "user-to-user-interaction",
+      "claim": "Users cannot interact with, message, or exchange content with other users. There is no social surface.",
+      "answer": false,
+      "derivation": "dependency-tells",
+      "tells": {
+        "dartPackages": ["stream_chat_flutter", "firebase_messaging", "onesignal_flutter", "socket_io_client", "flutter_webrtc", "agora_rtc_engine", "pusher_channels_flutter"],
+        "androidPermissions": []
+      },
+      "evidence": ["services/subly-api/src/routes/subscriptions.ts", "services/subly-api/src/routes/budget.ts"],
+      "basis": "Subly is single-user by construction. Every data route on services/subly-api is scoped to the caller's own user_id — there is no route that returns another user's rows, no profile surface, no comment, share or invite. The dependency tells cover the mechanism by which a chat or realtime surface would arrive. ⚠️ PARTIALLY HUMAN-OWNED: 'no route reads another user's rows' is a property of the route handlers that this guard does not re-derive; it is asserted by services/subly-api's own tests and by assert-platform-register.mjs, and a reviewer adding a shared surface must update this claim. Recorded in `humanOwned.noSharedSurface`."
+    },
+    {
+      "id": "shares-location-with-other-users",
+      "claim": "The app does not share a user's physical location with other users.",
+      "answer": false,
+      "derivation": "dependency-tells",
+      "tells": {
+        "dartPackages": ["geolocator", "location", "geocoding", "background_locator_2"],
+        "androidPermissions": ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"]
+      },
+      "evidence": [],
+      "basis": "Vacuously true twice over: the app never obtains a location (no permission, no package — the same tells as data-safety.json's Location rows) and has no user-to-user surface to share one on (see `user-to-user-interaction`)."
+    },
+    {
+      "id": "shares-personal-info-with-third-parties",
+      "claim": "The app does not share personal information with third parties.",
+      "answer": false,
+      "derivation": "cross-check",
+      "crossCheck": {
+        "file": "data-safety.json",
+        "rule": "no-answer-declares-shared",
+        "why": "🔴 THE ONE PLACE THESE TWO FORMS CAN CONTRADICT EACH OTHER, AND THE CONTRADICTION IS INVISIBLE BECAUSE THEY ARE FILLED IN ON DIFFERENT SCREENS MONTHS APART. If any Data safety answer is ever set to shared:true and this stays false, one of the two declarations to Google is false — and Play checks both. So this answer is not written independently; it is DERIVED from the Data safety answers and fails the moment they disagree."
+      },
+      "basis": "Every data type in data-safety.json declares shared:false in both postures. The infrastructure that receives data — Cloudflare, Supabase, the self-hosted GlitchTip on Oracle Cloud — is service-provider processing on our behalf, which Play's own definition of 'shared' excludes."
+    },
+    {
+      "id": "target-audience-children",
+      "claim": "Subly is not designed for or targeted at children.",
+      "answer": false,
+      "derivation": "cross-check",
+      "crossCheck": {
+        "file": "data-safety.json",
+        "rule": "equals-play-families-policy",
+        "why": "The Data safety form's 'Committed to follow the Play Families Policy' badge and the content rating's target-audience answer are the same claim asked twice. Declaring the badge on one screen and 'not for children' on the other is a contradiction a human filling in two forms weeks apart will not catch."
+      },
+      "basis": "A subscription-cost tracker with an account, a budget and no child-directed content. ⚠️ THE UNDERLYING JUDGEMENT IS A HUMAN'S — nothing in a repository can derive an intended audience — but the CONSISTENCY of the two declarations is mechanical, and that is what is enforced here."
+    },
+    {
+      "id": "content-descriptors",
+      "claim": "The app contains no violence, sexual content, nudity, profanity, crude humour, horror, or references to drugs, alcohol or tobacco.",
+      "answer": false,
+      "derivation": "human-owned",
+      "surfaces": [
+        "apps/subly/store/android-play/long-description.txt",
+        "apps/subly/store/android-play/short-description.txt",
+        "apps/subly/store/android-play/screenshots",
+        "apps/subly/lib"
+      ],
+      "basis": "⚠️ HUMAN-OWNED, AND SAID SO RATHER THAN FAKED. There is no mechanical tell for 'does this app contain violence'. A keyword scan over the listing copy and the app's strings would be an assertion that cannot fail on any realistic input — it would inflate apparent coverage while checking nothing, which this repository deletes on sight. What a guard CAN do is refuse to let this claim sit here without a named owner and a named set of surfaces to re-read; both are recorded, and `humanOwned.affirmContentDescriptors` is the item that closes it. The surfaces listed are the complete set a reviewer must look at: the listing copy, the screenshots and the app's own strings."
+    }
+  ],
+
+  "humanOwned": {
+    "_why": [
+      "The claims a repository genuinely cannot derive, named individually so they are visible on every run",
+      "instead of hiding inside a claim that looks checked. tooling/ci/assert-play-declarations.mjs PRINTS",
+      "each of these rather than failing the build — per the standing rule this codebase uses for owner-gated",
+      "gaps (assert-seams-wired.mjs, [pipeline C-6]): failing CI on work only a human can do blocks",
+      "everything else and teaches people to switch the guard off."
+    ],
+    "affirmContentDescriptors": "A human must read apps/subly/store/android-play/long-description.txt, short-description.txt, the screenshots and the app's own strings, and affirm that none contains violence, sexual content, nudity, profanity, crude humour, horror, or drug/alcohol/tobacco references, before submitting the questionnaire. Re-affirmed whenever listing copy or screenshots change.",
+    "mapClaimsToConsoleQuestions": "The IARC questionnaire's exact questions are only visible inside the Play Console. When it is opened, each console question must be matched to one or more claims above; any console question matching none of them means this file is missing a row and must grow one before the questionnaire is submitted.",
+    "noSharedSurface": "The `user-to-user-interaction` claim rests partly on 'no route on services/subly-api returns another user's rows'. That is true of every handler today and is asserted by that Worker's own tests, but this guard does not re-derive it. Anyone adding a shared or social surface must update the claim in the same change.",
+    "recordTheOutcome": "When the questionnaire is submitted, the resulting IARC certificate id and the per-authority ratings go into `assignedRating` and `iarcCertificate` WITH a source. Until then both stay null and the guard enforces it."
+  }
+}

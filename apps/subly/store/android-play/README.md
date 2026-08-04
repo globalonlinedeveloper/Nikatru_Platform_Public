@@ -39,6 +39,8 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `privacy-policy-url.txt` | Privacy policy URL | `apps/subly/lib/core/config/app_config.dart` → `privacyUrl` | ✅ exact match |
 | `support-url.txt` | Support contact — website | `apps/subly/lib/core/config/app_config.dart` → `contactUrl` | ✅ exact match |
 | `screenshots/` | Graphic assets | not derivable — see that directory's README | slot must exist |
+| `data-safety.json` | **Data safety form** | derived from the code — see below | ✅ `assert-play-declarations.mjs` |
+| `content-rating.json` | **Content rating questionnaire** | the app's own content — see below | ✅ `assert-play-declarations.mjs` |
 
 **The brick vars are the generation mechanism, the app is the instance.** The
 `app_brick` (`tooling/bricks/app/brick.yaml`) already declares `category` and
@@ -80,16 +82,53 @@ is stamped with a name longer than 30 characters the build fails — instead of 
 Play Console rejecting it after a human has already worked through a submission
 form. That is the whole point of putting the number in the register.
 
+## The two sworn declarations — `data-safety.json` and `content-rating.json`
+
+These are **not listing copy**. They are declarations about *what the code does*,
+and Google puts the accuracy on us:
+
+> "All developers must complete a clear and accurate Data safety section for every
+> app… The developer is responsible for the accuracy of the label."
+> — `support.google.com/googleplay/android-developer/answer/10144311`, fetched 2026-08-04
+
+🔴 **So they are derived from the tree, not typed from memory.**
+`tooling/ci/assert-play-declarations.mjs` fails the build when they drift. What
+actually bites, in the order it would catch a real drift:
+
+| The drift | What fails |
+|---|---|
+| The `.aab` lane gains an identity `--dart-define` | `AppConfig.isBackendLive` is a compile-time constant over those defines, so the shipped bundle stops being the one the declaration describes |
+| A permission or package contradicts a *"not collected"* answer | that answer's `tells` — the mechanism by which a location or ads SDK actually arrives |
+| A new direct dependency appears | *"nobody said what data it can collect"* — the mitigation for not being able to read the merged manifest |
+| A new `personalData: true` row lands in `tooling/legal/data-inventory.json` | it must be mapped to a Play data type or excluded **by name**, in both directions |
+| An erasure route or the web deletion page disappears | the *"users can request deletion"* answer loses what backs it |
+| The two forms answer *sharing* or *children* differently | Play asks both twice, months apart; the rating answers are **derived** from the Data safety ones |
+| An IARC rating is written down | ratings are **assigned** by the rating authorities — one without a certificate and a citation is a guess wearing the costume of a result |
+
+⚠️ **Two answers are honestly `null`** and the guard prints
+`THE FORM CANNOT BE SUBMITTED YET` on every run until they are settled: what the
+crash SDK puts in `contexts.device`, and whether Play counts edge-derived coarse
+geo as *Approximate location*. Neither is derivable from this tree, and a
+confidently wrong Data safety label is worse than an obviously incomplete one.
+
+⚠️ **The declaration describes the `demo` posture today**, because the `.aab` lane
+passes only `GLITCHTIP_DSN`. That bundle has no account, no server sync and no
+analytics — the crash rail is its only network egress. Every answer is recorded
+for **both** postures, and the guard reads the workflow to say which column to
+type into the console.
+
 ## What this channel needs that lives OUTSIDE this directory
 
-Play asks for several things that are not listing text and are not files here.
-They are recorded so their absence is visible, not so this tree can claim them:
-
-- ⬜ **Data safety form** — a Play Console questionnaire (G-32, owned by
-  **stage 8**, not by D-5). Blocking, and it has no repo representation.
-- ⬜ **Content rating questionnaire** — Play Console, per-app, one-time.
-- ⬜ **Account deletion URL** — required for any app with accounts. Subly has
-  in-app deletion; the *web-reachable* URL half is stage 8's.
+- ✅ **Data safety form** → `data-safety.json` **in this directory**, since
+  2026-08-04. This line used to read *"Blocking, and it has no repo
+  representation"*; it now does.
+- ✅ **Content rating questionnaire** → `content-rating.json` in this directory.
+  It records the **answers**, never a rating — see below.
+- ✅ **Account deletion URL** — `https://nikatru.com/delete-account.html`, carried
+  in `data-safety.json` → `dataSecurity.deletionRequestSupported` and checked to
+  resolve to a page this repo actually serves. Play requires **both** halves and
+  Subly has both: the in-app control (`assert-deletion-control.mjs`) and the web
+  link submitted on the Data safety form itself.
 - ⬜ **Target API level** — Android 16 / **API 36 by 2026-08-31** for new apps and
   updates. A build property, not a listing field; see
   `company/runbooks/store-submission-android.md`.
