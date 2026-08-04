@@ -392,7 +392,7 @@ if (hasKeyProperties) {
   );
 } else if (suppliedEnv.length === 0) {
   prints.push(
-    `SIGNING POSTURE: DEBUG FALLBACK — none of ${envPairs.map(([, e]) => e).join(', ')} is set and there is no ${keyPropertiesRel}, so the release build is debug-signed. This is the RECORDED owner decision, not a defect: the lane produces a build PROOF, and the real upload key arrives with OWNER_QUEUE A-3 / S-5. 🔴 A debug-signed .aab CANNOT be uploaded to Play.`,
+    `SIGNING POSTURE: DEBUG FALLBACK — none of ${envPairs.map(([, e]) => e).join(', ')} is set and there is no ${keyPropertiesRel}, so the release build is debug-signed and produces a build PROOF. 🔴 A debug-signed .aab CANNOT be uploaded to Play. ⚠️ THIS LINE IS A CLAIM ABOUT THE ENVIRONMENT, NOT ABOUT THE ARTIFACT, and until 2026-08-04 that distinction was the whole defect: an upload key existed, no workflow supplied it, and this printed the fallback as the recorded posture on every CI run. tooling/ci/android-signing.mjs now supplies the four variables in the release lanes and tooling/ci/assert-artifact-signed.mjs reads the real signer out of the bundle. Seeing this line inside a CI job means that step did not run.`,
   );
 } else if (suppliedEnv.length < envPairs.length) {
   problems.push(

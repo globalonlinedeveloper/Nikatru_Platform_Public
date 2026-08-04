@@ -835,6 +835,29 @@ jobs:
       - name: The Android module pins the API level Google Play requires
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-android-target-sdk.mjs
+      # POST-DEFECT GUARD, 2026-08-04, and the SECOND HALF of one found that day.
+      # The .aab built for Google Play passed exactly one dart-define
+      # (GLITCHTIP_DSN). `AppConfig.isBackendLive` is `isSupabaseConfigured &&
+      # isApiConfigured` and both compare a define against a PLACEHOLDER constant,
+      # so the store artifact resolved MockAuthRepository() and SeedApiClient() —
+      # mock sign-in, seeded data, inert analytics. It was debug-signed AND a demo
+      # build. Demo mode is the CORRECT default (it is what lets a stranger clone
+      # this repo and see every screen with no backend), which is exactly why
+      # nothing noticed; the secrets already existed and deploy-web.yml had always
+      # passed them. Seven store build steps across four workflows were affected,
+      # not one.
+      # NEITHER SIDE OF THE RULE IS WRITTEN IN THE GUARD: the required defines are
+      # derived by following `isBackendLive` through app_config.dart to the
+      # `String.fromEnvironment` keys it reaches, and the subject lanes are derived
+      # from every `kind: store` row's own `lane`/`submission` declaration — so a
+      # fourth requirement, or a new store channel, acquires the obligation by
+      # existing. Steps a store row does not declare (the six-platform build proof,
+      # the web build, fork PRs with no secrets) are deliberately NOT graded.
+      # ⚠️ It reads workflow STRUCTURE, so it cannot see a lane wired to a staging
+      # project; it prints that limit on every run.
+      - name: No store artifact is the demo build
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-store-build-config.mjs
       # A fail-closed seam with no on-switch is a dead feature that reports
       # healthy. Four shipped that way — the analytics rail discarded every event
       # because nothing ever recorded consent, and no test went red because
