@@ -52,15 +52,43 @@ void run(HookContext context) {
   if (needsBackend) {
     context.logger
       ..success('Stamped $id (apps/$id + services/$id-api). Owner checklist:')
-      ..info('  1. Add store metadata for apps/\$id. Web icons were GENERATED '
-          'from seed_hex — replace them only if you have real art.')
-      ..info('  2. ONE COMMAND provisions the backend — create the D1 in apac, '
-          'patch APP_DB.database_id, apply the starter migration, and PROVE '
-          'all three against the live database:')
+      ..info(
+        '  1. Add store metadata for apps/\$id. Web icons were GENERATED '
+        'from seed_hex — replace them only if you have real art.',
+      )
+      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subly FOUR
+      // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
+      // 2026-08-04. Nothing in the old checklist mentioned icons afterwards, so
+      // the owner ran the command that writes Flutter's default logo and had no
+      // reason to think anything else was needed. `warn` rather than `info` on
+      // purpose: this is the one line whose omission stays invisible until a
+      // store reviewer sees it.
+      //
+      // ⚠️ THE MESSAGE NAMES NO APP, and that is [C-10] rather than shyness:
+      // comments here are exempt from assert-no-clone-tells.mjs and STRING
+      // LITERALS ARE NOT. Shared code that knows which app it is in makes every
+      // other app inherit a rule about a product it is not — caught by that
+      // guard on the first CI run of this change.
+      ..warn(
+        '  1a. THE MOMENT YOU ADD NATIVE PLATFORMS, BRAND THEM. '
+        '`flutter create . --platforms=android,ios,macos,windows,linux` writes '
+        "FLUTTER'S DEFAULT LOGO into every one of them — that is exactly how "
+        'the first app in this portfolio came to ship the stock icon on '
+        'Android, iOS, macOS and Windows at once. Immediately after, run:  '
+        'cd apps/$id && dart run flutter_launcher_icons  '
+        '(config + source art are already stamped; CI fails on a stock icon).',
+      )
+      ..info(
+        '  2. ONE COMMAND provisions the backend — create the D1 in apac, '
+        'patch APP_DB.database_id, apply the starter migration, and PROVE '
+        'all three against the live database:',
+      )
       ..info('       node tooling/scripts/provision-backend.mjs $id')
-      ..info('     (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Do NOT '
-          '`source` .claude/secrets.env — it is not a pure env file; extract '
-          'the two keys. [pipeline S-12])')
+      ..info(
+        '     (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Do NOT '
+        '`source` .claude/secrets.env — it is not a pure env file; extract '
+        'the two keys. [pipeline S-12])',
+      )
       // [pipeline S-1r] NOT "add DNS". [ADR 006] locked a proxied wildcard
       // `*.nikatru.com`, so a stamped app needs ZERO new DNS — and the old step
       // sent the owner to create a record that already resolves, while the thing
@@ -72,39 +100,73 @@ void run(HookContext context) {
       // An unattached host then answers 522, never NXDOMAIN, which is why "it
       // resolves" is not the question worth asking.
       ..info(
-          '  3. NO DNS RECORD IS NEEDED — the wildcard *.nikatru.com already '
-          'resolves $webHost and $apiHost ([ADR 006]). ATTACHMENT is what is '
-          'missing: bind $webHost to the app\'s deployment and $apiHost to this '
-          'Worker\'s routes, or both answer 522 while resolving perfectly.')
-      ..info('  4. REQUIRED for the web build: add "https://$webHost" to '
-          'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
-          'The allowlist is EXACT — omit this and the app silently loses '
-          'config + analytics in the browser, with no server-side error.')
+        '  3. NO DNS RECORD IS NEEDED — the wildcard *.nikatru.com already '
+        'resolves $webHost and $apiHost ([ADR 006]). ATTACHMENT is what is '
+        'missing: bind $webHost to the app\'s deployment and $apiHost to this '
+        'Worker\'s routes, or both answer 522 while resolving perfectly.',
+      )
+      ..info(
+        '  4. REQUIRED for the web build: add "https://$webHost" to '
+        'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
+        'The allowlist is EXACT — omit this and the app silently loses '
+        'config + analytics in the browser, with no server-side error.',
+      )
       ..info('  5. cd apps/$id && flutter pub get && flutter analyze.')
-      ..warn('This app claimed one of the TEN D1 databases the free tier '
-          'allows per ACCOUNT (platform_db is another). If it does not really '
-          'store user rows, re-stamp with needs_backend=false.');
+      ..warn(
+        'This app claimed one of the TEN D1 databases the free tier '
+        'allows per ACCOUNT (platform_db is another). If it does not really '
+        'store user rows, re-stamp with needs_backend=false.',
+      );
   } else {
     context.logger
       ..success('Stamped $id (apps/$id — CLIENT-ONLY). Owner checklist:')
-      ..info('  1. Add store metadata for apps/\$id. Web icons were GENERATED '
-          'from seed_hex — replace them only if you have real art.')
+      ..info(
+        '  1. Add store metadata for apps/\$id. Web icons were GENERATED '
+        'from seed_hex — replace them only if you have real art.',
+      )
+      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subly FOUR
+      // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
+      // 2026-08-04. Nothing in the old checklist mentioned icons afterwards, so
+      // the owner ran the command that writes Flutter's default logo and had no
+      // reason to think anything else was needed. `warn` rather than `info` on
+      // purpose: this is the one line whose omission stays invisible until a
+      // store reviewer sees it.
+      //
+      // ⚠️ THE MESSAGE NAMES NO APP, and that is [C-10] rather than shyness:
+      // comments here are exempt from assert-no-clone-tells.mjs and STRING
+      // LITERALS ARE NOT. Shared code that knows which app it is in makes every
+      // other app inherit a rule about a product it is not — caught by that
+      // guard on the first CI run of this change.
+      ..warn(
+        '  1a. THE MOMENT YOU ADD NATIVE PLATFORMS, BRAND THEM. '
+        '`flutter create . --platforms=android,ios,macos,windows,linux` writes '
+        "FLUTTER'S DEFAULT LOGO into every one of them — that is exactly how "
+        'the first app in this portfolio came to ship the stock icon on '
+        'Android, iOS, macOS and Windows at once. Immediately after, run:  '
+        'cd apps/$id && dart run flutter_launcher_icons  '
+        '(config + source art are already stamped; CI fails on a stock icon).',
+      )
       // [pipeline S-1r] Same correction as the backend branch above — see the
       // note there for the measurement. The wildcard makes this a NON-step; the
       // real one is attachment, and saying "add DNS" hid it.
       ..info(
-          '  2. NO DNS RECORD IS NEEDED — the wildcard *.nikatru.com already '
-          'resolves $webHost ([ADR 006]); ATTACH it to the deployment or it '
-          'answers 522 while resolving perfectly. No API host and no D1 '
-          'database are needed — this app uses the shared platform Worker.')
-      ..info('  3. REQUIRED for the web build: add "https://$webHost" to '
-          'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
-          'The allowlist is EXACT — omit this and the app silently loses '
-          'config + analytics in the browser, with no server-side error.')
+        '  2. NO DNS RECORD IS NEEDED — the wildcard *.nikatru.com already '
+        'resolves $webHost ([ADR 006]); ATTACH it to the deployment or it '
+        'answers 522 while resolving perfectly. No API host and no D1 '
+        'database are needed — this app uses the shared platform Worker.',
+      )
+      ..info(
+        '  3. REQUIRED for the web build: add "https://$webHost" to '
+        'ALLOWED_ORIGINS in services/platform/wrangler.jsonc and redeploy. '
+        'The allowlist is EXACT — omit this and the app silently loses '
+        'config + analytics in the browser, with no server-side error.',
+      )
       ..info('  4. cd apps/$id && flutter pub get && flutter analyze.')
-      ..info('No Worker, no database, no R2 bucket was stamped. If this app '
-          'later needs to store user rows server-side, add them deliberately '
-          'rather than re-stamping over local changes.');
+      ..info(
+        'No Worker, no database, no R2 bucket was stamped. If this app '
+        'later needs to store user rows server-side, add them deliberately '
+        'rather than re-stamping over local changes.',
+      );
   }
 }
 
@@ -123,8 +185,9 @@ void run(HookContext context) {
 void _registerInWorkspace(HookContext context, {required String id}) {
   final file = File('pubspec.yaml');
   if (!file.existsSync()) {
-    context.logger
-        .warn('pubspec.yaml not found; skipped workspace registration.');
+    context.logger.warn(
+      'pubspec.yaml not found; skipped workspace registration.',
+    );
     return;
   }
   final lines = file.readAsLinesSync();
@@ -140,8 +203,9 @@ void _registerInWorkspace(HookContext context, {required String id}) {
   }
   final entry = '  - apps/$id';
   if (lines.sublist(start + 1, end).any((l) => l.trimRight() == entry)) {
-    context.logger
-        .info('pubspec.yaml already lists "apps/$id"; left unchanged.');
+    context.logger.info(
+      'pubspec.yaml already lists "apps/$id"; left unchanged.',
+    );
     return;
   }
   lines.insert(end, entry);
@@ -187,8 +251,9 @@ void _appendToAppsJson(
 }) {
   final file = File('sites/_shared/_data/apps.json');
   if (!file.existsSync()) {
-    context.logger
-        .warn('apps.json not found at ${file.path}; skipped SHOW-1 append.');
+    context.logger.warn(
+      'apps.json not found at ${file.path}; skipped SHOW-1 append.',
+    );
     return;
   }
   final decoded = jsonDecode(file.readAsStringSync());
@@ -237,7 +302,34 @@ void _writeBrandAssets(
       'brand assets: generated ${written.length} icon(s) for "$id" from seed #$seedHex.',
     );
   } catch (e) {
-    context.logger
-        .warn('brand assets: generation failed ($e); icons NOT written.');
+    context.logger.warn(
+      'brand assets: generation failed ($e); icons NOT written.',
+    );
+  }
+
+  // 🔴 THE NATIVE HALF, AND IT IS THE HALF THAT WAS MISSING. The brick stamps
+  // `web/` only; the owner adds android/ios/macos/windows/linux with
+  // `flutter create . --platforms=…`, which WRITES FLUTTER'S DEFAULT ICONS. That
+  // is exactly how apps/subly ended up shipping the stock logo on four platforms
+  // at once (measured 2026-08-04, 29 byte-identical files) while its web icons
+  // were correct. Without these sources the stamped `flutter_launcher_icons:`
+  // block would point at art nobody generated and fail on first use — and its
+  // failure mode is the stock icon quietly surviving.
+  // Guarded by tooling/ci/assert-launcher-icons.mjs.
+  try {
+    final written = writeNativeIconSources(
+      iconDir: Directory('apps/$id/assets/icon'),
+      appId: id,
+      seedHex: seedHex,
+    );
+    context.logger.success(
+      'brand assets: generated ${written.length} native icon source(s) for "$id" '
+      '(run `dart run flutter_launcher_icons` after adding platforms).',
+    );
+  } catch (e) {
+    context.logger.warn(
+      'brand assets: native icon sources failed ($e); NOT written. The app '
+      'would take Flutter\'s default launcher icon on every native platform.',
+    );
   }
 }

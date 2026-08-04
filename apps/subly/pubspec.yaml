@@ -110,6 +110,14 @@ dev_dependencies:
 
   flutter_lints: ^6.0.0
 
+  # Generates every platform's launcher icon from ONE source image. A
+  # dev_dependency rather than `dart pub global activate` for the same reason
+  # `msix` below is: the workspace lockfile is what makes the generation
+  # reproducible, and a globally activated tool resolves whatever is newest that
+  # day. See the `flutter_launcher_icons:` block near the bottom of this file for
+  # what it produces and why hand-placed icons were rejected.
+  flutter_launcher_icons: ^0.14.4
+
   # MSIX packaging for the `windows-store` channel of tooling/channel-register.json.
   # This is the Flutter-documented route for a Microsoft Store package
   # (docs.flutter.dev/deployment/windows → "Packaging and publishing to the
@@ -143,45 +151,95 @@ flutter:
   #         weight: 700
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STAGED: app-icon + splash co-branding (owner runs — needs the Flutter SDK)
+# LAUNCHER ICONS — every platform, from one source, by one command
 # ─────────────────────────────────────────────────────────────────────────────
-# DESIGN DECISION FIRST: every portfolio app needs a DISTINCT store icon, so the
-# app icon should be Subly's OWN mark, NOT the Nikatru company mark (else all
-# apps look identical on the home screen / stores). Options:
-#   A) Subly's own icon (recommended) — design a Subly glyph, save it at
-#      assets/brand/subly-icon.png (1024x1024), and point image_path at it.
-#   B) Nikatru company mark as the icon — use assets/brand/nikatru-icon.png
-#      (already bundled). OK for a single-app launch; revisit at app #2.
-# The SPLASH co-brands safely either way (mark on brand-ink background).
+# 🔴 WHY THIS BLOCK IS NO LONGER COMMENTED OUT. It was STAGED here for two weeks
+# while the app shipped Flutter's default logo on ANDROID, iOS, macOS AND
+# WINDOWS — measured 2026-08-04, all 29 native icon files BYTE-IDENTICAL to
+# `flutter create` output. The 23-July brand refresh reached `web/` and nothing
+# else, while company/logo/logo-usage.md recorded that it had been "rolled out
+# across the app (Subly)". A staged block is not a shipped icon.
+# Enforced from now on by tooling/ci/assert-launcher-icons.mjs.
 #
-# To apply: add the two dev_dependencies, uncomment the blocks, then run:
-#   flutter pub get
-#   dart run flutter_launcher_icons
-#   dart run flutter_native_splash:create
+# ── WHY A GENERATOR AND NOT HAND-PLACED FILES ────────────────────────────────
+# Thirty-one artefacts across five platforms — five Android densities, fifteen
+# iOS sizes, seven macOS sizes, a multi-image Windows .ico and the adaptive
+# layers — is not a set anyone re-derives correctly by hand at 2am, and this is
+# an app FACTORY: app #2 must inherit the MECHANISM, not a folder of PNGs
+# somebody copied. One command regenerates all of them from `image_path`:
 #
-# dev_dependencies:
-#   flutter_launcher_icons: ^0.14.1
-#   flutter_native_splash: ^2.4.1
+#   cd apps/subly && dart run flutter_launcher_icons
 #
-# flutter_launcher_icons:
-#   image_path: "assets/brand/nikatru-icon.png"   # option A: swap to Subly's own icon
-#   android: true
-#   ios: true
-#   remove_alpha_ios: true
-#   web:
-#     generate: true
-#   windows:
-#     generate: true
-#     icon_size: 256
-#   macos:
-#     generate: true
+# ── WHY WEB IS `generate: false`, WHICH IS NOT AN OVERSIGHT ──────────────────
+# web/ is the ONE platform whose icons were already correct, and its plain and
+# MASKABLE assets are deliberately DIFFERENT images: Icon-512 is the rounded
+# tile, Icon-maskable-512 is the full-bleed variant with the mark in the safe
+# zone (company/logo/nikatru-icon-maskable.svg). flutter_launcher_icons derives
+# all four from a single `image_path`, so turning web on would overwrite the
+# maskable pair with the non-maskable art and silently undo the one platform
+# that was right — a regression dressed as consistency. It also rewrites
+# web/manifest.json, which is hand-maintained here.
 #
-# flutter_native_splash:
-#   color: "#0B1220"        # Nikatru ink
-#   image: "assets/brand/nikatru-icon.png"
-#   android: true
-#   ios: true
-#   web: true
+# ── THE ANDROID ADAPTIVE ICON ────────────────────────────────────────────────
+# Two layers, not one. Android composites them at 108dp and guarantees only the
+# centre 72dp (66.7%) survives the launcher's mask, which differs per OEM.
+#   · background — the brand tile gradient, FULL-BLEED (no corner radius: the
+#     launcher supplies the silhouette, and a pre-rounded tile shows the mask
+#     cutting into an already-rounded shape).
+#   · foreground — the mark alone on transparency, painted extent 52% x 50% of
+#     the canvas and centred, so it is inside the safe box for every mask shape.
+# `adaptive_icon_foreground_inset: 0` because that inset is ALREADY in the
+# artwork; leaving the default 16 would shrink the mark twice.
+# Both are rasterised from the SVGs beside them, whose path data and gradient
+# stops are copied verbatim from company/logo/nikatru-icon.svg.
+#
+# ── `remove_alpha_ios` IS NOT OPTIONAL ───────────────────────────────────────
+# The 1024 master is RGBA. App Store Connect REJECTS an app icon carrying an
+# alpha channel (ITMS-90717), so without this the build uploads and then fails
+# validation — late, remotely, and with a message that does not mention icons.
+#
+# ⚠️ OPEN DESIGN QUESTION, DELIBERATELY NOT RESOLVED HERE — two of the owner's
+# own documents disagree and only the owner can settle it:
+#   · company/logo/logo-usage.md designates the Nikatru mark as the
+#     "App icon (all 6 stores)".
+#   · MASTER_PLAN.md requires every app to carry a DISTINCT icon so the
+#     portfolio does not look templated at 50 apps.
+# Using the company mark is right for app #1 — Subly is the only app, and an
+# unbranded default is strictly worse than a company mark. It is wrong at scale:
+# fifty identical home-screen tiles is the "templated" outcome MASTER_PLAN
+# names. SETTLE IT BEFORE APP #2, not before this ships.
+flutter_launcher_icons:
+  # The company mark at 1024, copied from company/logo/nikatru-icon-1024.png.
+  # Swap this one line for Subly's own glyph when the question above is settled.
+  image_path: "assets/icon/app_icon_1024.png"
+
+  android: "ic_launcher"
+  adaptive_icon_background: "assets/icon/app_icon_background.png"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  adaptive_icon_foreground_inset: 0
+
+  ios: true
+  remove_alpha_ios: true
+
+  macos:
+    generate: true
+    image_path: "assets/icon/app_icon_1024.png"
+
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon_1024.png"
+    icon_size: 256
+
+  # See the block above — NOT an oversight. web/ is already correct and its
+  # maskable pair is separate art that this generator cannot reproduce.
+  web:
+    generate: false
+
+  # LINUX has no entry because flutter_launcher_icons has no Linux support and
+  # Flutter's Linux runner sets no window icon: on Linux the launcher icon is a
+  # PACKAGING artefact (.desktop + hicolor theme, or a snapcraft recipe), and
+  # this repo has neither yet. Recorded rather than left blank, and printed by
+  # assert-launcher-icons.mjs on every run so the gap stays visible.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MSIX PACKAGE IDENTITY — the `windows-store` channel's artifact

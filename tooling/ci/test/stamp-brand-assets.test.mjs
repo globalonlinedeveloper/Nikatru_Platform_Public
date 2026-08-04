@@ -17,15 +17,30 @@
 // "no failure message" briefly looked like a pass. A mutation that runs nothing
 // proves nothing. Re-run with node's directory kept on PATH, it exits 1.
 //
-// These fixtures use a synthetic SDK layout (FLUTTER_ROOT is injected) so the
-// stock-comparison path runs without a Flutter install.
+// 🔴 M7, 2026-08-04 — THE FIXTURE ITSELF WAS THE BUG, and it hid a real one for
+// the whole life of this guard. It built a synthetic SDK template tree and wrote
+// REAL PNG BYTES into files it named `.img.tmpl`. In a real Flutter install
+// every `.img.tmpl` is ZERO BYTES, so the guard's two MASKABLE comparisons ran
+// against empty buffers and could never have matched — while it printed
+// `5 stock asset(s) compared` and exited 0. All six tests here passed the whole
+// time, because a fixture written by whoever wrote the guard encodes the same
+// misunderstanding as the guard.
+//
+// Proven on the REAL tree, not here: the stock `Icon-maskable-512.png` copied
+// over apps/subly's left the guard AT HEAD printing ok / exit 0, and the
+// repaired guard exits 1.
+//
+// These fixtures now supply a FAKE `flutter` executable (FLUTTER_ROOT is
+// injected) which copies out a reference app, because the guard now establishes
+// stock bytes by RUNNING `flutter create`. There is no template layout left for
+// a fixture to model wrongly.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -88,19 +103,48 @@ const ASSETS = [
 
 const STOCK_COLOUR = '0175c2'; // Flutter's default blue, standing in for stock
 
-function world({ appColour = '6459f5', omit = [], corrupt = [], useStock = [], platforms = ['web'] } = {}) {
+function world({
+  appColour = '6459f5',
+  omit = [],
+  corrupt = [],
+  useStock = [],
+  platforms = ['web'],
+  emptyStock = false,
+  noStockIcons = false,
+} = {}) {
   const root = join(TMP, `r${seq++}`);
   const appDir = join(root, 'apps', 'probe');
 
-  // a synthetic SDK: same layout and .tmpl suffixes as the real one
-  const sdkWeb = join(root, 'sdk', 'packages', 'flutter_tools', 'templates', 'app', 'web');
-  mkdirSync(join(sdkWeb, 'icons'), { recursive: true });
-  writeFileSync(join(sdkWeb, 'favicon.png.copy.tmpl'), png(8, STOCK_COLOUR));
-  for (const n of ['Icon-192', 'Icon-512']) {
-    writeFileSync(join(sdkWeb, 'icons', `${n}.png.copy.tmpl`), png(8, STOCK_COLOUR));
+  // ── the SDK: a FAKE `flutter` that emits a reference app ──────────────────
+  // 🔴 THIS FIXTURE USED TO BUILD A SYNTHETIC TEMPLATE TREE, and it is why all
+  // six of its tests passed while two of the guard's five comparisons were
+  // against empty buffers. In a real Flutter install every `.img.tmpl` is ZERO
+  // BYTES — `Icon-maskable-192/512` among them — and this fixture wrote real PNG
+  // bytes into files it NAMED `.img.tmpl`. A fixture written by whoever wrote
+  // the guard encodes the same misunderstanding as the guard; this repo has that
+  // rule on record, and this was it happening.
+  //
+  // Modelling the template layout more carefully was the wrong repair (it was
+  // tried, and CI killed it: a prebuilt SDK resolves the images package
+  // differently). The guard now RUNS `flutter create`, so the fixture supplies a
+  // fake `flutter` that copies out a reference app — no layout to model at all.
+  const sdkRoot = join(root, 'sdk');
+  const reference = join(root, 'reference', 'stockref');
+  mkdirSync(join(reference, 'web', 'icons'), { recursive: true });
+  if (!noStockIcons) {
+    writeFileSync(join(reference, 'web', 'favicon.png'), png(8, STOCK_COLOUR));
+    for (const n of ['Icon-192', 'Icon-512', 'Icon-maskable-192', 'Icon-maskable-512']) {
+      writeFileSync(join(reference, 'web', 'icons', `${n}.png`), emptyStock ? Buffer.alloc(0) : png(8, STOCK_COLOUR));
+    }
   }
-  for (const n of ['Icon-maskable-192', 'Icon-maskable-512']) {
-    writeFileSync(join(sdkWeb, 'icons', `${n}.img.tmpl`), png(8, STOCK_COLOUR));
+  const bin = join(sdkRoot, 'bin');
+  mkdirSync(bin, { recursive: true });
+  if (process.platform === 'win32') {
+    writeFileSync(join(bin, 'flutter.bat'), `@echo off\r\nxcopy /E /I /Q /Y "${reference}" "stockref" >nul\r\nexit /b 0\r\n`);
+  } else {
+    const p = join(bin, 'flutter');
+    writeFileSync(p, `#!/bin/sh\ncp -R "${reference}" "./stockref"\nexit 0\n`);
+    chmodSync(p, 0o755);
   }
 
   mkdirSync(join(appDir, 'web', 'icons'), { recursive: true });
@@ -142,6 +186,27 @@ describe('assert-stamp-brand-assets', () => {
     assert.match(out, /Icon-192\.png — is BYTE-IDENTICAL to Flutter's stock asset/);
   });
 
+  // 🔴 THE CASE THAT SILENTLY PASSED FOR THE WHOLE LIFE OF THIS GUARD, until
+  // 2026-08-04. `Icon-maskable-*` comes from an `.img.tmpl`, which is EMPTY in
+  // the SDK — so the comparison was against a zero-byte buffer and could not
+  // match whatever the stamp shipped. Confirmed by counterfactual on the REAL
+  // tree, not here: the stock maskable-512 copied over apps/subly's left the
+  // guard AT HEAD printing `ok … 5 stock asset(s) compared`, exit 0.
+  test('FAILS when a MASKABLE asset is byte-identical to stock', () => {
+    const { code, out } = run(world({ useStock: ['web/icons/Icon-maskable-512.png'] }));
+    assert.equal(code, 1, 'the maskable pair is exactly the one the SDK ships as an empty placeholder');
+    assert.match(out, /Icon-maskable-512\.png — is BYTE-IDENTICAL to Flutter's stock asset/);
+  });
+
+  // The other half of the same rule: with no overlay every maskable stock asset
+  // is zero bytes, and comparing against one is an assertion that cannot fail.
+  // It must be COVERAGE LOST, never a quiet pass over a smaller set.
+  test('COVERAGE LOST when the stock assets are zero bytes', () => {
+    const { code, out } = run(world({ emptyStock: true }));
+    assert.equal(code, 1);
+    assert.match(out, /ZERO BYTES/);
+  });
+
   test('FAILS when a required asset is missing', () => {
     const { code, out } = run(world({ omit: ['web/icons/Icon-maskable-512.png'] }));
     assert.equal(code, 1);
@@ -170,16 +235,17 @@ describe('assert-stamp-brand-assets', () => {
     const w = world();
     const { code, out } = run(w, '6459F5', { FLUTTER_ROOT: join(w.root, 'no-such-sdk'), PATH: '' });
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — could not locate the Flutter SDK/);
+    assert.match(out, /COVERAGE LOST — could not establish the Flutter SDK's stock web assets/);
   });
 
-  test('COVERAGE LOST when the SDK dirs exist but hold no stock PNGs', () => {
-    const w = world();
-    const emptySdk = join(w.root, 'emptysdk');
-    mkdirSync(join(emptySdk, 'packages', 'flutter_tools', 'templates', 'app', 'web', 'icons'), { recursive: true });
-    const { code, out } = run(w, '6459F5', { FLUTTER_ROOT: emptySdk, PATH: '' });
-    assert.equal(code, 1);
-    assert.match(out, /no stock PNGs inside them/);
+  // A created app that has a web/ directory and no icons in it. The set to
+  // compare against is then empty and every identity check passes by examining
+  // nothing — the empty-domain shape, one level down from the zero-byte one.
+  test('COVERAGE LOST when a created app has web/ but no PNGs in it', () => {
+    const w = world({ noStockIcons: true });
+    const { code, out } = run(w);
+    assert.equal(code, 1, out);
+    assert.match(out, /holding NO PNGs/);
   });
 
   // 🔴 M6 — the asset set is derived from the platform claim, so an empty claim

@@ -1415,6 +1415,40 @@ jobs:
       - name: Install mason_cli
         run: dart pub global activate mason_cli 0.1.3
 
+      # 🔴 NO SHIPPED APP CARRIES FLUTTER'S LAUNCHER ICON. Measured on the real
+      # tree 2026-08-04: apps/subly's Android, iOS, macOS and Windows icons were
+      # ALL byte-identical to `flutter create` output — 29 files — while its web
+      # icons carried the brand mark and company/logo/logo-usage.md recorded that
+      # the refresh had been "rolled out across the app". Five of six platforms
+      # were wrong and one document said they were right. Google Play rejects the
+      # stock Flutter icon outright, and it is the first thing any reviewer sees.
+      #
+      # It is a FACTORY defect, not an app defect: the brick stamps no native
+      # platform folders, so the owner adds them with `flutter create .
+      # --platforms=…` — the very command that writes those icons. Limb 6 checks
+      # the brick still carries the generator config and the art it names, so
+      # app #2 cannot be born the same way. Proven end to end by stamping a
+      # probe, adding all five platforms (guard RED) and running the ONE command
+      # the stamp's checklist prints (guard GREEN).
+      #
+      # RUNS HERE, not beside the static guards in `platform`, because it needs
+      # the SDK: stock bytes come from the LIVE Flutter install rather than
+      # pinned hashes, which cannot go stale. `flutter --version` is not
+      # decoration — it bootstraps `flutter_tools/.dart_tool/package_config.json`,
+      # which is how the guard locates the `flutter_template_images` overlay. The
+      # SDK's own `.img.tmpl` files are ZERO-BYTE placeholders, and without the
+      # overlay iOS, macOS and Windows compare against empty buffers and can
+      # never match — the guard exits COVERAGE LOST rather than printing a
+      # healthy count, which is exactly how that hole was found.
+      #
+      # BEFORE the stamps on purpose: its subject is the committed tree and the
+      # brick template, so it must not depend on what a stamp happens to leave
+      # behind.
+      - name: No shipped app carries Flutter's default launcher icon
+        run: |
+          flutter --version
+          node tooling/ci/assert-launcher-icons.mjs
+
       # ── Variant 1: the DEFAULT stamp — client-only (needs_backend=false).
       # This is what almost every app gets, so it is the one that must not rot.
       - name: Stamp the default (client-only) app
