@@ -836,6 +836,22 @@ jobs:
       - name: The Supabase auth email templates stay restorable
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-supabase-templates.mjs
+      # Two shipped defects, 2026-08-04: Runner.rc carried CompanyName
+      # "com.nikatru" and AppInfo.xcconfig carried the same string in
+      # PRODUCT_COPYRIGHT. Both are USER-VISIBLE -- Windows Properties -> Details,
+      # macOS About box -- so every user who inspected the binary saw the package
+      # id where the company's name belongs. Nothing was mistyped: that is
+      # verbatim what `flutter create --org` writes, and the brick carries no
+      # desktop runner of its own, so all 50 planned apps are born with it.
+      # The forbidden strings are DERIVED per app from its real bundle id /
+      # applicationId rather than hard-coded to one brand, because the factory is
+      # multi-brand and a check pinned to "Nikatru" could not outlive app #1.
+      # It deliberately does NOT assert which name is right -- only that an
+      # application id is not standing in for one -- and it tolerates a domain in
+      # a copyright line, which an earlier draft rejected while being wrong.
+      - name: No desktop app shows users a package id where its company name belongs
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-desktop-runner-identity.mjs
       # The companion to the step above, and deliberately not folded into it: that
       # guard verifies `consumers` against real pubspecs in both directions, which
       # proves a package was DOWNLOADED and never that a line of it runs. Every
