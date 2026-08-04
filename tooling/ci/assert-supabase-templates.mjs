@@ -9,6 +9,13 @@
 // limit 100 → 2, and reverted ALL THREE branded email templates to Supabase
 // defaults. Auth mail was briefly back on the built-in mailer.
 //
+// 📌 THOSE FEW MINUTES ARE THE ONLY TIME IT EVER WAS. This project runs on custom
+// SMTP — `smtp_host smtp.resend.com`, sender `auth@mail.nikatru.com` — and has for
+// as long as anyone can date. Seven repo documents claimed otherwise and one
+// audit turned that agreement into a false 🔴🔴 store blocker; the record now
+// lives in tooling/mail-transport.json and ADR 029, guarded by
+// assert-mail-transport-claims.mjs.
+//
 // It recovered byte-for-byte ONLY because `docs/platform/supabase/email-templates/`
 // happened to hold copies matching the live bodies exactly. Nothing required
 // that. Nothing noticed they were load-bearing. **Luck was standing in for a
