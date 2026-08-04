@@ -20,11 +20,22 @@ import '../services/notifications/notification_service.dart';
 /// the user was signed out and never deleted — and the app shipped no control at
 /// all because there was nothing honest to point one at. [ADR 027].
 ///
-/// It goes to [platformRestClientProvider], NOT to [apiClientProvider]: the
-/// erasure route lives on the SHARED platform Worker (its auth boundary is
-/// ES256/JWKS only), while `apiClientProvider` addresses `subly-api`, which has
-/// no account route and whose middleware still accepts a shared HS256 secret.
-/// An irreversible route must not sit behind a symmetric secret.
+/// It goes to [platformRestClientProvider], NOT to [apiClientProvider], and it
+/// stays ONE call. The shared platform Worker is the erasure ENTRY POINT: it
+/// checks the service-role precondition, empties `platform_db`, relays to each
+/// app's own `DELETE /v1/account` (subly-api's, since 2026-08-04), and deletes
+/// the identity LAST. That ordering is the whole safety property, and the client
+/// must not own it — two calls from here could interleave with the shared
+/// Worker's 501 and destroy this app's data for an account that then survives.
+///
+/// 🔄 CORRECTED 2026-08-04. This comment used to say `subly-api` "has no account
+/// route and whose middleware still accepts a shared HS256 secret". The first
+/// half is no longer true: subly-api ships `DELETE /v1/account`, which is what
+/// finally made "delete my account" reach `subly_db` at all. The second half is
+/// still true of that Worker's DEFAULT middleware — and is exactly why the new
+/// route sits behind `erasureAuth` instead, refusing anything not verified
+/// asymmetrically. An irreversible route must not sit behind a symmetric secret;
+/// the answer was a stricter boundary, not a missing feature.
 ///
 /// `ref.read` INSIDE the closure, never at build time: the REST client's token
 /// provider reads THIS provider, so resolving it out here would be a cycle.

@@ -557,6 +557,21 @@ jobs:
       - name: Every app with accounts ships a deletion control
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-deletion-control.mjs
+      # …and the control REACHES something. A route reads the databases it reads,
+      # not the ones its Worker binds: the shared Worker sweeps platform_db and
+      # BINDS subly_db, so the only app in the field was the one app deletion did
+      # not reach — every subscription, budget and payment survived, behind an
+      # account that no longer existed. Nothing failed: the deletion-control guard
+      # above was green (the button existed) and the inventory was green (four
+      # rows honestly declared `no-route`, which PRINTS rather than fails). This
+      # closes the space between them, and the limb that matters most is the third:
+      # subly-api's default middleware accepts a shared HS256 secret, so the
+      # erasure route must be guarded by an asymmetric-only boundary AND refuse on
+      # its own token-assurance check — one leaked environment variable must never
+      # be able to erase an account. [pipeline K-7] · [ADR 027]
+      - name: Account deletion reaches every user-owned table, never via a shared secret
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-erasure-reach.mjs
       # One declaration for every build version. Before this, "3.44.8" appeared in
       # six places and node 24 in eight; wsl-setup.sh carried the comment "keep in
       # lockstep with *.yml", i.e. maintained by hope. The guard compares PARSED

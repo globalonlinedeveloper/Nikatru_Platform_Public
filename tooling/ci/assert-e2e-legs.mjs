@@ -100,32 +100,36 @@ const BLOCKERS_STILL_REAL = {
   // that day all three legs stop being excusable in the same run.
   '[5] apps/subly sells nothing': (src) => /PaywallConfig\(\s*enabled:\s*false/.test(src.subly),
 
-  // 🔄 RESTATED 2026-08-03 ([ADR 027]), because the previous blocker SHIPPED and
-  // this guard is what said so. It read "[6] apps/subly has no delete-account
-  // call site" and its predicate was `!src.subly.includes('.deleteAccount(')` —
-  // the seam-exists-nothing-reaches-it shape. The app now has the control, the
-  // predicate went false, and the build failed exactly as designed. The excuse
-  // could not outlive its reason, so it was replaced rather than edited.
+  // 🔄 RESTATED 2026-08-04, AND THIS IS THE SECOND TIME THIS GUARD HAS KILLED ITS
+  // OWN EXCUSE — which is the whole design working twice.
   //
-  // WHAT STILL BLOCKS THE LEG IS NARROWER, AND IT IS NOT THE CLIENT. The leg
-  // asks that deleting from inside the app "really erases the user AND ITS
-  // ROWS". Subly's rows live in `subly_db`, and NO DEPLOYED ROUTE ERASES THEM:
-  //   · `services/subly-api` has no account route at all (subscriptions,
-  //     renewals, budget, entitlements, webhooks) — and putting an irreversible
-  //     route there is refused while its auth middleware still accepts a shared
-  //     HS256 secret as a fallback;
-  //   · `services/platform`'s DELETE /v1/account reads PLATFORM_DB and nothing
-  //     else, so the identity and the platform rows go and the user's own
-  //     subscriptions stay.
-  // `tooling/legal/data-inventory.json` declares those four tables `no-route`
-  // for the same reason and PRINTS it every run.
+  //   · v1 read "[6] apps/subly has no delete-account call site", predicate
+  //     `!src.subly.includes('.deleteAccount(')`. [ADR 027] shipped the control,
+  //     the predicate went false, the build failed, and it was replaced.
+  //   · v2 read "[6] no deployed route erases apps/subly own database",
+  //     predicate `no account route under services/subly-api/src/routes AND the
+  //     platform route touches only PLATFORM_DB`. BOTH HALVES ARE NOW FALSE:
+  //     services/subly-api ships DELETE /v1/account (behind an asymmetric-only
+  //     boundary — the HS256 fallback that blocked it is refused by
+  //     `erasureAuth` and by the route's own `tokenAssurance` check), and the
+  //     shared route relays to it before deleting the identity. The four
+  //     subly_db rows in tooling/legal/data-inventory.json are `purge`, and
+  //     tooling/ci/assert-erasure-reach.mjs keeps them that way.
   //
-  // BOTH LIMBS ARE READ FROM THE TREE, so either fix kills the excuse in the
-  // same run: an `account` route appearing under services/subly-api/src/routes,
-  // or the platform route reaching a second database binding.
-  '[6] no deployed route erases apps/subly own database': (src) =>
-    !src.sublyApiRoutes.some((f) => /^account\b/.test(f)) &&
-    src.platformAccountDbs.every((b) => b === 'PLATFORM_DB'),
+  // WHAT STILL BLOCKS THE LEG IS NOW ONLY THE PROOF, AND IT IS SMALLER THAN THE
+  // SERVER GAP EVER WAS. The leg asks that deleting from inside the app "really
+  // erases the user and its rows" — a claim only a LIVE run can make. Nothing in
+  // the nightly walks it: neither the integration suite nor the harness under
+  // tooling/e2e/ so much as mentions the erasure route, so there is no step to
+  // sign in, delete, and re-read subly_db against the deployed Workers. Writing
+  // that step is the fix, and the day any of those files names `/v1/account`
+  // this predicate goes false and the excuse dies the way the last two did.
+  //
+  // ⚠️ NOT "the routes are not deployed yet", although that is also true today.
+  // A deploy is not readable from this tree, so it could never be re-evaluated —
+  // and an excuse that cannot go false is the thing this table exists to refuse.
+  '[7] no e2e step exercises the erasure route against the deployed API': (src) =>
+    !/\/v1\/account/.test(src.e2eSurface),
 };
 
 const problems = [];
@@ -237,59 +241,48 @@ const readDartTree = (dir) => {
   return out.join('\n');
 };
 
-/** The ERASURE SURFACE, read from the tree the same way. Two facts, because the
- *  delete leg is blocked by the SERVER and either half unblocks it. */
-const SUBLY_API_ROUTES = 'services/subly-api/src/routes';
-const PLATFORM_ACCOUNT_ROUTE = 'services/platform/src/routes/account.ts';
-
-const sublyApiRoutesDir = join(ROOT, SUBLY_API_ROUTES);
-if (!existsSync(sublyApiRoutesDir)) {
+/** THE E2E SURFACE — everything that could carry a delete-account step: the
+ *  named integration suite plus the whole nightly harness under tooling/e2e/.
+ *
+ *  🔴 IT REPLACED A SERVER-SIDE PAIR (`no account route under
+ *  services/subly-api/src/routes` AND `the platform route touches only
+ *  PLATFORM_DB`) WHEN BOTH WENT FALSE ON 2026-08-04. Those reads are gone rather
+ *  than kept: an input no predicate consults is a COVERAGE LOST that guards
+ *  nothing, and this repository deletes assertions that cannot fail on sight. The
+ *  server gap they described is now held by
+ *  tooling/ci/assert-erasure-reach.mjs, which fails the build if any table with a
+ *  `user_id` stops being reachable — a stronger relation than the one this file
+ *  was carrying on its behalf.
+ *
+ *  Comment-stripped for the same reason everything here is: app_test.dart's
+ *  header narrates what the suite does NOT do, and a raw scan would resolve the
+ *  blocker against the prose describing the gap. */
+const E2E_HARNESS = 'tooling/e2e';
+const harnessDir = join(ROOT, E2E_HARNESS);
+if (!existsSync(harnessDir)) {
   coverageLost([
-    `${SUBLY_API_ROUTES} does not exist.`,
-    'The delete leg\'s blocker asks whether an account route has appeared there. Over a missing directory',
-    'the answer is "no route" for a reason that has nothing to do with erasure, and the excuse would',
-    'survive the Worker being deleted.',
+    `${E2E_HARNESS} does not exist.`,
+    "The delete leg's blocker asks whether any nightly step exercises the erasure route. Over a missing",
+    'directory the answer is "no step" for a reason that has nothing to do with erasure, and the excuse',
+    'would outlive the harness being deleted.',
   ]);
 }
-const sublyApiRoutes = listDir(sublyApiRoutesDir);
-if (sublyApiRoutes.length === 0) {
+const harnessFiles = listDir(harnessDir).filter((f) => /\.(mjs|js|ts|dart)$/.test(f));
+if (harnessFiles.length === 0) {
   coverageLost([
-    `${SUBLY_API_ROUTES} is empty.`,
-    'A predicate over an empty listing answers "still blocked" whatever the truth is.',
+    `${E2E_HARNESS} holds no script this scan can read.`,
+    'A predicate over an empty string answers "still blocked" whatever the truth is — this repository\'s',
+    'single most repeated failure.',
   ]);
 }
-if (!existsSync(join(ROOT, PLATFORM_ACCOUNT_ROUTE))) {
-  coverageLost([
-    `${PLATFORM_ACCOUNT_ROUTE} does not exist.`,
-    'It is the only deployed erasure route in the tree. Without it the second half of the delete leg\'s',
-    'blocker is evaluated over nothing and reports "still blocked" forever.',
-  ]);
-}
-const platformAccountSrc = stripSourceComments(
-  readFileSync(join(ROOT, PLATFORM_ACCOUNT_ROUTE), 'utf8'),
-  '.ts',
-);
-/** Every D1 binding the erasure route actually touches. Comment-stripped, for
- *  the reason this file's header gives at length: that route's header NARRATES
- *  which databases it does not reach, so a raw scan would find `SUBLY_DB` in the
- *  prose explaining why it is absent. */
-const platformAccountDbs = [
-  ...new Set(
-    [...platformAccountSrc.matchAll(/\bc\.env\.([A-Z0-9_]*DB)\b/g)].map((m) => m[1]),
-  ),
-];
-if (platformAccountDbs.length === 0) {
-  coverageLost([
-    `${PLATFORM_ACCOUNT_ROUTE} names no \`c.env.*DB\` binding once comments are stripped.`,
-    'The route reads at least one database by construction, so finding none means this scan stopped',
-    'seeing them — and the delete leg\'s blocker would then read "only PLATFORM_DB" over an empty set.',
-  ]);
-}
+const e2eSurface = [
+  suite,
+  ...harnessFiles.map((f) => stripSourceComments(readFileSync(join(harnessDir, f), 'utf8'), '.js')),
+].join('\n');
 
 const sources = {
   subly: readDartTree(join(APP_DIR, 'lib')),
-  sublyApiRoutes,
-  platformAccountDbs,
+  e2eSurface,
 };
 if (sources.subly.trim().length === 0) {
   coverageLost([

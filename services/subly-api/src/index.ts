@@ -2,9 +2,24 @@
 // Worker entrypoint. Wires CORS, a public health check, public webhooks, and a
 // Supabase-auth-protected /v1 API group.
 //
-//   PUBLIC   GET  /v1/health              — no auth (deploy verification)
-//   PUBLIC   POST /v1/webhooks/revenuecat — secret-authed, not user-authed
-//   AUTH     *    /v1/subscriptions ...    — Supabase JWT required
+//   PUBLIC   GET    /v1/health              — no auth (deploy verification)
+//   PUBLIC   POST   /v1/webhooks/revenuecat — secret-authed, not user-authed
+//   ES256    DELETE /v1/account             — erasure. ASYMMETRIC-ONLY (see below)
+//   AUTH     *      /v1/subscriptions ...   — Supabase JWT required
+//
+// ── 🔴 TWO AUTH BOUNDARIES ON ONE WORKER, AND THE DIFFERENCE IS THE POINT ────
+// `supabaseAuth` verifies ES256 against Supabase's public JWKS and, if that
+// fails, falls back to an HS256 MAC using the shared `SUPABASE_JWT_SECRET`.
+// `erasureAuth` does only the first, with the secret out of scope entirely.
+//
+// DELETE /v1/account is mounted behind `erasureAuth` and is NOT a member of the
+// `api` group below, so no line in this file puts the shared secret in front of
+// it. Deletion is irreversible: a symmetric secret is one leaked environment
+// variable away from an unauthenticated remote wipe of any account, which is
+// survivable for a subscriptions read and not for this. The route ALSO re-checks
+// `tokenAssurance` itself, so moving this mount would produce a logged 403
+// rather than a silent downgrade. See src/middleware/auth.ts and
+// src/routes/account.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Hono } from 'hono';
@@ -12,7 +27,8 @@ import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
 import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
-import { supabaseAuth } from './middleware/auth';
+import { supabaseAuth, erasureAuth } from './middleware/auth';
+import account from './routes/account';
 import subscriptions from './routes/subscriptions';
 import renewals from './routes/renewals';
 import budget from './routes/budget';
@@ -49,6 +65,20 @@ app.get('/v1/health', (c) =>
 
 // ── Public: webhooks (authenticated by shared secret, not by user JWT) ────────
 app.route('/v1/webhooks', webhooks);
+
+// ── ERASURE: the ONE route on this Worker behind the strict boundary ──────────
+//
+// ⚠️ REGISTERED BEFORE THE `api` GROUP, AND THAT ORDER IS LOAD-BEARING. Hono
+// composes every handler whose path matches, in REGISTRATION order, and the
+// group below registers `supabaseAuth` at `/v1/*` — which matches `/v1/account`
+// too. Registering the erasure route first means its handler runs and returns
+// before the permissive middleware is ever reached. That is a subtle thing to
+// rest a security property on, which is exactly why it is NOT what the property
+// rests on: the route re-checks `tokenAssurance` and refuses anything it did not
+// get from `erasureAuth`, and test/erasure.test.ts drives the REAL Worker
+// exported below — not a hand-built app — so the mounting itself is under test.
+app.use('/v1/account', erasureAuth);
+app.route('/v1', account);
 
 // ── Protected: everything else under /v1 requires a valid Supabase JWT ────────
 const api = new Hono<AppEnv>();

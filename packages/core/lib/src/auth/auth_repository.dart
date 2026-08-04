@@ -78,11 +78,17 @@ abstract class AuthRepository {
 
   /// Ask the backend to delete the account and its data, then sign out locally.
   ///
-  /// 🔴 [pipeline C-15] THE CLIENT HALF ONLY, and the split is deliberate.
-  /// `DELETE /v1/account` is **stage 4's** route and does not exist yet — only
-  /// CORS comments reference it. Requiring the route here is what made C-15
-  /// unbuildable, so the boundary is drawn at the network edge: this contract
-  /// owns *asking*, stage 4 owns *answering*.
+  /// 🔴 [pipeline C-15] THE CLIENT HALF ONLY, and the split is deliberate: this
+  /// contract owns *asking*, the server owns *answering*. Drawing the boundary
+  /// at the network edge is what made C-15 buildable before the route existed.
+  ///
+  /// 🔄 CORRECTED 2026-08-04. This used to read "`DELETE /v1/account` is stage
+  /// 4's route and does not exist yet — only CORS comments reference it". It
+  /// does exist: `services/platform/src/routes/account.ts` is the entry point
+  /// (platform_db, then every app's own route, then the identity, in that
+  /// order), and `services/subly-api/src/routes/account.ts` erases that app's own
+  /// database behind an asymmetric-only boundary. The SPLIT is unchanged and is
+  /// still the reason this method promises nothing about the server.
   ///
   /// Both stores require an in-app path to account deletion where an account can
   /// be created at all, so this cannot be left to a support email.

@@ -45,7 +45,24 @@
     //   localhost:3000      — the local Subly web dev server (.claude/launch.json).
     //                         It fetches config.nikatru.com cross-origin from the
     //                         browser, so omitting it breaks local web dev.
-    "ALLOWED_ORIGINS": "https://subly.nikatru.com,https://subly-9cp.pages.dev,http://localhost:3000"
+    "ALLOWED_ORIGINS": "https://subly.nikatru.com,https://subly-9cp.pages.dev,http://localhost:3000",
+    // WHERE EACH APP'S OWN ERASURE ROUTE LIVES — `<appId>=<https origin>`.
+    //
+    // 🔴 DELETE /v1/account IS THE PORTFOLIO'S ERASURE ENTRY POINT AND THIS
+    // WORKER CAN ONLY EMPTY platform_db. A route reads the databases it reads,
+    // not the ones its Worker happens to bind — so before this list existed, a
+    // Subly user could delete their account and leave every subscription, budget
+    // and payment they had entered in subly_db, behind a login that no longer
+    // existed. The shared route now relays the caller's own bearer token to each
+    // app's own DELETE /v1/account (services/subly-api/src/routes/account.ts),
+    // AFTER the service-role precondition and BEFORE the identity is deleted.
+    //
+    // ⚠️ EVERY NEW APP WITH ITS OWN DATABASE MUST BE ADDED HERE. Binding an app's
+    // D1 to this Worker without an entry fails the build
+    // (tooling/ci/assert-erasure-reach.mjs) rather than silently orphaning that
+    // app's rows on every deletion. `https://` is required: the relay forwards a
+    // live session token.
+    "APP_ERASURE_ENDPOINTS": "subly=https://api.nikatru.com"
   },
   "d1_databases": [
     {

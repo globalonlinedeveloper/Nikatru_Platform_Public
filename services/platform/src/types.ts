@@ -147,6 +147,27 @@ export interface Env {
    * `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`, never as a committed var.
    */
   SUPABASE_SERVICE_ROLE_KEY?: string;
+
+  /**
+   * WHERE EACH APP'S OWN ERASURE ROUTE LIVES — `"<appId>=<https origin>"`,
+   * comma-separated. Today: `"subly=https://api.nikatru.com"`.
+   *
+   * 🔴 A COMMITTED VAR, NOT A SECRET, AND NOT OPTIONAL IN PRACTICE. DELETE
+   * /v1/account is the portfolio's erasure entry point, and this Worker can only
+   * empty platform_db. Every app that keeps user rows in its OWN database has an
+   * erasure route on its own Worker (services/subly-api/src/routes/account.ts;
+   * the brick stamps one for every future app), and this list is how the shared
+   * route finds them. An app whose endpoint is missing here is an app whose rows
+   * survive "delete my account" — so the route REFUSES rather than skipping, and
+   * `tooling/ci/assert-erasure-reach.mjs` fails the build when a per-app D1
+   * binding on this Worker has no endpoint declared.
+   *
+   * ⚠️ `https://` IS REQUIRED AND CHECKED AT RUNTIME. The relay forwards the
+   * CALLER'S OWN BEARER TOKEN, so a plaintext or malformed origin here would put
+   * a live session token on the wire. Optional in the TYPE only because a var
+   * cannot be proven present by `tsc`; absent at runtime is a refusal.
+   */
+  APP_ERASURE_ENDPOINTS?: string;
   API_VERSION: string;
   /**
    * Comma-separated EXACT browser origins for CORS (owner decision 2026-07-25).

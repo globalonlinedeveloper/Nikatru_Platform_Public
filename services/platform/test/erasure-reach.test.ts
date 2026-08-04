@@ -51,6 +51,7 @@ import registerRaw from '../../../tooling/legal/data-inventory.json?raw';
 
 const SUPABASE_URL = 'https://project-a.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
+const APP_ORIGIN = 'https://api.test';
 
 /** Distinctive on purpose. The final sweep looks for this literal in every TEXT
  *  column of every table, so it must not be a substring of any filler value. */
@@ -92,6 +93,11 @@ beforeAll(async () => {
       });
     }
     if (url.includes('/auth/v1/admin/users/')) return new Response(null, { status: 204 });
+    // LIMB 3 — the per-app erasure relay. Held constant here for the same reason
+    // the identity provider is: what is under test in this file is the
+    // platform_db half. That the relay HAPPENS, in the right order, and refuses
+    // correctly when the app route does, is asserted in test/auth.test.ts.
+    if (url.startsWith(APP_ORIGIN)) return new Response('{"ok":true}', { status: 200 });
     throw new Error(`unexpected fetch in test: ${url}`);
   });
 });
@@ -121,6 +127,7 @@ function harness(db: RealDb) {
     JWKS_CACHE: KV,
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+    APP_ERASURE_ENDPOINTS: `subly=${APP_ORIGIN}`,
     APP_ID: 'platform',
     API_VERSION: 'v1',
   } as unknown as AppEnv['Bindings'];

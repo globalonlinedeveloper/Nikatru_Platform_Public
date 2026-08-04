@@ -100,8 +100,8 @@
       "id": "account-delete-purges",
       "asks": "deleting the account from inside the app really erases the user and its rows",
       "status": "blocked",
-      "blockedBy": "[6] no deployed route erases apps/subly own database",
-      "declaredOn": "2026-08-03"
+      "blockedBy": "[7] no e2e step exercises the erasure route against the deployed API",
+      "declaredOn": "2026-08-04"
     }
   ]
 }
