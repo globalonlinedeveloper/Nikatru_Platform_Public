@@ -10,7 +10,10 @@
 // ⚠️ A FIXTURE PASSING IS NOT A GUARD WORKING. assert-seams-wired.mjs shipped
 // with a check that could not fail while all six of its fixture tests passed —
 // a fixture you wrote encodes the same misunderstanding as the guard you wrote.
-// So these were paired with REAL-TREE MUTATIONS, recorded in the guard's PR:
+// So these were paired with REAL-TREE MUTATIONS, run 2026-08-04 against this
+// worktree itself — mutate, run, confirm the guard's OWN message (a stack trace
+// is not a catch), `git checkout --` to restore, `git status` clean, re-verify
+// exit 0. 8/8 caught:
 //
 //   R1  targetSdk reverted to `flutter.targetSdkVersion`  -> "is NOT PINNED"
 //   R2  targetSdk = 35                                    -> "below Google Play's floor of 36"

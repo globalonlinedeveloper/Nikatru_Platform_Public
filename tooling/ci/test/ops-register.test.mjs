@@ -38,6 +38,29 @@
 //                                                             THAT IS DOWN"
 //   15/15 caught, none crashed, every restore byte-identical and green again.
 //
+// ── THE LEAD-WINDOW LIMB, REAL-TREE MUTATIONS RUN 2026-08-04 ─────────────────
+// Same protocol, against this worktree's own tooling/ops/register.json, each
+// restored with `git checkout --` and re-verified green (`git status` clean,
+// guard exit 0). A stack trace is NOT counted as a catch — every one of these
+// printed the guard's own intended message.
+//
+//   S1  `degradedLeadDays` stripped from the live row  -> "no positive integer
+//                                                          `degradedLeadDays`"
+//   S2  degradedUntil moved to 2026-08-10, inside the
+//       row's own 14-day window                        -> exit 1, "FIRES IN 6
+//                                                          DAY(S), inside its own
+//                                                          14-day lead window"
+//   S3  degradedUntil backdated to 2026-07-01          -> exit 1, "has PASSED …
+//                                                          It went red 14 day(s)
+//                                                          before this"
+//   S4  the tripwire disarmed entirely (both keys      -> exit 1, "\"Never done\"
+//       removed)                                          must cost something",
+//                                                          and the printed count
+//                                                          fell to `0 dated
+//                                                          tripwire(s) armed`
+//   4/4 caught. S4 is the one that matters most: it proves the COUNT moves, so
+//   an empty tripwire domain cannot pass as a clean register.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
