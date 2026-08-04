@@ -81,6 +81,25 @@ void main() {
 
   Future<void> shot(String name) => binding.takeScreenshot(name);
 
+  /// WHAT IS ON SCREEN, for a failure message that would otherwise only say
+  /// what is NOT.
+  ///
+  /// `findsNothing`-style failures name the widget that is missing and stop
+  /// there, so "Sign-out did not return to the login screen" reads the same
+  /// whether the user is still in Settings (the tap missed), stuck on a
+  /// spinner (the round-trip hung) or in the onboarding carousel (the redirect
+  /// was overridden). Those need three different fixes. Listing the text that
+  /// IS rendered tells them apart from the run page alone, without another
+  /// night's wait.
+  String onScreen(WidgetTester tester) {
+    final Iterable<String> texts = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((Text t) => t.data ?? '')
+        .where((String s) => s.trim().isNotEmpty)
+        .take(25);
+    return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
+  }
+
   /// 🔴 THE FAILURE THIS SUITE MUST NAME OUT LOUD.
   ///
   /// A modal route installs a `ModalBarrier` over everything below it, so a
@@ -444,7 +463,16 @@ void main() {
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 20,
     );
+    // 🔴 THE ONE MOMENT THIS SUITE NEVER PHOTOGRAPHED. Every failure from
+    // 2026-08-03 onward was "Sign-out did not return to the login screen", and
+    // the artifact stopped at 16-home-currency — so there was no evidence of
+    // where the Log out control actually WAS, or what the screen looked like
+    // after it was tapped. Two shots either side of the tap cost one frame each
+    // and turn "the assertion said false" into a picture of why.
+    await shot('17a-before-logout');
     await tester.tap(find.text('Log out'));
+    await pumpFor(tester, const Duration(seconds: 3));
+    await shot('17b-after-logout-tap');
     // signOut() is an async round-trip to Supabase; the router then refreshes
     // and redirects. A signed-out user on a non-auth route (/settings) lands on
     // /login — NOT first-run onboarding — per the app_router redirect (a
@@ -452,7 +480,11 @@ void main() {
     expect(
       await waitFor(tester, find.text('Welcome back')),
       isTrue,
-      reason: 'Sign-out did not return to the login screen',
+      reason:
+          'Sign-out did not return to the login screen. On screen instead: '
+          '${onScreen(tester)} — see 17a-before-logout (was the control where '
+          'the tap went?) and 17b-after-logout-tap in the e2e-screenshots '
+          'artifact.',
     );
 
     // 🔴 AND THEN SETTLE AND RE-ASSERT — this second check is the point.
