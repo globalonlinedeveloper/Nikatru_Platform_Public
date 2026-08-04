@@ -111,15 +111,45 @@ export function judge({ status, body, field, expected }) {
     return { ok: false, retry: false, reason: `the body parsed to ${typeof parsed}, not an object` };
   }
   if (!(field in parsed)) {
+    // RETRYABLE for the same reason as the empty case below: a surface still
+    // serving the PREVIOUS build answers in that build's shape, and if the field
+    // was introduced by the deploy under test the key is simply absent until
+    // propagation finishes.
     return {
       ok: false,
-      retry: false,
-      reason: `the body has no \`${field}\` field (keys: ${Object.keys(parsed).join(', ') || 'none'}). A deploy that does not thread its build identity cannot be verified at all, which is the state this check exists to end.`,
+      retry: true,
+      reason: `the body has no \`${field}\` field (keys: ${Object.keys(parsed).join(', ') || 'none'}). If this persists to the ceiling, the deploy does not thread a build identity at all, which is the state this check exists to end.`,
     };
   }
   const actual = parsed[field];
   if (actual === null || actual === undefined || String(actual) === '') {
-    return { ok: false, retry: false, reason: `\`${field}\` is empty — the deploy did not thread a build identity` };
+    // ── 🔴 RETRYABLE SINCE 2026-08-04 — IT WAS RETURNING A FALSE RED ──────────
+    // This branch returned `retry: false`, and on run 30934945633 it failed the
+    // `platform` deploy in 240 MILLISECONDS: one attempt, no wait, against a
+    // ceiling the message still advertised as "6 attempts 10s apart". Eighty
+    // seconds later the same URL served `build:2cd7b7ac…`, the exact SHA the
+    // deploy had shipped. THE DEPLOY WAS GOOD AND THIS CHECK CALLED IT BAD.
+    //
+    // Why empty is the propagating state, specifically: the version still being
+    // served is the one deployed WITHOUT `--var RELEASE`, and a Worker with no
+    // RELEASE var answers `build: null` — key present, value empty. So "empty"
+    // is not evidence of a bad deploy; it is evidence of the OLD deploy.
+    //
+    // This branch was violating the rule the mismatch branch below already
+    // states in this same file: propagation and failure "are distinguished by
+    // whether it resolves inside the ceiling, which is the only honest way to
+    // tell them apart from outside." That is just as true of an empty value as
+    // of a wrong one.
+    //
+    // ⚠️ THE FAILURE IS NOT WEAKENED, ONLY DELAYED. A deploy that genuinely
+    // never threads RELEASE still exits 1 — after ~60s instead of instantly.
+    // Buying back a real false red for one minute on a real failure is the
+    // trade, and it is deliberate.
+    return {
+      ok: false,
+      retry: true,
+      reason: `\`${field}\` is empty — the live surface is still serving a build that carries no identity. If this persists to the ceiling, the deploy did not thread a build identity.`,
+    };
   }
   if (String(actual) !== String(expected)) {
     // RETRYABLE: this is what a CDN still serving the previous asset looks like,

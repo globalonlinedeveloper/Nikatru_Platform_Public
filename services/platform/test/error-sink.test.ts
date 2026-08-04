@@ -378,6 +378,23 @@ describe('the sink fails open', () => {
     await expect(reportWorkerError(new Error('x'), CTX, { GLITCHTIP_DSN: DSN }, NOW)).resolves.toBe(false);
   });
 
+  // 🔴 REGRESSION TEST. `reportWorkerError` returned `true` for ANY response
+  // fetch did not throw on, so a sink rejecting every report was
+  // indistinguishable from one delivering them. The envelope here is
+  // HAND-ROLLED and every test in this file mocks `fetch`, so until it was
+  // POSTed at the live server by hand on 2026-08-04 (HTTP 200, issue SUBLY-5)
+  // nothing had ever confirmed GlitchTip accepts the format at all. A rejected
+  // report must be reported as rejected.
+  it('🔴 reports FALSE when the sink REJECTS the envelope', async () => {
+    for (const status of [400, 403, 413, 429, 500]) {
+      vi.stubGlobal('fetch', async () => new Response('', { status }));
+      expect(
+        await reportWorkerError(new Error('x'), CTX, { GLITCHTIP_DSN: DSN }, NOW),
+        `HTTP ${status} from the sink must not read as a delivered report`,
+      ).toBe(false);
+    }
+  });
+
   it('POSTs to the envelope endpoint with the Sentry auth header', async () => {
     const calls: Array<[string, RequestInit]> = [];
     vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {

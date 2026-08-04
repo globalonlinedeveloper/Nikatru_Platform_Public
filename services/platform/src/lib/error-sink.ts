@@ -145,7 +145,7 @@ export async function reportWorkerError(
   const parsed = parseDsn(env.GLITCHTIP_DSN);
   if (!parsed) return false;
   try {
-    await fetch(parsed.endpoint, {
+    const res = await fetch(parsed.endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/x-sentry-envelope',
@@ -155,7 +155,25 @@ export async function reportWorkerError(
       },
       body: buildEnvelope(err, ctx, env.GLITCHTIP_DSN as string, now),
     });
-    return true;
+    // ── 🔴 `res.ok`, NOT `true` — CORRECTED 2026-08-04 ────────────────────────
+    // This returned `true` for ANY response the fetch did not throw on, so a
+    // 400 or 403 from the sink was indistinguishable from a delivered report.
+    // That mattered more than it looks: this envelope is HAND-ROLLED (no SDK),
+    // every test mocks `fetch`, and so NOTHING had ever asked the live server
+    // what it made of the format. The sink could have been rejecting every
+    // report this factory ever sent and the only visible symptom would have
+    // been an error tracker that looked reassuringly quiet.
+    //
+    // Validated live 2026-08-04 against glitchtip.nikatru.com by POSTing an
+    // envelope built by THIS function: HTTP 200, event id
+    // 65ee34800b324b9787b81bfbf9b2860f, landed as issue SUBLY-5. The format is
+    // good — but "we checked once by hand" is not a property, and returning the
+    // real verdict is what makes a future rejection observable at all.
+    //
+    // ⚠️ STILL FAILS OPEN. The caller hands this to `waitUntil` and ignores it;
+    // a false return never touches the request path. It is a REPORT of what
+    // happened, not a decision about it.
+    return res.ok;
   } catch {
     // Fail open. A sink that can break the request path is worse than no sink.
     return false;
