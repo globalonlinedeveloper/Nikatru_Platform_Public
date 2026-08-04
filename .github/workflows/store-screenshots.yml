@@ -32,10 +32,30 @@ name: Store screenshots (live capture)
 # Windows socket-layer defect root-caused 2026-07-25. The web target renders the
 # same widget tree, which is what makes this capture possible at all.
 #
-# ⚠️ IT UPLOADS RATHER THAN COMMITS. The screenshots are a listing asset a human
-# should look at before it represents the product — the guard can prove size,
-# format, count and posture, and cannot prove the set is worth showing. Pushing
-# them automatically would put pictures on a store page that nobody chose.
+# ⚠️ IT UPLOADS *AND* OPENS A PULL REQUEST. It used to only upload, and the
+# reasoning was right while the conclusion was wrong: the screenshots are a
+# listing asset a human should look at before it represents the product — the
+# guard can prove size, format, count and posture, and cannot prove the set is
+# worth showing — so nothing should push them onto a store page unreviewed.
+#
+# 🔴 BUT AN ARTIFACT IS NOT A REVIEW, IT IS A DEADLINE. Measured 2026-08-04: this
+# workflow ran successfully (run 30922349590), produced the five 1080x1920
+# frames, and left them in an artifact that EXPIRES 2026-11-02. Nothing in the
+# repository carried a single pixel of it. So the only copy of the assets that
+# would go on the store lived in a bucket with a 90-day timer, no human had
+# looked at them, and `apps/subly/store/android-play/screenshots/` held one
+# README explaining why it was empty. "Do not publish unreviewed" had quietly
+# become "do not review".
+#
+# A PULL REQUEST IS THE REVIEW STEP, and it is the one thing an artifact cannot
+# be: GitHub renders PNGs in a diff, so the owner SEES exactly what would be
+# uploaded, in the place where approving it is one click and where declining it
+# leaves a record. Merging is still a human act; nothing here contacts Google,
+# and `submit-play.mjs` remains the only path to a store. The artifact upload is
+# kept as well — it costs nothing and it is what the run's own log links to.
+
+# The submission path this feeds is still gated elsewhere; opening a PR is the
+# most this workflow may do on its own.
 #
 # Required repo secrets — ALL of them, on every run:
 #   SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -49,7 +69,7 @@ on:
   workflow_dispatch:
 
 # Least privilege, and the DEFAULT for every job that does not override it.
-# This job publishes nothing through GITHUB_TOKEN. [pipeline F-11]
+# [pipeline F-11]
 permissions:
   contents: read
 
@@ -58,6 +78,15 @@ jobs:
     name: Capture the Play phone screenshot set (live)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # 🔴 THE NARROWEST SET THAT LETS THE CAPTURE OUTLIVE ITS RUN, and both halves
+    # are needed by exactly one step. `contents: write` pushes the review branch;
+    # `pull-requests: write` opens the PR. Nothing here deploys, releases or
+    # touches a store — [pipeline F-11] is about scope, not about refusing to
+    # write, and the alternative on offer was an artifact with a 90-day timer
+    # that no human ever opened.
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         # persist-credentials: false — actions/checkout otherwise writes
@@ -141,6 +170,69 @@ jobs:
           name: play-screenshots-subly
           path: apps/subly/store/android-play/screenshots/
           if-no-files-found: error
+
+      # 🔴 THE STEP THAT MAKES THE CAPTURE OUTLIVE ITS RUN. Everything above is
+      # unchanged; without this the set expires in 90 days having been seen by
+      # nobody, which is what happened to run 30922349590.
+      #
+      # `gh` rather than a create-pull-request action: it is preinstalled on the
+      # runner, so this adds no third-party dependency to pin — and a pin is a
+      # 40-hex SHA that has to be looked up correctly, which
+      # assert-workflow-hardening.mjs is right to demand and which is one more
+      # thing to get wrong for no gain here.
+      #
+      # The push URL carries the token explicitly BECAUSE checkout above sets
+      # `persist-credentials: false` — that is deliberate (a credential left in
+      # .git/config on a job that uploads artifacts is one glob away from being
+      # downloadable on a public repo), so the credential is supplied for exactly
+      # this one command instead of for the whole job.
+      #
+      # NO `if:` GATE. `assert-green-means-ran.mjs`'s rule: a step that can be
+      # skipped is a capability that can go dark under a green tick. If the set
+      # is byte-identical to what is already committed there is genuinely nothing
+      # to propose, and that is reported rather than skipped.
+      - name: Propose the set for human review (pull request)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHOTS=apps/subly/store/android-play/screenshots
+          BRANCH="chore/play-screenshots-${{ github.run_id }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # -f: the listing directory is not gitignored, but being explicit means
+          # a future ignore rule cannot silently drop the payload of this PR.
+          git add -f "$SHOTS"
+          if git diff --cached --quiet; then
+            echo "::notice title=Nothing to propose::The captured set is byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
+            exit 0
+          fi
+
+          git checkout -b "$BRANCH"
+          git commit -F - <<'MSG'
+          chore(play): the captured screenshot set, for review
+
+          Captured live by .github/workflows/store-screenshots.yml against a
+          build with the real backend defines, so no "Demo data" banner and none
+          of the twelve third-party trademarks the demo seed carries.
+
+          CAPTURE.json records the posture; tooling/ci/assert-listing-assets.mjs
+          proves size, count, aspect, format and the ABSENCE OF THE DEMO BANNER
+          in pixels, and refuses a set whose provenance nobody wrote down.
+
+          What it cannot prove is whether these are the screens worth showing.
+          That is the reason this arrives as a pull request: look at the images
+          in the diff before merging.
+          MSG
+
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH" \
+            --title "chore(play): the captured screenshot set, for review" \
+            --body "Captured by run \`${{ github.run_id }}\`. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing, and Google requires screenshots to demonstrate the actual in-app experience. Merging is the human decision this PR exists to ask for."
 
       # `always()` — a capture that failed halfway may still have created rows in
       # live D1, and a throwaway user that outlives its run is exactly the kind of

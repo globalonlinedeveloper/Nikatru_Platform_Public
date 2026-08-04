@@ -235,11 +235,19 @@ flutter_launcher_icons:
   web:
     generate: false
 
-  # LINUX has no entry because flutter_launcher_icons has no Linux support and
-  # Flutter's Linux runner sets no window icon: on Linux the launcher icon is a
-  # PACKAGING artefact (.desktop + hicolor theme, or a snapcraft recipe), and
-  # this repo has neither yet. Recorded rather than left blank, and printed by
-  # assert-launcher-icons.mjs on every run so the gap stays visible.
+  # LINUX has no entry because flutter_launcher_icons has no Linux target — that
+  # is a fact about the tool, not a gap. Flutter's Linux embedder has no icon
+  # slot, so on Linux the launcher icon is a PACKAGING artefact: a freedesktop
+  # `.desktop` entry plus a hicolor icon theme, which snap/flatpak/deb/AppImage
+  # all consume.
+  #
+  # ✅ NO LONGER MISSING (this comment used to end "and this repo has neither
+  # yet"). Both are generated from the SAME master named above by
+  #   node tooling/store/render-linux-icons.mjs --app subly
+  # into linux/packaging/, installed into the bundle by linux/CMakeLists.txt, and
+  # RE-DERIVED on every CI run by assert-launcher-icons.mjs limb 7 — which is a
+  # stronger check than the other five platforms get, since it proves the icon is
+  # THIS app's mark rather than merely "not Flutter's".
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MSIX PACKAGE IDENTITY — the `windows-store` channel's artifact

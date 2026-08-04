@@ -54,6 +54,24 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
+  // Name the window's icon so the running app shows its own mark in the dock,
+  // the task switcher and the window list.
+  //
+  // 🔴 `flutter create` EMITS NO SUCH CALL, which is why a Flutter Linux app
+  // shows a generic placeholder there even after its .desktop file is installed:
+  // g_set_prgname() below associates the process with the desktop entry, and
+  // several desktops take the icon from that, but a window with no icon name of
+  // its own is at the mercy of which one is running. Setting the NAME rather
+  // than a GdkPixbuf is deliberate — it resolves through the hicolor theme this
+  // app installs, so the compositor picks whichever size it is drawing at
+  // instead of scaling one baked-in bitmap.
+  //
+  // APPLICATION_ID is the same value the desktop file is named after and the
+  // same value its `Icon=` key carries. Those three agreeing is what makes the
+  // icon resolve; assert-launcher-icons.mjs checks the agreement rather than
+  // trusting it.
+  gtk_window_set_icon_name(window, APPLICATION_ID);
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
