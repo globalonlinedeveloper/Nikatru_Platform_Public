@@ -32,6 +32,36 @@
 // guard that fetches cannot fail offline, cannot fail on a fork, and turns a
 // deploy-time property into a network dependency of every build.
 //
+// 🔴 2026-08-04 — IT WAS RE-MEASURED, AND THE EDGE DOES NOT AGREE WITH THIS FILE.
+//
+// A plain GET against the live channel, after `_headers` had shipped:
+//
+//     /                        public, max-age=0, must-revalidate        ✅ declared
+//     /index.html              public, max-age=0, must-revalidate        ✅ declared
+//     /version.json            public, max-age=0, must-revalidate        ✅ declared
+//     /manifest.json           public, max-age=0, must-revalidate        ✅ declared
+//     /assets/AssetManifest…   public, max-age=31536000, immutable       ✅ declared
+//     /icons/Icon-192.png      public, max-age=31536000, immutable       ✅ declared
+//     /flutter_bootstrap.js    public, max-age=14400, must-revalidate    ❌ declared max-age=0
+//     /main.dart.js            public, max-age=14400, must-revalidate    ❌ declared max-age=0
+//
+// So `_headers` IS deployed and IS being applied — six of eight rules match it
+// exactly — and the two that do NOT are precisely the two stable-named entry
+// points this guard exists for. `must-revalidate` only bites once the response
+// is STALE, so a returning visitor can run the previous build for up to four
+// hours and report the previous version honestly: the one client the CFG-1
+// force-update gate cannot see, still there, behind a green check.
+//
+// ⚠️ THIS GUARD IS STILL RIGHT TO BE OFFLINE, AND THAT IS THE WHOLE LESSON. It
+// asserts what the repository DECLARES, which is all a build-time check can
+// honestly assert — and a green declaration is not a served header. The
+// divergence is owned by `revert.mitigation.force-update` in
+// tooling/ops/register.json, as a DATED TRIPWIRE with a lead window, and its
+// recorded response is to move the live assertion into
+// tooling/ops/post-deploy-smoke.mjs, where a network check belongs and where a
+// failure blocks a deploy rather than every build. Do not "fix" this by making
+// this file fetch.
+//
 // ── WHAT IS ASSERTED ─────────────────────────────────────────────────────────
 // For every web output directory in the tree (`apps/*/web`, and the brick's
 // template, because a defect there is born into every future app):
