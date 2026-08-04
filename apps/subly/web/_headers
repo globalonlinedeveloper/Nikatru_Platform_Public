@@ -21,17 +21,63 @@
 # Flutter copies `web/` verbatim into `build/web`, so this file is deployed as
 # a sibling of index.html and Pages reads it from the deployed directory.
 #
-# ⚠️ THE SPLIT IS BY WHETHER THE NAME CARRIES A HASH, not by file type.
-# `index.html` and `flutter_bootstrap.js` have STABLE names and CHANGING
-# content — they are the entry points every build rewrites, so they must be
-# revalidated every time. Everything under `assets/` and the `.js` chunks
-# Flutter emits with a content hash in the name have the opposite property:
-# the name changes when the bytes change, so they can be cached forever and a
-# new build simply asks for different names.
+# ⚠️ THE SPLIT IS BY WHETHER THE NAME CARRIES A HASH, not by file type. A
+# STABLE name with CHANGING content must be revalidated every build; a name
+# that changes when its bytes change can be cached forever, because a new
+# build simply asks for a different name.
 #
 # `must-revalidate` with `max-age=0` is a conditional request, not a full
 # download: the browser asks, the edge answers 304 when nothing moved. The
 # cost of correctness here is one round trip.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 2026-08-04 — THE RULE ABOVE WAS RIGHT AND THIS FILE WAS APPLYING IT TO THE
+#    WRONG SET. `/assets/*`, `/canvaskit/*` and `/icons/*` were declared
+#    `immutable, max-age=31536000` under the comment "content-addressed output:
+#    the name changes when the bytes do". THAT IS NOT TRUE OF THIS BUNDLE, and
+#    it was never verified — it was inherited from how a webpack-style build
+#    behaves.
+#
+# MEASURED against the live channel (https://subly.nikatru.com), not reasoned:
+#
+#   · `flutter_bootstrap.js` names its dependencies `main.dart.js`,
+#     `canvaskit.js` and `canvaskit.wasm` — plain, unhashed. A scan of the
+#     whole bootstrap for a hash-shaped token returned NONE.
+#   · The only `?v=` in the bootstrap is on `flutter_service_worker.js`, a file
+#     `--pwa-strategy=none` never emits. So no asset request carries a
+#     cache-busting query either.
+#   · The real files under `/assets/` are `AssetManifest.bin.json`,
+#     `FontManifest.json`, `NOTICES` and `fonts/MaterialIcons-Regular.otf` —
+#     fixed names whose CONTENT changes whenever the app's asset list does.
+#   · `/icons/Icon-192.png` and friends are copied verbatim from `web/icons/`
+#     in this repository. PR #149 changed exactly those bytes.
+#
+# NOTHING IN THIS BUNDLE IS CONTENT-ADDRESSED. So `immutable` — which tells a
+# browser not to revalidate even on an explicit reload — meant a returning
+# visitor kept the previous launcher icon, font and asset manifest for up to a
+# YEAR. The same failure this file was written to prevent, one directory down,
+# behind a green guard: `assert-web-cache-policy.mjs` only ever asked about the
+# three entry points, and its own test suite asserted that "hashed output under
+# assets/ staying immutable does NOT fire".
+#
+# The guard now derives the question from the tree instead: every file this
+# repository ships under `web/` keeps its name through `flutter build web`, so
+# the rule governing its URL must revalidate. `/favicon.png` below is there for
+# the same reason — it was undeclared and correct only by inheriting the
+# platform default, which is the state this whole file exists to end.
+#
+# ⚠️ IF A FUTURE FLUTTER EMITS CONTENT-HASHED NAMES, THIS FLIPS BACK — for those
+# names only, and the evidence for the flip is a fresh look at what
+# `flutter_bootstrap.js` actually asks for, not this comment.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ ONE RULE PER PATH, DELIBERATELY. Cloudflare Pages documents that "an
+# incoming request which matches multiple rules' URL patterns will inherit all
+# rules' headers", and that a header set twice is JOINED WITH A COMMA. Two
+# rules that both match one path therefore produce
+# `Cache-Control: public, max-age=0, must-revalidate, public, max-age=31536000,
+# immutable` — a single self-contradicting header, not an override. The rules
+# below are written as disjoint classes so that never arises.
 
 # The stable-named entry points. A new deploy MUST be visible immediately.
 /
@@ -50,10 +96,17 @@
 /main.dart.js
   Cache-Control: public, max-age=0, must-revalidate
 
-# Content-addressed output: the name changes when the bytes do.
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-/canvaskit/*
-  Cache-Control: public, max-age=31536000, immutable
+# Shipped verbatim from web/ and named in index.html. Stable name, changing
+# content — the launcher icon and favicon are the exact bytes PR #149 replaced.
+/favicon.png
+  Cache-Control: public, max-age=0, must-revalidate
 /icons/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Build output under a FIXED name: the asset and font manifests, NOTICES, the
+# bundled fonts, and the CanvasKit engine (whose bytes track the Flutter SDK).
+# None of these carry a hash, so none of them may be immutable.
+/assets/*
+  Cache-Control: public, max-age=0, must-revalidate
+/canvaskit/*
+  Cache-Control: public, max-age=0, must-revalidate
