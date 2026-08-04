@@ -454,6 +454,36 @@ void main() {
       isTrue,
       reason: 'Sign-out did not return to the login screen',
     );
+
+    // 🔴 AND THEN SETTLE AND RE-ASSERT — this second check is the point.
+    //
+    // `waitFor` polls every 200ms and returns the instant the finder matches
+    // ONCE, so it can be satisfied by a frame the app is merely passing
+    // THROUGH. It was: the settings screen used to fire its own
+    // `context.go('/onboarding')` after the router had already redirected to
+    // /login, and `/onboarding` is inside the router's `authFlow` allowlist so
+    // nothing corrected it. This assertion passed on the transit frame while the
+    // user ended up in the first-run carousel — the `17-signed-out` screenshot
+    // from a GREEN run shows the carousel animating in over the login screen.
+    //
+    // The app-side fix is in settings_screen.dart (sign out, navigate nowhere,
+    // let the router decide) and is covered on every push by
+    // test/sign_out_destination_test.dart. This keeps the live suite honest too.
+    await pumpFor(tester, const Duration(seconds: 3));
+    expect(
+      find.text('Welcome back'),
+      findsOneWidget,
+      reason:
+          'Sign-out reached the login screen but did not STAY there — something '
+          'navigated away after the redirect',
+    );
+    expect(
+      find.text('Skip'),
+      findsNothing,
+      reason:
+          'Sign-out landed in the first-run onboarding carousel. /onboarding is '
+          'inside the router authFlow, so the redirect will not rescue the user',
+    );
     await shot('17-signed-out');
   });
 }
