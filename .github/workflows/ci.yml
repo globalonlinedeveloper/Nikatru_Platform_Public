@@ -639,6 +639,38 @@ jobs:
       - name: Every declared store channel has a complete, spec-derived listing
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-store-metadata.mjs
+      # The two Play Console artefacts that are NOT listing copy: the Data safety
+      # form and the IARC content-rating questionnaire. Both are SWORN
+      # DECLARATIONS ABOUT WHAT THE CODE DOES, and until 2026-08-04 neither had
+      # any representation in this repository — the store README recorded the gap
+      # in prose ("Blocking, and it has no repo representation") while the Play
+      # organisation account went live and put them on the critical path.
+      #
+      # 🔴 A HAND-WRITTEN JSON OF ANSWERS NOBODY CHECKS IS WORTH ALMOST NOTHING.
+      # Google's User Data policy puts the accuracy on us — "The developer is
+      # responsible for the accuracy of the label" — and a label that is true the
+      # afternoon it is typed and false three commits later is SILENT, because no
+      # store console watches a repository. So the answers are derived and
+      # compared: the dart-defines on the `flutter build appbundle` step decide
+      # which posture ships (adding SUPABASE_URL there fails this step, because
+      # AppConfig gates the account, the sync and the analytics rail on exactly
+      # those compile-time constants); a permission or package that contradicts a
+      # "not collected" answer fails; every `personalData: true` row in
+      # tooling/legal/data-inventory.json must be mapped to a Play data type or
+      # excluded by name; and the content-rating answers that Play asks TWICE
+      # (sharing, children) are derived from the Data safety ones so the two
+      # forms cannot be filled in inconsistently months apart.
+      #
+      # ⚠️ IT PRINTS WHAT IT CANNOT SEE ON EVERY RUN — the merged Android manifest
+      # (Gradle adds plugin permissions from files not in this repo, and Android
+      # cannot be built here), what the crash SDK puts in contexts.device, and the
+      # IARC rating itself, which is ASSIGNED by the rating authorities and which
+      # this guard fails the build for inventing. Two answers are honestly `null`
+      # and print "THE FORM CANNOT BE SUBMITTED YET" rather than being filled with
+      # a plausible value.
+      - name: The Data safety and content-rating declarations still describe the code
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-play-declarations.mjs
       # [pipeline D-10] limb (i)'s script, exercised on EVERY push rather than
       # only when somebody dispatches submit-windows-store.yml. A release script
       # nobody runs rots exactly like a guard nobody feeds bad input to: it would
