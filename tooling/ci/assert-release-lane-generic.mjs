@@ -122,6 +122,16 @@ const CLASSIFIED_ELSEWHERE = new Map([
       "another stage's refactor while its channel is still `served: false`.",
   ],
   ['submit-play.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
+  [
+    'store-screenshots.yml',
+    '[10]D-5 owns the store LISTING, and this workflow produces a listing asset rather than a release ' +
+      'artifact: it builds no shippable binary, publishes nothing and uploads pictures. R-1 quantifies ' +
+      'over the workspace APP set to prove a lane is generic; a lane that ships no app has nothing for ' +
+      'this guard to compare and would sit in the denominator as a permanent empty-set pass. It is ' +
+      'already `--app`-parameterised (`node tooling/store/capture-play-screenshots.mjs --app subly`), so ' +
+      'the genericity R-1 cares about is in the script, and what holds its OUTPUT generic is ' +
+      'assert-listing-assets.mjs, whose expected set is { channels declaring graphicAssets } x { apps }.',
+  ],
   ['submit-snap.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
   ['submit-windows-store.yml', 'same as submit-appstore.yml — [10]D-10 owns it, `served: false`, script already `--app`-parameterised.'],
 ]);

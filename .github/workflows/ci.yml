@@ -639,6 +639,42 @@ jobs:
       - name: Every declared store channel has a complete, spec-derived listing
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-store-metadata.mjs
+      # The listing GRAPHICS, which Google requires to publish a listing AT ALL
+      # and which had no repo representation until 2026-08-04. The listing text
+      # has had a guard on every field for months and the two sworn declarations
+      # got theirs the same week; the pictures had neither an artefact nor a
+      # number. apps/subly/store/android-play/screenshots/README.md carried six
+      # rows all marked "⚠️ UNVERIFIED" under the honest instruction "do not fill
+      # a number in from memory" — which had been obeyed for weeks, and that is
+      # the problem: an UNVERIFIED placeholder reports the same thing whether
+      # anybody is working on it or not.
+      #
+      # Every dimension now comes from ONE primary page fetched 2026-08-04
+      # (support.google.com/googleplay/android-developer/answer/9866151) and
+      # lives in tooling/channel-register.json → graphicAssets, so this guard
+      # declares no number of its own and REFUSES to enforce one that arrives
+      # without a `source`. What that page does not state — a maximum file size
+      # for a phone screenshot — is recorded as unverified and is NOT enforced.
+      #
+      # 🔴 THE PROVENANCE LIMB IS THE ONE WITH TEETH. A demo build of this app is
+      # a different app on screen: it paints "Demo data - sample subscriptions,
+      # not your account" over every screen and seeds twelve third-party
+      # trademarks (Netflix, Spotify, Disney+ …). A demo capture is exactly the
+      # right SIZE, so size checks alone would pass it onto a public store page.
+      # Screenshots must therefore carry the capture script's CAPTURE.json saying
+      # posture "live", and the capture script refuses to write demo output into
+      # the listing directory at all.
+      #
+      # ⚠️ It PRINTS the missing screenshot set rather than failing: those can
+      # only be captured against a live build, which needs a confirmed account,
+      # which needs a CI-only secret — see store-screenshots.yml. It FAILS on a
+      # missing feature graphic or store icon, because those are produced from
+      # brand art already in the tree by one command with no account and no
+      # secret, so "owner-gated" would be an exemption borrowed from a different
+      # problem. [pipeline D-5]
+      - name: The Play listing graphics exist, are the sourced size, and say where they came from
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-listing-assets.mjs
       # The two Play Console artefacts that are NOT listing copy: the Data safety
       # form and the IARC content-rating questionnaire. Both are SWORN
       # DECLARATIONS ABOUT WHAT THE CODE DOES, and until 2026-08-04 neither had

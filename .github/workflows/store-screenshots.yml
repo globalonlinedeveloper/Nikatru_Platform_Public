@@ -1,0 +1,161 @@
+name: Store screenshots (live capture)
+
+# Captures the Google Play phone screenshot set from a LIVE build of Subly and
+# uploads it as an artifact for the owner to commit.
+#
+# ── WHY THIS IS A WORKFLOW AND NOT A LOCAL SCRIPT ────────────────────────────
+# It is the one listing asset that cannot be produced on the owner's machine.
+# The feature graphic and the store icon are rendered from brand art in the tree
+# by `node tooling/store/render-play-graphics.mjs` in seconds, with no account
+# and no secret. Screenshots need a LIVE build, and a live build needs a
+# confirmed Supabase account, which needs SUPABASE_SERVICE_ROLE_KEY — a secret
+# that exists here and nowhere else.
+#
+# 🔴 AND "JUST USE THE DEMO BUILD" IS THE THING THIS EXISTS TO PREVENT. Measured
+# 2026-08-04 by capturing one and looking at the result: a demo build paints
+# "Demo data - sample subscriptions, not your account" across every screen
+# (app_shell.dart) and fills the board with Netflix, Spotify, Disney+, Adobe CC
+# and eight more real companies (demo_data.dart). Both are legible in the first
+# frame. A listing built from that advertises the product as a demo AND puts
+# third-party trademarks on a public store page, which Google's own preview-asset
+# page tells developers to avoid and which [ADR 019] forbids for any asset we
+# produce. Until #150 every store build of this app WAS a demo build, so this is
+# a mistake the repo has already made once.
+#
+# The illustrative rows the capture creates are generic by construction
+# ("Video streaming", "Cloud storage", …) and are typed into the app's own "Add
+# subscription" sheet, so nothing in the picture is a capability the shipping app
+# does not have.
+#
+# 🔴 ANDROID CANNOT BE BUILT ON THE OWNER'S MACHINE and that is not a Flutter
+# problem — `java.nio.channels.Selector.open()` fails for ALL Java there, a
+# Windows socket-layer defect root-caused 2026-07-25. The web target renders the
+# same widget tree, which is what makes this capture possible at all.
+#
+# ⚠️ IT UPLOADS RATHER THAN COMMITS. The screenshots are a listing asset a human
+# should look at before it represents the product — the guard can prove size,
+# format, count and posture, and cannot prove the set is worth showing. Pushing
+# them automatically would put pictures on a store page that nobody chose.
+#
+# Required repo secrets — ALL of them, on every run:
+#   SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#
+# A MISSING SECRET IS A FAILED RUN, NOT A SKIPPED ONE — the same rule e2e.yml
+# records at length. A green tick over an `echo` is how a capability goes dark
+# reporting success. tooling/ci/assert-green-means-ran.mjs enforces the shape:
+# the preflight exits non-zero and no step is `if:`-gated on its output.
+
+on:
+  workflow_dispatch:
+
+# Least privilege, and the DEFAULT for every job that does not override it.
+# This job publishes nothing through GITHUB_TOKEN. [pipeline F-11]
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture the Play phone screenshot set (live)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        # persist-credentials: false — actions/checkout otherwise writes
+        # GITHUB_TOKEN into .git/config and LEAVES it there for the whole job.
+        # This job uploads an artifact, so a credential left in the workspace is
+        # one `actions/upload-artifact` glob away from being downloadable on a
+        # public repo. Nothing here pushes. [zizmor artipacked]
+        with:
+          persist-credentials: false
+
+      # THE RUN IS EITHER POSSIBLE OR IT IS RED. Nothing downstream is gated on
+      # this step's output — the job simply stops here.
+      - name: Preflight — every secret the live capture needs must be present
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=""
+          for k in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            eval "v=\$$k"
+            [ -z "$v" ] && missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Capture cannot run::Missing secret(s):$missing. Without them the app builds in DEMO posture, whose every screen carries a 'Demo data' banner and whose board is twelve third-party trademarks. This is a failed run, not a skipped one."
+            exit 1
+          fi
+          echo "All four secrets present — the build will be LIVE."
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: 3.44.8
+
+      # Must MATCH the installed Chrome major version or the WebDriver handshake
+      # fails with a version mismatch that reads like a Flutter error.
+      - name: Set up ChromeDriver
+        uses: nanasess/setup-chromedriver@ef5c64a93512d266b23b80bae95e46a67f30e703 # v2
+
+      - name: flutter pub get
+        working-directory: apps/subly
+        run: flutter pub get --enforce-lockfile
+
+      # The same throwaway, pre-confirmed user the nightly e2e provisions, and
+      # purged again below whatever happens. Prod is left as it was found.
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+
+      - name: Capture the set
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: |
+          set -euo pipefail
+          export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
+          echo "Chrome: $CHROME_EXECUTABLE"
+          node tooling/store/capture-play-screenshots.mjs --app subly
+
+      # The capture script already checks Play's rules on what it produced; this
+      # runs the GUARD over the result too, so the artifact that leaves this job
+      # has passed the same check CI will apply once the files are committed. A
+      # release path that trusts a check it did not run is not a release path.
+      - name: The captured set satisfies the listing-asset guard
+        run: node tooling/ci/assert-listing-assets.mjs
+
+      - name: Upload the screenshot set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: play-screenshots-subly
+          path: apps/subly/store/android-play/screenshots/
+          if-no-files-found: error
+
+      # `always()` — a capture that failed halfway may still have created rows in
+      # live D1, and a throwaway user that outlives its run is exactly the kind of
+      # residue the nightly was built to avoid.
+      - name: Purge the throwaway user
+        if: always()
+        env:
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # The same literal e2e.yml passes. It is a database ID, not a
+          # credential — the CLOUDFLARE_API_TOKEN above is what authorises
+          # anything — and purge.mjs `need()`s it, so omitting it turns the
+          # cleanup into a hard failure AFTER the rows exist.
+          SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/purge.mjs
