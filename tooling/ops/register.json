@@ -342,6 +342,28 @@
       "source": "verified"
     },
     {
+      "id": "duty.workflow.store-screenshots.yml",
+      "kind": "duty",
+      "what": "The Google Play phone screenshot capture — a LIVE build of Subly driven through integration_test and photographed at 1080x1920.",
+      "detector": "Attended: a human dispatches it, reads the run, and looks at the uploaded artifact before committing it. tooling/ci/assert-listing-assets.mjs then holds whatever lands in the tree — count, dimensions, aspect, format, and the recorded capture posture.",
+      "response": "Read the run. A failure here is usually the APP failing rather than the harness — the suite drives the real widget tree, so a modal over the tree, a sign-in that did not complete or a backend that is down all surface as a failed capture.",
+      "cadence": "on-demand",
+      "why": "Screenshots change when the UI changes, not on a clock, and a scheduled capture would write to live Supabase and live D1 nightly to produce artwork nobody asked for — the nightly e2e already pays that cost for a proof that is worth it. It is dispatch-only for a second reason: the output is a LISTING asset a human must look at before it represents the product, so the workflow uploads rather than commits. What CAN rot without a clock — the requirement numbers and the committed graphics — is checked on EVERY push by assert-listing-assets.mjs.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/store-screenshots.yml",
+        "record": "GitHub Actions run history for store-screenshots.yml, plus the play-screenshots-subly artifact",
+        "failingValue": "conclusion = failure — including the preflight, which exits non-zero on a missing secret rather than green-skipping, because a demo-posture capture must never be mistaken for a listing asset",
+        "readBy": "the dispatching human, plus tooling/ci/assert-listing-assets.mjs on every push once the files are committed"
+      },
+      "accessProviders": [
+        "github",
+        "supabase",
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "duty.workflow.submit-play.yml",
       "kind": "duty",
       "what": "The Google Play submission path.",

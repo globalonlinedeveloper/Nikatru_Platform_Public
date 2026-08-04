@@ -258,7 +258,12 @@
           "assert-play-declarations.mjs asserts its own membership of this list and COVERAGE LOSTs if it is",
           "dropped, so the two halves of the arrangement cannot come apart quietly."
         ],
-        "additionalFiles": ["data-safety.json", "content-rating.json"],
+        "additionalFiles": [
+          "data-safety.json",
+          "content-rating.json",
+          "feature-graphic.png",
+          "store-icon-512.png"
+        ],
         "maxChars": {
           "title.txt": {
             "max": 30,
@@ -272,6 +277,99 @@
             "max": 4000,
             "source": "support.google.com/googleplay/android-developer/answer/9859152 (fetched 2026-07-29) — full description, 4000 characters"
           }
+        },
+        "graphicAssets": {
+          "_why": [
+            "🔴 THE THIRD THING A PLAY LISTING NEEDS, AND THE ONE THAT HAD NO REPO REPRESENTATION AT ALL.",
+            "The listing TEXT has had a guard on every field since [10]D-5; the two SWORN DECLARATIONS got",
+            "theirs on 2026-08-04. The GRAPHICS had neither an artefact nor a number — apps/subly/store/",
+            "android-play/screenshots/README.md carried a table with six rows all marked UNVERIFIED and the",
+            "instruction 'do not fill a number in from memory'. This block is that table, fetched.",
+            "",
+            "Every number below is quoted from ONE primary page, read in full on 2026-08-04:",
+            "  https://support.google.com/googleplay/android-developer/answer/9866151",
+            "Anything that page does NOT state is in `_unverified` and is NOT enforced — an invented limit",
+            "fires on CORRECT input, and this repo has already rejected its own fixture at 129 characters",
+            "against a made-up '120 or fewer'. The guard refuses any limit that arrives without a `source`,",
+            "exactly like maxChars above, so a number cannot be added here without its citation.",
+            "",
+            "⚠️ `alpha` IS A REQUIREMENT IN BOTH DIRECTIONS AND THE TWO ASSETS DISAGREE. Google requires a",
+            "'24-bit PNG (no alpha)' for the feature graphic and screenshots, and a '32-bit PNG (with alpha)'",
+            "for the store icon. One rasteriser flag decides it, so getting it backwards produces a file that",
+            "looks perfect locally and is refused at upload. tooling/ci/assert-listing-assets.mjs checks the",
+            "PNG colour type of each asset against ITS OWN answer rather than against a single house rule.",
+            "",
+            "🔴 WHY THE TWO GRAPHICS ARE ALSO IN `additionalFiles` ABOVE. That list is what makes",
+            "assert-store-metadata.mjs require a file to be present and non-empty. Declaring the graphics",
+            "ONLY here would mean one guard covering them; the same reasoning that put data-safety.json in",
+            "both places applies, and for the same reason — a listing asset that can be deleted while a",
+            "guard still reports the tree complete is a listing asset nobody is really holding."
+          ],
+          "assets": {
+            "feature-graphic.png": {
+              "required": true,
+              "width": 1024,
+              "height": 500,
+              "format": "png",
+              "alpha": false,
+              "generatedBy": "tooling/store/render-play-graphics.mjs",
+              "source": "https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04) — Feature graphic, Requirements, verbatim: \"You must provide a feature graphic to publish your store listing.\" · \"JPEG or 24-bit PNG (no alpha)\" · \"Dimensions: 1024px by 500px\""
+            },
+            "store-icon-512.png": {
+              "required": true,
+              "width": 512,
+              "height": 512,
+              "format": "png",
+              "alpha": true,
+              "maxBytes": 1048576,
+              "generatedBy": "tooling/store/render-play-graphics.mjs",
+              "source": "https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04) — App icon, Requirements, verbatim: \"You must provide an app icon to publish your store listing.\" · \"32-bit PNG (with alpha)\" · \"Dimensions: 512px by 512px\" · \"Maximum file size: 1024KB\""
+            }
+          },
+          "screenshots": {
+            "dir": "screenshots",
+            "capturedBy": "tooling/store/capture-play-screenshots.mjs",
+            "provenanceFile": "CAPTURE.json",
+            "format": "png",
+            "alpha": false,
+            "minCount": 2,
+            "maxCount": 8,
+            "recommendedCount": 4,
+            "minSide": 320,
+            "maxSide": 3840,
+            "maxAspectRatio": 2,
+            "recommendedPortrait": { "width": 1080, "height": 1920 },
+            "source": "https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04) — Screenshots, Requirements, verbatim: \"You must provide a minimum of two screenshots across different device types to publish your store listing\" · \"JPEG or 24-bit PNG (no alpha)\" · \"Minimum dimension: 320px\" · \"Maximum dimension: 3840px\" · \"The maximum dimension of your screenshot can't be more than twice as long as the minimum dimension.\" · \"You can add up to 8 screenshots for each supported device type.\" Highly recommended, verbatim: \"For apps, you must provide at least four screenshots with minimum 1080px resolution. These should be 16:9 for landscape (minimum 1920x1080px) screenshots and 9:16 for portrait screenshots (minimum 1080x1920px).\"",
+            "_provenanceWhy": [
+              "🔴 A PNG CARRIES NO EVIDENCE OF WHICH BUILD IT PHOTOGRAPHED, AND THAT IS THE ONE QUESTION",
+              "THAT MATTERS ABOUT A LISTING SCREENSHOT. Until #150 every store build of this app was a DEMO",
+              "build, and a demo build is a different app on screen: app_shell.dart paints 'Demo data - sample",
+              "subscriptions, not your account' across every screen, and demo_data.dart fills the board with",
+              "Netflix, Spotify, Disney+, Adobe CC and 1Password. Both were confirmed by capturing the demo",
+              "build on 2026-08-04 and looking at the result — the banner and two of the trademarks are in",
+              "the first frame.",
+              "",
+              "So a screenshot in this directory must be accompanied by CAPTURE.json recording posture:",
+              "'live'. No guard can read a banner out of a PNG without a rasteriser and an OCR pass; what it",
+              "CAN do is refuse a screenshot whose provenance nobody wrote down. The capture script writes",
+              "the file only on a live run, and refuses to write demo output into this directory at all."
+            ]
+          },
+          "_unverified": [
+            "MAX FILE SIZE FOR A PHONE SCREENSHOT — the page states a maximum only for the app icon (1024KB)",
+            "and for Android XR screenshots ('up to 8 MB each'). It states NONE for phone screenshots, so",
+            "none is enforced and none is written down. The widely-repeated '8MB' figure is the XR number",
+            "wearing a phone's clothes.",
+            "",
+            "WHETHER PHONE SCREENSHOTS ALONE SATISFY THE MINIMUM. The requirement reads 'a minimum of two",
+            "screenshots ACROSS DIFFERENT DEVICE TYPES', which does not say whether two phone screenshots",
+            "and no tablet ones clear it. The strict reading is enforced (>= 2 in the phone set), because",
+            "the loose one can only accept a listing Play might refuse.",
+            "",
+            "TABLET / CHROMEBOOK / WEAR / TV / AUTOMOTIVE / XR SETS. The page states requirements for each,",
+            "but this app declares none of those form factors, so no expectation is recorded for them. Add",
+            "the row in the same increment that adds the form factor, with this page re-fetched."
+          ]
         }
       }
     }
