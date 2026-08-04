@@ -126,3 +126,32 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# === Launcher icon (freedesktop desktop entry + hicolor icon theme) ===
+#
+# 🔴 NOT WRITTEN BY `flutter create`, AND NOT AN OVERSIGHT ON ITS PART. Flutter's
+# Linux embedder has no icon slot the way Android, iOS, macOS and Windows do — a
+# freshly created app has ten files under linux/ and ZERO images (measured
+# 2026-08-04). On Linux the launcher icon is supplied by the PACKAGING layer, and
+# every packaging layer — snap, flatpak, deb, AppImage — reads the same two
+# things: a `.desktop` entry naming an icon, and that icon at size-qualified
+# paths in an icon theme.
+#
+# Staging them into the bundle under the standard `share/` prefix is what makes
+# them packaging-layer-agnostic: a recipe copies `share/` into its own prefix and
+# is done. `submit-snap.yml` records that there is no snapcraft.yaml yet; writing
+# these as snap-specific art would have to be undone the day a flatpak is wanted.
+#
+# Generated, never hand-placed:  node tooling/store/render-linux-icons.mjs --app subly
+# The icons are exact integer downscales of the same 1024 master the other five
+# platforms use, and the desktop entry's text is derived from store/linux-snap/.
+# `tooling/ci/assert-launcher-icons.mjs` re-derives both and fails on drift, and
+# it also asserts THESE TWO INSTALL RULES still exist — files that never reach
+# the bundle are a launcher icon that exists in git and nowhere a user can see.
+set(LINUX_PACKAGING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/packaging")
+
+install(FILES "${LINUX_PACKAGING_DIR}/${APPLICATION_ID}.desktop"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications" COMPONENT Runtime)
+
+install(DIRECTORY "${LINUX_PACKAGING_DIR}/icons"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share" COMPONENT Runtime)

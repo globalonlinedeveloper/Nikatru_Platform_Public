@@ -84,24 +84,72 @@ The illustrative rows the live capture creates are generic by construction
 "Add subscription" sheet, so nothing in the picture is a capability the shipping
 app does not have.
 
-## ⬜ Why this directory is still empty
+## ⬜ Why this directory is still empty — and what now fills it
 
 The live capture needs a confirmed Supabase account, which needs
 `SUPABASE_SERVICE_ROLE_KEY` — a **CI-only** secret that is not on the owner's
 machine. Run **`store-screenshots.yml`** (`workflow_dispatch`); it provisions a
-throwaway confirmed user, captures the set, checks it against the guard, uploads
-it as an artifact and purges the user again.
+throwaway confirmed user, captures the set, checks it against the guard, and
+purges the user again.
 
-It **uploads rather than commits** on purpose: the guard can prove size, format,
-count and posture, and cannot prove the set is worth showing. Google requires
-screenshots to *"demonstrate the actual in-app or in-game experience"* — a human
-call.
+### 🔴 The set now arrives as a PULL REQUEST, not only as an artifact
 
-`assert-listing-assets.mjs` PRINTS this gap on every run rather than failing,
-because it is blocked on a workflow run. It does **not** extend that leniency to
-the feature graphic or the store icon: those are produced from brand art already
-in this tree by one command with no account and no secret, so a missing one is a
-build failure.
+This section used to say the workflow *"uploads rather than commits, on
+purpose"* — the guard can prove size, format, count and posture and cannot prove
+the set is worth showing, so nothing should push pictures onto a store page that
+nobody chose. **That reasoning was right and the conclusion was wrong.**
+
+Measured **2026-08-04**: the workflow ran successfully (run `30922349590`), the
+five 1080×1920 frames were produced, and they went into an artifact that
+**expires 2026-11-02**. Not one pixel of it reached this repository. So the only
+copy of what would go on the store sat in a bucket with a 90-day timer, nobody
+had looked at it, and this file explained why the directory was empty. *"Do not
+publish unreviewed"* had quietly become *"do not review"*.
+
+**An artifact is not a review; it is a deadline.** A pull request *is* the
+review: GitHub renders PNGs in a diff, so the owner sees exactly what would be
+uploaded, in the place where approving it is one click and declining it leaves a
+record. Merging is still a human act, and nothing in the workflow contacts
+Google — `tooling/release/submit-play.mjs` remains the only path to a store. The
+artifact upload is kept as well; it costs nothing and the run log links to it.
+
+### What is machine-checked once the frames land
+
+`tooling/ci/assert-listing-assets.mjs` proves count, dimensions **against the
+set's own `CAPTURE.json`**, aspect, format, recorded posture — and the **absence
+of the demo banner in the actual pixels**, by decoding each frame and looking for
+a full-width band of `AppColors.warn` across the top. The colour is read from
+`packages/design_system/lib/src/tokens/app_colors.dart` at scan time, never
+pinned, so a palette change moves the detector with it instead of leaving it
+hunting a colour nothing draws.
+
+The detector **self-tests on every run** against two frames built in memory — one
+banded, one clean — because this directory is empty today and a check that ranges
+over nothing prints `ok` forever. That is the failure this repository has paid
+for more than any other.
+
+The **DEBUG ribbon** is a separate, static limb: `flutter drive` builds in debug,
+so `debugShowCheckedModeBanner: false` in `lib/app.dart` is the only thing
+keeping a red ribbon out of every captured frame, and until 2026-08-04 nothing
+was holding it.
+
+What none of that can judge is whether these are the screens **worth showing**.
+Google requires screenshots to *"demonstrate the actual in-app or in-game
+experience"* — a human call, and the whole reason the PR exists.
+
+`assert-listing-assets.mjs` PRINTS the empty-directory gap on every run rather
+than failing, because it is blocked on a workflow run. It does **not** extend
+that leniency to the feature graphic or the store icon: those are produced from
+brand art already in this tree by one command with no account and no secret, so a
+missing one is a build failure.
+
+### Closing it today, without waiting for the next capture
+
+Run `store-screenshots.yml` again and merge the PR it opens. The already-captured
+set from run `30922349590` is still downloadable until 2026-11-02 —
+`gh run download 30922349590 -n play-screenshots-subly -D .` into this directory
+would land it now — but that is an **owner action**: it pulls files from a remote
+into the working tree, and this repository's agents do not download.
 
 ## Naming
 

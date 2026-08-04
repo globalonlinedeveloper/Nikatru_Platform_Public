@@ -76,7 +76,11 @@ void run(HookContext context) {
         'the first app in this portfolio came to ship the stock icon on '
         'Android, iOS, macOS and Windows at once. Immediately after, run:  '
         'cd apps/$id && dart run flutter_launcher_icons  '
-        '(config + source art are already stamped; CI fails on a stock icon).',
+        '(config + source art are already stamped; CI fails on a stock icon). '
+        'THEN, IF YOU ADDED linux: that tool has no Linux target and the Linux '
+        'embedder has no icon slot — the icon there is a PACKAGING artefact, so '
+        'also run:  node tooling/store/render-linux-icons.mjs --app $id  '
+        '(writes linux/packaging/; CI re-derives it and fails on drift).',
       )
       ..info(
         '  2. ONE COMMAND provisions the backend — create the D1 in apac, '
@@ -144,7 +148,11 @@ void run(HookContext context) {
         'the first app in this portfolio came to ship the stock icon on '
         'Android, iOS, macOS and Windows at once. Immediately after, run:  '
         'cd apps/$id && dart run flutter_launcher_icons  '
-        '(config + source art are already stamped; CI fails on a stock icon).',
+        '(config + source art are already stamped; CI fails on a stock icon). '
+        'THEN, IF YOU ADDED linux: that tool has no Linux target and the Linux '
+        'embedder has no icon slot — the icon there is a PACKAGING artefact, so '
+        'also run:  node tooling/store/render-linux-icons.mjs --app $id  '
+        '(writes linux/packaging/; CI re-derives it and fails on drift).',
       )
       // [pipeline S-1r] Same correction as the backend branch above — see the
       // note there for the measurement. The wildcard makes this a NON-step; the
