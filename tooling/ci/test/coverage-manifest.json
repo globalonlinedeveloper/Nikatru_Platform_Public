@@ -33,7 +33,7 @@
   "heartbeats.test.mjs": 39,
   "input-contract.test.mjs": 20,
   "launch-smoke.test.mjs": 16,
-  "launcher-icons.test.mjs": 20,
+  "launcher-icons.test.mjs": 22,
   "legal-tripwires.test.mjs": 26,
   "licence-register.test.mjs": 39,
   "lint-inheritance.test.mjs": 12,
@@ -85,7 +85,7 @@
   "update-coverage.test.mjs": 28,
   "vendor-portability.test.mjs": 19,
   "walks-bounded.test.mjs": 25,
-  "web-cache-policy.test.mjs": 16,
+  "web-cache-policy.test.mjs": 30,
   "windows-store-submission.test.mjs": 20,
   "worker-error-sink.test.mjs": 18,
   "workflow-scan.test.mjs": 16

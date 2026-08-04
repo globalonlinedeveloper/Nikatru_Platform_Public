@@ -788,9 +788,18 @@ jobs:
       # and report the previous version honestly, which is the one client the
       # CFG-1 force-update gate cannot see. The FLAG limb is DROPPED by name:
       # ADR 023 rejects guarding `--pwa-strategy=none` in CI as over-encoding.
+      # 2026-08-04: the same question now covers the two Cloudflare
+      # Git-deployed marketing sites, which had NO rule for .css or .js — they
+      # were riding on the nikatru.com zone's 4-hour Browser Cache TTL, and
+      # switching that zone to "Respect Existing Headers" (the fix for
+      # /flutter_bootstrap.js serving max-age=14400 against a declared 0) left
+      # both classes inheriting a platform default nobody had chosen. The two
+      # roots are named as ARGUMENTS, not in a comment: the guard fails if a
+      # claimed root is not among the bundles it really scanned, so this line
+      # cannot go on promising coverage the scan has stopped delivering.
       - name: The web channel declares a cache policy a deploy can be seen through
         working-directory: ${{ github.workspace }}
-        run: node tooling/ci/assert-web-cache-policy.mjs
+        run: node tooling/ci/assert-web-cache-policy.mjs . sites/nikatru sites/rajasekarselvam
       # [pipeline 9]R-1. The criterion this replaces banned a STRING — "no
       # hard-coded `apps/<id>` in a release workflow" — and a rule about a string
       # is satisfied by moving the string: `env: APP: apps/subly` plus
