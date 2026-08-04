@@ -177,12 +177,48 @@ jobs:
         run: >
           flutter build linux --release
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
-      # Release APK with no keystore falls back to debug signing — fine for a
-      # BUILD check, and a RECORDED owner decision rather than an unfinished
-      # edge. See the `android-play` row's notes in tooling/channel-register.json:
-      # apps/subly/android/app/build.gradle.kts now reads a real keystore from
-      # android/key.properties or the environment WHEN one is supplied, and only
-      # falls back to debug when none is. Nothing in CI supplies one yet.
+      # ── the Android UPLOAD KEY ───────────────────────────────────────────────
+      # 🔴 THIS STEP IS THE FIX FOR THE DEFECT THAT WOULD HAVE FAILED THE FIRST
+      # PLAY SUBMISSION. apps/subly/android/app/build.gradle.kts has read a real
+      # keystore from `android/key.properties` or from four environment variables
+      # for weeks, falling back to the debug signing config when none is supplied.
+      # NOTHING IN CI SUPPLIED THEM — the comment that used to sit here said so in
+      # its last sentence — so every .aab this workflow has ever produced was
+      # DEBUG-SIGNED, which Google Play rejects. Every check stayed green because
+      # every check was reading the configuration, and the configuration was right.
+      #
+      # ⚠️ THERE IS NO "this is a release" FLAG HERE, ON PURPOSE. The script
+      # DERIVES it from `GITHUB_REF` (a tag push) and from the submission workflow
+      # tooling/channel-register.json declares — because a hand-written flag in a
+      # workflow is precisely the kind of switch this whole change exists to stop
+      # relying on. Deleting a YAML line must not be able to turn a release lane
+      # back into a build proof.
+      #
+      # For THIS workflow the answer is: a `push: tags: subly-v*` run requires
+      # signing, and the weekly/dispatch runs do not. That scoping is deliberate
+      # rather than cautious — those runs produce the six-platform proof that
+      # assert-platform-proof-fresh.mjs feeds back into ci-gate, and it FAILS the
+      # gate once the proof is 14 days old, so demanding secrets there would let
+      # one missing secret take out every merge in the repository.
+      #
+      # The step exports the four variables Gradle reads (plus the posture the
+      # signature check below compares against) into $GITHUB_ENV, so both build
+      # steps and tooling/release/submit-play.mjs all see one complete, consistent
+      # set. The keystore itself is written to $RUNNER_TEMP — outside the
+      # workspace, where none of the `upload-artifact` paths in this file can
+      # reach it, which matters more here than usual because this repo is PUBLIC
+      # and its artifacts are downloadable.
+      - name: Prepare the Android upload key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: node tooling/ci/android-signing.mjs --app subly
+      # The APK is built from the same `release` buildType and therefore carries
+      # the same signature as the bundle. It is NOT checked below — see the note
+      # on the signature step: this repo's checker reads JAR (v1) signatures, and
+      # an .apk can legitimately carry a v2/v3-only block instead.
       #
       # ⚠️ THE .apk IS NOT THE PLAY ARTIFACT AND IS KEPT ANYWAY. An .aab is a
       # publishing format — Google re-splits it per device and you cannot install
@@ -190,10 +226,31 @@ jobs:
       # look at the build, and Android cannot be built on the owner's box at all
       # (CLAUDE.md: java.nio Selector.open() is broken Windows-socket-wide), so
       # this upload is the ONLY way an Android build gets touched today.
+      # ── 🔴 THE BACKEND DEFINES ARE NOT OPTIONAL ON A STORE LANE ──────────────
+      # Found 2026-08-04 alongside the debug-signing defect and it is the same
+      # failure wearing different clothes. `AppConfig.isBackendLive` is
+      # `isSupabaseConfigured && isApiConfigured`, and both compare a dart-define
+      # against a PLACEHOLDER constant (app_config.dart). Passing only
+      # GLITCHTIP_DSN left all three at their placeholders, so the artifact
+      # intended for Google Play resolved `MockAuthRepository()` and
+      # `SeedApiClient()` — mock sign-in, seeded data, inert analytics. The .aab
+      # was debug-signed AND a demo build; signing was half the reason that upload
+      # would have been wrong.
+      #
+      # Demo mode is the CORRECT default — it is what lets a stranger clone this
+      # repo and see every screen with no backend — which is exactly why nothing
+      # noticed. The secrets already existed; deploy-web.yml has passed all three
+      # since it was written. tooling/ci/assert-store-build-config.mjs now derives
+      # the required set from `isBackendLive` itself and grades every build step a
+      # `kind: store` row declares, so a fourth requirement added to that getter
+      # cannot silently escape any store lane.
       - name: Build android (apk — sideloadable build proof)
         working-directory: apps/subly
         run: >
           flutter build apk --release
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── the android-play channel's artifact ─────────────────────────────────
       # THIS JOB IS THE `lane` OF tooling/channel-register.json's `android-play`
@@ -235,10 +292,41 @@ jobs:
         run: >
           flutter build appbundle --release
           --build-number=${{ github.run_number }}
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # ── READ THE SIGNATURE OUT OF THE BUNDLE, not out of the config ──────────
+      # The step above says what was ARRANGED. This one says what HAPPENED, and
+      # the whole reason the debug-signing defect survived is that nothing in the
+      # tree asked the second question: submit-play.mjs, the channel register and
+      # the Gradle header all described a correct configuration while every built
+      # artifact was debug-signed.
+      #
+      # It fails when the signer is the Android debug key, when the bundle is
+      # unsigned, when the certificate is not the fingerprint pinned in
+      # tooling/channel-register.json, or when the real signature disagrees with
+      # the posture the step above exported — that last one is what catches Gradle
+      # silently not using secrets that were supplied.
+      #
+      # ⚠️ THE .aab AND NOT THE .apk. An app bundle always carries a JAR (v1)
+      # signature, which is what `keytool -printcert -jarfile` reads. An .apk may
+      # carry a v2/v3-only APK Signing Block and no v1 block at all, which this
+      # checker would report as UNSIGNED — a false red on a correct artifact.
+      # Reading v2 needs `apksigner`; that branch is deliberately unwritten rather
+      # than written and never exercised.
+      - name: The .aab must be signed by the upload key, not the debug key
+        run: >
+          node tooling/ci/assert-artifact-signed.mjs
+          apps/subly/build/app/outputs/bundle/release/app-release.aab
+      # 🔴 THE POSTURE IS IN THE ARTIFACT NAME, and that is the "labelled, not
+      # indistinguishable" half of the fix. A downloaded `subly-linux-web-android`
+      # said nothing about whether its .aab could be uploaded anywhere; a
+      # `…-debug-signed-build-proof` cannot be mistaken for a release by anyone
+      # reading the run's artifact list.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subly-linux-web-android
+          name: subly-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
           path: |
             apps/subly/build/app/outputs/flutter-apk/*.apk
             apps/subly/build/app/outputs/bundle/release/*.aab
@@ -275,11 +363,18 @@ jobs:
       # so the number has to arrive here rather than at packaging time.
       # No `--build-name` — see the note on the appbundle step for why a literal
       # would be a second copy of pubspec's version.
+      # The backend defines, for the reason recorded on the android apk step
+      # above: this job is the `windows-store` row's declared LANE, the .msix
+      # below is packaged from exactly these binaries, and without them the
+      # package Microsoft would receive is the demo build.
       - name: Build windows
         working-directory: apps/subly
         run: >
           flutter build windows --release
           --build-number=${{ github.run_number }}
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── the windows-store channel's artifact ────────────────────────────────
       # THIS JOB IS THE `lane` OF tooling/channel-register.json's `windows-store`

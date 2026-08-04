@@ -1,6 +1,7 @@
 {
   "adapter-capabilities.test.mjs": 28,
   "analytics-contract.test.mjs": 22,
+  "android-signing.test.mjs": 51,
   "android-target-sdk.test.mjs": 34,
   "app-dod.test.mjs": 33,
   "app-versioning.test.mjs": 38,
@@ -74,6 +75,7 @@
   "stamp-platforms.test.mjs": 27,
   "stamp-text-fidelity.test.mjs": 32,
   "stamp-wiring.test.mjs": 17,
+  "store-build-config.test.mjs": 20,
   "store-identity.test.mjs": 24,
   "store-metadata.test.mjs": 49,
   "submission-safety.test.mjs": 20,

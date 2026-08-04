@@ -164,20 +164,30 @@
       "collects an account, user-entered finances and consented analytics. Same commit. Same source.",
       "Two completely different Data safety forms.",
       "",
-      "⚠️ TODAY THE PLAY LANE IS `demo`. It is not an opinion — `expectedDefines` is compared to the",
-      "dart-defines on the `flutter build appbundle` step, parsed out of the workflow. Add",
-      "SUPABASE_URL there and this file's `current` becomes a lie; the guard fails rather than letting",
-      "the console keep an answer set that describes a bundle nobody ships any more."
+      "⚠️ THE PLAY LANE WAS `demo` AND BECAME `backend-live` ON 2026-08-04, and this block is how that",
+      "was noticed rather than shipped. It is not an opinion — `expectedDefines` is compared to the",
+      "dart-defines on the `flutter build appbundle` step, parsed out of the workflow. The prediction",
+      "written here was 'add SUPABASE_URL there and this file becomes a lie'; somebody did exactly that",
+      "the day after, to fix a SEPARATE defect (the Play artefact was building in demo mode with mock",
+      "auth and seeded data, which is its own reason an upload would have been wrong), and this guard",
+      "failed the build naming all three identity defines. The declaration was re-pointed at the",
+      "`backend-live` column in the same change.",
+      "",
+      "🔴 THE CONSEQUENCE, STATED RATHER THAN BURIED: under `demo` the two open questions below were",
+      "answerable as `false` because NoOpAnalytics sent nothing at all. Under `backend-live` they are",
+      "genuinely UNRESOLVED, so this form CANNOT BE SUBMITTED until somebody observes them. That is not",
+      "a regression introduced by the live lane — it is the real question arriving, on the day the",
+      "artefact started collecting."
     ],
     "lane": ".github/workflows/build-platforms.yml",
     "buildCommandContains": "flutter build appbundle",
-    "expectedDefines": ["GLITCHTIP_DSN"],
+    "expectedDefines": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "API_BASE_URL", "GLITCHTIP_DSN"],
     "identityDefines": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "API_BASE_URL"],
     "gateFile": "apps/subly/lib/core/config/app_config.dart",
-    "current": "demo",
+    "current": "backend-live",
     "postures": {
       "demo": "No identity dart-defines. MockAuthRepository, SeedApiClient (in-memory list, lost on restart), NoOpAnalytics, no consent prompt, no account. The ONLY outbound traffic is the crash rail, because GLITCHTIP_DSN is passed.",
-      "backend-live": "SUPABASE_URL + SUPABASE_ANON_KEY + API_BASE_URL all supplied. Real account, subscriptions/budget/payment rows synced to services/subly-api, consent-gated first-party analytics to services/platform. This is the posture .github/workflows/deploy-web.yml builds; NO Android lane produces it today."
+      "backend-live": "SUPABASE_URL + SUPABASE_ANON_KEY + API_BASE_URL all supplied. Real account, subscriptions/budget/payment rows synced to services/subly-api, consent-gated first-party analytics to services/platform. This is the posture .github/workflows/deploy-web.yml builds, and — since 2026-08-04 — the posture EVERY store lane builds: both Android steps, both Windows steps and both Apple steps were passing no identity defines at all, so every store artefact in the tree was the demo build. tooling/ci/assert-store-build-config.mjs now derives the required set from AppConfig.isBackendLive and grades every build step a `kind: store` row declares."
     }
   },
 
