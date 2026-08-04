@@ -51,7 +51,6 @@
     "because they answer to different guards, different stages and different trees — merging them would",
     "make one guard's coverage floor depend on the other's subject."
   ],
-
   "servingWorker": {
     "_why": [
       "The Worker whose mounted routes the register's `routes` array must equal, exactly. Named as data",
@@ -61,9 +60,11 @@
     "name": "platform",
     "entrypoint": "services/platform/src/index.ts",
     "config": "services/platform/wrangler.jsonc",
-    "hosts": ["platform.nikatru.com", "config.nikatru.com"]
+    "hosts": [
+      "platform.nikatru.com",
+      "config.nikatru.com"
+    ]
   },
-
   "bindingSources": {
     "_why": [
       "Every config whose bindings the register must account for. DERIVED at runtime by globbing",
@@ -81,7 +82,6 @@
       "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc"
     ]
   },
-
   "routes": [
     {
       "id": "health",
@@ -152,6 +152,19 @@
       "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Recorded anyway because the read is on a launch path and the 100k Worker-requests/day Free ceiling is ACCOUNT-WIDE across ~50 apps: this must never become a per-screen fetch, which is a client-side constraint the cache in packages/core exists to satisfy."
     },
     {
+      "id": "plan-cancel",
+      "method": "POST",
+      "path": "/v1/plan/cancel",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/cancellation.ts",
+      "purpose": "[pipeline 5]M-9 — the user-initiated cancel path. Mounted behind app.use('/v1/plan/*', platformAuth), so the subscription is resolved from the VERIFIED SESSION and never from the request body; the body carries only app_id. Writes an append-only cancellation_requests row (migration 0005) rather than mutating entitlements in place, so a cancel is a fact with a timestamp instead of a state change that loses its own history. 202 is a success and the common case: the host records the request and answers 202 when it could not also execute it against the merchant of record synchronously.",
+      "client": {
+        "file": "packages/api_client/lib/src/dio_cancellation_transport.dart",
+        "expression": "'$_base/v1/plan/cancel'",
+        "note": "The URL the transport actually builds, at the post() call site — not the doc comment on line 5, which names the same path and is stripped before matching."
+      }
+    },
+    {
       "id": "money-webhook",
       "method": "POST",
       "path": "/v1/money/:provider",
@@ -162,7 +175,6 @@
       "noLimiterReason": "It DOES reach withinEdgeCeiling (MONEY_CEILING_LIMITER) — this field is present only to record why the ceiling is the server-derived one and not the fairness bucket: there is no per-install identity on a webhook to be fair between, and the only meaningful key is one the caller cannot choose."
     }
   ],
-
   "bindings": [
     {
       "binding": "PLATFORM_DB",
@@ -183,7 +195,9 @@
       "kind": "d1_databases",
       "scope": "per-app",
       "purpose": "Subly's own database, bound into `platform` READ/WRITE for the nightly renewals fan-out only. ⚠️ This binding is the thing that does NOT scale: a 50-app portfolio cannot carry 50 hand-added D1 bindings on one Worker. Recorded here so the next app's stamp meets the ceiling as a known cost rather than as a surprise ([4]B-11 derives the job set; the fan-out target list is still `appTargets()`'s hardcoded array).",
-      "readers": ["services/platform/src/scheduled.ts"]
+      "readers": [
+        "services/platform/src/scheduled.ts"
+      ]
     },
     {
       "binding": "APP_DB",
@@ -202,7 +216,9 @@
       "kind": "kv_namespaces",
       "scope": "shared",
       "purpose": "Per-app CFG-1 config overrides, keyed `config:<app>`, read on the launch path of every app and edge-cached for 300s.",
-      "readers": ["services/platform/src/routes/config.ts"]
+      "readers": [
+        "services/platform/src/routes/config.ts"
+      ]
     },
     {
       "binding": "JWKS_CACHE",
@@ -220,28 +236,36 @@
       "kind": "ratelimits",
       "scope": "shared",
       "purpose": "FAIRNESS bucket for /v1/events + /v1/consent, keyed `(app_id, anon_id)`. ⚠️ That key is ENTIRELY client-chosen on a route that is unauthenticated by design, so it bounds one honest install and nothing more — EVENTS_CEILING_LIMITER is the half a caller cannot rotate out of.",
-      "readers": ["services/platform/src/routes/events.ts"]
+      "readers": [
+        "services/platform/src/routes/events.ts"
+      ]
     },
     {
       "binding": "EVENTS_CEILING_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
       "purpose": "SERVER-DERIVED ceiling for /v1/events + /v1/consent, keyed `edge:<colo>:<asn>` from `request.cf` — no request-body value is in the key. Its own namespace so it cannot spend the fairness budget.",
-      "readers": ["services/platform/src/routes/events.ts"]
+      "readers": [
+        "services/platform/src/routes/events.ts"
+      ]
     },
     {
       "binding": "CONFIG_CEILING_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
       "purpose": "The same server-derived ceiling for GET /config/:app — the other unauthenticated route on this Worker that does I/O. Its own namespace so config traffic and analytics traffic cannot exhaust each other.",
-      "readers": ["services/platform/src/routes/config.ts"]
+      "readers": [
+        "services/platform/src/routes/config.ts"
+      ]
     },
     {
       "binding": "MONEY_CEILING_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",
       "purpose": "The server-derived ceiling for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Its OWN namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on — both of those are on every app's LAUNCH path, so borrowing from them would let anyone who finds this URL degrade the whole portfolio.",
-      "readers": ["services/platform/src/routes/money.ts"]
+      "readers": [
+        "services/platform/src/routes/money.ts"
+      ]
     }
   ]
 }

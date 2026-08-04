@@ -53,7 +53,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -637,5 +637,73 @@ describe('assert-platform-register', () => {
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /COVERAGE LOST — no platform register/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 REGRESSION: A ROUTE PATH CONTAINING `/*` BLINDED THE WHOLE SCANNER.
+//
+// Found 2026-08-05 by audit, not by CI. `stripComments` only TRACKED string
+// literals when `alsoStrings` was true. The route scan calls it WITHOUT that
+// flag (correctly — route paths are the string literals it needs to read), so
+// the scanner walked straight through `app.use('/v1/plan/*', platformAuth);`
+// at services/platform/src/index.ts:114, treated the `/*` inside that path as a
+// block-comment opener, and blanked EVERY LINE AFTER IT — including line 115,
+// `app.route('/v1', cancellation);`.
+//
+// The guard then printed "7 mounted route(s) reconciled with 7 register
+// entry(ies)" and exited 0, while POST /v1/plan/cancel was mounted, deployed,
+// and answering 401 in production, with ZERO occurrences in the register. The
+// real mount count was 12.
+//
+// The parser-liveness self-check could not see it: it fires on
+// `mounted.length === 0`, and this was a PARTIAL loss — 7 of 12 — which is
+// indistinguishable from a healthy read.
+// ─────────────────────────────────────────────────────────────────────────────
+import { stripComments } from '../assert-platform-register.mjs';
+
+describe('stripComments — strings are tracked even when they are not blanked', () => {
+  test('🔴 a `/*` INSIDE a string literal does not swallow the rest of the file', () => {
+    const src = [
+      "app.use('/v1/plan/*', platformAuth);",
+      "app.route('/v1', cancellation);",
+    ].join('\n');
+    const out = stripComments(src);
+    assert.match(out, /app\.route\('\/v1', cancellation\);/, 'the line AFTER the /* path was blanked');
+    assert.match(out, /'\/v1\/plan\/\*'/, 'the route path itself must survive — it is what gets matched');
+  });
+
+  test('the same holds for a `//` inside a string — a URL must not become a line comment', () => {
+    const src = ["const base = 'https://api.nikatru.com';", 'app.route(x);'].join('\n');
+    const out = stripComments(src);
+    assert.match(out, /app\.route\(x\);/);
+    assert.match(out, /https:\/\/api\.nikatru\.com/);
+  });
+
+  test('real comments are STILL removed — the fix must not disable comment stripping', () => {
+    assert.doesNotMatch(stripComments('/* app.route(ghost); */ real();'), /ghost/);
+    assert.doesNotMatch(stripComments('// app.route(ghost);\nreal();'), /ghost/);
+    assert.match(stripComments('// app.route(ghost);\nreal();'), /real\(\);/);
+  });
+
+  test('alsoStrings:true still blanks literal CONTENTS, and offsets are preserved', () => {
+    const src = "post('/v1/plan/cancel', h);";
+    const out = stripComments(src, { alsoStrings: true });
+    assert.doesNotMatch(out, /plan\/cancel/, 'alsoStrings must still blank the contents');
+    assert.equal(out.length, src.length, 'stripComments must preserve offsets');
+  });
+
+  test('🔴 the REAL index.ts still yields every mount — not a fixture', () => {
+    // A fixture encodes the same misunderstanding as the guard. This asserts
+    // against the actual serving Worker: the count the scanner sees must match
+    // the count present in the file.
+    const real = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'services', 'platform', 'src', 'index.ts'),
+      'utf8',
+    );
+    const raw = (real.match(/^app\.(use|route|get|post|all)\(/gm) ?? []).length;
+    const seen = (stripComments(real).match(/^app\.(use|route|get|post|all)\(/gm) ?? []).length;
+    assert.ok(raw >= 8, `expected the real index.ts to mount >= 8 routes, found ${raw}`);
+    assert.equal(seen, raw, `stripComments lost ${raw - seen} mount call(s) from the real index.ts`);
   });
 });
