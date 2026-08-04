@@ -72,9 +72,49 @@
 //                          on work only the owner can do gets disabled, and a
 //                          disabled guard checks nothing.
 //   `degradedUntil`        a DATED tripwire for a gap another stage owns:
-//                          printed until the date, hard failure after it. The
+//                          printed until the lead window, RED inside it, hard
+//                          failure after the date. The
 //                          assert-platform-proof-fresh.mjs precedent. A gap that
-//                          only ever prints is one nobody closes.
+//                          only ever prints is one nobody closes. Requires
+//                          `degradedLeadDays` — see below.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 WHY `degradedLeadDays` IS MANDATORY — the 2026-08-04 finding.
+//
+// The first dated tripwire in this register, `revert.mitigation.force-update`,
+// was armed on 2026-08-02 for 2026-09-01 with NO LEAD WINDOW AT ALL. Its
+// behaviour was binary: one `⬜` line among forty every run, then — with nothing
+// in between and nothing escalating — a hard failure that reddens `ci-gate` on
+// EVERY PUSH TO EVERY BRANCH, including branches touching nothing near it. The
+// print at T-27 days was byte-identical to the print at T-1.
+//
+// Two things follow from that shape, and both happened:
+//
+//  1. NOBODY IS WARNED. "Visible" meant one line in a wall of prints that is
+//     mostly owner-gated gaps somebody has already decided not to act on today.
+//     A signal that never changes is a signal nobody reads.
+//  2. THE PREMISE ROTS UNWATCHED. That row's stated response was "Stage 9
+//     restores the PWA update strategy". Stage 9 landed on 2026-08-03 — EIGHT
+//     HOURS after the tripwire was armed — and did NOT restore it, because
+//     [ADR 023] (LOCKED 2026-07-31) had already decided `--pwa-strategy=none`
+//     deliberately and explicitly rejected guarding the flag. So the countdown
+//     was toward an event that had already happened and resolved the other way,
+//     and the only moves available on 2026-09-01 would have been to MOVE THE
+//     DATE — the "deadline somebody extends" this very field exists to prevent —
+//     or to delete the row.
+//
+// The lead window is the repair, and it is not a new idea in this file: the
+// `expiring` kind has always failed INSIDE its own `leadDays` rather than on the
+// day (see the `daysLeft <= r.leadDays` limb below). A dated tripwire is an
+// expiry on a gap; it gets the same treatment. The guard does not choose the
+// number — the row's author does, and must, because only they know how long the
+// remaining work takes. What the guard enforces is that a number EXISTS and is
+// positive: a tripwire with no lead window is the shape described above.
+//
+// ⬜ THE COUNT OF ARMED TRIPWIRES PRINTS ON EVERY RUN. Zero and three must never
+// read alike — if this register ever holds no dated tripwire, the limb below
+// ranges over the empty set, and an empty domain that prints nothing is this
+// repository's single most repeated defect.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // THE TWO CHECKS THAT ARE NOT SCHEMA VALIDATION, i.e. the ones worth reading:
@@ -287,6 +327,10 @@ export function evaluate(reg, tree, nowMs) {
   let unverified = 0;
   let cannotRevert = 0;
   let companyAnchored = 0;
+  // Counted so ZERO armed tripwires cannot look like a clean register. If this
+  // reaches 0 the `degradedUntil` limb ranges over the empty set, and an empty
+  // domain that prints nothing is the defect this whole file is written against.
+  let datedTripwires = 0;
   const gaps = [];
 
   for (const r of rows) {
@@ -377,12 +421,40 @@ export function evaluate(reg, tree, nowMs) {
       else gaps.push(`${id} — ${r.ownerGap}`);
     }
     if ('degradedUntil' in r) {
+      datedTripwires++;
       if (!isIsoDate(r.degradedUntil)) bad(`${id} — \`degradedUntil\` must be an ISO date (YYYY-MM-DD).`);
       else if (!nonEmpty(r.degradedWhy)) bad(`${id} — \`degradedUntil\` with no \`degradedWhy\`. A deadline with no reason attached is a deadline somebody extends.`);
-      else if (nowMs >= Date.parse(`${r.degradedUntil}T00:00:00Z`)) {
-        bad(`${id} — the dated tripwire \`degradedUntil: ${r.degradedUntil}\` has PASSED and the gap is still open. It was printed rather than blocking precisely so it could not rot; the date is here.`);
+      else if (!(Number.isInteger(r.degradedLeadDays) && r.degradedLeadDays > 0)) {
+        bad(
+          `${id} — \`degradedUntil\` with no positive integer \`degradedLeadDays\`. A dated tripwire with no lead ` +
+            'window goes from one quiet print straight to a failure that reddens every branch on the day, with ' +
+            'nothing in between — so the first time anyone reads it is the morning it blocks work unrelated to it. ' +
+            'Declare how many days of warning the remaining work needs; only the row\'s author knows that number, ' +
+            'which is why this guard demands one rather than inventing one.',
+        );
       } else {
-        prints.push(`${id} — DEGRADED, hard failure on ${r.degradedUntil}: ${r.degradedWhy}`);
+        const daysLeft = (Date.parse(`${r.degradedUntil}T00:00:00Z`) - nowMs) / 86_400_000;
+        if (daysLeft <= 0) {
+          bad(
+            `${id} — the dated tripwire \`degradedUntil: ${r.degradedUntil}\` has PASSED and the gap is still open. ` +
+              `It went red ${r.degradedLeadDays} day(s) before this, so nothing about today is a surprise. ` +
+              `THE GAP: ${r.degradedWhy} THE RESPONSE ON RECORD: ${r.response ?? '<none>'} — do that, or, if the gap ` +
+              'turns out to be owner-only work, convert the row to `ownerGated` with a written `ownerGap` so it ' +
+              'prints forever instead of blocking. Moving the date is the one move this field exists to refuse.',
+          );
+        } else if (daysLeft <= r.degradedLeadDays) {
+          bad(
+            `${id} — the dated tripwire \`degradedUntil: ${r.degradedUntil}\` FIRES IN ${Math.ceil(daysLeft)} DAY(S), ` +
+              `inside its own ${r.degradedLeadDays}-day lead window, and the gap is still open. This is the warning, ` +
+              'on purpose and with time left to act: on the date itself it becomes a failure that blocks every ' +
+              `branch. THE GAP: ${r.degradedWhy} THE RESPONSE ON RECORD: ${r.response ?? '<none>'}`,
+          );
+        } else {
+          prints.push(
+            `${id} — DEGRADED. Goes RED in ${Math.ceil(daysLeft - r.degradedLeadDays)} day(s) ` +
+              `(${r.degradedLeadDays}-day lead window), hard failure on ${r.degradedUntil}: ${r.degradedWhy}`,
+          );
+        }
       }
     }
 
@@ -663,7 +735,7 @@ export function evaluate(reg, tree, nowMs) {
   return {
     errors,
     prints,
-    stats: { rows: rows.length, onDemand, unverified, cannotRevert, companyAnchored, gaps },
+    stats: { rows: rows.length, onDemand, unverified, cannotRevert, companyAnchored, datedTripwires, gaps },
     anchored,
   };
 }
@@ -925,7 +997,8 @@ function main() {
   for (const p of prints) console.log(`⬜  ${p}`);
   console.log(
     `⬜  register: ${stats.rows} rows · ${stats.onDemand} on-demand · ${stats.cannotRevert} cannot-revert · ` +
-      `${stats.unverified} unverified · ${stats.companyAnchored} anchored in company/ (gitignored — this guard CANNOT verify those anchors exist)`,
+      `${stats.unverified} unverified · ${stats.datedTripwires} dated tripwire(s) armed · ` +
+      `${stats.companyAnchored} anchored in company/ (gitignored — this guard CANNOT verify those anchors exist)`,
   );
   if (stats.gaps.length) {
     console.log(`⬜  ${stats.gaps.length} OWNER-GATED gap(s) — printed every run, never blocking (CLAUDE.md C-6):`);

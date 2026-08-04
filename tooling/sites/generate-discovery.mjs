@@ -156,7 +156,7 @@ const NAV = (backHref, backLabel) => `<nav>
         <rect width="1024" height="1024" rx="244" fill="#111C33"/>
         <path d="M 292 720 L 292 304 L 656 720 L 656 304 M 580 380 L 656 304 L 732 380" fill="none" stroke="url(#nm)" stroke-width="96" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <span>NIKATRU</span>
+      <span>Nikatru</span>
     </a>
     <a class="back" href="${backHref}">&larr; ${backLabel}</a>
   </div>
@@ -164,7 +164,7 @@ const NAV = (backHref, backLabel) => `<nav>
 
 const FOOTER = `<footer>
   <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/refund.html">Refunds</a> &middot; <a href="/delete-account.html">Delete account</a> &middot; <a href="/contact.html">Contact</a><br><br>
-  &copy; 2026 NIKATRU&trade; &middot; Chennai, Tamil Nadu, India
+  &copy; 2026 Nikatru&trade; &middot; Chennai, Tamil Nadu, India
 </footer>`;
 
 const BANNER = `<!-- GENERATED FILE — do not hand-edit.
@@ -214,7 +214,7 @@ function landingHtml(app, problems) {
     url,
     ...(names.length ? { operatingSystem: names.join(', ') } : {}),
     ...(live && app.url ? { installUrl: app.url } : {}),
-    publisher: { '@type': 'Organization', name: 'NIKATRU', url: ORIGIN },
+    publisher: { '@type': 'Organization', name: 'Nikatru', url: ORIGIN },
   };
 
   const robots = live
@@ -245,13 +245,13 @@ ${BANNER}
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-${robots}<title>${esc(app.name)} &mdash; NIKATRU</title>
+${robots}<title>${esc(app.name)} &mdash; Nikatru</title>
 <meta name="description" content="${esc(app.tagline)}">
 ${selfRefs}${HEAD_CHROME}
-<meta property="og:title" content="${esc(app.name)} &mdash; NIKATRU">
+<meta property="og:title" content="${esc(app.name)} &mdash; Nikatru">
 <meta property="og:description" content="${esc(app.tagline)}">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="NIKATRU">
+<meta property="og:site_name" content="Nikatru">
 <meta property="og:image" content="${ORIGIN}og-image.png">
 ${STYLE}
 <script type="application/ld+json">
@@ -272,7 +272,7 @@ ${openButton}  </div>
   <section>
     <div class="wrap">
       <h2>About ${esc(app.name)}</h2>
-      <p>${esc(app.name)} is an app by NIKATRU, an independent studio in Chennai, Tamil Nadu, India. ${esc(app.tagline)}.</p>
+      <p>${esc(app.name)} is an app by Nikatru, an independent studio in Chennai, Tamil Nadu, India. ${esc(app.tagline)}.</p>
       <p>${platformSentence}</p>
 ${statusNote}      <div class="privacy">
         <b>Privacy</b>
@@ -304,16 +304,16 @@ ${liveApps
   .join('\n')}
       </div>
 `
-    : `      <p>No app is released yet. This page lists every released NIKATRU app the moment its registry entry says so.</p>
+    : `      <p>No app is released yet. This page lists every released Nikatru app the moment its registry entry says so.</p>
 `;
 
   const ld = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name: 'NIKATRU apps',
-    description: 'Every released NIKATRU app, with a page for each.',
+    name: 'Nikatru apps',
+    description: 'Every released Nikatru app, with a page for each.',
     url,
-    publisher: { '@type': 'Organization', name: 'NIKATRU', url: ORIGIN },
+    publisher: { '@type': 'Organization', name: 'Nikatru', url: ORIGIN },
   };
 
   return `<!DOCTYPE html>
@@ -322,15 +322,15 @@ ${BANNER}
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Apps &mdash; NIKATRU</title>
-<meta name="description" content="Every released NIKATRU app, with a page for each.">
+<title>Apps &mdash; Nikatru</title>
+<meta name="description" content="Every released Nikatru app, with a page for each.">
 <link rel="canonical" href="${url}">
 <meta property="og:url" content="${url}">
 ${HEAD_CHROME}
-<meta property="og:title" content="Apps &mdash; NIKATRU">
-<meta property="og:description" content="Every released NIKATRU app, with a page for each.">
+<meta property="og:title" content="Apps &mdash; Nikatru">
+<meta property="og:description" content="Every released Nikatru app, with a page for each.">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="NIKATRU">
+<meta property="og:site_name" content="Nikatru">
 <meta property="og:image" content="${ORIGIN}og-image.png">
 ${STYLE}
 <script type="application/ld+json">
@@ -338,12 +338,12 @@ ${jsonLd(ld)}
 </script>
 </head>
 <body>
-${NAV('/', 'NIKATRU home')}
+${NAV('/', 'Nikatru home')}
 
 <header>
   <div class="wrap">
     <h1>Apps</h1>
-    <p class="tagline">Every released NIKATRU app, with a page for each.</p>
+    <p class="tagline">Every released Nikatru app, with a page for each.</p>
   </div>
 </header>
 

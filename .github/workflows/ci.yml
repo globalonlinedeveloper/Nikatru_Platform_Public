@@ -812,6 +812,29 @@ jobs:
       - name: No submission endangers the store identity
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-submission-safety.mjs
+      # …and the Android module PINS the API level Google Play will accept.
+      #
+      # 🔴 IT WAS COMPLIANT BY ACCIDENT UNTIL 2026-08-04. build.gradle.kts read
+      # `targetSdk = flutter.targetSdkVersion`, a property on the extension the
+      # INSTALLED Flutter SDK supplies (FlutterExtension.kt), where 3.44.x
+      # happens to declare 36 — so the value Play would judge came from whichever
+      # toolchain was on the build machine, not from this repository. A Flutter
+      # downgrade lowers it with NO diff in the Gradle file, no Gradle error and
+      # no failing test; CI stays green and the first symptom is Play rejecting
+      # the upload. Pinning `flutter-version:` moves that dependency rather than
+      # removing it. The floor takes effect 2026-08-31.
+      #
+      # The number is NOT in the guard: it is read from the `play-target-api-level`
+      # duty row in tooling/legal/duty-matrix.json, beside the
+      # developer.android.com URL and the date it was read, and the guard is
+      # COVERAGE LOST rather than green if that citation is missing — an enforced
+      # limit nobody sourced fires on CORRECT input while looking authoritative.
+      # It parses the real Gradle config (comments stripped, braces matched) and
+      # refuses anything that is not an integer literal, because Android cannot be
+      # built on the owner's box to ask Gradle directly.
+      - name: The Android module pins the API level Google Play requires
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-android-target-sdk.mjs
       # A fail-closed seam with no on-switch is a dead feature that reports
       # healthy. Four shipped that way — the analytics rail discarded every event
       # because nothing ever recorded consent, and no test went red because
@@ -851,6 +874,43 @@ jobs:
       - name: The Supabase auth email templates stay restorable
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-supabase-templates.mjs
+      # POST-INCIDENT GUARD, 2026-08-04, and a DIFFERENT incident from the one
+      # above. On 2026-08-03 an audit agent read FOUR repo documents that all
+      # agreed Supabase Auth was on the provider's own sender, concluded no real
+      # user could sign up, and escalated that to a 🔴🔴 blocker on the first store
+      # submission. It was false. `smtp_host` reads smtp.resend.com and had all
+      # along -- and SUPABASE_PAT, which answers it in one GET, was in the vault
+      # the whole time. FOUR AGREEING DOCUMENTS ARE NOT EVIDENCE; THEY ARE ONE
+      # STALE FACT COPIED FOUR TIMES. So the fact has ONE home a machine can parse
+      # (tooling/mail-transport.json) and no document may restate the superseded
+      # transport without the current one in the same Markdown SECTION -- a unit
+      # the document declares, not an invented line window. The phrases are NOT
+      # banned: ADR 029 and both Supabase guards describe the old state on
+      # purpose, and a guard that fires on correct input gets deleted by whoever
+      # hits it next. Because the rule is satisfied by CONTENT, there is no
+      # exemption list to go stale. ⚠️ It CANNOT see live drift (no PAT in CI) and
+      # in CI it CANNOT see knowledge/ or company/, where three of the four stale
+      # documents lived -- it prints which of those two situations it was in on
+      # every run rather than letting green read as "clean".
+      - name: One record of how mail is sent, and no document contradicts it
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-mail-transport-claims.mjs
+      # Two shipped defects, 2026-08-04: Runner.rc carried CompanyName
+      # "com.nikatru" and AppInfo.xcconfig carried the same string in
+      # PRODUCT_COPYRIGHT. Both are USER-VISIBLE -- Windows Properties -> Details,
+      # macOS About box -- so every user who inspected the binary saw the package
+      # id where the company's name belongs. Nothing was mistyped: that is
+      # verbatim what `flutter create --org` writes, and the brick carries no
+      # desktop runner of its own, so all 50 planned apps are born with it.
+      # The forbidden strings are DERIVED per app from its real bundle id /
+      # applicationId rather than hard-coded to one brand, because the factory is
+      # multi-brand and a check pinned to "Nikatru" could not outlive app #1.
+      # It deliberately does NOT assert which name is right -- only that an
+      # application id is not standing in for one -- and it tolerates a domain in
+      # a copyright line, which an earlier draft rejected while being wrong.
+      - name: No desktop app shows users a package id where its company name belongs
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-desktop-runner-identity.mjs
       # The companion to the step above, and deliberately not folded into it: that
       # guard verifies `consumers` against real pubspecs in both directions, which
       # proves a package was DOWNLOADED and never that a line of it runs. Every

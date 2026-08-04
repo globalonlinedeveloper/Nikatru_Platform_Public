@@ -102,9 +102,41 @@ val releaseKeystoreFile = if (hasReleaseSigning) {
     null
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE PLAY API-LEVEL FLOOR IS PINNED HERE, NOT INHERITED FROM THE TOOLCHAIN.
+//
+// Until 2026-08-04 this file read `targetSdk = flutter.targetSdkVersion`, which
+// resolves out of the INSTALLED Flutter SDK — `packages/flutter_tools/gradle/
+// src/main/kotlin/FlutterExtension.kt`, where 3.44.x happens to declare 36. So
+// the app met Google Play's floor BY ACCIDENT OF WHICH FLUTTER WAS INSTALLED.
+// Pinning `flutter-version: 3.44.8` in the workflows does not fix that: it moves
+// the dependency, it does not remove it. Downgrade the pin, or build on a box
+// with an older SDK, and `targetSdk` drops with no diff in this file, no error
+// from Gradle, and no failing test — the first symptom is Play REJECTING the
+// upload, after the build, after CI is green.
+//
+// The floor and its citation are NOT restated here — that would be a second
+// source of truth for the same number. They live in the duty row
+// `play-target-api-level` in tooling/legal/duty-matrix.json (with the
+// developer.android.com URL and the date it was read), and
+// tooling/ci/assert-android-target-sdk.mjs reads the floor FROM that row and
+// compares it to the literal below. Change one without the other and CI fails.
+//
+// ⚠️ `compileSdk` IS PINNED FOR A DIFFERENT REASON. AGP requires
+// compileSdk >= targetSdk. Left as `flutter.compileSdkVersion` it would track
+// the toolchain while targetSdk stood still, so an SDK downgrade turns a policy
+// problem into a build break — loud, but only on a machine that can build
+// Android, which is CI alone (CLAUDE.md: java.nio Selector.open() fails
+// process-wide on the owner's box). As a literal, the guard checks the
+// relationship statically, before any build.
+//
+// `minSdk` is deliberately still toolchain-resolved: Google Play sets no
+// minimum-minSdk floor, so there is nothing to pin it against, and inventing a
+// number here is the sin assert-store-metadata.mjs exists to refuse.
+// ─────────────────────────────────────────────────────────────────────────────
 android {
     namespace = "com.nikatru.subly"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -126,7 +158,10 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // See the PLAY API-LEVEL FLOOR block above. The floor itself and its
+        // primary source live in tooling/legal/duty-matrix.json; this literal is
+        // what tooling/ci/assert-android-target-sdk.mjs compares against it.
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

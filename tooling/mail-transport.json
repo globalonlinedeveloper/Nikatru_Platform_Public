@@ -1,0 +1,140 @@
+{
+  "_readme": [
+    "THE MAIL TRANSPORT REGISTER — the ONE machine-readable record of how this factory sends mail.",
+    "Recorded by knowledge/decisions/029-email-sending-architecture.md (ADR 029).",
+    "",
+    "🔴 WHY IT EXISTS — a false 🔴🔴 store-submission blocker, 2026-08-03/04.",
+    "An audit agent concluded that Supabase Auth could not deliver mail to real users and escalated it",
+    "to a blocker. It had read FOUR repo documents that all agreed with each other. Every one of them",
+    "was stale, and SUPABASE_PAT — the credential that can read the real state in one GET — sat in the",
+    "vault the entire time. Four agreeing documents are not evidence; they are one stale fact copied",
+    "four times. So the fact now has ONE home, in a file a machine can parse, instead of N prose copies",
+    "that drift independently and reinforce each other while they do it.",
+    "",
+    "THE ALLOCATION RULE (ADR 029 §1): Workspace = the owner's mailbox · Resend = everything a machine",
+    "sends. The split is by DOMAIN so it cannot be fudged: nikatru.com is Workspace and carries human",
+    "mail only; mail.nikatru.com is Resend and carries every automated message, for every app.",
+    "",
+    "ONE POOLED SUBDOMAIN, NOT ONE PER APP (ADR 029 §2). Splitting a 50-app factory into 50 sending",
+    "subdomains yields 50 identifiers permanently stuck at 'unknown', which receivers treat as similar",
+    "to bad. App identity goes in the DISPLAY NAME, not the domain. The invariants below encode that:",
+    "exactly one machine-mail rail, and its domain must sit UNDER the mailbox domain.",
+    "",
+    "WHAT READS THIS FILE.",
+    "  · tooling/ci/assert-mail-transport-claims.mjs   OFFLINE. Runs in ci.yml. Checks the invariants",
+    "    below hold, and that no document in the corpus restates the OLD transport without also stating",
+    "    the current one. It holds no credential, so it CANNOT see live drift.",
+    "  · tooling/ops/verify-supabase-templates.mjs     LIVE. Reads the real Supabase config with",
+    "    SUPABASE_PAT and reports drift against `supabaseAuth` below and against the DR templates.",
+    "    Scheduled in ops-watch.yml when the repo secret exists; prints the gap loudly when it does not.",
+    "",
+    "⚠️ NOTHING HERE IS SELF-VERIFYING. `supabaseAuth` records what a GET returned on `verifiedLiveOn`.",
+    "It is a RECORD of a reading, not the reading. Only the live checker can tell you it is still true.",
+    "",
+    "🔴 READ-ONLY AGAINST SUPABASE, ALWAYS. `PATCH /v1/projects/{ref}/config/auth` REPLACES the auth",
+    "config instead of merging it. On 2026-08-04 a one-field PATCH emptied the whole SMTP block, reset",
+    "rate_limit_email_sent 100 → 2, and reverted all three branded templates to Supabase defaults. If",
+    "you must write, GET the full config first and send it back COMPLETE."
+  ],
+
+  "recordedBy": "knowledge/decisions/029-email-sending-architecture.md",
+  "verifiedLiveOn": "2026-08-04",
+
+  "rails": [
+    {
+      "id": "workspace",
+      "domain": "nikatru.com",
+      "provider": "Google Workspace",
+      "role": "mailbox",
+      "sendsAutomatedMail": false,
+      "why": "Receives everything; the owner replies by hand. It sends NOTHING automated, so the account-suspension blast radius — this account owns Play Console, Microsoft Partner Center and Apple — never applies to mail sent to strangers."
+    },
+    {
+      "id": "resend",
+      "domain": "mail.nikatru.com",
+      "provider": "Resend",
+      "role": "machine-mail",
+      "sendsAutomatedMail": true,
+      "why": "Everything a machine sends, for every app: auth mail, error alerts, later receipts and newsletter. One pooled identifier that can actually earn a reputation."
+    }
+  ],
+
+  "supabaseAuth": {
+    "_why": "The shared identity project authenticates every app in the portfolio, so its transport is the portfolio's transport. Values below were READ from GET /v1/projects/{ref}/config/auth on verifiedLiveOn. smtp_pass is deliberately absent — it is a secret and lives in .claude/secrets.env.",
+    "transport": "custom-smtp",
+    "smtp_host": "smtp.resend.com",
+    "smtp_port": "465",
+    "smtp_user": "resend",
+    "smtp_admin_email": "auth@mail.nikatru.com",
+    "smtp_sender_name": "Nikatru",
+    "external_email_enabled": true,
+    "rate_limit_email_sent": 100,
+    "mailer_autoconfirm": false
+  },
+
+  "supersededTransportClaims": {
+    "_why": [
+      "The phrases the four stale documents used. They are NOT banned — the incident is worth recording",
+      "and ADR 029, PROJECT_STATE.md and the two Supabase guards all describe the old state ON PURPOSE.",
+      "A guard that forbade the words outright would fail on correct input, and a guard that fails on",
+      "correct input gets deleted by whoever hits it next.",
+      "",
+      "The rule is instead: a unit of text that states the OLD transport must ALSO state the current",
+      "one. A Markdown section is the unit, because a reader who lands on a section reads that section;",
+      "for everything else the unit is the file. Each of the four documents that caused the incident",
+      "carried the old claim with no correction anywhere in the file — all four would have failed.",
+      "",
+      "Patterns are matched case-insensitively. `correctionMarkers` is what satisfies the rule."
+    ],
+    "patterns": [
+      {
+        "id": "builtin-mailer",
+        "pattern": "built-?in mailer",
+        "why": "Supabase's own name for the shared sender that only delivers to project team members. We have not been on it since custom SMTP was configured; it was true for a few minutes on 2026-08-04 when a one-field PATCH wiped the config."
+      },
+      {
+        "id": "default-mailer",
+        "pattern": "default mailer",
+        "why": "The phrase all four stale documents used. It was the load-bearing inference behind the false store-submission blocker."
+      },
+      {
+        "id": "default-email-provider",
+        "pattern": "default email provider",
+        "why": "From Supabase's 400 on template edits — `Email template modification is not available for free tier projects using the default email provider`. Quoted as a live blocker in three plan files; the templates have been branded and applied all along."
+      },
+      {
+        "id": "refuses-delivery",
+        "pattern": "refuse[sd]? to deliver messages to addresses",
+        "why": "Supabase's documented behaviour WITHOUT custom SMTP. Quoted as a statement about this project, which is what turned a doc-reading into a blocker."
+      },
+      {
+        "id": "smtp-credentials-outstanding",
+        "pattern": "(?:SMTP|Resend)[^.\\n]{0,60}credentials[^.\\n]{0,60}(?:owner-only|not yet handed over|NEEDS OWNER)",
+        "why": "The credentials were handed over and configured before any of these files claimed otherwise. smtp_pass reads SET on the live project."
+      }
+    ],
+    "correctionMarkers": [
+      {
+        "marker": "smtp.resend.com",
+        "why": "Naming the live SMTP host IS stating the current transport."
+      },
+      {
+        "marker": "mail.nikatru.com",
+        "why": "Naming the machine-mail domain states which rail sends automated mail."
+      },
+      {
+        "marker": "ADR 029",
+        "why": "The decision record that carries the retraction and the full reasoning."
+      },
+      {
+        "marker": "029-email-sending-architecture",
+        "why": "The ADR's path, for links and cross-references."
+      }
+    ]
+  },
+
+  "liveChecker": {
+    "path": "tooling/ops/verify-supabase-templates.mjs",
+    "why": "The only thing that can see drift between this record and the live project. The CI guard asserts it still READS this file — a live checker that hardcodes its expectations stops being a checker of this record and becomes a second copy of it, which is the defect this register exists to remove."
+  }
+}

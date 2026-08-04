@@ -392,6 +392,26 @@
       }
     },
     {
+      "id": "play-target-api-level",
+      "requirement": "K-13",
+      "duty": "Apps uploaded to Google Play — new apps AND updates to existing apps — must target at least a stated Android API level. This is Play's own distribution policy, not a statute; it bites at UPLOAD and the only symptom is the upload being rejected.",
+      "status": "implemented",
+      "artefact": "apps/subly/android/app/build.gradle.kts",
+      "trigger": "🔴 IT WAS UNPINNED UNTIL 2026-08-04. `targetSdk = flutter.targetSdkVersion` resolved out of the installed Flutter SDK's FlutterExtension.kt, where 3.44.x happens to declare 36 — so the app met the floor by accident of which toolchain was installed, and a Flutter downgrade would have dropped it below with no diff, no Gradle error and no failing test. Now an integer literal, and tooling/ci/assert-android-target-sdk.mjs reads `enforced.targetSdkAtLeast` from THIS row and fails the build if the literal is below it or stops being a literal.",
+      "verification": "primary-source",
+      "enforced": {
+        "_why": "The number lives HERE, beside its citation, and nowhere else. A floor hard-coded inside the guard would be a limit with no source attached — the shape assert-ceiling-budget.mjs and assert-store-metadata.mjs both refuse — and a second copy in the Gradle file would be two sources of truth for one number.",
+        "targetSdkAtLeast": 36,
+        "inForceFrom": "2026-08-31",
+        "extensionAvailableTo": "2026-11-01"
+      },
+      "source": {
+        "url": "https://developer.android.com/google/play/requirements/target-sdk",
+        "fetched": "2026-08-04",
+        "quote": "Starting 31 August 2026, new apps and app updates must target API level 36 (Android 16) or higher; an extension to 1 November 2026 may be requested in Play Console. Wear OS / Automotive require 35, TV / XR require 34."
+      }
+    },
+    {
       "id": "apple-toolchain-floor",
       "requirement": "K-13",
       "duty": "Apps uploaded to App Store Connect must be built with a minimum Xcode version.",
