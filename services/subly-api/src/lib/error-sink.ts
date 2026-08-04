@@ -141,7 +141,7 @@ export async function reportWorkerError(
   const parsed = parseDsn(env.GLITCHTIP_DSN);
   if (!parsed) return false;
   try {
-    await fetch(parsed.endpoint, {
+    const res = await fetch(parsed.endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/x-sentry-envelope',
@@ -151,7 +151,16 @@ export async function reportWorkerError(
       },
       body: buildEnvelope(err, ctx, env.GLITCHTIP_DSN as string, now),
     });
-    return true;
+    // 🔴 `res.ok`, NOT `true` — CORRECTED 2026-08-04. See the identical change
+    // and its full reasoning in services/platform/src/lib/error-sink.ts. Short
+    // version: this returned `true` for any non-throwing response, so a 400 or
+    // 403 from the sink read exactly like a delivered report — and since the
+    // envelope is hand-rolled and every test mocks `fetch`, nothing had ever
+    // asked the live server whether it accepted the format. Proven good on
+    // 2026-08-04 (HTTP 200, issue SUBLY-5), but a one-off manual check is not a
+    // property; returning the real verdict is what makes a future rejection
+    // visible. Still fails open — the caller `waitUntil`s this and ignores it.
+    return res.ok;
   } catch {
     // Fail open. A sink that can break the request path is worse than no sink.
     return false;

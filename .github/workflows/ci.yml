@@ -498,6 +498,19 @@ jobs:
       - name: A green tick means the work ran
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-green-means-ran.mjs
+      # The same disease one level UP from assert-green-means-ran: not a job that
+      # skips its real work, but a WORKFLOW in which every job skips. On
+      # 2026-08-04, `deploy-workers.yml` listed itself in `on.push.paths` and NOT
+      # in its own `dorny/paths-filter`, so pushing #155 — whose entire subject
+      # was repairing that deploy job — started a run that skipped both deploy
+      # jobs and reported SUCCESS. The live `platform` Worker kept answering
+      # `"build": null`, with the crash sink every app depends on still dark,
+      # for six hours, while the tracker recorded the fix as shipped.
+      # A change to how deploys work is precisely the change that must be proven
+      # by deploying. [pipeline 14]O-7
+      - name: Every deploy trigger can reach a deploy job
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-deploy-triggers-deploy.mjs
       # The 6-platform claim must be proven AND RECENT. build-platforms.yml ran
       # only on dispatch or a release tag, so the green tick was undated — found
       # eight commits stale, and fresh again only because someone clicked it by

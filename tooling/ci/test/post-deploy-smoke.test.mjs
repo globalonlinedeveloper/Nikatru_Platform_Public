@@ -84,18 +84,30 @@ describe('post-deploy-smoke — the decision', () => {
     assert.match(v.reason, /not JSON/);
   });
 
-  test('🔴 FAILS when the field is absent — and names the keys that were there', () => {
+  test('🔴 FAILS when the field is absent — names the keys, and RETRIES', () => {
     const v = judge({ status: 200, body: '{"version":"v1"}', field: 'build', expected: 'abc' });
     assert.equal(v.ok, false);
+    // Retryable: a surface still serving the PREVIOUS build answers in that
+    // build's shape, so a field the deploy INTRODUCES is absent until it lands.
+    assert.equal(v.retry, true);
     assert.match(v.reason, /has no `build` field/);
     assert.match(v.reason, /version/);
   });
 
-  test('🔴 FAILS when the field is present and EMPTY', () => {
-    // The deploy did not thread a build identity, which is a different fault
-    // from serving the wrong one and needs a different fix.
-    assert.match(judge({ status: 200, body: '{"build":null}', field: 'build', expected: 'abc' }).reason, /did not thread a build identity/);
-    assert.match(judge({ status: 200, body: '{"build":""}', field: 'build', expected: 'abc' }).reason, /did not thread a build identity/);
+  test('🔴 FAILS when the field is present and EMPTY — and RETRIES', () => {
+    // ── REGRESSION TEST FOR A MEASURED FALSE RED (2026-08-04) ────────────────
+    // `retry` was FALSE here, so the platform deploy on run 30934945633 failed
+    // in 240ms — one attempt against an advertised ceiling of six — and 80s
+    // later the same URL served the SHA that deploy had shipped. An empty
+    // `build` is what the OLD version answers, because the version still being
+    // served is the one deployed without `--var RELEASE`. It is the propagating
+    // state, not the failed one, and only the ceiling can tell them apart.
+    for (const body of ['{"build":null}', '{"build":""}']) {
+      const v = judge({ status: 200, body, field: 'build', expected: 'abc' });
+      assert.equal(v.ok, false);
+      assert.equal(v.retry, true, `empty \`build\` must be retryable, got retry=false for ${body}`);
+      assert.match(v.reason, /did not thread a build identity/);
+    }
   });
 
   test('🔴 a JSON body that is not an object is refused', () => {
@@ -137,6 +149,29 @@ describe('post-deploy-smoke — end to end, through the real script', () => {
     const r = run([{ status: 200, body: '{"build_number":481}' }], WEB);
     assert.equal(r.code, 1);
     assert.match(r.out, /POST-DEPLOY SMOKE FAILED/);
+  });
+
+  test('🔴 THE MEASURED FALSE RED: empty, then the shipped build, is a PASS', () => {
+    // This is run 30934945633 replayed. `platform` answered `{"build":null}`
+    // 7s after the deploy and `{"build":"<sha>"}` 80s later. The check exited 1
+    // on the first response and the tracker recorded a broken deploy that had
+    // in fact worked — which is the same class of error as a green tick over a
+    // broken pipe, pointed the other way.
+    const r = run(
+      [{ status: 200, body: '{"ok":true,"build":null}' }, { status: 200, body: '{"ok":true,"build":"abc123"}' }],
+      API,
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /attempt 2\/6/);
+  });
+
+  test('🔴 an empty build that NEVER resolves still exits 1 — the failure is delayed, not removed', () => {
+    // The other half of the trade. Making the empty case retryable must not
+    // make it unfailable; a deploy that genuinely never threads RELEASE has to
+    // stay red, just later.
+    const r = run([{ status: 200, body: '{"ok":true,"build":null}' }], API);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /did not thread a build identity/);
   });
 
   test('a LATER attempt that succeeds is a pass — propagation is not a bad deploy', () => {

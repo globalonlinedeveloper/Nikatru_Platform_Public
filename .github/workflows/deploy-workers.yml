@@ -65,6 +65,31 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
 
+      # ── 🔴 THE WORKFLOW FILE MUST APPEAR IN BOTH FILTERS ────────────────────
+      #
+      # THE DEPLOY PATH COULD NOT DEPLOY A FIX TO ITSELF, and that is not a
+      # hypothetical — it is how #155 came to be recorded as shipped while
+      # production stayed broken for six hours.
+      #
+      # `on.push.paths` (top of this file) ALREADY lists this workflow, so a
+      # workflow-only change TRIGGERS the run. This inner filter did not list
+      # it, so `decide` set both outputs to `false`, both deploy jobs were
+      # SKIPPED, and the run reported **success**. Measured: run 30933229005,
+      # push of 2cd7b7a (#155) — `Detect changed services => success`,
+      # `Deploy platform => skipped`, `Deploy subly-api => skipped`.
+      #
+      # #155's whole subject was repairing this deploy job's double-deploy,
+      # which had wiped `--var GLITCHTIP_DSN` and `--var RELEASE` off the live
+      # `platform` Worker. The repair merged, ci-gate went green, the tracker
+      # said "Fixed in #155" — and `platform.nikatru.com/v1/health` kept
+      # answering `"build": null`, with the crash sink of the Worker every app
+      # depends on still dark, until a human dispatched the workflow by hand.
+      #
+      # 📌 A CHANGE TO HOW DEPLOYS WORK IS EXACTLY THE CHANGE THAT MUST BE
+      # PROVEN BY DEPLOYING. Listing the file in both filters costs one
+      # redeploy of two Workers per workflow edit; omitting it costs the
+      # ability to ever ship a deploy fix. `tooling/ci/assert-deploy-triggers-
+      # deploy.mjs` now fails the build if any trigger path has no filter.
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         if: github.event_name == 'push'
@@ -72,8 +97,10 @@ jobs:
           filters: |
             subly_api:
               - 'services/subly-api/**'
+              - '.github/workflows/deploy-workers.yml'
             platform:
               - 'services/platform/**'
+              - '.github/workflows/deploy-workers.yml'
       - id: decide
         # Manual dispatch has no diff to filter on → deploy both. Push → per-path.
         run: |
