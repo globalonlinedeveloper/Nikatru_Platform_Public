@@ -22,6 +22,33 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 | GET | `/v1/budget` | Supabase JWT | Monthly budget + category caps |
 | PUT | `/v1/budget` | Supabase JWT | Upsert budget + caps |
 | GET | `/v1/entitlements` | Supabase JWT | `is_pro` + entitlements for this app |
+| DELETE | `/v1/account` | **ES256/JWKS only** | Erase this user from every user-owned table in `subly_db` |
+
+### 🔴 `DELETE /v1/account` sits on a STRICTER auth boundary than everything above
+
+Every other row in that table says "Supabase JWT", and `supabaseAuth` accepts two
+different proofs: an ES256 signature checked against Supabase's public JWKS, and —
+when that path fails and `SUPABASE_JWT_SECRET` is configured — an HS256 MAC
+computed with a secret this Worker also holds. The second is symmetric: one leaked
+environment variable mints a token for any user. Survivable for reading your own
+subscriptions; not survivable for an irreversible erase.
+
+So the erasure route is mounted behind **`erasureAuth`** (`src/middleware/auth.ts`),
+which verifies asymmetrically and is not even handed the environment, and the route
+itself **refuses anything whose `tokenAssurance` is not `asymmetric`** — two
+independent limbs, because a mounting is one line somebody can move in a tidy-up.
+`test/erasure.test.ts` proves the same HS256 token is accepted by
+`GET /v1/subscriptions` and refused here; `tooling/ci/assert-erasure-reach.mjs`
+fails the build if the route is ever put behind the permissive middleware.
+
+**It erases `subly_db` and nothing else.** The identity record and `platform_db`
+belong to `services/platform`, whose `DELETE /v1/account` relays the caller's own
+bearer token here — after its service-role precondition and *before* it deletes the
+identity, so a failure here leaves the user a working login and a retryable request.
+The response says `scope: "subly_db"` so no caller can read `ok: true` as "the
+account is gone". The table set is derived from the schema (every table with a
+`user_id`), so a migration that adds a user-owned table is covered by that migration
+alone — and an empty derivation is a 503 refusal, never a fast path.
 
 **JSON conventions:** snake_case fields matching the DB columns. `unused` and
 entitlement `is_active` are stored 0/1 but serialized as JSON booleans. Errors are

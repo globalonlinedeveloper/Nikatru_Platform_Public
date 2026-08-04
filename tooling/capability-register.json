@@ -217,6 +217,7 @@
     "API_BASE_URL": "our own subly-api Worker",
     "CONFIG_BASE_URL": "our own config service (CFG-1)",
     "PLATFORM_BASE_URL": "our own shared platform Worker",
+    "APP_ERASURE_ENDPOINTS": "OUR OWN app Workers, listed as `<appId>=<https origin>` so the shared erasure route can reach each app's own database. No external system is behind it: every origin in the list is a Worker in this repository. It exists because a route reads the databases it reads, not the ones its Worker binds — services/platform sweeps platform_db and BINDS subly_db, so before this list the only app in the field was the one app account deletion did not reach, and every subscription, budget and payment survived behind an account that no longer existed. DELETE /v1/account now relays the caller's own bearer token to each named app's own DELETE /v1/account, after the service-role precondition and before the identity is deleted; a missing or malformed list is a 501 refusal rather than a silent skip. `https://` is required and checked at runtime, because the relay forwards a live session token. tooling/ci/assert-erasure-reach.mjs holds the both-directions relation between this list and the app Workers that own a database. Added 2026-08-04.",
     "ALLOWED_ORIGINS": "our own domains — the CORS allowlist, guarded by assert-cors-allowlist.mjs",
     "APP_ENV": "build metadata",
     "APP_VERSION": "build metadata — injected at build time, deliberately not read from package_info_plus",

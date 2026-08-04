@@ -12,6 +12,25 @@
 //              short TTL to cut cold-verify latency and reduce egress.
 //   FALLBACK — legacy HS256: if SUPABASE_JWT_SECRET is configured, verify with
 //              the shared secret. Some older Supabase projects still sign HS256.
+//
+// ── 🔴 THE FALLBACK IS NOW NAMED IN THE CONTEXT, NOT JUST IN THIS COMMENT ────
+// `supabaseAuth` records HOW the token was verified as `tokenAssurance`
+// ('asymmetric' | 'symmetric'). Until it did, "this request was authenticated by
+// a shared secret" was a fact that existed for one stack frame and then vanished,
+// so no route could refuse on it and no test could observe it — which is exactly
+// how an irreversible route ends up behind a symmetric secret without anybody
+// choosing that.
+//
+// The consequence a shared secret has that a signature does not: ONE leaked
+// environment variable mints a token for ANY user. That is survivable for a read
+// of your own subscriptions (the blast radius is one app's rows, and the rows are
+// still there afterwards). It is not survivable for erasure, which is
+// irreversible and which the store review process treats as the account's
+// destructor. So [erasureAuth] below exists as a SEPARATE, STRICTER middleware
+// with no secret in scope at all, and the erasure route additionally refuses any
+// request whose `tokenAssurance` is not 'asymmetric' — see
+// src/routes/account.ts. Two independent limbs, because the mounting is a line
+// somebody can move and the route-level check is not.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MiddlewareHandler } from 'hono';
@@ -21,7 +40,7 @@ import {
   type JWTPayload,
   type JWTVerifyGetKey,
 } from 'jose';
-import type { AppEnv, Env } from '../types';
+import type { AppEnv, Env, TokenAssurance } from '../types';
 
 const JWKS_KV_KEY = 'supabase_jwks';
 /**
@@ -79,23 +98,41 @@ async function warmJwksCache(env: Env): Promise<void> {
   }
 }
 
+/**
+ * THE ASYMMETRIC PATH, ON ITS OWN, WITH NO SECRET IN SCOPE.
+ *
+ * 🔴 It takes `SUPABASE_URL` rather than `Env` ON PURPOSE. A function that never
+ * receives the environment cannot read `SUPABASE_JWT_SECRET`, so "this path
+ * cannot fall back to a shared secret" is a property of the SIGNATURE — checkable
+ * by reading four lines — rather than a claim about the body that a later edit
+ * could quietly falsify. `warmJwksCache` still wants the env, so the caller warms
+ * the cache; this function does one thing.
+ */
+async function verifyAsymmetric(
+  token: string,
+  supabaseUrl: string,
+): Promise<JWTPayload> {
+  const { payload } = await jwtVerify(token, getRemoteJWKS(supabaseUrl), {
+    issuer: `${supabaseUrl}/auth/v1`,
+    audience: 'authenticated',
+    // 🔴 PINNED. Without this the TOKEN decides how it is verified — a header
+    // saying `alg: none`, or `alg: HS256` against a key the verifier holds.
+    algorithms: ['ES256'],
+  });
+  return payload;
+}
+
 async function verifySupabaseToken(
   token: string,
   env: Env,
-): Promise<JWTPayload> {
+): Promise<{ payload: JWTPayload; assurance: TokenAssurance }> {
   const issuer = `${env.SUPABASE_URL}/auth/v1`;
 
   // PRIMARY: asymmetric verification via remote JWKS (alg pinned to ES256).
   try {
     // Fire-and-forget KV warm; verification does not block on it.
     void warmJwksCache(env);
-    const jwks = getRemoteJWKS(env.SUPABASE_URL);
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer,
-      audience: 'authenticated',
-      algorithms: ['ES256'],
-    });
-    return payload;
+    return { payload: await verifyAsymmetric(token, env.SUPABASE_URL), assurance: 'asymmetric' };
   } catch (primaryErr) {
     // FALLBACK: legacy HS256 shared-secret verification, if configured.
     // Issuer + alg enforced: a token from any OTHER Supabase project must fail.
@@ -106,30 +143,35 @@ async function verifySupabaseToken(
         audience: 'authenticated',
         algorithms: ['HS256'],
       });
-      return payload;
+      // ⚠️ 'symmetric' IS THE POINT OF THIS RETURN. The route that must never
+      // run on it reads exactly this value.
+      return { payload, assurance: 'symmetric' };
     }
     throw primaryErr;
   }
 }
 
+/** The `Bearer <token>` part of an Authorization header, or null. */
+const bearer = (authz: string): string | null => /^Bearer\s+(.+)$/i.exec(authz)?.[1] ?? null;
+
 /**
- * Hono middleware. On success sets `userId` (+ optional `userEmail`) and calls
- * next(). On any failure returns 401 JSON `{ error: 'unauthorized' }`.
+ * Hono middleware. On success sets `userId` (+ optional `userEmail`) and
+ * `tokenAssurance`, then calls next(). On any failure returns 401 JSON
+ * `{ error: 'unauthorized' }`.
  */
 export const supabaseAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const authz = c.req.header('Authorization') ?? '';
-  const match = /^Bearer\s+(.+)$/i.exec(authz);
-  if (!match) {
+  const token = bearer(c.req.header('Authorization') ?? '');
+  if (token === null) {
     return c.json({ error: 'unauthorized' }, 401);
   }
-  const token = match[1];
 
   try {
-    const payload = await verifySupabaseToken(token, c.env);
+    const { payload, assurance } = await verifySupabaseToken(token, c.env);
     if (!payload.sub) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     c.set('userId', payload.sub);
+    c.set('tokenAssurance', assurance);
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') {
       c.set('userEmail', email);
@@ -137,6 +179,61 @@ export const supabaseAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     await next();
     return;
   } catch {
+    return c.json({ error: 'unauthorized' }, 401);
+  }
+};
+
+/**
+ * 🔴 THE STRICTER BOUNDARY, FOR IRREVERSIBLE ROUTES ONLY.
+ *
+ * Identical to [supabaseAuth] except that there is NO fallback and no path by
+ * which one could be reached: it calls [verifyAsymmetric], which is not given the
+ * environment and therefore cannot see `SUPABASE_JWT_SECRET`. A token signed with
+ * the legacy shared secret is a 401 here whether or not that secret is
+ * configured, and `services/platform/src/middleware/auth.ts` explains at length
+ * why that is the right trade for a destructive route: the asymmetric path needs
+ * no secret at all (the JWKS is public), so the fallback buys nothing here that
+ * is worth what it costs — and a fallback that triggers on ANY primary failure
+ * triggers when Supabase is merely unreachable, which silently downgrades the
+ * boundary from a signature to a shared string at exactly the wrong moment.
+ *
+ * It sets `tokenAssurance: 'asymmetric'`, which the erasure route then REQUIRES.
+ * That second limb is not redundant: this middleware is attached by one line in
+ * `src/index.ts`, and the failure this whole change exists to prevent is somebody
+ * moving the route under the permissive group in a tidy-up. The mounting can be
+ * changed by accident; a refusal inside the handler cannot.
+ */
+export const erasureAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const token = bearer(c.req.header('Authorization') ?? '');
+  if (token === null) {
+    return c.json({ error: 'unauthorized' }, 401);
+  }
+
+  try {
+    void warmJwksCache(c.env);
+    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL);
+    // `sub` IS the user id. A verified token with no subject authenticates
+    // nobody, and letting it through would hand every `WHERE user_id = ?` an
+    // undefined — which on a DELETE is the difference between erasing nothing
+    // and being asked to erase everything.
+    if (typeof payload.sub !== 'string' || payload.sub === '') {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    c.set('userId', payload.sub);
+    c.set('tokenAssurance', 'asymmetric');
+    const email = (payload as { email?: unknown }).email;
+    if (typeof email === 'string') c.set('userEmail', email);
+    await next();
+    return;
+  } catch (err) {
+    // Logged, unlike the permissive boundary's silent 401: a refusal on the
+    // erasure path is the one a user is most likely to report as "the delete
+    // button does nothing", and the reason must be recoverable from the tail.
+    // The token itself is never logged.
+    console.error(
+      `[erasure-auth] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID} refused: the bearer token did not verify against the JWKS (ES256). There is NO shared-secret fallback on this boundary.`,
+      err instanceof Error ? err.message : err,
+    );
     return c.json({ error: 'unauthorized' }, 401);
   }
 };

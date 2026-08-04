@@ -29,7 +29,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
 import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
-import account from '../src/routes/account';
+import account, { parseErasureEndpoints } from '../src/routes/account';
 import type { AppEnv } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
 
@@ -56,6 +56,22 @@ const b64urlDecode = (s: string) =>
 let identityCalls: Array<{ url: string; method: string; hasKey: boolean }> = [];
 let identityStatus = 204;
 
+/** The per-app erasure relay ([4]B-5 limb 3). Recorded the same way and for the
+ *  same reason: "the app's rows were erased" is a claim about a REQUEST THIS
+ *  WORKER MADE, and the response body cannot be evidence for it. */
+const APP_ORIGIN = 'https://api.test';
+const APP_ENDPOINTS = `subly=${APP_ORIGIN}`;
+let appCalls: Array<{ url: string; method: string; authorization: string | null }> = [];
+let appStatus = 200;
+/** When set, the relay fetch THROWS — an app Worker that cannot be reached at
+ *  all, which is a different failure from one that answers badly. */
+let appThrows = false;
+
+/** Every fetch stubs into exactly one of three worlds. A URL that matches none
+ *  throws, so a new outbound call added to the route surfaces as a red test
+ *  rather than as a silent 204. */
+const ORDER: string[] = [];
+
 beforeAll(async () => {
   const pair = await generateKeyPair('ES256', { extractable: true });
   signingKey = pair.privateKey;
@@ -72,12 +88,23 @@ beforeAll(async () => {
     }
     if (url.includes('/auth/v1/admin/users/')) {
       const headers = new Headers(init?.headers);
+      ORDER.push('identity');
       identityCalls.push({
         url,
         method: init?.method ?? 'GET',
         hasKey: headers.get('apikey') !== null && headers.get('Authorization') !== null,
       });
       return new Response(null, { status: identityStatus });
+    }
+    if (url.startsWith(APP_ORIGIN)) {
+      ORDER.push('app');
+      appCalls.push({
+        url,
+        method: init?.method ?? 'GET',
+        authorization: new Headers(init?.headers).get('Authorization'),
+      });
+      if (appThrows) throw new TypeError('fetch failed');
+      return new Response(JSON.stringify({ ok: true, scope: 'subly_db' }), { status: appStatus });
     }
     throw new Error(`unexpected fetch in test: ${url}`);
   });
@@ -112,9 +139,14 @@ async function token(
 function harness({
   serviceRoleKey = 'service-role-key' as string | null,
   db = realPlatformDb(),
-}: { serviceRoleKey?: string | null; db?: RealDb } = {}) {
+  appEndpoints = APP_ENDPOINTS as string | null,
+}: { serviceRoleKey?: string | null; db?: RealDb; appEndpoints?: string | null } = {}) {
   identityCalls = [];
   identityStatus = 204;
+  appCalls = [];
+  appStatus = 200;
+  appThrows = false;
+  ORDER.length = 0;
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => { c.set('requestId', 'rid-test'); await next(); });
   app.get('/v1/health', (c) => c.json({ ok: true }));
@@ -129,6 +161,7 @@ function harness({
     JWKS_CACHE: KV,
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey ?? undefined,
+    APP_ERASURE_ENDPOINTS: appEndpoints ?? undefined,
     APP_ID: 'platform',
     API_VERSION: 'v1',
   } as unknown as AppEnv['Bindings'];
@@ -397,5 +430,152 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     const res = await harness({ db }).del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(503);
     expect(identityCalls).toHaveLength(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe("LIMB 3 — every app's OWN database, through that app's OWN route", () => {
+  // 🔴 THE DEFECT THIS LIMB CLOSES. Everything above operates on PLATFORM_DB.
+  // This Worker also BINDS subly_db — and bound is not swept, because a route
+  // reads the databases it reads. So the only app in the field was the one app
+  // account deletion did not reach: a Subly user could delete their account, lose
+  // their login, and leave every subscription they had ever entered in a database
+  // no login could reach again. Sweeping SUBLY_DB from here was rejected (it puts
+  // one app's schema in the shared Worker, and makes any FUTURE binding an
+  // erasure target the day somebody adds it); each app owns its own erasure and
+  // this route orchestrates.
+
+  it('calls each app\'s DELETE /v1/account, forwarding the CALLER\'S OWN token', async () => {
+    // Forwarded rather than re-minted, and asserted as such: this Worker holds no
+    // key that could sign a token for this user, and it must not — the app route
+    // (services/subly-api) refuses anything that is not asymmetrically verified,
+    // which is the property that let an erasure route exist on that Worker at all.
+    const h = harness();
+    const authz = `Bearer ${await token({ sub: 'user-a' })}`;
+    const res = await h.del('/v1/account', authz);
+    expect(res.status).toBe(200);
+    expect(appCalls).toHaveLength(1);
+    expect(appCalls[0].method).toBe('DELETE');
+    expect(appCalls[0].url).toBe(`${APP_ORIGIN}/v1/account`);
+    expect(appCalls[0].authorization).toBe(authz);
+    expect(((await res.json()) as { apps: Record<string, string> }).apps).toEqual({
+      subly: 'deleted',
+    });
+  });
+
+  it('calls it BEFORE the identity delete — order is the whole safety property', async () => {
+    // 🔴 THE ONE ASSERTION THE STATUS CODES CANNOT MAKE. If the identity went
+    // first, an app purge that then failed would leave orphaned rows behind an
+    // account that no longer exists — unreachable by anyone, for ever. This way
+    // round the user keeps a working login and a retryable request.
+    const h = harness();
+    await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(ORDER).toEqual(['app', 'identity']);
+  });
+
+  it('502s and does NOT delete the identity when an app route refuses', async () => {
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    appStatus = 403; // e.g. the app route refusing a non-asymmetric proof
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'app_data_delete_failed', app: 'subly' });
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('502s when the app route cannot be REACHED at all', async () => {
+    const h = harness();
+    appThrows = true;
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(502);
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('does NOT forgive a 404 from an app route, the way it forgives one from the identity provider', async () => {
+    // ⚠️ THE SAME STATUS MEANS OPPOSITE THINGS ON THE TWO LIMBS. From Supabase,
+    // 404 is "the user is already gone" — the goal state, so a retry can finish.
+    // From an app Worker it is "there is no erasure route here", i.e. those rows
+    // were never erased by anybody. Treating them alike would turn a missing route
+    // into a reported success — the exact failure mode this whole change is about.
+    const h = harness();
+    appStatus = 404;
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(502);
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('refuses 501 when APP_ERASURE_ENDPOINTS is UNSET, and destroys nothing', async () => {
+    // An empty list is a refusal, not "no apps to clean up". A deployment that
+    // lost this var would erase platform_db and the identity, answer ok:true, and
+    // orphan every app-owned row — the original defect, re-created by config
+    // drift. Checked BEFORE anything is destroyed, like the service-role key.
+    const h = harness({ appEndpoints: null });
+    seedEntitlement(h.db, 'user-a');
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(501);
+    expect(await res.json()).toEqual({ error: 'account_deletion_unconfigured' });
+    expect(h.db.count('entitlements')).toBe(1);
+    expect(appCalls).toHaveLength(0);
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('refuses 501 on a NON-https endpoint rather than putting a live token on the wire', async () => {
+    const h = harness({ appEndpoints: 'subly=http://api.test' });
+    seedEntitlement(h.db, 'user-a');
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(501);
+    expect(h.db.count('entitlements')).toBe(1);
+    expect(appCalls).toHaveLength(0);
+  });
+
+  it('refuses 501 on a malformed entry rather than silently skipping that app', async () => {
+    // A dropped entry is an app whose rows quietly stop being erased, which looks
+    // exactly like success. Throwing is what turns it into a refusal.
+    for (const bad of ['subly', '=https://api.test', 'subly=notaurl']) {
+      const h = harness({ appEndpoints: bad });
+      const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+      expect(res.status, bad).toBe(501);
+      expect(appCalls, bad).toHaveLength(0);
+    }
+  });
+
+  it('relays to EVERY declared app, not just the first', async () => {
+    // The loop is what makes app #2 covered by adding one entry. A route that
+    // erased only `endpoints[0]` passes every other test in this file.
+    const h = harness({ appEndpoints: `subly=${APP_ORIGIN},other=${APP_ORIGIN}` });
+    const res = await h.del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(200);
+    expect(appCalls).toHaveLength(2);
+    expect(((await res.json()) as { apps: Record<string, string> }).apps).toEqual({
+      subly: 'deleted',
+      other: 'deleted',
+    });
+  });
+});
+
+describe('parseErasureEndpoints', () => {
+  it('parses, trims and strips a trailing slash', () => {
+    expect(parseErasureEndpoints(' subly=https://api.test/ , other=https://b.test ')).toEqual([
+      { appId: 'subly', origin: 'https://api.test' },
+      { appId: 'other', origin: 'https://b.test' },
+    ]);
+  });
+
+  it('is empty for an absent or blank value — the CALLER decides that is a refusal', () => {
+    // Deliberately NOT throwing here: "nothing configured" and "misconfigured"
+    // are different facts, and the route logs them differently.
+    expect(parseErasureEndpoints(undefined)).toEqual([]);
+    expect(parseErasureEndpoints('   ')).toEqual([]);
+  });
+
+  it('throws on a path, a query string or a non-https scheme', () => {
+    for (const bad of [
+      'subly=https://api.test/v1',
+      'subly=https://api.test?x=1',
+      'subly=http://api.test',
+      'subly=api.test',
+    ]) {
+      expect(() => parseErasureEndpoints(bad), bad).toThrow(RangeError);
+    }
   });
 });

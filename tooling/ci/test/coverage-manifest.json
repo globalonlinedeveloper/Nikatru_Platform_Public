@@ -22,6 +22,7 @@
   "e2e-legs.test.mjs": 26,
   "e2e-proof-fresh.test.mjs": 30,
   "entitlement-contract.test.mjs": 22,
+  "erasure-reach.test.mjs": 21,
   "flag-exposure.test.mjs": 18,
   "green-means-ran.test.mjs": 25,
   "guard-coverage.test.mjs": 38,

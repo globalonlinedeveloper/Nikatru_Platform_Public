@@ -27,9 +27,14 @@ const REGISTER = 'tooling/e2e-leg-register.json';
 const SUITE = 'apps/subly/integration_test/app_test.dart';
 const APP_LIB = 'apps/subly/lib';
 const WORKFLOW = '.github/workflows/e2e.yml';
-/** The ERASURE SURFACE the delete leg's blocker is a predicate over. */
-const SUBLY_API_ROUTES = 'services/subly-api/src/routes';
-const PLATFORM_ACCOUNT = 'services/platform/src/routes/account.ts';
+/** The E2E SURFACE the delete leg's blocker is now a predicate over: the named
+ *  integration suite plus the nightly harness. It REPLACED a server-side pair
+ *  (`no account route under services/subly-api` / `the platform route touches
+ *  only PLATFORM_DB`) on 2026-08-04, when both went false — services/subly-api
+ *  ships DELETE /v1/account behind an asymmetric-only boundary and the shared
+ *  route relays to it. That server relation now lives in
+ *  tooling/ci/assert-erasure-reach.mjs, with its own mutation tests. */
+const E2E_HARNESS = 'tooling/e2e';
 
 /** A real-tree copy carrying exactly what the guard reads. */
 function realTree() {
@@ -41,9 +46,7 @@ function realTree() {
   cpSync(join(REPO, SUITE), join(root, SUITE));
   cpSync(join(REPO, APP_LIB), join(root, APP_LIB), { recursive: true });
   cpSync(join(REPO, WORKFLOW), join(root, WORKFLOW));
-  mkdirSync(join(root, 'services/platform/src/routes'), { recursive: true });
-  cpSync(join(REPO, SUBLY_API_ROUTES), join(root, SUBLY_API_ROUTES), { recursive: true });
-  cpSync(join(REPO, PLATFORM_ACCOUNT), join(root, PLATFORM_ACCOUNT));
+  cpSync(join(REPO, E2E_HARNESS), join(root, E2E_HARNESS), { recursive: true });
   return root;
 }
 
@@ -181,20 +184,24 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  // 🔄 RESTATED 2026-08-03 ([ADR 027]). These three used to drive the previous
-  // delete-leg blocker — "apps/subly has no delete-account call site" — whose
-  // predicate was `!src.subly.includes('.deleteAccount(')`. The app shipped the
-  // control, the predicate went false, and the guard failed the build exactly as
-  // it was built to. What still blocks the LEG is the server: no deployed route
-  // erases subly_db. Both halves of that are read from the tree, so either fix
-  // kills the excuse — and each has a test below.
-  test('🔴 AN account ROUTE UNDER services/subly-api KILLS THE DELETE-LEG EXCUSE', () => {
+  // 🔄 RESTATED 2026-08-04, THE SECOND TIME THIS GUARD KILLED ITS OWN EXCUSE.
+  // v1 was "apps/subly has no delete-account call site" ([ADR 027] shipped the
+  // control). v2 was "no deployed route erases apps/subly own database", read as
+  // two facts about services/ — and BOTH went false on 2026-08-04:
+  // services/subly-api ships DELETE /v1/account behind an asymmetric-only
+  // boundary, and the shared route relays to it before deleting the identity.
+  // The guard failed the build for it, exactly as designed, and the excuse was
+  // replaced rather than edited. What still blocks the LEG is that nothing in the
+  // nightly walks it — so the predicate now reads the E2E SURFACE, and the day a
+  // step there names `/v1/account` this excuse dies too.
+  test('🔴 A DELETE STEP IN THE INTEGRATION SUITE KILLS THE DELETE-LEG EXCUSE', () => {
     withTree(
       (root) => {
-        writeFileSync(
-          join(root, SUBLY_API_ROUTES, 'account.ts'),
-          "export default 'a route that can erase subly_db';\n",
-        );
+        const p = join(root, SUITE);
+        writeFileSync(p, `${readFileSync(p, 'utf8')}
+// step
+final erase = '/v1/account';
+`);
       },
       (r) => {
         assert.equal(r.status, 1);
@@ -204,14 +211,10 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  test('🔴 THE PLATFORM ROUTE REACHING A SECOND DATABASE KILLS IT TOO', () => {
+  test('🔴 A DELETE STEP IN THE tooling/e2e HARNESS KILLS IT TOO', () => {
     withTree(
       (root) => {
-        const p = join(root, PLATFORM_ACCOUNT);
-        writeFileSync(
-          p,
-          `${readFileSync(p, 'utf8')}\nexport const sweepAlso = (c) => c.env.SUBLY_DB.prepare('x');\n`,
-        );
+        writeFileSync(join(root, E2E_HARNESS, 'erase_user.mjs'), "await fetch(api + '/v1/account');\n");
       },
       (r) => {
         assert.equal(r.status, 1);
@@ -221,14 +224,16 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  test('a COMMENT naming the second database does not kill the excuse', () => {
-    // The comment-strip trap, third occurrence in this repo: that route's header
-    // narrates which databases it does not reach, and a raw scan would read the
-    // prose explaining the absence as evidence of the presence.
+  test('a COMMENT mentioning the route does not kill the excuse', () => {
+    // The comment-strip trap, fourth occurrence in this repo. A harness file that
+    // NARRATES what it does not yet do would otherwise be read as evidence that
+    // it does — and the excuse would die while the leg stayed unproven.
     withTree(
       (root) => {
-        const p = join(root, PLATFORM_ACCOUNT);
-        writeFileSync(p, `// TODO: one day sweep c.env.SUBLY_DB here too\n${readFileSync(p, 'utf8')}`);
+        writeFileSync(
+          join(root, E2E_HARNESS, 'notes.mjs'),
+          '// TODO: one day call DELETE /v1/account here and re-read subly_db\n',
+        );
       },
       (r) => {
         assert.equal(r.status, 0, r.stderr);
@@ -237,24 +242,21 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  test('an unrelated new subly-api route does not kill the excuse', () => {
-    // The predicate is anchored on a file NAMED account, not on the directory
-    // changing. A guard that fired on any new route would be noise, and noise is
-    // what gets a guard switched off.
+  test('an unrelated new harness script does not kill the excuse', () => {
+    // A guard that fired on any new file would be noise, and noise is what gets a
+    // guard switched off.
     withTree(
-      (root) => {
-        writeFileSync(join(root, SUBLY_API_ROUTES, 'reports.ts'), 'export default 1;\n');
-      },
+      (root) => writeFileSync(join(root, E2E_HARNESS, 'unrelated.mjs'), 'export default 1;\n'),
       (r) => assert.equal(r.status, 0, r.stderr),
     );
   });
 
-  test('COVERAGE LOST when the erasure surface cannot be read at all', () => {
-    // Both new facts are read from services/. Over a missing tree the predicate
-    // would answer "still blocked" for reasons that have nothing to do with
-    // erasure, and the excuse would survive the Worker being deleted.
+  test('COVERAGE LOST when the e2e harness cannot be read at all', () => {
+    // Over a missing harness the predicate answers "still blocked" for reasons
+    // that have nothing to do with erasure, and the excuse would outlive the
+    // nightly being deleted.
     withTree(
-      (root) => rmSync(join(root, SUBLY_API_ROUTES), { recursive: true, force: true }),
+      (root) => rmSync(join(root, E2E_HARNESS), { recursive: true, force: true }),
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /COVERAGE LOST/);

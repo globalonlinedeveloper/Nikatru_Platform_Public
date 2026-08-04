@@ -49,6 +49,21 @@ export interface Env {
 }
 
 /**
+ * HOW a request's bearer token was verified.
+ *
+ * 🔴 NOT COSMETIC, AND NOT A LOG FIELD. `supabaseAuth` accepts two materially
+ * different proofs: an ES256 SIGNATURE checked against Supabase's public JWKS,
+ * and — when the asymmetric path fails and `SUPABASE_JWT_SECRET` is set — an
+ * HS256 MAC computed with a secret this Worker also holds. The second is
+ * symmetric: anyone who learns that one environment variable can mint a token for
+ * any user of this app. That is an acceptable risk for reading your own
+ * subscriptions and an unacceptable one for erasing an account, so the difference
+ * has to survive the middleware rather than being collapsed into "authenticated".
+ * `src/routes/account.ts` refuses anything that is not `'asymmetric'`.
+ */
+export type TokenAssurance = 'asymmetric' | 'symmetric';
+
+/**
  * Hono context Variables set by middleware (c.get / c.set).
  */
 export interface Variables {
@@ -56,6 +71,14 @@ export interface Variables {
   userEmail?: string;
   /** Correlation id stamped by the request-id middleware (echoed in headers). */
   requestId: string;
+  /**
+   * Set by whichever auth middleware admitted this request. OPTIONAL, and the
+   * optionality is load-bearing: a route reached with no auth middleware at all
+   * reads `undefined`, and the erasure route treats `undefined` as a refusal.
+   * Typing it as required would make "nobody set this" unrepresentable and turn
+   * the fail-closed branch into dead code.
+   */
+  tokenAssurance?: TokenAssurance;
 }
 
 /** Convenience: the generics shape used across the app and sub-routers. */
