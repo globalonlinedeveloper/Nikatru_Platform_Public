@@ -202,8 +202,23 @@ jobs:
     name: Open or refresh the ops-watch issue
     # `supabase-drift` joins the two readers: drift in the live auth config is a
     # scheduled duty reporting unhealthy, which is exactly what this issue is
-    # for. When the owner has not supplied the secret that job exits 0 with a
-    # ::warning::, so an owner gap never opens an issue nobody can close.
+    # for.
+    #
+    # 🔴 AN OWNER GAP DOES OPEN AN ISSUE, AND THAT IS THE DESIGN. This comment
+    # used to read "when the owner has not supplied the secret that job exits 0
+    # with a ::warning::, so an owner gap never opens an issue nobody can close."
+    # That described the job as FIRST written and was left behind by the
+    # deliberate reversal documented 50 lines above: there is no secret-presence
+    # branch any more, and exit code 2 ("I could not look") is a failure.
+    #
+    # It is not hypothetical. The job's first-ever scheduled run, 2026-08-04
+    # 10:07Z (run 30899326549), failed with exit 2 because SUPABASE_PAT and
+    # SUPABASE_PROJECT_REF were never created as repository secrets, and opened
+    # issue #151. Nothing had drifted — the live config was verified in sync,
+    # every field and all three templates — but the duty went unperformed, which
+    # is the state this job exists to make visible. The issue IS closeable: the
+    # owner adds the two secrets (Settings → Secrets and variables → Actions),
+    # the next run goes green, and a human closes it.
     needs: [heartbeats, status, supabase-drift]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04

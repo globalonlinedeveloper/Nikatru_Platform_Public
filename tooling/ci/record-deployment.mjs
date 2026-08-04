@@ -127,8 +127,12 @@ async function main() {
     const resolved = resolveEnvironment(register, environment);
     if (resolved === null) {
       return fail(
-        `no row in ${REGISTER_REL} has a \`deploymentEnvironment\` template matching "${environment}". ` +
-          'An environment no channel claims is a record filed under a channel that does not exist.',
+        `no row in ${REGISTER_REL} claims the environment "${environment}". ` +
+          'An environment nothing claims is a record filed under a channel that does not exist. ' +
+          'A RELEASE channel matches by `deploymentEnvironment` template (e.g. "{app}-web"); a backend ' +
+          'Worker matches a `serviceEnvironments` row by exact name (e.g. "platform"). Add the right ' +
+          'one — a Worker must NOT be given a `channels` row, which would put it into every ' +
+          '{served channel} × {app} assertion in the tree.',
       );
     }
     if (resolved.channel.kind === 'store' && !listingUrl) {

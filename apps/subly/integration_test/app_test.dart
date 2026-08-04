@@ -19,6 +19,7 @@
 //     --dart-define=API_BASE_URL=... \
 //     --dart-define=E2E_EMAIL=... --dart-define=E2E_PASSWORD=...
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -80,6 +81,114 @@ void main() {
   }
 
   Future<void> shot(String name) => binding.takeScreenshot(name);
+
+  /// 🔴 TAP ONLY ONCE THE TAP WILL ACTUALLY REACH THE CONTROL.
+  ///
+  /// `tester.tap()` aims at a finder's CENTRE and delivers a real pointer event
+  /// there. If something is drawn on top of that point the event goes to the
+  /// thing on top — `warnIfMissed` prints a warning that nobody reads and the
+  /// test carries on, failing several lines later on whatever the tap was
+  /// supposed to produce. This suite already has `expectNothingCoveringTheApp`
+  /// for one instance of that class (a modal `ModalBarrier`); this is the other,
+  /// and it cost the nightly two red nights.
+  ///
+  /// 🔬 WHAT HAPPENED, 2026-08-03 → 2026-08-04. `app_shell.dart` draws the
+  /// navigation bar as a FLOATING `Positioned` inside a `Stack`, over the branch
+  /// content — so the bottom ~86px of every scroll view is inside the viewport
+  /// but underneath an opaque bar. `scrollUntilVisible` finishes with
+  /// `Scrollable.ensureVisible`, which scrolls the MINIMUM needed to bring the
+  /// target inside the viewport RECT and knows nothing about what is painted on
+  /// top of it — so it parked "Log out" at the viewport's bottom edge, under the
+  /// bar. The tap at (800, 827) landed on the `Insights` tab, `signOut()` was
+  /// never called, and the suite reported "Sign-out did not return to the login
+  /// screen" — a sign-out message for a hit-testing problem.
+  ///
+  /// It began the night the settings list grew two rows (the open-source
+  /// licences tile above and Delete account below): the extra scroll extent is
+  /// what let `ensureVisible` park the button at the very bottom instead of
+  /// stopping short at max-scroll. Nothing about signing out changed, which is
+  /// why `test/sign_out_destination_test.dart` stayed green throughout — it
+  /// mounts a 1200x4000 surface where nothing is ever occluded.
+  ///
+  /// So: keep scrolling while the control is occluded, and if it can never be
+  /// reached, SAY WHAT IS ON TOP OF IT rather than blaming the button.
+  Future<void> tapWhenHittable(
+    WidgetTester tester,
+    Finder finder,
+    String what, {
+    Finder? scrollable,
+  }) async {
+    List<String> occluders() {
+      if (finder.evaluate().isEmpty) {
+        return <String>['(the control is not in the tree)'];
+      }
+      final HitTestResult result = HitTestResult();
+      WidgetsBinding.instance.hitTestInView(
+        result,
+        tester.getCenter(finder),
+        tester.view.viewId,
+      );
+      return result.path
+          .map((HitTestEntry e) => e.target.runtimeType.toString())
+          .take(6)
+          .toList();
+    }
+
+    bool reaches() {
+      if (finder.evaluate().isEmpty) return false;
+      final RenderObject target = tester.renderObject(finder);
+      final HitTestResult result = HitTestResult();
+      WidgetsBinding.instance.hitTestInView(
+        result,
+        tester.getCenter(finder),
+        tester.view.viewId,
+      );
+      return result.path.any((HitTestEntry e) => identical(e.target, target));
+    }
+
+    // A control resting under the floating bar only needs the list driven a
+    // little further — the scroll views carry enough bottom padding (108px on
+    // Settings) to clear it, so this terminates on a real layout.
+    if (!reaches() && scrollable != null) {
+      for (int i = 0; i < 15 && !reaches(); i++) {
+        await tester.drag(scrollable, const Offset(0, -120));
+        await pumpFor(tester, const Duration(milliseconds: 250));
+      }
+    }
+
+    expect(
+      reaches(),
+      isTrue,
+      reason:
+          'A tap aimed at "$what" would NOT reach it — something is drawn on '
+          'top of its centre point, and the tap would go there instead, '
+          'silently. At that point the hit test finds: ${occluders().join(' → ')}. '
+          'The usual cause is the floating navigation bar or FAB in '
+          'app_shell.dart: they are Positioned siblings ABOVE the branch '
+          'content in a Stack, so the bottom ~86px of any scroll view is inside '
+          'the viewport but not tappable.',
+    );
+    await tester.tap(finder);
+  }
+
+  /// WHAT IS ON SCREEN, for a failure message that would otherwise only say
+  /// what is NOT.
+  ///
+  /// `findsNothing`-style failures name the widget that is missing and stop
+  /// there, so "Sign-out did not return to the login screen" reads the same
+  /// whether the user is still in Settings (the tap missed), stuck on a
+  /// spinner (the round-trip hung) or in the onboarding carousel (the redirect
+  /// was overridden). Those need three different fixes. Listing the text that
+  /// IS rendered tells them apart from the run page alone, without another
+  /// night's wait.
+  String onScreen(WidgetTester tester) {
+    final Iterable<String> texts = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((Text t) => t.data ?? '')
+        .where((String s) => s.trim().isNotEmpty)
+        .take(25);
+    return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
+  }
 
   /// 🔴 THE FAILURE THIS SUITE MUST NAME OUT LOUD.
   ///
@@ -444,7 +553,21 @@ void main() {
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 20,
     );
-    await tester.tap(find.text('Log out'));
+    // 🔴 THE ONE MOMENT THIS SUITE NEVER PHOTOGRAPHED. Every failure from
+    // 2026-08-03 onward was "Sign-out did not return to the login screen", and
+    // the artifact stopped at 16-home-currency — so there was no evidence of
+    // where the Log out control actually WAS, or what the screen looked like
+    // after it was tapped. Two shots either side of the tap cost one frame each
+    // and turn "the assertion said false" into a picture of why.
+    await shot('17a-before-logout');
+    await tapWhenHittable(
+      tester,
+      find.text('Log out'),
+      'Log out',
+      scrollable: find.byType(Scrollable).first,
+    );
+    await pumpFor(tester, const Duration(seconds: 3));
+    await shot('17b-after-logout-tap');
     // signOut() is an async round-trip to Supabase; the router then refreshes
     // and redirects. A signed-out user on a non-auth route (/settings) lands on
     // /login — NOT first-run onboarding — per the app_router redirect (a
@@ -452,7 +575,11 @@ void main() {
     expect(
       await waitFor(tester, find.text('Welcome back')),
       isTrue,
-      reason: 'Sign-out did not return to the login screen',
+      reason:
+          'Sign-out did not return to the login screen. On screen instead: '
+          '${onScreen(tester)} — see 17a-before-logout (was the control where '
+          'the tap went?) and 17b-after-logout-tap in the e2e-screenshots '
+          'artifact.',
     );
 
     // 🔴 AND THEN SETTLE AND RE-ASSERT — this second check is the point.

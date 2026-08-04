@@ -21,7 +21,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +36,7 @@ import {
 } from '../deployment-record.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = resolve(CI_DIR, '../..');
 const RECORDER = join(CI_DIR, 'record-deployment.mjs');
 
 let TMP;
@@ -48,7 +49,22 @@ const REGISTER = {
     { id: 'windows-store', kind: 'store', deploymentEnvironment: '{app}-windows-store' },
     { id: 'android-play', kind: 'store', deploymentEnvironment: '{app}-android-play' },
   ],
+  serviceEnvironments: [
+    { id: 'subly-api', kind: 'service', deploymentEnvironment: 'subly-api' },
+    { id: 'platform', kind: 'service', deploymentEnvironment: 'platform' },
+  ],
 };
+
+/** 🔴 THE REAL FILE, not the fixture above.
+ *
+ *  A fixture I wrote encodes the same understanding as the code I wrote, so the
+ *  two agree by construction and prove nothing about the register that actually
+ *  ships. The five red `deploy-workers.yml` runs from 2026-08-02 were a
+ *  disagreement between the SHIPPING register and the SHIPPING workflows, and
+ *  every fixture in this file was green throughout. */
+const REAL_REGISTER = JSON.parse(
+  readFileSync(resolve(ROOT, 'tooling/channel-register.json'), 'utf8'),
+);
 
 /** Run the real recorder with no network reachable — every case here fails or
  *  succeeds BEFORE the first fetch, which is exactly the boundary under test. */
@@ -144,6 +160,96 @@ describe('deployment-record — the environment resolves against the register', 
   test('a register with no channels resolves nothing', () => {
     assert.equal(resolveEnvironment({}, 'subly-web'), null);
   });
+
+  // ── SERVICE ENVIRONMENTS — the five red deploy-workers runs from 2026-08-02 ──
+  test('`subly-api` resolves to a service environment, not to nothing', () => {
+    const r = resolveEnvironment(REGISTER, 'subly-api');
+    assert.notEqual(r, null, 'a Worker deploy must be recordable');
+    assert.equal(r.channel.id, 'subly-api');
+    assert.equal(r.channel.kind, 'service');
+  });
+
+  test('`platform` resolves even though it is not app-scoped, and app is null', () => {
+    const r = resolveEnvironment(REGISTER, 'platform');
+    assert.notEqual(r, null);
+    assert.equal(r.channel.kind, 'service');
+    assert.equal(r.app, null, 'there is one platform Worker for every app — an app name here would be a guess');
+  });
+
+  // 🔴 THE ASSERTION MUST STILL BE ABLE TO FAIL. An environment claimed by
+  // neither list is the input that proves this change fixed the cause instead of
+  // deleting the check.
+  test('an environment in NEITHER list is still refused', () => {
+    assert.equal(resolveEnvironment(REGISTER, 'subly-nowhere'), null);
+    assert.equal(resolveEnvironment(REGISTER, 'not-a-worker'), null);
+  });
+
+  test('a service environment is matched exactly, never as a prefix', () => {
+    assert.equal(resolveEnvironment(REGISTER, 'platform-staging'), null);
+    assert.equal(resolveEnvironment(REGISTER, 'subly-api-canary'), null);
+  });
+
+  // A service row must never satisfy the store rules: record-deployment.mjs
+  // demands --listing-url for `kind === 'store'`, and readSubmissions counts
+  // only those. If a service ever resolved as a store, a Worker deploy would be
+  // filed in the submission ledger as a shipped app.
+  // ── THE COVERAGE ASSERTION — real workflows against the real register ──────
+  //
+  // 🔴 THIS IS THE TEST THAT WOULD HAVE CAUGHT IT. Every fixture above was green
+  // through all five red `deploy-workers.yml` runs, because the fixtures and the
+  // matcher were written by the same hand and agreed with each other. The defect
+  // lived between two files neither of them read: the workflows say
+  // `record-deployment.mjs platform`, and the shipping register had no row that
+  // could resolve it.
+  //
+  // Derived, never hardcoded — a literal list here would go stale the moment a
+  // job is added, which is the same silent-drift class the register exists for.
+  test('every record-deployment.mjs call site in every workflow resolves', () => {
+    const dir = resolve(ROOT, '.github/workflows');
+    const callSites = [];
+    for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+      const yaml = readFileSync(join(dir, file), 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l))
+        .join('\n');
+      for (const m of yaml.matchAll(/record-deployment\.mjs\s+([A-Za-z0-9._-]+)/g)) {
+        callSites.push({ file, environment: m[1] });
+      }
+    }
+
+    // If this ever reads zero the test has stopped testing: a matcher with no
+    // inputs passes trivially, which is how a guard quietly stops guarding.
+    assert.ok(
+      callSites.length >= 3,
+      `expected at least the three known deploy records, found ${callSites.length} — ` +
+        'this scanner has lost sight of the workflows it is meant to cover',
+    );
+
+    const unresolved = callSites.filter(
+      (c) => resolveEnvironment(REAL_REGISTER, c.environment) === null,
+    );
+    assert.deepEqual(
+      unresolved,
+      [],
+      'every environment a workflow records must be claimed by tooling/channel-register.json — ' +
+        'either a `channels` row (a release channel) or a `serviceEnvironments` row (a backend Worker). ' +
+        'An unclaimed one turns a SUCCESSFUL deploy into a red job after the upload already happened.',
+    );
+  });
+
+  test('service environments are not store channels', () => {
+    for (const env of ['subly-api', 'platform']) {
+      assert.notEqual(resolveEnvironment(REGISTER, env).channel.kind, 'store');
+    }
+    assert.deepEqual(
+      readSubmissions(
+        [{ environment: 'platform', createdAt: 'x', description: 'nk1 state=live sha=abc12345' }],
+        REGISTER,
+      ),
+      { records: [], unreadable: [] },
+      'a Worker deploy is neither a submission nor an unreadable row',
+    );
+  });
 });
 
 describe('deployment-record — readSubmissions separates read from unreadable', () => {
@@ -218,10 +324,21 @@ describe('record-deployment — the store rule is enforced BEFORE anything is wr
     assert.match(out, /is not one of in_review, live, rejected, pulled/);
   });
 
+  // 🔴 THE REFUSAL THAT MUST SURVIVE THE serviceEnvironments CHANGE. Teaching
+  // the resolver about backend Workers widened what it accepts; this is the
+  // input proving it did not widen to everything.
   test('REFUSES an environment no register row claims', () => {
     const { code, out } = record(['subly-nowhere']);
     assert.equal(code, 1);
-    assert.match(out, /has a `deploymentEnvironment` template matching/);
+    assert.match(out, /claims the environment "subly-nowhere"/);
+  });
+
+  // A near-miss on a real service name must still be refused — the service list
+  // is matched EXACTLY, so a typo cannot ride in on a prefix.
+  test('REFUSES a near-miss on a service environment', () => {
+    const { code, out } = record(['platform-staging']);
+    assert.equal(code, 1);
+    assert.match(out, /claims the environment "platform-staging"/);
   });
 
   test('REFUSES a --state flag with no value', () => {

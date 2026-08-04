@@ -194,42 +194,49 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
           command: d1 migrations apply PLATFORM_DB --remote
+      # ── ONE DEPLOY PER JOB, AND IT CARRIES THE VARS ─────────────────────────
+      #
+      # 🔴 THE SECOND DEPLOY NOBODY WROTE. The keep-alive secret used to be
+      # pushed by a SEPARATE `wrangler-action` step that supplied `secrets:` and
+      # no `command:`. The action's `command` DEFAULTS TO `deploy`, so that step
+      # uploaded the secret and then ran a bare `wrangler deploy` — and wrangler's
+      # default `keep_vars: false` deletes every plain-text var that is not in
+      # `wrangler.jsonc`, which is exactly the two threaded by CLI flag below.
+      #
+      # Measured on run 30891499182: 08:23:39 deploy with `env.GLITCHTIP_DSN` and
+      # `env.RELEASE` bound (version 457a9616), 08:23:47 a second, unqualified
+      # deploy with neither (version e5bfece9). The version left LIVE was the
+      # second one. `GET /v1/health` returned `"build": null` while subly-api —
+      # which has no secrets step — returned the SHA, and that is what reddened
+      # the post-deploy smoke from 2026-08-02 onward.
+      #
+      # ⚠️ IT WAS NOT ONLY CI. The same wipe took `GLITCHTIP_DSN` with it, so the
+      # crash sink of the Worker every app depends on for config, analytics,
+      # consent, entitlements and the money webhook reported NOTHING for two
+      # days, silently, while the deploy job looked like it had merely failed a
+      # health assertion.
+      #
+      # Merged into the single deploy so there is exactly one upload per job and
+      # it is the one carrying the vars. The action runs `uploadSecrets()` BEFORE
+      # `wranglerCommands()` (proven by the log ordering above: 🔑 08:23:46,
+      # 🚀 08:23:47), so the secret still lands and its VALUE still never appears
+      # in an argument list or a log — it is read from the step env by name.
+      #
+      # ⚠️ ORDERING CAVEAT, stated because this change inverts it. The old step
+      # ran after the deploy on the stated grounds that "a secret is pushed to a
+      # Worker that must already exist". Secrets now upload FIRST, which is safe
+      # for `platform` (live since 2026-07) but would fail on the first-ever
+      # deploy of a brand-new Worker. A new Worker needs one deploy before its
+      # first secret — do not copy this shape to one until it exists.
+      #
+      # ── [pipeline O-4] WHAT THE SECRET IS FOR ───────────────────────────────
+      # `platform_db.cron_heartbeat` carried, every night for three consecutive
+      # nights: "HTTP 401 — REJECTED (unauthenticated, no SUPABASE_ANON_KEY
+      # configured). A rejected request is not proven activity." This keep-alive
+      # is the only thing standing between the shared Supabase auth project and
+      # the free tier's idle pause, and a paused auth project takes sign-in down
+      # across the whole portfolio.
       - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: '4.114.0'   # pinned: package.json says ^4.0.0, which floats. [F-2]
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: services/platform
-          # [pipeline 11]E-8 — see the identical pair in the subly-api job above
-          # for why the DSN is a `--var` and why the release is the SHA rather
-          # than API_VERSION.
-          command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }}
-
-      # ── [pipeline O-4] MAKE THE KEEP-ALIVE ACTUALLY KEEP SOMETHING ALIVE ────
-      # 🔴 `platform_db.cron_heartbeat` carried, every night for three
-      # consecutive nights: "HTTP 401 — REJECTED (unauthenticated, no
-      # SUPABASE_ANON_KEY configured). A rejected request is not proven
-      # activity." The Worker documents this secret as the intended mechanism
-      # (services/platform/src/types.ts) and the repo secret has existed since
-      # 2026-07-17 — nothing ever pushed one to the other.
-      #
-      # WHY IT MATTERS BEYOND A RED ROW: this keep-alive is the only thing
-      # standing between the shared Supabase auth project and the free tier's
-      # idle pause, and a paused auth project takes sign-in down across the whole
-      # portfolio. In the same org another project is already INACTIVE.
-      #
-      # AFTER the deploy, deliberately: a secret is pushed to a Worker that must
-      # already exist. The action's `secrets:` input names the variable and reads
-      # the VALUE from the step env, so the value never appears in an argument
-      # list, never in the command line, and never in a log. No human handles it.
-      #
-      # This step runs when the `detect` job selects `platform` — a push touching
-      # services/platform/**, a push touching THIS FILE (it is in the path filter
-      # above), or a manual dispatch. So merging this change is itself what first
-      # pushes the secret; the next 06:00 UTC heartbeat is the proof, and
-      # tooling/ops/check-heartbeats.mjs is what reads it.
-      - name: Push the Supabase keep-alive secret to the Worker
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: '4.114.0'   # pinned: package.json says ^4.0.0, which floats. [F-2]
@@ -237,6 +244,10 @@ jobs:
           workingDirectory: services/platform
           secrets: |
             SUPABASE_ANON_KEY
+          # [pipeline 11]E-8 — see the identical pair in the subly-api job above
+          # for why the DSN is a `--var` and why the release is the SHA rather
+          # than API_VERSION.
+          command: deploy --var GLITCHTIP_DSN:${{ secrets.GLITCHTIP_DSN }} --var RELEASE:${{ github.sha }}
         env:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 

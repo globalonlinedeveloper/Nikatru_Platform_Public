@@ -1074,6 +1074,52 @@
     }
   ],
 
+  "_serviceEnvironmentsWhy": [
+    "🔴 A BACKEND WORKER IS NOT A RELEASE CHANNEL, and record-deployment.mjs used to insist it was.",
+    "Since [10]D-9 (commit 3a16272) that script resolved EVERY environment against `channels` and",
+    "hard-failed when none matched — so `deploy-workers.yml` went red on `subly-api` and `platform`",
+    "from 2026-08-02, five consecutive runs, AFTER both Workers had uploaded successfully.",
+    "",
+    "The matcher was right and the register was the wrong authority. A `channels` row carries",
+    "`platforms`, `artifactFormats`, `signing.keyKind`, `minimumToolchain`, `lane` and",
+    "`storeMetadataDir`; a Worker has none of them. Worse, `channels` is the derived right-hand side",
+    "for assert-channel-register.mjs, assert-release-lane-generic.mjs, assert-store-identity.mjs and",
+    "assert-store-metadata.mjs, all of which quantify over {served rows} × {apps} — a fake `subly-api`",
+    "row would corrupt every one. And `platform` is not app-scoped at all: the only template that",
+    "could match it is a bare \"{app}\", whose head and tail are both empty, so it would swallow EVERY",
+    "environment string and destroy the matcher for real channels.",
+    "",
+    "So these get their own list, exactly as `nonChannelSigningIdentities` does for the pack key.",
+    "`resolveEnvironment` falls through to here and returns `kind: 'service'`, which is not 'store',",
+    "so the listing-URL rule in record-deployment.mjs and the submission filter in readSubmissions",
+    "both continue to behave correctly. An environment that appears in NEITHER list is still refused —",
+    "that failing input is preserved, which is what keeps this a fix and not a weakening.",
+    "",
+    "tooling/ci/test/deployment-record.test.mjs derives every `record-deployment.mjs <env>` call site",
+    "from the real workflows and asserts each one resolves against THIS file, so the next unclaimed",
+    "environment fails on the PR that adds it rather than on a production deploy, four times over."
+  ],
+  "serviceEnvironments": [
+    {
+      "id": "subly-api",
+      "deploymentEnvironment": "subly-api",
+      "kind": "service",
+      "name": "Subly backend Worker",
+      "url": "https://api.nikatru.com",
+      "source": "services/subly-api",
+      "notes": "App-scoped Worker. Deployed by .github/workflows/deploy-workers.yml."
+    },
+    {
+      "id": "platform",
+      "deploymentEnvironment": "platform",
+      "kind": "service",
+      "name": "Shared platform Worker",
+      "url": "https://platform.nikatru.com",
+      "source": "services/platform",
+      "notes": "NOT app-scoped — one instance serves every app (config, analytics, consent, entitlements, money webhook, cron). Deployed by .github/workflows/deploy-workers.yml."
+    }
+  ],
+
   "nonChannelSigningIdentities": [
     {
       "id": "content-pack-k1",
