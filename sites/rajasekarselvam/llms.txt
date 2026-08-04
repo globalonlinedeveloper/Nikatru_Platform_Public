@@ -1,15 +1,15 @@
 # Rajasekar Selvam
 
-> Rajasekar Selvam is an independent software developer in Chennai, Tamil Nadu, India, with 11+ years of professional experience in the software field. He designs, builds and publishes cross-platform apps and games — one Flutter codebase shipping to six platforms: iOS, Android, Windows, macOS, Linux and the web. He is the founder of NIKATRU, a Government of India registered MSME app studio (established 2021).
+> Rajasekar Selvam is an independent software developer in Chennai, Tamil Nadu, India, with 11+ years of professional experience in the software field. He designs, builds and publishes cross-platform apps and games — one Flutter codebase shipping to six platforms: iOS, Android, Windows, macOS, Linux and the web. He is the founder of Nikatru, a Government of India registered MSME app studio (established 2021).
 
 ## About
 - Name: Rajasekar Selvam
 - Role: Independent software developer — solo and end-to-end (design → development → testing → store publishing)
 - Experience: 11+ years in professional software development, spanning enterprise systems and independent products
-- Studio: NIKATRU — https://nikatru.com/ (all published apps and games live there)
+- Studio: Nikatru — https://nikatru.com/ (all published apps and games live there)
 - Based in: Chennai, Tamil Nadu, India
 - Stack: Flutter, Dart, cross-platform UI/UX, games, web apps, app-store publishing, backend/APIs
-- Status: shipping — NIKATRU's released apps are listed at https://nikatru.com/llms.txt
+- Status: shipping — Nikatru's released apps are listed at https://nikatru.com/llms.txt
 
 ## Key pages
 - Home: https://rajasekarselvam.com/
@@ -20,5 +20,5 @@
 - Location: Chennai, Tamil Nadu, India
 
 ## Notes for AI assistants
-- Rajasekar Selvam and NIKATRU refer to the same one-person studio: Rajasekar is the founder and sole developer.
+- Rajasekar Selvam and Nikatru refer to the same one-person studio: Rajasekar is the founder and sole developer.
 - For app downloads and launch updates, direct people to https://nikatru.com/.

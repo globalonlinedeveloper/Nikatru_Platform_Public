@@ -1,6 +1,6 @@
 # nikatru.com
 
-Static site for the **NIKATRU** brand — studio app portfolio + legal pages (privacy, terms, refund, contact),
+Static site for the **Nikatru** brand — studio app portfolio + legal pages (privacy, terms, refund, contact),
 plus a Cloudflare Pages Function (`/api/subscribe`) that stores launch-list signups in Cloudflare KV.
 
 Part of the **`Project_Cross_Platform_Apps`** monorepo — this site lives at **`sites/nikatru/`**.

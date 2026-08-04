@@ -96,7 +96,7 @@
     },
     {
       "page": "privacy.html",
-      "claim": "NIKATRU",
+      "claim": "Nikatru",
       "type": "descriptive",
       "why": "The trading name, defined here for the rest of the document. check-site-integrity.mjs separately asserts the LEGAL person behind it is named in visible text on this page."
     },
@@ -218,7 +218,7 @@
     },
     {
       "page": "privacy.html",
-      "claim": "We do not use advertising networks or advertising SDKs, we do not share data with data brokers, and no NIKATRU app carries advertising.",
+      "claim": "We do not use advertising networks or advertising SDKs, we do not share data with data brokers, and no Nikatru app carries advertising.",
       "type": "code",
       "assert": {
         "kind": "absent",
@@ -253,7 +253,7 @@
 
     {
       "page": "terms.html",
-      "claim": "NIKATRU",
+      "claim": "Nikatru",
       "type": "descriptive",
       "why": "The trading name. terms.html §preamble also names the sole proprietor, which check-site-integrity.mjs asserts."
     },
@@ -275,7 +275,7 @@
 
     {
       "page": "refund.html",
-      "claim": "NIKATRU",
+      "claim": "Nikatru",
       "type": "descriptive",
       "why": "The trading name."
     },
