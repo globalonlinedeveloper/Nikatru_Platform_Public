@@ -697,13 +697,32 @@ jobs:
       # (sharing, children) are derived from the Data safety ones so the two
       # forms cannot be filled in inconsistently months apart.
       #
+      # 📌 THE TWO `null` ANSWERS WERE SETTLED ON 2026-08-04 and the form no longer
+      # prints "THE FORM CANNOT BE SUBMITTED YET". Both had been recorded as
+      # needing something they did not need. `contexts.device` was called
+      # underivable "because the payload is assembled inside the vendored SDK" —
+      # but a vendored SDK is source, pinned in pubspec.lock, and reading it showed
+      # sentry-android sets a per-install UUID ungated by sendDefaultPii. The
+      # edge-geo question was recorded as having no primary source; the ruling
+      # sentence was a Note on the page the declaration already cited. Both are
+      # `true` now, with citations and a version pin.
+      #
+      # 🔬 AND THE LIMBS GREW, because settling them exposed a silent hole: `tells`
+      # are only evaluated for a row that is "never collected in EVERY posture", so
+      # a row answering `true` — or `null` — keeps its tell list where everyone
+      # reads it as coverage while nothing evaluates it. 24 tells across four rows
+      # were unreachable, including every location tell. `clientAbsence` now
+      # asserts the half of a claim that survives collection ("collected, but never
+      # from the DEVICE") unconditionally, a `tells` block on a collected row is a
+      # build failure, and the crash-SDK version is compared to pubspec.lock so a
+      # Renovate bump cannot quietly invalidate a sworn answer.
+      #
       # ⚠️ IT PRINTS WHAT IT CANNOT SEE ON EVERY RUN — the merged Android manifest
       # (Gradle adds plugin permissions from files not in this repo, and Android
-      # cannot be built here), what the crash SDK puts in contexts.device, and the
-      # IARC rating itself, which is ASSIGNED by the rating authorities and which
-      # this guard fails the build for inventing. Two answers are honestly `null`
-      # and print "THE FORM CANNOT BE SUBMITTED YET" rather than being filled with
-      # a plausible value.
+      # cannot be built here); what the GlitchTip SERVER does with a crash event
+      # after receipt, which is where the remaining geo question lives now that the
+      # wire payload is settled; and the IARC rating itself, which is ASSIGNED by
+      # the rating authorities and which this guard fails the build for inventing.
       - name: The Data safety and content-rating declarations still describe the code
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-play-declarations.mjs
@@ -824,9 +843,18 @@ jobs:
       # and report the previous version honestly, which is the one client the
       # CFG-1 force-update gate cannot see. The FLAG limb is DROPPED by name:
       # ADR 023 rejects guarding `--pwa-strategy=none` in CI as over-encoding.
+      # 2026-08-04: the same question now covers the two Cloudflare
+      # Git-deployed marketing sites, which had NO rule for .css or .js — they
+      # were riding on the nikatru.com zone's 4-hour Browser Cache TTL, and
+      # switching that zone to "Respect Existing Headers" (the fix for
+      # /flutter_bootstrap.js serving max-age=14400 against a declared 0) left
+      # both classes inheriting a platform default nobody had chosen. The two
+      # roots are named as ARGUMENTS, not in a comment: the guard fails if a
+      # claimed root is not among the bundles it really scanned, so this line
+      # cannot go on promising coverage the scan has stopped delivering.
       - name: The web channel declares a cache policy a deploy can be seen through
         working-directory: ${{ github.workspace }}
-        run: node tooling/ci/assert-web-cache-policy.mjs
+        run: node tooling/ci/assert-web-cache-policy.mjs . sites/nikatru sites/rajasekarselvam
       # [pipeline 9]R-1. The criterion this replaces banned a STRING — "no
       # hard-coded `apps/<id>` in a release workflow" — and a rule about a string
       # is satisfied by moving the string: `env: APP: apps/subly` plus

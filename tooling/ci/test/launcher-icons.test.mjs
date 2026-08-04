@@ -206,6 +206,7 @@ function world({
   brickArt = true,
   emptyStockIcons = false,
   flutterFails = false,
+  linux = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const sdkRoot = join(root, 'sdk');
@@ -250,6 +251,16 @@ function world({
     }
     const alpha = iosAlpha && platform === 'ios';
     writeFileSync(p, rel.endsWith('.ico') ? ico(png(8, BRAND)) : png(8, BRAND, { alpha }));
+  }
+
+  // An app that ships `linux/`. A `flutter create` Linux runner is ten files
+  // and ZERO images, so there is no icon to compare — which is exactly why the
+  // PRINT is the whole mechanism and needs a failing case of its own.
+  if (linux) {
+    const lin = join(appDir, 'linux', 'runner');
+    mkdirSync(lin, { recursive: true });
+    writeFileSync(join(appDir, 'linux', 'CMakeLists.txt'), 'set(APPLICATION_ID "com.example.demo")\n');
+    writeFileSync(join(lin, 'my_application.cc'), '// no gtk_window_set_icon anywhere\n');
   }
 
   // The Android adaptive icon and the layer it points at.
@@ -367,6 +378,42 @@ describe('assert-launcher-icons', () => {
     const { code, out } = run(world({ brickArt: false }));
     assert.equal(code, 1, out);
     assert.match(out, /neither that file nor its directory exists in the template/);
+  });
+
+  // ── the LINUX gap: a print is only a mechanism if something proves it fires ─
+  // 🔴 2026-08-04. Linux is deliberately UNCOMPARABLE — a `flutter create` Linux
+  // runner is ten files and ZERO images, the generated GTK runner sets no window
+  // icon, and there is no snapcraft.yaml or .desktop file in this repository, so
+  // there is genuinely no artefact to compare. The launcher icon on that channel
+  // is a PACKAGING concern and no packaging lane exists: tooling/channel-register
+  // .json marks `linux-snap` `served: false`, `lane: null`, deferred by ADR 015,
+  // and tooling/release/submit-snap.mjs prints NO SNAPCRAFT RECIPE because none
+  // of its candidate paths exists.
+  //
+  // That makes the PRINT the entire mechanism keeping the gap visible — and
+  // NOTHING TESTED IT. Emptying UNCOMPARABLE, or re-pointing the existsSync that
+  // feeds it, would delete the only signal and read exactly like coverage. This
+  // repo's most-recorded failure is a check that quietly stopped checking, and a
+  // print nobody exercises is that failure with a friendlier face.
+  //
+  // Real-tree mutation, 2026-08-04: `UNCOMPARABLE` emptied in the actual
+  // repository ⇒ `assert-launcher-icons` still exited 0 and the
+  // "apps/subly ships linux/ — UNCHECKED" line was GONE. Restored
+  // byte-identically; the line returned.
+  test('an app that ships linux/ is PRINTED as unchecked, and still passes', () => {
+    const { code, out } = run(world({ linux: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /apps\/demo ships linux\/ — UNCHECKED/);
+    assert.match(out, /PACKAGING concern/);
+  });
+
+  // The other half, and the one that stops the assertion above from being a
+  // constant: the line must be evidence ABOUT THE TREE, not a string the guard
+  // always prints. An app with no linux/ must produce no linux print.
+  test('an app that does NOT ship linux/ produces no such print', () => {
+    const { code, out } = run(world());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /ships linux\//);
   });
 
   // ── anti-vacuity: refusing to run blind ───────────────────────────────────

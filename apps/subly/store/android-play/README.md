@@ -103,23 +103,49 @@ actually bites, in the order it would catch a real drift:
 |---|---|
 | The `.aab` lane gains an identity `--dart-define` | `AppConfig.isBackendLive` is a compile-time constant over those defines, so the shipped bundle stops being the one the declaration describes |
 | A permission or package contradicts a *"not collected"* answer | that answer's `tells` — the mechanism by which a location or ads SDK actually arrives |
+| A permission or package contradicts a *"collected, but never from the device"* answer | that answer's `clientAbsence`, which is evaluated **whatever** the answer is. `tells` only run for a row that is never collected in any posture, so a row answering `true` — or `null` — would otherwise keep a tell list nobody evaluates |
+| A `tells` block is left on a row that IS collected | it can never fire; an assertion that cannot fail is worse than none, so the guard says where to move it |
+| Renovate bumps `sentry_flutter` | the *Device or other IDs* answer was derived by reading that SDK's source; `crashSdkSurface.pinned` is compared to `pubspec.lock`, so a bump demands a re-read |
+| A settled answer drifts back to `null` | `resolved` re-checks every question it claims to have closed — the one backslide the blocking list can never print, because that list is built from `unresolved` |
 | A new direct dependency appears | *"nobody said what data it can collect"* — the mitigation for not being able to read the merged manifest |
 | A new `personalData: true` row lands in `tooling/legal/data-inventory.json` | it must be mapped to a Play data type or excluded **by name**, in both directions |
 | An erasure route or the web deletion page disappears | the *"users can request deletion"* answer loses what backs it |
 | The two forms answer *sharing* or *children* differently | Play asks both twice, months apart; the rating answers are **derived** from the Data safety ones |
 | An IARC rating is written down | ratings are **assigned** by the rating authorities — one without a certificate and a citation is a guess wearing the costume of a result |
 
-⚠️ **Two answers are honestly `null`** and the guard prints
-`THE FORM CANNOT BE SUBMITTED YET` on every run until they are settled: what the
-crash SDK puts in `contexts.device`, and whether Play counts edge-derived coarse
-geo as *Approximate location*. Neither is derivable from this tree, and a
-confidently wrong Data safety label is worse than an obviously incomplete one.
+✅ **Both `null` answers were settled on 2026-08-04** and the guard no longer
+prints `THE FORM CANNOT BE SUBMITTED YET`. Both had been recorded as needing
+something they did not need — see `resolved` in `data-safety.json`, which keeps
+the write-ups:
 
-⚠️ **The declaration describes the `demo` posture today**, because the `.aab` lane
-passes only `GLITCHTIP_DSN`. That bundle has no account, no server sync and no
-analytics — the crash rail is its only network egress. Every answer is recorded
-for **both** postures, and the guard reads the workflow to say which column to
-type into the console.
+- **What the crash SDK puts in `contexts.device`** was called underivable
+  *"because the payload is assembled inside the vendored SDK"*. A vendored SDK
+  **is** source — pinned in `pubspec.lock`, unpacked in the pub cache. Reading it:
+  sentry-android sets `device.id` to a UUID persisted for the life of the install,
+  the string `sendDefaultPii` never appears in that file, the Dart layer passes
+  the unmodelled key straight through, and `scrubEvent` never touches
+  `event.contexts`. → *Device or other IDs* is `true` in **both** postures. Not
+  uniform across platforms: Windows and Linux never install the contexts
+  integration at all, and web is excluded by the same guard.
+- **Whether Play counts edge-derived coarse geo as *Approximate location*** was
+  recorded as having no primary source. It is a Note on the page this file already
+  cited: *"Approximate location that is inferred, such as via IP address or Access
+  Point Name, must be disclosed here."* Ours is also **stored** (three columns on
+  `events`) rather than used in flight, so it is neither out of scope nor
+  ephemeral. → `true` under `backend-live`, optional, purpose Analytics.
+
+⚠️ **What is still not visible from here**: whether the self-hosted GlitchTip
+instance runs its own GeoIP on ingest. That is a property of that deployment, not
+of this tree, and it is printed in the guard's CANNOT-SEE list. It cannot move the
+shipping answer — `buildPosture.current` is `backend-live`, where *Approximate
+location* is already `true`.
+
+⚠️ **The declaration describes the `backend-live` posture** — since 2026-08-04,
+when the `.aab` lane started passing the identity dart-defines alongside
+`GLITCHTIP_DSN` (fixing a separate defect: every store artefact in the tree had
+been the demo build, with mock auth and seeded data). Every answer is still
+recorded for **both** postures, and the guard reads the workflow to say which
+column to type into the console.
 
 ## What this channel needs that lives OUTSIDE this directory
 
