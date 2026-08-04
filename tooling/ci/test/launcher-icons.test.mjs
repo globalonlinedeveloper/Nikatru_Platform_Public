@@ -54,7 +54,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -151,13 +151,6 @@ const SET = [
   ['windows', 'app_icon.ico'],
 ];
 
-const SDK_DIR = {
-  android: 'android.tmpl/app/src/main/res',
-  ios: 'ios.tmpl/Runner/Assets.xcassets/AppIcon.appiconset',
-  macos: 'macos.tmpl/Runner/Assets.xcassets/AppIcon.appiconset',
-  windows: 'windows.tmpl/runner/resources',
-  web: 'web',
-};
 const APP_DIR = {
   android: 'android/app/src/main/res',
   ios: 'ios/Runner/Assets.xcassets/AppIcon.appiconset',
@@ -167,15 +160,41 @@ const APP_DIR = {
 };
 
 /**
- * Builds a repo-shaped fixture.
+ * A FAKE `flutter` at `<sdkRoot>/bin/`, which is how these fixtures supply the
+ * stock bytes.
  *
- * 🔴 `overlay` MODELS THE REAL SDK, and modelling it wrongly is the whole point
- * of M2/M3. In a real Flutter install every `.img.tmpl` is ZERO BYTES and the
- * bytes live in `flutter_template_images`, resolved through flutter_tools'
- * `package_config.json`. With `overlay: true` the fixture reproduces that split;
- * with `overlay: false` the SDK holds empty placeholders and nothing else, which
- * MUST be COVERAGE LOST rather than a pass.
+ * 🔴 A FAKE EXECUTABLE RATHER THAN A FAKE DIRECTORY LAYOUT, and the CI failure
+ * is why. The first version of this fixture built a synthetic
+ * `packages/flutter_tools/templates/` tree — i.e. it modelled the reader's
+ * ASSUMPTION about where bytes live, which is precisely the assumption that was
+ * wrong twice. A fake `flutter create` exercises the real path instead: the
+ * spawn, its exit status, the staging-and-rename, and the on-disk cache.
+ *
+ * `emptyIcons` makes it emit zero-byte icons; `failing` makes it exit 1.
  */
+function fakeFlutter(sdkRoot, referenceDir, { failing = false } = {}) {
+  const bin = join(sdkRoot, 'bin');
+  mkdirSync(bin, { recursive: true });
+  if (process.platform === 'win32') {
+    writeFileSync(
+      join(bin, 'flutter.bat'),
+      failing
+        ? '@echo off\r\necho fake flutter refuses 1>&2\r\nexit /b 1\r\n'
+        : `@echo off\r\nxcopy /E /I /Q /Y "${referenceDir}" "stockref" >nul\r\nexit /b 0\r\n`,
+    );
+  } else {
+    const p = join(bin, 'flutter');
+    writeFileSync(
+      p,
+      failing
+        ? '#!/bin/sh\necho "fake flutter refuses" >&2\nexit 1\n'
+        : `#!/bin/sh\ncp -R "${referenceDir}" "./stockref"\nexit 0\n`,
+    );
+    chmodSync(p, 0o755);
+  }
+}
+
+/** Builds a repo-shaped fixture. */
 function world({
   useStock = [],
   omit = [],
@@ -185,40 +204,24 @@ function world({
   adaptiveRef = '@drawable/ic_launcher_foreground',
   brickConfig = 'assets/icon/app_icon.png',
   brickArt = true,
-  overlay = true,
+  emptyStockIcons = false,
+  flutterFails = false,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const sdkRoot = join(root, 'sdk');
-  const templates = join(sdkRoot, 'packages', 'flutter_tools', 'templates', 'app');
-  const imagesRoot = join(root, 'template-images');
 
-  const stockBytes = (rel) => (rel.endsWith('.ico') ? ico(png(8, STOCK)) : png(8, STOCK));
+  const stockBytes = (rel) =>
+    emptyStockIcons ? Buffer.alloc(0) : rel.endsWith('.ico') ? ico(png(8, STOCK)) : png(8, STOCK);
 
+  // What the fake `flutter create` will copy out: an app-shaped tree, exactly
+  // like the real command produces.
+  const reference = join(root, 'reference', 'stockref');
   for (const [platform, rel] of SET) {
-    // The SDK tree. `.img.tmpl` is EMPTY for every platform except android,
-    // whose stock icon is a plain file — exactly the real 3.44.7 layout.
-    const sdkFile = join(templates, SDK_DIR[platform], platform === 'android' ? rel : `${rel}.img.tmpl`);
-    mkdirSync(dirname(sdkFile), { recursive: true });
-    writeFileSync(sdkFile, platform === 'android' ? stockBytes(rel) : Buffer.alloc(0));
-
-    if (overlay && platform !== 'android') {
-      const overlayFile = join(imagesRoot, 'templates', 'app', SDK_DIR[platform], rel);
-      mkdirSync(dirname(overlayFile), { recursive: true });
-      writeFileSync(overlayFile, stockBytes(rel));
-    }
+    const f = join(reference, APP_DIR[platform], rel);
+    mkdirSync(dirname(f), { recursive: true });
+    writeFileSync(f, stockBytes(rel));
   }
-  // The overlay's location comes from flutter_tools' own package_config.json.
-  const dartTool = join(sdkRoot, 'packages', 'flutter_tools', '.dart_tool');
-  mkdirSync(dartTool, { recursive: true });
-  writeFileSync(
-    join(dartTool, 'package_config.json'),
-    JSON.stringify({
-      configVersion: 2,
-      packages: overlay
-        ? [{ name: 'flutter_template_images', rootUri: `file:///${imagesRoot.replace(/\\/g, '/')}`, packageUri: 'lib/' }]
-        : [],
-    }),
-  );
+  fakeFlutter(sdkRoot, reference, { failing: flutterFails });
 
   // The app.
   const appDir = join(root, 'apps', 'demo');
@@ -376,15 +379,24 @@ describe('assert-launcher-icons', () => {
     assert.match(out, /COVERAGE LOST/);
   });
 
-  // 🔴 M2/M3 — THE CASE THE OLD FIXTURE GOT WRONG. Without the overlay the SDK
-  // holds zero-byte `.img.tmpl` placeholders, which can never equal a real icon.
-  // The tempting behaviour is to compare anyway and print a healthy count.
-  test('COVERAGE LOST when stock assets resolve to zero bytes (no overlay)', () => {
-    const { code, out } = run(world({ overlay: false }));
+  // 🔴 M2/M3 — THE SHAPE THAT HID THE ORIGINAL DEFECT FOR MONTHS. A zero-byte
+  // stock asset can never equal a real icon, so comparing against one is an
+  // assertion that cannot fail. The tempting behaviour is to compare anyway and
+  // print a healthy count, which is exactly what both guards used to do.
+  test('COVERAGE LOST when the stock icons are zero bytes', () => {
+    const { code, out } = run(world({ emptyStockIcons: true }));
     assert.equal(code, 1, out);
     assert.match(out, /COVERAGE LOST/);
-    assert.match(out, /resolved to ZERO BYTES/);
-    assert.match(out, /flutter_template_images/);
+    assert.match(out, /ZERO BYTES/);
+  });
+
+  // A spawn that fails must not look like a tool that is absent, and neither may
+  // look like "nothing to check".
+  test('COVERAGE LOST when `flutter create` fails', () => {
+    const { code, out } = run(world({ flutterFails: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /`flutter create` failed/);
   });
 
   // The same shape one level up: an app that ships a platform the guard has no
@@ -421,13 +433,6 @@ describe('assert-launcher-icons', () => {
 describe('flutter-stock-assets', () => {
   const load = async () => import('../flutter-stock-assets.mjs');
 
-  test('strips every template suffix to the shipped filename', async () => {
-    const { shippedName } = await load();
-    assert.equal(shippedName('Icon-192.png.copy.tmpl'), 'Icon-192.png');
-    assert.equal(shippedName('app_icon.ico.img.tmpl'), 'app_icon.ico');
-    assert.equal(shippedName('ic_launcher.png'), 'ic_launcher.png');
-  });
-
   test('throws when there is no SDK at all', async () => {
     const { readStockAssets, StockAssetsUnavailable } = await load();
     assert.throws(
@@ -436,13 +441,26 @@ describe('flutter-stock-assets', () => {
     );
   });
 
-  test('throws when the template directory does not exist', async () => {
+  test('throws when the SDK has no `flutter` launcher', async () => {
     const { readStockAssets, StockAssetsUnavailable } = await load();
     const root = join(TMP, `s${seq++}`);
     mkdirSync(root, { recursive: true });
     assert.throws(
       () => readStockAssets({ sdkRoot: root, relDir: 'web', keep: () => true }),
-      (e) => e instanceof StockAssetsUnavailable && /neither/.test(e.lines[0]),
+      (e) => e instanceof StockAssetsUnavailable && /has no launcher/.test(e.lines[0]),
+    );
+  });
+
+  // `appDir` is the seam these two use: the reference app is supplied directly,
+  // so the reading half is tested without paying for a real `flutter create`.
+  // The SPAWNING half is covered through the guard, against a fake `flutter`.
+  test('throws when the requested directory is absent from a created app', async () => {
+    const { readStockAssets, StockAssetsUnavailable } = await load();
+    const app = join(TMP, `s${seq++}`);
+    mkdirSync(app, { recursive: true });
+    assert.throws(
+      () => readStockAssets({ appDir: app, relDir: 'web', keep: () => true }),
+      (e) => e instanceof StockAssetsUnavailable && /has no "web" directory/.test(e.lines[0]),
     );
   });
 
@@ -450,39 +468,25 @@ describe('flutter-stock-assets', () => {
   // real icon, so comparing against one is an assertion that cannot fail.
   test('throws rather than returning a zero-byte stock asset', async () => {
     const { readStockAssets, StockAssetsUnavailable } = await load();
-    const root = join(TMP, `s${seq++}`);
-    const dir = join(root, 'packages', 'flutter_tools', 'templates', 'app', 'web');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'Icon-maskable-512.png.img.tmpl'), Buffer.alloc(0));
+    const app = join(TMP, `s${seq++}`);
+    mkdirSync(join(app, 'web', 'icons'), { recursive: true });
+    writeFileSync(join(app, 'web', 'icons', 'Icon-maskable-512.png'), Buffer.alloc(0));
     assert.throws(
-      () => readStockAssets({ sdkRoot: root, relDir: 'web', keep: (r) => r.endsWith('.png') }),
+      () => readStockAssets({ appDir: app, relDir: 'web', keep: (r) => r.endsWith('.png') }),
       (e) => e instanceof StockAssetsUnavailable && /ZERO BYTES/.test(e.lines[0]),
     );
   });
 
-  test('the overlay replaces an empty placeholder and wins nothing else', async () => {
+  test('reads nested paths, keyed relative to the requested directory', async () => {
     const { readStockAssets } = await load();
-    const root = join(TMP, `s${seq++}`);
-    const dir = join(root, 'packages', 'flutter_tools', 'templates', 'app', 'web');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'Icon-maskable-512.png.img.tmpl'), Buffer.alloc(0));
-    writeFileSync(join(dir, 'Icon-512.png.copy.tmpl'), Buffer.from('REAL-SDK'));
+    const app = join(TMP, `s${seq++}`);
+    mkdirSync(join(app, 'web', 'icons'), { recursive: true });
+    writeFileSync(join(app, 'web', 'favicon.png'), Buffer.from('FAV'));
+    writeFileSync(join(app, 'web', 'icons', 'Icon-512.png'), Buffer.from('FIVE-TWELVE'));
+    writeFileSync(join(app, 'web', 'index.html'), Buffer.from('not an icon'));
 
-    const images = join(root, 'images');
-    const od = join(images, 'templates', 'app', 'web');
-    mkdirSync(od, { recursive: true });
-    writeFileSync(join(od, 'Icon-maskable-512.png'), Buffer.from('FROM-OVERLAY'));
-    // The overlay also carries a name the SDK already has REAL bytes for; the
-    // SDK's must win, because that is the copy `flutter create` uses.
-    writeFileSync(join(od, 'Icon-512.png'), Buffer.from('OVERLAY-SHOULD-LOSE'));
-
-    const got = readStockAssets({
-      sdkRoot: root,
-      relDir: 'web',
-      keep: (r) => r.endsWith('.png'),
-      imagesRoot: images,
-    });
-    assert.equal(got.get('Icon-maskable-512.png').toString(), 'FROM-OVERLAY');
-    assert.equal(got.get('Icon-512.png').toString(), 'REAL-SDK');
+    const got = readStockAssets({ appDir: app, relDir: 'web', keep: (r) => r.endsWith('.png') });
+    assert.deepEqual([...got.keys()].sort(), ['favicon.png', 'icons/Icon-512.png']);
+    assert.equal(got.get('icons/Icon-512.png').toString(), 'FIVE-TWELVE');
   });
 });

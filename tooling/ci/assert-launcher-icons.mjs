@@ -40,14 +40,14 @@
 // Same reasoning as `assert-stamp-brand-assets.mjs` — which covers the STAMPED
 // app's web assets; this guard covers the SHIPPED apps' native ones.
 //
-// 🔴 AND "THE SDK" IS NOT ONE DIRECTORY, which this guard learned the hard way on
-// its FIRST RUN. Reading only
-// `$FLUTTER_ROOT/packages/flutter_tools/templates/app/` it reported
-// `33 icon(s) compared` and flagged Android alone — while iOS, macOS and Windows
-// silently compared against ZERO-BYTE placeholders and could never have matched.
-// Every `.img.tmpl` in the SDK is empty; the real bytes are overlaid from the
-// `flutter_template_images` package. `flutter-stock-assets.mjs` is the one place
-// that knows this, and it refuses to return an empty stock asset at all.
+// 🔴 AND "THE SDK's STOCK BYTES" TOOK THREE ATTEMPTS TO READ CORRECTLY, two of
+// which were GREEN WHILE BROKEN. Reading the template directory reported
+// `33 icon(s) compared` while iOS, macOS and Windows compared against ZERO-BYTE
+// placeholders; resolving the `flutter_template_images` overlay worked locally
+// and died in CI, where a prebuilt SDK has no package config to resolve it from.
+// `flutter-stock-assets.mjs` now RUNS `flutter create` and reads the app it
+// produces — the literal question, so the literal answer. Its header records all
+// three attempts, because the failure mode was identical each time.
 //
 // ⚠️ SO IT REFUSES TO RUN BLIND. No SDK, no overlay, or an empty stock asset →
 // COVERAGE LOST, exit 1. "I could not check" must never read as "nothing was
@@ -142,18 +142,17 @@ function coverageLost(lines) {
 const sdkRoot = flutterSdkRoot();
 
 /**
- * Where a platform's stock icons live in the SDK app template, where they live
- * in an app, and which files in that subtree are icons.
+ * Where each platform's launcher icons live INSIDE AN APP, and which files in
+ * that subtree are icons.
  *
- * `keep` is applied to the SHIPPED relative name (template suffixes already
- * stripped), so it describes the filename an app carries rather than the
- * template's. Paths are POSIX-style because that is the key `readStockAssets`
- * returns and the form these messages print.
+ * One path per platform, not two: the reference the stock bytes come from is a
+ * created app, so the shipped app and the reference share a layout. There is no
+ * template path to keep in step with an app path. Paths are POSIX-style,
+ * matching the keys `readStockAssets` returns and the form these messages print.
  */
 const PLATFORMS = [
   {
     id: 'android',
-    sdk: 'android.tmpl/app/src/main/res',
     app: 'android/app/src/main/res',
     // Only the launcher icon. `res/` also holds drawables and XML that are not
     // icons and have nothing to be identical to.
@@ -161,26 +160,21 @@ const PLATFORMS = [
   },
   {
     id: 'ios',
-    sdk: 'ios.tmpl/Runner/Assets.xcassets/AppIcon.appiconset',
     app: 'ios/Runner/Assets.xcassets/AppIcon.appiconset',
     keep: (rel) => rel.endsWith('.png'),
   },
   {
     id: 'macos',
-    sdk: 'macos.tmpl/Runner/Assets.xcassets/AppIcon.appiconset',
     app: 'macos/Runner/Assets.xcassets/AppIcon.appiconset',
     keep: (rel) => rel.endsWith('.png'),
   },
   {
     id: 'windows',
-    sdk: 'windows.tmpl/runner/resources',
     app: 'windows/runner/resources',
     keep: (rel) => rel.endsWith('.ico'),
   },
   {
     id: 'web',
-    // Web has no `.tmpl` suffix on the directory — it is copied verbatim.
-    sdk: 'web',
     app: 'web',
     keep: (rel) => rel.endsWith('.png'),
   },
@@ -191,9 +185,11 @@ const PLATFORMS = [
 const UNCOMPARABLE = new Map([
   [
     'linux',
-    'the SDK ships no icon in templates/app/linux.tmpl, the generated GTK runner sets no window icon, and ' +
-      'this repo has no snapcraft.yaml or .desktop file — so there is no artefact to compare. A Linux ' +
-      'launcher icon is a PACKAGING concern; when a snap/flatpak recipe lands, give it a limb here.',
+    'a freshly created app has TEN files under linux/ and ZERO images (measured 2026-08-04) — the SDK ' +
+      'ships no Linux icon and the generated GTK runner sets no window icon, and this repo has no ' +
+      'snapcraft.yaml or .desktop file. So there is no artefact to compare and nothing to be identical ' +
+      'to. A Linux launcher icon is a PACKAGING concern; when a snap/flatpak recipe lands, give it a ' +
+      'limb here.',
   ],
 ]);
 
@@ -217,7 +213,7 @@ const stockCache = new Map();
 function stockFor(p) {
   if (!stockCache.has(p.id)) {
     try {
-      stockCache.set(p.id, readStockAssets({ sdkRoot, relDir: p.sdk, keep: p.keep }));
+      stockCache.set(p.id, readStockAssets({ sdkRoot, relDir: p.app, keep: p.keep }));
     } catch (e) {
       if (!(e instanceof StockAssetsUnavailable)) throw e;
       coverageLost([...e.lines, `platform = ${p.id}`]);
@@ -328,7 +324,7 @@ for (const slug of listDir(APPS).sort()) {
     // has quietly become vacuous.
     if (expected.size === 0) {
       coverageLost([
-        `apps/${slug} ships ${p.id}/ but the SDK template "templates/app/${p.sdk}" yielded ZERO icons.`,
+        `apps/${slug} ships ${p.id}/ but a freshly created app yielded ZERO icons under "${p.app}".`,
         'Presence, validity and identity for that whole platform would range over nothing and pass.',
         'The SDK layout changed under the PLATFORMS table in this guard — teach it the new one.',
       ]);
@@ -592,8 +588,9 @@ prints.push(
     `${adaptiveChecked} adaptive-icon manifest(s) resolved`,
 );
 prints.push(
-  'stock bytes come from the LIVE SDK + its flutter_template_images overlay, never pinned hashes — the ' +
-    'comparison cannot go stale, and an empty stock asset is refused rather than compared',
+  'stock bytes come from RUNNING `flutter create` with this SDK, never pinned hashes and never a guess ' +
+    'at the template layout — the comparison cannot go stale, and an empty stock asset is refused ' +
+    'rather than compared',
 );
 prints.push(
   'this guard proves an icon is NOT Flutter\'s; it does NOT prove it is the app\'s. A blank square passes. ' +

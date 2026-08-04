@@ -56,18 +56,25 @@ void run(HookContext context) {
         '  1. Add store metadata for apps/\$id. Web icons were GENERATED '
         'from seed_hex — replace them only if you have real art.',
       )
-      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST APP #1 FOUR
-      // PLATFORMS. Nothing in the old checklist mentioned icons after
-      // `flutter create`, so the owner ran the command that writes Flutter's
-      // default logo and had no reason to think anything else was needed.
-      // `warn` rather than `info` on purpose: this is the one line whose
-      // omission is invisible until a store reviewer sees it.
+      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subly FOUR
+      // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
+      // 2026-08-04. Nothing in the old checklist mentioned icons afterwards, so
+      // the owner ran the command that writes Flutter's default logo and had no
+      // reason to think anything else was needed. `warn` rather than `info` on
+      // purpose: this is the one line whose omission stays invisible until a
+      // store reviewer sees it.
+      //
+      // ⚠️ THE MESSAGE NAMES NO APP, and that is [C-10] rather than shyness:
+      // comments here are exempt from assert-no-clone-tells.mjs and STRING
+      // LITERALS ARE NOT. Shared code that knows which app it is in makes every
+      // other app inherit a rule about a product it is not — caught by that
+      // guard on the first CI run of this change.
       ..warn(
         '  1a. THE MOMENT YOU ADD NATIVE PLATFORMS, BRAND THEM. '
         '`flutter create . --platforms=android,ios,macos,windows,linux` writes '
         "FLUTTER'S DEFAULT LOGO into every one of them — that is exactly how "
-        'apps/subly came to ship the stock icon on Android, iOS, macOS and '
-        'Windows at once. Immediately after, run:  '
+        'the first app in this portfolio came to ship the stock icon on '
+        'Android, iOS, macOS and Windows at once. Immediately after, run:  '
         'cd apps/$id && dart run flutter_launcher_icons  '
         '(config + source art are already stamped; CI fails on a stock icon).',
       )
@@ -117,18 +124,25 @@ void run(HookContext context) {
         '  1. Add store metadata for apps/\$id. Web icons were GENERATED '
         'from seed_hex — replace them only if you have real art.',
       )
-      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST APP #1 FOUR
-      // PLATFORMS. Nothing in the old checklist mentioned icons after
-      // `flutter create`, so the owner ran the command that writes Flutter's
-      // default logo and had no reason to think anything else was needed.
-      // `warn` rather than `info` on purpose: this is the one line whose
-      // omission is invisible until a store reviewer sees it.
+      // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subly FOUR
+      // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
+      // 2026-08-04. Nothing in the old checklist mentioned icons afterwards, so
+      // the owner ran the command that writes Flutter's default logo and had no
+      // reason to think anything else was needed. `warn` rather than `info` on
+      // purpose: this is the one line whose omission stays invisible until a
+      // store reviewer sees it.
+      //
+      // ⚠️ THE MESSAGE NAMES NO APP, and that is [C-10] rather than shyness:
+      // comments here are exempt from assert-no-clone-tells.mjs and STRING
+      // LITERALS ARE NOT. Shared code that knows which app it is in makes every
+      // other app inherit a rule about a product it is not — caught by that
+      // guard on the first CI run of this change.
       ..warn(
         '  1a. THE MOMENT YOU ADD NATIVE PLATFORMS, BRAND THEM. '
         '`flutter create . --platforms=android,ios,macos,windows,linux` writes '
         "FLUTTER'S DEFAULT LOGO into every one of them — that is exactly how "
-        'apps/subly came to ship the stock icon on Android, iOS, macOS and '
-        'Windows at once. Immediately after, run:  '
+        'the first app in this portfolio came to ship the stock icon on '
+        'Android, iOS, macOS and Windows at once. Immediately after, run:  '
         'cd apps/$id && dart run flutter_launcher_icons  '
         '(config + source art are already stamped; CI fails on a stock icon).',
       )

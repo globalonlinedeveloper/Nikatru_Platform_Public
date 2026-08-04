@@ -40,9 +40,15 @@
 // 🔬 ITS SIX FIXTURE TESTS ALL PASSED THROUGHOUT, because the fixture writes
 // REAL PNG BYTES into a file it names `.img.tmpl`. A fixture written by whoever
 // wrote the guard encodes the same misunderstanding as the guard — this repo's
-// own recorded rule, happening again. `flutter-stock-assets.mjs` is now the one
-// place that knows about the overlay, and it REFUSES to return an empty stock
-// asset at all, so neither guard can regain this hole independently.
+// own recorded rule, happening again.
+//
+// `flutter-stock-assets.mjs` is now the one place that answers "what does
+// `flutter create` write?", and it answers by RUNNING IT rather than by reading
+// a template directory and hoping. It also refuses to return an empty stock
+// asset at all, so neither guard can regain this hole independently. (The
+// intermediate fix — overlaying the `flutter_template_images` package — was
+// correct locally and failed in CI, where a prebuilt SDK has no package config
+// to resolve it from; that history is in its header.)
 //
 // ⚠️ AND IT REFUSES TO RUN BLIND. If the SDK templates cannot be found, this
 // exits COVERAGE LOST rather than skipping the comparison. "I could not check"
@@ -107,9 +113,9 @@ try {
   stock = readStockAssets({
     sdkRoot: flutterSdkRoot(),
     relDir: 'web',
-    // Keyed on the stamped path so the map keys match WEB_ASSETS directly.
     keep: (rel) => rel.endsWith('.png'),
   });
+  // Re-keyed on the stamped path so the map keys match WEB_ASSETS directly.
   stock = new Map([...stock].map(([k, v]) => [`web/${k}`, v]));
 } catch (e) {
   if (!(e instanceof StockAssetsUnavailable)) throw e;
@@ -123,7 +129,11 @@ try {
   ]);
 }
 if (stock.size === 0) {
-  fail(['✗ COVERAGE LOST — found the SDK template directories but no stock PNGs inside them.']);
+  fail([
+    "✗ COVERAGE LOST — a freshly created app has a web/ directory holding NO PNGs.",
+    '  Every identity comparison below would range over nothing and pass, which is indistinguishable',
+    '  from every asset being correct.',
+  ]);
 }
 
 // ── read the stamp's claimed platforms from the catalogue it wrote ──────────
