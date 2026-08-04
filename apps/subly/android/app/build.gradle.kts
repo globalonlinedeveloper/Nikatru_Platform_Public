@@ -17,14 +17,31 @@ plugins {
 // upload. Losing ours is a reset-and-continue, not the unrecoverable event an
 // `app-signing-key` loss would be.
 //
-// 🔒 NOTHING BELOW WIRES A REAL KEY, AND THAT IS DELIBERATE. Until the owner
-// supplies one (OWNER_QUEUE A-3 / S-5), the release build resolves to the debug
-// signing config exactly as it did before — a debug-signed BUILD PROOF is what
-// build-platforms.yml's android lane is for, and the review fleet has already
-// refuted "debug-signed Android" as a defect. What this block adds is only that
-// the day a keystore exists, it is supplied as CONFIGURATION rather than as a
-// code change: put it in `android/key.properties` locally, or hand the four
-// values to CI as secrets, and the release build picks it up.
+// 🔴 THIS BLOCK WAS CORRECT AND UNSUPPLIED FOR WEEKS, AND THAT COMBINATION IS
+// THE DEFECT THAT SHIPPED. It has always read a keystore from
+// `android/key.properties` or from the four environment variables and fallen
+// back to debug when none was supplied — but NO WORKFLOW SUPPLIED THEM, so the
+// fallback fired on every CI run, including the ones whose only purpose was a
+// store artifact. The .aab uploaded to Google Play would have been rejected for
+// being debug-signed, and nothing anywhere in the tree would have said so first:
+// every check was reading this CONFIGURATION, which was already right.
+//
+// Fixed 2026-08-04, and NOT here — the repair belongs where the gap was:
+//   · tooling/ci/android-signing.mjs      materialises the keystore from the
+//     ANDROID_KEYSTORE_BASE64 repo secret into $RUNNER_TEMP (outside the
+//     workspace, where no upload-artifact glob can reach it), exports the four
+//     variables this file reads, and FAILS a release lane that has no secrets
+//     instead of falling back.
+//   · tooling/ci/assert-artifact-signed.mjs reads the signature out of the built
+//     .aab and fails if the signer is the Android debug key or is not the
+//     fingerprint pinned in tooling/channel-register.json. A configuration scan
+//     could never have caught this; only reading the artifact can.
+//
+// 🔒 THE DEBUG FALLBACK BELOW STAYS, deliberately. A fork PR holds no secrets, a
+// branch build is not a release, and the weekly six-platform proof must stay
+// green without a key. What changed is that the outcome is now LABELLED
+// (`debug-signed-build-proof`) rather than indistinguishable from a release.
+// Locally, `android/key.properties` still takes precedence and needs no CI.
 //
 // 🔴 HALF A KEYSTORE FAILS THE BUILD. That is the only interesting decision
 // here. Silently falling back to debug when three of four values are present
@@ -35,13 +52,16 @@ plugins {
 // fail loudly on the partial state, print nothing-configured as the expected
 // state, and only trust the fully-configured one.
 //
-// ⚠️ UNPROVEN OPEN PATH, STATED RATHER THAN HIDDEN. The `hasReleaseSigning ==
-// true` branch has never executed: no keystore exists, and Android cannot be
-// built on the owner's box at all (CLAUDE.md — java.nio Selector.open() fails
-// process-wide from a Windows socket-layer defect). CI exercises the FALLBACK
-// path on every android build; the signing path is exercised the first time a
-// keystore is supplied. tooling/release/submit-play.mjs prints the current
-// posture on every run so this gap cannot go quiet.
+// ⚠️ THE OPEN PATH IS WIRED BUT NOT YET PROVEN ON A REAL BUILD, and saying so is
+// the point. `hasReleaseSigning == true` becomes reachable the moment the four
+// repository secrets exist (tooling/channel-register.json → android-play →
+// signing.ciSecrets). Until a CI run has them, the branch has still never
+// executed — Android cannot be built on the owner's box at all (CLAUDE.md:
+// java.nio Selector.open() fails process-wide from a Windows socket-layer
+// defect), so CI is the only place it can be. tooling/ci/assert-artifact-signed.mjs
+// is what turns "it ran" into evidence: it reads the signer out of the produced
+// .aab, so the first release build either proves this branch or fails naming the
+// certificate it actually found.
 // ─────────────────────────────────────────────────────────────────────────────
 val releaseSigningEnv = mapOf(
     "storeFile" to "ANDROID_KEYSTORE_PATH",

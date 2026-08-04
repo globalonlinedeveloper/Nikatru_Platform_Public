@@ -88,12 +88,32 @@ jobs:
       # UNSIGNED on purpose — see the header. This proves the app still compiles
       # for both Apple platforms; it does not produce a submittable artifact and
       # nothing here pretends it does.
+      # 🔴 UNSIGNED IS NOT THE SAME AS UNCONFIGURED, and until 2026-08-04 both
+      # steps were both. `AppConfig.isBackendLive` compares each define below
+      # against a PLACEHOLDER constant, so a build passing none of them resolves
+      # `MockAuthRepository` and `SeedApiClient` — the artifact this submission
+      # path validated was the DEMO build, with mock sign-in and seeded data, and
+      # no crash sink either. That was found on the Google Play lane and is the
+      # same defect on every store lane; deploy-web.yml had been passing all three
+      # from secrets that already existed. Graded by
+      # tooling/ci/assert-store-build-config.mjs, which derives the required set
+      # from `isBackendLive` and the lanes from each store row's own declaration.
       - name: Build iOS (unsigned — no distribution certificate exists)
         working-directory: apps/subly
-        run: flutter build ios --release --no-codesign
+        run: >
+          flutter build ios --release --no-codesign
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: Build macOS (unsigned — no distribution certificate exists)
         working-directory: apps/subly
-        run: flutter build macos --release
+        run: >
+          flutter build macos --release
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # The credentials do not exist yet — OWNER_QUEUE A-4 creates the Apple
       # Developer account that issues the App Store Connect API key — and the
       # script reports their ABSENCE as a printed gap rather than a failure. They

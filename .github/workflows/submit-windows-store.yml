@@ -67,9 +67,19 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # The backend defines. Without them `AppConfig.isBackendLive` stays false —
+      # every field is still at its PLACEHOLDER — and the .msix packaged below is
+      # the DEMO build: mock sign-in, seeded data, no crash sink. Found on the
+      # Google Play lane 2026-08-04 and true of every store lane in the tree;
+      # graded by tooling/ci/assert-store-build-config.mjs.
       - name: Build windows
         working-directory: apps/subly
-        run: flutter build windows --release
+        run: >
+          flutter build windows --release
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/subly
         run: dart run msix:create

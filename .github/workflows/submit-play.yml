@@ -7,14 +7,22 @@ name: Google Play submission path (dry run)
 # nothing rather than an unnoticed loss.
 #
 # 🔴 DISPATCH-ONLY, AND THAT IS THE CORRECT SHAPE WHILE `served: false`.
-# The channel has no publisher account (OWNER_QUEUE A-3) and no upload key, so
-# there is nothing to submit TO and nothing to sign WITH. What this proves on
-# demand is that the path from source to a validated, store-shaped bundle still
-# WALKS — the listing tree is complete and derived from the spec, the .aab
-# actually builds, the package name is the canonical one Play would bind
-# permanently, and the signing posture is the recorded one. That is the whole of
-# D-10's promise: submission #2 costs minutes, not archaeology. Submission #1
-# costs the account, the upload key, and a 14-day tester window.
+# The channel has no publisher account (OWNER_QUEUE A-3), so there is nothing to
+# submit TO. What this proves on demand is that the path from source to a
+# validated, store-shaped bundle still WALKS — the listing tree is complete and
+# derived from the spec, the .aab actually builds, the package name is the
+# canonical one Play would bind permanently, and — since 2026-08-04 — the bundle
+# is really signed by the upload key rather than merely configured to be. That is
+# the whole of D-10's promise: submission #2 costs minutes, not archaeology.
+# Submission #1 costs the account and a 14-day tester window.
+#
+# ⚠️ WHAT CHANGED ON 2026-08-04, because it changes what a green run here means.
+# An upload key now exists and the four repository secrets carry it into this job.
+# Before that, this lane built a DEBUG-SIGNED bundle and reported the submission
+# path healthy: the Gradle signingConfig was correct, nothing supplied its values,
+# and Play rejects a debug-signed upload — so the dry run validated a path whose
+# last step could only ever have failed. Signing is now REQUIRED here (see the
+# step below) and the signature is read back out of the built .aab.
 #
 # ⚠️ IT RUNS THE REAL THING, NOT A DOUBLE. The dry run is deliberately NOT given
 # --allow-missing-artifact: the job builds the app bundle first, so the script
@@ -73,9 +81,60 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # ── SIGNING IS REQUIRED HERE, unlike build-platforms.yml ─────────────────
+      # 🔴 THIS WORKFLOW'S ONLY CLAIM IS THAT THE SUBMISSION PATH WALKS, and a
+      # debug-signed .aab is one Google Play refuses at upload — so a dry run over
+      # one validates a path that ends in rejection while printing DRY RUN OK.
+      # That is exactly the shape the whole workflow exists to prevent
+      # ("submission #2 costs minutes, not archaeology"), and it was the real state
+      # of this lane until 2026-08-04: the Gradle signingConfig was correct, no
+      # workflow supplied its four values, and the fallback to the debug key fired
+      # on every run.
+      #
+      # 🔴 NOTHING BELOW SAYS "signing is required here" AND THAT IS THE POINT.
+      # The script derives it: tooling/channel-register.json's `android-play` row
+      # declares THIS FILE as the channel's `submission.workflow`, and a workflow
+      # whose declared job is to submit may not produce a bundle that cannot be
+      # submitted. A YAML flag would have been one deletable line standing between
+      # this lane and the exact defect being repaired — the failure mode here is
+      # already "a correct mechanism that nothing switched on".
+      #
+      # So: with the four secrets absent this step FAILS and names them, rather
+      # than validating a bundle nobody can upload. build-platforms.yml uses the
+      # same script and is NOT required to sign, because it is not the submission
+      # workflow and most of its runs are not tag pushes.
+      - name: Prepare the Android upload key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: node tooling/ci/android-signing.mjs --app subly
+      # 🔴 THE DEFINES ARE WHAT MAKE THIS A REAL BUNDLE RATHER THAN THE DEMO.
+      # `AppConfig.isBackendLive` compares each of these against a PLACEHOLDER;
+      # left unpassed, the .aab this lane validated shipped `MockAuthRepository`
+      # and `SeedApiClient`. This step passed NO defines at all until 2026-08-04 —
+      # not even the crash sink — so the artifact a human would have uploaded from
+      # the console was a demo build with no telemetry, and every check was green.
+      # Graded by tooling/ci/assert-store-build-config.mjs, which derives the set
+      # from `isBackendLive` and the lane from this row's `submission` block.
       - name: Build the app bundle
         working-directory: apps/subly
-        run: flutter build appbundle --release
+        run: >
+          flutter build appbundle --release
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # Reads the signature out of the bundle rather than out of the config — the
+      # question nothing in this tree was asking. Placed BEFORE the dry run on
+      # purpose: submit-play.mjs reports the signing POSTURE from the environment,
+      # which is a claim about what was arranged, and this is the only step that
+      # can contradict it with what actually happened.
+      - name: The .aab must be signed by the upload key, not the debug key
+        run: >
+          node tooling/ci/assert-artifact-signed.mjs
+          apps/subly/build/app/outputs/bundle/release/app-release.aab
       # The credentials do not exist yet — OWNER_QUEUE A-3 creates the Play
       # Developer account, and a Google Cloud service account is then granted
       # access in the Play Console — and the script reports their ABSENCE as a
@@ -91,9 +150,14 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PLAY_TRACK: ${{ vars.PLAY_TRACK }}
         run: node tooling/release/submit-play.mjs --dry-run --app subly
+      # The posture is in the NAME so a downloaded bundle carries its own answer
+      # to "could this have been uploaded?". On this lane it is always
+      # `release-signed` — the step above refuses anything else — which makes the
+      # label redundant here and identical to build-platforms.yml's, where it is
+      # not. One convention, read the same way in both places.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subly-android-play-aab
+          name: subly-android-play-aab-${{ env.ANDROID_SIGNING_POSTURE }}
           path: apps/subly/build/app/outputs/bundle/release/app-release.aab
           retention-days: 7
           if-no-files-found: error
