@@ -1,6 +1,7 @@
 {
   "adapter-capabilities.test.mjs": 28,
   "analytics-contract.test.mjs": 22,
+  "android-target-sdk.test.mjs": 34,
   "app-dod.test.mjs": 33,
   "app-versioning.test.mjs": 38,
   "appstore-submission.test.mjs": 37,

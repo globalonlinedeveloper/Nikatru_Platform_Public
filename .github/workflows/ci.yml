@@ -797,6 +797,29 @@ jobs:
       - name: No submission endangers the store identity
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-submission-safety.mjs
+      # …and the Android module PINS the API level Google Play will accept.
+      #
+      # 🔴 IT WAS COMPLIANT BY ACCIDENT UNTIL 2026-08-04. build.gradle.kts read
+      # `targetSdk = flutter.targetSdkVersion`, a property on the extension the
+      # INSTALLED Flutter SDK supplies (FlutterExtension.kt), where 3.44.x
+      # happens to declare 36 — so the value Play would judge came from whichever
+      # toolchain was on the build machine, not from this repository. A Flutter
+      # downgrade lowers it with NO diff in the Gradle file, no Gradle error and
+      # no failing test; CI stays green and the first symptom is Play rejecting
+      # the upload. Pinning `flutter-version:` moves that dependency rather than
+      # removing it. The floor takes effect 2026-08-31.
+      #
+      # The number is NOT in the guard: it is read from the `play-target-api-level`
+      # duty row in tooling/legal/duty-matrix.json, beside the
+      # developer.android.com URL and the date it was read, and the guard is
+      # COVERAGE LOST rather than green if that citation is missing — an enforced
+      # limit nobody sourced fires on CORRECT input while looking authoritative.
+      # It parses the real Gradle config (comments stripped, braces matched) and
+      # refuses anything that is not an integer literal, because Android cannot be
+      # built on the owner's box to ask Gradle directly.
+      - name: The Android module pins the API level Google Play requires
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-android-target-sdk.mjs
       # A fail-closed seam with no on-switch is a dead feature that reports
       # healthy. Four shipped that way — the analytics rail discarded every event
       # because nothing ever recorded consent, and no test went red because
