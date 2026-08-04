@@ -446,6 +446,7 @@ const unresolvedById = new Map(
 
 let answersChecked = 0;
 let tellsChecked = 0;
+let clientAbsenceChecked = 0;
 let evidenceChecked = 0;
 const unresolvedReferenced = new Set();
 const anyShared = [];
@@ -527,12 +528,88 @@ for (const a of answers) {
     problems.push(`${where} records no \`basis\`. An answer with no stated reasoning cannot be re-checked by the next person, who will re-derive it from scratch or, more likely, trust it.`);
   }
 
+  // ── CLIENT-SIDE ABSENCE, ASSERTED WHATEVER THE ANSWER IS ─────────────────
+  // 🔴 THE GAP THIS CLOSES IS THIS REPOSITORY'S SIGNATURE DEFECT: A CHECK THAT
+  // STOPPED CHECKING. `tells` below are evaluated ONLY for a row claiming
+  // "never collected in any posture". The moment a row answers `true` — or
+  // `null` — for one posture, its whole tell list goes silent while still
+  // sitting in the file looking like coverage. When this limb was written that
+  // was true of 24 tells across four rows, including EVERY location tell,
+  // because a `null` is not a `false`.
+  //
+  // `clientAbsence` is the half of the claim that SURVIVES collection: "this
+  // type is collected, but the device still contributes nothing to it". For
+  // Approximate location that is the entire answer — the geo is inferred at the
+  // Cloudflare edge, and if `geolocator` ever appeared the row would become
+  // device location, with different purposes and a different `required`.
+  const ca = a.clientAbsence;
+  if (ca !== undefined) {
+    if (!ca || typeof ca !== 'object' || Array.isArray(ca)) {
+      problems.push(`${where} has a \`clientAbsence\` that is not an object.`);
+    } else {
+      const caPerms = ca.androidPermissions ?? [];
+      const caPkgs = ca.dartPackages ?? [];
+      const caKeys = ca.iosUsageDescriptionKeys ?? [];
+      if (caPerms.length + caPkgs.length + caKeys.length === 0) {
+        coverageLost([
+          `${where} declares \`clientAbsence\` with ZERO tells in it.`,
+          'This block exists to keep asserting "the device contributes nothing" at exactly the point where the',
+          'ordinary tells limb goes quiet. Empty, it asserts nothing while looking precisely like the thing that',
+          'does — and an assertion that cannot fail is worse than none, because it inflates apparent coverage.',
+          'Give it tells, or delete the block and stop implying the claim is checked.',
+        ]);
+      }
+      if (typeof ca.claim !== 'string' || ca.claim.trim() === '') {
+        problems.push(
+          `${where} declares \`clientAbsence\` with no \`claim\`. The tells only mean something against a stated sentence — what exactly becomes false if one of them appears — and without it the next person cannot tell whether a hit means "change the answer" or "remove the dependency".`,
+        );
+      }
+      const broke = `The device can now supply this type DIRECTLY, so this row's purposes, its \`required\` answer, its \`shared\` answer and its basis are all describing an app that no longer exists.`;
+      for (const perm of caPerms) {
+        clientAbsenceChecked++;
+        if (allPerms.has(perm)) {
+          problems.push(
+            `🔴 ${where} declares clientAbsence and ${perm} is now declared in ${[...permsByFile].filter(([, v]) => v.includes(perm)).map(([f]) => f).join(', ')}. ${broke} The claim it breaks: ${ca.claim ?? '(none stated)'}`,
+          );
+        }
+      }
+      for (const pkg of caPkgs) {
+        clientAbsenceChecked++;
+        if (directDeps.has(pkg)) {
+          problems.push(
+            `🔴 ${where} declares clientAbsence and \`${pkg}\` is now a direct dependency in ${pubspecRel}. ${broke} The claim it breaks: ${ca.claim ?? '(none stated)'}`,
+          );
+        }
+      }
+      for (const key of caKeys) {
+        clientAbsenceChecked++;
+        if (usageKeys.has(key)) {
+          problems.push(
+            `🔴 ${where} declares clientAbsence and ${key} now appears in an Info.plist. Apple requires that key only when the capability is actually used, so its presence is a positive statement that the device does the thing this claim denies. ${broke}`,
+          );
+        }
+      }
+    }
+  }
+
   // ── THE TELLS ────────────────────────────────────────────────────────────
   // Only meaningful for a claim of ABSENCE. A tell present while the widest
   // claim says "never collected" is the declaration having become false.
   const tells = a.tells ?? {};
   const hasTells =
     (tells.androidPermissions?.length ?? 0) + (tells.dartPackages?.length ?? 0) + (tells.iosUsageDescriptionKeys?.length ?? 0) > 0;
+
+  // 🔬 DEAD TELLS. The general half of the rule above, needing no list: a
+  // `tells` block on a row that is collected (or unresolved) in ANY posture can
+  // never be reached by the loop below, so it is an assertion that cannot fire.
+  // The repository's own rule is that such a thing is worse than none — it is
+  // read as coverage by everyone who greps the file. Re-point it at
+  // `clientAbsence`, which is evaluated unconditionally, or delete it.
+  if (!neverCollected && hasTells) {
+    problems.push(
+      `${where} carries a \`tells\` block and is not "never collected" in every posture (collected: ${JSON.stringify(a.collected)}). The tells limb only evaluates never-collected rows, so every tell in that block is UNREACHABLE — it looks like coverage and can never fire. Move it to \`clientAbsence\` if the claim survives the row being collected (it usually does: "collected, but never from the device"), or delete it.`,
+    );
+  }
 
   if (neverCollected && !hasTells && a.derivationNote === undefined) {
     // Not a failure: several types genuinely have no mechanical tell (Race and
@@ -580,6 +657,105 @@ if (tellsChecked === 0 && problems.length === 0) {
     'evaluated, adding a location permission or a location package would change nothing here and the',
     '"not collected" answers would be believed forever. Either every answer lost its `tells` block, or',
     'the walks above stopped reaching the manifests and the pubspec.',
+  ]);
+}
+
+// ── REQUIRED_COVERAGE for the clientAbsence limb ─────────────────────────────
+// 🔴 THE LIMB ABOVE IS OPTIONAL PER ROW, WHICH MEANS IT CAN BE DELETED PER ROW
+// AND NOTHING WOULD SAY SO. The rows where "collected, but never from the
+// device" is the load-bearing sentence are named in the declaration, and a named
+// row that has lost its block fails here. This is the same shape as
+// check-migrations.mjs's REQUIRED_COVERAGE, and it exists for the same recorded
+// reason: a scanner that quietly stopped covering the thing it was written for
+// still prints "clean".
+const caRequired = ds.clientAbsenceRequiredFor?.types;
+if (!Array.isArray(caRequired) || caRequired.length === 0) {
+  coverageLost([
+    `${DS_REL} clientAbsenceRequiredFor.types is missing or empty.`,
+    'That list is the only thing making the `clientAbsence` limb non-deletable per row. Empty, every row',
+    'could drop its block and this guard would report the same green it reports now — which is precisely',
+    'the failure mode the block was added to close.',
+  ]);
+}
+for (const key of caRequired) {
+  const a = answerByKey.get(key);
+  if (!a) {
+    problems.push(
+      `${DS_REL} clientAbsenceRequiredFor names ${JSON.stringify(key)} and there is no answer with that "Category|Type". Either the type was renamed on one side only, or the row was removed and this requirement outlived it.`,
+    );
+  } else if (a.clientAbsence === undefined) {
+    problems.push(
+      `🔴 ${DS_REL} answer ${JSON.stringify(key)} is required to carry a \`clientAbsence\` block and does not. That row's answer depends on the DEVICE contributing nothing to the data type — a claim the ordinary tells limb stops checking the moment the row is collected. Without the block, adding a location package, an ads SDK or a third-party analytics SDK would change nothing in this guard.`,
+    );
+  }
+}
+if (clientAbsenceChecked === 0 && problems.length === 0) {
+  coverageLost([
+    'NOT ONE clientAbsence tell was evaluated against the tree.',
+    'Every row named in clientAbsenceRequiredFor either lost its block or lost its tells, so the claim that',
+    'the device contributes nothing to Approximate location, the email address, app interactions and the',
+    'device identifiers is now asserted by nobody and checked by nothing.',
+  ]);
+}
+
+// ── the resolved list: a settled question keeps its write-up, AND its answer ──
+// 🔴 A RESOLVED ENTRY IS A CHECK, NOT A SCRAPBOOK. Both of this declaration's
+// open questions were settled on 2026-08-04 and both write-ups were kept, because
+// the first thing anyone re-deriving a sworn declaration asks is why the value is
+// what it is. But a kept write-up that nothing verifies is just prose: the limb
+// below requires every type a resolved entry claims to have settled to be
+// NON-NULL in every posture. Re-null an answer while leaving it listed as
+// resolved — the exact shape of backsliding — and the build fails.
+const resolved = Array.isArray(ds.resolved) ? ds.resolved : [];
+let resolvedChecked = 0;
+for (const r of resolved) {
+  if (!r || typeof r !== 'object' || typeof r.id !== 'string' || r.id.trim() === '') {
+    problems.push(`${DS_REL} carries a \`resolved\` entry with no \`id\`.`);
+    continue;
+  }
+  const where = `${DS_REL} resolved "${r.id}"`;
+  if (unresolvedById.has(r.id)) {
+    problems.push(
+      `${where} is ALSO listed in \`unresolved\`. One question cannot be both open and settled, and whichever of the two a reader happens to hit first becomes the answer they act on.`,
+    );
+  }
+  for (const field of ['question', 'answer', 'settledOn', 'settledBy', 'ownerItem']) {
+    if (typeof r[field] !== 'string' || r[field].trim() === '') {
+      problems.push(
+        `${where} has no \`${field}\`. A settled question needs the question, the answer, the day, who or what settled it and whose item it was — anything less is a value with no provenance, which is what this whole file exists not to be.`,
+      );
+    }
+  }
+  if (typeof r.settledOn === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(r.settledOn)) {
+    problems.push(`${where}.settledOn is not an ISO date (YYYY-MM-DD): ${JSON.stringify(r.settledOn)}`);
+  }
+  const affects = Array.isArray(r.affects) ? r.affects : [];
+  if (affects.length === 0) {
+    problems.push(`${where} names no \`affects\`. A resolution that points at no Play data type cannot be checked against any answer, so nothing stops the answer drifting back.`);
+  }
+  for (const t of affects) {
+    const hit = [...vocabTypes.values()].find((v) => v.type === t);
+    if (!hit) {
+      problems.push(`${where} says it affects ${JSON.stringify(t)}, which is not a Play data type in the vocabulary.`);
+      continue;
+    }
+    const a = answerByKey.get(`${hit.category}|${hit.type}`);
+    if (!a) continue;
+    resolvedChecked++;
+    const stillNull = POSTURES.filter((p) => a.collected?.[p] === null || (a.shared ?? {})[p] === null);
+    if (stillNull.length > 0) {
+      problems.push(
+        `🔴 ${where} claims to have settled ${JSON.stringify(t)} on ${r.settledOn}, and that answer is STILL null for posture(s) ${stillNull.join(', ')}. Either the answer was re-opened and this entry was not moved back to \`unresolved\`, or it was never actually filled in. A question recorded as settled while the form field it settles is blank is worse than an open one: the open list is what the guard prints as blocking, and this row is not on it.`,
+      );
+    }
+  }
+}
+if (resolved.length > 0 && resolvedChecked === 0 && problems.length === 0) {
+  coverageLost([
+    `${DS_REL} declares ${resolved.length} \`resolved\` entr(ies) and NOT ONE was matched to an answer row.`,
+    'The backslide check ranges over those matches, so it measured nothing while reporting ok — and the',
+    'entries would sit there asserting that two blocking questions are closed, which is the one claim in',
+    'this file nobody should take on trust.',
   ]);
 }
 
@@ -729,6 +905,105 @@ for (const dep of Object.keys(declaredDeps)) {
 }
 if (depsChecked === 0 && problems.length === 0) {
   coverageLost(['NOT ONE direct dependency was compared to the declared dependency surface.']);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7b · THE CRASH SDK VERSION PIN.
+//
+// 🔴 "DEVICE OR OTHER IDS = TRUE" IS A FACT ABOUT A VERSION, NOT AN ETERNAL ONE.
+// It was established by reading sentry_flutter 9.26.0 and the sentry-android
+// 8.51.0 it carries: DeviceInfoUtil sets contexts.device.id to a UUID persisted
+// for the life of the install, ungated by sendDefaultPii, and the Dart layer
+// passes the unmodelled key straight through. Sentry ships often and Renovate
+// bumps this repository automatically, so the single most likely way that answer
+// silently becomes wrong — in EITHER direction — is a dependency bump nobody
+// connected to a store declaration.
+//
+// The pin is compared to the COMMITTED pubspec.lock, not to the pubspec range: a
+// `^9.26.0` constraint is satisfied by 9.99.0, so the constraint is not what was
+// read. The lock is the resolved version CI actually builds.
+// ─────────────────────────────────────────────────────────────────────────────
+const css = ds.crashSdkSurface;
+let pinsChecked = 0;
+if (!css || typeof css !== 'object') {
+  problems.push(
+    `${DS_REL} carries no \`crashSdkSurface\`. The Device-or-other-IDs answer rests entirely on what a specific version of the crash SDK does; with no pin recorded, a Renovate bump changes the behaviour behind a sworn declaration and nothing anywhere notices.`,
+  );
+} else {
+  const lockRel = typeof css.lockfile === 'string' ? css.lockfile : 'pubspec.lock';
+  const lockText = read(lockRel);
+  if (lockText === null) {
+    coverageLost([
+      `${DS_REL} crashSdkSurface.lockfile names ${lockRel}, which does not exist.`,
+      'The version comparison below is the only thing tying the device-identifier answer to the code that',
+      'was actually read. With no lockfile it would range over nothing and report the pin confirmed.',
+    ]);
+  }
+  // Parse the resolved versions. Structure, not a grep: `version:` appears under
+  // every one of ~200 packages, so the walk is anchored on the package heading
+  // and stops at the next one.
+  const lockVersions = new Map();
+  {
+    const lines = lockText.split('\n');
+    let current = null;
+    for (const line of lines) {
+      const head = line.match(/^ {2}([A-Za-z_][A-Za-z0-9_]*):\s*$/);
+      if (head) {
+        current = head[1];
+        continue;
+      }
+      if (current === null) continue;
+      if (/^ {0,2}\S/.test(line)) current = null;
+      const v = line.match(/^ {4}version:\s*"?([^"\s]+)"?\s*$/);
+      if (v && current !== null) {
+        lockVersions.set(current, v[1]);
+        current = null;
+      }
+    }
+  }
+  if (lockVersions.size === 0) {
+    coverageLost([
+      `${lockRel} parsed to ZERO resolved package versions.`,
+      'Either the lockfile format moved or this parse is wrong. Every pin below would then be "not found"',
+      'and the limb would fail for the wrong reason — or, if the loop were written the other way round,',
+      'pass by comparing nothing. Fix the parse before trusting either outcome.',
+    ]);
+  }
+  const pinned = css.pinned;
+  if (!pinned || typeof pinned !== 'object' || Object.keys(pinned).length === 0) {
+    coverageLost([
+      `${DS_REL} crashSdkSurface.pinned is missing or empty.`,
+      'It names the packages whose source was actually read. Empty, the loop below compares nothing and the',
+      'declaration silently stops being tied to any particular SDK behaviour.',
+    ]);
+  }
+  for (const [pkg, declaredVersion] of Object.entries(pinned)) {
+    const actual = lockVersions.get(pkg);
+    if (actual === undefined) {
+      problems.push(
+        `🔴 ${DS_REL} crashSdkSurface.pinned names \`${pkg}\` and ${lockRel} resolves no such package. The crash SDK the declaration was written against is not in the dependency graph at all — so either it was removed (and the crash-log, diagnostics and device-identifier answers all now overstate what ships) or it was renamed and this pin was left behind.`,
+      );
+      continue;
+    }
+    pinsChecked++;
+    if (actual !== declaredVersion) {
+      problems.push(
+        `🔴 ${lockRel} resolves \`${pkg}\` to ${actual} and ${DS_REL} crashSdkSurface.pinned records ${declaredVersion}. The "Device or other IDs" answer was derived by READING THAT SDK's source — specifically that it attaches a persistent per-install id to contexts.device and that sendDefaultPii does not suppress it. A different version is a different program, and the answer on a sworn declaration must not survive a bump on the strength of it having been true once. Re-read the SDK, then update this pin in the same commit.`,
+      );
+    }
+  }
+  if (typeof css.cannotSee !== 'string' || css.cannotSee.trim() === '') {
+    problems.push(
+      `${DS_REL} crashSdkSurface carries no \`cannotSee\`. Reading the SDK settles what LEAVES THE DEVICE and says nothing about what the receiving GlitchTip instance does with it. A block that does not say so invites the pin above to be read as a complete answer about the crash rail, which it is not.`,
+    );
+  }
+}
+if (pinsChecked === 0 && problems.length === 0) {
+  coverageLost([
+    'NOT ONE crash-SDK version pin was compared to the lockfile.',
+    'The device-identifier answer is version-scoped by construction; with no pin compared, the version it',
+    'was scoped to is a comment.',
+  ]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1008,8 +1283,17 @@ console.log('   ── what this guard CANNOT see (green is not "the form is rig
 console.log('   · the MERGED Android manifest — Gradle adds permissions from plugin manifests that are not in');
 console.log('     this repository, and Android cannot be built here. Mitigated by the dependency equality');
 console.log('     above; read properly with `bundletool dump manifest` on a CI-built .aab.');
-console.log('   · what the crash SDK actually transmits — contexts.device and the installation id are built');
-console.log('     inside a vendored SDK at runtime.');
+console.log('   · WHAT THE GLITCHTIP SERVER DOES AFTER RECEIPT. What the crash SDK PUTS ON THE WIRE is settled —');
+console.log('     it was read from the pinned SDK source (contexts.device.id is a persistent per-install UUID on');
+console.log('     Android, ungated by sendDefaultPii) and the pin is compared to pubspec.lock above. What is NOT');
+console.log('     visible from here is enrichment on ingest: a Sentry-protocol server can infer geo from the');
+console.log('     connecting address, and the instance is self-hosted with no configuration in this repository.');
+console.log('     That is why Approximate location under the `demo` posture rests on the analytics rail being off');
+console.log('     and nothing else. It cannot change the shipping answer — buildPosture.current is backend-live,');
+console.log('     where Approximate location is already true.');
+console.log('   · THE NATIVE SDK VERSIONS THEMSELVES. sentry-android and sentry-cocoa arrive through');
+console.log("     sentry_flutter's own build.gradle and podspec, which are not files in this repository, so they");
+console.log('     are recorded as a dated observation. The Dart pin that drags them in IS asserted.');
 console.log("   · Supabase's own auth.users — external project, no migrations in this repo.");
 console.log('   · whether Play has changed its data-type vocabulary since the fetch date in the declaration.');
 console.log('   · TRANSITIVE Dart dependencies — the equality is over DIRECT ones deliberately.');
@@ -1030,8 +1314,13 @@ if (problems.length) {
       `lane posture "${bp.current}" confirmed against ${bp.lane} (defines: ${laneDefines ? [...laneDefines].sort().join(', ') : 'n/a'})`,
   );
   console.log(
-    `ok   ${tellsChecked} code tell(s) evaluated against ${permsByFile.size} manifest(s), ${directDeps.size} direct dependenc(ies) and ` +
-      `${usageKeys.size} iOS usage key(s); ${evidenceChecked} evidence path(s) resolve; ${citationsChecked} citation(s) sourced to an allowed host`,
+    `ok   ${tellsChecked} code tell(s) + ${clientAbsenceChecked} client-absence tell(s) evaluated against ${permsByFile.size} manifest(s), ` +
+      `${directDeps.size} direct dependenc(ies) and ${usageKeys.size} iOS usage key(s); ${evidenceChecked} evidence path(s) resolve; ` +
+      `${citationsChecked} citation(s) sourced to an allowed host`,
+  );
+  console.log(
+    `ok   ${pinsChecked} crash-SDK version pin(s) match ${ds.crashSdkSurface?.lockfile ?? 'pubspec.lock'}; ` +
+      `${resolvedChecked} settled question(s) re-checked against their answer rows (none has drifted back to null)`,
   );
   console.log(
     `ok   ${mappingChecked} personal-data inventory row(s) each mapped to a Play data type or excluded with a reason; ` +

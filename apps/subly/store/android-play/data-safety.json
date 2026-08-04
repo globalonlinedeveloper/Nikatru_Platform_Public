@@ -27,12 +27,20 @@
     "column is the one to type into the console. Adding an identity dart-define to that lane FAILS THE",
     "BUILD until this file is updated, which is the whole point.",
     "",
-    "🔴 `null` IS A REAL ANSWER HERE AND IT MEANS 'NOBODY KNOWS YET'. Two questions could not be",
-    "answered from this repository and are recorded in `unresolved` with the procedure that would",
-    "settle them. They are NOT filled with a plausible value: a confidently wrong Data safety",
-    "declaration is worse than an obviously incomplete one, and this repository has already deleted one",
-    "invented compliance number for firing on correct input. The guard PRINTS every null on every run",
-    "and says out loud that the form cannot be submitted while one remains.",
+    "🔴 `null` IS A REAL ANSWER HERE AND IT MEANS 'NOBODY KNOWS YET'. It is NOT filled with a plausible",
+    "value: a confidently wrong Data safety declaration is worse than an obviously incomplete one, and",
+    "this repository has already deleted one invented compliance number for firing on correct input. The",
+    "guard PRINTS every null on every run and says out loud that the form cannot be submitted while one",
+    "remains. `unresolved` is currently EMPTY and the form is submittable.",
+    "",
+    "📌 THE TWO THAT WERE OPEN WERE BOTH SETTLED ON 2026-08-04, and both had been recorded as needing",
+    "something they did not need — see `resolved`, which keeps the write-ups rather than deleting them.",
+    "The device-identifier question was marked 'not derivable from source, because the payload is",
+    "assembled inside the vendored SDK' and prescribed a live crash against GlitchTip; the vendored SDK",
+    "is source, it is pinned in pubspec.lock, and reading it answered the question. The edge-geo question",
+    "was marked 'no primary source found'; the ruling sentence was a Note on the very page this file",
+    "already cited for its category list. BOTH FAILURES WERE THE SAME FAILURE — treating a source as",
+    "exhausted — which is why each answer now carries its own citation and its own version pin.",
     "",
     "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER — the same disclaimer tooling/legal/README.md",
     "carries. Rows record what this repository can OBSERVE."
@@ -64,6 +72,16 @@
       "url": "https://support.google.com/googleplay/android-developer/answer/10787469",
       "fetched": "2026-08-04",
       "quote": "Shared = 'Transferring user data collected from your app to a third party'. It EXCLUDES transfers to a service provider processing on the developer's behalf."
+    },
+    "inferredLocation": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/10787469",
+      "fetched": "2026-08-04",
+      "quote": "Approximate location: 'User or device physical location to an area greater than or equal to 3 square kilometers, such as the city a user is in, or location provided by Android's ACCESS_COARSE_LOCATION permission. Note: Approximate location that is inferred, such as via IP address or Access Point Name, must be disclosed here.'"
+    },
+    "ipAddressUsage": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/10787469",
+      "fetched": "2026-08-04",
+      "quote": "'How should I treat the collection and use of IP addresses? As with other data types, you should disclose your collection, use and sharing of IP addresses based on their particular usage and practices. For example, where developers use IP addresses as a means to determine location, then that data type should be declared.'"
     },
     "declaredFieldsPerType": {
       "url": "https://support.google.com/googleplay/android-developer/answer/10787469",
@@ -145,6 +163,32 @@
     ]
   },
 
+  "clientAbsenceRequiredFor": {
+    "_why": [
+      "🔴 REQUIRED_COVERAGE FOR THE `clientAbsence` LIMB, because the limb protects a claim that is INVISIBLE",
+      "once it stops being checked. The ordinary `tells` limb only evaluates rows answering 'never collected in",
+      "any posture' — so the instant a row answers `true` (or `null`) for one posture, its entire tell list goes",
+      "quiet while still sitting in the file looking exactly like coverage. That was not hypothetical: 24 tells",
+      "across four rows were in that state when this block was written, including every location tell.",
+      "",
+      "`clientAbsence` is the claim that survives collection — 'this data type is collected, but the DEVICE",
+      "still contributes nothing to it' — and it is evaluated on every run regardless of the answer. The names",
+      "below are the rows where that sentence is load-bearing, and a row listed here with no `clientAbsence`",
+      "block FAILS THE BUILD. Without this list the block could simply be deleted and the guard would go quiet",
+      "in exactly the way it exists to prevent.",
+      "",
+      "⚠️ THE LIST IS ITSELF DELETABLE, and that limit is stated rather than implied. What it cannot lose",
+      "silently is a row: the guard refuses an empty list, and the general dead-tells rule (a `tells` block on a",
+      "collected row is an assertion that can never fire) catches the other direction without any list at all."
+    ],
+    "types": [
+      "Location|Approximate location",
+      "Personal info|Email address",
+      "App activity|App interactions",
+      "Device or other IDs|Device or other IDs"
+    ]
+  },
+
   "buildPosture": {
     "_why": [
       "🔴 THIS BLOCK IS WHY THE GUARD CAN BITE AT ALL. Every answer below is a claim about an ARTEFACT,",
@@ -195,20 +239,24 @@
     {
       "category": "Location",
       "type": "Approximate location",
-      "collected": { "demo": false, "backend-live": null },
+      "collected": { "demo": false, "backend-live": true },
       "shared": { "demo": false, "backend-live": false },
       "ephemeral": false,
-      "required": null,
-      "purposes": [],
-      "tells": {
+      "required": false,
+      "purposes": ["Analytics"],
+      "clientAbsence": {
+        "claim": "The DEVICE never provides a location. The only geo that exists anywhere is inferred at the Cloudflare edge from the connection, which is why this row is `collected` but `required: false` and purpose Analytics only. If any tell below appeared, that sentence would become false in the most consequential way available — the collection would be DEVICE location, `required` would have to be reconsidered, the purposes would change, and the Precise location row beneath would very likely have to flip too.",
         "androidPermissions": ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"],
         "dartPackages": ["geolocator", "location", "geocoding", "flutter_map_location_marker", "background_locator_2"],
         "iosUsageDescriptionKeys": ["NSLocationWhenInUseUsageDescription", "NSLocationAlwaysAndWhenInUseUsageDescription"]
       },
-      "evidence": [],
-      "inventoryRows": [],
-      "unresolved": "edge-derived-coarse-geo",
-      "basis": "THE CLIENT NEVER ASKS FOR LOCATION and never sends one: no location permission in any manifest in this repository, no location package in apps/subly/pubspec.yaml, no NSLocation* key in any Info.plist. That half is mechanical and the `tells` above make it stay true. The unresolved half is SERVER-SIDE: services/platform/src/routes/events.ts:118-126 writes country/region/city onto every analytics row, read from Cloudflare's `request.cf` at the edge. The app transmits no location; the edge infers a coarse one from the connection. Whether Play counts that as the app collecting Approximate location could not be established from a primary source, so it is `null` under backend-live rather than a guess. It is false under `demo` for a reason that needs no ruling: NoOpAnalytics sends no event at all, so there is no row for a geo to be written onto."
+      "evidence": [
+        "services/platform/src/routes/events.ts",
+        "services/platform/migrations/0002_analytics.sql",
+        "packages/core/lib/src/analytics/consent.dart"
+      ],
+      "inventoryRows": ["table:platform_db.events"],
+      "basis": "🔴 SETTLED 2026-08-04 AGAINST A PRIMARY SOURCE THAT WAS ON THE PAGE THIS FILE ALREADY CITED. This answer was `null` on the recorded ground that 'no primary source answering this was found'. The statement exists, in the Approximate location row of the data-types table at support.google.com/googleplay/android-developer/answer/10787469 — the SAME URL `sources.vocabulary` already quotes — and it is explicit: 'Note: Approximate location that is inferred, such as via IP address or Access Point Name, must be disclosed here.' The FAQ further down the same page adds: 'where developers use IP addresses as a means to determine location, then that data type should be declared.' See sources.inferredLocation and sources.ipAddressUsage. The lesson is recorded rather than quietly fixed: the page had been fetched and quoted for a DIFFERENT paragraph, and a citation already in the file was treated as exhausted.\n\nWHAT THIS APP ACTUALLY DOES. The client transmits no location — see `clientAbsence`, which is asserted on EVERY run precisely because this row is no longer 'never collected' and its tells would otherwise stop being evaluated. The geo is derived at the edge and then RETAINED: services/platform/src/routes/events.ts:117-126 reads country/region/city off `request.cf`; lines 254 and 288-290 bind them into the events INSERT; services/platform/migrations/0002_analytics.sql:47-50 declares them as columns. Derived-and-discarded would have been a different answer — that is the distinction the question turned on — but this is derived-and-stored, which is why `ephemeral` is false. City granularity sits squarely inside Play's definition ('an area greater than or equal to 3 square kilometers, such as the city a user is in').\n\nOPTIONAL, and that is enforced upstream rather than claimed here: a geo only exists on a row, and a row only exists for a CONSENTED analytics event. Consent defaults OFF (ConsentStatus.unknown is the launch state and is not consent) and the app is fully usable without it, which is Play's own test for optional. ANALYTICS ONLY — no other route stores geo; the consent-artifact INSERT at events.ts:363 takes no geo columns. NOT SHARED: Cloudflare is a service provider processing on our behalf, which Play's `shared` definition excludes.\n\nFALSE under demo because NoOpAnalytics posts no event at all, so no row exists for a geo to be written onto. ⚠️ ONE RESIDUAL, STATED RATHER THAN BURIED: the crash rail is on in BOTH postures, and whether the self-hosted GlitchTip instance runs its own GeoIP over the connecting address is a property of that deployment, not of this repository — it is listed in the guard's CANNOT-SEE output. It cannot change the value typed into the console, because buildPosture.current is `backend-live`, where this row is already true; it could only ever move the demo column, which is not the shipping one."
     },
     {
       "category": "Location",
@@ -248,7 +296,12 @@
       "ephemeral": false,
       "required": true,
       "purposes": ["Account management", "App functionality"],
-      "tells": { "androidPermissions": ["android.permission.GET_ACCOUNTS"], "dartPackages": [], "iosUsageDescriptionKeys": [] },
+      "clientAbsence": {
+        "claim": "The address is TYPED BY THE USER into a sign-in form. The app never reads the device's account list, so the only address it can ever hold is one somebody deliberately entered. If GET_ACCOUNTS appeared, the app could harvest addresses the user never typed, and `required: true` for Account management would stop describing what actually happens.",
+        "androidPermissions": ["android.permission.GET_ACCOUNTS"],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
       "evidence": [
         "apps/subly/lib/features/auth/login_screen.dart",
         "apps/subly/lib/data/auth/supabase_auth_repository.dart",
@@ -525,7 +578,12 @@
       "ephemeral": false,
       "required": false,
       "purposes": ["Analytics"],
-      "tells": { "androidPermissions": [], "dartPackages": ["firebase_analytics", "amplitude_flutter", "mixpanel_flutter", "posthog_flutter", "appsflyer_sdk", "flutter_branch_sdk"], "iosUsageDescriptionKeys": [] },
+      "clientAbsence": {
+        "claim": "Analytics here is FIRST-PARTY ONLY — the events go to services/platform, which is ours. Any of these packages arriving would make `shared: false` false on this row, because a third-party analytics or attribution SDK transmits to its own vendor and that is precisely what Play's `shared` definition covers. It would also break the `required: false` claim, since none of them is gated on this app's consent controller.",
+        "androidPermissions": [],
+        "dartPackages": ["firebase_analytics", "amplitude_flutter", "mixpanel_flutter", "posthog_flutter", "appsflyer_sdk", "flutter_branch_sdk"],
+        "iosUsageDescriptionKeys": []
+      },
       "evidence": [
         "apps/subly/lib/state/analytics_funnel.dart",
         "packages/api_client/lib/src/dio_event_transport.dart",
@@ -611,7 +669,7 @@
       "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
       "evidence": ["packages/telemetry/lib/src/telemetry_bootstrap.dart", "packages/telemetry/lib/src/telemetry_config.dart"],
       "inventoryRows": [],
-      "basis": "Declared true rather than argued down. A crash event carries more than the stack: the SDK attaches device and OS context and lifecycle breadcrumbs by default, and those are NOT removed by scrubEvent, which reaches message, tags, extra, breadcrumbs and exceptions and does not touch event.contexts. Whatever exactly that context contains, it is diagnostic data leaving the device, and the honest answer is yes. The part that is NOT honest to guess — whether it amounts to a device IDENTIFIER — is `null` under Device or other IDs and is written up in `unresolved`."
+      "basis": "Declared true rather than argued down. A crash event carries more than the stack: the SDK attaches device and OS context and lifecycle breadcrumbs by default, and those are NOT removed by scrubEvent, which reaches message, tags, extra, breadcrumbs and exceptions and does not touch event.contexts. 📌 THE CONTENTS ARE NO LONGER A 'WHATEVER IT CONTAINS' — this used to end by saying the identifier half was `null` under Device or other IDs and written up in `unresolved`. Both were settled on 2026-08-04 by reading the pinned SDK (see `resolved` and `crashSdkSurface`). sentry-android 8.51.0 DeviceInfoUtil.collectDeviceInformation sets manufacturer, brand, family, model, modelId, archs, chipset, orientation, simulator, screen width/height/density/dpi, boot time, timezone, locale, processor count/frequency and total memory — every one of which is diagnostic data leaving the device, so this answer stays `true`. The one field that is an IDENTIFIER rather than a characteristic is `device.id`, and it is now declared under Device or other IDs (true in both postures) rather than left open."
     },
     {
       "category": "App info and performance",
@@ -629,41 +687,90 @@
     {
       "category": "Device or other IDs",
       "type": "Device or other IDs",
-      "collected": { "demo": null, "backend-live": true },
+      "collected": { "demo": true, "backend-live": true },
       "shared": { "demo": false, "backend-live": false },
       "ephemeral": false,
       "required": true,
       "purposes": ["Analytics", "App functionality"],
-      "tells": {
+      "clientAbsence": {
+        "claim": "🔴 NEITHER IDENTIFIER IS AN ADVERTISING ID. The two this app transmits are a self-minted install UUID (`anon_id`) and the crash SDK's own install UUID (`contexts.device.id`) — both random, both per-install, both un-resettable-by-the-ad-framework and un-joinable to any ad network, because no ads or attribution SDK exists in the dependency graph. That sentence is the whole reason this row can be `shared: false` with purposes limited to Analytics and App functionality. Any tell below arriving would make it false at once, and would additionally require the AD_ID permission declaration and an 'Advertising or marketing' purpose on this form.",
         "androidPermissions": ["com.google.android.gms.permission.AD_ID"],
         "dartPackages": ["google_mobile_ads", "appsflyer_sdk", "flutter_branch_sdk", "app_tracking_transparency", "advertising_id", "adjust_sdk"],
         "iosUsageDescriptionKeys": ["NSUserTrackingUsageDescription"]
       },
-      "evidence": ["apps/subly/lib/state/analytics_providers.dart", "packages/api_client/lib/src/dio_event_transport.dart"],
+      "evidence": [
+        "apps/subly/lib/state/analytics_providers.dart",
+        "packages/api_client/lib/src/dio_event_transport.dart",
+        "packages/telemetry/lib/src/telemetry_bootstrap.dart"
+      ],
       "inventoryRows": ["table:platform_db.events", "table:platform_db.consent_artifacts"],
-      "unresolved": "sentry-device-context",
-      "basis": "TRUE under backend-live: `anon_id` is a 128-bit random install identifier minted from Random.secure() and kept in shared_preferences under `nikatru.install_id`, and it travels on every analytics and consent request. It is NOT an advertising ID and never has been — analytics_providers.dart:56 says 'Never a device ad-ID', the consent prompt tells the user in those words, and no ads or attribution SDK exists in the dependency graph. NULL under demo, and that is the honest answer rather than a convenient one: the analytics rail is off, so `anon_id` never leaves the device, but the crash rail IS on and whether the Sentry SDK's default context amounts to a device identifier could not be established from this repository. See `unresolved.sentry-device-context`. REQUIRED rather than optional because the crash-rail contribution, whatever it turns out to be, has no user control; the anon_id half is consent-gated, and Play asks one answer per type, so the stricter of the two is the answer."
+      "basis": "TRUE IN BOTH POSTURES. Two independent contributions, and the second is the one that was `null`.\n\n(1) anon_id — BACKEND-LIVE ONLY. A 128-bit random install identifier minted from Random.secure() and kept in shared_preferences under `nikatru.install_id`; it travels on every analytics and consent request. It is NOT an advertising ID and never has been — analytics_providers.dart:56 says 'Never a device ad-ID', the consent prompt tells the user in those words, and no ads or attribution SDK exists in the dependency graph.\n\n(2) THE CRASH RAIL — BOTH POSTURES. 🔴 SETTLED 2026-08-04 BY READING THE SDK, NOT BY OBSERVING THE SINK. The recorded procedure was to build on CI, trigger a crash and inspect the stored event, on the stated ground that the payload 'is not derivable from source, because it is assembled inside the vendored SDK'. That ground was wrong: the vendored SDK IS source, it is pinned in pubspec.lock, and it is on disk in the pub cache. The chain, read end to end at the versions in `crashSdkSurface`:\n  · sentry_flutter 9.26.0 lib/src/sentry_flutter_options.dart:34 — `autoInitializeNativeSdk = true` by default, and packages/telemetry does not override it, so the Android native SDK is initialised.\n  · lib/src/sentry_flutter.dart:203-205 — LoadContextsIntegration is installed when `!platform.isWeb && native.supportsLoadContexts`; lib/src/native/sentry_native_channel.dart:135 makes that true for Android.\n  · lib/src/integrations/load_contexts_integration.dart:172-174 — its event processor merges the native `contexts` map into `event.contexts` on every event.\n  · sentry-android 8.51.0 DeviceInfoUtil.java:133-135 — `if (device.getId() == null) { device.setId(getDeviceId()); }`. The string `sendDefaultPii` DOES NOT OCCUR ANYWHERE in that 502-line file, so `options.sendDefaultPii = false` (telemetry_bootstrap.dart:42) does not suppress it. DeviceInfoUtil.java:492-500 resolves it to `Installation.id(context)`.\n  · Installation.java:37-53 and 64-73 — a random UUID written once to a file named INSTALLATION in the app's files dir and read back on every later launch. STABLE FOR THE LIFE OF THE INSTALL.\n  · It serialises under the key `id` (sentry-java Device.JsonKeys.ID). The Dart mirror does not model that key: sentry 9.26.0 lib/src/protocol/sentry_device.dart:195-226 sweeps unmodelled keys into `unknown`, and toJson() spreads `...?unknown` FIRST — so it round-trips to the sink verbatim rather than being dropped.\n  · packages/telemetry/lib/src/telemetry_bootstrap.dart:84-139 — scrubEvent reaches message, tags, extra, breadcrumbs and exception values and never touches `event.contexts`, so nothing in this repository removes it.\nA stable per-install identifier therefore leaves the device on every crash and on every sampled performance transaction, in the demo build as much as the live one, because GLITCHTIP_DSN is passed to both.\n\nREQUIRED rather than optional: the crash-rail contribution has no user-facing opt-out and is present in every shipped posture. The anon_id half is consent-gated, and Play asks one answer per type, so the stricter of the two is the answer.\n\n⚠️ THE ANSWER IS NOT UNIFORM ACROSS PLATFORMS, and this file governs the Play channel, so the Android column is the one that decides it. Android and iOS/macOS both attach a persistent per-install id — on Apple via sentry-cocoa 8.58.4 SentryClient.m:826, which calls setUserIdIfNoUserSet unconditionally inside prepareEvent, filling user.userId from SentryInstallation (SentryClient.m:979-988). Windows and Linux do NOT: factory_real.dart:14-15 selects the C binding, whose `supportsLoadContexts` is false (native/c/sentry_native.dart:149) and whose loadContexts() returns null (:152-155), so LoadContextsIntegration is never even installed, and the Dart-only IoEnricherEventProcessor fills name, processorCount, memorySize and freeMemory alone (sentry 9.26.0 io_enricher_event_processor.dart:41-48) — none of which identifies anything. Web is excluded by the same `!platform.isWeb` guard."
     }
   ],
 
-  "unresolved": [
+  "unresolved": [],
+
+  "_resolved_why": [
+    "🔴 A SETTLED QUESTION KEEPS ITS WRITE-UP, OR THE NEXT PERSON RE-OPENS IT. Both entries below were",
+    "`unresolved` and both blocked the form. Deleting them on the day they were answered would leave two",
+    "answers whose reasoning lives only in a commit message, and the first thing anyone re-deriving a sworn",
+    "declaration does is ask why the value is what it is.",
+    "",
+    "🔬 AND IT IS A CHECK, NOT A SCRAPBOOK. assert-play-declarations.mjs requires every type named in an",
+    "entry's `affects` to be NON-NULL in every posture, and refuses an id that appears in both lists.",
+    "Re-nulling an answer while leaving it listed as resolved fails the build — the exact shape of",
+    "backsliding that a prose-only record cannot catch, and the one this file would never print as blocking,",
+    "because the blocking list is built from `unresolved`."
+  ],
+
+  "resolved": [
     {
       "id": "sentry-device-context",
       "affects": ["Device or other IDs"],
       "ownerItem": "O-3",
       "question": "Does the crash rail transmit anything that counts as a device identifier? sendDefaultPii=false stops the SDK attaching user.ip_address, but it does not disable the default `contexts.device` payload or the Sentry Android SDK's own installation id, and packages/telemetry's scrubEvent covers message, tags, extra, breadcrumbs and exceptions — not event.contexts.",
-      "howToResolve": "Build the Android artefact on CI with a real GLITCHTIP_DSN, trigger one crash, and read the stored event on the GlitchTip instance: inspect `contexts.device`, `contexts.app` and any installation/device hash field. If any stable per-install identifier is present, this answer becomes true and `required` stays true. This is a ten-minute observation against the live sink; it is not derivable from source, because the payload is assembled inside the vendored SDK.",
-      "status": "UNVERIFIED — the answer is a property of sentry_flutter 9.26.0 / sentry-android 8.51.0 at runtime, not of any file in this tree. Nothing plausible is written in its place."
+      "answer": "YES on Android (and on iOS/macOS). sentry-android 8.51.0 sets contexts.device.id to a UUID persisted in the app's files dir for the life of the install, ungated by sendDefaultPii; the Dart layer passes the unmodelled key through verbatim and scrubEvent never reaches contexts. Device or other IDs is therefore `true` under BOTH postures, and `required`, because the crash rail has no opt-out. NOT true on Windows or Linux, where the contexts integration is never installed at all.",
+      "settledOn": "2026-08-04",
+      "settledBy": "READING THE SDK SOURCE, which is what the superseded `howToResolve` said could not be done. It claimed the payload 'is not derivable from source, because it is assembled inside the vendored SDK' and prescribed a live crash against the GlitchTip instance instead. A vendored SDK is source: it is pinned in pubspec.lock and unpacked in the pub cache. The full file:line chain is in the Device or other IDs `basis`; the decisive line is DeviceInfoUtil.java:133-135 plus the fact that `sendDefaultPii` does not appear anywhere in that file. The live observation remains a fine CONFIRMATION and is strictly cheaper to do now that it knows what to look for — but it is no longer what the answer waits on.",
+      "coversOnly": "The SDK-side payload. It does NOT establish what the GlitchTip server does with the event once received — see `crashSdkSurface.cannotSee`."
     },
     {
       "id": "edge-derived-coarse-geo",
       "affects": ["Approximate location"],
       "ownerItem": "O-3",
       "question": "services/platform/src/routes/events.ts:118-126 stores country, region and city on every analytics row, read from Cloudflare's `request.cf` at the edge rather than from anything the app sends. Does Play's Data safety form count server-side geo inferred from the connection as the app collecting Approximate location?",
-      "howToResolve": "Find the primary statement in Play's Data safety documentation about data the app does not transmit but the receiving infrastructure derives from the connection. If no such statement exists, the conservative answer is to declare Approximate location as collected for Analytics, optional (it only exists on consented events) — declaring it costs a line on the form, and under-declaring is the direction that gets apps removed.",
-      "status": "UNVERIFIED — no primary source answering this was found on the pages fetched 2026-08-04. It does not affect the artefact Play would receive TODAY, because the demo build sends no events at all; it must be settled before the identity dart-defines are added to the .aab lane."
+      "answer": "YES, and Play says so in one sentence: 'Approximate location that is inferred, such as via IP address or Access Point Name, must be disclosed here.' Because the derived value is also STORED (three columns on `events`) rather than used in flight, it is neither out of scope nor ephemeral. Declared collected under backend-live, optional, purpose Analytics, not shared.",
+      "settledOn": "2026-08-04",
+      "settledBy": "FINDING THE PRIMARY SOURCE THAT WAS RECORDED AS NOT EXISTING — on the page this file already cites. `sources.vocabulary` quotes support.google.com/googleplay/android-developer/answer/10787469 for the category list; the ruling sentence is a Note in the Approximate location row of that same table, and a second statement in the FAQ lower down covers IP-derived location directly. Both are now cited separately as sources.inferredLocation and sources.ipAddressUsage, so neither can be lost again by a re-fetch that only re-reads the paragraph already quoted.",
+      "coversOnly": "The analytics rail, which is the only place this repository stores geo. It does NOT establish whether the self-hosted GlitchTip instance derives geo of its own from the connecting address — see `crashSdkSurface.cannotSee`. That could only ever affect the `demo` column, which is not the shipping posture."
     }
   ],
+
+  "crashSdkSurface": {
+    "_why": [
+      "🔴 THE DEVICE-ID ANSWER IS A FACT ABOUT A PINNED VERSION, NOT AN ETERNAL ONE. It was established by",
+      "reading sentry_flutter 9.26.0 and the sentry-android 8.51.0 it carries. Sentry ships often and Renovate",
+      "bumps this repository automatically, so the single most likely way that answer silently becomes false is",
+      "a dependency bump nobody connected to a store declaration. `pinned` is compared to the committed",
+      "pubspec.lock on every run: move the lock and the build fails asking for the reading to be redone.",
+      "",
+      "⚠️ ONLY THE DART SIDE IS PINNABLE HERE. `transitiveNativeObserved` records the native SDK versions the",
+      "reading actually covered, but they come from sentry_flutter's own android/build.gradle and ios podspec —",
+      "files that are not in this repository — so they are an OBSERVATION with a date, not an assertion. They",
+      "are stated rather than omitted so that a future reader knows exactly which native source was read.",
+      "A bump of the Dart pin is the event that invalidates them, and that IS caught."
+    ],
+    "lockfile": "pubspec.lock",
+    "pinned": { "sentry_flutter": "9.26.0", "sentry": "9.26.0" },
+    "transitiveNativeObserved": {
+      "sentry-android": "8.51.0",
+      "sentry-cocoa": "8.58.4",
+      "readFrom": "sentry_flutter-9.26.0/android/build.gradle:65 and sentry_flutter-9.26.0/ios/sentry_flutter.podspec:19, in the local pub cache",
+      "readOn": "2026-08-04"
+    },
+    "finding": "contexts.device.id is a stable per-install UUID on Android; it is NOT gated by sendDefaultPii and is NOT reached by packages/telemetry's scrubEvent. Windows and Linux attach no native contexts at all.",
+    "cannotSee": "⚠️ WHAT THE GLITCHTIP SERVER DOES AFTER RECEIPT. Everything above is about the payload leaving the device. A Sentry-protocol server can enrich on ingest — most obviously by inferring geo from the connecting address — and the instance is self-hosted on Oracle Cloud with no configuration in this repository. That is why `Approximate location` under the `demo` posture rests on the analytics rail being off, and nothing else. It cannot affect the value typed into the console, because buildPosture.current is `backend-live`, where Approximate location is already true. Settling it means reading the GlitchTip instance's own configuration, not this tree."
+  },
 
   "dataSecurity": {
     "encryptedInTransit": {
