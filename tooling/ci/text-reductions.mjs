@@ -69,6 +69,19 @@ const COMMENT_STYLES = new Map([
   ['.js', 'c'],
   ['.mjs', 'c'],
   ['.dart', 'c'],
+  // Kotlin, for the Gradle KTS build scripts. C-family delimiters, and its raw
+  // string `"""…"""` is already handled by scanQuoted's triple-quote branch —
+  // the same branch Dart's `'''` uses.
+  //
+  // ⚠️ AN UNKNOWN EXTENSION RETURNS THE SOURCE UNCHANGED, SILENTLY. That is the
+  // right default for a caller that hands over an unclassified file, and a trap
+  // for one that assumes the reduction happened: before these two entries
+  // existed, `stripSourceComments(kts, '.kts')` was an identity function, so a
+  // scanner over a build script would have been reading its own header comments
+  // as code and reporting clean. assert-android-target-sdk.mjs is that caller,
+  // and it asserts the reduction actually reduced rather than trusting this map.
+  ['.kts', 'c'],
+  ['.kt', 'c'],
   ['.sql', 'sql'],
   ['.yaml', 'hash'],
   ['.yml', 'hash'],

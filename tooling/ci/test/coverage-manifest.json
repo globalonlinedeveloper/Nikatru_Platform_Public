@@ -1,6 +1,7 @@
 {
   "adapter-capabilities.test.mjs": 28,
   "analytics-contract.test.mjs": 22,
+  "android-target-sdk.test.mjs": 34,
   "app-dod.test.mjs": 33,
   "app-versioning.test.mjs": 38,
   "appstore-submission.test.mjs": 37,
@@ -43,7 +44,7 @@
   "no-secret-defines.test.mjs": 14,
   "no-tls-pinning.test.mjs": 13,
   "obfuscation-coupled.test.mjs": 14,
-  "ops-register.test.mjs": 77,
+  "ops-register.test.mjs": 86,
   "ops-status.test.mjs": 46,
   "package-boundaries.test.mjs": 18,
   "package-earned.test.mjs": 13,
