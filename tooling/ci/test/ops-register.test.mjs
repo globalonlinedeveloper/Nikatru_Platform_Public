@@ -38,6 +38,29 @@
 //                                                             THAT IS DOWN"
 //   15/15 caught, none crashed, every restore byte-identical and green again.
 //
+// ── THE LEAD-WINDOW LIMB, REAL-TREE MUTATIONS RUN 2026-08-04 ─────────────────
+// Same protocol, against this worktree's own tooling/ops/register.json, each
+// restored with `git checkout --` and re-verified green (`git status` clean,
+// guard exit 0). A stack trace is NOT counted as a catch — every one of these
+// printed the guard's own intended message.
+//
+//   S1  `degradedLeadDays` stripped from the live row  -> "no positive integer
+//                                                          `degradedLeadDays`"
+//   S2  degradedUntil moved to 2026-08-10, inside the
+//       row's own 14-day window                        -> exit 1, "FIRES IN 6
+//                                                          DAY(S), inside its own
+//                                                          14-day lead window"
+//   S3  degradedUntil backdated to 2026-07-01          -> exit 1, "has PASSED …
+//                                                          It went red 14 day(s)
+//                                                          before this"
+//   S4  the tripwire disarmed entirely (both keys      -> exit 1, "\"Never done\"
+//       removed)                                          must cost something",
+//                                                          and the printed count
+//                                                          fell to `0 dated
+//                                                          tripwire(s) armed`
+//   4/4 caught. S4 is the one that matters most: it proves the COUNT moves, so
+//   an empty tripwire domain cannot pass as a clean register.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -340,26 +363,88 @@ describe('assert-ops-register — mechanism, source and the company/ blind spot'
 });
 
 describe('assert-ops-register — the dated tripwire cannot rot', () => {
-  test('a degradedUntil in the past FAILS', () => {
+  /** A well-formed tripwire, so each mutation below fails for its own reason. */
+  const withTripwire = (extra = {}) => {
     const r = baseRegister();
-    r.rows[1].degradedUntil = '2020-01-01';
-    r.rows[1].degradedWhy = 'another stage owns the fix';
-    assert.match(messages(r), /has PASSED and the gap is still open/);
+    Object.assign(r.rows[1], {
+      degradedUntil: '2099-01-01',
+      degradedWhy: 'another stage owns the fix',
+      degradedLeadDays: 14,
+      ...extra,
+    });
+    return r;
+  };
+
+  test('a degradedUntil in the past FAILS', () => {
+    assert.match(messages(withTripwire({ degradedUntil: '2020-01-01' })), /has PASSED and the gap is still open/);
   });
 
-  test('a degradedUntil in the future PRINTS and does not block', () => {
+  test('the PASSED message says the row already went red, and refuses the date-moving exit', () => {
+    const m = messages(withTripwire({ degradedUntil: '2020-01-01' }));
+    assert.match(m, /went red 14 day\(s\) before this/);
+    assert.match(m, /Moving the date is the one move this field exists to refuse/);
+  });
+
+  test('a degradedUntil far in the future PRINTS and does not block', () => {
+    const v = run(withTripwire());
+    assert.deepEqual(v.errors, []);
+    assert.equal(v.prints.filter((p) => p.includes('DEGRADED')).length, 1);
+  });
+
+  test('the print says how many days remain before it goes RED, not just the final date', () => {
+    // A signal that never changes is a signal nobody reads: the row this limb
+    // was written for printed the identical line at T-27 and at T-1.
+    const v = run(withTripwire());
+    assert.match(v.prints.find((p) => p.includes('DEGRADED')), /Goes RED in \d+ day\(s\) \(14-day lead window\)/);
+  });
+
+  // ── THE LIMB THIS FILE GAINED ON 2026-08-04 ───────────────────────────────
+  test('INSIDE the lead window it goes RED, with time still left to act', () => {
+    // NOW is 2026-08-02 in this suite; 10 days out sits inside a 14-day window.
+    const m = messages(withTripwire({ degradedUntil: '2026-08-12', degradedLeadDays: 14 }));
+    assert.match(m, /FIRES IN \d+ DAY\(S\)/);
+    assert.match(m, /inside its own 14-day lead window/);
+  });
+
+  test('OUTSIDE the lead window it does not block — the warning is a window, not a second deadline', () => {
+    const v = run(withTripwire({ degradedUntil: '2026-08-12', degradedLeadDays: 3 }));
+    assert.deepEqual(v.errors, []);
+  });
+
+  test('the red message names the gap AND the recorded response, so it is actionable', () => {
+    const m = messages(withTripwire({ degradedUntil: '2026-08-12' }));
+    assert.match(m, /THE GAP: another stage owns the fix/);
+    assert.match(m, /THE RESPONSE ON RECORD:/);
+  });
+
+  test('a degradedUntil with NO lead window FAILS — this is the shape that detonated', () => {
     const r = baseRegister();
     r.rows[1].degradedUntil = '2099-01-01';
     r.rows[1].degradedWhy = 'another stage owns the fix';
-    const v = run(r);
-    assert.deepEqual(v.errors, []);
-    assert.equal(v.prints.filter((p) => p.includes('DEGRADED')).length, 1);
+    assert.match(messages(r), /no positive integer `degradedLeadDays`/);
+  });
+
+  test('a zero or negative lead window is not a lead window', () => {
+    assert.match(messages(withTripwire({ degradedLeadDays: 0 })), /no positive integer `degradedLeadDays`/);
+    assert.match(messages(withTripwire({ degradedLeadDays: -5 })), /no positive integer `degradedLeadDays`/);
+  });
+
+  test('a non-integer lead window is refused', () => {
+    assert.match(messages(withTripwire({ degradedLeadDays: 14.5 })), /no positive integer `degradedLeadDays`/);
+    assert.match(messages(withTripwire({ degradedLeadDays: '14' })), /no positive integer `degradedLeadDays`/);
   });
 
   test('a degradedUntil with no reason FAILS — a deadline with no reason is one somebody extends', () => {
     const r = baseRegister();
     r.rows[1].degradedUntil = '2099-01-01';
+    r.rows[1].degradedLeadDays = 14;
     assert.match(messages(r), /with no `degradedWhy`/);
+  });
+
+  test('armed tripwires are COUNTED, so zero and one cannot read alike', () => {
+    // An empty domain that prints nothing is this repo's most repeated defect.
+    assert.equal(run(withTripwire()).stats.datedTripwires, 1);
+    assert.equal(run(baseRegister()).stats.datedTripwires, 0);
   });
 });
 
