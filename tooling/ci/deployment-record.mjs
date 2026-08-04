@@ -146,6 +146,28 @@ export function resolveEnvironment(register, environment) {
     if (app === '' || app.includes('/')) continue;
     return { app, channel: row };
   }
+
+  // ── SERVICE ENVIRONMENTS — backend Workers, which are not release channels ──
+  //
+  // 🔴 MATCHED EXACTLY, NOT AS A TEMPLATE, and that is the point. A Worker
+  // environment has no `{app}` hole: `platform` is ONE deployment serving every
+  // app, so there is no app to extract, and `app` is returned as null rather
+  // than as a guess. See `_serviceEnvironmentsWhy` in the register for why these
+  // must not be `channels` rows — a bare "{app}" template would have head and
+  // tail both empty and would therefore match every environment string ever
+  // passed, silently filing Play submissions under it.
+  //
+  // Consumers already handle this correctly: `readSubmissions` skips anything
+  // whose `kind !== 'store'`, and record-deployment.mjs's listing-URL rule tests
+  // the same field, so a service record can never escape a store rule by being
+  // renamed.
+  const services = Array.isArray(register?.serviceEnvironments) ? register.serviceEnvironments : [];
+  for (const row of services) {
+    if (typeof row?.deploymentEnvironment !== 'string') continue;
+    if (row.deploymentEnvironment !== environment) continue;
+    return { app: null, channel: { ...row, kind: row.kind ?? 'service' } };
+  }
+
   return null;
 }
 
