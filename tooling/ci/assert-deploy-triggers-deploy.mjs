@@ -55,20 +55,59 @@
 // Exit 0 = every trigger can reach a deploy.  Exit 1 = it cannot, or could not
 // be read.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listDir } from './tree-walk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const WORKFLOW = resolve(HERE, '..', '..', '.github', 'workflows', 'deploy-workers.yml');
+export const WORKFLOW_DIR = resolve(HERE, '..', '..', '.github', 'workflows');
 
-/** The workflow's own path, as it must appear in a `paths:` list. */
-export const SELF_PATH = '.github/workflows/deploy-workers.yml';
+// ── NOT LANE-BOUND, DELIBERATELY ────────────────────────────────────────────
+// This guard was first written against `deploy-workers.yml` by name, and
+// `assert-release-lane-generic.mjs` limb B rejected it on the first CI run —
+// correctly. A guard that names one workflow answers a question about that
+// workflow and reports ok for every other one, which is exactly how
+// assert-seams-wired.mjs printed ok while build-platforms.yml shipped two
+// artifact lanes with no crash sink.
+//
+// The property here is not about deploys at all: ANY workflow that starts on a
+// path list and then gates its jobs behind an inner filter can be triggered by
+// a path the filter does not claim, in which case every job skips and the run
+// reports SUCCESS. So the subject set is DISCOVERED — every workflow that uses
+// a paths-filter — rather than named. Adding one tomorrow gets covered with no
+// edit here, and the alternative (a `LANE-BOUND:` declaration) would have been
+// a standing waiver for the one shape this guard exists to find.
 
-/** REQUIRED_COVERAGE. If the parser finds fewer than these, it has stopped
- *  reading the thing it thinks it is reading and must say so rather than pass. */
-export const MIN_TRIGGER_PATHS = 3;
-export const MIN_FILTERS = 2;
+/** REQUIRED_COVERAGE. These detect A PARSE THAT READ NOTHING — they are not a
+ *  claim about how many paths or filters a workflow ought to have.
+ *
+ *  ⚠️ BOTH WERE 2 WHEN THIS GUARD WAS DEPLOY-WORKERS-SPECIFIC, and generalising
+ *  it exposed that as an INVENTED LIMIT: a workflow deploying one service has
+ *  exactly one filter, and the guard would have failed it for being correct.
+ *  That is the same class as enforcing Google's RECOMMENDED screenshot size as
+ *  a requirement — a floor that fires on a good input teaches people to delete
+ *  the check. The honest floor is "did the parser find the block at all". */
+export const MIN_TRIGGER_PATHS = 1;
+export const MIN_FILTERS = 1;
+/** At least one workflow in the tree must gate jobs behind a paths-filter. If
+ *  none does, this guard has nothing to check — and a scan over nothing that
+ *  prints ok is this repository's single most repeated failure. */
+export const MIN_FILTERED_WORKFLOWS = 1;
+
+/** Every workflow file in the tree, as bare filenames. */
+export function workflowFiles() {
+  if (!existsSync(WORKFLOW_DIR)) return [];
+  return listDir(WORKFLOW_DIR)
+    .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+    .sort();
+}
+
+/** Does this workflow gate jobs behind a path filter? Detected by the action
+ *  it uses, not by a filename, so the subject set follows the tree. */
+export function usesPathsFilter(text) {
+  return /uses:\s*dorny\/paths-filter@/.test(text) && /^\s+filters:\s*\|\s*$/m.test(text);
+}
 
 const indentOf = (line) => line.length - line.trimStart().length;
 const unquote = (s) => s.trim().replace(/^['"]|['"]$/g, '');
@@ -148,8 +187,10 @@ export function parseFilters(text) {
   return out;
 }
 
-/** The decision, pure so every branch is reachable without touching disk. */
-export function judge(triggerPaths, filters) {
+/** The decision, pure so every branch is reachable without touching disk.
+ *  `selfPath` is the subject workflow's own repo-relative path — supplied by
+ *  the caller rather than baked in, which is what keeps this generic. */
+export function judge(triggerPaths, filters, selfPath) {
   const problems = [];
 
   if (!Array.isArray(triggerPaths) || triggerPaths.length < MIN_TRIGGER_PATHS) {
@@ -181,9 +222,9 @@ export function judge(triggerPaths, filters) {
   }
 
   for (const n of names) {
-    if (!filters[n].includes(SELF_PATH)) {
+    if (!filters[n].includes(selfPath)) {
       problems.push(
-        `filter \`${n}\` does not include \`${SELF_PATH}\`. A change to the shared deploy machinery must be ` +
+        `filter \`${n}\` does not include \`${selfPath}\`. A change to the shared deploy machinery must be ` +
           `proven by redeploying EVERY service it deploys; leaving one out is how a repair to this workflow ` +
           `merges green while that service keeps running the build the broken path left behind.`,
       );
@@ -194,31 +235,57 @@ export function judge(triggerPaths, filters) {
 }
 
 function main() {
-  let text;
-  try {
-    text = readFileSync(WORKFLOW, 'utf8');
-  } catch (e) {
-    console.error(`✗ could not read ${WORKFLOW}: ${e.message}`);
+  const files = workflowFiles();
+  if (files.length === 0) {
+    console.error(`✗ COVERAGE LOST: no workflow files under ${WORKFLOW_DIR}.`);
     console.error('  This guard cannot verify what it cannot read, and that is a failure, not a skip.');
     process.exit(1);
   }
 
-  const triggerPaths = parseTriggerPaths(text);
-  const filters = parseFilters(text);
-  const problems = judge(triggerPaths, filters);
+  const problems = [];
+  const checked = [];
+
+  for (const f of files) {
+    const text = readFileSync(resolve(WORKFLOW_DIR, f), 'utf8');
+    if (!usesPathsFilter(text)) continue;
+
+    const selfPath = `.github/workflows/${f}`;
+    const triggerPaths = parseTriggerPaths(text);
+    const filters = parseFilters(text);
+    // A workflow may gate jobs behind a filter without a `push.paths` trigger
+    // at all (workflow_dispatch only). That is coherent, not a defect — there
+    // is no trigger path that could fail to reach a job.
+    if (triggerPaths === null) continue;
+
+    checked.push({ f, triggerPaths, filters });
+    for (const p of judge(triggerPaths, filters, selfPath)) problems.push(`${selfPath}: ${p}`);
+  }
+
+  if (checked.length < MIN_FILTERED_WORKFLOWS) {
+    console.error(
+      `✗ COVERAGE LOST: scanned ${files.length} workflow(s) and found ${checked.length} that gate jobs behind a ` +
+        `paths-filter with a \`push.paths\` trigger; expected at least ${MIN_FILTERED_WORKFLOWS}.`,
+    );
+    console.error('  Either the detection stopped matching, or the shape moved. Both are failures — a scan');
+    console.error("  over nothing prints ok, which is this repository's single most repeated failure.");
+    process.exit(1);
+  }
 
   if (problems.length) {
-    console.error('✗ A TRIGGER PATH CANNOT REACH A DEPLOY JOB\n');
+    console.error('✗ A TRIGGER PATH CANNOT REACH THE JOBS IT TRIGGERS\n');
     for (const p of problems) console.error(`  · ${p}\n`);
-    console.error('  Measured 2026-08-04: run 30933229005 pushed #155 — whose subject was repairing this very');
-    console.error('  deploy job — skipped both deploy jobs and reported success, leaving the live platform');
+    console.error('  Measured 2026-08-04: run 30933229005 pushed #155 — whose subject was repairing the');
+    console.error('  deploy job — skipped both deploy jobs and reported SUCCESS, leaving the live platform');
     console.error('  Worker on `build: null` with its crash sink dark for six hours.');
     process.exit(1);
   }
 
+  const summary = checked
+    .map((c) => `${c.f} (${c.triggerPaths.length} path(s), ${Object.keys(c.filters).length} filter(s))`)
+    .join('; ');
   console.log(
-    `ok  ${triggerPaths.length} trigger path(s) and ${Object.keys(filters).length} filter(s); every trigger ` +
-      `reaches a deploy, and every filter includes the workflow itself.`,
+    `ok  ${checked.length} filtered workflow(s) of ${files.length} scanned — ${summary}; every trigger reaches a ` +
+      'job, and every filter includes its own workflow file.',
   );
 }
 
