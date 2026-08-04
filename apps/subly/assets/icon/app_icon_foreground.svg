@@ -1,0 +1,20 @@
+<!--
+  Android ADAPTIVE ICON — foreground layer.
+
+  The mark ALONE on transparency. Path data, stroke width and the MONO gradient
+  stops are copied verbatim from company/logo/nikatru-icon.svg — nothing is
+  redrawn and no colour is invented; only the tile behind it is removed, because
+  an adaptive foreground must be transparent for the background layer to show
+  through the system mask.
+
+  SAFE ZONE. Android composites this at 108dp and guarantees only the centre
+  72dp (66.7%) is visible; the rest can be cropped by a circle, squircle or
+  teardrop mask. With stroke-width 96 and round caps the mark's painted extent is
+  x 244..780 and y 256..768 of 1024 — 52% wide, 50% tall, centred — so it sits
+  well inside the 170..853 safe box with room for every mask shape. That is why
+  `adaptive_icon_foreground_inset: 0` is correct in pubspec.yaml: the inset is
+  already in the geometry, and letting the tool inset it again would shrink the
+  mark twice.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs><linearGradient id="MONO" x1="0.05" y1="1" x2="0.95" y2="0"><stop offset="0" stop-color="#2E6FF2"/><stop offset="0.55" stop-color="#2AA0D8"/><stop offset="1" stop-color="#17C3A2"/></linearGradient></defs>
+<path d="M 292 720 L 292 304 L 656 720 L 656 304 M 580 380 L 656 304 L 732 380" fill="none" stroke="url(#MONO)" stroke-width="96" stroke-linecap="round" stroke-linejoin="round"/></svg>

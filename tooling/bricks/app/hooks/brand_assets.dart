@@ -50,7 +50,12 @@ List<String> writeWebBrandAssets({
   final written = <String>[];
   void emit(String path, int size, double markFraction) {
     final png = _renderIcon(
-        size: size, bg: bg, fg: fg, cells: cells, markFraction: markFraction);
+      size: size,
+      bg: bg,
+      fg: fg,
+      cells: cells,
+      markFraction: markFraction,
+    );
     File(path).writeAsBytesSync(png);
     written.add(path);
   }
@@ -64,6 +69,82 @@ List<String> writeWebBrandAssets({
   emit('${iconsDir.path}/Icon-512.png', 512, 0.72);
   emit('${iconsDir.path}/Icon-maskable-192.png', 192, 0.56);
   emit('${iconsDir.path}/Icon-maskable-512.png', 512, 0.56);
+  return written;
+}
+
+/// Writes the NATIVE launcher-icon SOURCES into [iconDir]. Returns the paths.
+///
+/// 🔴 WHY THE BRICK NEEDS THESE AT ALL, WHEN IT STAMPS NO NATIVE PLATFORM.
+/// It stamps `web/` only, and `[3]S-3` holds that claim — the owner adds the
+/// rest with `flutter create . --platforms=…` after the stamp. That command is
+/// EXACTLY WHAT WRITES FLUTTER'S DEFAULT ICONS, which is how `apps/subly` came
+/// to ship the stock logo on Android, iOS, macOS and Windows simultaneously
+/// (measured 2026-08-04: 29 files, all byte-identical to `flutter create`).
+/// Fixing only Subly fixes one instance of a defect the template reproduces on
+/// demand, for all fifty planned apps.
+///
+/// So the stamp lays down the MECHANISM rather than the artefacts: these source
+/// images plus the `flutter_launcher_icons:` block in the stamped pubspec mean
+/// that adding platforms is followed by ONE command that brands all of them.
+/// `tooling/ci/assert-launcher-icons.mjs` fails the build if the config stops
+/// naming a file this function writes.
+///
+/// Deterministic, like the web assets: same `app_id` + `seed_hex`, same bytes,
+/// which is what `[3]S-15`'s byte-identical re-stamp requires. No model is
+/// involved anywhere, so [ADR 019]'s NO-IP-PROMPTING rule is obeyed by
+/// construction rather than by review.
+List<String> writeNativeIconSources({
+  required Directory iconDir,
+  required String appId,
+  required String seedHex,
+}) {
+  final int seed = _parseHex(seedHex);
+  final List<bool> cells = _markCells(appId);
+  final _Rgb bg = _Rgb.fromInt(seed);
+  final _Rgb fg = _contrastOn(bg);
+
+  if (!iconDir.existsSync()) iconDir.createSync(recursive: true);
+
+  final written = <String>[];
+
+  // The master every non-Android platform is derived from: 1024 square, OPAQUE.
+  // 1024 because that is the largest size any store asks for (App Store /
+  // Play), and every smaller one is a downscale of it. Opaque because the App
+  // Store REJECTS an icon with an alpha channel (ITMS-90717) — an icon that
+  // uploads and then fails validation remotely is the worst place to learn it.
+  final master = '${iconDir.path}/app_icon.png';
+  File(master).writeAsBytesSync(
+    _renderIcon(size: 1024, bg: bg, fg: fg, cells: cells, markFraction: 0.72),
+  );
+  written.add(master);
+
+  // The Android ADAPTIVE FOREGROUND: the mark ALONE, on transparency, so the
+  // background layer shows through whatever mask the launcher applies.
+  //
+  // 0.52 IS THE SAFE ZONE, NOT A TASTE CHOICE. Android composites the layer at
+  // 108dp and guarantees only the centre 72dp — 66.7% — survives; the rest can
+  // be cropped by a circle, squircle or teardrop depending on the OEM. A mark
+  // filling 52% of the canvas sits inside that box with margin for every mask,
+  // which is why the stamped config sets `adaptive_icon_foreground_inset: 0`:
+  // the inset is already in the artwork, and letting the tool inset it again
+  // would shrink the mark twice.
+  final foreground = '${iconDir.path}/app_icon_foreground.png';
+  File(foreground).writeAsBytesSync(
+    _renderIcon(
+      size: 1024,
+      bg: bg,
+      fg: fg,
+      cells: cells,
+      markFraction: 0.52,
+      transparentBackground: true,
+    ),
+  );
+  written.add(foreground);
+
+  // NO background PNG is written: the adaptive background is a FLAT `seed_hex`,
+  // declared as a colour in the stamped pubspec. A generated flat-colour PNG
+  // would be a second place the seed lives, and two copies of one fact is how
+  // the wrong one ships.
   return written;
 }
 
@@ -128,18 +209,29 @@ List<bool> _markCells(String appId) {
   return cells;
 }
 
+/// [transparentBackground] switches the output from opaque RGB to RGBA with the
+/// field fully transparent — the shape an Android adaptive FOREGROUND layer must
+/// take, and the only place alpha is wanted. Everything else stays opaque: a
+/// maskable icon is cropped by the platform and must be full-bleed, and a
+/// transparent favicon disappears into dark browser chrome.
 Uint8List _renderIcon({
   required int size,
   required _Rgb bg,
   required _Rgb fg,
   required List<bool> cells,
   required double markFraction,
+  bool transparentBackground = false,
 }) {
-  final px = Uint8List(size * size * 3);
+  final int channels = transparentBackground ? 4 : 3;
+  final px = Uint8List(size * size * channels);
   for (int i = 0; i < size * size; i++) {
-    px[i * 3] = bg.r;
-    px[i * 3 + 1] = bg.g;
-    px[i * 3 + 2] = bg.b;
+    final int o = i * channels;
+    px[o] = bg.r;
+    px[o + 1] = bg.g;
+    px[o + 2] = bg.b;
+    // alpha 0 — the byte is already 0 from the zero-filled Uint8List, but
+    // writing it makes the intent legible rather than incidental.
+    if (transparentBackground) px[o + 3] = 0;
   }
   final double mark = size * markFraction;
   final double cell = mark / 5.0;
@@ -156,34 +248,42 @@ Uint8List _renderIcon({
       for (int y = y0; y < y1 && y < size; y++) {
         for (int x = x0; x < x1 && x < size; x++) {
           if (x < 0 || y < 0) continue;
-          final int i = (y * size + x) * 3;
+          final int i = (y * size + x) * channels;
           px[i] = fg.r;
           px[i + 1] = fg.g;
           px[i + 2] = fg.b;
+          if (transparentBackground) px[i + 3] = 0xFF;
         }
       }
     }
   }
-  return _encodePng(size, size, px);
+  return _encodePng(size, size, px, channels: channels);
 }
 
-// ── minimal PNG writer: 8-bit truecolour, one IDAT, no interlacing ───────────
-// Opaque on purpose — no alpha channel. A maskable icon MUST be full-bleed
-// opaque (the platform crops it), and a transparent favicon on a dark browser
-// chrome disappears.
+// ── minimal PNG writer: 8-bit, one IDAT, no interlacing ──────────────────────
+// Colour type 2 (RGB) by default; type 6 (RGBA) only for the adaptive
+// foreground, which is the one asset that MUST be transparent.
 
-Uint8List _encodePng(int width, int height, Uint8List rgb) {
+Uint8List _encodePng(
+  int width,
+  int height,
+  Uint8List pixels, {
+  int channels = 3,
+}) {
+  final int stride = width * channels;
   final raw = BytesBuilder(copy: false);
   for (int y = 0; y < height; y++) {
     raw.addByte(
-        0); // filter type 0 (None) — flat colour gains nothing from more
-    raw.add(Uint8List.sublistView(rgb, y * width * 3, (y + 1) * width * 3));
+      0,
+    ); // filter type 0 (None) — flat colour gains nothing from more
+    raw.add(Uint8List.sublistView(pixels, y * stride, (y + 1) * stride));
   }
   // zlib (not raw deflate): PNG's IDAT carries a zlib stream, header and Adler
   // included. ZLibCodec defaults to that; passing raw:true here would produce a
   // file every decoder rejects.
-  final compressed =
-      Uint8List.fromList(ZLibCodec(level: 9).encode(raw.toBytes()));
+  final compressed = Uint8List.fromList(
+    ZLibCodec(level: 9).encode(raw.toBytes()),
+  );
 
   final out = BytesBuilder(copy: false)
     ..add(const <int>[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
@@ -191,15 +291,20 @@ Uint8List _encodePng(int width, int height, Uint8List rgb) {
   final ihdr = BytesBuilder(copy: false)
     ..add(_u32(width))
     ..add(_u32(height))
-    ..add(const <int>[8, 2, 0, 0, 0]); // depth 8, colour type 2 (RGB)
+    // depth 8; colour type 2 (RGB) or 6 (RGBA).
+    ..add(<int>[8, channels == 4 ? 6 : 2, 0, 0, 0]);
   out.add(_chunk('IHDR', ihdr.toBytes()));
   out.add(_chunk('IDAT', compressed));
   out.add(_chunk('IEND', Uint8List(0)));
   return out.toBytes();
 }
 
-Uint8List _u32(int v) => Uint8List.fromList(
-    <int>[(v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF]);
+Uint8List _u32(int v) => Uint8List.fromList(<int>[
+      (v >> 24) & 0xFF,
+      (v >> 16) & 0xFF,
+      (v >> 8) & 0xFF,
+      v & 0xFF,
+    ]);
 
 Uint8List _chunk(String type, Uint8List data) {
   final typeBytes = Uint8List.fromList(type.codeUnits);

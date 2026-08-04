@@ -1,0 +1,15 @@
+<!--
+  Android ADAPTIVE ICON — background layer.
+
+  The brand tile, FULL-BLEED: the same TILE gradient (#17253F -> #0A111E) and
+  top-light GLOW as company/logo/nikatru-icon.svg, with the `rx="244"` corner
+  radius removed. The radius is deliberately gone rather than kept: Android's
+  launcher supplies the silhouette itself (circle, squircle, rounded square,
+  teardrop — it differs per OEM), so a background that carries its own rounded
+  corners shows the device mask cutting into an already-rounded tile, which is
+  the "square inside a circle" artefact adaptive icons exist to remove.
+
+  Nothing here is invented — the gradient stops are lifted from the brand SVG.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs><linearGradient id="TILE" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17253F"/><stop offset="1" stop-color="#0A111E"/></linearGradient>
+<radialGradient id="GLOW" cx="0.5" cy="0.05" r="0.9"><stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/><stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs><rect width="1024" height="1024" fill="url(#TILE)"/><rect width="1024" height="1024" fill="url(#GLOW)"/></svg>

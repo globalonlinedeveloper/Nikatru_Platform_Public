@@ -16,8 +16,33 @@
 // anything, and the guard goes on reporting "ok" while stamping stock icons
 // again — a scanner that quietly stopped scanning, which is this repo's single
 // most repeated failure. Instead the stock bytes are read from the SDK that is
-// building the app, at `$FLUTTER_ROOT/packages/flutter_tools/templates/app/web/`.
-// That relationship cannot go stale, because it IS the thing being compared.
+// building the app. That relationship cannot go stale, because it IS the thing
+// being compared.
+//
+// 🔴 AND FOR TWO OF THE FIVE ASSETS IT HAD ALREADY STOPPED COMPARING — found
+// 2026-08-04, while a sibling guard for the NATIVE icons was being written.
+// This file used to read the template directory directly. Measured on the real
+// Flutter 3.44.7 install that day:
+//
+//     favicon.png.copy.tmpl                917 bytes   real
+//     icons/Icon-192.png.copy.tmpl        5292 bytes   real
+//     icons/Icon-512.png.copy.tmpl        8252 bytes   real
+//     icons/Icon-maskable-192.png.img.tmpl   0 bytes   EMPTY
+//     icons/Icon-maskable-512.png.img.tmpl   0 bytes   EMPTY
+//
+// EVERY `.img.tmpl` IN THE SDK IS A ZERO-BYTE PLACEHOLDER; the real bytes are
+// overlaid from the `flutter_template_images` package at `create` time. So the
+// two maskable comparisons were against an empty buffer — they could never have
+// matched, whatever the stamp shipped — while this guard printed
+// `5 stock asset(s) compared` and exited 0. An assertion that cannot fail,
+// inflating the count that made its coverage look real.
+//
+// 🔬 ITS SIX FIXTURE TESTS ALL PASSED THROUGHOUT, because the fixture writes
+// REAL PNG BYTES into a file it names `.img.tmpl`. A fixture written by whoever
+// wrote the guard encodes the same misunderstanding as the guard — this repo's
+// own recorded rule, happening again. `flutter-stock-assets.mjs` is now the one
+// place that knows about the overlay, and it REFUSES to return an empty stock
+// asset at all, so neither guard can regain this hole independently.
 //
 // ⚠️ AND IT REFUSES TO RUN BLIND. If the SDK templates cannot be found, this
 // exits COVERAGE LOST rather than skipping the comparison. "I could not check"
@@ -38,24 +63,33 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { inflateSync } from 'node:zlib';
-import { listDir } from './tree-walk.mjs';
+// ⚠️ NO `listDir` IMPORT ANY MORE, and that is deliberate rather than a
+// leftover. This guard used to enumerate the SDK template directories itself;
+// that walk now lives in flutter-stock-assets.mjs, which goes through `listDir`
+// on this file's behalf. `assert-walks-bounded.mjs` R3 requires a file to import
+// `listDir` IFF it calls it, so keeping a decorative import would fail the guard
+// that keeps every directory listing bounded.
+//
+// The ONE answer to "what bytes does `flutter create` write for this asset?" —
+// including the `flutter_template_images` overlay, without which the two
+// maskable comparisons below range over empty buffers. See its header.
+import { flutterSdkRoot, readStockAssets, StockAssetsUnavailable } from './flutter-stock-assets.mjs';
 
 const args = process.argv.slice(2);
 const appDir = resolve(args.find((a) => !a.startsWith('--')) ?? '.');
 const seedIdx = args.indexOf('--seed');
 const seedArg = seedIdx > -1 ? (args[seedIdx + 1] ?? '').replace('#', '').toLowerCase() : null;
 
-/** The web asset set. Keyed by the stamped path, valued by the SDK template
- *  basename it must NOT equal. Derived from what `flutter create` emits, so if
- *  Flutter adds an asset this list is what has to grow — deliberately explicit
+/** The web asset set — the stamped path, which is ALSO the key
+ *  `readStockAssets` returns for the SDK's counterpart. Deliberately explicit
  *  rather than globbed, because a glob over a missing directory finds nothing
  *  and reports success. */
 const WEB_ASSETS = [
-  ['web/favicon.png', 'favicon.png'],
-  ['web/icons/Icon-192.png', 'Icon-192.png'],
-  ['web/icons/Icon-512.png', 'Icon-512.png'],
-  ['web/icons/Icon-maskable-192.png', 'Icon-maskable-192.png'],
-  ['web/icons/Icon-maskable-512.png', 'Icon-maskable-512.png'],
+  'web/favicon.png',
+  'web/icons/Icon-192.png',
+  'web/icons/Icon-512.png',
+  'web/icons/Icon-maskable-192.png',
+  'web/icons/Icon-maskable-512.png',
 ];
 
 function fail(lines) {
@@ -63,48 +97,30 @@ function fail(lines) {
   process.exit(1);
 }
 
-// ── locate the SDK's stock templates ────────────────────────────────────────
-function flutterRoot() {
-  if (process.env.FLUTTER_ROOT) return process.env.FLUTTER_ROOT;
-  // `which flutter` -> <root>/bin/flutter. Resolved without spawning anything,
-  // because a spawn that fails looks the same as a tool that is absent.
-  for (const dir of (process.env.PATH ?? '').split(process.platform === 'win32' ? ';' : ':')) {
-    if (!dir) continue;
-    for (const exe of ['flutter', 'flutter.bat']) {
-      if (existsSync(join(dir, exe)) && basename(dir) === 'bin') return resolve(dir, '..');
-    }
-  }
-  return null;
-}
-
-const root = flutterRoot();
-const stockDirs = root
-  ? [
-      join(root, 'packages', 'flutter_tools', 'templates', 'app', 'web'),
-      join(root, 'packages', 'flutter_tools', 'templates', 'app', 'web', 'icons'),
-    ].filter((d) => existsSync(d))
-  : [];
-
-if (stockDirs.length === 0) {
+// ── the SDK's stock bytes, overlay included ─────────────────────────────────
+// Through the shared reader: it applies `flutter_template_images` over the SDK
+// templates and THROWS rather than handing back a zero-byte placeholder. The
+// two maskable assets are exactly the ones that need it — see this file's
+// header for the measurement.
+let stock;
+try {
+  stock = readStockAssets({
+    sdkRoot: flutterSdkRoot(),
+    relDir: 'web',
+    // Keyed on the stamped path so the map keys match WEB_ASSETS directly.
+    keep: (rel) => rel.endsWith('.png'),
+  });
+  stock = new Map([...stock].map(([k, v]) => [`web/${k}`, v]));
+} catch (e) {
+  if (!(e instanceof StockAssetsUnavailable)) throw e;
   fail([
-    '✗ COVERAGE LOST — could not locate the Flutter SDK\'s stock web templates.',
-    `  FLUTTER_ROOT=${process.env.FLUTTER_ROOT ?? '<unset>'} · resolved root=${root ?? '<none>'}`,
-    '  This guard compares the stamp against the SDK that builds it. Without the SDK it can only',
+    '✗ COVERAGE LOST — could not establish the Flutter SDK\'s stock web assets.',
+    ...e.lines.map((l) => `  ${l}`),
+    '  This guard compares the stamp against the SDK that builds it. Without those bytes it can only',
     '  check that files EXIST, and reporting that as a pass would mean "I could not check" reads as',
     '  "nothing was wrong" — the failure [pipeline S-14] exists to prevent. Run it in a lane that',
     '  has Flutter (app_brick), not beside the static guards.',
   ]);
-}
-
-/** Stock bytes by asset basename. Templates carry `.copy.tmpl` / `.img.tmpl`
- *  suffixes, which are stripped so the map keys match the stamped filenames. */
-const stock = new Map();
-for (const dir of stockDirs) {
-  for (const f of listDir(dir)) {
-    if (!f.includes('.png')) continue;
-    const name = f.replace(/\.(copy|img)\.tmpl$/, '');
-    if (!stock.has(name)) stock.set(name, readFileSync(join(dir, f)));
-  }
 }
 if (stock.size === 0) {
   fail(['✗ COVERAGE LOST — found the SDK template directories but no stock PNGs inside them.']);
@@ -204,7 +220,7 @@ const notes = [];
 let checked = 0;
 let colourChecked = 0;
 
-for (const [rel, stockName] of WEB_ASSETS) {
+for (const rel of WEB_ASSETS) {
   const p = join(appDir, rel);
   if (!existsSync(p)) {
     problems.push(`${rel} — MISSING. The stamp claims web and a PWA needs this asset.`);
@@ -218,9 +234,9 @@ for (const [rel, stockName] of WEB_ASSETS) {
   }
   checked++;
 
-  const stockBytes = stock.get(stockName);
+  const stockBytes = stock.get(rel);
   if (!stockBytes) {
-    notes.push(`${stockName} — no stock counterpart in this SDK; identity check skipped for it.`);
+    notes.push(`${rel} — no stock counterpart in this SDK; identity check skipped for it.`);
   } else if (stockBytes.length === bytes.length && stockBytes.equals(bytes)) {
     problems.push(
       `${rel} — is BYTE-IDENTICAL to Flutter's stock asset. [S-14] This is the default icon, ` +

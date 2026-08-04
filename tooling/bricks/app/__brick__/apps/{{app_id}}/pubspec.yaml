@@ -83,6 +83,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Generates the launcher icon for every NATIVE platform from one source image.
+  # See the `flutter_launcher_icons:` block at the bottom of this file for why a
+  # stamped app carries it before it has any native platform at all.
+  flutter_launcher_icons: ^0.14.4
   # TEST-ONLY. `content-pack-consumed` builds a pack whose `content_hash` is
   # genuinely correct, so the loader's own integrity check runs for real instead
   # of being handed a hash it cannot refuse. A hard-coded digest would be a
@@ -92,3 +96,77 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   generate: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAUNCHER ICONS — the mechanism, stamped before there is a platform to use it
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 WHY THIS IS HERE WHEN THE BRICK STAMPS NO NATIVE PLATFORM.
+# The stamp claims `web` only ([3]S-3 holds that claim and CI builds it). The
+# owner adds the rest with `flutter create . --platforms=android,ios,macos,
+# windows,linux` AFTER the stamp — and that command writes FLUTTER'S DEFAULT
+# LOGO into every one of them.
+#
+# That is not hypothetical. Measured on apps/subly 2026-08-04: 29 native icon
+# files, on four platforms, ALL byte-identical to `flutter create` output, while
+# its web icons carried the real brand mark. Nobody chose it; it arrived by
+# doing nothing, and it sat there for months because nothing looked.
+#
+# A defect in the TEMPLATE is not one app with the wrong icon — it is every app
+# the factory will ever stamp, born wrong, and store reviewers see it first
+# (Google Play rejects the stock Flutter icon outright). So the stamp lays down
+# the CONFIG and the SOURCE ART now, and adding platforms becomes one command:
+#
+#     cd apps/{{app_id}} && dart run flutter_launcher_icons
+#
+# post_gen.dart prints that as checklist step 1a, and
+# tooling/ci/assert-launcher-icons.mjs fails the build if this block stops
+# naming art the stamp actually writes.
+#
+# ── THE ART IS GENERATED, NOT COPIED ────────────────────────────────────────
+# hooks/brand_assets.dart derives both files from `app_id` + `seed_hex` — pure
+# arithmetic, no model — so [ADR 019]'s NO-IP-PROMPTING rule is obeyed by
+# construction, a re-stamp reproduces them byte-for-byte ([3]S-15), and each app
+# in the portfolio gets a DIFFERENT mark instead of fifty identical tiles.
+# Replace `image_path` with real art whenever there is real art.
+#
+# ── WEB IS `generate: false`, DELIBERATELY ──────────────────────────────────
+# The stamp already wrote the five web assets, and its plain and MASKABLE icons
+# are different images: the maskable pair keeps the mark inside the safe zone
+# for platforms that crop it. This generator derives all four from one source,
+# so turning web on would overwrite the maskable pair with non-maskable art —
+# undoing the one platform that was already right.
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+
+  android: "ic_launcher"
+  # A FLAT COLOUR, not a generated PNG: the seed already lives in this file, and
+  # two copies of one fact is how the wrong one ships.
+  adaptive_icon_background: "#{{seed_hex}}"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  # 0 because the safe-zone inset is ALREADY in the artwork — brand_assets.dart
+  # paints the mark at 52% of the canvas, inside Android's 66.7% guarantee.
+  # Leaving the default 16 would shrink it twice.
+  adaptive_icon_foreground_inset: 0
+
+  ios: true
+  # NOT OPTIONAL. App Store Connect REJECTS an app icon with an alpha channel
+  # (ITMS-90717) — the build uploads and then fails validation remotely, with a
+  # message that does not mention icons.
+  remove_alpha_ios: true
+
+  macos:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 256
+
+  web:
+    generate: false
+
+  # LINUX has no entry: flutter_launcher_icons has no Linux support and Flutter's
+  # Linux runner sets no window icon. There, the launcher icon is a PACKAGING
+  # artefact (.desktop + hicolor theme, or a snapcraft recipe). Recorded rather
+  # than silently missing — assert-launcher-icons.mjs prints the gap every run.

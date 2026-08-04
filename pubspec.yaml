@@ -29,6 +29,36 @@ workspace:
 dev_dependencies:
   melos: ^8.2.2
 
+# ─────────────────────────────────────────────────────────────────────────────
+# THE ONE OVERRIDE, AND WHY IT IS NOT A SHRUG
+# ─────────────────────────────────────────────────────────────────────────────
+# A pub WORKSPACE is a single resolution, so every member's dev tooling has to
+# agree with every other member's. `melos 8.2.2` requires `cli_util ^0.5.0`;
+# NO PUBLISHED VERSION of `flutter_launcher_icons` accepts anything at or above
+# 0.5.0 (measured 2026-08-04 — pub enumerated every version back to 0.9.0 and
+# they split between `cli_util ^0.3.5` and `>=0.4.0 <0.5.0`, while `msix
+# 3.18.0`'s `image ^4.0.0` rules out the older half). So the icon generator and
+# the workspace runner cannot coexist without this line, and the icon generator
+# is what stands between this factory and shipping Flutter's logo again.
+#
+# It is safe HERE and would not be in general, because of how narrowly
+# flutter_launcher_icons uses cli_util. VERIFIED BY RUNNING IT rather than by
+# reading a changelog: under this override the generator produced all 29 native
+# icons for apps/subly, and — the run that actually matters — a freshly stamped
+# app #2 went from every icon byte-identical to Flutter's stock to none of them,
+# in one command (tooling/ci/assert-launcher-icons.mjs red, then green).
+#
+# The alternative was `dart pub global activate flutter_launcher_icons`, which
+# [pipeline F-8] rejects for exactly the right reason: a globally activated tool
+# resolves whatever is newest that day, and nothing in the repo would record
+# which version drew the icons that shipped. An override is pinned by
+# pubspec.lock and visible in a diff; a global activation is neither.
+#
+# ⚠️ REVISIT WHEN flutter_launcher_icons WIDENS TO cli_util ^0.5.0, and delete
+# this block then — an override nobody needs is an override nobody re-examines.
+dependency_overrides:
+  cli_util: ^0.5.0
+
 # Melos 7+/8 configuration lives here (melos.yaml no longer exists).
 melos:
   scripts:
