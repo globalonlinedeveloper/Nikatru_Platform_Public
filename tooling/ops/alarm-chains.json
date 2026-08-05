@@ -1,0 +1,68 @@
+{
+  "_readme": [
+    "THE ALARM-CHAIN LEDGER — the other half of tooling/monitor-register.json.",
+    "",
+    "monitor-register.json answers 'does every hostname have a monitor'. This answers the question",
+    "nobody was asking: 'and if that monitor goes red, does a human find out'. They are different",
+    "questions and the second one had a NO in it for nine days.",
+    "",
+    "WHY IT EXISTS. GlitchTip monitor 6 ('Laptop daily backup') was created with project_id = NULL.",
+    "The notification path is a single join — AlertRecipient.filter(alert__project__monitor__id=N,",
+    "alert__uptime=True), apps/uptime/tasks.py — so a monitor belonging to no project belongs to no",
+    "project's alert rule, and the recipient set comes back EMPTY. It went Down 13 times of 41 checks",
+    "and told nobody. Nothing was broken: the checks ran on schedule, the transitions were recorded,",
+    "the dashboard drew them red, the alert rule existed and was enabled. Every surface a person looks",
+    "at was healthy. The missing thing was a foreign key, and a foreign key has no dashboard.",
+    "",
+    "🔴 chainsObserved IS THE POINT, AND IT IS NOT CONFIG. The obvious guard is 'assert every monitor",
+    "has a project', and verify-alarm-chains.mjs limb A is exactly that. But a config-shaped check",
+    "answers a config-shaped question, and it would have gone green the moment the foreign key was set",
+    "— which is the same half-state, one step later. So a chain is not complete here until somebody has",
+    "forced a real state change and watched a message land. Each entry must name evidence that outlives",
+    "the session that wrote it: a delivery record id, not the word 'verified'.",
+    "",
+    "⚠️ Keys are PROJECT SLUGS, not project names. The alert rule hangs off the project, so the project",
+    "is the unit a chain is proven for — proving `ops` proves every monitor filed under `ops`. An early",
+    "draft of the guard keyed the API path by project NAME, which is identical to the slug for both of",
+    "today's projects and 404s for the first one that is not. It found that itself, during --self-test,",
+    "on a throwaway project called 'TEMP alarm-chain selftest'."
+  ],
+
+  "org": "nikatru",
+
+  "expectedMonitorNames": [
+    "GlitchTip",
+    "Subly API health",
+    "Subly web",
+    "nikatru.com",
+    "rajasekarselvam.com",
+    "Laptop daily backup"
+  ],
+
+  "chainsObserved": {
+    "ops": {
+      "date": "2026-08-05",
+      "monitor": "Laptop daily backup",
+      "how": "Shrank the heartbeat window to 60s so the production fetch() saw no heartbeat inside it, then enqueued the production perform_checks task — the same task dispatch_checks enqueues. Real Down transition 08:56:20Z, real recovery 08:57:01Z after a real POST to the heartbeat endpoint. Interval restored to 43200s; endpoint_id never changed, so the laptop's heartbeat URL still works.",
+      "evidence": "Two Resend delivery records to support@nikatru.com, both status=delivered: 4133761a-4c83-48eb-88e0-7af79aa2e8cc ('GlitchTip: Laptop daily backup is down', 08:56:23Z) and d87ac960-78df-4dce-b56a-f9c44efd6df8 ('… is back up', 08:57:03Z)"
+    },
+    "subly": {
+      "date": "2026-08-05",
+      "monitor": "a throwaway monitor, deleted after the run",
+      "how": "This project's chain had never been observed either — it was only ever assumed, because its monitors were configured the way monitor 6 merely looked. Created a throwaway GET monitor in the project against a URL that 404s, ran the production perform_checks task, deleted it. No real monitor was altered and no real site was taken down.",
+      "evidence": "Resend delivery record 56bde711-db92-48c6-9eae-a0bb21660d18 to support@nikatru.com, status=delivered, 'GlitchTip: TEMP alarm-chain proof (delete me) is down', 08:58:40Z"
+    }
+  },
+
+  "_notObservable": [
+    "🔴 WHAT THIS LEDGER STILL CANNOT PROVE, stated so it is not mistaken for coverage.",
+    "",
+    "Every monitor above, the alert evaluation, and the Resend SMTP hop all run on ONE Oracle box —",
+    "including monitor id 1, which watches GlitchTip itself. If that box is down, the check that would",
+    "notice is down and the mail that would say so is down with it, and the result is indistinguishable",
+    "from perfect health. Proving the chain delivers WHILE THE BOX IS UP says nothing about the case",
+    "that matters most. That is [pipeline E-9b], it is owner-gated, and it is recorded as undecided in",
+    "tooling/monitor-register.json → observability.spof. Do not read a green run of",
+    "verify-alarm-chains.mjs as an answer to it."
+  ]
+}
