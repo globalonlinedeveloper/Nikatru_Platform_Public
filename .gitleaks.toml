@@ -102,3 +102,48 @@ id = "nikatru-paddle-sandbox-api-key"
 description = "Paddle SANDBOX API key (pdl_sdbx_apikey_ prefix) — scanned too, see [5]M-12"
 regex = '''\bpdl_sdbx_apikey_[A-Za-z0-9]{20,}'''
 keywords = ["pdl_sdbx_apikey_"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INDIAN PII. Added 2026-08-05 after the proprietor's REAL PAN was found committed
+# to this public repository in packages/telemetry/test/pii_scrubber_test.dart —
+# the PII scrubber's own test fixture, live on origin/main since 82a309d.
+#
+# 🔴 WHY THE EXISTING CONTROLS ALL PASSED, because that is the reason these rules
+# exist rather than a one-line fixture swap:
+#   · .gitignore excludes Personal/ and says why in its own comment — "these carry
+#     PAN, salary figures and date of birth, and origin is a PUBLIC repository".
+#     That control is PATH-based. This was a string literal in ordinary source.
+#   · Every rule above this block is a CREDENTIAL rule. A credential scanner has
+#     no opinion about a national identity number.
+# So a green ci-gate and 100+ guards were fully consistent with a PAN in the tree.
+# The class was unguarded, not the instance.
+#
+# ⚠️ THESE ARE SHAPE RULES AND WILL MATCH SYNTHETIC VALUES TOO. That is deliberate
+# and is the correct trade: the alternative is allowlisting real values, which
+# means writing them down here. Test fixtures must use the documented placeholders
+# below, which are allowlisted by exact value — anything else is a finding.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[rules]]
+id = "nikatru-india-pan"
+description = "Indian PAN (5 letters, 4 digits, 1 letter) — a national identity number, never a test fixture"
+regex = '''\b[A-Z]{5}[0-9]{4}[A-Z]\b'''
+keywords = []
+  [rules.allowlist]
+  description = "Canonical documentation placeholders only. A real PAN must never be added here."
+  regexes = ['''\bABCDE1234F\b''', '''\bAAAAA0000A\b''']
+
+[[rules]]
+id = "nikatru-india-gstin"
+description = "Indian GSTIN — embeds the PAN as characters 3-12, so leaking it leaks the PAN"
+regex = '''\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}\b'''
+keywords = []
+
+[[rules]]
+id = "nikatru-india-aadhaar"
+description = "Indian Aadhaar (12 digits, optionally 4-4-4 grouped)"
+regex = '''\b[2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}\b'''
+keywords = []
+  [rules.allowlist]
+  description = "Documented synthetic fixtures used by the PII scrubber tests."
+  regexes = ['''\b1234[ -]?5678[ -]?9012\b''']
