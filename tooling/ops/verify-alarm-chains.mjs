@@ -220,6 +220,39 @@ async function check() {
       continue;
     }
     const list = Array.isArray(alerts) ? alerts : [alerts].filter(Boolean);
+
+    // ── limb E — THE ISSUE PATH, which is a SEPARATE FILTER from the uptime one.
+    // GlitchTip's alert task selects rules with:
+    //     ProjectAlert.objects.filter(quantity__isnull=False,
+    //                                 timespan_minutes__isnull=False)
+    // (apps/alerts/tasks.py). A rule with EITHER field null is excluded from
+    // issue alerts entirely — while still working perfectly for uptime, because
+    // uptime notifications come from a different task that never consults those
+    // fields.
+    //
+    // 🔴 THAT IS EXACTLY HOW `subly` SPENT ITS WHOLE LIFE. Its rule existed, was
+    // enabled, had an email recipient and `uptime: true` — and both nulls. So the
+    // uptime chain worked and was proven, while not one crash notification had
+    // EVER been created for the project that receives every app crash: measured
+    // 2026-08-05, `Notification.objects.count()` was 1 across the entire
+    // instance, and that one was an ops event created minutes earlier. A real
+    // fatal in the live web app (SUBLY-2, six occurrences over two days) had come
+    // and gone with nobody told.
+    //
+    // A project can therefore be fully green on limb B and completely silent on
+    // crashes. Checking one and calling it "the alert chain" is the mistake.
+    const issueCapable = list.filter(
+      (a) => a && a.quantity != null && a.timespanMinutes != null && (a.alertRecipients ?? []).length > 0,
+    );
+    if (issueCapable.length === 0) {
+      problems.push(
+        `NO ISSUE ALERT: project ${slug} has no alert rule with BOTH quantity and timespanMinutes set ` +
+          `(plus a recipient). GlitchTip's alert task filters on quantity__isnull=False AND ` +
+          `timespan_minutes__isnull=False, so a rule with either one null is invisible to issue alerts — ` +
+          `even though it keeps working for uptime. Crashes land in this project and tell nobody.`,
+      );
+    }
+
     const live = list.filter((a) => a && a.uptime === true && (a.alertRecipients ?? []).length > 0);
     if (live.length === 0) {
       problems.push(
@@ -347,6 +380,38 @@ async function selfTest() {
   } finally {
     if (tmpMonitor) await api(`organizations/${ORG}/monitors/${tmpMonitor.id}/`, { method: 'DELETE' });
     if (tmpProject) await api(`projects/${ORG}/${tmpProject.slug}/`, { method: 'DELETE' });
+  }
+
+  // E — the issue path made ineligible again. This is the state `subly` was
+  // actually in, live, for the whole life of the instance: a rule that is
+  // enabled, has a recipient, and works for uptime, while being invisible to
+  // issue alerts because quantity/timespan are null.
+  const alertUrl = `projects/${ORG}/subly/alerts/1/`;
+  let savedAlert = null;
+  try {
+    savedAlert = (await api(`projects/${ORG}/subly/alerts/`));
+    savedAlert = Array.isArray(savedAlert) ? savedAlert[0] : savedAlert;
+    const put = (quantity, timespanMinutes) =>
+      api(alertUrl, {
+        method: 'PUT',
+        body: JSON.stringify({
+          quantity,
+          timespanMinutes,
+          uptime: true,
+          name: savedAlert.name ?? '',
+          alertRecipients: [{ recipientType: 'email', url: '' }],
+        }),
+      });
+    const broken = await put(null, null);
+    if (broken.quantity !== null) throw new Error('could not reproduce the null-quantity state; this test would be meaningless');
+    await expectRed('limb E: an alert invisible to ISSUE alerts is caught (subly’s real historical state)');
+    const restored = await put(savedAlert.quantity ?? 1, savedAlert.timespanMinutes ?? 1);
+    if (restored.quantity == null || restored.timespanMinutes == null) {
+      console.error('🔴 RESTORE FAILED — subly alert 1 is still not issue-capable. FIX BY HAND NOW.');
+      return 2;
+    }
+  } catch (err) {
+    results.push([false, 'limb E: issue-alert eligibility', `threw: ${err.message}`]);
   }
 
   // C — wired but never observed.

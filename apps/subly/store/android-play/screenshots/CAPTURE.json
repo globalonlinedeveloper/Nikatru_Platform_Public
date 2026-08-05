@@ -1,0 +1,21 @@
+{
+  "capturedBy": "tooling/store/capture-play-screenshots.mjs",
+  "posture": "live",
+  "viewport": "360x640@3",
+  "pixels": "1080x1920",
+  "count": 4,
+  "curation": {
+    "framesCaptured": 5,
+    "framesPublished": 4,
+    "removed": ["05-settings.png"],
+    "why": "The Settings frame displays the signed-in account at the top of the card, in large legible type. CI captures signed in as the end-to-end test account, so the frame read `subly-e2e+1785856022717@nikatru.com` — an internal test address on a public marketing asset. Removed rather than published.",
+    "whyNotRecaptured": "Re-running the workflow reproduces it: the capture signs in as that same account, so ANY frame showing the account card carries the address. This is a defect in the capture, not in the curation, and it is recorded as such in the directory README.",
+    "costOfRemoval": "None. tooling/channel-register.json sets minCount 2 and recommendedCount 4; four frames satisfy both.",
+    "curatedOn": "2026-08-05"
+  },
+  "🔴 whyThisBlockExists": "assert-listing-assets.mjs compares this count to the bytes beside it, precisely so a removed frame cannot leave provenance describing a set that is no longer here. Editing `count` to 4 alone would have satisfied that check while making this file claim a four-frame capture run that never happened — provenance that passes and lies. The run produced five; four are published; both numbers are stated.",
+  "requirements": {
+    "source": "https://support.google.com/googleplay/android-developer/answer/9866151",
+    "fetched": "2026-08-04"
+  }
+}
