@@ -106,6 +106,18 @@
 //   · ANYTHING ELSE IN THE PIXELS. One band of one colour is decoded, plus the
 //     header. Third-party marks inside the frame, a broken layout or an empty
 //     board would all pass.
+//   · ANY TEXT AT ALL, IN ANY FRAME. This is not a gap to close later, and the
+//     day it mattered is recorded: on 2026-08-05 `05-settings.png` carried the
+//     end-to-end account's address, `subly-e2e+…@nikatru.com`, and every check
+//     here passed it — right size, right format, live posture, top band 0.009.
+//     A human found it by opening the file. Glyphs are not a band of one colour,
+//     and a text detector that reads some fonts and not others would report
+//     "clean" for the frames it cannot read, which is worse than saying this.
+//     🔴 SO THE QUESTION IS ANSWERED UPSTREAM OF THE PIXELS INSTEAD — see THE
+//     CAPTURE limb near the end of this file, which reads the capture suite
+//     rather than its output, and `apps/subly/integration_test/
+//     store_capture_guard.dart`, which refuses the shutter while the session's
+//     own identity is anywhere in the widget tree.
 //   · WHETHER THE COMMITTED GRAPHIC IS STILL WHAT ITS GENERATOR RENDERS. That
 //     needs Chrome, so it is a separate step —
 //     `node tooling/store/render-play-graphics.mjs --check` — which runs in the
@@ -124,8 +136,19 @@ import { listDir } from './tree-walk.mjs';
 // can read a banner out of a PNG" — and that was true only for as long as
 // nothing decoded one. See BANNER DETECTION below.
 import { decodeRgba, encodeRgba, PngUnreadable } from '../store/png-codec.mjs';
+// 🔴 THE OTHER THING THAT CANNOT BE READ OUT OF A PNG — see THE CAPTURE limb at
+// the end of this file. Shared with the capture runner rather than reimplemented:
+// two readings of "does this capture leak the account" would eventually differ,
+// and the disagreement would be silent.
+import { scanCaptureSuite, selfTestAccountAddressDetector, SUITE_FILE } from '../store/capture-suite-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+/** No argument means CI's own invocation against the real repository, where a
+ *  capture suite MUST exist. A caller pointing this at a fixture root is a
+ *  different, weaker situation — most fixtures model a listing tree and no app
+ *  source — and it says so out loud rather than failing every fixture. The same
+ *  split assert-guard-coverage.mjs makes, for the same reason. */
+const scanningRealRepo = process.argv[2] === undefined;
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'sites/_shared/_data/apps.json';
 
@@ -394,6 +417,11 @@ let treesSeen = 0;
 let pixelsExamined = 0;
 let debugBannerAppsChecked = 0;
 let worstBandFraction = 0;
+/** Capture suites read, and frames resolved to the screen they photograph. Both
+ *  are printed: the second is what the account-address limb actually ranged
+ *  over, and a limb that ranged over zero frames must not read as a pass. */
+let captureSuitesScanned = 0;
+let capturedFrames = 0;
 
 for (const row of withGraphics) {
   const g = contract.perChannel[row.id].graphicAssets;
@@ -704,6 +732,67 @@ for (const row of withGraphics) {
   }
 }
 
+// ── 🔴 THE CAPTURE ITSELF: WHOSE ACCOUNT ENDS UP ON THE LISTING ─────────────
+//
+// Added 2026-08-05, after the one defect this guard's own header said it could
+// not see arrived. The capture produced five frames and the fifth,
+// `05-settings.png`, rendered the signed-in account at the top of the settings
+// card in large legible type. CI captures signed in as the throwaway end-to-end
+// account, so the frame read `subly-e2e+…@nikatru.com` — an internal test
+// address on a public marketing asset. EVERY CHECK ABOVE PASSED IT: it is
+// 1080x1920, colour type 2, aspect 1.78, provenance "live", worst top-band row
+// 0.009. It was caught by a human opening the image.
+//
+// ⚠️ AND NOTHING HERE WILL EVER READ THAT ADDRESS OUT OF THE PIXELS. The banner
+// limb works because the banner is a full-width band of ONE COLOUR; glyphs are
+// not, and a text detector that reads some fonts and not others reports "clean"
+// for the frames it cannot read — an assertion that cannot fail, wearing the
+// appearance of one that can. So this limb does not look at the PNGs at all. It
+// looks at the CAPTURE, which is where the answer is still knowable:
+//
+//   · every frame goes through the guarded shutter in store_capture_guard.dart,
+//     which reads the live widget tree one instruction before the capture and
+//     refuses a frame carrying the session's identity (unit-tested in both
+//     directions by apps/subly/test/store_capture_guard_test.dart);
+//   · every frame resolves to the SCREEN SOURCE it photographs, and that source
+//     must not read `.email` off the session.
+//
+// The second half is why this runs on every push. The refusal is stronger — it
+// sees shared widgets and screens nobody audited — but it can only fire during a
+// live capture, which needs a CI-only secret, a provisioned Supabase user and a
+// browser. Re-adding a settings frame must fail on the PUSH that does it.
+{
+  const detector = selfTestAccountAddressDetector();
+  if (!detector.ok) {
+    coverageLost([
+      'the account-address detector FAILED ITS OWN SELF-TEST and no capture suite was examined.',
+      `a synthetic settings screen reading \`user?.email\` measured ${detector.onLeaking} (needs true),`,
+      `and the same screen with the row removed measured ${detector.onClean} (needs false).`,
+      'The matcher is one regular expression, and the failure that costs everything is not it being',
+      'wrong — it is it being edited into something that never matches, at which point every captured',
+      'screen reads clean and this limb prints ok forever.',
+    ]);
+  }
+  for (const app of apps) {
+    if (typeof app.slug !== 'string' || app.slug === '') continue;
+    const scan = scanCaptureSuite({ root: ROOT, app: app.slug });
+    if (!scan.present) continue;
+    captureSuitesScanned++;
+    capturedFrames += scan.frames.length;
+    problems.push(...scan.problems);
+  }
+  if (captureSuitesScanned === 0 && scanningRealRepo) {
+    coverageLost([
+      `not one app under apps/ carries ${SUITE_FILE}, so the capture limb examined nothing.`,
+      'That suite IS the store screenshot set — it is what `tooling/store/capture-play-screenshots.mjs`',
+      'drives, and the register names that script as `capturedBy`. With it gone the set cannot be',
+      'regenerated at all, and this limb would report every capture free of the account by never reading',
+      'one. The listing directory would go on looking complete while the pictures in it drifted from an',
+      'app nobody can re-photograph.',
+    ]);
+  }
+}
+
 // ── the scan must still be reaching the tree ────────────────────────────────
 if (treesSeen === 0) {
   coverageLost([
@@ -759,6 +848,15 @@ if (problems.length) {
     `ok   DEBUG RIBBON — ${debugBannerAppsChecked} app(s) building a MaterialApp all set ` +
       '`debugShowCheckedModeBanner: false`. The capture runs through `flutter drive`, which builds in DEBUG.',
   );
+  console.log(
+    `ok   THE ACCOUNT — ${captureSuitesScanned} capture suite(s) read, ${capturedFrames} frame(s) resolved to the ` +
+      'screen they photograph, none of which reads `.email` off the session; every frame goes through the ' +
+      'guarded shutter that refuses one carrying the signed-in account. Detector SELF-TESTED this run.',
+  );
+  if (captureSuitesScanned > 0 && capturedFrames === 0) {
+    console.log('   ⬜ …and 0 frames resolved is not a pass. The suite captures nothing this scan can name;');
+    console.log('      see the FAIL above, because a capture nobody can name is a frame nobody can vet.');
+  }
   console.log('   ⚠️ CANNOT SEE: whether a screenshot is REPRESENTATIVE of the app, or whether the feature');
   console.log('      graphic is any good. Size, format, count, recorded posture and the ABSENCE OF THE DEMO');
   console.log('      BANNER are what this proves. "Demonstrates the actual in-app experience" is a human call,');

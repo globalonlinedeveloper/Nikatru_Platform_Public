@@ -13,6 +13,29 @@
 > `tooling/store/capture-play-screenshots.mjs`, not in the curation** — either that frame should not be
 > captured, or the capture needs a display-safe account. Until then, every future run reproduces it.
 >
+> ## ✅ FIXED IN THE CAPTURE, 2026-08-05 — the paragraph above is now history, not a standing risk
+>
+> The capture no longer photographs Settings **and cannot photograph the account from any screen**:
+>
+> 1. `integration_test/store_screenshots_test.dart` captures **four** frames and no longer visits
+>    Settings. Nothing about the remaining four is staged, masked or edited — a store screenshot showing
+>    a UI state the app never draws would be a worse problem than the one being fixed.
+> 2. Every frame goes through `captureFrame` in `integration_test/store_capture_guard.dart`, which reads
+>    the **live widget tree** one instruction before the shutter and refuses to release it while the
+>    session's own address or profile name is on screen. That covers what curation and a screen-by-screen
+>    audit cannot: a shared widget nobody looked at, a frame added months from now, and a **local** run —
+>    `E2E_EMAIL` comes from the environment, so the leak was never bounded by the CI account.
+> 3. `tooling/ci/assert-listing-assets.mjs` fails the build on **every push** if a captured frame's screen
+>    reads `.email` off the session, if a capture bypasses the guarded shutter, or if a frame cannot be
+>    resolved to the screen it photographs. `capture-play-screenshots.mjs` runs the same check before it
+>    starts a browser.
+> 4. The refusal is unit-tested in both directions by `apps/subly/test/store_capture_guard_test.dart`, and
+>    the static limb has recorded real-tree failing cases in `tooling/ci/test/listing-assets.test.mjs`.
+>
+> ⚠️ **A display-safe account was considered and rejected.** It still puts an address on a marketing
+> asset, and it is only safe while nobody changes the provisioner or runs the live lane with their own
+> credentials — with no check downstream able to notice, because *nothing here can read text in a PNG*.
+>
 > **Cost of removal: none.** `tooling/channel-register.json` sets `minCount: 2` and
 > `recommendedCount: 4`; four frames satisfy both. `CAPTURE.json` records BOTH numbers — five captured,
 > four published — because `assert-listing-assets.mjs` compares its `count` to the bytes beside it, and
@@ -207,11 +230,14 @@ guard reports `5 screenshot(s) measured` and `5 screenshot(s) DECODED`.
 Four things were read out of the pixels by eye on 2026-08-05 that **no assertion
 here covers**, listed so the owner reviews the images rather than the checkmark:
 
-1. **`05-settings.png` shows the throwaway E2E account's address**,
-   `subly-e2e+…@nikatru.com`, legible at full size. It is a CI account and not
-   the owner's, so it is not a privacy leak — but it is a **test artefact on a
-   public marketing asset**, and it is the one frame that would look wrong to a
-   reviewer who noticed it.
+1. ~~**`05-settings.png` shows the throwaway E2E account's address**~~ —
+   `subly-e2e+…@nikatru.com`, legible at full size. **CLOSED 2026-08-05, in the
+   capture rather than in the curation** (see the banner at the top): the frame
+   is no longer captured, and the shutter now refuses any frame carrying the
+   session's identity. It is left on this list rather than deleted, because it is
+   the one entry that proves what the other three are: things only a human
+   reading the picture could find, in a directory where every automated check
+   was green.
 2. **The floating `+` button overlaps a price in three frames** — `01-home`
    (`$1▮.99`), `02-calendar` (a bare `$`), `04-budget` (`$93 / $1▮2`). The
    capture is a real screen, so this is what the app looks like; it still reads
