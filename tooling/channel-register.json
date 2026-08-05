@@ -487,8 +487,9 @@
             "error costs one CI run and names its own fix."
           ],
           "sha256": "43:C8:4D:11:62:C4:D1:9C:0F:A0:C5:E0:01:90:5B:89:52:3D:C0:82:A6:80:83:C9:93:06:9B:86:3C:28:A6:16",
-          "alias": "subly",
+          "alias": "nikatru-upload",
           "asOf": "2026-08-04",
+          "_aliasNote": "Renamed from `subly` on 2026-08-04 by [ADR 030] — ONE SHARED UPLOAD KEY FOR THE WHOLE FACTORY, so a per-app alias was the wrong name. This field kept saying `subly` afterwards and NOTHING NOTICED, because `keytool -changealias` leaves the SHA-256 byte-identical (that identity is the proof it was a rename and not a regeneration) and no guard reads this field — assert-artifact-signed.mjs consumes only `.sha256`. A value with no reader drifts silently and its `asOf` date goes on looking fresh. The repo secret ANDROID_KEY_ALIAS is the authority.",
           "source": "owner-supplied, from the keystore generated 2026-08-04 (RSA 4096, PKCS12, CN=Nikatru, valid to 2053)"
         },
         "ciSecrets": {
@@ -527,20 +528,26 @@
           "",
           "⚠️ THE .apk IS KEPT ON PURPOSE, not left behind. Play takes the .aab and only the .aab, but an",
           "app bundle is not installable: it is a publishing format Google re-splits per device. The .apk",
-          "is the only artifact anybody can sideload onto a real handset to check the build, and this box",
-          "cannot build Android at all (CLAUDE.md: Selector.open() is broken Windows-socket-wide), so CI's",
-          "artifact is the ONLY way a human touches an Android build today. Dropping it to 'clean up' would",
-          "trade a real capability for a tidier YAML.",
+          "is the only artifact anybody can sideload onto a real handset to check the build. Dropping it",
+          "to 'clean up' would trade a real capability for a tidier YAML.",
+          "",
+          "⚠️ CORRECTED 2026-08-05 — this note used to say 'this box cannot build Android at all', which",
+          "is the WINDOWS HOST's limit stated as the machine's. CLAUDE.md: Android builds LOCALLY IN WSL",
+          "and has since 2026-07-26 (a 155 MB app-debug.apk in ~6 min); no `netsh winsock reset`, reboot",
+          "or admin is needed. The Selector.open() failure is real and is Windows-host-wide, but the",
+          "conclusion drawn from it was too strong. CLAUDE.md records this exact wrong claim being 'copied",
+          "into four agent briefs in a single day' — this was a fifth copy, in the public repo.",
           "",
           "⚠️ `served` is still false and stays false: a lane that BUILDS the artifact is not a channel",
-          "that SHIPS it. Serving needs OWNER_QUEUE A-3 (the publisher account), the 12-tester closed",
-          "test, and a real upload key."
+          "that SHIPS it. What serving needs is now only the SUBMISSION path — the publisher account is",
+          "verified (see accountStatus), the upload key exists and is pinned above, and the 12-tester",
+          "closed test never applied to an Organization account (see notes)."
         ]
       },
       "crashSink": {
         "layers": ["dart"],
         "native": false,
-        "note": "The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so Dart errors from this artifact reach GlitchTip. sentry_flutter vendors sentry-android, but NOTHING HAS EXERCISED THE NATIVE PATH FROM THIS FACTORY — Android cannot be built on the owner's box at all, so no Android artifact has ever run on a handset. Native coverage is UNVERIFIED and is not claimed. [pipeline 11]E-7"
+        "note": "The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so Dart errors from this artifact reach GlitchTip. sentry_flutter vendors sentry-android, but NOTHING HAS EXERCISED THE NATIVE PATH FROM THIS FACTORY — no Android artifact has ever run on a handset. Native coverage is UNVERIFIED and is not claimed. ⚠️ The reason given here used to be 'Android cannot be built on the owner's box at all', which is false: it builds in WSL (see the lane note). The gap is that nobody has INSTALLED a build on a device, which is a different and still-open thing — correcting the reason does not close it. [pipeline 11]E-7"
       },
       "deploymentEnvironment": "{app}-android-play",
       "storeMetadataDir": "apps/{app}/store/android-play",
@@ -572,9 +579,9 @@
           "cannot be served through an account that does not exist), and every other gap PRINTS on every",
           "run. Failing on the rest would block every merge on work only the owner can do."
         ],
-        "status": "none",
-        "asOf": "2026-08-03",
-        "note": "No Play Console account. OWNER_QUEUE A-3 is waiting on the free D-U-N-S for an Organization account; the ₹32,000 paid package is recorded DO NOT BUY. Individual ($25) is available now and costs the 12-tester / 14-day closed-testing window instead."
+        "status": "verified",
+        "asOf": "2026-08-04",
+        "note": "Play ORGANIZATION account, VERIFIED 2026-08-04 11:12 IST — Organization ✅ and Authorized representative ✅, website verified, $25 paid, OWNER_QUEUE A-3 CLOSED. ⚠️ THIS FIELD SAID \"none — No Play Console account\" AND WAS FALSE FOR TWO DAYS, in the PUBLIC repo, while three other files in this same tree already said the opposite (apps/subly/store/android-play/content-rating.json, tooling/ci/assert-play-declarations.mjs, and ci.yml's own comment). And it was NOT unguarded — assert-channel-register printed 'ACCOUNT NONE: android-play … as of 2026-08-03 · No Play Console account' on EVERY CI run for two days after it became false. That is the sharper lesson: the gap-printer worked perfectly and printed a gap that had closed, in a message identical to the one it had printed correctly for weeks. A print that repeats an expected line is wallpaper, and a `verified` row printed NOTHING at all — so the freshness of the claim was never surfaced in either state. `accountStatus` also only FAILS on `served: true`, and this row is deliberately not served. Exactly the defect fixed one channel over for windows-store; found the same way, by reviewing a vendor file against the artefacts. The account record is company/vendors/google.md."
       },
       "submission": {
         "_why": [
@@ -591,7 +598,7 @@
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — native store work is deferred until an app proves it converts strangers.",
-        "alsoBlockedBy": "Play Organization needs a D-U-N-S (OWNER_QUEUE A-3, waiting by choice). Play Individual needs none but costs the 12-tester / 14-day closed-testing window."
+        "alsoBlockedBy": "RESOLVED 2026-08-04 — the D-U-N-S issued free, the Organization account is verified, and the 12-tester window turned out never to have applied. ⚠️ THIS FIELD DESCRIBED BOTH BLOCKERS AS LIVE AND NEITHER WAS. The Individual-vs-Organization trade it framed is moot: Organization was obtained at no extra cost, and the 12-tester / 14-day closed test is scoped BY GOOGLE to personal accounts (see notes below), so it would not have been the price of Individual either. What remains deferred is the SUBMISSION work per `reason` above — not the account, and not a tester calendar."
       },
       "notes": [
         "🔴 TWO INDEPENDENT REASONS PLAY REFUSED WHAT CI BUILT, and the register recorded both. ONE IS",
@@ -632,13 +639,21 @@
         "is a reset-and-continue, not the unrecoverable event `app-signing-key` describes. That asymmetry",
         "is the whole reason `keyKind` distinguishes the two.",
         "",
-        "⬜ THE 12-TESTER / 14-DAY CLOSED TEST IS A CALENDAR, NOT A TASK. Google, verbatim: 'at least 12",
-        "testers must be opted-in to your closed test when you apply for production access' and they",
-        "'must have been opted-in for the last 14 days continuously'",
-        "(support.google.com/googleplay/android-developer/answer/14151465, fetched 2026-07-29). Scope is",
-        "'developers with personal accounts created after November 13, 2023'. Nothing in this repo can",
-        "shorten it and nothing here should pretend to: it is OWNER_QUEUE A-3's, recorded in",
-        "company/runbooks/store-submission-android.md.",
+        "🟢 THE 12-TESTER / 14-DAY CLOSED TEST DOES NOT APPLY TO THIS ACCOUNT — established 2026-08-04.",
+        "Google, verbatim: 'at least 12 testers must be opted-in to your closed test when you apply for",
+        "production access' and they 'must have been opted-in for the last 14 days continuously'",
+        "(support.google.com/googleplay/android-developer/answer/14151465, fetched 2026-07-29). But the",
+        "page is titled 'App testing requirements for new PERSONAL developer accounts' and scopes itself:",
+        "'Developers with personal accounts created after November 13, 2023, will need to test their apps",
+        "before those apps are eligible to be published.' NIKATRU is a verified ORGANIZATION account.",
+        "",
+        "📌 THE REASONING MATTERS MORE THAN THE ANSWER, because this register held all three positions in",
+        "turn. (a) 'Play Org is exempt' was asserted as fact and Google never said it — right by luck,",
+        "wrong by reasoning. (b) 'Google does not state organization accounts are exempt' treated the",
+        "silence as the open question — an argument from silence. (c) The rule carries an AFFIRMATIVE",
+        "SCOPE STATEMENT, and a rule that applies to personal accounts does not reach a non-personal one.",
+        "That is (c), and it took 14 days off the critical path. A closed test remains good practice",
+        "before production; it is simply not a gate. Recorded in company/vendors/google.md.",
         "",
         "🟢 THE ENGINEERING PATH IS BUILT (everything except the account and the tester window). `lane`",
         "emits the .aab, `storeMetadataDir` carries a real tree checked by tooling/ci/",
@@ -845,9 +860,9 @@
       "storeMetadataDir": "apps/{app}/store/windows-store",
       "ownerQueue": "A-2",
       "accountStatus": {
-        "status": "none",
-        "asOf": "2026-08-03",
-        "note": "🔴 THE CHEAPEST REAL CHANNEL AND THE ONE WITH A ONE-WAY DOOR. $0 for either account type, no D-U-N-S required, and GST + Udyam are live and accepted as the business-verification document — so nothing external blocks this. What blocks it is a DECISION: publishing as NIKATRU needs a COMPANY account, OWNER_QUEUE A-2 currently points at Individual, and Microsoft does not support converting one to the other. The only remedy for choosing wrong is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid. Register only via storedeveloper.microsoft.com (other entry points show the legacy paid flow) and only with a work email on our own domain."
+        "status": "applied",
+        "asOf": "2026-08-05",
+        "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see company/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the company/vendors/ restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is company/vendors/microsoft.md."
       },
       "packageIdentity": {
         "_why": [
