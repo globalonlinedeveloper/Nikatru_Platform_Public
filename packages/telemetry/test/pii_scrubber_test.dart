@@ -1,5 +1,25 @@
 // Pure-Dart unit tests for the PII scrubber. Deliberately imports ONLY the
 // scrubber (no Flutter widgets, no Sentry) so it runs fast anywhere.
+//
+// 🔴 EVERY FIXTURE IN THIS FILE MUST BE SYNTHETIC. NEVER PASTE A REAL IDENTIFIER.
+//
+// This is not a style rule, it is a repair. Until 2026-08-05 the PAN fixture below
+// was the proprietor's REAL PAN, committed to this PUBLIC repository in 82a309d and
+// pushed to origin/main. The Aadhaar fixtures beside it were synthetic all along —
+// only the PAN was real, which is what made it easy to miss.
+//
+// 📌 NOTHING COULD HAVE CAUGHT IT, AND THAT IS THE POINT. .gitignore excludes
+// `Personal/` precisely because "these carry PAN, salary figures and date of birth,
+// and origin is a PUBLIC repository" — but that control is PATH-based, and this was
+// a string literal in ordinary source. The only content scanner in CI is gitleaks,
+// a CREDENTIAL scanner with no Indian-PII rule. So a green ci-gate and 100+ guards
+// were all fully consistent with a PAN sitting in the public tree.
+//
+// And the irony is load-bearing: the test that proves PII is redacted at runtime
+// was itself the disclosure. A fixture is production data the moment it is real.
+//
+// ABCDE1234F is the canonical documentation placeholder — correct PAN SHAPE
+// (5 letters, 4 digits, 1 letter), which is all the scrubber's regex reads.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_telemetry/src/pii_scrubber.dart';
 
@@ -8,9 +28,9 @@ void main() {
 
   group('PiiScrubber.scrubText', () {
     test('redacts PAN numbers', () {
-      final out = scrubber.scrubText('PAN BNQPR6389M submitted');
+      final out = scrubber.scrubText('PAN ABCDE1234F submitted');
       expect(out, contains(redactedToken));
-      expect(out, isNot(contains('BNQPR6389M')));
+      expect(out, isNot(contains('ABCDE1234F')));
     });
 
     test('redacts Aadhaar numbers with spaces', () {
