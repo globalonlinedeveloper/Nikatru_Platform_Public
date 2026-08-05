@@ -72,10 +72,20 @@ const CANARY = [
  *  about whether THIS repo's rules are loaded. "The scanner works" and "the scanner
  *  would catch our leak" are different claims and only the second one matters.
  *  Prefixes are assembled at runtime for the same reason the PEM is: written
- *  literally, this file becomes a finding in its own scan. */
+ *  literally, this file becomes a finding in its own scan.
+ *
+ *  🔴 `id` IS THE RULE ID GITLEAKS MUST REPORT, and it is checked. Until 2026-08-05
+ *  this loop only asserted that the scan EXITED NON-ZERO, i.e. that *something* was
+ *  found — so a canary that happened to trip a neighbouring rule proved its own rule
+ *  fired when it had not. The comment below claimed planting each canary alone
+ *  prevented that; it does not, because one file can match two rules. The PII rules
+ *  added the same day made it concrete: a GSTIN embeds a PAN as characters 3-12, so
+ *  the GSTIN canary is a string the PAN rule is *nearly* able to match, and "nearly"
+ *  is not a property to leave a self-test resting on. The report is now parsed and
+ *  the RuleID compared. */
 const U = '_';
 const CANARIES = [
-  { rule: 'private-key (gitleaks default)', file: 'planted.key', body: CANARY },
+  { id: 'private-key', rule: 'private-key (gitleaks default)', file: 'planted.key', body: CANARY },
   {
     rule: 'nikatru-cloudflare-api-token',
     file: 'cf.env',
@@ -109,6 +119,86 @@ const CANARIES = [
     rule: 'nikatru-paddle-sandbox-api-key',
     file: 'paddle-sbx.env',
     body: `PADDLE_API_KEY=${'pdl'}${U}${'sdbx'}${U}${'apikey'}${U}${'Jm4'.repeat(10)}`,
+  },
+  // ── Indian PII ───────────────────────────────────────────────────────────
+  // These three rules exist because the proprietor's REAL PAN was committed to
+  // this PUBLIC repository, in the PII scrubber's own test fixture, and every
+  // existing control was consistent with it: .gitignore's exclusion of
+  // `Personal/` is PATH-based and this was a string literal in ordinary source,
+  // and every rule above is a CREDENTIAL rule, which has no opinion about a
+  // national identity number. The class was unguarded, not the instance.
+  //
+  // Each body is a SHAPE, assembled at runtime, and deliberately outside the
+  // real value space: all-Z letters, and an Aadhaar of repeated digits. None is
+  // allowlisted in .gitleaks.toml — a canary that its own rule's allowlist
+  // exempts is a canary that proves the allowlist works and the rule does not.
+  {
+    rule: 'nikatru-india-pan',
+    file: 'pan.txt',
+    body: `PAN=${'Z'.repeat(5)}${'9'.repeat(4)}Z`,
+  },
+  {
+    // 15 chars: 2 digits, then a PAN-shaped run, then an entity/check triple.
+    // The embedded PAN-shaped run is NOT separately matchable — no word
+    // boundary either side of it — which is why the RuleID check below matters
+    // more here than anywhere else in this list.
+    rule: 'nikatru-india-gstin',
+    file: 'gstin.txt',
+    body: `GSTIN=${'33'}${'Z'.repeat(5)}${'9'.repeat(4)}Z${'1'}${'Z'.repeat(2)}`,
+  },
+  {
+    // First digit must be 2-9: UIDAI never issues an Aadhaar starting 0 or 1,
+    // which is exactly why the scrubber's test fixtures all start with 1 and
+    // are provably outside the real space.
+    rule: 'nikatru-india-aadhaar',
+    file: 'aadhaar.txt',
+    body: `AADHAAR=${'9'.repeat(4)}${'8'.repeat(4)}${'7'.repeat(4)}`,
+  },
+];
+
+/** 🔴 THE OTHER HALF, AND THE HALF THAT WAS MISSING. Every canary above proves a
+ *  rule FIRES. Nothing proved a rule STAYS QUIET, and a secret scanner that
+ *  fires on ordinary source does not get fixed — it gets allowlisted until it
+ *  guards nothing, or switched off.
+ *
+ *  That is not a hypothetical. The Indian-PII rules were first written with a
+ *  plain `\b…\b` Aadhaar pattern, and measured against the real scanner it fired
+ *  on FIVE classes of tracked file: every UUID test fixture (a UUID's first two
+ *  groups are eight digits, a hyphen, then four more — which IS the 4-4-4 shape)
+ *  and sites/nikatru/contact.html (the business's own published phone number,
+ *  twelve digits behind a `+`). It would have reddened every build. The canary
+ *  check failed first, so CI never reached the tree scan and never said so.
+ *
+ *  ⚠️ The offending literals are NOT written out in this comment, and neither are
+ *  the placeholders in .gitleaks.toml's. Both files became findings in their own
+ *  scan for exactly that, which is the same trap the PEM canary above documents:
+ *  a rule's own documentation sits inside the rule's blast radius.
+ *
+ *  Each body below is a REAL LINE from a tracked file. Digits are assembled at
+ *  runtime for the same reason the secrets above are: a rule loosened tomorrow
+ *  should fail HERE, in a named test with a reason, rather than turn this file
+ *  into a finding in its own scan. */
+const D = (s) => s.replace(/\./g, '');
+const NEGATIVE_CANARIES = [
+  {
+    why: 'a UUID contains a 4-4-4 digit run — every uuid fixture in services/platform/test/',
+    file: 'uuid.ts',
+    body: `const OTHER = '${D('2222.2222')}-2222-4222-8222-${D('2222.2222.2222')}';`,
+  },
+  {
+    why: "sites/nikatru/contact.html — the business's own published phone number",
+    file: 'contact.html',
+    body: `<a href="tel:+${D('9194.9849.8011')}">+91 ${D('9498.4')} ${D('9801.1')}</a>`,
+  },
+  {
+    why: 'packages/telemetry/test/pii_scrubber_test.dart — scrubber fixtures start with 1, outside the UIDAI value space',
+    file: 'scrubber.dart',
+    body: `scrubber.scrubText('Aadhaar: ${D('1234.5678.9012')}'); scrubber.scrubText('Aadhaar ${D('1111')}-${D('2222')}-${D('3333')} x');`,
+  },
+  {
+    why: 'the canonical PAN documentation placeholder, allowlisted by exact value',
+    file: 'pan-placeholder.txt',
+    body: 'PAN ABCDE1234F submitted',
   },
 ];
 
@@ -198,20 +288,75 @@ if (CUSTOM_CANARIES !== RULES_IN_CONFIG) {
   process.exit(1);
 }
 for (const c of CANARIES) {
+  const expectedRuleId = c.id ?? c.rule; // every custom rule's `rule` IS its id
   const canaryDir = mkdtempSync(join(tmpdir(), 'nikatru-canary-'));
+  // The report is written OUTSIDE the scanned directory. Inside it, gitleaks
+  // would be writing a file full of findings into the tree it is scanning.
+  const reportDir = mkdtempSync(join(tmpdir(), 'nikatru-canary-report-'));
+  const reportPath = join(reportDir, 'findings.json');
   try {
     writeFileSync(join(canaryDir, c.file), `${c.body}\n`);
-    if (runGitleaks(canaryDir).status === 0) {
-      console.error(`✗ SELF-TEST FAILED — the scanner did not flag a planted "${c.rule}" secret.`);
-      console.error('  It would have reported this repository "clean" while blind to that shape.');
+    const run = runGitleaks(canaryDir, ['--report-format', 'json', '--report-path', reportPath]);
+    // 🔴 EXIT CODE IS NOT ENOUGH, and this is the whole reason the report is
+    // parsed. A non-zero exit says SOMETHING matched. It does not say THIS rule
+    // matched — and a canary that trips a neighbouring rule while its own rule
+    // is dead exits non-zero and reads exactly like a healthy self-test. That is
+    // this repo's most repeated failure shape wearing a green tick.
+    let firedIds = [];
+    try {
+      const report = JSON.parse(readFileSync(reportPath, 'utf8') || '[]');
+      firedIds = (Array.isArray(report) ? report : []).map((f) => f.RuleID);
+    } catch {
+      firedIds = [];
+    }
+    if (run.status === 0 || !firedIds.includes(expectedRuleId)) {
+      console.error(`✗ SELF-TEST FAILED — rule "${expectedRuleId}" did not fire on its own planted canary.`);
+      if (run.status !== 0 && firedIds.length) {
+        console.error(`  Something else did fire (${[...new Set(firedIds)].join(', ')}), which is exactly the`);
+        console.error('  masking case an exit-code-only check cannot tell apart from success.');
+      } else {
+        console.error('  The scan found nothing at all. It would have reported this repository "clean"');
+        console.error('  while blind to that shape.');
+      }
       console.error('  Do not trust a passing scan until this is fixed.');
       process.exit(1);
     }
   } finally {
     rmSync(canaryDir, { recursive: true, force: true });
+    rmSync(reportDir, { recursive: true, force: true });
   }
 }
 console.log(`ok  self-test — a planted secret is still detected (${CANARIES.length} shapes)`);
+
+// ── 3b. THE NEGATIVE SELF-TEST: prove the rules stay QUIET on ordinary source ─
+for (const n of NEGATIVE_CANARIES) {
+  const dir = mkdtempSync(join(tmpdir(), 'nikatru-negcanary-'));
+  const reportDir = mkdtempSync(join(tmpdir(), 'nikatru-negcanary-report-'));
+  const reportPath = join(reportDir, 'findings.json');
+  try {
+    writeFileSync(join(dir, n.file), `${n.body}\n`);
+    const run = runGitleaks(dir, ['--report-format', 'json', '--report-path', reportPath]);
+    if (run.status !== 0) {
+      let fired = [];
+      try {
+        const report = JSON.parse(readFileSync(reportPath, 'utf8') || '[]');
+        fired = [...new Set((Array.isArray(report) ? report : []).map((f) => f.RuleID))];
+      } catch {
+        /* keep the message useful even if the report is unreadable */
+      }
+      console.error(`✗ FALSE POSITIVE — a rule fired on ordinary source: ${n.why}`);
+      console.error(`  rule(s): ${fired.join(', ') || '(report unreadable)'}`);
+      console.error('  This line is real, it is tracked, and this scan runs on every push — so the build');
+      console.error('  is now red for everyone. Narrow the rule. Do NOT widen the allowlist: an allowlist');
+      console.error('  entry is a permanent hole, and a scanner that cries wolf gets switched off.');
+      process.exit(1);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(reportDir, { recursive: true, force: true });
+  }
+}
+console.log(`ok  negative self-test — no rule fires on ordinary source (${NEGATIVE_CANARIES.length} real tracked lines)`);
 
 const reportDir = mkdtempSync(join(tmpdir(), 'nikatru-scan-'));
 const reportPath = join(reportDir, 'findings.json');

@@ -27,7 +27,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -1284,39 +1284,78 @@ describe('scan-secrets', () => {
   const PEM = 'BEGIN RSA PRIVATE KEY';
 
   /** A faithful stub: exits 1 (finding) iff the scanned dir holds one of the
-   *  shapes the REAL rule set detects. It must know all of them — the wrapper now
-   *  plants one canary per rule, so a stub that only understands PEM would report
-   *  "clean" for the Cloudflare and Supabase canaries and the self-test would fail
-   *  for a reason that has nothing to do with the code under test.
+   *  shapes the REAL rule set detects, and writes a gitleaks-shaped JSON report
+   *  naming the RULE THAT FIRED.
    *
-   *  Matched by REGEX WITH A LENGTH FLOOR, not by substring, for the same reason
-   *  the real rules are prefix-anchored: the fixture's own .gitleaks.toml contains
-   *  the bare prefixes inside its regex strings, and a substring stub would find
-   *  those and report a "leak" in a clean tree. */
+   *  🔴 IT PARSES THE CONFIG IT IS GIVEN RATHER THAN HARD-CODING THE SHAPES, and
+   *  that change is the point of this rewrite. The previous stub carried its own
+   *  hand-written SHAPES list and the fixture carried a hand-written copy of the
+   *  rule ids — so THREE places had to be edited in lockstep whenever a rule was
+   *  added, and on 2026-08-05 they were not: three Indian-PII rules landed in the
+   *  real config and this test broke on a rule COUNT it could not have known.
+   *  The count check caught it loudly, which is the system working — but a
+   *  duplicated list that must be hand-synchronised is the defect, not the alarm.
+   *  Now: the fixture writes the REAL .gitleaks.toml and the stub reads it, so a
+   *  new rule needs a canary in scan-secrets.mjs and nothing here.
+   *
+   *  It also honours [rules.allowlist] regexes, because scan-secrets now plants
+   *  NEGATIVE canaries — ordinary source that must NOT be flagged — and a stub
+   *  blind to allowlists would report a leak for the documented placeholders. */
   const HONEST = `
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const a = process.argv.slice(2);
 if (a[0] === 'version') { console.log('8.30.1-stub'); process.exit(0); }
 const src = a[a.indexOf('--source') + 1];
+const cfgPath = a[a.indexOf('--config') + 1];
+const reportIdx = a.indexOf('--report-path');
+const reportPath = reportIdx === -1 ? null : a[reportIdx + 1];
+
+// A deliberately small TOML reader: enough for [[rules]] id/regex/secretGroup and
+// [rules.allowlist] regexes, which is the whole shape this config uses.
+const cfg = readFileSync(cfgPath, 'utf8');
+const RULES = [];
+let cur = null, inAllow = false;
+for (const raw of cfg.split(/\\r?\\n/)) {
+  const line = raw.trim();
+  if (line === '[[rules]]') { cur = { id: null, re: null, group: 0, allow: [] }; RULES.push(cur); inAllow = false; continue; }
+  if (line === '[rules.allowlist]') { inAllow = true; continue; }
+  if (!cur) continue;
+  let m;
+  if ((m = line.match(/^id = "(.+)"$/))) { cur.id = m[1]; continue; }
+  if ((m = line.match(/^secretGroup = (\\d+)$/))) { cur.group = Number(m[1]); continue; }
+  if ((m = line.match(/^regex = '''(.*)'''$/))) { if (!inAllow) cur.re = m[1]; continue; }
+  if ((m = line.match(/^regexes = \\[(.*)\\]$/))) {
+    if (inAllow) for (const r of m[1].split(/''',\\s*'''/)) cur.allow.push(r.replace(/'''/g, ''));
+    continue;
+  }
+}
+// [extend] useDefault = true pulls in gitleaks' own private-key rule, which is
+// not written in this config but IS what the PEM canary proves.
+if (/useDefault\\s*=\\s*true/.test(cfg)) RULES.unshift({ id: 'private-key', re: '${PEM}', group: 0, allow: [] });
+
 const walk = (d) => readdirSync(d).flatMap((e) => {
   const p = join(d, e);
   return statSync(p).isDirectory() ? walk(p) : [p];
 });
-const SHAPES = [
-  /${PEM}/,
-  /\\b(cfut|cfat|cfk)_[A-Za-z0-9_-]{30,}/,
-  /\\bsbp_[A-Za-z0-9]{36,}/,
-  /\\bsb_secret_[A-Za-z0-9_-]{20,}/,
-  /\\bpdl_ntfset_[A-Za-z0-9]{20,}/,
-  /\\bpdl_live_apikey_[A-Za-z0-9]{20,}/,
-  /\\bpdl_sdbx_apikey_[A-Za-z0-9]{20,}/,
-];
-let hit = false;
+const findings = [];
 for (const f of walk(src)) {
-  try { const t = readFileSync(f, 'utf8'); if (SHAPES.some((r) => r.test(t))) hit = true; } catch {}
+  let t;
+  try { t = readFileSync(f, 'utf8'); } catch { continue; }
+  for (const r of RULES) {
+    if (!r.re || !r.id) continue;
+    let re;
+    try { re = new RegExp(r.re, 'g'); } catch { continue; }
+    for (const hit of t.matchAll(re)) {
+      const secret = r.group ? hit[r.group] : hit[0];
+      if (secret === undefined) continue;
+      if (r.allow.some((p) => { try { return new RegExp(p).test(secret); } catch { return false; } })) continue;
+      findings.push({ RuleID: r.id, File: f, StartLine: 1, Description: r.id });
+    }
+  }
 }
-if (hit) { console.log('finding: a known secret shape'); process.exit(1); }
+if (reportPath) writeFileSync(reportPath, JSON.stringify(findings));
+if (findings.length) { console.log('finding: a known secret shape'); process.exit(1); }
 process.exit(0);
 `;
 
@@ -1344,36 +1383,16 @@ process.exit(0);
       'repo/apps/.keep': '',
       // The real tree carries .gitleaks.toml, and scan-secrets refuses to run
       // without it — default rules are blind to Cloudflare and Supabase tokens,
-      // which is two of this repo's three vendors. It also asserts one canary per
-      // rule, so the rule COUNT here must match the wrapper's custom canaries.
-      'repo/.gitleaks.toml': [
-        'title = "fixture"',
-        '[extend]',
-        'useDefault = true',
-        '[[rules]]',
-        'id = "nikatru-cloudflare-api-token"',
-        "regex = '''\\b(cfut|cfat|cfk)_[A-Za-z0-9_-]{30,}'''",
-        '[[rules]]',
-        'id = "nikatru-supabase-pat"',
-        "regex = '''\\bsbp_[A-Za-z0-9]{36,}'''",
-        '[[rules]]',
-        'id = "nikatru-supabase-secret-key"',
-        "regex = '''\\bsb_secret_[A-Za-z0-9_-]{20,}'''",
-        // The money rail's three credential shapes ([pipeline 5]M-1/M-12). The
-        // COUNT here has to match the wrapper's custom canaries: scan-secrets
-        // refuses to run when a rule has no canary, because a rule nobody plants
-        // a secret for is never proven to fire.
-        '[[rules]]',
-        'id = "nikatru-paddle-notification-secret"',
-        "regex = '''\\bpdl_ntfset_[A-Za-z0-9]{20,}'''",
-        '[[rules]]',
-        'id = "nikatru-paddle-live-api-key"',
-        "regex = '''\\bpdl_live_apikey_[A-Za-z0-9]{20,}'''",
-        '[[rules]]',
-        'id = "nikatru-paddle-sandbox-api-key"',
-        "regex = '''\\bpdl_sdbx_apikey_[A-Za-z0-9]{20,}'''",
-        '',
-      ].join('\n'),
+      // which is two of this repo's three vendors.
+      //
+      // 🔴 THE REAL CONFIG, VERBATIM, NOT A HAND-WRITTEN LOOKALIKE. scan-secrets
+      // asserts one canary per rule, so a transcribed copy has to be edited in
+      // lockstep with the real file — and when three Indian-PII rules were added
+      // on 2026-08-05 it was not, and this test failed on a count it could not
+      // have known about. Reading the real file makes that class of break
+      // impossible: the fixture is now DERIVED, like every other list in this
+      // repo that used to be typed.
+      'repo/.gitleaks.toml': readFileSync(join(CI_DIR, '..', '..', '.gitleaks.toml'), 'utf8'),
       ...Object.fromEntries(Object.entries(files).map(([k, v]) => [`repo/${k}`, v])),
     });
     return { repo: join(root, 'repo'), stub: join(root, 'bin', 'stub.mjs'), root };

@@ -130,8 +130,16 @@ description = "Indian PAN (5 letters, 4 digits, 1 letter) — a national identit
 regex = '''\b[A-Z]{5}[0-9]{4}[A-Z]\b'''
 keywords = []
   [rules.allowlist]
-  description = "Canonical documentation placeholders only. A real PAN must never be added here."
-  regexes = ['''\bABCDE1234F\b''', '''\bAAAAA0000A\b''']
+  # EXACTLY the placeholder the tree actually uses, and no more. A second, all-A
+  # entry was here and was used by nothing — a permanent hole in the net with zero
+  # users, which is the same shape as an assertion that cannot fail. Add one when
+  # something needs it, in the change that needs it.
+  #
+  # ⚠️ AND DO NOT SPELL THE REMOVED VALUE OUT IN THIS COMMENT. Naming it made this
+  # file a finding in its own scan — the same trap scan-secrets.mjs documents for
+  # its PEM canary. A rule's own documentation is inside the rule's blast radius.
+  description = "The canonical documentation placeholder, used by packages/telemetry/test/pii_scrubber_test.dart. A real PAN must never be added here."
+  regexes = ['''\bABCDE1234F\b''']
 
 [[rules]]
 id = "nikatru-india-gstin"
@@ -141,9 +149,44 @@ keywords = []
 
 [[rules]]
 id = "nikatru-india-aadhaar"
-description = "Indian Aadhaar (12 digits, optionally 4-4-4 grouped)"
-regex = '''\b[2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}\b'''
+# The leading [2-9] is not a shortcut, it is the UIDAI numbering rule: no issued
+# Aadhaar begins 0 or 1. That is also why this rule needs NO allowlist. Every
+# fixture in packages/telemetry/test/pii_scrubber_test.dart begins with 1
+# (1234 5678 9012, 1111-2222-3333), so they are outside the real value space BY
+# CONSTRUCTION and this rule cannot match them.
+#
+# An allowlist for exactly those fixtures was here, and it was DEAD: the rule it
+# guarded could never match the strings it exempted, so it protected nothing
+# while looking like protection. Deleted rather than kept "for safety" — being
+# unmatchable by the rule is a stronger guarantee than being excused by it.
+#
+# 🔴 THE `\b`-ONLY FORM OF THIS RULE FIRED ON FIVE CLASSES OF TRACKED FILE and
+# would have reddened every build. Measured with the real scanner, not guessed:
+#   · every UUID test fixture — a UUID's first two groups are eight digits then a
+#     hyphen then four more, which IS the 4-4-4 Aadhaar shape
+#   · sites/nikatru/contact.html — the business's own published phone number, a
+#     country code plus ten digits behind a `+`, is twelve digits
+# (The offending literals are deliberately NOT written out here. Spelling them in
+# this comment made this file a finding in its own scan, twice.)
+# `\b` does not help: a digit run bounded by `-` or `+` has word boundaries on
+# both sides. Go's RE2 has NO lookaround, so the boundary is CAPTURED instead and
+# `secretGroup` reports only the number. A rule that fires on good input is how a
+# check gets deleted, or allowlisted until it guards nothing.
+#
+# ⚠️ DELIBERATELY NARROWER THAN THE RUNTIME SCRUBBER, which uses
+# `\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b` with no leading-digit constraint and
+# over-redacts on purpose. The cost profiles are opposite: a runtime redactor
+# that over-matches costs one unreadable field in a crash report, while a
+# commit-blocking scanner that over-matches blocks every branch. Same fact, two
+# tools, two correct answers — do not "align" them.
+description = "Indian Aadhaar (12 digits, optionally 4-4-4 grouped; UIDAI never issues one starting 0 or 1)"
+regex = '''(?:^|[^0-9A-Za-z+-])([2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4})(?:[^0-9A-Za-z-]|$)'''
+secretGroup = 1
 keywords = []
   [rules.allowlist]
-  description = "Documented synthetic fixtures used by the PII scrubber tests."
-  regexes = ['''\b1234[ -]?5678[ -]?9012\b''']
+  # ONE hole, and it is load-bearing. This fixture is Aadhaar-shaped ON PURPOSE:
+  # it pins the runtime scrubber's accepted over-redaction ("a 12-digit order id
+  # is redacted even though it is not an Aadhaar"), so making it un-Aadhaar-like
+  # to please this scanner would delete the test's entire subject.
+  description = "packages/telemetry/test/pii_scrubber_test.dart — the deliberately Aadhaar-shaped order id that pins the scrubber's fail-closed over-redaction."
+  regexes = ['''\b480000123456\b''']
