@@ -76,6 +76,20 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
+// while an undici (fetch) keep-alive handle is still open CRASHES libuv on
+// Windows —  `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING),
+// src/win/async.c:94`  — and the process then reports 127 instead of the code
+// this header documents. Measured 2026-08-05: with a BAD token this file exited
+// 127, three runs out of three, where it documents 1. The no-token path returned
+// 2 correctly ONLY because it runs before any fetch.
+//
+// That defeats the exact distinction the exit codes exist to draw: "I could not
+// look" (2) vs "I looked and it was wrong" (1) both collapse into 127 the moment
+// a request has been made. Set `process.exitCode` and return instead; Node then
+// drains its handles and exits with that code on its own.
+
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER = join(HERE, 'alarm-chains.json');
 
@@ -87,7 +101,7 @@ if (!TOKEN) {
   console.error('⬜ GLITCHTIP_TOKEN is not set, so the live instance was NOT contacted.');
   console.error('   Exit code 2, deliberately distinct from 1: "I could not look" must never be readable');
   console.error('   as "I looked and it was fine". Source the token from the local vault and re-run.');
-  process.exit(2);
+  process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
 }
 
 const ledger = () => JSON.parse(readFileSync(LEDGER, 'utf8'));
@@ -297,11 +311,11 @@ async function selfTest() {
     const restored = await api(`organizations/${ORG}/monitors/${mon6.id}/`);
     if (restored.projectID !== mon6.projectID) {
       console.error(`🔴 RESTORE FAILED — monitor ${mon6.id} projectID is ${restored.projectID}, expected ${mon6.projectID}. FIX BY HAND NOW.`);
-      process.exit(2);
+      return 2;
     }
     if (restored.endpointID !== mon6.endpointID) {
       console.error('🔴 RESTORE FAILED — the heartbeat endpoint id changed, so the laptop backup heartbeat URL is now dead. FIX BY HAND NOW.');
-      process.exit(2);
+      return 2;
     }
   }
 
@@ -374,4 +388,4 @@ async function selfTest() {
   return passed === results.length ? 0 : 1;
 }
 
-process.exit(MODE === '--self-test' ? await selfTest() : await check());
+process.exitCode = MODE === '--self-test' ? await selfTest() : await check();
