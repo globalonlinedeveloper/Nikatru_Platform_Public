@@ -889,7 +889,7 @@
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — the SUBMISSION work is deferred. ⚠️ Account REGISTRATION is not deferred and is the fastest real channel: $0, no D-U-N-S required, 2–5 business days.",
-        "alsoBlockedBy": "🔴 ONE-WAY DOOR — publishing as NIKATRU requires a COMPANY account and OWNER_QUEUE A-2 points at Individual. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid."
+        "alsoBlockedBy": "RESOLVED 2026-08-05 — a COMPANY account was created and submitted. ⚠️ THIS FIELD SAID 'OWNER_QUEUE A-2 points at Individual' AND WAS FALSE FROM 2026-07-29, when A-2 was itself corrected to Company after Microsoft's own category definitions were read. It survived here in the PUBLIC repo, unguarded, describing the channel as blocked by a choice nobody had made — the one-way door it warned about was real, but the claim that we were walking through it was not. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid — so the warning is retained as the REASON the Company choice was deliberate. Business verification under review; see company/vendors/microsoft.md."
       },
       "notes": [
         "🔴 MSIX PACKAGE IDENTITY IS THIS ROW'S FIELD, not [9]R-7's (stage 3's tripwire bundle routes it",
