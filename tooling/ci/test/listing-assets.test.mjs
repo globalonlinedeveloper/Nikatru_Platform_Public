@@ -58,6 +58,10 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from 'node:fs';
+// Real compressed pixels for the screenshot fixtures — the guard DECODES those now.
+// The same encoder the capture path and the Linux icons use, so a fixture cannot
+// disagree with production about what a PNG is.
+import { encodeRgba } from '../../store/png-codec.mjs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -116,6 +120,46 @@ function crc32(buf) {
   return c ^ 0xffffffff;
 }
 
+/**
+ * A screenshot fixture with REAL COMPRESSED PIXELS, unlike `png()` above.
+ *
+ * 🔴 THE ASYMMETRY IS THE POINT. Until 2026-08-04 this guard read PNG HEADERS
+ * only, so `png()` emits a valid header over a one-byte IDAT — exactly the input
+ * it consumed. The demo-banner limb DECODES, and against those fixtures it
+ * reported "could not be decoded" for every frame: the fixture had encoded the
+ * guard's old assumption, which is this repository's own recorded rule about
+ * fixtures written by whoever wrote the check, arriving on schedule. The
+ * fixed-size assets are still never decoded and still use `png()`; inflating
+ * them would buy nothing but slower tests.
+ *
+ * `opaque: true` because Google states "JPEG or 24-bit PNG (no alpha)" for
+ * screenshots. A colour-type-6 fixture would trip the alpha limb and every test
+ * here would be asserting the wrong failure.
+ */
+function shotAt(width, height, banner = false) {
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    rgba[i * 4] = 0xf7;
+    rgba[i * 4 + 1] = 0xf7;
+    rgba[i * 4 + 2] = 0xfb;
+    rgba[i * 4 + 3] = 0xff;
+  }
+  if (banner) {
+    // Full-width, at the top: the shape app_shell.dart paints, in the exact
+    // colour the fixture's own token file declares. 90 rows is what 30 logical
+    // pixels comes to at the DPR 3 the capture uses.
+    for (let y = 0; y < Math.min(90, height); y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        rgba[i] = 0xf5;
+        rgba[i + 1] = 0x9e;
+        rgba[i + 2] = 0x0b;
+      }
+    }
+  }
+  return encodeRgba({ width, height, rgba }, { opaque: true });
+}
+
 const SOURCE = 'https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04) — fixture';
 
 /** A minimal but STRUCTURALLY HONEST fixture: the same shapes the real register
@@ -152,6 +196,12 @@ function fixture(mutate = () => {}) {
               minSide: 320,
               maxSide: 3840,
               maxAspectRatio: 2,
+              // Present because the REAL register declares it and the guard
+              // cross-checks CAPTURE.json's recorded size against it. A fixture
+              // register missing a key the guard reads makes that limb skip —
+              // and a skipped limb under a passing test is the empty-domain
+              // failure wearing a green tick.
+              recommendedPortrait: { width: 1080, height: 1920 },
               source: SOURCE,
             },
           },
@@ -163,6 +213,24 @@ function fixture(mutate = () => {}) {
     'apps/subly/store/android-play/feature-graphic.png': png({ width: 1024, height: 500, colourType: 2 }),
     'apps/subly/store/android-play/store-icon-512.png': png({ width: 512, height: 512, colourType: 6 }),
     'apps/subly/store/android-play/screenshots/README.md': Buffer.from('# slot\n'),
+    // 🔴 THE TWO FILES THE 2026-08-04 PIXEL LIMBS READ, AND THEY ARE NOT
+    // OPTIONAL FIXTURE FURNITURE. Both are the subject of a COVERAGE LOST:
+    //
+    //   · the design-system token is where the demo banner's COLOUR is read
+    //     from, live, rather than pinned in the guard — a pinned hex rots the
+    //     day the palette changes and the detector goes on hunting a colour
+    //     nothing draws, reporting every screenshot clean;
+    //   · `lib/app.dart` is where `debugShowCheckedModeBanner: false` lives, and
+    //     the capture runs through `flutter drive`, which builds in DEBUG.
+    //
+    // A fixture without them models a repository this factory does not have, and
+    // every unrelated test would fail for a reason that has nothing to do with
+    // what it asserts — which is how a check gets switched off by whoever hits
+    // it next. Same correction the launcher-icons fixture needed for `linux/`.
+    'packages/design_system/lib/src/tokens/app_colors.dart':
+      Buffer.from('class AppColors {\n  static const Color warn = Color(0xFFF59E0B);\n}\n'),
+    'apps/subly/lib/app.dart':
+      Buffer.from('Widget build() => MaterialApp.router(\n  debugShowCheckedModeBanner: false,\n);\n'),
   };
   const state = { register, files };
   mutate(state);
@@ -305,16 +373,21 @@ describe('assert-listing-assets.mjs — the cross-reference to the metadata cont
   });
 });
 
+/** Two frames plus their provenance record. Module scope because more than one
+ *  describe needs it — the banner detector's tests build the same set. */
+const twoShots = (s, opts = {}) => {
+  const w = opts.width ?? 1080;
+  const h = opts.height ?? 1920;
+  s.files['apps/subly/store/android-play/screenshots/01.png'] = shotAt(w, h);
+  s.files['apps/subly/store/android-play/screenshots/02.png'] = shotAt(w, h, opts.banner === true);
+  if (opts.posture !== null) {
+    s.files['apps/subly/store/android-play/screenshots/CAPTURE.json'] = Buffer.from(
+      JSON.stringify({ posture: opts.posture ?? 'live', ...(opts.record ?? {}) }),
+    );
+  }
+};
+
 describe('assert-listing-assets.mjs — screenshots and their provenance', () => {
-  const twoShots = (s, opts = {}) => {
-    const w = opts.width ?? 1080;
-    const h = opts.height ?? 1920;
-    s.files['apps/subly/store/android-play/screenshots/01.png'] = png({ width: w, height: h, colourType: 2 });
-    s.files['apps/subly/store/android-play/screenshots/02.png'] = png({ width: w, height: h, colourType: 2 });
-    if (opts.posture !== null) {
-      s.files['apps/subly/store/android-play/screenshots/CAPTURE.json'] = Buffer.from(JSON.stringify({ posture: opts.posture ?? 'live' }));
-    }
-  };
 
   test('two live 1080x1920 screenshots pass', () => {
     const r = run(build((s) => twoShots(s)));
@@ -354,7 +427,7 @@ describe('assert-listing-assets.mjs — screenshots and their provenance', () =>
 
   test('one screenshot is below Play\'s publish minimum', () => {
     const r = run(build((s) => {
-      s.files['apps/subly/store/android-play/screenshots/01.png'] = png({ width: 1080, height: 1920, colourType: 2 });
+      s.files['apps/subly/store/android-play/screenshots/01.png'] = shotAt(1080, 1920);
       s.files['apps/subly/store/android-play/screenshots/CAPTURE.json'] = Buffer.from(JSON.stringify({ posture: 'live' }));
     }));
     assert.equal(r.code, 1);
@@ -384,6 +457,136 @@ describe('assert-listing-assets.mjs — screenshots and their provenance', () =>
     }));
     assert.equal(r.code, 1);
     assert.match(r.out, /is SERVED and .*holds NO screenshots/s);
+  });
+
+  // ── THE PIXELS: the demo banner, measured rather than claimed ─────────────
+  // 🔴 REAL-TREE MUTATIONS FIRST, 2026-08-04, on apps/subly. The listing
+  // directory holds no screenshots yet, so these were run by writing real
+  // 1080x1920 PNGs INTO the actual directory, observing, and removing them:
+  //   · a clean frame + a frame with a full-width #f59e0b band across the top,
+  //     CAPTURE.json posture "live", count 2
+  //       ⇒ FAIL "carries a FULL-WIDTH BAND of the demo-banner colour … (100.0%
+  //         of a row, threshold 60%)" — on the banded frame ONLY. The clean
+  //         frame drew no banner complaint, which is the half that proves the
+  //         detector is not simply always-on.
+  //   · then the banded frame deleted, leaving CAPTURE.json claiming 2
+  //       ⇒ FAIL "records count 2 and … holds 1 screenshot(s)"
+  //   · `warn` renamed to `warning` in the REAL packages/design_system token file
+  //       ⇒ COVERAGE LOST "declares no `static const Color warn = Color(0x…)`"
+  //   · BANNER_ROW_FRACTION set to 1.1 in the REAL guard
+  //       ⇒ COVERAGE LOST "FAILED ITS OWN SELF-TEST … banded frame measured
+  //         0.969 (needs >= 1.1)"
+  //   · `debugShowCheckedModeBanner: false` deleted from apps/subly/lib/app.dart
+  //       ⇒ FAIL "builds a MaterialApp and does not set …", and `dart analyze`
+  //         on the mutated file reported "No issues found!" — so the guard caught
+  //         a REAL defect and not a compile error, which this repo has mistaken
+  //         for a caught mutation three times in one session before.
+  // All restored; `git diff --stat` empty afterwards for each.
+  test('a screenshot carrying the demo banner FAILS on its pixels', () => {
+    const r = run(build((s) => twoShots(s, { banner: true })));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /02\.png carries a FULL-WIDTH BAND of the demo-banner colour/);
+  });
+
+  // The other half, and the one that stops the assertion above from being a
+  // constant: a clean frame must NOT be reported, or the limb is just noise that
+  // somebody will eventually delete.
+  test('a clean screenshot is decoded and reported clean', () => {
+    const r = run(build((s) => twoShots(s)));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 screenshot\(s\) DECODED/);
+    assert.doesNotMatch(r.out, /FULL-WIDTH BAND/);
+  });
+
+  test('the provenance record must agree with how many frames are there', () => {
+    const r = run(build((s) => twoShots(s, { record: { count: 5 } })));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /records count 5 and .* holds 2 screenshot\(s\)/);
+  });
+
+  // NOT "1080x1920 because Google says so" — Google recommends it, and enforcing
+  // a recommendation as a requirement is the invented-limit failure. What is
+  // mandatory is that one capture at one viewport produced one size.
+  test('a frame that disagrees with its own CAPTURE.json size fails', () => {
+    const r = run(build((s) => twoShots(s, { record: { pixels: '1080x1920' }, width: 1080, height: 1440 })));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /is 1080x1440 and the set's own CAPTURE\.json records 1080x1920/);
+  });
+
+  test('a recorded size that contradicts the register fails', () => {
+    const r = run(build((s) => twoShots(s, { record: { pixels: '720x1280' }, width: 720, height: 1280 })));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /records pixels "720x1280" and .* declares a recommended portrait of 1080x1920/);
+  });
+});
+
+describe('assert-listing-assets.mjs — the banner detector cannot go dark', () => {
+  // 🔴 THIS IS THE LIMB THAT MATTERS MOST TODAY, because the real listing
+  // directory is EMPTY: with no screenshots committed the banner check ranges
+  // over nothing and would print ok forever. An assertion that cannot fail is
+  // worse than none — it inflates apparent coverage — so the detector proves
+  // itself against two in-memory frames on every single run, whether or not any
+  // screenshot exists.
+  test('the self-test runs and is reported even with no screenshots at all', () => {
+    const r = run(build());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /detector SELF-TESTED this run/);
+    assert.match(r.out, /0 screenshot\(s\) DECODED/);
+    assert.match(r.out, /and 0 is why the self-test exists/);
+  });
+
+  test('COVERAGE LOST when the token file no longer declares `warn`', () => {
+    const r = run(build((s) => {
+      s.files['packages/design_system/lib/src/tokens/app_colors.dart'] =
+        Buffer.from('class AppColors {\n  static const Color warning = Color(0xFFF59E0B);\n}\n');
+    }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /declares no `static const Color warn = Color\(0x…\)`/);
+  });
+
+  // The colour is read live rather than pinned, so a palette change must move
+  // the detector with it. If the token says something else, a band of the OLD
+  // colour must no longer register — proving the guard follows the token instead
+  // of a memory of it.
+  test('the detector follows the token, not a pinned hex', () => {
+    const r = run(build((s) => {
+      twoShots(s, { banner: true });
+      s.files['packages/design_system/lib/src/tokens/app_colors.dart'] =
+        Buffer.from('class AppColors {\n  static const Color warn = Color(0xFF00FF00);\n}\n');
+    }));
+    assert.doesNotMatch(r.out, /FULL-WIDTH BAND/);
+    assert.match(r.out, /#00ff00/);
+  });
+});
+
+describe('assert-listing-assets.mjs — the DEBUG ribbon', () => {
+  test('an app that does not disable the checked-mode banner fails', () => {
+    const r = run(build((s) => {
+      s.files['apps/subly/lib/app.dart'] = Buffer.from('Widget build() => MaterialApp.router();\n');
+    }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /does not set `debugShowCheckedModeBanner: false`/);
+  });
+
+  // Comment-stripped, so prose mentioning the flag must NOT satisfy it. Prose
+  // satisfying a structural check is the trap this repo has been caught by twice.
+  test('the flag in a COMMENT does not satisfy it', () => {
+    const r = run(build((s) => {
+      s.files['apps/subly/lib/app.dart'] = Buffer.from(
+        '// debugShowCheckedModeBanner: false, <- only in a comment\nWidget build() => MaterialApp.router();\n',
+      );
+    }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /does not set `debugShowCheckedModeBanner: false`/);
+  });
+
+  test('COVERAGE LOST when no app builds a MaterialApp at all', () => {
+    const r = run(build((s) => {
+      delete s.files['apps/subly/lib/app.dart'];
+    }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /not one app under apps\/ was found building a MaterialApp/);
   });
 });
 

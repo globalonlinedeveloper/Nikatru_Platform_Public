@@ -59,6 +59,14 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
+// Limb 7's fixtures write what the generator derives, so the PASSING case models
+// "correctly generated" rather than one more hand-typed guess at the layout —
+// the mistake `assert-stamp-brand-assets.mjs`'s fixture made when it wrote real
+// bytes into a file the SDK leaves empty. The FAILING cases perturb the result
+// afterwards, which is where the meaning is. And because a fixture written by
+// whoever wrote the guard can encode the same misunderstanding as the guard,
+// limb 7's real evidence is the REAL-TREE mutation log recorded above each test.
+import { deriveLinuxPackaging } from '../../store/render-linux-icons.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-launcher-icons.mjs');
@@ -206,7 +214,11 @@ function world({
   brickArt = true,
   emptyStockIcons = false,
   flutterFails = false,
-  linux = false,
+  linux = true,
+  linuxOmit = [],
+  linuxCorrupt = null,
+  linuxInstall = 'both',
+  linuxRunnerIcon = true,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const sdkRoot = join(root, 'sdk');
@@ -253,14 +265,71 @@ function world({
     writeFileSync(p, rel.endsWith('.ico') ? ico(png(8, BRAND)) : png(8, BRAND, { alpha }));
   }
 
-  // An app that ships `linux/`. A `flutter create` Linux runner is ten files
-  // and ZERO images, so there is no icon to compare — which is exactly why the
-  // PRINT is the whole mechanism and needs a failing case of its own.
+  // ── the Linux lane — limb 7's subject ─────────────────────────────────────
+  // 🔴 ON BY DEFAULT, and that is the correction rather than a convenience.
+  // While limb 7 was a PRINT, `linux: false` was the right default: an app
+  // without a Linux target simply had nothing printed about it. Now the absence
+  // of any linux/ in the tree is COVERAGE LOST — the guard refuses to report
+  // green over a lane that vanished — so a fixture that omits it is modelling a
+  // repository this factory does not have, and every unrelated test would fail
+  // for a reason that has nothing to do with what it asserts. That is precisely
+  // how a check gets switched off by whoever hits it next; the lazy `stockFor`
+  // above exists because this same shape already happened once here.
   if (linux) {
-    const lin = join(appDir, 'linux', 'runner');
-    mkdirSync(lin, { recursive: true });
-    writeFileSync(join(appDir, 'linux', 'CMakeLists.txt'), 'set(APPLICATION_ID "com.example.demo")\n');
-    writeFileSync(join(lin, 'my_application.cc'), '// no gtk_window_set_icon anywhere\n');
+    const lin = join(appDir, 'linux');
+    mkdirSync(join(lin, 'runner'), { recursive: true });
+    writeFileSync(
+      join(lin, 'CMakeLists.txt'),
+      [
+        'set(BINARY_NAME "demo")',
+        'set(APPLICATION_ID "com.example.demo")',
+        'set(LINUX_PACKAGING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/packaging")',
+        ...(linuxInstall === 'no-desktop'
+          ? []
+          : ['install(FILES "${LINUX_PACKAGING_DIR}/${APPLICATION_ID}.desktop"', '  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications" COMPONENT Runtime)']),
+        ...(linuxInstall === 'no-icons'
+          ? []
+          : ['install(DIRECTORY "${LINUX_PACKAGING_DIR}/icons"', '  DESTINATION "${CMAKE_INSTALL_PREFIX}/share" COMPONENT Runtime)']),
+      ].join('\n') + '\n',
+    );
+    writeFileSync(
+      join(lin, 'runner', 'my_application.cc'),
+      linuxRunnerIcon
+        ? 'static void activate() {\n  gtk_window_set_icon_name(window, APPLICATION_ID);\n}\n'
+        : '// gtk_window_set_icon_name(window, APPLICATION_ID); <- only in a comment\nstatic void activate() {}\n',
+    );
+
+    // The master every size is derived from — the SAME file the other five
+    // platforms use, which is the property limb 7 rests on.
+    mkdirSync(join(appDir, 'assets', 'icon'), { recursive: true });
+    writeFileSync(join(appDir, 'assets', 'icon', 'app_icon_1024.png'), png(1024, BRAND, { alpha: true }));
+
+    // The desktop entry's text is DERIVED from these, never typed.
+    const listing = join(appDir, 'store', 'linux-snap');
+    mkdirSync(listing, { recursive: true });
+    writeFileSync(join(listing, 'title.txt'), 'Demo\n');
+    writeFileSync(join(listing, 'short-description.txt'), 'A demonstration\n');
+    writeFileSync(join(listing, 'category.txt'), 'Productivity\n');
+
+    for (const [rel, bytes] of deriveLinuxPackaging(appDir)) {
+      if (linuxOmit.some((o) => rel.endsWith(o))) continue;
+      const p = join(appDir, rel);
+      mkdirSync(dirname(p), { recursive: true });
+      // 'pixel'   — one byte of the mark differs: the case a size/format check
+      //             cannot see and only re-derivation catches.
+      // 'size'    — a valid PNG of the WRONG size in a size-qualified directory,
+      //             which an icon-theme lookup trusts and draws at the wrong scale.
+      // 'desktop' — a hand-edited identity, the second copy of one fact.
+      if (linuxCorrupt === 'pixel' && rel.endsWith('64x64/apps/com.example.demo.png')) {
+        writeFileSync(p, png(64, STOCK, { alpha: true }));
+      } else if (linuxCorrupt === 'size' && rel.endsWith('128x128/apps/com.example.demo.png')) {
+        writeFileSync(p, png(64, BRAND, { alpha: true }));
+      } else if (linuxCorrupt === 'desktop' && rel.endsWith('.desktop')) {
+        writeFileSync(p, bytes.toString('utf8').replace('Icon=com.example.demo', 'Icon=demo'));
+      } else {
+        writeFileSync(p, bytes);
+      }
+    }
   }
 
   // The Android adaptive icon and the layer it points at.
@@ -380,40 +449,107 @@ describe('assert-launcher-icons', () => {
     assert.match(out, /neither that file nor its directory exists in the template/);
   });
 
-  // ── the LINUX gap: a print is only a mechanism if something proves it fires ─
-  // 🔴 2026-08-04. Linux is deliberately UNCOMPARABLE — a `flutter create` Linux
-  // runner is ten files and ZERO images, the generated GTK runner sets no window
-  // icon, and there is no snapcraft.yaml or .desktop file in this repository, so
-  // there is genuinely no artefact to compare. The launcher icon on that channel
-  // is a PACKAGING concern and no packaging lane exists: tooling/channel-register
-  // .json marks `linux-snap` `served: false`, `lane: null`, deferred by ADR 015,
-  // and tooling/release/submit-snap.mjs prints NO SNAPCRAFT RECIPE because none
-  // of its candidate paths exists.
+  // ── limb 7: LINUX, which used to be a PRINT and is now a CHECK ────────────
+  // 🔴 THE PRINT WAS CORRECT WHEN IT WAS WRITTEN AND HAD STOPPED BEING SO.
+  // On 2026-08-04 Linux was genuinely UNCOMPARABLE: `flutter create` writes ten
+  // files under linux/ and ZERO images, the generated GTK runner set no window
+  // icon, and there was no .desktop file anywhere in this repository — so limb 3
+  // had nothing to be identical to and the honest thing was to PRINT the gap.
   //
-  // That makes the PRINT the entire mechanism keeping the gap visible — and
-  // NOTHING TESTED IT. Emptying UNCOMPARABLE, or re-pointing the existsSync that
-  // feeds it, would delete the only signal and read exactly like coverage. This
-  // repo's most-recorded failure is a check that quietly stopped checking, and a
-  // print nobody exercises is that failure with a friendlier face.
+  // What that reasoning hid is that "the SDK ships no icon" is not a fact about
+  // coverage; it is a fact about where Linux takes its icon FROM. It takes it
+  // from the packaging layer, which this repository can generate — and once it
+  // does, the available check is STRONGER than limb 3's, not weaker: the shipped
+  // icons must be exactly what the app's own master derives. "Not Flutter's" is
+  // satisfied by a blank square; "is the derivation" is not.
   //
-  // Real-tree mutation, 2026-08-04: `UNCOMPARABLE` emptied in the actual
-  // repository ⇒ `assert-launcher-icons` still exited 0 and the
-  // "apps/subly ships linux/ — UNCHECKED" line was GONE. Restored
-  // byte-identically; the line returned.
-  test('an app that ships linux/ is PRINTED as unchecked, and still passes', () => {
-    const { code, out } = run(world({ linux: true }));
-    assert.equal(code, 0, out);
-    assert.match(out, /apps\/demo ships linux\/ — UNCHECKED/);
-    assert.match(out, /PACKAGING concern/);
-  });
-
-  // The other half, and the one that stops the assertion above from being a
-  // constant: the line must be evidence ABOUT THE TREE, not a string the guard
-  // always prints. An app with no linux/ must produce no linux print.
-  test('an app that does NOT ship linux/ produces no such print', () => {
+  // 🔬 REAL-TREE MUTATIONS, 2026-08-04, on apps/subly rather than on a fixture —
+  // because a fixture written by whoever wrote the guard encodes the same
+  // misunderstanding as the guard, which is this repo's own recorded rule:
+  //   · deleted hicolor/256x256/apps/com.nikatru.subly.png  ⇒ "— MISSING."
+  //   · flipped ONE byte of ONE pixel in the 128 icon       ⇒ "is NOT what
+  //     assets/icon/app_icon_1024.png derives at 128px"
+  //   · copied the real 512 png into the 256x256 directory  ⇒ "is 512x512 but
+  //     sits in the 256x256 theme directory"
+  //   · edited Icon= in the real .desktop to `subly`        ⇒ both the derivation
+  //     mismatch and the APPLICATION_ID mismatch
+  //   · deleted the install(DIRECTORY …/icons …) rule       ⇒ "never reaches the
+  //     bundle"
+  //   · deleted the gtk_window_set_icon_name call           ⇒ "never calls"
+  //   · moved apps/subly/linux/ away entirely               ⇒ COVERAGE LOST
+  // Every one restored; the guard returned to OK after each.
+  test('passes when the Linux packaging is exactly what the master derives', () => {
     const { code, out } = run(world());
     assert.equal(code, 0, out);
-    assert.doesNotMatch(out, /ships linux\//);
+    assert.match(out, /LINUX \(limb 7\)/);
+    assert.match(out, /5 packaging artefact\(s\) RE-DERIVED/);
+  });
+
+  test('FAILS when a hicolor icon is missing', () => {
+    const { code, out } = run(world({ linuxOmit: ['256x256/apps/com.example.demo.png'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /256x256\/apps\/com\.example\.demo\.png — MISSING/);
+  });
+
+  test('FAILS when the .desktop entry is missing', () => {
+    const { code, out } = run(world({ linuxOmit: ['.desktop'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /com\.example\.demo\.desktop — MISSING/);
+  });
+
+  // The limb that a size check alone cannot reach: this icon is the right size,
+  // the right format and in the right place, and it is not the app's mark.
+  test('FAILS when a hicolor icon is not what the master derives', () => {
+    const { code, out } = run(world({ linuxCorrupt: 'pixel' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is NOT what assets\/icon\/app_icon_1024\.png derives at 64px/);
+  });
+
+  // The complementary one: a perfectly valid PNG whose size contradicts the
+  // theme directory it sits in. An icon-theme lookup trusts the path.
+  test('FAILS when a hicolor icon contradicts its size-qualified directory', () => {
+    const { code, out } = run(world({ linuxCorrupt: 'size' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is 64x64 but sits in the 128x128 theme directory/);
+  });
+
+  test('FAILS when the .desktop Icon= no longer matches APPLICATION_ID', () => {
+    const { code, out } = run(world({ linuxCorrupt: 'desktop' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not match APPLICATION_ID "com\.example\.demo"/);
+  });
+
+  // Artefacts that never reach the bundle are a launcher icon that exists in git
+  // and nowhere a user or a packaging recipe can find it — green everywhere else.
+  test('FAILS when CMake does not install the desktop entry', () => {
+    const { code, out } = run(world({ linuxInstall: 'no-desktop' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `install\(FILES … \.desktop/);
+  });
+
+  test('FAILS when CMake does not install the hicolor theme', () => {
+    const { code, out } = run(world({ linuxInstall: 'no-icons' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `install\(DIRECTORY …\/packaging\/icons/);
+  });
+
+  // Comment-stripped, so the fixture's commented-out call must NOT satisfy it.
+  // Prose satisfying a structural check is the trap this repo has been caught by
+  // twice, and the fixture is written to spring it deliberately.
+  test('FAILS when the GTK runner never names the window icon', () => {
+    const { code, out } = run(world({ linuxRunnerIcon: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never calls `gtk_window_set_icon_name/);
+  });
+
+  // Anti-vacuity for the limb itself: with no Linux lane at all every check
+  // above ranges over nothing, which is indistinguishable from all of them
+  // passing. That must be a hard stop, not a quiet green.
+  test('COVERAGE LOST when no app ships linux/ at all', () => {
+    const { code, out } = run(world({ linux: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no app under apps\/ ships linux\//);
+    assert.match(out, /COVERAGE LOST/);
   });
 
   // ── anti-vacuity: refusing to run blind ───────────────────────────────────

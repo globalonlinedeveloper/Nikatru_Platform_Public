@@ -350,9 +350,20 @@
               "the first frame.",
               "",
               "So a screenshot in this directory must be accompanied by CAPTURE.json recording posture:",
-              "'live'. No guard can read a banner out of a PNG without a rasteriser and an OCR pass; what it",
-              "CAN do is refuse a screenshot whose provenance nobody wrote down. The capture script writes",
-              "the file only on a live run, and refuses to write demo output into this directory at all."
+              "'live'. The capture script writes the file only on a live run, and refuses to write demo",
+              "output into this directory at all. The record must also AGREE with the directory — its count",
+              "and its pixel size are both independently measured, because a record describing a different",
+              "set is evidence about screenshots that are not these, which is worse than no record at all.",
+              "",
+              "🔴 AND SINCE 2026-08-04 THE BANNER ITSELF IS MEASURED. These lines used to end 'No guard can",
+              "read a banner out of a PNG without a rasteriser and an OCR pass' — true of a guard that reads",
+              "PNG HEADERS, which is what assert-listing-assets.mjs was, and it quietly turned a limitation",
+              "into a policy. CAPTURE.json is a CLAIM: anybody can write one next to any five PNGs. The",
+              "banner needs no OCR because it is not text-shaped to a detector — app_shell.dart paints a",
+              "full-width Container of AppColors.warn at top:0, so a row through it is almost entirely one",
+              "exact colour edge to edge. The guard decodes each frame and looks for that band, with the",
+              "colour read live from the design-system token file rather than pinned, and it self-tests the",
+              "detector on every run so the limb cannot go dark while this directory is still empty."
             ]
           },
           "_unverified": [

@@ -85,18 +85,34 @@
 //   6. THE FACTORY — the brick's app template declares a launcher-icon
 //      MECHANISM whose `image_path` names a file the stamp really writes. See
 //      the block for why this is not a "the brick has icons" check.
+//   7. LINUX — the desktop entry and the hicolor icon theme, RE-DERIVED from the
+//      app's own master rather than merely counted. See the limb.
+//
+// ── 🔴 LIMB 7 REPLACED A PRINT, AND THE PRINT WAS RIGHT WHEN IT WAS WRITTEN ──
+// Until 2026-08-04 this header said Linux "has no artefact to compare and
+// nothing to be identical to", and every app shipping `linux/` was PRINTED as
+// UNCHECKED. Both halves were true of the SDK and neither was true of the
+// requirement: the Flutter SDK ships no Linux icon because Linux does not take
+// one from the toolkit, it takes one from the PACKAGING layer. So the absence of
+// a stock asset is not the absence of a check — it means the identity comparison
+// that limb 3 performs is the wrong shape here, not that nothing can be proved.
+//
+// What limb 7 proves instead is STRONGER than "not Flutter's": the shipped icons
+// must be exactly what the app's own 1024 master derives. Not-stock is satisfied
+// by a blank square; re-derivation is satisfied only by the app's mark. That is
+// possible on Linux and not on the other five precisely because these artefacts
+// are generated here rather than by a third-party tool.
 //
 // ⚠️ WHAT THIS GUARD CANNOT SEE, stated plainly so nobody reads green as safe:
-//   · WHETHER THE ICON IS THE RIGHT BRAND. It proves "not Flutter's", not "the
-//     app's" — a blank square passes limbs 1-3. The seed-colour limb of
-//     `assert-stamp-brand-assets.mjs` is the check that says whose it is, and it
-//     only applies to stamped apps, which have a machine-readable seed.
-//   · LINUX. Measured 2026-08-04: the Flutter SDK ships NO icon in
-//     `templates/app/linux.tmpl` at all, the generated GTK runner sets no window
-//     icon, and this repo has no `snapcraft.yaml` or `.desktop` file — so there
-//     is no artefact to compare and nothing to be identical to. Every app that
-//     ships `linux/` is PRINTED on every run rather than silently counted as
-//     covered.
+//   · WHETHER THE ICON IS THE RIGHT BRAND, on the four platforms limbs 1-3
+//     cover. It proves "not Flutter's", not "the app's" — a blank square passes
+//     them. The seed-colour limb of `assert-stamp-brand-assets.mjs` is the check
+//     that says whose it is, and it only applies to stamped apps, which have a
+//     machine-readable seed. (Limb 7 does not have this hole: it re-derives.)
+//   · WHETHER A .desktop FILE IS VALID BEYOND THE KEYS DERIVED. `Categories`
+//     membership of the freedesktop registry is enforced at generation time by a
+//     sourced map, not here; `desktop-file-validate` is the tool that checks the
+//     whole grammar and it is not on these runners.
 //   · THE PIXELS INSIDE AN `.ico`. Byte-identity and structure are checked; the
 //     embedded images are not decoded. The entry sizes are printed.
 //   · ADAPTIVE-ICON GEOMETRY. Limb 5 proves the layers resolve, not that the
@@ -117,6 +133,21 @@ import { listDir } from './tree-walk.mjs';
 // including the `flutter_template_images` overlay without which three of the
 // five platforms below compare against nothing. See that file's header.
 import { flutterSdkRoot, readStockAssets, StockAssetsUnavailable } from './flutter-stock-assets.mjs';
+// Limb 7's right-hand side. Imported rather than reimplemented: the sizes, the
+// downscale and the desktop-entry text have ONE definition, in the generator
+// that writes them. A guard with its own idea of what the icons should be is a
+// guard that certifies its own misunderstanding — and this repo has already paid
+// for a fixture that encoded the same mistake as the check it was testing.
+import {
+  HICOLOR_SIZES,
+  PACKAGING_DIR,
+  deriveLinuxPackaging,
+  readLinuxIdentity,
+  LinuxBrandUnavailable,
+} from '../store/render-linux-icons.mjs';
+// The shared PNG decoder, so "what is in this picture" has one answer across the
+// guards. Limb 7 compares DECODED PIXELS rather than file bytes — see the limb.
+import { decodeRgba, PngUnreadable } from '../store/png-codec.mjs';
 
 const repoRoot = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd());
 const APPS = join(repoRoot, 'apps');
@@ -180,18 +211,11 @@ const PLATFORMS = [
   },
 ];
 
-/** Platforms an app can ship that the SDK gives this guard nothing to compare
- *  against. Printed on every run, never silently counted as covered. */
-const UNCOMPARABLE = new Map([
-  [
-    'linux',
-    'a freshly created app has TEN files under linux/ and ZERO images (measured 2026-08-04) — the SDK ' +
-      'ships no Linux icon and the generated GTK runner sets no window icon, and this repo has no ' +
-      'snapcraft.yaml or .desktop file. So there is no artefact to compare and nothing to be identical ' +
-      'to. A Linux launcher icon is a PACKAGING concern; when a snap/flatpak recipe lands, give it a ' +
-      'limb here.',
-  ],
-]);
+/** Linux is NOT in PLATFORMS above, and that is a statement about the SDK rather
+ *  than about coverage: `flutter create` writes no Linux image, so there is
+ *  nothing for limb 3 to be identical to. Limb 7 checks it by re-derivation
+ *  instead. The constant is here so the two lists are visibly one decision. */
+const LINUX_DIR = 'linux';
 
 // ── read the stock icon set, per platform, LAZILY ───────────────────────────
 // Through the shared reader, so the `flutter_template_images` overlay and the
@@ -304,7 +328,12 @@ let iconsCompared = 0;
 let iosOpacityChecked = 0;
 let adaptiveChecked = 0;
 const icoSizes = [];
-const linuxOnly = [];
+/** Limb 7's own accounting. Separate counters for "apps that ship linux/" and
+ *  "artefacts actually compared", because they fail differently: zero apps means
+ *  the Linux lane was dropped, zero artefacts over one or more apps means the
+ *  derivation stopped reaching the tree while still reporting a clean run. */
+let linuxApps = 0;
+let linuxChecked = 0;
 
 for (const slug of listDir(APPS).sort()) {
   const appDir = join(APPS, slug);
@@ -483,10 +512,239 @@ for (const slug of listDir(APPS).sort()) {
     }
   }
 
-  if (nativeHere) appsWithNative += 1;
-  for (const [id, why] of UNCOMPARABLE) {
-    if (existsSync(join(appDir, id))) linuxOnly.push(`apps/${slug} ships ${id}/ — UNCHECKED: ${why}`);
+  // ── limb 7: LINUX — the desktop entry and the hicolor icon theme ────────
+  // Reached from the per-app loop rather than the PLATFORMS loop because Linux
+  // has no stock counterpart to iterate against; see the constant above.
+  if (existsSync(join(appDir, LINUX_DIR))) {
+    linuxApps += 1;
+    // Deliberately NOT `nativeHere = true`. `appsWithNative` guards the limbs
+    // that compare against the SDK, and Linux has no SDK counterpart — folding
+    // it in would let a Linux-only app satisfy a coverage assertion about a
+    // comparison that never ran for it. Limb 7 carries its own counter below.
+
+    let derived;
+    let identity;
+    try {
+      identity = readLinuxIdentity(appDir);
+      derived = deriveLinuxPackaging(appDir);
+    } catch (e) {
+      if (!(e instanceof LinuxBrandUnavailable)) throw e;
+      // NOT a `problems.push`. If the derivation itself cannot run, every
+      // comparison below ranges over nothing and would report a branded Linux
+      // build over an app that has no icon at all.
+      coverageLost([
+        `apps/${slug} ships ${LINUX_DIR}/ and its Linux packaging could not be DERIVED, so nothing about it was checked.`,
+        ...e.lines,
+      ]);
+    }
+    if (derived.size === 0) {
+      coverageLost([
+        `apps/${slug} ships ${LINUX_DIR}/ and the derivation produced ZERO artefacts.`,
+        'Presence and content for the whole Linux lane would range over nothing and pass.',
+      ]);
+    }
+
+    for (const [rel, expected] of derived) {
+      const where = `apps/${slug}/${rel}`;
+      const path = join(appDir, rel);
+
+      // ── presence ──────────────────────────────────────────────────────────
+      if (!existsSync(path)) {
+        problems.push(
+          `${where} — MISSING. Linux takes its launcher icon from the PACKAGING layer (a .desktop entry ` +
+            'plus a hicolor icon theme), not from the Flutter embedder, so an app without these ships ' +
+            'with no icon at all: a generic placeholder in the dock, the app grid and the Snap listing. ' +
+            '`flutter create` cannot write them, which is exactly why nothing noticed.',
+        );
+        continue;
+      }
+      const actual = readFileSync(path);
+
+      if (rel.endsWith('.desktop')) {
+        // 🔴 COMPARED AS PARSED KEYS, NOT AS TEXT. A desktop entry is a
+        // key/value file whose comments and blank lines are insignificant, so
+        // a raw string compare would fail on a harmless reflow AND — worse —
+        // could be satisfied by a comment quoting the right `Icon=` line. The
+        // prose-vs-structure trap this repo has already been caught by twice.
+        const parse = (text) =>
+          new Map(
+            text
+              .split('\n')
+              .map((l) => l.trim())
+              .filter((l) => l !== '' && !l.startsWith('#') && l.includes('='))
+              .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]),
+          );
+        const want = parse(expected.toString('utf8'));
+        const got = parse(actual.toString('utf8'));
+        if (!actual.toString('utf8').includes('[Desktop Entry]')) {
+          problems.push(`${where} — has no \`[Desktop Entry]\` group header, so no desktop reads it as an entry at all.`);
+        }
+        for (const [k, v] of want) {
+          if (got.get(k) !== v) {
+            problems.push(
+              `${where} — \`${k}\` is ${JSON.stringify(got.get(k) ?? null)} and the app's own declarations ` +
+                `derive ${JSON.stringify(v)}. This file's text comes from store/linux-snap/ and ` +
+                'linux/CMakeLists.txt; a hand edit here is a second copy of the app\'s identity, and two ' +
+                'copies of one fact is how the wrong one ships. Regenerate: ' +
+                `node tooling/store/render-linux-icons.mjs --app ${slug}`,
+            );
+          }
+        }
+        // The three-way agreement the icon actually resolves through: the file
+        // is NAMED for the application id, its `Icon=` carries that same id,
+        // and the theme paths below use it. Any two of the three agreeing is
+        // not enough — the odd one out is the one that silently wins.
+        if (got.get('Icon') !== identity.applicationId) {
+          problems.push(
+            `${where} — \`Icon=${got.get('Icon') ?? ''}\` does not match APPLICATION_ID ` +
+              `"${identity.applicationId}" from linux/CMakeLists.txt. The icon is looked up by that name ` +
+              'in the icon theme, so a mismatch installs cleanly and resolves to nothing.',
+          );
+        }
+        linuxChecked += 1;
+        continue;
+      }
+
+      // ── the hicolor PNGs ──────────────────────────────────────────────────
+      const png = readPng(actual);
+      if (png === null) {
+        problems.push(`${where} — is not a readable PNG (${actual.length} bytes). Present is not the same as valid.`);
+        continue;
+      }
+      // The size is in the PATH, and a theme lookup TRUSTS the path. A 1024
+      // master copied into `256x256/` is the classic freedesktop mistake: it
+      // is a perfectly valid PNG, it passes every existence check, and the
+      // desktop draws it at the wrong scale or skips it.
+      const declared = Number(/hicolor\/(\d+)x\1\//.exec(rel)?.[1] ?? 0);
+      if (png.width !== declared || png.height !== declared) {
+        problems.push(
+          `${where} — is ${png.width}x${png.height} but sits in the ${declared}x${declared} theme directory. ` +
+            'An icon theme lookup trusts the path, so this is drawn at the wrong scale or ignored.',
+        );
+        continue;
+      }
+
+      // 🔴 COMPARED AS DECODED PIXELS, NOT AS FILE BYTES. Byte-identity would
+      // be the stronger-looking check and the wrong one: zlib's output is not
+      // guaranteed identical across Node releases, so a byte compare goes red
+      // on a developer's machine for a file that is pixel-for-pixel correct —
+      // and a guard that cries wolf where a human is watching is a guard that
+      // gets switched off. The pixels ARE the artefact.
+      let same = false;
+      try {
+        const a = decodeRgba(actual);
+        const b = decodeRgba(expected);
+        same = a.width === b.width && a.height === b.height && a.rgba.equals(b.rgba);
+      } catch (e) {
+        if (!(e instanceof PngUnreadable)) throw e;
+        problems.push(`${where} — could not be decoded for comparison: ${e.lines[0]}`);
+        continue;
+      }
+      linuxChecked += 1;
+      if (!same) {
+        problems.push(
+          `${where} — is NOT what assets/icon/app_icon_1024.png derives at ${declared}px. Either the master ` +
+            'changed and these were never regenerated, or somebody hand-placed an icon here. Both ship a ' +
+            'Linux mark that no longer matches the other five platforms, and nothing else in the tree ' +
+            `would say so. Regenerate: node tooling/store/render-linux-icons.mjs --app ${slug}`,
+        );
+      }
+    }
+
+    // ── limb 7b: the artefacts must REACH THE BUNDLE ────────────────────────
+    // Files that exist in git and are never installed are a launcher icon
+    // nobody can see — green here, generic placeholder on the desktop. Parsed
+    // with comments stripped, because the block added to that file EXPLAINS
+    // these two rules in prose directly above them.
+    const cmakePath = join(appDir, LINUX_DIR, 'CMakeLists.txt');
+    const cmake = readFileSync(cmakePath, 'utf8')
+      .split('\n')
+      .map((l) => l.replace(/#.*$/, ''))
+      .join('\n');
+    // 🔴 `${...}` REFERENCES ARE RESOLVED BEFORE MATCHING, not matched as text.
+    // The real rules are written the way CMake is written — `install(DIRECTORY
+    // "${LINUX_PACKAGING_DIR}/icons" …)` — so a check looking for the literal
+    // string "packaging/icons" fails on the CORRECT file and passes on a
+    // hard-coded path, i.e. exactly backwards. Two expansion passes: the
+    // variables here are one level deep (`LINUX_PACKAGING_DIR` refers to
+    // `CMAKE_CURRENT_SOURCE_DIR`), and an unbounded loop over a file that can
+    // define a self-reference would not terminate.
+    const vars = new Map([...cmake.matchAll(/(^|\n)\s*set\s*\(\s*([A-Za-z0-9_]+)\s+"([^"]*)"\s*\)/g)].map((m) => [m[2], m[3]]));
+    // CMake's own builtin, never `set()` in this file. Bound to the directory it
+    // actually denotes here so that the expansion below lands on a path this
+    // guard can compare; without it the source side stays an unexpanded
+    // `${CMAKE_CURRENT_SOURCE_DIR}/…` and the check silently matches nothing.
+    vars.set('CMAKE_CURRENT_SOURCE_DIR', LINUX_DIR);
+    const expand = (s) => {
+      let out = s;
+      for (let pass = 0; pass < 2; pass++) out = out.replace(/\$\{([A-Za-z0-9_]+)\}/g, (whole, n) => vars.get(n) ?? whole);
+      return out;
+    };
+    const installs = [...cmake.matchAll(/install\s*\(\s*(FILES|DIRECTORY)\s+([\s\S]*?)\)/g)].map((m) => ({
+      kind: m[1],
+      body: expand(m[2]),
+    }));
+    // The SOURCE side names the packaging directory and the DESTINATION side the
+    // freedesktop location. Requiring both is what stops a rule that installs the
+    // right file to the wrong place — which installs cleanly and resolves to
+    // nothing — from reading as coverage.
+    const desktopFile = `${identity.applicationId}.desktop`;
+    const installsDesktop = installs.some(
+      (i) =>
+        i.kind === 'FILES' &&
+        i.body.includes(`${LINUX_DIR}/packaging/${desktopFile}`) &&
+        /DESTINATION[^)]*share\/applications/.test(i.body),
+    );
+    const installsIcons = installs.some(
+      (i) =>
+        i.kind === 'DIRECTORY' &&
+        i.body.includes(`${LINUX_DIR}/packaging/icons`) &&
+        /DESTINATION[^)]*share/.test(i.body),
+    );
+    if (!installsDesktop) {
+      problems.push(
+        `apps/${slug}/${LINUX_DIR}/CMakeLists.txt has no \`install(FILES … .desktop … DESTINATION …/share/` +
+          'applications)\` rule, so the desktop entry never leaves the source tree. The icon then exists in ' +
+          'git and nowhere a user or a packaging recipe can find it.',
+      );
+    }
+    if (!installsIcons) {
+      problems.push(
+        `apps/${slug}/${LINUX_DIR}/CMakeLists.txt has no \`install(DIRECTORY …/packaging/icons … DESTINATION ` +
+          '…/share)\` rule, so the hicolor theme never reaches the bundle. `Icon=` then names an icon that ' +
+          'is not installed, which resolves to the generic placeholder — silently, since a missing icon is ' +
+          'not an error anywhere in the stack.',
+      );
+    }
+
+    // ── limb 7c: the RUNNER names the icon ─────────────────────────────────
+    // `flutter create` emits no set-icon call at all, so without this the
+    // running window falls back to whatever the desktop infers, which varies
+    // by compositor. Comment-stripped for the same reason as above — the block
+    // added there describes the call it makes.
+    const runnerPath = join(appDir, LINUX_DIR, 'runner', 'my_application.cc');
+    if (!existsSync(runnerPath)) {
+      coverageLost([
+        `apps/${slug}/${LINUX_DIR}/runner/my_application.cc does not exist, so limb 7c ranged over nothing.`,
+        'That file is the GTK runner. Its absence is not "nothing to check" — it is the subject being gone.',
+      ]);
+    }
+    const runner = readFileSync(runnerPath, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .map((l) => l.replace(/\/\/.*$/, ''))
+      .join('\n');
+    if (!/gtk_window_set_icon_name\s*\(\s*window\s*,\s*APPLICATION_ID\s*\)/.test(runner)) {
+      problems.push(
+        `apps/${slug}/${LINUX_DIR}/runner/my_application.cc never calls ` +
+          '`gtk_window_set_icon_name(window, APPLICATION_ID)`. The installed theme is then only reachable ' +
+          'through the desktop entry, which some compositors use for the window icon and some do not — so ' +
+          'the app shows its mark on one desktop and a placeholder on the next, which is worse than either.',
+      );
+    }
   }
+
+  if (nativeHere) appsWithNative += 1;
 }
 
 // ── limb 6: THE FACTORY ─────────────────────────────────────────────────────
@@ -577,6 +835,25 @@ if (iconsCompared === 0) {
     'correct. The SDK layout or the app layout moved under the PLATFORMS table.',
   ]);
 }
+// 🔴 LIMB 7'S OWN REQUIRED_COVERAGE, and it is the assertion that stops this
+// limb decaying the way the print it replaced did. `linuxApps === 0` is a real
+// possibility worth stating rather than assuming: if the Linux lane is dropped
+// from every app, every check above becomes vacuous while still printing ok, so
+// the retirement has to be deliberate.
+if (linuxApps === 0) {
+  coverageLost([
+    'no app under apps/ ships linux/, so limb 7 evaluated nothing.',
+    'The Linux launcher icon is a packaging artefact that no other check in this repository covers. If the',
+    'Linux target was dropped, retire this limb deliberately; do not let it report green over an empty set.',
+  ]);
+}
+if (linuxChecked === 0) {
+  coverageLost([
+    `${linuxApps} app(s) ship linux/ and ZERO Linux artefacts were compared against the derivation.`,
+    'Presence, size and pixel identity all ranged over nothing, which is indistinguishable from every',
+    'Linux icon being correct — and the whole point of limb 7 is that nothing else would ever say so.',
+  ]);
+}
 
 const totalStock = [...stockCache.values()].reduce((n, m) => n + m.size, 0);
 prints.push(
@@ -596,8 +873,17 @@ prints.push(
   'this guard proves an icon is NOT Flutter\'s; it does NOT prove it is the app\'s. A blank square passes. ' +
     'assert-stamp-brand-assets.mjs owns the seed-colour limb for stamped apps.',
 );
+prints.push(
+  `LINUX (limb 7) — ${linuxApps} app(s) ship linux/ · ${linuxChecked} packaging artefact(s) RE-DERIVED from ` +
+    `the app's own 1024 master and compared as decoded pixels (hicolor ${HICOLOR_SIZES.join(', ')}) · ` +
+    `source of truth: ${PACKAGING_DIR}/, written by tooling/store/render-linux-icons.mjs`,
+);
+prints.push(
+  'limb 7 is STRONGER than limbs 1-3, not weaker: re-derivation is satisfied only by the app\'s own mark, ' +
+    'where "not identical to Flutter\'s" is satisfied by a blank square. It can be, because these artefacts ' +
+    'are generated in this repo rather than by a third-party tool.',
+);
 for (const s of icoSizes) prints.push(`ico entries — ${s}`);
-for (const l of linuxOnly) prints.push(l);
 
 if (problems.length) {
   console.error('assert-launcher-icons: FAIL');

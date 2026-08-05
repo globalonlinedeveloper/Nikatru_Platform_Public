@@ -88,6 +88,25 @@ serves Linux users at $0:
 a `.snap` today. `tooling/release/submit-snap.mjs` PRINTS that gap on every run
 rather than failing, because writing it is deferred work and not a regression.
 
+✅ **The icon is no longer part of that gap.** #149 branded five platforms and
+missed Linux — not through oversight, but because `flutter_launcher_icons` has no
+Linux target and Flutter's Linux embedder has no icon slot to write into. On
+Linux the launcher icon comes from the packaging layer, and the two artefacts
+every packaging layer reads now exist and are generated:
+
+```
+node tooling/store/render-linux-icons.mjs --app subly
+```
+
+writes `apps/subly/linux/packaging/` — a freedesktop `com.nikatru.subly.desktop`
+whose text is derived from the files in *this* directory, plus a hicolor icon
+theme at 512/256/128/64 downscaled exactly from the same 1024 master the other
+five platforms use. `linux/CMakeLists.txt` installs both into the build bundle
+under `share/`, so **a `snapcraft.yaml` written later stages them and is done** —
+nothing about the icon is snap-specific, which is why it was not written as a
+snap file. `tooling/ci/assert-launcher-icons.mjs` limb 7 re-derives them on every
+CI run and fails on any drift.
+
 Full ordered console procedure: `company/runbooks/store-submission-snap.md`.
 
 ## Regenerating / validating

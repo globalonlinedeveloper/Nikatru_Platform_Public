@@ -166,7 +166,15 @@ flutter_launcher_icons:
   web:
     generate: false
 
-  # LINUX has no entry: flutter_launcher_icons has no Linux support and Flutter's
-  # Linux runner sets no window icon. There, the launcher icon is a PACKAGING
-  # artefact (.desktop + hicolor theme, or a snapcraft recipe). Recorded rather
-  # than silently missing — assert-launcher-icons.mjs prints the gap every run.
+  # LINUX still has no entry HERE, and that is now a statement about this tool
+  # rather than about the platform: flutter_launcher_icons has no Linux target,
+  # because Flutter's Linux embedder has no icon slot to write into. On Linux the
+  # launcher icon is a PACKAGING artefact — a freedesktop `.desktop` entry plus a
+  # hicolor icon theme, which every packaging layer (snap, flatpak, deb,
+  # AppImage) consumes.
+  #
+  # Those ARE generated in this repo, from the same `image_path` master above:
+  #   node tooling/store/render-linux-icons.mjs --app <app_id>
+  # and `assert-launcher-icons.mjs` limb 7 RE-DERIVES them and fails the build on
+  # any drift. So the day this app adds `--platforms=…,linux`, one more command
+  # brands it — the gap that used to be printed here is closed, not deferred.

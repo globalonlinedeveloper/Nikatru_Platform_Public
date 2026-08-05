@@ -70,22 +70,42 @@
 // A listing built from that advertises the product as a demo AND puts third-party
 // trademarks on a public store page — which Google's own preview-asset page
 // tells developers to avoid and which [ADR 019] forbids for any asset we
-// produce. No static guard can read a banner out of a PNG. What it CAN do is
-// refuse a screenshot whose posture nobody recorded, so a screenshot set must be
-// accompanied by the capture script's `CAPTURE.json` saying `posture: "live"`.
+// produce. So a screenshot set must be accompanied by the capture script's
+// `CAPTURE.json` saying `posture: "live"`.
+//
+// ── 🔴 AND FROM 2026-08-04 THE POSTURE IS MEASURED, NOT ONLY CLAIMED ─────────
+// This header used to read "No static guard can read a banner out of a PNG."
+// That was true of a guard that only reads PNG HEADERS, which is what this was,
+// and it quietly turned a limitation into a policy. `CAPTURE.json` is written by
+// the capture script and is good evidence — and it is a JSON file that anybody
+// can write next to any five PNGs. The banner is what would actually be wrong
+// with the picture, and nothing looked at the picture.
+//
+// It is detectable without a rasteriser precisely because it is not subtle:
+// `app_shell.dart` paints a `width: double.infinity` bar of `AppColors.warn` at
+// `top: 0` on every screen. The colour is read from the token file that paints
+// it, never pinned here, and THE DETECTOR SELF-TESTS ON EVERY RUN against two
+// frames built in memory — so it cannot silently stop detecting even while the
+// screenshot directory is empty, which it is today.
+//
+// The DEBUG ribbon is a separate limb and a static one: `flutter drive` builds
+// in debug, so `debugShowCheckedModeBanner: false` is the only thing keeping a
+// red ribbon off every captured frame, and nothing was holding it.
 //
 // ⚠️ WHAT THIS GUARD CANNOT SEE, stated plainly so nobody reads green as safe:
-//   · WHETHER A SCREENSHOT IS REPRESENTATIVE. It proves size, format, count and
-//     recorded posture. It does not know whether the screens chosen are the ones
-//     worth showing, whether the board looks plausible, or whether the app
-//     regressed between the capture and today. Google requires screenshots to
-//     "demonstrate the actual in-app or in-game experience"; that is a human
-//     call and this guard does not make it.
+//   · WHETHER A SCREENSHOT IS REPRESENTATIVE. It proves size, format, count,
+//     recorded posture and the absence of the demo banner. It does not know
+//     whether the screens chosen are the ones worth showing, whether the board
+//     looks plausible, or whether the app regressed between the capture and
+//     today. Google requires screenshots to "demonstrate the actual in-app or
+//     in-game experience"; that is a human call and this guard does not make it.
+//     It is why `store-screenshots.yml` opens a PULL REQUEST — a human looking
+//     at the images in a diff is the check no assertion replaces.
 //   · WHETHER THE FEATURE GRAPHIC IS ANY GOOD. Right size, right format, right
 //     provenance — not "right".
-//   · THE PIXELS. Nothing here decodes an image. It reads the PNG header, which
-//     is enough for every question Google states and for none of the ones it
-//     does not.
+//   · ANYTHING ELSE IN THE PIXELS. One band of one colour is decoded, plus the
+//     header. Third-party marks inside the frame, a broken layout or an empty
+//     board would all pass.
 //   · WHETHER THE COMMITTED GRAPHIC IS STILL WHAT ITS GENERATOR RENDERS. That
 //     needs Chrome, so it is a separate step —
 //     `node tooling/store/render-play-graphics.mjs --check` — which runs in the
@@ -97,6 +117,13 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+// 🔴 THE PIXELS, and this import is the whole of what changed on 2026-08-04.
+// Everything else here reads a PNG HEADER, which answers every question Google
+// states and NONE of the question that actually matters: a demo capture is
+// exactly the right size. The header above used to say plainly "No static guard
+// can read a banner out of a PNG" — and that was true only for as long as
+// nothing decoded one. See BANNER DETECTION below.
+import { decodeRgba, encodeRgba, PngUnreadable } from '../store/png-codec.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
@@ -193,16 +220,180 @@ function pngHeader(buf) {
   return h;
 }
 
+// ── BANNER DETECTION — posture measured, not merely claimed ─────────────────
+// 🔴 WHY THIS EXISTS ALONGSIDE THE PROVENANCE CHECK, NOT INSTEAD OF IT.
+// `CAPTURE.json` is a CLAIM. It is written by the capture script on a live run
+// and is excellent evidence, and it is still a JSON file sitting next to some
+// PNGs: anybody can write one, and a set assembled by hand with a plausible
+// record passes every check above. The banner is the thing that would actually
+// be wrong with the picture, and until now nothing looked at the picture.
+//
+// The demo banner is not subtle and that is what makes it detectable without a
+// rasteriser or an OCR pass: `app_shell.dart` paints a `width: double.infinity`
+// Container of `AppColors.warn` at `top: 0` on EVERY screen whenever
+// `!AppConfig.isApiConfigured`. So a row of pixels through it is almost entirely
+// one exact colour, edge to edge.
+//
+// ⚠️ THE COLOUR IS READ FROM THE TOKEN FILE THAT PAINTS IT, NEVER PINNED HERE.
+// A hex literal in this file is a copy that rots the day the palette changes:
+// the guard would go on scanning for a colour nothing draws any more and report
+// every screenshot clean — a scanner that quietly stopped scanning, this repo's
+// single most repeated failure, and one it has already paid for twice.
+const TOKENS = 'packages/design_system/lib/src/tokens/app_colors.dart';
+
+/**
+ * The fraction of a row that must be the banner colour before that row IS a
+ * banner.
+ *
+ * NOT an invented tolerance, and the margin either side is wide. The banner is
+ * full-width with centred 12px white text, so its glyphs are a small minority of
+ * any row crossing it — measured rows are ~85-95% warn. The other direction: the
+ * live UI does use `AppColors.warn` (an accent bar on Home), but as a bar a few
+ * pixels wide, i.e. low single-digit percent of a 1080px row. 0.60 sits between
+ * two clusters an order of magnitude apart rather than being tuned to either,
+ * and every run PRINTS the maximum actually measured so the margin is visible
+ * instead of assumed.
+ */
+const BANNER_ROW_FRACTION = 0.6;
+
+/** How far down to look. The banner is at `top: 0` under a SafeArea, and the web
+ *  target has no safe-area inset, so it occupies the first ~90 device pixels of
+ *  a 1920-tall capture. 15% is generous enough to survive a layout change and
+ *  far short of the content area. */
+const BANNER_BAND = 0.15;
+
+/** `static const Color warn = Color(0xFFF59E0B);` → `[245,158,11]`. Parsed from
+ *  the declaration, comments stripped first: this file's neighbours are full of
+ *  prose naming colours, and a bare text match would read one of those. */
+function readWarnColour(root) {
+  const p = join(root, TOKENS);
+  if (!existsSync(p)) return null;
+  const code = readFileSync(p, 'utf8')
+    .split('\n')
+    .map((l) => l.replace(/\/\/.*$/, ''))
+    .join('\n');
+  const m = code.match(/static\s+const\s+Color\s+warn\s*=\s*Color\(\s*0x([0-9a-fA-F]{8})\s*\)/);
+  if (!m) return null;
+  const v = parseInt(m[1], 16);
+  return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+}
+
+/**
+ * The largest fraction of any row in the top band that is exactly `rgb`.
+ *
+ * Returned as a NUMBER rather than a boolean so the caller can print the
+ * measurement. A detector that only ever says yes/no gives a reader no way to
+ * tell a comfortable pass from one that nearly fired.
+ */
+function maxBandRowFraction(img, rgb) {
+  const rows = Math.max(1, Math.floor(img.height * BANNER_BAND));
+  let best = 0;
+  for (let y = 0; y < rows; y++) {
+    let hits = 0;
+    for (let x = 0; x < img.width; x++) {
+      const i = (y * img.width + x) * 4;
+      if (img.rgba[i] === rgb[0] && img.rgba[i + 1] === rgb[1] && img.rgba[i + 2] === rgb[2]) hits++;
+    }
+    if (hits / img.width > best) best = hits / img.width;
+  }
+  return best;
+}
+
+/**
+ * 🔴 THE DETECTOR PROVES ITSELF ON EVERY RUN, and this is the only reason the
+ * limb above is worth anything today.
+ *
+ * `apps/subly/store/android-play/screenshots/` currently holds no PNGs — the set
+ * lives in an expiring CI artifact, which is the gap the `store-screenshots`
+ * workflow now closes by opening a pull request. Until those bytes land, the
+ * banner limb ranges over ZERO images and prints ok, which is EXACTLY the shape
+ * this repository has been burned by: an assertion that cannot fail, inflating
+ * apparent coverage. `assert-stamp-brand-assets.mjs` compared against empty
+ * buffers for a week under a healthy-looking count.
+ *
+ * So the detector is run against two images built here, in memory, on every
+ * invocation: one carrying a full-width band of the live token colour, one
+ * carrying none. If it stops firing on the first or starts firing on the second,
+ * the run is COVERAGE LOST — before any real screenshot is even looked at. That
+ * makes it impossible for this limb to be silently disabled by a palette change,
+ * a decoder regression, or a threshold edit, whether or not the set is committed.
+ */
+function selfTestBannerDetector(rgb) {
+  const make = (banner) => {
+    const w = 64;
+    const h = 64;
+    const rgba = Buffer.alloc(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      rgba[i * 4] = 0x11;
+      rgba[i * 4 + 1] = 0x11;
+      rgba[i * 4 + 2] = 0x11;
+      rgba[i * 4 + 3] = 0xff;
+    }
+    if (banner) {
+      // Full width, inside the band, with a couple of foreign pixels standing in
+      // for the banner's own text so the fixture is not a trivially perfect row.
+      for (let y = 0; y < 6; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          rgba[i] = rgb[0];
+          rgba[i + 1] = rgb[1];
+          rgba[i + 2] = rgb[2];
+        }
+        rgba[(y * w + 30) * 4] = 0xff;
+        rgba[(y * w + 31) * 4] = 0xff;
+      }
+    }
+    // Round-tripped through the encoder and the decoder rather than tested as a
+    // raw buffer: the limb's real input arrives as PNG bytes, so a decoder that
+    // broke would otherwise pass its own self-test.
+    return decodeRgba(encodeRgba({ width: w, height: h, rgba }));
+  };
+  const withBanner = maxBandRowFraction(make(true), rgb);
+  const without = maxBandRowFraction(make(false), rgb);
+  return { withBanner, without, ok: withBanner >= BANNER_ROW_FRACTION && without < BANNER_ROW_FRACTION };
+}
+
 /** A declared expectation with no citation. Enforcing it risks rejecting correct
  *  input on an invented number; ignoring it leaves the register claiming a
  *  constraint that does nothing. Fail, and say which. */
 const unsourced = (where) =>
   `${REGISTER} ${where} declares dimensions with NO \`source\`. An invented limit fires on CORRECT input — a made-up "120 characters or fewer" once rejected this repo's own fixture at 129 — so this guard will not enforce a number nobody sourced, and will not let the register pretend to constrain an asset it does not. Add the URL and the date the page was read, or remove the expectation.`;
 
+// ── the detector proves itself BEFORE anything is scanned ───────────────────
+// Placed here rather than inside the loop on purpose: it must run whether or not
+// a single screenshot exists, which is the entire point (see its header).
+const WARN = readWarnColour(ROOT);
+if (WARN === null) {
+  coverageLost([
+    `${TOKENS} does not exist, or declares no \`static const Color warn = Color(0x…)\`.`,
+    'That token IS the demo banner\'s colour — app_shell.dart paints the "Demo data" bar with it — and it',
+    'is read from there rather than pinned here so the detector cannot go on hunting a colour nothing',
+    'draws any more. With it unreadable the banner limb would examine every screenshot for nothing and',
+    'report all of them clean, which is the failure this limb exists to remove.',
+  ]);
+}
+const selfTest = selfTestBannerDetector(WARN);
+if (!selfTest.ok) {
+  coverageLost([
+    'the demo-banner detector FAILED ITS OWN SELF-TEST and no screenshot was examined.',
+    `a synthetic frame carrying a full-width #${WARN.map((c) => c.toString(16).padStart(2, '0')).join('')} band measured ` +
+      `${selfTest.withBanner.toFixed(3)} (needs >= ${BANNER_ROW_FRACTION}),`,
+    `and a synthetic frame carrying none measured ${selfTest.without.toFixed(3)} (needs < ${BANNER_ROW_FRACTION}).`,
+    'Either the decoder, the threshold or the band changed such that this limb can no longer tell the two',
+    'apart — in which case it would pass every real screenshot for the same reason, silently.',
+  ]);
+}
+
 // ── the scan ────────────────────────────────────────────────────────────────
 let assetsChecked = 0;
 let screenshotsChecked = 0;
 let treesSeen = 0;
+/** Screenshots whose PIXELS were examined, as distinct from those whose header
+ *  was read. The two diverge exactly when a decode fails, and that difference is
+ *  the one worth printing. */
+let pixelsExamined = 0;
+let debugBannerAppsChecked = 0;
+let worstBandFraction = 0;
 
 for (const row of withGraphics) {
   const g = contract.perChannel[row.id].graphicAssets;
@@ -333,6 +524,11 @@ for (const row of withGraphics) {
       continue;
     }
 
+    /** The exact `WxH` the provenance record claims, if it carries one. Every
+     *  frame in a set is one capture at one viewport, so a frame that differs
+     *  from its own record was not produced by that run. */
+    let expectedPixels = null;
+
     // 🔴 PROVENANCE FIRST. A screenshot with no recorded posture is the one
     // failure this guard exists to make impossible, and it must fail even when
     // every dimension is perfect — a demo capture is exactly the right size.
@@ -355,6 +551,32 @@ for (const row of withGraphics) {
           problems.push(
             `${provRel} records posture ${JSON.stringify(prov.posture ?? null)}, not "live". These screenshots photographed a build that is not the one users get. A demo capture is exactly the right SIZE, which is why size checks alone would pass it.`,
           );
+        }
+        // 🔴 THE RECORD MUST AGREE WITH THE BYTES IT SITS NEXT TO.
+        // `CAPTURE.json` states a count and a pixel size; both are things this
+        // guard can independently measure. A record that disagrees with the
+        // directory means the two came from different runs — somebody added,
+        // removed or replaced a frame and left the provenance describing the
+        // set that used to be here, which is a screenshot with NO provenance
+        // wearing the appearance of one. That is strictly worse than none,
+        // because it satisfies the check above.
+        if (prov && Number.isInteger(prov.count) && prov.count !== shots.length) {
+          problems.push(
+            `${provRel} records count ${prov.count} and ${shotDir} holds ${shots.length} screenshot(s). The record describes a different set from the one in this directory, so it is evidence about screenshots that are not these.`,
+          );
+        }
+        if (prov && typeof prov.pixels === 'string') {
+          expectedPixels = prov.pixels;
+          // Cross-checked against the REGISTER's recommended portrait, so the
+          // capture geometry cannot drift from the declared contract without one
+          // of the two saying so. Neither number is invented here: one is
+          // measured by the capture, the other is quoted from Google's page.
+          const rp = s.recommendedPortrait;
+          if (rp && Number.isInteger(rp.width) && Number.isInteger(rp.height) && prov.pixels !== `${rp.width}x${rp.height}`) {
+            problems.push(
+              `${provRel} records pixels "${prov.pixels}" and ${REGISTER} declares a recommended portrait of ${rp.width}x${rp.height}. The capture geometry and the declared contract disagree; the capture script derives ${rp.width}x${rp.height} from a ${rp.width / 3}x${rp.height / 3} viewport at DPR 3, so one of the two was changed alone.`,
+            );
+          }
         }
       }
     }
@@ -397,7 +619,88 @@ for (const row of withGraphics) {
       if (typeof s.alpha === 'boolean' && h.hasAlpha !== s.alpha && !s.alpha) {
         problems.push(`${rel} HAS an alpha channel (PNG colour type ${h.colourType}) and Play requires a "24-bit PNG (no alpha)". Source: ${s.source}`);
       }
+
+      // ── the EXACT geometry, against the set's own record ──────────────────
+      // Deliberately NOT "1080x1920 because Google says so" — Google does not:
+      // 1080x1920 is a RECOMMENDATION on that page, and enforcing a
+      // recommendation as a requirement is how a made-up "120 characters or
+      // fewer" once rejected this repo's own fixture at 129. What IS mandatory
+      // is internal consistency: the set was captured in one run at one
+      // viewport, so a frame that does not match its own CAPTURE.json came from
+      // somewhere else, and "somewhere else" is precisely what nobody can
+      // account for.
+      if (expectedPixels !== null && `${h.width}x${h.height}` !== expectedPixels) {
+        problems.push(
+          `${rel} is ${h.width}x${h.height} and the set's own ${s.provenanceFile} records ${expectedPixels}. One capture at one viewport produces one size, so this frame did not come from the run that wrote that record — and nothing else in the tree knows where it did come from.`,
+        );
+      }
+
+      // ── THE PIXELS: no demo banner ────────────────────────────────────────
+      let img;
+      try {
+        img = decodeRgba(buf);
+      } catch (e) {
+        if (!(e instanceof PngUnreadable)) throw e;
+        problems.push(
+          `${rel} could not be decoded, so it was never examined for the demo banner: ${e.lines[0]}. A screenshot this guard cannot look at must not be reported as one it looked at.`,
+        );
+        continue;
+      }
+      pixelsExamined++;
+      const band = maxBandRowFraction(img, WARN);
+      if (band > worstBandFraction) worstBandFraction = band;
+      if (band >= BANNER_ROW_FRACTION) {
+        problems.push(
+          `${rel} carries a FULL-WIDTH BAND of the demo-banner colour across the top of the frame (${(band * 100).toFixed(1)}% of a row, threshold ${(BANNER_ROW_FRACTION * 100).toFixed(0)}%). app_shell.dart paints exactly that whenever the build is not backend-live, reading "Demo data - sample subscriptions, not your account" — and that build also seeds twelve third-party trademarks onto the board. A listing built from this advertises the product as a demo AND puts other companies' marks on a public store page. This is measured in the PIXELS, so no CAPTURE.json can talk it away.`,
+        );
+      }
     }
+  }
+}
+
+// ── the DEBUG ribbon, which is a different banner and a different fix ───────
+// 🔴 NOT DETECTABLE IN THE SAME WAY, AND NOT WORTH GUESSING AT. Flutter's
+// checked-mode ribbon is a rotated translucent strip drawn by the framework in
+// its own colour; matching it in pixels would need a colour taken from the SDK,
+// and this guard runs in the lane that has no Flutter. What CAN be asserted is
+// the thing that decides whether it appears at all.
+//
+// It matters here specifically: the capture runs through `flutter drive`, which
+// builds in DEBUG by default. `MaterialApp(debugShowCheckedModeBanner: false)`
+// is the only reason the current captures are clean, nothing was holding it, and
+// deleting one identifier would put a red DEBUG ribbon in the corner of every
+// store screenshot — the loudest possible "unfinished" signal, on the asset
+// reviewers look at first.
+{
+  for (const app of apps) {
+    if (typeof app.slug !== 'string' || app.slug === '') continue;
+    const rel = `apps/${app.slug}/lib/app.dart`;
+    const buf = read(rel);
+    if (buf === null) continue; // an entry in the catalogue with no app tree here
+    // Comment-stripped: the file explains the flag directly above it in several
+    // apps, and prose satisfying a structural check is the trap this repo has
+    // been caught by twice.
+    const code = buf
+      .toString('utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .map((l) => l.replace(/\/\/.*$/, ''))
+      .join('\n');
+    if (!/\bMaterialApp\b/.test(code)) continue; // nothing here builds the app shell
+    debugBannerAppsChecked++;
+    if (!/debugShowCheckedModeBanner\s*:\s*false/.test(code)) {
+      problems.push(
+        `${rel} builds a MaterialApp and does not set \`debugShowCheckedModeBanner: false\`. The store screenshot capture runs through \`flutter drive\`, which builds in DEBUG — so every captured frame would carry Flutter's red DEBUG ribbon, and the listing would advertise an unfinished build. It is one identifier, nothing else was holding it, and no size or format check can see it.`,
+      );
+    }
+  }
+  if (debugBannerAppsChecked === 0) {
+    coverageLost([
+      'not one app under apps/ was found building a MaterialApp, so the DEBUG-ribbon limb evaluated nothing.',
+      'The capture builds in debug through `flutter drive`; with this limb vacuous, a deleted',
+      '`debugShowCheckedModeBanner: false` would put a red DEBUG ribbon on every store screenshot and',
+      'every other check here would still pass, because the frame would be exactly the right size.',
+    ]);
   }
 }
 
@@ -441,9 +744,25 @@ if (problems.length) {
   );
   console.log('ok   every dimension enforced came from the register WITH a citation; an unsourced one fails');
   console.log('     rather than being applied, and an unsourced one cannot be added without its URL and date');
+  console.log(
+    `ok   DEMO BANNER — detector SELF-TESTED this run against the live token #${WARN.map((c) => c.toString(16).padStart(2, '0')).join('')} ` +
+      `read from ${TOKENS}: synthetic banded frame ${selfTest.withBanner.toFixed(3)}, clean frame ` +
+      `${selfTest.without.toFixed(3)}, threshold ${BANNER_ROW_FRACTION}. ${pixelsExamined} screenshot(s) DECODED; ` +
+      `worst top-band row measured ${worstBandFraction.toFixed(3)}.`,
+  );
+  if (pixelsExamined === 0) {
+    console.log('   ⬜ …and 0 is why the self-test exists. With no screenshots committed the banner limb ranges');
+    console.log('      over nothing; the self-test is what stops that reading as a working check. It closes when');
+    console.log('      the `store-screenshots` workflow\'s pull request is merged.');
+  }
+  console.log(
+    `ok   DEBUG RIBBON — ${debugBannerAppsChecked} app(s) building a MaterialApp all set ` +
+      '`debugShowCheckedModeBanner: false`. The capture runs through `flutter drive`, which builds in DEBUG.',
+  );
   console.log('   ⚠️ CANNOT SEE: whether a screenshot is REPRESENTATIVE of the app, or whether the feature');
-  console.log('      graphic is any good. Size, format, count and RECORDED posture are all this proves — the');
-  console.log('      pixels are never decoded. "Demonstrates the actual in-app experience" is a human call.');
+  console.log('      graphic is any good. Size, format, count, recorded posture and the ABSENCE OF THE DEMO');
+  console.log('      BANNER are what this proves. "Demonstrates the actual in-app experience" is a human call,');
+  console.log('      which is why the capture workflow opens a pull request rather than committing directly.');
   console.log('   ⚠️ CANNOT SEE: whether a committed graphic is still what its generator renders. That needs');
   console.log('      a browser: `node tooling/store/render-play-graphics.mjs --check`, in the lane that has one.');
   console.log('\nassert-listing-assets: ok');

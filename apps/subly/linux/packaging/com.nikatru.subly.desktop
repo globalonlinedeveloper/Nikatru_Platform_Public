@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.5
+Type=Application
+Name=Subly
+Comment=Track every subscription in one place
+Exec=subly
+Icon=com.nikatru.subly
+Terminal=false
+Categories=Office;
