@@ -116,7 +116,7 @@ function parseJsonc(text, where) {
  * live outside the serving Worker: keeping strings means a doc comment is the
  * only false positive available, and comments are what this strips.
  */
-function stripComments(src, { alsoStrings = false } = {}) {
+export function stripComments(src, { alsoStrings = false } = {}) {
   let out = '';
   let i = 0;
   const n = src.length;
@@ -134,7 +134,33 @@ function stripComments(src, { alsoStrings = false } = {}) {
       i += 2; out += '  ';
       continue;
     }
-    if (alsoStrings && (c === "'" || c === '"' || c === '`')) {
+    // ── 🔴 STRINGS ARE ALWAYS *TRACKED*; `alsoStrings` ONLY DECIDES WHETHER THEY
+    // ARE BLANKED. CORRECTED 2026-08-05, AND IT HAD SILENTLY BLINDED THE GUARD.
+    //
+    // This branch used to be gated entirely on `alsoStrings`, so with it false
+    // the scanner walked straight THROUGH string literals — and
+    // `services/platform/src/index.ts:114` is:
+    //
+    //     app.use('/v1/plan/*', platformAuth);
+    //
+    // The `/*` inside that path opened a block comment that never closed, so
+    // EVERY LINE AFTER IT WAS BLANKED — including `:115 app.route('/v1',
+    // cancellation);`. The guard then reported "7 mounted route(s) reconciled
+    // with 7 register entry(ies)" and exited 0, while `POST /v1/plan/cancel`
+    // was mounted, deployed and answering 401 in production, and appeared in
+    // `tooling/platform-register.json` exactly ZERO times. Real mount count: 12.
+    //
+    // The parser-liveness self-check could not catch it: it fires on
+    // `mounted.length === 0`, and this was a PARTIAL loss — 7 of 12 — which
+    // looks exactly like a healthy read.
+    //
+    // 📌 This is the same family as the 2026-08-04 finding that
+    // `stripSourceComments` returned its input unchanged for unknown
+    // extensions, and it arrived the same way: the docstring above already
+    // said strings are kept because a route path IS a string literal. The
+    // INTENT was right and the implementation only honoured it in one of two
+    // modes.
+    if (c === "'" || c === '"' || c === '`') {
       const q = c;
       let j = i + 1;
       while (j < n) {
@@ -143,7 +169,10 @@ function stripComments(src, { alsoStrings = false } = {}) {
         if (q !== '`' && src[j] === '\n') break;
         j++;
       }
-      for (const ch of src.slice(i, j)) out += blank(ch);
+      // Blank the literal when asked, otherwise copy it through verbatim — but
+      // either way, SKIP PAST IT so its contents can never be read as syntax.
+      if (alsoStrings) for (const ch of src.slice(i, j)) out += blank(ch);
+      else out += src.slice(i, j);
       i = j;
       continue;
     }
