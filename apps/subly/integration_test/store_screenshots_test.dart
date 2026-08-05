@@ -34,23 +34,44 @@
 // tooling/store/capture-play-screenshots.mjs.
 // ─────────────────────────────────────────────────────────────────────────────
 //
+// 🔴 THE SECOND POSTURE QUESTION, ADDED 2026-08-05: WHOSE ACCOUNT IS ON SCREEN.
+//
+// This suite used to end by tapping "More" and photographing SettingsScreen as
+// `05-settings`. That screen renders the signed-in address at the top of the
+// account card in large legible type, and the capture signs in as the throwaway
+// end-to-end account — so the frame read `subly-e2e+…@nikatru.com`, an internal
+// test address on a public marketing asset. It was caught by a human opening the
+// PNG; `assert-listing-assets.mjs` had passed it, because it decodes pixels and
+// no guard in this tree can read TEXT in an image.
+//
+// The frame is gone (see "the set, in listing order" below) and every remaining
+// capture goes through `captureFrame` in `store_capture_guard.dart`, which
+// refuses to release the shutter while the session's own identity is anywhere in
+// the widget tree. Removing the frame alone would have fixed today; the refusal
+// is what stops the next frame — of a screen nobody has audited, or on a local
+// run signed in as a real person — from doing it again.
+//
 // Run through the runner, never by hand:
 //   node tooling/store/capture-play-screenshots.mjs           # live, shippable
 //   node tooling/store/capture-play-screenshots.mjs --proof   # demo, throwaway
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:subly/core/config/app_config.dart';
 import 'package:subly/core/e2e_keys.dart';
+import 'package:subly/data/auth/auth_models.dart';
 import 'package:subly/features/budget/budget_screen.dart';
 import 'package:subly/features/calendar/calendar_screen.dart';
 import 'package:subly/features/home/home_screen.dart';
 import 'package:subly/features/insights/insights_screen.dart';
-import 'package:subly/features/settings/settings_screen.dart';
 import 'package:subly/features/shell/app_shell.dart';
 import 'package:subly/main.dart' as app;
+import 'package:subly/state/providers.dart';
+
+import 'store_capture_guard.dart';
 
 /// Illustrative subscriptions created through the app's OWN "Add subscription"
 /// sheet, so nothing on screen is a capability the shipping app does not have.
@@ -104,7 +125,18 @@ void main() {
     return false;
   }
 
-  Future<void> shot(String name) => binding.takeScreenshot(name);
+  // 🔴 THERE IS NO `shot(name)` WRAPPER ANY MORE, AND ITS ABSENCE IS LOAD-
+  // BEARING. Every frame below calls `captureFrame` directly, on the line after
+  // the `find.byType(...)` that says WHICH SCREEN it is photographing. That is
+  // what lets `tooling/ci/assert-listing-assets.mjs` — which runs on every push,
+  // long before any capture — resolve each frame to the screen source it
+  // photographs and fail the build if that screen renders the account address.
+  // Behind a one-line wrapper there is exactly one call site and the static
+  // association collapses to nothing, which is a scan over nothing printing ok.
+  //
+  // `binding.takeScreenshot` is passed as a TEAR-OFF, never called here: the
+  // same guard fails on any direct `takeScreenshot(` in this file, so a second
+  // unguarded shutter cannot be added by writing the obvious line.
 
   testWidgets('captures the Play phone screenshot set', (
     WidgetTester tester,
@@ -157,10 +189,11 @@ void main() {
     await pumpFor(tester, const Duration(seconds: 2));
 
     expect(find.text('Welcome back'), findsOneWidget);
-    await tester.enterText(
-      find.byKey(E2EKeys.loginEmail),
-      email.isEmpty ? 'demo@nikatru.com' : email,
-    );
+    // Hoisted out of the `enterText` call because the capture guard needs the
+    // SAME string: what this suite types is, by definition, the address the
+    // frames below would carry.
+    final String signInEmail = email.isEmpty ? 'demo@nikatru.com' : email;
+    await tester.enterText(find.byKey(E2EKeys.loginEmail), signInEmail);
     await tester.enterText(
       find.byKey(E2EKeys.loginPassword),
       password.isEmpty ? 'demo-password' : password,
@@ -179,6 +212,35 @@ void main() {
     await tester.tap(find.text('Go to dashboard'));
     await pumpFor(tester, const Duration(seconds: 4));
     expect(find.byType(AppShell), findsOneWidget);
+
+    // ── who is on screen, asked of the app rather than of the harness ────────
+    // The session is read out of the running ProviderScope, so the forbidden set
+    // describes the account the APP holds — not the one this file was written
+    // against. Both are added: if they ever disagree, the capture is signed in
+    // as somebody it did not mean to be, and both strings are refused anyway.
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(AppShell)),
+      listen: false,
+    );
+    final AuthUser? session = container
+        .read(authRepositoryProvider)
+        .currentUser;
+    final Set<String> forbidden = accountIdentityNeedles(
+      signedInWith: signInEmail,
+      account: session,
+      // A demo build's profile name is `Alex Rivera` from MockAuthRepository —
+      // seed data, not an identity — and Home renders it. Refusing on it would
+      // fail the --proof lane forever over a leak that cannot exist. The ADDRESS
+      // limbs stay on in both postures; see store_capture_guard.dart.
+      includeProfileName: AppConfig.isBackendLive,
+    );
+    expect(
+      forbidden,
+      isNotEmpty,
+      reason:
+          'The capture guard would have nothing to look for, so every frame '
+          'below would be examined for nothing and pass.',
+    );
 
     // ── seed the board through the app's own create flow ─────────────────────
     // 🔴 THROUGH THE UI, NOT THROUGH THE API. A screenshot showing rows that
@@ -213,28 +275,71 @@ void main() {
     // listing, so the number is the listing's rather than the filesystem's.
     // Google: "prioritize UI in the first three screenshots as much as
     // possible" — Home, Calendar and Insights lead for that reason.
+    //
+    // FOUR FRAMES, NOT FIVE. `tooling/channel-register.json` sets `minCount: 2`
+    // and `recommendedCount: 4`, so four satisfies both Play's publish minimum
+    // and its large-format recommendation threshold — the fifth frame cost
+    // nothing to stop taking. What it cost to KEEP was an internal address on a
+    // public listing; see the header.
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.byType(HomeScreen), findsWidgets);
-    await shot('01-home');
+    await captureFrame(
+      take: binding.takeScreenshot,
+      frame: '01-home',
+      forbidden: forbidden,
+    );
 
     await tester.tap(find.text('Calendar'));
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(CalendarScreen), findsWidgets);
-    await shot('02-calendar');
+    await captureFrame(
+      take: binding.takeScreenshot,
+      frame: '02-calendar',
+      forbidden: forbidden,
+    );
 
     await tester.tap(find.text('Insights'));
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(InsightsScreen), findsWidgets);
-    await shot('03-insights');
+    await captureFrame(
+      take: binding.takeScreenshot,
+      frame: '03-insights',
+      forbidden: forbidden,
+    );
 
     await tester.tap(find.text('Budget'));
     await pumpFor(tester, const Duration(seconds: 4));
     expect(find.byType(BudgetScreen), findsWidgets);
-    await shot('04-budget');
+    await captureFrame(
+      take: binding.takeScreenshot,
+      frame: '04-budget',
+      forbidden: forbidden,
+    );
 
-    await tester.tap(find.text('More'));
-    await pumpFor(tester, const Duration(seconds: 3));
-    expect(find.byType(SettingsScreen), findsWidgets);
-    await shot('05-settings');
+    // 🔴 SETTINGS IS NOT PHOTOGRAPHED, AND THIS COMMENT IS THE RECORD OF WHY.
+    //
+    // The capture used to end here with `tap('More')` → `05-settings`.
+    // `SettingsScreen` renders `user?.email` at the top of the account card in
+    // 13pt type, and this suite is signed in as the throwaway end-to-end
+    // account, so the frame carried `subly-e2e+…@nikatru.com` onto a public
+    // marketing asset. That frame was pulled from the published set by hand on
+    // 2026-08-05, which fixed the four bytes already committed and NOTHING about
+    // the next run: the address is not baked into the PNG, it is whoever signed
+    // in. Re-running reproduced it exactly.
+    //
+    // Two candidate fixes were rejected. A "display-safe" account address still
+    // puts an address on the listing and, worse, is only safe while nobody
+    // changes the provisioner or runs the live lane locally with their own
+    // credentials — and no assertion downstream can read the pixels to notice.
+    // Masking the account row at capture time would publish a screenshot of a UI
+    // state the app never shows, which is a different and worse problem than the
+    // one being fixed: Google requires screenshots to "demonstrate the actual
+    // in-app or in-game experience".
+    //
+    // So the screen is simply not photographed. Nothing about the remaining four
+    // frames is staged, masked or edited — they are exactly what the app draws.
+    // Re-adding a Settings frame is a build failure, not a review comment:
+    // assert-listing-assets.mjs resolves every `captureFrame` above to the
+    // screen its `find.byType` names and fails if that source reads `.email`.
   });
 }

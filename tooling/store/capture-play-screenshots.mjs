@@ -85,6 +85,7 @@ import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.mjs';
+import { scanCaptureSuite, selfTestAccountAddressDetector } from './capture-suite-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
@@ -180,6 +181,61 @@ if (!existsSync(join(appDir, 'integration_test', 'store_screenshots_test.dart'))
     'clean run over zero screenshots — a scan over nothing printing ok, which is this repo\'s single most',
     'repeated failure.',
   ]);
+}
+
+// ── 🔴 THE SECOND POSTURE GATE: WHOSE ACCOUNT WOULD BE IN THE FRAME ─────────
+//
+// The gate above asks WHICH BUILD is photographed. This one asks WHO IS SIGNED
+// IN, and it exists because the answer reached a public listing once already.
+//
+// 2026-08-05: this script produced five frames and the fifth, `05-settings.png`,
+// rendered the signed-in account at the top of the settings card in large
+// legible type. The live lane signs in as a throwaway end-to-end account, so the
+// frame read `subly-e2e+…@nikatru.com` — an internal test address on a Play
+// marketing asset. It was pulled from the published set by hand, and THAT FIXED
+// NOTHING: the address is not baked into the PNG, it is whoever signed in, so
+// every re-run reproduced it. Worse, the leak was never bounded by the CI
+// account — `E2E_EMAIL` comes from the environment, so an owner running this
+// lane locally would photograph their OWN address.
+//
+// ⚠️ AND NO CHECK DOWNSTREAM CAN SEE IT. `assert-listing-assets.mjs` decoded all
+// five frames and passed them; it measures size, colour type, aspect and a
+// full-width band of one colour. Nothing in this tree reads TEXT out of a PNG.
+//
+// So the capture refuses to START if the suite could photograph the account:
+// `store_capture_guard.dart` refuses the shutter at capture time, and this
+// checks statically that every frame still goes through it and that no captured
+// screen reads `.email` off the session. Refusing here costs seconds; refusing
+// after the drive costs a browser, a provisioned Supabase user and a CI run.
+{
+  const detector = selfTestAccountAddressDetector();
+  if (!detector.ok) {
+    fail([
+      'the account-address detector failed its own self-test, so the capture was not vetted at all.',
+      `a synthetic settings screen reading \`user?.email\` measured ${detector.onLeaking} (needs true), and the`,
+      `same screen with the row removed measured ${detector.onClean} (needs false). The matcher can no longer`,
+      'tell the two apart, so it would clear every captured screen for the same reason — silently.',
+    ]);
+  }
+  const scan = scanCaptureSuite({ root: ROOT, app });
+  if (!scan.present) {
+    fail([`apps/${app} carries no store capture suite for this scan to vet.`]);
+  }
+  if (scan.problems.length) {
+    fail([
+      `apps/${app}'s capture suite could put the signed-in account on a store listing.`,
+      '',
+      ...scan.problems.flatMap((p) => [p, '']),
+      'Fix the suite. A frame that carries the account is not something curation can repair afterwards —',
+      'removing it from the published set leaves the NEXT run producing it again, which is exactly what',
+      'happened on 2026-08-05.',
+    ]);
+  }
+  console.log(
+    `   account check: ${scan.frames.length} frame(s) vetted — ${scan.frames
+      .map((f) => `${f.frame}→${f.screen}`)
+      .join(', ')}`,
+  );
 }
 
 mkdirSync(outDir, { recursive: true });

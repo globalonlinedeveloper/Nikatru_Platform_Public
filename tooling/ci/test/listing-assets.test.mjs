@@ -649,6 +649,304 @@ describe('capture-play-screenshots.mjs — the posture gate', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CAPTURE ITSELF — WHOSE ACCOUNT ENDS UP ON THE LISTING.
+//
+// 🔴 REAL-TREE MUTATIONS FIRST, 2026-08-05, on apps/subly. Predictions written
+// before each run; every one restored afterwards (`git status` clean).
+//
+//   A  the `05-settings` frame re-added to the real suite, WITH its import so
+//      the file is valid Dart
+//        ⇒ FAIL "the capture of \"05-settings\" photographs `SettingsScreen`,
+//          and apps/subly/lib/features/settings/settings_screen.dart READS THE
+//          SIGNED-IN ACCOUNT'S ADDRESS". `flutter analyze` on the mutated tree
+//          reported the SAME 21 pre-existing infos and nothing in either changed
+//          file — so the guard caught a real defect and not a compile error,
+//          which this repo has mistaken for a caught mutation three times.
+//   B  one `captureFrame(…)` replaced by `binding.takeScreenshot('04-budget')`
+//        ⇒ FAIL "calls `takeScreenshot(` directly"
+//   C  the `expect(find.byType(BudgetScreen), …)` line deleted
+//        ⇒ FAIL "not preceded by a `find.byType(...)` naming the screen"
+//   D  integration_test/store_capture_guard.dart moved away
+//        ⇒ FAIL "does not exist. That file is the refusal…"
+//   E  `textContaining` swapped for `text` inside the refusal
+//        ⇒ FAIL "no longer looks for the account in the widget tree"
+//   E2 `if (forbidden.isEmpty)` swapped for `if (false)`
+//        ⇒ FAIL "no longer refuses on an EMPTY set of forbidden strings"
+//   F  ACCOUNT_ADDRESS_READ edited to /\.emailAddress\b/ in the REAL module
+//        ⇒ COVERAGE LOST "FAILED ITS OWN SELF-TEST … measured false (needs
+//          true)", and `capture-play-screenshots.mjs --proof` refused with the
+//          same reason before touching chromedriver
+//   G  integration_test/store_screenshots_test.dart moved away
+//        ⇒ COVERAGE LOST "not one app under apps/ carries
+//          integration_test/store_screenshots_test.dart"
+//   H  A, plus the account-card `Text(user?.email)` deleted from the REAL
+//      settings screen
+//        ⇒ still FAIL — and that is the guard's OVER-APPROXIMATION showing
+//          itself, not a bug: `_deleteAccount` re-authenticates with
+//          `signInWithEmail(email: user.email, …)`, a read that never reaches a
+//          pixel. Recorded in `readsAccountAddress`'s own doc comment rather
+//          than discovered again later. A regex cannot follow a value from a
+//          read to a pixel; the narrow version would miss `Text(_label(user))`
+//          and pass a leaking frame, which is the direction that costs
+//          something. The exact question is answered at capture time.
+//
+// The fixtures below come after, and model the same shapes.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-listing-assets.mjs — the capture cannot photograph the account', () => {
+  /** A capture suite in the shape the scan reads: one `find.byType` naming the
+   *  screen, then one `captureFrame` for the frame it photographs. */
+  const suite = (frames) =>
+    Buffer.from(
+      [
+        "import 'store_capture_guard.dart';",
+        '',
+        'void main() {',
+        "  testWidgets('captures the set', (WidgetTester tester) async {",
+        ...frames.flatMap(([frame, screen]) => [
+          `    expect(find.byType(${screen}), findsWidgets);`,
+          '    await captureFrame(',
+          '      take: binding.takeScreenshot,',
+          `      frame: '${frame}',`,
+          '      forbidden: forbidden,',
+          '    );',
+        ]),
+        '  });',
+        '}',
+      ].join('\n'),
+    );
+
+  /** The refusal, reduced to the three things the scan requires of it. Its
+   *  BEHAVIOUR is proven in apps/subly/test/store_capture_guard_test.dart, in a
+   *  real widget tree; what is checked here is that the suite still routes
+   *  through it and that it still contains its own two limbs. */
+  const guardLib = Buffer.from(
+    [
+      'Future<void> captureFrame({',
+      '  required Future<void> Function(String frame) take,',
+      '  required String frame,',
+      '  required Set<String> forbidden,',
+      '}) async {',
+      "  if (forbidden.isEmpty) { fail('nothing to look for'); }",
+      '  final List<String> onScreen = forbidden',
+      '      .where((String n) => find.textContaining(n).evaluate().isNotEmpty)',
+      '      .toList();',
+      "  if (onScreen.isNotEmpty) { fail('the account is on screen'); }",
+      '  await take(frame);',
+      '}',
+    ].join('\n'),
+  );
+
+  const cleanScreen = (name) =>
+    Buffer.from(`class ${name} extends ConsumerWidget {\n  Widget build(_, __) => const Text('Subscriptions');\n}\n`);
+
+  const leakingScreen = (name) =>
+    Buffer.from(
+      `class ${name} extends ConsumerWidget {\n` +
+        '  Widget build(BuildContext context, WidgetRef ref) {\n' +
+        '    final AuthUser? user = ref.watch(authRepositoryProvider).currentUser;\n' +
+        "    return Text(user?.email ?? '');\n" +
+        '  }\n}\n',
+    );
+
+  /** A tree that captures two clean frames through the guarded shutter. */
+  const withCapture = (s, mutate = () => {}) => {
+    s.files['apps/subly/integration_test/store_capture_guard.dart'] = guardLib;
+    s.files['apps/subly/integration_test/store_screenshots_test.dart'] = suite([
+      ['01-home', 'HomeScreen'],
+      ['02-settings', 'SettingsScreen'],
+    ]);
+    s.files['apps/subly/lib/features/home/home_screen.dart'] = cleanScreen('HomeScreen');
+    s.files['apps/subly/lib/features/settings/settings_screen.dart'] = cleanScreen('SettingsScreen');
+    mutate(s);
+  };
+
+  test('a suite whose frames photograph no account passes, and says how many', () => {
+    const r = run(build((s) => withCapture(s)));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /THE ACCOUNT — 1 capture suite\(s\) read, 2 frame\(s\) resolved/);
+  });
+
+  // 🔴 THE DEFECT ITSELF, AS A FIXTURE. This is `05-settings.png`.
+  test('a frame of a screen that reads the account address FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/lib/features/settings/settings_screen.dart'] = leakingScreen('SettingsScreen');
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /the capture of "02-settings" photographs `SettingsScreen`/);
+    assert.match(r.out, /READS THE SIGNED-IN ACCOUNT'S ADDRESS/);
+    // The message has to carry the history, or the next person deletes the check.
+    assert.match(r.out, /no guard in this tree can read text out of an image/);
+  });
+
+  // Comment- and string-stripped, both directions. A screen whose only mention
+  // of the address is prose or a label is NOT a leak, and a guard that said
+  // otherwise would fire on correct input — this repo has already rejected its
+  // own fixture at 129 characters against a made-up "120 or fewer".
+  test('the word `email` in a comment or a label is not a read of the session', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/lib/features/settings/settings_screen.dart'] = Buffer.from(
+          'class SettingsScreen extends ConsumerWidget {\n' +
+            '  // The account row used to read user?.email here.\n' +
+            "  Widget build(_, __) => const Text('Email preferences');\n}\n",
+        );
+      }),
+    ));
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /READS THE SIGNED-IN ACCOUNT/);
+  });
+
+  test('a direct takeScreenshot( call bypasses the refusal and FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/integration_test/store_screenshots_test.dart'] = Buffer.from(
+          [
+            'void main() {',
+            '  expect(find.byType(HomeScreen), findsWidgets);',
+            "  await binding.takeScreenshot('01-home');",
+            '  expect(find.byType(SettingsScreen), findsWidgets);',
+            "  await captureFrame(frame: '02-settings', forbidden: forbidden);",
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /calls `takeScreenshot\(` directly/);
+  });
+
+  test('a capture that names no screen FAILS rather than being skipped', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/integration_test/store_screenshots_test.dart'] = Buffer.from(
+          [
+            'void main() {',
+            '  expect(find.byType(HomeScreen), findsWidgets);',
+            "  await captureFrame(frame: '01-home', forbidden: forbidden);",
+            "  await captureFrame(frame: '02-mystery', forbidden: forbidden);",
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /the capture of "02-mystery" is not preceded by a `find\.byType/);
+  });
+
+  test('a captured screen whose class is nowhere in lib/ FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        delete t.files['apps/subly/lib/features/settings/settings_screen.dart'];
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /no file under apps\/subly\/lib declares `class SettingsScreen`/);
+  });
+
+  test('a missing refusal library FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        delete t.files['apps/subly/integration_test/store_capture_guard.dart'];
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /store_capture_guard\.dart does not exist/);
+  });
+
+  // A refusal that is still called and can no longer refuse is STRICTLY WORSE
+  // than none: the suite reads as guarded.
+  test('a refusal that stopped reading the widget tree FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/integration_test/store_capture_guard.dart'] = Buffer.from(
+          [
+            'Future<void> captureFrame({',
+            '  required Future<void> Function(String frame) take,',
+            '  required String frame,',
+            '  required Set<String> forbidden,',
+            '}) async {',
+            "  if (forbidden.isEmpty) { fail('nothing to look for'); }",
+            '  await take(frame);',
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /no longer looks for the account in the widget tree/);
+  });
+
+  test('a refusal that no longer refuses an EMPTY needle set FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/integration_test/store_capture_guard.dart'] = Buffer.from(
+          [
+            'Future<void> captureFrame({',
+            '  required Future<void> Function(String frame) take,',
+            '  required String frame,',
+            '  required Set<String> forbidden,',
+            '}) async {',
+            '  final List<String> onScreen = forbidden',
+            '      .where((String n) => find.textContaining(n).evaluate().isNotEmpty)',
+            '      .toList();',
+            "  if (onScreen.isNotEmpty) { fail('the account is on screen'); }",
+            '  await take(frame);',
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /no longer refuses on an EMPTY set/);
+  });
+
+  test('a suite that captures nothing at all FAILS', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/integration_test/store_screenshots_test.dart'] = Buffer.from(
+          'void main() {\n  expect(find.byType(HomeScreen), findsWidgets);\n}\n',
+        );
+      }),
+    ));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /contains no `captureFrame\(` call/);
+  });
+
+  // The scan reads CODE, not prose — in both directions. A commented-out capture
+  // is not a capture, and this repo has shipped a guard satisfied by its own
+  // explanatory comment.
+  test('a commented-out capture is not counted as a frame', () => {
+    const r = run(build((s) =>
+      withCapture(s, (t) => {
+        t.files['apps/subly/integration_test/store_screenshots_test.dart'] = Buffer.from(
+          [
+            'void main() {',
+            '  expect(find.byType(HomeScreen), findsWidgets);',
+            "  await captureFrame(frame: '01-home', forbidden: forbidden);",
+            "  // await captureFrame(frame: '02-settings', forbidden: forbidden);",
+            '}',
+          ].join('\n'),
+        );
+      }),
+    ));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 frame\(s\) resolved/);
+  });
+
+  // The fixture roots below carry no capture suite at all, which is why every
+  // other test in this file is unaffected by this limb. On the REAL repository
+  // that same silence is COVERAGE LOST — mutation G above — because subly's
+  // suite is what the register names as `capturedBy`.
+  test('a fixture with no capture suite is not treated as a failure', () => {
+    const r = run(build());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /THE ACCOUNT — 0 capture suite\(s\) read/);
+  });
+});
+
 describe('assert-listing-assets.mjs — COVERAGE LOST, not a pass', () => {
   test('an empty assets map is COVERAGE LOST', () => {
     const r = run(build((s) => {
