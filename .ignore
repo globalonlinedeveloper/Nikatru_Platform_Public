@@ -1,0 +1,26 @@
+# ripgrep-only overrides. Git does NOT read this file, so everything listed here
+# stays gitignored and unpushable — this ONLY re-enables it for SEARCH.
+#
+# WHY THIS EXISTS
+# ---------------
+# `company/` (.gitignore:15), `knowledge/` (:14) and `CLAUDE.md` (:23) are all
+# excluded from the public repo — correctly, since company/ is the private
+# business SSoT. But ripgrep honours .gitignore by default, so a search started
+# at the repo root silently skipped every runbook, every requirement, every
+# vendor file, every session note, AND the operating guide itself.
+#
+# Measured 2026-08-05:
+#   rg -l "MaxAuthTries" .          -> No matches found      (FALSE NEGATIVE)
+#   rg -l "MaxAuthTries" company/   -> operations.md, oracle.md
+#
+# A root-level "no matches" was an ABSENCE OF SEARCH, not an absence of the fact.
+# That is how a world-open 3389/tcp rule on the Oracle box survived four separate
+# "only 22/80/443" claims in this corpus: the two facts sat in different files, in
+# different vocabularies, and no search ever brought them into contact.
+#
+# SAFETY: git does not read .ignore. Re-verify after any change with
+#   git check-ignore -v company knowledge CLAUDE.md
+# which must still report all three as ignored.
+!company/
+!knowledge/
+!CLAUDE.md
