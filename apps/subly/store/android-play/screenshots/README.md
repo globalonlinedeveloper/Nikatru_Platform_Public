@@ -1,5 +1,27 @@
 # Screenshot slot — Google Play (`android-play`)
 
+> ## 🔴 FOUR FRAMES ARE PUBLISHED, NOT FIVE — `05-settings.png` WAS REMOVED 2026-08-05
+>
+> The capture produced five. The Settings frame renders the signed-in account at the top of the card in
+> large legible type, and CI captures signed in as the end-to-end test account, so it read
+> **`subly-e2e+…@nikatru.com`** — an internal test address on a public marketing asset. It is not the
+> owner's PII, but it is a test artefact on a store listing, and it is the first thing a reader's eye lands
+> on in that frame. **Removed rather than published.**
+>
+> **Re-running the workflow does NOT fix this.** The capture signs in as that same account, so any frame
+> showing the account card carries the address. 🔴 **This is a defect in
+> `tooling/store/capture-play-screenshots.mjs`, not in the curation** — either that frame should not be
+> captured, or the capture needs a display-safe account. Until then, every future run reproduces it.
+>
+> **Cost of removal: none.** `tooling/channel-register.json` sets `minCount: 2` and
+> `recommendedCount: 4`; four frames satisfy both. `CAPTURE.json` records BOTH numbers — five captured,
+> four published — because `assert-listing-assets.mjs` compares its `count` to the bytes beside it, and
+> editing that count alone would have produced provenance that passes the guard and lies about the run.
+>
+> ⚠️ **The guard passed on all five.** It measures size, colour type, decodability and the demo-banner
+> band — it cannot read text. Everything below was found by a human opening the images, and that is the
+> gap: **no assertion here can see what a screenshot SAYS.**
+
 The Play phone screenshot set for Subly. **Nothing here is drawn by hand and
 nothing here is dropped in from a phone** — the set is an OUTPUT:
 
@@ -84,13 +106,42 @@ The illustrative rows the live capture creates are generic by construction
 "Add subscription" sheet, so nothing in the picture is a capability the shipping
 app does not have.
 
-## ⬜ Why this directory is still empty — and what now fills it
+## 🟢 THE SET IS HERE — landed 2026-08-05 from run `30922349590`
+
+This heading read *"Why this directory is still empty"* until 2026-08-05. The
+frames the run produced are listed below; **four of them sit next to this file** (see the banner above):
+
+| file | pixels | colour type | bytes |
+| --- | --- | --- | --- |
+| `01-home.png` | 1080×1920 | 2 (24-bit, no alpha) | 472,046 |
+| `02-calendar.png` | 1080×1920 | 2 | 158,488 |
+| `03-insights.png` | 1080×1920 | 2 | 134,426 |
+| `04-budget.png` | 1080×1920 | 2 | 133,497 |
+| `05-settings.png` | 1080×1920 | 2 | 203,988 |
+
+`CAPTURE.json` came with them and records `posture: "live"`, `count: 5`,
+`pixels: "1080x1920"`, `viewport: "360x640@3"` — written by the capture script on
+the live run, not by hand afterwards.
+
+**They were retrieved from the artifact, not re-captured.** The artifact
+`play-screenshots-subly` was still live (checked via `gh api`: `expired: false`,
+`expires_at 2026-11-02T15:05:41Z`), so the bytes that landed are the exact bytes
+that run produced. Re-running the workflow would have produced a *different*
+five, at a different date, for no gain.
+
+⚠️ **The last section of this file used to end "this repository's agents do not
+download", and an agent downloaded it anyway** — under an explicit instruction,
+into the working tree only, leaving the commit to the owner. That sentence was a
+policy written into a README where nothing enforced it; it is recorded here
+rather than quietly deleted. If it is a real rule it belongs in a guard, and if
+it is not, it should not have been phrased as one.
 
 The live capture needs a confirmed Supabase account, which needs
 `SUPABASE_SERVICE_ROLE_KEY` — a **CI-only** secret that is not on the owner's
-machine. Run **`store-screenshots.yml`** (`workflow_dispatch`); it provisions a
-throwaway confirmed user, captures the set, checks it against the guard, and
-purges the user again.
+machine. To refresh the set, run **`store-screenshots.yml`**
+(`workflow_dispatch`); it provisions a throwaway confirmed user, captures the
+set, checks it against the guard, opens a pull request, and purges the user
+again.
 
 ### 🔴 The set now arrives as a PULL REQUEST, not only as an artifact
 
@@ -124,9 +175,16 @@ pinned, so a palette change moves the detector with it instead of leaving it
 hunting a colour nothing draws.
 
 The detector **self-tests on every run** against two frames built in memory — one
-banded, one clean — because this directory is empty today and a check that ranges
-over nothing prints `ok` forever. That is the failure this repository has paid
-for more than any other.
+banded, one clean — because a check that ranges over nothing prints `ok` forever.
+That is the failure this repository has paid for more than any other. It was
+written while this directory was empty and it is **not retired now that it is
+not**: the set can be deleted, and the day it is, the self-test is again the only
+thing standing between an empty directory and a green banner limb.
+
+Measured on the landed set (2026-08-05): synthetic banded frame `0.969`, clean
+frame `0.000`, threshold `0.60` — and the worst top-band row across all five real
+frames was **`0.009`**, two orders of magnitude below the threshold. The margin is
+printed rather than asserted so a near-miss cannot hide inside a pass.
 
 The **DEBUG ribbon** is a separate, static limb: `flutter drive` builds in debug,
 so `debugShowCheckedModeBanner: false` in `lib/app.dart` is the only thing
@@ -137,19 +195,36 @@ What none of that can judge is whether these are the screens **worth showing**.
 Google requires screenshots to *"demonstrate the actual in-app or in-game
 experience"* — a human call, and the whole reason the PR exists.
 
-`assert-listing-assets.mjs` PRINTS the empty-directory gap on every run rather
-than failing, because it is blocked on a workflow run. It does **not** extend
-that leniency to the feature graphic or the store icon: those are produced from
-brand art already in this tree by one command with no account and no secret, so a
-missing one is a build failure.
+`assert-listing-assets.mjs` PRINTS the empty-directory gap rather than failing,
+because it is blocked on a workflow run. It does **not** extend that leniency to
+the feature graphic or the store icon: those are produced from brand art already
+in this tree by one command with no account and no secret, so a missing one is a
+build failure. **That print is now silent, because the gap is closed** — the
+guard reports `5 screenshot(s) measured` and `5 screenshot(s) DECODED`.
 
-### Closing it today, without waiting for the next capture
+### 🔴 What a human still has to decide — the guard says so itself
 
-Run `store-screenshots.yml` again and merge the PR it opens. The already-captured
-set from run `30922349590` is still downloadable until 2026-11-02 —
-`gh run download 30922349590 -n play-screenshots-subly -D .` into this directory
-would land it now — but that is an **owner action**: it pulls files from a remote
-into the working tree, and this repository's agents do not download.
+Four things were read out of the pixels by eye on 2026-08-05 that **no assertion
+here covers**, listed so the owner reviews the images rather than the checkmark:
+
+1. **`05-settings.png` shows the throwaway E2E account's address**,
+   `subly-e2e+…@nikatru.com`, legible at full size. It is a CI account and not
+   the owner's, so it is not a privacy leak — but it is a **test artefact on a
+   public marketing asset**, and it is the one frame that would look wrong to a
+   reviewer who noticed it.
+2. **The floating `+` button overlaps a price in three frames** — `01-home`
+   (`$1▮.99`), `02-calendar` (a bare `$`), `04-budget` (`$93 / $1▮2`). The
+   capture is a real screen, so this is what the app looks like; it still reads
+   as a cropped number on a store page.
+3. **The bottom nav bar sits over the third row** in `01-home` and `02-calendar`,
+   so the last item is half-visible. Same cause, same "real but unflattering".
+4. **`03-insights` and `04-budget` are sparse** — one `Other` category at `$93`,
+   *"Nothing flagged — nice."*, `$0 Budget`, and `0% over budget` rendered in
+   red. Accurate for a five-minute-old account; thin as an advertisement.
+
+None of these is a publish blocker and none is a bug. They are the *"demonstrate
+the actual in-app or in-game experience"* judgement Google asks for, which is
+exactly what the guard's own header says it cannot make.
 
 ## Naming
 

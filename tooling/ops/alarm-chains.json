@@ -51,6 +51,27 @@
     "subly": {
       "date": "2026-08-05",
       "monitor": "a throwaway monitor, deleted after the run",
+      "🔴 issuePathWasDeadUntilToday": [
+        "THE UPTIME CHAIN BELOW WAS PROVEN, AND THE ISSUE CHAIN WAS DEAD — in the project that receives",
+        "every app crash. Alert rule 1 had quantity=null and timespanMinutes=null. GlitchTip's alert task",
+        "selects on `quantity__isnull=False, timespan_minutes__isnull=False` (apps/alerts/tasks.py), so the",
+        "rule was invisible to issue alerts while continuing to work perfectly for uptime — because uptime",
+        "notifications come from a different task that never reads those fields.",
+        "",
+        "Measured, not inferred: `Notification.objects.count()` was **1** across the entire instance, and",
+        "that one was an `ops` event created minutes earlier the same day. In the whole life of this",
+        "GlitchTip, subly had never produced a single crash notification. SUBLY-2 — a real fatal in the live",
+        "web app, `NoSuchMethodError: Null check operator used on a null value`, six occurrences across",
+        "2026-07-28/29 — came and went with nobody told.",
+        "",
+        "Fixed to quantity=1 / timespan=1 and proven before-and-after: a probe sent with the nulls in place",
+        "created NO notification; the same probe after the fix produced notification #2 and a delivered",
+        "email. Both probes resolved. Now enforced by limb E of verify-alarm-chains.mjs.",
+        "",
+        "📌 A project can be fully green on the uptime limb and completely silent on crashes. Proving one",
+        "and calling it 'the alert chain' is the mistake this entry exists to stop."
+      ],
+      "issuePathEvidence": "Resend delivery record 4452ae42-20f3-44eb-a046-c9932ff1b035 to support@nikatru.com, status=delivered, 'Error in subly: AFTER-FIX PROBE…', 12:57:09Z — subly's first crash-notification email ever",
       "how": "This project's chain had never been observed either — it was only ever assumed, because its monitors were configured the way monitor 6 merely looked. Created a throwaway GET monitor in the project against a URL that 404s, ran the production perform_checks task, deleted it. No real monitor was altered and no real site was taken down.",
       "evidence": "Resend delivery record 56bde711-db92-48c6-9eae-a0bb21660d18 to support@nikatru.com, status=delivered, 'GlitchTip: TEMP alarm-chain proof (delete me) is down', 08:58:40Z"
     }
