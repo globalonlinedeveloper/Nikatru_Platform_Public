@@ -47,6 +47,17 @@ export function edgeCeilingKey(c: EdgeContext): string {
 }
 
 /**
+ * Bindings already reported ABSENT in this isolate.
+ *
+ * One line per isolate, not per request. Absence is a PERMANENT
+ * misconfiguration — the second line says nothing the first did not — and the
+ * requests that would emit it are, by definition, the flood the breaker exists
+ * to shed. Logging per request would bill a log line for every request of the
+ * one event we most need to survive. Isolates recycle, so the signal recurs.
+ */
+const reportedAbsent = new Set<string>();
+
+/**
  * Ask a Rate Limiting binding about `key`.
  *
  * Fails OPEN (no binding configured ⇒ allow), because dropping real traffic
@@ -54,16 +65,46 @@ export function edgeCeilingKey(c: EdgeContext): string {
  * The cost of that choice is that deleting a binding from wrangler.jsonc
  * disables the breaker in production while every unit test stays green — which
  * is why test/wrangler-breaker.test.ts asserts the DEPLOYED config.
+ *
+ * 🔴 THE TWO FAIL-OPEN PATHS MUST NOT BE THE SAME OBSERVABLE EVENT, and until
+ * 2026-08-06 they were: both returned `true` in silence, so "there is no
+ * limiter" and "the limiter allowed it" produced byte-identical output. A run of
+ * 200 requests answering 200 therefore could not distinguish a dead breaker from
+ * a working one — and [4]B-13 was recorded as a CONFIRMED defect, twice, on
+ * exactly that evidence. It was not a defect: all four bindings were live, and
+ * the probes were simply too brief to out-run the counter's documented
+ * asynchronous propagation (measured: first 429 at t+6.0s under sustained load).
+ * The bug was that a negative measurement was UNFALSIFIABLE. Hence `binding`:
+ *
+ *   • ABSENT  → `console.error`, once per isolate. A permanent misconfiguration
+ *               that no amount of traffic will ever surface as a 429.
+ *   • THREW   → `console.warn`, every time. A transient edge error; a rate that
+ *               matters is a rate you can only see if each one is logged.
+ *
+ * Both still ALLOW. The fail-open behaviour is deliberate and unchanged — this
+ * only makes the two cases tellable apart after the fact.
  */
 export async function withinRateLimit(
   limiter: RateLimiterBinding | undefined,
   key: string,
+  binding: string,
 ): Promise<boolean> {
-  if (!limiter) return true;
+  if (!limiter) {
+    if (!reportedAbsent.has(binding)) {
+      reportedAbsent.add(binding);
+      console.error(
+        `[ratelimit] ${binding} IS NOT BOUND — failing OPEN, so every request on this path is ` +
+          'allowed and no burst can ever produce a 429. This is a deploy-time misconfiguration, ' +
+          'not load: check the `ratelimits` block in wrangler.jsonc reached the deployed script.',
+      );
+    }
+    return true;
+  }
   try {
     const { success } = await limiter.limit({ key });
     return success;
-  } catch {
+  } catch (err) {
+    console.warn(`[ratelimit] ${binding} limit() threw — failing OPEN for this request`, err);
     return true;
   }
 }
@@ -71,10 +112,15 @@ export async function withinRateLimit(
 /**
  * The server-derived ceiling, in one call. Deliberately takes NO body-derived
  * argument: a caller cannot accidentally mix a client value into this key.
+ *
+ * `binding` is REQUIRED rather than defaulted: a default would let the next call
+ * site added here log `(unnamed)` and compile, which is the same unfalsifiable
+ * silence this parameter exists to end.
  */
 export function withinEdgeCeiling(
   limiter: RateLimiterBinding | undefined,
   c: EdgeContext,
+  binding: string,
 ): Promise<boolean> {
-  return withinRateLimit(limiter, edgeCeilingKey(c));
+  return withinRateLimit(limiter, edgeCeilingKey(c), binding);
 }

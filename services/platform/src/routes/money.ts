@@ -77,7 +77,7 @@ money.post('/:provider', async (c) => {
   // The server-derived ceiling, on a key the caller cannot rotate out of. This
   // route is reachable by anyone who can find the URL, and every request costs a
   // body read plus (for a well-formed one) an HMAC.
-  if (!(await withinEdgeCeiling(c.env.MONEY_CEILING_LIMITER, c))) {
+  if (!(await withinEdgeCeiling(c.env.MONEY_CEILING_LIMITER, c, 'MONEY_CEILING_LIMITER'))) {
     return c.json({ error: 'rate_limited' }, 429);
   }
 

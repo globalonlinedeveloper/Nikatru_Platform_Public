@@ -45,7 +45,7 @@ app.get('/:app', async (c) => {
   // caller can rotate bounds nothing; fails OPEN if the binding is absent, so a
   // missing binding degrades config resolution to exactly today's behaviour
   // rather than taking every app's launch path down.
-  if (!(await withinEdgeCeiling(c.env.CONFIG_CEILING_LIMITER, c))) {
+  if (!(await withinEdgeCeiling(c.env.CONFIG_CEILING_LIMITER, c, 'CONFIG_CEILING_LIMITER'))) {
     return c.json({ error: 'rate_limited' }, 429);
   }
 
