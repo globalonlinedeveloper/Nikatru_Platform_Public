@@ -91,22 +91,27 @@
       "hostname": "platform.nikatru.com",
       "what": "the shared platform Worker — POST /v1/events and POST /v1/consent, the whole analytics and DPDP consent rail for every app in the portfolio",
       "derivedFrom": "workerCustomDomains",
-      "monitor": null,
-      "gap": {
-        "why": "Bound as a custom domain in services/platform/wrangler.jsonc since the Worker shipped and never monitored. This is the highest-consequence unwatched host in the tree: if it stops answering, every stamped app's events queue locally and nothing anywhere goes red.",
-        "action": "Create a GlitchTip uptime monitor. An owner action on the GlitchTip instance, not a repository change.",
-        "openedOn": "2026-08-02"
+      "monitor": { "id": 11, "name": "platform.nikatru.com", "type": "GET", "path": "/v1/health", "expectedStatus": 200, "expectedBody": "\"ok\":true", "confirmationThreshold": 2, "intervalSeconds": 60, "verifiedOn": "2026-08-05" },
+      "closedGap": {
+        "why": "Bound as a custom domain in services/platform/wrangler.jsonc since the Worker shipped and unmonitored for three days. This was the highest-consequence unwatched host in the tree: if it stops answering, every stamped app's events queue locally and nothing anywhere goes red.",
+        "openedOn": "2026-08-02",
+        "closedOn": "2026-08-05",
+        "howItWasClosed": "Created on the live GlitchTip instance via its API, then exercised: the production perform_checks task ran a real check against https://platform.nikatru.com/v1/health and it came back up (32 ms).",
+        "🔴 whyItStayedOpen": "The action line said 'An owner action on the GlitchTip instance, not a repository change.' That was WRONG, and it parked the tree's highest-consequence gap for three days. The GlitchTip API takes the vault token and creates monitors; an agent did exactly that twice on 2026-08-05 while proving the alert chain. Same shape as the 'the agent cannot SSH out' claim that survived in four files and parked an entire hardening backlog: A DOCUMENTED LIMIT THAT NOBODY PROBED. Probe before inheriting.",
+        "note": "GET on / returns 404 for this Worker — it only answers its declared routes — so a Ping monitor on the bare host would have alarmed permanently. The monitor targets the real health route and asserts the body, not just the status: a Worker returning 200 with an error payload is exactly the failure a status-only check cannot see."
       }
     },
     {
       "hostname": "config.nikatru.com",
       "what": "the shared platform Worker's config surface — GET /config/:app, the pre-consent launch fetch every client makes",
       "derivedFrom": "workerCustomDomains",
-      "monitor": null,
-      "gap": {
+      "monitor": { "id": 12, "name": "config.nikatru.com", "type": "GET", "path": "/config/subly", "expectedStatus": 200, "expectedBody": "\"app_id\"", "confirmationThreshold": 2, "intervalSeconds": 60, "verifiedOn": "2026-08-05" },
+      "closedGap": {
         "why": "Same wrangler.jsonc, same omission. It is the FIRST request a launching app makes, so its failure is a launch failure rather than a degraded feature.",
-        "action": "Create a GlitchTip uptime monitor. An owner action on the GlitchTip instance, not a repository change.",
-        "openedOn": "2026-08-02"
+        "openedOn": "2026-08-02",
+        "closedOn": "2026-08-05",
+        "howItWasClosed": "Created via the GlitchTip API and exercised with the production perform_checks task against https://config.nikatru.com/config/subly — up, 36 ms.",
+        "note": "⚠️ THE MONITORED PATH NAMES ONE APP. `/config/:app` is per-app, so a monitor has to pick one, and `subly` is the only shipping client today. When a second app ships, this checks that the config surface ANSWERS, not that the second app's config exists — and nothing here will say so. Revisit when the portfolio grows past one client."
       }
     }
   ],
