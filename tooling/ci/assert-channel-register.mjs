@@ -956,6 +956,16 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 //     assert-seams-wired.mjs prints rather than fails.
 {
   const STATUSES = new Set(['none', 'applied', 'verified']);
+  // 90 days. Chosen to be longer than any enrolment flow here has taken (the
+  // Play account went pending → verified in about a day, Microsoft quotes five
+  // business days), so a row inside the horizon is genuinely fresh rather than
+  // merely recent. Both real staleness incidents — windows-store at 7 days and
+  // android-play at 2 — are BELOW it, which is worth stating plainly: this
+  // horizon would not have caught either one on time. It is a backstop against
+  // a claim rotting for a quarter, not a substitute for correcting a row when
+  // the fact changes. What catches a two-day-old lie is a human checking the
+  // artefact, which is how both of these were actually found.
+  const ACCOUNT_STATUS_STALE_DAYS = 90;
   const storeRows = channels.filter((c) => c.kind === 'store');
   if (storeRows.length === 0) {
     coverageLost([
@@ -990,9 +1000,37 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
       );
       continue;
     }
+    // ── THE CLAIM'S AGE, PRINTED FOR EVERY STORE ROW INCLUDING `verified` ────
+    //
+    // 🔴 WHY THIS EXISTS, AND IT IS NOT THE OBVIOUS REASON. On 2026-08-05 the
+    // android-play row still read `status: "none"` / "No Play Console account"
+    // two days after the account was verified. It was NOT unguarded: the block
+    // below printed `ACCOUNT NONE: android-play … as of 2026-08-03` on every
+    // single run, faithfully, in a message character-identical to the one it
+    // had printed correctly for weeks. A gap-printer prints the gap; nothing in
+    // it can notice the gap CLOSED, and a line that repeats an expected message
+    // is wallpaper. The windows-store row failed the same way for seven days.
+    //
+    // And a `verified` row printed NOTHING, so the one status whose staleness is
+    // most expensive — an enrolment that has since lapsed — was the one status
+    // with no output at all. The field's own `_why` calls it "OWNER-ASSERTED AND
+    // DATED"; dating a claim nothing ever ages is decoration.
+    //
+    // So: every store row prints its age, and past the threshold the line says
+    // RE-ASSERT rather than repeating the status. It PRINTS and never FAILS —
+    // re-confirming an external enrolment is owner work, and failing the build
+    // on it would block every merge on something no agent can unblock. The
+    // threshold is a staleness horizon, NOT a mandate that anything change: a
+    // row re-confirmed and re-dated with the same value is the correct outcome.
+    const ageDays = Math.floor((Date.now() - Date.parse(`${st.asOf}T00:00:00Z`)) / 86_400_000);
+    const stale = ageDays > ACCOUNT_STATUS_STALE_DAYS;
     if (st.status !== 'verified') {
       prints.push(
-        `ACCOUNT ${st.status.toUpperCase()}: ${c.id} — OWNER_QUEUE ${c.ownerQueue ?? '(none)'}, as of ${st.asOf}${st.note ? ` · ${st.note}` : ''}`,
+        `ACCOUNT ${st.status.toUpperCase()}: ${c.id} — OWNER_QUEUE ${c.ownerQueue ?? '(none)'}, asserted ${ageDays}d ago (${st.asOf})${stale ? ' ⚠️ RE-ASSERT — older than the staleness horizon; confirm it is still true rather than re-reading it' : ''}${st.note ? ` · ${st.note}` : ''}`,
+      );
+    } else if (stale) {
+      prints.push(
+        `ACCOUNT VERIFIED but ASSERTED ${ageDays}d AGO: ${c.id} (${st.asOf}) ⚠️ RE-ASSERT — a verified enrolment can lapse, and this row is the only machine-readable answer to "does an account exist for this channel?"`,
       );
     }
   }

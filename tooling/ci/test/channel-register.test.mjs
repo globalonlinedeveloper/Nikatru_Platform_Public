@@ -980,10 +980,22 @@ describe('assert-channel-register — the RELEASE_CHANNEL stamp resolves to a ro
 // so it is owner-asserted and dated, and the GUARD holds it to a relationship.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-channel-register — the channel↔account status', () => {
+  // ⏱️ THESE FIXTURES ARE DATED RELATIVE TO NOW, NOT PINNED TO A LITERAL.
+  // The guard prints the AGE of an accountStatus claim and says RE-ASSERT past a
+  // 90-day horizon, so a fixture pinned to a literal date is a test that changes
+  // its own answer on a day nobody chose — green today, red in a quarter, for a
+  // reason unrelated to the code. `recent` is always fresh and `ancient` is
+  // always stale, by construction.
+  const isoDaysAgo = (n) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const recent = isoDaysAgo(2);
+  const ancient = isoDaysAgo(400);
+
   test('PASSES and PRINTS an unserved store row whose account does not exist', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /ACCOUNT NONE: windows-store — OWNER_QUEUE A-2, as of 2026-08-03/);
+    // The AGE is asserted as a shape, not a number: the base fixture is pinned to
+    // a literal elsewhere, so its day-count legitimately grows with the calendar.
+    assert.match(out, /ACCOUNT NONE: windows-store — OWNER_QUEUE A-2, asserted \d+d ago \(\d{4}-\d{2}-\d{2}\)/);
   });
 
   test('FAILS when a kind:store row carries no accountStatus at all', () => {
@@ -1016,12 +1028,40 @@ describe('assert-channel-register — the channel↔account status', () => {
         platforms: ['web', 'windows'],
         mutate: (r) => {
           r.channels[1].served = true;
-          r.channels[1].accountStatus = { status: 'verified', asOf: '2026-08-03', note: 'Partner Center, company account' };
+          r.channels[1].accountStatus = { status: 'verified', asOf: recent, note: 'Partner Center, company account' };
         },
       }),
     );
     assert.doesNotMatch(out, /accountStatus is "verified"/);
     assert.doesNotMatch(out, /ACCOUNT VERIFIED/);
+  });
+
+  // ── THE STALENESS LIMB, NEGATIVE-TESTED BOTH WAYS ───────────────────────────
+  // Why it exists: on 2026-08-05 the android-play row said "No Play Console
+  // account" for two days after the account was verified, and the guard PRINTED
+  // that false claim on every run — faithfully, in a message identical to the one
+  // it had printed correctly for weeks. A gap-printer prints the gap; nothing in
+  // it notices the gap CLOSED. And a `verified` row printed nothing at all, so
+  // the status whose staleness is most expensive had no output.
+  test('a VERIFIED row asserted long ago PRINTS RE-ASSERT — a verified enrolment can lapse', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => {
+          r.channels[1].accountStatus = { status: 'verified', asOf: ancient, note: 'Partner Center, company account' };
+        },
+      }),
+    );
+    assert.equal(code, 0, out); // it PRINTS and never FAILS — re-confirming an enrolment is owner work
+    assert.match(out, /ACCOUNT VERIFIED but ASSERTED \d+d AGO: windows-store/);
+    assert.match(out, /RE-ASSERT/);
+  });
+
+  test('a NON-verified row asserted long ago says RE-ASSERT rather than repeating the status', () => {
+    const { code, out } = run(
+      tree({ mutate: (r) => { r.channels[1].accountStatus.asOf = ancient; } }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /ACCOUNT NONE: windows-store.*RE-ASSERT/);
   });
 
   test('FAILS on a free-text status — a status nobody can compare', () => {
