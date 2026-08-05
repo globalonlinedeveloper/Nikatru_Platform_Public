@@ -490,7 +490,7 @@
       "id": "duty.laptop.nikatru-daily-backup",
       "kind": "duty",
       "what": "The 8-hourly Windows task that bundles the repos and pushes the offsite copy.",
-      "detector": "A GlitchTip heartbeat monitor: the script POSTs on success, and the monitor goes red on ABSENCE. This is the one provably complete alarm chain in the portfolio and is the template every other row is measured against.",
+      "detector": "A GlitchTip heartbeat monitor (id 6): the script POSTs on success, and the monitor goes red on ABSENCE. 🔴 THIS ROW CLAIMED TO BE 'the one provably complete alarm chain in the portfolio and the template every other row is measured against' AND IT WAS THE ONLY BROKEN ONE. Monitor 6 was created with project_id = NULL; GlitchTip joins alert -> project -> monitor to find recipients, so the recipient set was empty and it went Down 13 times of 41 checks telling nobody, while the dashboard drew it red. Fixed and PROVEN 2026-08-05 — assigned to project `ops`, forced a real Down and a real recovery, both emails delivered (evidence in tooling/ops/alarm-chains.json). Now enforced by tooling/ops/verify-alarm-chains.mjs, which fails if any monitor has no project, if any project hosting a monitor has no uptime recipient, or if a chain has never been observed delivering.",
       "response": "Email from the GlitchTip alert rule; run the task by hand and read its log.",
       "cadence": "8h",
       "mechanism": {
@@ -508,7 +508,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "CI cannot see a laptop. The run record is real and is watched from outside, but no in-tree guard can read it; the register row is what makes the duty enumerable at all.",
-      "source": "verified"
+      "source": "verified",
+      "verifiedHow": "2026-08-05 — end to end, not by reading config: the notification path was forced to fire and the resulting mail was confirmed delivered. `source: verified` on this row previously rested on the monitor existing, which is exactly what was true the whole time it was silent."
     },
     {
       "id": "duty.laptop.claude-transcript-backup",
