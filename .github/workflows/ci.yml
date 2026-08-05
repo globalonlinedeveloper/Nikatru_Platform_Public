@@ -143,6 +143,30 @@ jobs:
       - name: Guard tree walks cannot leave the tree
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-walks-bounded.mjs
+      # [13]T-10 forbids TWO things — "never a per-app cron AND never Durable
+      # Object Alarms" — and only the cron half was ever built (S-6's limb in
+      # assert-clone-contract.mjs). `rg -i alarm tooling/ci/*.mjs` found nothing
+      # but the words "false alarms" in unrelated guards: there was no DO-alarm
+      # check anywhere in this repo.
+      #
+      # 🔴 THE UNGUARDED HALF WAS THE ONE THE GUARDED HALF PUSHED WORK TOWARD. A
+      # Durable Object Alarm is the documented Cloudflare answer to "I need
+      # scheduled work and cannot have a cron trigger", so every time the cron
+      # limb fires it is a signpost to the path nothing watched — and unlike a
+      # cron, an alarm needs NO config change at all to start firing.
+      #
+      # It also fixes the enumeration T-10's acceptance actually asks for: this
+      # globs the whole tree for wrangler configs rather than listing services/,
+      # so a Worker config at the repo root, under sites/ or under apps/ is seen.
+      # Parsed, never grepped, and cross-checked against `git ls-files` so a
+      # config the repo tracks and the scan never opened is COVERAGE LOST.
+      # Mutation-proven against the REAL tree: a Durable Object planted in
+      # services/subly-api/src/index.ts turns this red on 4 rules while
+      # `tsc --noEmit` stays clean, so the catch is this guard and not the
+      # compiler.
+      - name: No Worker schedules itself with a Durable Object alarm
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-no-do-alarms.mjs
       # The repository's own legal posture. THREE limbs of deliberately different
       # strength (the guard says which is which): one support address across
       # SECURITY.md, every app's AppConfig and the published contact page; the two
@@ -190,6 +214,31 @@ jobs:
       - name: Every published legal claim is paired, and the payment path is named
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-policy-claims.mjs
+      # …and the limb the step ABOVE structurally could not have: it compares
+      # published text to REPO text, so it proves the site says what the register
+      # says and nothing more. On 2026-08-05 privacy.html said "We do not collect
+      # or store your IP address" while the self-hosted GlitchTip on the Oracle
+      # box stored `user.ip_address` — all 39 claim rows matched, and the only
+      # personal-data store outside Cloudflare appears in NO inventory here, so
+      # it was invisible by construction rather than overlooked.
+      #
+      # This scopes every published "we do not collect / do not store X" against
+      # the union of what every LIVE infrastructure provider DECLARES it receives
+      # and retains. A denial that intersects the union fails, naming the claim
+      # and the provider; a denial that resolves to no category fails until
+      # somebody classifies it, so a new promise cannot be published unscoped.
+      #
+      # 🔴 IT IS A GATE ON THE DECLARATION AND A MONITOR-SHAPED GAP FOR THE SINK,
+      # and the guard's header says so rather than implying more reach than it
+      # has. Nothing push-gated can read a Django setting on an Oracle VM whose
+      # compose file lives at /opt/glitchtip. Reconfigure the sink without
+      # editing the register and this stays green — only a probe against the live
+      # GlitchTip API closes that, and the `transits` declarations that are the
+      # one way to silence the check PRINT on every run for exactly that reason.
+      # [pipeline K-5]
+      - name: Every live sink declares what it holds, and no page denies it
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-sink-disclosure.mjs
       # Every place data can go — every table any migration creates, every D1 /
       # KV / R2 binding any wrangler config declares, and every KV binding a
       # Pages Function reaches — has exactly one inventory row, and every row has

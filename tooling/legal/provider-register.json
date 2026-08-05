@@ -41,7 +41,18 @@
     "    and refund.html; one that is not yet live PRINTS with its owner item             [K-5]",
     "  · every `disclosureGap` row carries an ownerItem and a `stillTrue` probe, and the",
     "    guard FAILS when the probe stops matching — the gap is resolved, retire the row   [C-6 split]",
-    "  · COVERAGE LOST on an empty register or zero route paths extracted                 [F-10]"
+    "  · COVERAGE LOST on an empty register or zero route paths extracted                 [F-10]",
+    "",
+    "And by tooling/ci/assert-sink-disclosure.mjs — THE SINK-DISCLOSURE LIMB:",
+    "  · every `infrastructure` row with status `live` DECLARES the personal-data",
+    "    categories it receives and retains (`receives`), with a stated `receivesBasis`   [K-5]",
+    "  · every published \"we do not collect / do not store X\" denial is SCOPED against",
+    "    the union of those declarations, and FAILS when a live sink declares what a",
+    "    page denies                                                                      [K-5]",
+    "  · a denial that resolves to NO declared category FAILS unless it is classified",
+    "    in `denialsOutOfScope` — a new denial cannot be published unscoped               [K-5]",
+    "  · COVERAGE LOST on zero live infrastructure rows, an empty declared union, or",
+    "    zero denials extracted from the pages                                            [F-10]"
   ],
   "nonProviderRouteSegments": {
     "_why": [
@@ -121,6 +132,109 @@
     "iap_aggregator": "normalises store purchase events into one entitlement feed. Holds purchase state, not payment instruments.",
     "infrastructure": "runs or hosts the Services. Sees traffic and whatever the Services store, and is disclosed as a processor rather than as a seller.",
     "identity": "authenticates users and holds account credentials."
+  },
+  "dataCategories": {
+    "_why": [
+      "🔴 THE SINK VOCABULARY. Declared HERE and not inside the guard, for the same reason `roles` above is:",
+      "renaming a category out from under the rows still using it must FAIL rather than quietly mean nothing.",
+      "",
+      "WHY THIS EXISTS AT ALL, and it is worth stating in full because the defect it answers was PUBLISHED.",
+      "privacy.html said 'We do not collect or store your IP address'. The self-hosted GlitchTip on the Oracle",
+      "box was storing `user.ip_address`, re-observed on two independent events. NO GUARD COULD SEE IT:",
+      "  · assert-policy-claims.mjs compares published TEXT to repo TEXT — it can prove the site says what",
+      "    the repo says and nothing more, and both false statements passed it;",
+      "  · the one claim row that IS typed `code` asserts `absent(cf-connecting-ip)` over ONE file, and its",
+      "    own `why` concedes it 'is not a dataflow proof';",
+      "  · tooling/legal/data-inventory.json declares 19 stores and EVERY ONE is Cloudflare D1 or KV. The",
+      "    strings `glitchtip`, `oracle`, `sentry` and `ip_address` appear nowhere in it. The only",
+      "    personal-data store outside Cloudflare was invisible BY CONSTRUCTION.",
+      "This register is the one artifact that already knew the crash rail is `oracle-cloud · infrastructure ·",
+      "live`. So the declaration is attached to the thing that knows the sink exists.",
+      "",
+      "`tells` are how a category is recognised in a PUBLISHED DENIAL — the words a reader would see, not the",
+      "column names. They are matched against the text AFTER the denial verb, so 'We receive confirmation of",
+      "the purchase but do not collect or store your full card or bank details' is scoped to the object of",
+      "the denial and not to the whole sentence. A tell that is too narrow makes a future denial UNSCOPEABLE",
+      "(which FAILS); a tell that is too broad makes it INTERSECT (which FAILS). Neither direction passes",
+      "quietly, which is why erring is safe here and guessing is not."
+    ],
+    "ip_address": {
+      "what": "The network address a request came from, in a form that still identifies the connection. Personal data under GDPR and India's DPDP. ⚠️ GlitchTip's `scrub_ip_addresses` flag ANONYMISES (IPv4 /24, IPv6 /64) and then STORES — an anonymised prefix is still this category, which is exactly why the flag reading `True` hid the breach for weeks.",
+      "tells": ["ip address", "ip addresses"]
+    },
+    "ip_fingerprint": {
+      "what": "A salted, one-way fingerprint of a network address, used as an abuse counter key and discarded within the hour. A DIFFERENT category from ip_address on purpose, and the published page draws the same line ('The fingerprint is not reversible to an IP address'). The construction is keyed (crypto.subtle.sign), not a digest — an unsalted sha256 of an IPv4 address is reversible by exhausting 2^32 values and would BE the address wearing a hash.",
+      "tells": ["one-way fingerprint"]
+    },
+    "crash_report": {
+      "what": "An exception, its stack trace and the app/platform/version context around it. Received by GlitchTip, which we run ourselves.",
+      "tells": ["crash report", "crash reports", "stack trace"]
+    },
+    "usage_event": {
+      "what": "One record that a feature of an app was used, written only after consent.",
+      "tells": ["usage statistic", "usage statistics"]
+    },
+    "install_identifier": {
+      "what": "The random per-install identifier (`anon_id`) that makes usage records pseudonymous rather than anonymous. Not a name, not an email, not an advertising ID — but stable, so records from one installation group together.",
+      "tells": ["install identifier", "random identifier created on your device"]
+    },
+    "approximate_location": {
+      "what": "Country, region and city, derived at the network edge from an address that is then discarded. Coarse by construction; it is not a coordinate.",
+      "tells": ["approximate location", "coarse location"]
+    },
+    "consent_record": {
+      "what": "The append-only record that a consent decision was made: which install, when, granted or withdrawn, and which policy version was shown.",
+      "tells": ["consent record", "consent records"]
+    },
+    "email_address": {
+      "what": "A plain email address, as typed. Held by the launch-notification signup list, and present verbatim inside a merchant-of-record notification.",
+      "tells": ["email address", "email addresses"]
+    },
+    "buyer_billing_details": {
+      "what": "The buyer's name and billing country, as they arrive inside a merchant-of-record notification stored VERBATIM ([pipeline 5]M-2 — a re-serialised or redacted copy can never be re-verified against the signature it came with).",
+      "tells": ["billing address", "billing country", "buyer name"]
+    },
+    "entitlement_record": {
+      "what": "What a person has paid for: one row per (user, app, entitlement).",
+      "tells": ["what you have paid for", "entitlement", "entitlements"]
+    },
+    "account_identifier": {
+      "what": "The account id a row is keyed on (a Supabase `sub`, or a store/aggregator user id). Not a credential.",
+      "tells": ["account identifier", "account id"]
+    },
+    "user_content": {
+      "what": "What a person created inside an app — for apps/subly, the subscriptions they track and their budget figures. User-entered content about their own finances.",
+      "tells": ["what you created inside an app", "subscriptions you track"]
+    },
+    "payment_instrument": {
+      "what": "A card or bank number, CVV, IBAN or equivalent — the instrument itself. NOTHING in this factory receives this category, and no migration may declare a column for one (asserted separately by the `full card or bank details` claim row in policy-claims.json).",
+      "tells": ["card or bank details", "card details", "bank details", "card number"]
+    }
+  },
+  "denialsOutOfScope": {
+    "_why": [
+      "🔴 THE HALF THAT MAKES THE DENIAL LIMB UNFAKEABLE, and it is DATA rather than a list inside the guard",
+      "for exactly the reason `nonProviderRouteSegments` is. The guard extracts every \"we do not collect /",
+      "do not store X\" clause from the visible text of the published pages. A denial is allowed to exist",
+      "only if it resolves to a category in `dataCategories` above — or is written down HERE with a reason.",
+      "",
+      "So publishing 'we do not store your precise location' turns the build RED until somebody either adds",
+      "the category (and therefore has to say whether a live sink receives it) or classifies the sentence as",
+      "not being about a data category at all. There is no third option, and no way to pad this list except",
+      "by naming the sentence you are adding.",
+      "",
+      "⚠️ A row here is checked in BOTH directions: one whose denial no longer appears on its page FAILS, so",
+      "an exemption cannot outlive the sentence it was granted for — the same rule `disclosureGaps` carry",
+      "through `stillTrue`. And a row that DOES resolve to a category FAILS as inert: an exemption for",
+      "something that is not there reports judgement over nothing."
+    ],
+    "rows": [
+      {
+        "page": "privacy.html",
+        "denial": "do not knowingly collect personal information from them",
+        "why": "§7, children's privacy. This denies collecting anything at all FROM A CLASS OF PERSON (under 13, or the local minimum age) — it is scoped by WHO, not by WHAT. Scoping it against a sink's category list would be a category error in the literal sense: every category would intersect it, and the guard would go red on a sentence that is true. The duty it belongs to is age-assurance, which is carried as a row in tooling/legal/duty-matrix.json where the trigger can be stated."
+      }
+    ]
   },
   "providers": [
     {
@@ -202,6 +316,22 @@
         "privacy.html"
       ],
       "privateRecord": null,
+      "receives": [
+        "email_address",
+        "ip_fingerprint",
+        "usage_event",
+        "install_identifier",
+        "approximate_location",
+        "consent_record",
+        "entitlement_record",
+        "buyer_billing_details",
+        "account_identifier",
+        "user_content"
+      ],
+      "receivesBasis": "Derived from tooling/legal/data-inventory.json, which enumerates every D1 table, KV namespace and Pages-Function binding in this factory and marks each `personalData` true or false — all 19 of them are Cloudflare. `crash_report` is deliberately NOT in this list: crash reports land on oracle-cloud, which is the `crash-reports-infrastructure` gap privacy.html still gets wrong. `payment_instrument` is deliberately not here either, and no migration may declare a column for one.",
+      "transits": {
+        "ip_address": "Cloudflare IS the network edge — it terminates TLS, so the client address is inherent in the connection and cannot not be seen. It is not retained for us: the events path derives country/region/city from `request.cf` and discards the address (privacy.html discloses exactly this), and the signup path keeps a keyed one-way fingerprint rather than the address. ⚠️ THIS IS THE ESCAPE ROUTE FROM THE DENIAL LIMB AND IT IS NAMED AS ONE — moving a category from `receives` to `transits` silences the intersection check. It is a visible edit in a diff and it PRINTS on every run, but it is a declaration about a sink no repo-resident guard can observe."
+      },
       "notes": [
         "The only LIVE provider in this register. Hosts both static sites (Git integration), both Workers,",
         "D1 and KV. privacy.html discloses it as the hosting provider and as the network edge — both true.",
@@ -334,6 +464,13 @@
       ],
       "namedIn": [],
       "privateRecord": "company/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
+      "receives": [
+        "crash_report"
+      ],
+      "receivesBasis": "🔴 THIS ROW IS WHY THE SINK-DISCLOSURE LIMB EXISTS. Until 2026-08-06 this sink ALSO received `ip_address`, while privacy.html published 'We do not collect or store your IP address' — and nothing in this repository could see it, because the only personal-data store outside Cloudflare appears in no inventory here. Fixed at the sink and verified BY OBSERVATION, not by reading a setting (knowledge/session-notes.md §17): two layers, because either alone is a false fix. (1) The sink refuses — 12 IP keys added to GlitchTip's `sensitive_keys`, which is what catches a CLIENT-SUPPLIED address; tested with 203.0.113.45. (2) Nothing is collected — nginx blanks the 11 client-IP headers in python_ipware's precedence tuple, so `get_client_ip` falls through to the Docker gateway and returns None. Probed after: no `user` object at all on a fresh event; the negative control against the pre-change config returned the address unmodified, so the assertion can fail. The 18 back-catalogue events holding a real address were redacted in place, non-destructively.",
+      "transits": {
+        "ip_address": "An ingest request necessarily arrives from the device's address; that is TCP, not a choice. Nothing writes it — see `receivesBasis`. ⚠️ AND THIS IS EXACTLY THE DECLARATION A REPO-RESIDENT GUARD CANNOT CHECK. If somebody re-enables IP storage on the live GlitchTip without editing this line, every guard in this repository stays green. Only a probe against the live GlitchTip API can close that, and no such probe exists today: the compose file lives at /opt/glitchtip on the box and is in no tree CI can read."
+      },
       "notes": [
         "Crash reports go to a GlitchTip instance we run ourselves on an Oracle Cloud always-free VM.",
         "privacy.html says crash reports run 'on infrastructure provided by Cloudflare'. That sentence is",
