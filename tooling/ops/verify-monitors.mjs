@@ -43,6 +43,20 @@ import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
+// while an undici (fetch) keep-alive handle is still open CRASHES libuv on
+// Windows —  `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING),
+// src/win/async.c:94`  — and the process then reports 127 instead of the code
+// this header documents. Measured 2026-08-05: with a BAD token this file exited
+// 127, three runs out of three, where it documents 1. The no-token path returned
+// 2 correctly ONLY because it runs before any fetch.
+//
+// That defeats the exact distinction the exit codes exist to draw: "I could not
+// look" (2) vs "I looked and it was wrong" (1) both collapse into 127 the moment
+// a request has been made. Set `process.exitCode` and return instead; Node then
+// drains its handles and exits with that code on its own.
+
+
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'monitor-register.json');
 
@@ -64,6 +78,10 @@ if (!TOKEN) {
   process.exit(2);
 }
 
+// See the note above: from here on a request has been made, so `process.exit()`
+// would crash libuv on Windows and report 127. This region is wrapped so it can
+// `return` and set `process.exitCode` instead.
+await (async () => {
 let live;
 try {
   // NO `CF-Connecting-IP` HEADER, EVER — Cloudflare's edge rejects any client
@@ -76,17 +94,20 @@ try {
     console.error(`✗ GlitchTip returned ${res.status} ${res.statusText} for the monitor list.`);
     console.error('  A 401 means the token is wrong or expired; a 5xx means the Oracle box is unwell —');
     console.error('  which is itself the E-9b single point of failure showing its face.');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   live = await res.json();
 } catch (err) {
   console.error(`✗ could not reach ${BASE}: ${err.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+  return;
 }
 
 if (!Array.isArray(live)) {
   console.error('✗ the monitor list was not an array; the API shape changed and this script cannot reconcile.');
-  process.exit(1);
+  process.exitCode = 1;
+  return;
 }
 
 const byId = new Map(live.map((m) => [m.id, m]));
@@ -155,5 +176,6 @@ console.log(
 if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`✗ ${p}`);
-  process.exit(1);
+  process.exitCode = 1;
 }
+})();
