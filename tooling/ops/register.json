@@ -815,12 +815,13 @@
       "kind": "recovery-path",
       "what": "Restore the GlitchTip Postgres database from its dump.",
       "detector": "This row's cadence against lastDrill.",
-      "response": "company/runbooks/glitchtip.md.",
+      "response": "company/runbooks/operations.md §C.5.",
       "cadence": "180d",
-      "lastDrill": null,
+      "lastDrill": "2026-08-05",
+      "drillEvidence": "FIRST EVER RESTORE PERFORMED 2026-08-05, and it found two defects a successful dump can never reveal. (1) The dump was plain SQL piped to gzip while §C.5 documents `pg_restore -j4` and §C.4 gates uploads on `pg_restore --list` — both FAILED: 'input file appears to be a text format dump. Please use psql.' Fixed to `pg_dump -Fc`; the gate now returns exit 0 over 6963 archive entries. (2) `pg_restore -j4` DEADLOCKS on this partitioned schema (ALTER INDEX ... ATTACH PARTITION, and the issueevent release_id FK), INTERMITTENTLY — 2 ignored errors on one pass, 4 on the next — and pg_restore IGNORES them, so it finishes looking successful with objects missing. Serial restore is clean in one pass. Verified by row counts against live: issues 13=13, projects 2=2, users 1=1, releases 6=6, orgs 1=1; uptime_monitorcheck 114527 vs 114513 = ~2 min of continuous checks written after the snapshot, not loss. Restored into scratch databases; the live database was never touched.",
       "mechanism": {
         "substrate": "oci-docker",
-        "anchor": "company/runbooks/glitchtip.md",
+        "anchor": "company/runbooks/operations.md",
         "record": "the dump files and their timestamps on the Oracle box",
         "failingValue": "no dated restore drill",
         "readBy": "nothing yet"
@@ -830,7 +831,7 @@
         "google"
       ],
       "ownerGated": true,
-      "ownerGap": "Never drilled. ⚠️ Residual risk recorded rather than hidden: the Postgres dumps have exactly ONE offsite copy.",
+      "ownerGap": "DRILLED 2026-08-05 (first time) — see drillEvidence; next due 2027-02-01 per the 180d cadence. ⚠️ Residual risk recorded rather than hidden: the Postgres dumps still have exactly ONE offsite copy. 🔴 And the drill's own lesson: this row read 'Never drilled' for a full session AFTER a real drill had been performed and verified, because the drill was done and not recorded — a guard that announces a false state on every CI run is worse than one that says nothing. Record the drill in the same increment that performs it.",
       "source": "verified"
     },
     {
