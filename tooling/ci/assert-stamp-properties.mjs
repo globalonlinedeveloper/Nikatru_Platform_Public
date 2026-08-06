@@ -75,7 +75,8 @@
 // `test/…` — is resolved under each root in turn. The Worker route deliberately
 // stays repo-absolute: it exists only on a `needs_backend` stamp, so anchoring it
 // per app would fail the client-only probe for being what it is.
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { listDir } from './tree-walk.mjs';
 import { join } from 'node:path';
 
 const repo = process.cwd();
@@ -934,12 +935,20 @@ function calledNames(body) {
   return out;
 }
 
-/** Every `.dart` under `dir`, recursively. */
+/** Every `.dart` under `dir`, recursively.
+ *
+ * ⚠️ `listDir`, never a raw `readdirSync` — this is the FOURTH time the nested-
+ * checkout defect has landed in `tooling/ci`, and it is invisible to every test:
+ * CI creates no worktrees, so a raw walk is green there and red only on the
+ * machine of the person actually looking. `assert-walks-bounded.mjs` caught this
+ * one at the merge, not in the branch, because the branch's fixture copied the
+ * script without `tree-walk.mjs` — a fixture cannot model the tree it walks.
+ */
 function dartFilesUnder(dir) {
   const out = [];
   let entries;
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    entries = listDir(dir, { withFileTypes: true });
   } catch {
     return out;
   }

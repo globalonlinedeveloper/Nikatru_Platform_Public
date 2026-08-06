@@ -12,7 +12,7 @@
   "catalog-reachable.test.mjs": 9,
   "ceiling-budget.test.mjs": 50,
   "channel-claims.test.mjs": 45,
-  "channel-register.test.mjs": 113,
+  "channel-register.test.mjs": 130,
   "clone-contract.test.mjs": 34,
   "content-pipeline.test.mjs": 45,
   "d1-bindings.test.mjs": 7,
