@@ -43,6 +43,35 @@
 //   None crashed; every one exited 1 with the intended message; every TS
 //   mutation compiled clean first; every restore was verified.
 //
+// ⚠️ LIMB 6 (write amplification) — THREE MORE REAL-TREE MUTATIONS, 2026-08-06,
+// again BEFORE the fixtures below existed. The subject is the actual
+// services/platform/migrations/0002_analytics.sql, restored byte-identical after
+// each (`git hash-object` back to 94ca9f4f11d9c9dfaa83feda459d9fcb3a5422be).
+//
+//   MR1  a FIFTH real index added to the real 0002_analytics.sql:
+//          CREATE INDEX idx_events_mutation_probe ON events (platform, server_ts);
+//        -> caught, BOTH stored numbers at once and exit 1:
+//          "`writeAmplification.rowsWrittenPerEvent` = 5, and the SCHEMA SAYS 6
+//           — 1 base row + 5 index row(s) on `events` (…:58, :60, :61, :63, :64)"
+//          "`writeAmplification.eventsPerDayWithinCeiling` = 20000, and the
+//           derivation gives 16666 = ⌊100000 … ÷ 6⌋"
+//        That second line IS E-14's sentence — the headroom moved by itself.
+//   MR2  the same CREATE INDEX line added to the real migration INSIDE A `--`
+//        COMMENT -> NOT counted, guard stayed green at 4 indexes / 5 rows per
+//        event. The mutation that must NOT fire, and the one a grep fails: 0002's
+//        real header already names "UNIQUE INDEX" and "write amplification" in a
+//        paragraph describing a shape it does not use.
+//   MR3  the real tooling/ceilings.json edited to the pre-research figures
+//        (rowsWrittenPerEvent 5 -> 1, eventsPerDayWithinCeiling 20000 -> 100000)
+//        -> caught: "the SCHEMA SAYS 5" and "the derivation gives 20000".
+//
+// 🔴 AND THE RED LIMB 6 WAS BUILT TO RECORD, on the tree as it stood 2026-08-06:
+//   the ceiling E-14's whole arithmetic binds on — `d1.rowsWrittenPerDay` — was
+//   NOT IN THE REGISTER AT ALL. Fifteen ceiling ids, none of them the one the
+//   capacity model divides by, and `grep -n "rows_written_per_event\|amplif"
+//   tooling/ceilings.json` returned nothing. The 5× correction lived in prose in
+//   company/pipeline/11-measurement.md and in no file any guard could reach.
+//
 // 🔴 AND THE RED THIS GUARD WAS BUILT TO RECORD, on the tree as it stood:
 //   services/platform/src/routes/events.ts declared `MAX_EVENTS_PER_BATCH = 100`
 //   naming no ceiling at all, while D1 documents FIFTY queries per Worker
@@ -132,6 +161,39 @@ const BRICK_CFG_BODY = `{
   "d1_databases": [{ "binding": "APP_DB", "database_name": "{{app_id}}_db" }],
 }`;
 
+/** The migration fixture limb 6 counts indexes out of. Deliberately carries, in
+ *  the PASSING case, all three shapes a text scan gets wrong:
+ *    · a COMMENT containing the words CREATE INDEX … ON events — 0002's real
+ *      header does exactly this, explaining a shape it does not use;
+ *    · indexes on a DIFFERENT table, which must not raise the events factor;
+ *    · an index whose `ON <table>` sits on the NEXT line — 0002:85-86 is that,
+ *      and it is the one a line-oriented scan attributes to the wrong table. */
+const MIGRATION_SQL = `
+-- SHAPE DECISIONS: a ROWID table + a UNIQUE INDEX on event_id, NOT a text PK.
+-- Rejected, and written out so a grep-based counter reads it as schema:
+--   CREATE INDEX IF NOT EXISTS idx_events_city ON events (city);
+CREATE TABLE IF NOT EXISTS events (
+  event_id   TEXT NOT NULL,
+  app_id     TEXT NOT NULL,
+  server_ts  TEXT NOT NULL,
+  params     TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_event_id ON events (event_id);
+CREATE INDEX IF NOT EXISTS idx_events_app_ts ON events (app_id, server_ts);
+
+CREATE TABLE IF NOT EXISTS consent_artifacts (
+  consent_id TEXT NOT NULL,
+  app_id     TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_consent_id ON consent_artifacts (consent_id);
+CREATE INDEX IF NOT EXISTS idx_consent_lookup
+  ON consent_artifacts (app_id, consent_id);
+`;
+
+const MIGRATIONS_DIR = 'services/platform/migrations';
+const MIGRATION = `${MIGRATIONS_DIR}/0002_analytics.sql`;
+
 const CAP_REGISTER = () => ({
   vendors: {
     cloudflare: {
@@ -187,6 +249,17 @@ const baseCeilings = () => ({
       ambiguity: 'None.',
     },
     {
+      id: 'd1.rowsWrittenPerDay',
+      value: 100000,
+      unit: 'rows',
+      scope: 'per-account-per-day',
+      surfaces: ['PLATFORM_DB'],
+      source: 'https://developers.cloudflare.com/d1/platform/pricing/',
+      sourceText: 'Rows written | 100,000 / day',
+      verifiedOn: '2026-08-06',
+      ambiguity: 'The factor is the worst case for a full-row INSERT.',
+    },
+    {
       id: 'ratelimit.allowedPeriods',
       value: null,
       allowedValues: [10, 60],
@@ -203,6 +276,16 @@ const baseCeilings = () => ({
     sites: [
       { file: 'services/platform/src/routes/events.ts', boundedBy: 'MAX_EVENTS_PER_BATCH' },
     ],
+  },
+  // The fixture schema carries TWO indexes on `events`, so the derived factor is
+  // 1 + 2 = 3 and the headroom is ⌊100000 ÷ 3⌋ = 33333. Both are the guard's
+  // EXPECTED answers, never its inputs.
+  writeAmplification: {
+    ceiling: 'd1.rowsWrittenPerDay',
+    migrationsDir: MIGRATIONS_DIR,
+    table: 'events',
+    rowsWrittenPerEvent: 3,
+    eventsPerDayWithinCeiling: 33333,
   },
   configCeilings: {
     checks: [
@@ -226,6 +309,7 @@ function tree({ ceilings = baseCeilings(), cap = CAP_REGISTER(), files = {} } = 
     'services/platform/src/routes/config.ts': CONFIG_TS,
     'services/platform/wrangler.jsonc': PLATFORM_CFG,
     [BRICK_CFG]: BRICK_CFG_BODY,
+    [MIGRATION]: MIGRATION_SQL,
     ...files,
   };
   for (const [p, body] of Object.entries(all)) if (body !== null) write(p, body);
@@ -522,6 +606,176 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     const r = run(tree());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /account-wide config ceiling\(s\) counted/);
+  });
+
+  // ── LIMB 6: the write-amplification factor is COUNTED, never typed ─────────
+  test('the passing shape REPORTS the derivation, not just its verdict', () => {
+    // 2 indexes on `events` ⇒ 3 rows/event ⇒ ⌊100000 ÷ 3⌋ = 33333. Printed with
+    // the file:line of every index counted, because a factor a reviewer cannot
+    // re-derive from the output is the defect E-14 was re-opened for.
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /write amplification DERIVED, not read/);
+    assert.match(r.out, /2 of them on `events`/);
+    assert.match(r.out, /3 rows written per event/);
+    assert.match(r.out, /33333 events\/day/);
+  });
+
+  test('FAILS when a FIFTH index lands and the stored factor does not move [MR1]', () => {
+    // E-14, verbatim: "Adding a fifth index then changes the headroom number
+    // automatically, and a model whose stored value disagrees with the count
+    // fails." This is that sentence as an executable.
+    const r = run(tree({
+      files: {
+        [MIGRATION]: `${MIGRATION_SQL}\nCREATE INDEX idx_events_params ON events (params);\n`,
+      },
+    }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /`writeAmplification\.rowsWrittenPerEvent` = 3, and the SCHEMA SAYS 4/);
+    // The headroom must move with it, or only half the model is derived.
+    assert.match(r.out, /`writeAmplification\.eventsPerDayWithinCeiling` = 33333, and the derivation gives 25000/);
+  });
+
+  test('FAILS when the stored factor is edited to disagree with the schema [MR3]', () => {
+    // The direction that actually happened: 1 row per event, which is what E-14
+    // sized against before its research pass and was wrong by 5×.
+    const c = baseCeilings();
+    c.writeAmplification.rowsWrittenPerEvent = 1;
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /the SCHEMA SAYS 3/);
+    assert.match(r.out, /COUNTED, never typed/);
+  });
+
+  test('FAILS when the stored headroom is edited to disagree with its own inputs', () => {
+    const c = baseCeilings();
+    c.writeAmplification.eventsPerDayWithinCeiling = 100000;
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /the derivation gives 33333/);
+  });
+
+  test('FAILS when the stored factor is deleted rather than wrong', () => {
+    // Absence must not be quieter than disagreement: with nothing stored there
+    // is nothing for the count to contradict.
+    const c = baseCeilings();
+    delete c.writeAmplification.rowsWrittenPerEvent;
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /declares no numeric `rowsWrittenPerEvent`/);
+  });
+
+  test('FAILS when the stored headroom is deleted rather than wrong', () => {
+    const c = baseCeilings();
+    delete c.writeAmplification.eventsPerDayWithinCeiling;
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /declares no numeric `eventsPerDayWithinCeiling`/);
+  });
+
+  test('a COMMENTED-OUT index is not counted [MR2]', () => {
+    // The passing fixture's migration already carries `CREATE INDEX … ON events`
+    // inside a comment — 0002_analytics.sql's real header does the same, listing
+    // a shape it deliberately does NOT use. A grep counts 3 indexes there and
+    // derives 4. This is the repo's recorded rule (strip comments AND string
+    // literals before scanning SQL) with a case that can show it.
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 of them on `events`/);
+  });
+
+  test('indexes on ANOTHER table do not raise the factor', () => {
+    // Three of the fixture's five indexes are on consent_artifacts, and one of
+    // them puts its `ON <table>` on the NEXT line. A scan that read table names
+    // per-line would attribute it to whatever came before.
+    const r = run(tree({
+      files: {
+        [MIGRATION]: `${MIGRATION_SQL}\nCREATE INDEX idx_consent_extra\n  ON consent_artifacts (app_id);\n`,
+      },
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 of them on `events`/);
+  });
+
+  test('a DROPPED index is subtracted from the count', () => {
+    const c = baseCeilings();
+    c.writeAmplification.rowsWrittenPerEvent = 2;
+    c.writeAmplification.eventsPerDayWithinCeiling = 50000;
+    const r = run(tree({
+      ceilings: c,
+      files: { [MIGRATION]: `${MIGRATION_SQL}\nDROP INDEX IF EXISTS idx_events_app_ts;\n` },
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 of them on `events`/);
+  });
+
+  test('FAILS on a CREATE INDEX whose target table cannot be read', () => {
+    // Not skipped, because a failed parse only ever moves the factor DOWN —
+    // towards the 1-row-per-event answer that was already wrong by 5×.
+    const r = run(tree({
+      files: { [MIGRATION]: `${MIGRATION_SQL}\nCREATE INDEX idx_events_q ON "events" (app_id);\n` },
+    }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /whose target table this scan could NOT read/);
+  });
+
+  test('FAILS when the amplification ceiling is unverified', () => {
+    const c = baseCeilings();
+    c.ceilings.find((x) => x.id === 'd1.rowsWrittenPerDay').value = null;
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /derives its headroom from ceiling "d1\.rowsWrittenPerDay"/);
+  });
+
+  test('COVERAGE LOST when the writeAmplification block is deleted', () => {
+    // The vacuity that matters most: no block, no limb, and the register looks
+    // exactly as clean as one whose numbers agree.
+    const c = baseCeilings();
+    delete c.writeAmplification;
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /declares no `writeAmplification` block/);
+  });
+
+  test('COVERAGE LOST when the block names no table', () => {
+    const c = baseCeilings();
+    delete c.writeAmplification.table;
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /names no `migrationsDir` and\/or no `table`/);
+  });
+
+  test('COVERAGE LOST when the migrations directory holds no .sql', () => {
+    const r = run(tree({ files: { [MIGRATION]: null } }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /holds NO \.sql file/);
+  });
+
+  test('COVERAGE LOST when no migration creates the sized table', () => {
+    // The rename case. The index count would then range over a table nobody
+    // writes to and quietly report 1 row per event.
+    const c = baseCeilings();
+    c.writeAmplification.table = 'analytics_events';
+    const r = run(tree({ ceilings: c }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /creates the table `analytics_events`/);
+  });
+
+  test('COVERAGE LOST when the schema has the table but no index on it', () => {
+    // Zero indexes derives a factor of 1 — the exact pre-research number. A
+    // parser that has stopped matching looks identical to a table with no index,
+    // so this is a failure rather than a result.
+    const r = run(tree({
+      files: {
+        [MIGRATION]: MIGRATION_SQL.replace(/CREATE (UNIQUE )?INDEX[^;]*ON events[^;]*;/g, ''),
+      },
+    }));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /ZERO `CREATE INDEX … ON events` statements/);
   });
 
   // ── the scans must still be reaching the tree ──────────────────────────────
