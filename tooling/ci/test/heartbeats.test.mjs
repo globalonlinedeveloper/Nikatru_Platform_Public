@@ -49,7 +49,12 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { evaluateJob, cronIntervalHours, deriveWatchedJobs } from '../../ops/check-heartbeats.mjs';
+import {
+  evaluateJob,
+  cronIntervalHours,
+  lastExpectedFireMs,
+  deriveWatchedJobs,
+} from '../../ops/check-heartbeats.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -62,36 +67,69 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 let seq = 0;
 
 const NOW = Date.parse('2026-08-02T09:00:00Z');
+const CRON = '0 6 * * *';
 const row = (over = {}) => ({ job: 'j', target: 't', ok: 1, detail: '', ran_at: '2026-08-02T06:00:00Z', ...over });
 
 describe('check-heartbeats — the three ways to be red, and the one that matters most', () => {
   test('a fresh row saying ok=1 is the only pass', () => {
-    const v = evaluateJob('j', [row()], 24, NOW);
+    const v = evaluateJob('j', [row()], CRON, NOW);
     assert.equal(v.ok, true);
   });
 
   test('ABSENT — no row at all is a failure, not an empty success', () => {
-    const v = evaluateJob('j', [], 24, NOW);
+    const v = evaluateJob('j', [], CRON, NOW);
     assert.equal(v.ok, false);
     assert.equal(v.kind, 'absent');
     assert.match(v.reason, /has ever been written/);
   });
 
-  test('ABSENT — a row older than 1.5x the interval is a failure', () => {
-    const v = evaluateJob('j', [row({ ran_at: '2026-07-30T06:00:00Z' })], 24, NOW);
+  test('ABSENT — a row from before the last due occurrence is a failure', () => {
+    const v = evaluateJob('j', [row({ ran_at: '2026-07-30T06:00:00Z' })], CRON, NOW);
     assert.equal(v.ok, false);
     assert.equal(v.kind, 'absent');
-    assert.match(v.reason, /The timer has stopped/);
+    assert.match(v.reason, /The timer did not fire/);
   });
 
-  test('the 1.5x ceiling is applied, not the raw interval — a single late run is not an alarm', () => {
-    // 30 hours old against a 24h interval: past the interval, inside 1.5x.
-    const v = evaluateJob('j', [row({ ran_at: '2026-08-01T03:00:00Z' })], 24, NOW);
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🔴 THE REGRESSION TEST FOR THE 2026-08-06 MISS. This is the case the old
+  // `interval x 1.5` ceiling passed, and it is not a hypothetical shape: it is
+  // the production data of that morning, to the hour.
+  //
+  // The assertion is deliberately TWO-SIDED — it asserts the new verdict AND
+  // recomputes what the old rule would have said. Without the second half a
+  // future "simplification" back to a staleness ceiling would leave this test
+  // green, because a red verdict alone does not say WHICH limb produced it.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('a SINGLE missed nightly run is red — the exact case the 1.5x ceiling passed on 2026-08-06', () => {
+    const now = Date.parse('2026-08-06T10:06:00Z'); // ops-watch run 31091922078
+    const lastGood = '2026-08-05T06:00:37Z'; // the real newest row that morning
+    const v = evaluateJob('supabase_keepalive', [row({ ran_at: lastGood })], CRON, now);
+
+    assert.equal(v.ok, false, 'a scheduled occurrence with no row must be red');
+    assert.equal(v.kind, 'absent');
+    assert.match(v.reason, /due at 2026-08-06T06:00:00\.000Z/);
+
+    // And the old rule, recomputed here rather than trusted: 28.1h < 36h.
+    const ageHours = (now - Date.parse(lastGood)) / 3_600_000;
+    assert.ok(ageHours < 24 * 1.5, `the old ceiling would have passed this (age ${ageHours.toFixed(1)}h < 36h)`);
+  });
+
+  test('a LATE run inside the grace is still not an alarm — the property the ratio was really buying', () => {
+    // 1h past due, no row for today yet. Late, not missed.
+    const now = Date.parse('2026-08-02T07:00:00Z');
+    const v = evaluateJob('j', [row({ ran_at: '2026-08-01T06:00:00Z' })], CRON, now);
     assert.equal(v.ok, true);
   });
 
+  test('UNKNOWN — an expression with no computable occurrence fails closed, never falls back to staleness', () => {
+    const v = evaluateJob('j', [row()], '*/5 * * * *', NOW);
+    assert.equal(v.ok, false);
+    assert.equal(v.kind, 'unknown');
+    assert.match(v.reason, /no computable occurrence/);
+  });
+
   test('RED — a FRESH row whose outcome column says FAILED is the case a presence check would pass', () => {
-    const v = evaluateJob('j', [row({ ok: 0, detail: 'HTTP 401 — REJECTED' })], 24, NOW);
+    const v = evaluateJob('j', [row({ ok: 0, detail: 'HTTP 401 — REJECTED' })], CRON, NOW);
     assert.equal(v.ok, false);
     assert.equal(v.kind, 'red');
     assert.match(v.reason, /FRESH and says the job FAILED/);
@@ -99,30 +137,30 @@ describe('check-heartbeats — the three ways to be red, and the one that matter
   });
 
   test('RED — the detail and target travel with the failure so the log names the cause', () => {
-    const v = evaluateJob('j', [row({ ok: 0, detail: 'no SUPABASE_ANON_KEY configured', target: 'https://x' })], 24, NOW);
+    const v = evaluateJob('j', [row({ ok: 0, detail: 'no SUPABASE_ANON_KEY configured', target: 'https://x' })], CRON, NOW);
     assert.match(v.reason, /no SUPABASE_ANON_KEY configured/);
     assert.match(v.reason, /target https:\/\/x/);
   });
 
   test('UNKNOWN — a non-array result fails closed', () => {
-    const v = evaluateJob('j', null, 24, NOW);
+    const v = evaluateJob('j', null, CRON, NOW);
     assert.equal(v.ok, false);
     assert.equal(v.kind, 'unknown');
   });
 
   test('UNKNOWN — an unparseable timestamp fails closed rather than being ignored', () => {
-    const v = evaluateJob('j', [row({ ran_at: 'yesterday-ish' })], 24, NOW);
+    const v = evaluateJob('j', [row({ ran_at: 'yesterday-ish' })], CRON, NOW);
     assert.equal(v.ok, false);
     assert.equal(v.kind, 'unknown');
   });
 
   test('the NEWEST row decides, not the first one the query happened to return', () => {
     const rows = [row({ ran_at: '2026-07-01T06:00:00Z', ok: 1 }), row({ ran_at: '2026-08-02T06:00:00Z', ok: 0 })];
-    assert.equal(evaluateJob('j', rows, 24, NOW).kind, 'red');
+    assert.equal(evaluateJob('j', rows, CRON, NOW).kind, 'red');
   });
 
   test('ok arriving as a string "0" is still a failure — D1 JSON types are not guaranteed', () => {
-    assert.equal(evaluateJob('j', [row({ ok: '0' })], 24, NOW).kind, 'red');
+    assert.equal(evaluateJob('j', [row({ ok: '0' })], CRON, NOW).kind, 'red');
   });
 });
 
@@ -160,6 +198,52 @@ describe('check-heartbeats — the cron parser is narrow ON PURPOSE', () => {
     assert.equal(cronIntervalHours('0 6 * *'), null);
     assert.equal(cronIntervalHours(''), null);
     assert.equal(cronIntervalHours(undefined), null);
+  });
+});
+
+describe('check-heartbeats — the occurrence parser, which decides whether a run was MISSED', () => {
+  const iso = (ms) => new Date(ms).toISOString();
+
+  test('a daily cron whose time has passed today is due TODAY', () => {
+    assert.equal(iso(lastExpectedFireMs('0 6 * * *', Date.parse('2026-08-06T10:06:00Z'))), '2026-08-06T06:00:00.000Z');
+  });
+
+  test('a daily cron whose time has NOT yet come today is due YESTERDAY — never a future occurrence', () => {
+    assert.equal(iso(lastExpectedFireMs('0 6 * * *', Date.parse('2026-08-06T05:59:00Z'))), '2026-08-05T06:00:00.000Z');
+  });
+
+  test('exactly at the scheduled minute counts as due, not as still-pending', () => {
+    assert.equal(iso(lastExpectedFireMs('0 6 * * *', Date.parse('2026-08-06T06:00:00Z'))), '2026-08-06T06:00:00.000Z');
+  });
+
+  test('a weekly cron walks back to its own weekday, not to yesterday', () => {
+    // 2026-08-06 is a Thursday; `dow=1` is Monday -> 2026-08-03.
+    assert.equal(iso(lastExpectedFireMs('0 6 * * 1', Date.parse('2026-08-06T10:00:00Z'))), '2026-08-03T06:00:00.000Z');
+  });
+
+  test('a weekly cron ON its weekday but before the hour goes back a full week', () => {
+    assert.equal(iso(lastExpectedFireMs('0 6 * * 1', Date.parse('2026-08-03T05:00:00Z'))), '2026-07-27T06:00:00.000Z');
+  });
+
+  test('month rollover is handled by UTC date arithmetic, not by subtracting 24h', () => {
+    assert.equal(iso(lastExpectedFireMs('0 6 * * *', Date.parse('2026-09-01T05:00:00Z'))), '2026-08-31T06:00:00.000Z');
+  });
+
+  // ⚠️ THE PARSERS MUST REFUSE THE SAME GRAMMAR. `deriveWatchedJobs` now asserts
+  // both accept an expression before building a job from it, so a shape either
+  // one refuses must be refused here too — otherwise the reader could compute an
+  // occurrence for a schedule the interval limb had already declined.
+  test('every shape cronIntervalHours refuses, lastExpectedFireMs refuses too', () => {
+    for (const bad of ['*/5 * * * *', '0 6 1 * *', '0 6 1 * 1', '0 1-5 * * *', '0 6,18 * * *', '0 6 * 1 *', '0 6 * *', '', undefined]) {
+      assert.equal(cronIntervalHours(bad), null, `interval should refuse ${JSON.stringify(bad)}`);
+      assert.equal(lastExpectedFireMs(bad, NOW), null, `occurrence should refuse ${JSON.stringify(bad)}`);
+    }
+  });
+
+  test('out-of-range literals are refused rather than wrapped by Date.UTC', () => {
+    assert.equal(lastExpectedFireMs('0 25 * * *', NOW), null);
+    assert.equal(lastExpectedFireMs('60 6 * * *', NOW), null);
+    assert.equal(lastExpectedFireMs('0 6 * * 9', NOW), null);
   });
 });
 
@@ -204,7 +288,11 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
     assert.deepEqual(problems, []);
     assert.equal(jobs.length, 1);
     assert.equal(jobs[0].job, 'demo_job');
-    assert.equal(jobs[0].intervalHours, 24);
+    // The cron EXPRESSION travels with the job, not a derived interval: the
+    // absence limb needs the occurrence, and carrying a number nothing reads is
+    // how a stale second copy of the schedule gets created.
+    assert.equal(jobs[0].cron, '0 6 * * *');
+    assert.equal(jobs[0].intervalHours, undefined);
     assert.equal(jobs[0].databaseId, 'abc');
   });
 
