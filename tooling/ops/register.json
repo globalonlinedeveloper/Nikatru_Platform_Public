@@ -187,6 +187,95 @@
     "review": 120,
     "failure-mode": 365
   },
+  "_recordReaders": {
+    "_why": [
+      "[14]O-3's acceptance is 'a query against that mechanism's own record returns a run inside the",
+      "last cadence window'. Until 2026-08-06 no query ran: the guard checked that a row NAMED a",
+      "`record`, a `readBy` and a `failingValue`, which is a check about prose. Two Windows duties were",
+      "returning LastTaskResult = 1 every night while this file exited 0 — the falsifier was true and",
+      "the guard was green, because the limb had no domain to range over.",
+      "",
+      "So every duty row on a CLOCK now names a READER, and the reader either queries the record or",
+      "prints WHY it cannot. The four honest outcomes are: a successful run inside the window (pass),",
+      "a reachable record with no successful run inside the window (FAIL), a reader whose credential or",
+      "platform is absent on this runner (print, with the missing thing named), and `unreachable` — the",
+      "register's own admission that the record sits on a host nothing in CI or on the laptop can read.",
+      "",
+      "WARNING: `unreachable` IS THE ESCAPE HATCH AND IT IS CAPPED. Declaring every row unreachable would",
+      "make this limb green over nothing — the exact defect it replaces — so `_maxUnreachable` is a",
+      "CEILING that ratchets DOWN, never a floor on the register's size. Every declared reader must also",
+      "own at least one row: a reader nobody uses is code that cannot fail."
+    ],
+    "_maxUnreachable": 5,
+    "_windowMultiplier": 1.5,
+    "_windowMultiplierWhy": "The same 1.5x the absence watcher uses and for the same reason, written down once in tooling/ops/check-heartbeats.mjs: a window EQUAL to the cadence has zero margin and reports a duty dead on a single late run. One missed run is not an alarm; two are.",
+    "windows-scheduled-task": {
+      "queries": "Get-ScheduledTaskInfo -TaskName <task> — LastRunTime and LastTaskResult, read-only.",
+      "needs": "the Windows host itself (process.platform === 'win32' and powershell on PATH)",
+      "unreadableOn": "every Linux CI runner, where it prints the reason rather than failing"
+    },
+    "github-run-history": {
+      "queries": "GET /repos/{repo}/actions/workflows/{workflow}/runs?event=schedule&status=success&per_page=1 — the newest SUCCESSFUL run for the declared event.",
+      "needs": "GITHUB_TOKEN or GH_TOKEN in the environment",
+      "unreadableOn": "any run with no token — the reason prints and names the missing variable"
+    },
+    "github-issue-activity": {
+      "queries": "GET /search/issues for the declared title, then its updated_at — the record duty.renovate names.",
+      "needs": "GITHUB_TOKEN or GH_TOKEN in the environment",
+      "unreadableOn": "any run with no token"
+    },
+    "cloudflare-d1-heartbeat": {
+      "queries": "POST /accounts/{acct}/d1/database/{db}/query — MAX(created_at) over cron_heartbeat WHERE ok = 1. A row with ok = 0 is NOT a successful run, which is the whole point of reading the table rather than counting rows in it.",
+      "needs": "CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID, and the database_id resolved from the anchored wrangler config",
+      "unreadableOn": "any run without both variables"
+    },
+    "unreachable": {
+      "queries": "nothing, and the row must say why in `mechanism.recordQuery.why`.",
+      "needs": "n/a — this is the register admitting the record is on a host it cannot read",
+      "unreadableOn": "always, by declaration — capped by _maxUnreachable so it cannot become the whole domain"
+    }
+  },
+  "_expiryCoverage": {
+    "_why": [
+      "[14]O-11 measured ROW EXISTENCE, which is a stand-in. All twelve `expiring` rows carry",
+      "`expires: null`, the guard tolerates null when ownerGated+ownerGap is present, and so the date",
+      "arithmetic (`daysLeft <= leadDays`) has never executed once. A limb whose domain is empty is",
+      "green over nothing.",
+      "",
+      "DECISION 2026-08-06 — THE TOLERANCE STAYS, AND STOPS BEING SILENT. Not one of the twelve dates",
+      "is knowable in this repository: eight live in a vendor console, one on the Oracle box behind",
+      "`openssl x509 -enddate`, one is a non-use clock with no calendar date at all, and two (GST LUT,",
+      "Awfis lease) are business values CLAUDE.md forbids mirroring out of gitignored company/ into this",
+      "public file. Requiring a date would therefore either block all of CI on owner-only work",
+      "(CLAUDE.md C-6) or invite an invented date — and an invented expiry is worse than a null, because",
+      "it reads as coverage and the arithmetic would then pass on a fiction.",
+      "",
+      "What replaces the silence, and both of these CAN fail:",
+      "  1. `expiryKnownAt` is MANDATORY on every row — the exact place the date is read from. 'Unknown'",
+      "     becomes 'unread from a named source', which is actionable; deleting the field reddens.",
+      "  2. `_maxNull` is a CEILING that ratchets DOWN as dates arrive. A thirteenth null expiry fails.",
+      "  3. The count of rows whose lead-window arithmetic ACTUALLY EXECUTED prints on every run, so",
+      "     '0 of 12' can never again look like twelve checked expiries."
+    ],
+    "_maxNull": 12
+  },
+  "_retentionCoverage": {
+    "_why": [
+      "[14]O-17's acceptance is 'for every store with a retention rule, a query returns zero rows older",
+      "than the declared period' — and ZERO rows declare a period, so the deleting-job limb ranges over",
+      "the empty set. The same defect as _expiryCoverage above, one requirement over.",
+      "",
+      "DECISION 2026-08-06 — `period-undeclared` STAYS AND IS CAPPED. The period is a policy number:",
+      "stage 8 owns WHAT it is, this stage owns the job that makes it true, and an agent inventing one",
+      "would be writing policy into a published privacy commitment. But the limb is now ARMED rather",
+      "than absent: a row that declares `rule: period` must ALSO name `deletingJob` — the acceptance's",
+      "'by a job' half — so the day a period is declared the job requirement lands with it instead of",
+      "waiting for somebody to remember to write new code. `_maxUndeclared` is a CEILING that ratchets",
+      "down; a fourth undeclared period fails. And the executed-query count prints on every run, so an",
+      "empty domain announces itself instead of reading as nineteen checked stores."
+    ],
+    "_maxUndeclared": 3
+  },
   "_requiredCoverage": {
     "_why": [
       "The domain is the UNION of (a) what a tree walk can see — workflows, wrangler crons, wrangler",
@@ -224,8 +313,8 @@
       "recovery.oci-boot-volume",
       "recovery.worker-d1-export",
       "recovery.fresh-host",
-    "recovery.app-retirement",
-    "recovery.store-enforcement-response",
+      "recovery.app-retirement",
+      "recovery.store-enforcement-response",
       "failure.laptop-lost",
       "failure.github-account-lost",
       "failure.google-account-lost",
@@ -253,7 +342,12 @@
         "anchor": "services/platform/wrangler.jsonc",
         "record": "platform_db.cron_heartbeat (append-only, one row per job/target per run)",
         "failingValue": "ok = 0 — reachable, and reached: three consecutive nights carried it while nothing read the table",
-        "readBy": "tooling/ops/check-heartbeats.mjs"
+        "readBy": "tooling/ops/check-heartbeats.mjs",
+        "recordQuery": {
+          "reader": "cloudflare-d1-heartbeat",
+          "table": "cron_heartbeat",
+          "wrangler": "services/platform/wrangler.jsonc"
+        }
       },
       "absenceWatcher": {
         "substrate": "github-actions",
@@ -302,7 +396,12 @@
         "anchor": ".github/workflows/build-platforms.yml",
         "record": "GitHub Actions run history, filtered to event = schedule",
         "failingValue": "no scheduled success inside the window — and a manual dispatch deliberately does NOT satisfy it",
-        "readBy": "tooling/ci/assert-platform-proof-fresh.mjs"
+        "readBy": "tooling/ci/assert-platform-proof-fresh.mjs",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "build-platforms.yml",
+          "event": "schedule"
+        }
       },
       "absenceWatcher": {
         "substrate": "github-actions",
@@ -327,7 +426,12 @@
         "anchor": ".github/workflows/e2e.yml",
         "record": "GitHub Actions run history + the reused issue titled 'Nightly E2E (live) is failing against production'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
-        "readBy": "tooling/ci/assert-e2e-proof-fresh.mjs on every push — the newest SCHEDULED green run must be inside its derived window, and a workflow_dispatch deliberately does not satisfy it; plus the alert job in e2e.yml, whose issue is closed by a human because closing it IS the disposition"
+        "readBy": "tooling/ci/assert-e2e-proof-fresh.mjs on every push — the newest SCHEDULED green run must be inside its derived window, and a workflow_dispatch deliberately does not satisfy it; plus the alert job in e2e.yml, whose issue is closed by a human because closing it IS the disposition",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "e2e.yml",
+          "event": "schedule"
+        }
       },
       "absenceWatcher": {
         "substrate": "github-actions",
@@ -394,7 +498,12 @@
         "anchor": ".github/workflows/ops-watch.yml",
         "record": "GitHub Actions run history + the reused issue titled 'Scheduled duty is not reporting healthy'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
-        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue"
+        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "event": "schedule"
+        }
       },
       "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03.",
       "absenceWatcher": {
@@ -524,7 +633,11 @@
         "anchor": "renovate.json",
         "record": "the Dependency Dashboard issue + chore/renovate-* branches on origin, and — for the CONFIGURATION half — the guard's own exit status on every push",
         "failingValue": "a customManager whose pattern matches no file, or matches a file and captures no currentValue, or a pin in tooling/versions.json that no manager reaches and no written exemption covers",
-        "readBy": "tooling/ci/assert-update-coverage.mjs for the configuration half; a human reading the Dependency Dashboard issue for the proposal half"
+        "readBy": "tooling/ci/assert-update-coverage.mjs for the configuration half; a human reading the Dependency Dashboard issue for the proposal half",
+        "recordQuery": {
+          "reader": "github-issue-activity",
+          "titleContains": "Dependency Dashboard"
+        }
       },
       "absenceWatcher": {
         "substrate": "(none)",
@@ -550,7 +663,11 @@
         "anchor": "company/runbooks/operations.md",
         "record": "the OCI console's own audit + the runbook checkboxes",
         "failingValue": "the 30-day abandonment clock elapsing with no login, or the alarms still absent",
-        "readBy": "nothing in this repo can read a vendor console — this row is the only enumeration, which is why it prints on every run"
+        "readBy": "nothing in this repo can read a vendor console — this row is the only enumeration, which is why it prints on every run",
+        "recordQuery": {
+          "reader": "unreachable",
+          "why": "The record is the OCI console's own audit log plus runbook checkboxes in gitignored company/. There is no API this repo holds a credential for, and the runbook half is a human ticking a box — neither is a machine record a query can return a run from."
+        }
       },
       "absenceWatcher": {
         "substrate": "(none)",
@@ -578,7 +695,11 @@
         "anchor": "company/runbooks/backup-liveness.md",
         "record": "Windows Task Scheduler LastTaskResult + the GlitchTip heartbeat monitor",
         "failingValue": "LastTaskResult != 0, or the heartbeat not arriving inside its grace window",
-        "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop)"
+        "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop)",
+        "recordQuery": {
+          "reader": "windows-scheduled-task",
+          "task": "NIKATRU daily backup"
+        }
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
@@ -615,7 +736,11 @@
         "anchor": "company/runbooks/scheduled-tasks.md",
         "record": "Windows Task Scheduler LastTaskResult — and NOTHING reads it",
         "failingValue": "LastTaskResult != 0 — currently 1",
-        "readBy": "nothing yet — this is the gap, named rather than hidden"
+        "readBy": "nothing yet — this is the gap, named rather than hidden",
+        "recordQuery": {
+          "reader": "windows-scheduled-task",
+          "task": "ClaudeTranscriptBackup"
+        }
       },
       "absenceWatcher": {
         "substrate": "(none)",
@@ -643,7 +768,11 @@
         "anchor": "company/runbooks/scheduled-tasks.md",
         "record": "Windows Task Scheduler LastTaskResult — and NOTHING reads it",
         "failingValue": "LastTaskResult != 0 — currently 1",
-        "readBy": "nothing yet — this is the gap, named rather than hidden"
+        "readBy": "nothing yet — this is the gap, named rather than hidden",
+        "recordQuery": {
+          "reader": "windows-scheduled-task",
+          "task": "NikatruProjectBackup"
+        }
       },
       "absenceWatcher": {
         "substrate": "(none)",
@@ -691,7 +820,11 @@
         "anchor": "company/runbooks/glitchtip.md",
         "record": "the gt-*.sql.gz files in /opt/glitchtip/backups and their mtimes and sizes",
         "failingValue": "no dump newer than the window, or one small enough to be truncated — 3,379,805 bytes was the healthy size measured 2026-08-05",
-        "readBy": "/opt/glitchtip/backup-liveness.py on the box"
+        "readBy": "/opt/glitchtip/backup-liveness.py on the box",
+        "recordQuery": {
+          "reader": "unreachable",
+          "why": "The record is the mtime and size of /opt/glitchtip/backups/gt-*.sql.gz ON THE ORACLE BOX. No CI runner and no laptop can stat that path; the only reader is backup-liveness.py, which runs on the same box and is itself [pipeline E-9b]."
+        }
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
@@ -724,7 +857,11 @@
         "anchor": "company/runbooks/glitchtip.md",
         "record": "the encrypted objects under gcrypt: on Drive, plus /opt/glitchtip/.gt-drive-sync.done",
         "failingValue": "the newest dump absent from Drive, or the .done stamp older than the newest dump",
-        "readBy": "/opt/glitchtip/backup-liveness.py on the box"
+        "readBy": "/opt/glitchtip/backup-liveness.py on the box",
+        "recordQuery": {
+          "reader": "unreachable",
+          "why": "The record is the encrypted objects under gcrypt: on Drive plus /opt/glitchtip/.gt-drive-sync.done on the box. The Drive half needs the rclone crypt password that exists only in the on-box rclone.conf; the stamp half is on the box."
+        }
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
@@ -753,7 +890,11 @@
         "anchor": "company/runbooks/operations.md",
         "record": "the heartbeat POSTs recorded against GlitchTip monitor 16, and the events raised in project `ops`",
         "failingValue": "no POST inside the 3h monitor interval",
-        "readBy": "GlitchTip monitor 16 — which runs on this same box"
+        "readBy": "GlitchTip monitor 16 — which runs on this same box",
+        "recordQuery": {
+          "reader": "unreachable",
+          "why": "The record is heartbeat POSTs against GlitchTip monitor 16, on the GlitchTip instance that runs on the same Oracle box. No credential for that API is held in this repository."
+        }
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
@@ -782,7 +923,11 @@
         "anchor": "company/runbooks/operations.md",
         "record": "events in the GlitchTip `ops` project",
         "failingValue": "no event when usage is over the threshold — which is indistinguishable from no event because usage is under it",
-        "readBy": "nothing — this row is the only enumeration"
+        "readBy": "nothing — this row is the only enumeration",
+        "recordQuery": {
+          "reader": "unreachable",
+          "why": "The record is events in the GlitchTip `ops` project on the box. And per this row's own absenceWatcher gap, an EMPTY ops project is indistinguishable from a healthy one — so even a reachable query would not answer the absence half."
+        }
       },
       "absenceWatcher": {
         "substrate": "(none)",
@@ -1239,7 +1384,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "🔴 ~$10 and a date nobody is watching takes down every checkout return URL, every API hostname and every config fetch AT ONCE. Owner: confirm auto-renew and record the date.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "Cloudflare dashboard -> Domain Registration -> nikatru.com -> Expiry date + Auto-renew toggle. Owner-only console."
     },
     {
       "id": "expiring.domain.rajasekarselvam.com",
@@ -1262,7 +1408,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Two registrars, two behaviours, both unchecked since ~17 July. Owner action.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "Hostinger hPanel -> Domains -> rajasekarselvam.com -> expiry date + auto-renew. A SECOND registrar with different renewal behaviour; do not infer it from the Cloudflare one."
     },
     {
       "id": "expiring.cert.origin-ca",
@@ -1285,7 +1432,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "🔴 Cloudflare states it sends NO expiry notification for Origin CA certificates, so a lapse takes out the very channel that would have told you. Owner: run openssl on the box and record notAfter.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "`openssl x509 -enddate -noout -in <the installed cert>` on the Oracle box. The INSTALLED certificate's own notAfter is the only source that cannot drift; a remembered 15-year validity is not this field."
     },
     {
       "id": "expiring.drive-oauth-app",
@@ -1308,7 +1456,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Console-only. Owner action.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "Google Cloud console -> APIs & Services -> OAuth consent screen -> Publishing status. \"Testing\" caps refresh tokens at 7 days; \"In production\" removes that clock. Console-only."
     },
     {
       "id": "expiring.drive-refresh-token-non-use",
@@ -1332,7 +1481,8 @@
         "google"
       ],
       "source": "unverified",
-      "unverifiedWhy": "The six-month figure comes from this repo's own runbook, not from a primary Google page read for this row. Treat it as unconfirmed; the mitigation is orders of magnitude larger than the uncertainty, which is why it is recorded rather than researched again."
+      "unverifiedWhy": "The six-month figure comes from this repo's own runbook, not from a primary Google page read for this row. Treat it as unconfirmed; the mitigation is orders of magnitude larger than the uncertainty, which is why it is recorded rather than researched again.",
+      "expiryKnownAt": "NO CALENDAR DATE EXISTS for this one, by construction: it is a non-use clock, not an expiry. The checkable fact is `satisfiedBy` -> duty.laptop.nikatru-daily-backup and that duty's cadence, which this guard already tests against windowDays / 8."
     },
     {
       "id": "expiring.keystore.android-upload",
@@ -1356,7 +1506,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "🔴 OWNER_QUEUE S-10 — release-keystore/ holds release.keystore, KEYSTORE_PASSWORD.txt and KEYSTORE_B64.txt IN ONE DIRECTORY, ONE BACKUP SET, reaching ONE Google account. A leaked PAT is rotatable; an Android upload keystore is NOT, once an app has shipped. Nothing has shipped, so the window to separate them is open TODAY.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "`keytool -list -v -keystore release-keystore/release.keystore` -> \"Valid from ... until\". The keystore is on this laptop and gitignored; the command needs its password, which is owner-held."
     },
     {
       "id": "expiring.gst-lut",
@@ -1380,7 +1531,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Owner-supplied date. Deliberately NOT mirrored into this public file with a real value — the row's existence is the structural fact CI needs; the date itself is business content that stays private.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "company/business/compliance-calendar.md (gitignored). Deliberately NOT mirrored here: the row's existence is the structural fact CI needs, the date is business content that stays private."
     },
     {
       "id": "expiring.awfis-lease",
@@ -1403,7 +1555,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Owner-supplied date; the value stays in company/.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "company/business/company-master.md plus the Awfis agreement (both gitignored). Same split as the GST LUT: existence public, value private."
     },
     {
       "id": "expiring.store-enrolment.play",
@@ -1426,7 +1579,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Console-only. Owner action.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "Google Play Console -> Setup -> Account details. Not yet enrolled, so there is no date to read until enrolment happens. Console-only."
     },
     {
       "id": "expiring.store-enrolment.appstore",
@@ -1449,7 +1603,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Console-only. Owner action.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "Apple Developer -> Membership -> Expiration Date ($99/yr). Not yet enrolled. Console-only."
     },
     {
       "id": "expiring.store-enrolment.microsoft",
@@ -1472,7 +1627,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Console-only. Owner action; see company/runbooks/microsoft-store-registration.md.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "Partner Center -> Account settings -> Developer account. See company/runbooks/microsoft-store-registration.md. Console-only."
     },
     {
       "id": "expiring.store-enrolment.snap",
@@ -1495,7 +1651,8 @@
       ],
       "ownerGated": true,
       "ownerGap": "Console-only. Owner action.",
-      "source": "verified"
+      "source": "verified",
+      "expiryKnownAt": "Snapcraft dashboard -> the Ubuntu One account and its developer agreement. Console-only."
     },
     {
       "id": "recovery.app-retirement",

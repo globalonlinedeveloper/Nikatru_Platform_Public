@@ -20,8 +20,17 @@ name: Build all 6 platforms
 on:
   workflow_dispatch:
   # Also gate release tags, where "it built on my machine" is not good enough.
+  #
+  # `<app>-v*`, not `subly-v*` — widened 2026-08-06 with the matrix refactor for
+  # [9]R-1. The old glob was the last app-specific string left in this file after
+  # every path became a matrix value, and it is the half nobody would notice:
+  # tagging `probe-v1.0.0` would have produced NO six-platform proof and no
+  # error, because a tag that matches no filter is simply not a trigger. The
+  # widening is strictly additive — every `subly-v*` tag still matches — and
+  # `android-signing.mjs` derives "this is a release" from the `refs/tags/`
+  # PREFIX, never from the app slug, so the signing posture is unchanged.
   push:
-    tags: ['subly-v*']
+    tags: ['*-v*']
   # WEEKLY, added 2026-07-27 for [pipeline F-4]. Until this existed the workflow
   # ran only when a human clicked it, so the "all 6 platforms build" claim was
   # true but UNDATED — found eight commits stale, and green again only because
@@ -55,7 +64,7 @@ jobs:
   # evidence. Ungated, it would build from any dispatched ref — including one
   # whose gate is RED — and the resulting green run would be consumed as proof
   # that the six platforms build at a commit that never passed its own tests.
-  # It also triggers on `push: tags: subly-v*`, which is a release trigger by
+  # It also triggers on `push: tags: <app>-v*`, which is a release trigger by
   # any reading.
   #
   # ONE job rather than a first step in each of the three: the verdict is the
@@ -63,6 +72,12 @@ jobs:
   # running), and three parallel polls of one API for one answer is waste. The
   # cost is one extra runner-minute; the benefit is that a red gate skips all
   # three builds instead of racing them.
+  #
+  # Since the matrix refactor the three build jobs reach this gate THROUGH
+  # `prepare` (`gate → prepare → builds`) instead of naming it directly. A red
+  # gate skips `prepare`, and a skipped `prepare` skips all three — the same
+  # outcome by the same mechanism, one edge further along. See the note on
+  # `prepare` for why the edge is written that way.
   #
   # ⚠️ `all_platforms` must `needs:` this job too — `assert-channel-register.mjs`
   # asserts the aggregator covers every other job, so forgetting it fails CI
@@ -81,10 +96,72 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
 
+  # ── which apps does this factory hold? ──────────────────────────────────────
+  # [pipeline 9]R-1: "adding an app requires no new or edited workflow file."
+  # Every build job below is a MATRIX over this job's output, so the answer to
+  # "which apps get built" is the root pubspec's `workspace:` list and nothing
+  # else — the same list `melos run gate` resolves and `assert-workspace-
+  # coverage.mjs` already polices. Adding an app to that list adds three matrix
+  # legs here; no line in this file mentions any app by name.
+  #
+  # 🔴 THE EMITTER IS assert-release-lane-generic.mjs ITSELF, and that is the
+  # point rather than a shortcut. That guard grades this workflow by comparing
+  # the apps it covers against the workspace, and it now PRODUCES the set the
+  # matrix iterates. One function, one file: a lane cannot drift from the
+  # workspace without the guard's own reading drifting with it. Two readers of
+  # one pubspec is the copy that quietly stops reading what it thinks it reads,
+  # which is this repository's single most repeated failure.
+  #
+  # It fails loudly on an empty answer. A `matrix: []` runs ZERO jobs and reports
+  # success, and `all_platforms` below would then aggregate nothing and print
+  # "All 6 platforms built" — green over an empty set, exactly the shape
+  # assert-green-means-ran.mjs exists for.
+  #
+  # ⚠️ IT SITS BETWEEN `gate` AND THE BUILDS, and the chain is `gate → prepare →
+  # {linux_web_android, windows, apple}` rather than each build job needing both.
+  # Two reasons, and the second one is not cosmetic:
+  #   · a matrix job can only read `needs.<job>.outputs`, so `prepare` HAS to be
+  #     a direct dependency of every job that iterates it;
+  #   · `assert-platform-proof-fresh.mjs` reads the aggregator's `needs:` with a
+  #     whole-file `/needs:\s*\[([^\]]+)\]/` — the FIRST flow-form list in the
+  #     file. Giving the platform jobs `needs: [gate, prepare]` puts a flow list
+  #     above the aggregator's and that guard then reports the platform jobs as
+  #     unwired: a false COVERAGE LOST on a correctly wired workflow. Keeping the
+  #     scalar form leaves its reading untouched. (The fragility is that guard's,
+  #     not this file's, and it is recorded here because the next person to add a
+  #     second dependency to a build job will hit it again.)
+  # The gating posture is unchanged: a red ci-gate skips `prepare`, which skips
+  # all three build jobs, which is what it did when they named `gate` directly.
+  prepare:
+    name: Derive the app set from the pub workspace
+    runs-on: ubuntu-24.04
+    needs: gate
+    outputs:
+      apps: ${{ steps.workspace.outputs.apps }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: The matrix comes from the workspace, never from this file
+        id: workspace
+        run: |
+          set -euo pipefail
+          apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+          echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+          echo "Building: ${apps}" >> "$GITHUB_STEP_SUMMARY"
+
   linux_web_android:
     name: Linux + Web + Android
     runs-on: ubuntu-24.04
-    needs: gate
+    needs: prepare
+    # `fail-fast: false` because each leg is an independent PROOF, not a stage of
+    # one build: app #2 failing to compile says nothing about app #1, and
+    # cancelling app #1's run destroys the evidence that would have told them
+    # apart. With one app in the workspace this changes nothing.
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
@@ -168,12 +245,12 @@ jobs:
       # attributed to the default version until [9]R-2 gives every lane a release
       # id. A sink with a weak release string still beats no sink.
       - name: Build web
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: >
           flutter build web --release
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       - name: Build linux
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: >
           flutter build linux --release
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
@@ -194,7 +271,7 @@ jobs:
       # relying on. Deleting a YAML line must not be able to turn a release lane
       # back into a build proof.
       #
-      # For THIS workflow the answer is: a `push: tags: subly-v*` run requires
+      # For THIS workflow the answer is: a `push: tags: <app>-v*` run requires
       # signing, and the weekly/dispatch runs do not. That scoping is deliberate
       # rather than cautious — those runs produce the six-platform proof that
       # assert-platform-proof-fresh.mjs feeds back into ci-gate, and it FAILS the
@@ -214,7 +291,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: node tooling/ci/android-signing.mjs --app subly
+        run: node tooling/ci/android-signing.mjs --app ${{ matrix.app }}
       # The APK is built from the same `release` buildType and therefore carries
       # the same signature as the bundle. It is NOT checked below — see the note
       # on the signature step: this repo's checker reads JAR (v1) signatures, and
@@ -245,7 +322,7 @@ jobs:
       # `kind: store` row declares, so a fourth requirement added to that getter
       # cannot silently escape any store lane.
       - name: Build android (apk — sideloadable build proof)
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: >
           flutter build apk --release
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
@@ -288,7 +365,7 @@ jobs:
       # `served: false`, the guard PRINTS that exemption on every run, and the
       # emit step lands with the lane, not before it.
       - name: Build android (aab — the Google Play artifact)
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: >
           flutter build appbundle --release
           --build-number=${{ github.run_number }}
@@ -318,26 +395,36 @@ jobs:
       - name: The .aab must be signed by the upload key, not the debug key
         run: >
           node tooling/ci/assert-artifact-signed.mjs
-          apps/subly/build/app/outputs/bundle/release/app-release.aab
+          apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
       # 🔴 THE POSTURE IS IN THE ARTIFACT NAME, and that is the "labelled, not
       # indistinguishable" half of the fix. A downloaded `subly-linux-web-android`
       # said nothing about whether its .aab could be uploaded anywhere; a
       # `…-debug-signed-build-proof` cannot be mistaken for a release by anyone
       # reading the run's artifact list.
+      #
+      # THE APP PREFIX IS NOT COSMETIC EITHER. `upload-artifact@v4` rejects a
+      # second upload under a name that already exists in the run, so a matrix
+      # over two apps with a fixed artifact name is not "two artifacts, confusing
+      # names" — it is a HARD FAILURE on the second leg. Parameterising the name
+      # is what makes the matrix run at all.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subly-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
+          name: ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
           path: |
-            apps/subly/build/app/outputs/flutter-apk/*.apk
-            apps/subly/build/app/outputs/bundle/release/*.aab
-            apps/subly/build/linux/x64/release/bundle
+            apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk
+            apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
+            apps/${{ matrix.app }}/build/linux/x64/release/bundle
           retention-days: 7
           if-no-files-found: error
 
   windows:
     name: Windows
     runs-on: windows-2025
-    needs: gate
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -368,7 +455,7 @@ jobs:
       # below is packaged from exactly these binaries, and without them the
       # package Microsoft would receive is the demo build.
       - name: Build windows
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: >
           flutter build windows --release
           --build-number=${{ github.run_number }}
@@ -390,6 +477,18 @@ jobs:
       # nothing here needs one — which is what makes this the cheapest real store
       # channel we have.
       #
+      # ⬜ THE ONE THING THE MATRIX CANNOT CARRY, recorded rather than forced.
+      # `msix_config` lives in each app's OWN pubspec — identity_name, publisher,
+      # and `output_name`, which is what the produced file is called. There is no
+      # workflow-level expression that can name it, because the fact is not in
+      # this file and not in the matrix; it is in the app. So the upload below
+      # globs `*.msix` under the app's msix output_path instead of naming
+      # `subly.msix`. That is generic AND honest: `if-no-files-found: error`
+      # still fails the leg if an app's msix_config produced nothing. What stays
+      # app-specific is the CONTENT of msix_config, and `assert-store-metadata.mjs`
+      # already compares the identity a channel row declares against what each
+      # apps/*/pubspec.yaml packages with — the right place for it.
+      #
       # ⬜ The package identity is still `PARTNER-CENTER-PENDING` (OWNER_QUEUE
       # A-2). The .msix therefore BUILDS and is NOT SUBMITTABLE; that is the
       # point of building it anyway — the packaging path is proven before the
@@ -397,21 +496,25 @@ jobs:
       # `build_windows: false` keeps msix from rebuilding: this packages the
       # exact binaries the step above produced and the upload below proves.
       - name: Package MSIX (Microsoft Store)
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: dart run msix:create
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subly-windows
+          name: ${{ matrix.app }}-windows
           path: |
-            apps/subly/build/windows/x64/runner/Release
-            apps/subly/build/windows/msix/subly.msix
+            apps/${{ matrix.app }}/build/windows/x64/runner/Release
+            apps/${{ matrix.app }}/build/windows/msix/*.msix
           retention-days: 7
           if-no-files-found: error
 
   apple:
     name: macOS + iOS
     runs-on: macos-26
-    needs: gate
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -450,30 +553,37 @@ jobs:
       - name: Patch the SDK for flutter/flutter#188060 (macOS AOT abort)
         run: python3 tooling/ci/patch-flutter-macos-aot.py "$FLUTTER_ROOT"
       - name: Build macos
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: flutter build macos --release
       # --no-codesign: this proves the code COMPILES for iOS without needing an
       # Apple Developer account or provisioning profile. Signing is a separate,
       # owner-gated step and must not block build verification.
       - name: Build ios (no codesign)
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: flutter build ios --release --no-codesign
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: subly-macos
-          path: apps/subly/build/macos/Build/Products/Release
+          name: ${{ matrix.app }}-macos
+          path: apps/${{ matrix.app }}/build/macos/Build/Products/Release
           retention-days: 7
           if-no-files-found: error
 
   all_platforms:
     name: all-platforms
     runs-on: ubuntu-24.04
-    needs: [gate, linux_web_android, windows, apple]
+    needs: [gate, prepare, linux_web_android, windows, apple]
     if: always()
     steps:
+      # A matrix job's `result` is the ROLL-UP of every leg: one red leg makes
+      # the whole `needs.linux_web_android.result` a failure, so "all 6 platforms
+      # built" keeps meaning all six FOR EVERY APP without this step learning
+      # what a matrix is. `prepare` is in `needs` for the same reason the others
+      # are — assert-channel-register.mjs asserts the aggregator covers every
+      # other job in the file, and a `prepare` that failed to emit an app set is
+      # precisely the run that must not print success.
       - name: Require every platform green
         run: |
-          echo "gate=${{ needs.gate.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }}"
+          echo "gate=${{ needs.gate.result }} prepare=${{ needs.prepare.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }}"
           # 'skipped' added by review 2026-07-31: a job-level `if:` on any
           # platform job would otherwise let this print "All 6 platforms built"
           # over a platform that never built.

@@ -71,6 +71,12 @@ jobs:
     permissions:
       contents: read
       actions: read
+      # [pipeline 14]O-3 — the record-query limb reads the Renovate Dependency
+      # Dashboard issue as `duty.renovate`'s record. Without this the reader
+      # reports `unreadable` and queries nothing, which is honest but is not the
+      # requirement. Read-only, and scoped to this job for the same reason
+      # `actions: read` is.
+      issues: read
     defaults:
       run:
         working-directory: services/platform
@@ -474,6 +480,16 @@ jobs:
       # [pipeline 14]O-1
       - name: Every failure has a detector, a response and a cadence
         working-directory: ${{ github.workspace }}
+        env:
+          # [pipeline 14]O-3 — arms the `github-run-history` and
+          # `github-issue-activity` readers. WITHOUT it those rows print
+          # "neither GITHUB_TOKEN nor GH_TOKEN is in the environment" and query
+          # nothing — the guard still exits 0, so its absence is a QUIETER
+          # check rather than a failing one, which is exactly the shape this
+          # requirement exists to stop. Verified live against the real API
+          # 2026-08-06: build-platforms.yml, e2e.yml, ops-watch.yml run history
+          # and the Renovate Dependency Dashboard issue all resolve.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node tooling/ci/assert-ops-register.mjs
       # …and every PINNED INPUT is still REACHED by the update mechanism.
       #
@@ -990,6 +1006,18 @@ jobs:
       - name: No submission endangers the store identity
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-submission-safety.mjs
+      # [pipeline 10]D-9's workflow limb, which did not exist until 2026-08-06.
+      # The requirement's recorded reason for being green — "the second limb
+      # quantifies over an empty set" — EXPIRED when the four submit-*.yml
+      # workflows landed, and nothing noticed because no guard parsed workflow
+      # YAML for the record call. This does. The subject set is derived from
+      # tooling/channel-register.json rather than hand-typed, because a
+      # hand-typed list shrinks silently; rehearsals (`--dry-run`) are exempt
+      # and counted OUT LOUD, and a mode assembled from an expression is graded
+      # as publishing rather than assumed safe.
+      - name: No publishing lane finishes without a [10]D-9 record
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-publish-records.mjs
       # …and the Android module PINS the API level Google Play will accept.
       #
       # 🔴 IT WAS COMPLIANT BY ACCIDENT UNTIL 2026-08-04. build.gradle.kts read

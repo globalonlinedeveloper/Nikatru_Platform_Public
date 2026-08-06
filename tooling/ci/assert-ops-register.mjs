@@ -322,6 +322,233 @@ export function cadenceDays(cadence) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// [14]O-3 · THE LIMB THAT ACTUALLY READS A RECORD.
+//
+// 🔴 THE STATE THIS REPLACES, MEASURED 2026-08-06 ON THE OWNER'S LAPTOP:
+//
+//     ClaudeTranscriptBackup   LastRun 2026-08-06 02:00:01   LastTaskResult 1
+//     NikatruProjectBackup     LastRun 2026-08-06 02:30:01   LastTaskResult 1
+//     assert-ops-register.mjs                                exit 0
+//
+// Two duty rows on a 1-day cadence, both with a run record, both with NO
+// SUCCESSFUL RUN in their window — and this guard printed `ok`. It printed ok
+// because the cadence limb checked that each row NAMED a `record`, a `readBy`
+// and a `failingValue`. Those are three assertions about prose. The acceptance
+// asks for "a query against that mechanism's own record"; no query existed.
+//
+// This is the same defect as the two beneath it (`expires: null` on every
+// expiring row, `period` on no retention row): AN ACCEPTANCE LIMB WHOSE DOMAIN
+// IS EMPTY IS GREEN OVER NOTHING. It is not a broken check — it is a check that
+// silently stopped checking, which is the failure mode CLAUDE.md's verification
+// discipline names first.
+//
+// ── WHY A SUCCESSFUL RUN, NOT A RUN ─────────────────────────────────────────
+// `LastTaskResult = 1` IS a record of a run inside the window. Counting it would
+// satisfy the drafted words and mean nothing: the register would assert the duty
+// is performed by a mechanism that ran and failed. `cron_heartbeat` makes the
+// same distinction (`ok = 0` is a fresh row and a failure), and this repo has
+// already paid for conflating them — three consecutive nights of `ok = 1` on an
+// HTTP 401. So a probe reports the newest SUCCESS, and a reachable record with
+// no success inside the window is RED.
+//
+// ── WHY 1.5x THE CADENCE ────────────────────────────────────────────────────
+// Not chosen here: it is `check-heartbeats.mjs`'s own ratio, and its reasoning
+// is the register's — a window EQUAL to the cadence has zero margin, so one late
+// run reads as a dead duty and the guard gets disabled. One missed run is not an
+// alarm; two are. The number lives in `_recordReaders._windowMultiplier` so it
+// is stated once and can be read by a human without reading this file.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The four honest outcomes of asking a mechanism whether it ran. `pass` and
+ *  `fail` are the only ones that come from an answered query; `unreadable` and
+ *  `unreachable` both PRINT, and they are different on purpose — the first is a
+ *  missing credential or the wrong OS on this runner (fixable by wiring), the
+ *  second is the register admitting no reachable record exists at all. */
+export function classifyRunRecord(row, probe, nowMs, multiplier) {
+  const id = row.id;
+  const days = cadenceDays(row.cadence);
+  const q = row?.mechanism?.recordQuery ?? {};
+  if (days === null) return { verdict: 'skip', line: `${id} — not on a clock` };
+
+  const windowMs = days * 86_400_000 * multiplier;
+  const windowLabel = `${row.cadence} x ${multiplier} = ${(days * multiplier * 24).toFixed(1)}h`;
+
+  if (q.reader === 'unreachable') {
+    return { verdict: 'unreachable', line: `${id} (cadence ${row.cadence}) — NO REACHABLE RECORD: ${q.why}` };
+  }
+  if (!probe) {
+    return {
+      verdict: 'unreadable',
+      line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` produced no result at all on this run.`,
+    };
+  }
+  if (probe.unreadable) {
+    return {
+      verdict: 'unreadable',
+      line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` could not run here: ${probe.why}`,
+    };
+  }
+  if (probe.missing) {
+    // The mechanism itself is gone. NOT "unreadable": a query ran and answered
+    // that the thing the register names does not exist, which is the stale-row
+    // case the header calls strictly worse than an absent one.
+    return {
+      verdict: 'fail',
+      line:
+        `${id} — the mechanism its \`recordQuery\` names DOES NOT EXIST: ${probe.why}. ` +
+        'The register would go on asserting a duty performed by something that is gone.',
+    };
+  }
+  if (typeof probe.lastSuccessMs !== 'number' || Number.isNaN(probe.lastSuccessMs)) {
+    return {
+      verdict: 'fail',
+      line:
+        `${id} — its record IS reachable and holds NO SUCCESSFUL RUN AT ALL. ${probe.detail} ` +
+        `[window ${windowLabel}] — [14]O-3: a record that exists and records only failure is not a run of the duty.`,
+    };
+  }
+  const ageMs = nowMs - probe.lastSuccessMs;
+  if (ageMs > windowMs) {
+    return {
+      verdict: 'fail',
+      line:
+        `${id} — its record IS reachable and the newest SUCCESSFUL run is ${(ageMs / 3_600_000).toFixed(1)}h old, ` +
+        `outside its own window [${windowLabel}]. ${probe.detail}`,
+    };
+  }
+  return {
+    verdict: 'pass',
+    line: `${id} — queried: newest success ${(ageMs / 3_600_000).toFixed(1)}h ago, inside [${windowLabel}]. ${probe.detail}`,
+  };
+}
+
+/** Pure. `probes` is `Map<rowId, probeResult>`; every impure thing has already
+ *  happened. Returns `coverageLost` separately from `errors` because the two
+ *  mean different things: an error is a duty that is failing, coverage lost is
+ *  this limb no longer being able to tell. */
+export function evaluateRunRecords(reg, probes, nowMs) {
+  const errors = [];
+  const prints = [];
+  const decl = reg._recordReaders;
+  if (!decl || typeof decl !== 'object') {
+    return {
+      coverageLost: [
+        '`_recordReaders` is missing from the register.',
+        '[14]O-3 asks for a QUERY against each mechanism\'s own record. Without the reader declarations every',
+        'duty row falls out of that domain at once, and the limb goes back to checking that a row names a',
+        'string — which was green while two Windows duties failed nightly.',
+      ],
+    };
+  }
+  const readerNames = new Set(Object.keys(decl).filter((k) => !k.startsWith('_')));
+  const scheduled = reg.rows.filter((r) => r.kind === 'duty' && TIME_CADENCE.test(String(r.cadence ?? '')));
+
+  if (scheduled.length === 0) {
+    return {
+      coverageLost: [
+        'not one `duty` row carries a TIME cadence, so the [14]O-3 record-query limb ranges over the empty set.',
+        'Moving every duty to `trigger`/`on-demand` must not be the way to satisfy a criterion about the records',
+        'scheduled duties leave behind.',
+      ],
+    };
+  }
+
+  const used = new Map();
+  for (const r of scheduled) {
+    const q = r?.mechanism?.recordQuery;
+    if (!q || !nonEmpty(q.reader)) {
+      errors.push(
+        `${r.id} — \`cadence: ${r.cadence}\` and no \`mechanism.recordQuery.reader\`. [14]O-3 asks for a query ` +
+          'against this mechanism\'s own record; a row with no reader is outside that query and inside the count, ' +
+          'which is how a duty stops being checked without the number moving.',
+      );
+      continue;
+    }
+    if (!readerNames.has(q.reader)) {
+      errors.push(
+        `${r.id} — \`recordQuery.reader: "${q.reader}"\` is not declared in \`_recordReaders\` ` +
+          `(${[...readerNames].join(' · ')}). Free text here would let a row invent a reader nothing implements.`,
+      );
+      continue;
+    }
+    if (q.reader === 'unreachable' && !nonEmpty(q.why)) {
+      errors.push(`${r.id} — \`reader: "unreachable"\` with no \`why\`. "Nothing can read it" is a state this register may record; it is not one it may pass over.`);
+    }
+    used.set(q.reader, (used.get(q.reader) ?? 0) + 1);
+  }
+
+  // ── the ceiling on the escape hatch, and the floor under the readers ──────
+  const unreachable = used.get('unreachable') ?? 0;
+  const cap = decl._maxUnreachable;
+  if (!Number.isInteger(cap) || cap < 0) {
+    errors.push('`_recordReaders._maxUnreachable` must be a non-negative integer — it is the ceiling that stops `unreachable` becoming the whole domain.');
+  } else if (unreachable > cap) {
+    errors.push(
+      `${unreachable} duty row(s) declare \`reader: "unreachable"\` and the ceiling is ${cap}. ` +
+        'This number RATCHETS DOWN as records become reachable; it never rises. Raising it is how a limb ' +
+        'that queries nothing goes back to reporting ok over an empty domain.',
+    );
+  }
+  if (unreachable === scheduled.length) {
+    return {
+      coverageLost: [
+        `all ${scheduled.length} scheduled duty row(s) declare \`reader: "unreachable"\`.`,
+        'Every outcome would then be a print, this limb could not fail, and [14]O-3 would be satisfied by a',
+        'register that queries nothing at all — which is the exact state it was written to end.',
+      ],
+    };
+  }
+  for (const name of readerNames) {
+    if (!used.has(name)) {
+      errors.push(
+        `\`_recordReaders.${name}\` is declared and no row uses it. A reader with no member is code that ` +
+          'cannot fail, and it inflates the apparent size of the domain — delete it, or point a row at it.',
+      );
+    }
+  }
+
+  // ── the queries themselves ────────────────────────────────────────────────
+  const multiplier = typeof decl._windowMultiplier === 'number' && decl._windowMultiplier >= 1 ? decl._windowMultiplier : null;
+  if (multiplier === null) {
+    errors.push('`_recordReaders._windowMultiplier` must be a number >= 1. A window shorter than the cadence reports a healthy duty dead.');
+    return { errors, prints };
+  }
+
+  const tally = { pass: 0, fail: 0, unreadable: 0, unreachable: 0 };
+  const unreachableLines = [];
+  const unreadableLines = [];
+  for (const r of scheduled) {
+    if (!r?.mechanism?.recordQuery?.reader || !readerNames.has(r.mechanism.recordQuery.reader)) continue;
+    const c = classifyRunRecord(r, probes.get(r.id), nowMs, multiplier);
+    tally[c.verdict] = (tally[c.verdict] ?? 0) + 1;
+    if (c.verdict === 'fail') errors.push(c.line);
+    else if (c.verdict === 'unreachable') unreachableLines.push(c.line);
+    else if (c.verdict === 'unreadable') unreadableLines.push(c.line);
+    else if (c.verdict === 'pass') prints.push(`[14]O-3 — ${c.line}`);
+  }
+
+  // 🔴 THE NUMBER THAT MUST NEVER BE INVISIBLE. `0 queried` and `4 queried` read
+  // identically in a wall of prints unless the count is stated, and "queried 0
+  // records" is precisely the state that was green for a day and a half.
+  prints.push(
+    `[14]O-3 — ${scheduled.length} scheduled duty(ies) · ${tally.pass} record(s) QUERIED and inside window · ` +
+      `${tally.fail} FAILING · ${tally.unreadable} reader(s) unreadable on this runner · ` +
+      `${tally.unreachable} declared unreachable (ceiling ${cap})`,
+  );
+  if (tally.pass === 0 && tally.fail === 0) {
+    prints.push(
+      '[14]O-3 — 🔴 THE RECORD-QUERY LIMB ANSWERED ZERO QUERIES ON THIS RUN. Every scheduled duty is either ' +
+        'unreachable by declaration or unreadable for want of a credential/platform here, so nothing above ' +
+        'could have failed. This line exists so that state can never be mistaken for a clean result.',
+    );
+  }
+  for (const l of unreadableLines) prints.push(`[14]O-3 — ${l}`);
+  for (const l of unreachableLines) prints.push(`[14]O-3 — ${l}`);
+
+  return { errors, prints, stats: { scheduled: scheduled.length, ...tally } };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // THE PURE HALF. Everything that can go wrong in the register itself is decided
 // here, so the failing cases are exercisable without a repo on disk.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -357,6 +584,18 @@ export function evaluate(reg, tree, nowMs) {
   // domain that prints nothing is the defect this whole file is written against.
   let datedTripwires = 0;
   const gaps = [];
+  // 🔴 The three counters below exist for one reason: an acceptance limb whose
+  // domain is empty prints exactly like one that checked everything. [14]O-11's
+  // lead-window arithmetic had executed ZERO times over twelve rows and [14]O-17's
+  // deleting-job limb over nineteen; both reported clean. Counting the EXECUTIONS
+  // rather than the rows is the difference between "twelve expiries checked" and
+  // "twelve rows, none checked".
+  let expiringRows = 0;
+  let expiryWindowChecks = 0;
+  const nullExpiries = [];
+  let retentionRows = 0;
+  let periodDeclared = 0;
+  const periodUndeclared = [];
 
   for (const r of rows) {
     const id = r.id ?? '<no id>';
@@ -549,12 +788,28 @@ export function evaluate(reg, tree, nowMs) {
 
     // ── expiring ─────────────────────────────────────────────────────────────
     if (r.kind === 'expiring') {
+      expiringRows++;
       if (!(Number.isInteger(r.leadDays) && r.leadDays > 0)) {
         bad(`${id} — \`leadDays\` must be a positive integer: the lead time is what makes an expiry ACTIONABLE rather than merely recorded.`);
+      }
+      // 🔴 [14]O-11's repair, 2026-08-06. Every one of the twelve rows carried
+      // `expires: null` and the guard tolerated it, so the arithmetic below had
+      // NEVER RUN — twelve rows of apparent coverage over zero checked dates.
+      // The dates are genuinely not knowable here (vendor consoles, the Oracle
+      // box, gitignored company/), so the tolerance stays; what it now costs is
+      // this field. "Nobody knows" becomes "nobody has read it FROM HERE", which
+      // is a sentence somebody can act on — and deleting the field reddens.
+      if (!nonEmpty(r.expiryKnownAt)) {
+        bad(
+          `${id} — an \`expiring\` row must carry \`expiryKnownAt\`: the exact place the date is READ FROM. ` +
+            'A null expiry is tolerated in this register precisely because the date lives somewhere this repo ' +
+            'cannot reach — so naming that somewhere is the whole of what makes the tolerance honest.',
+        );
       }
       if (!('expires' in r)) {
         bad(`${id} — an \`expiring\` row must carry \`expires\` (a date, or null with an ownerGap).`);
       } else if (r.expires === null) {
+        nullExpiries.push(`${id} — expiry UNREAD. Read it at: ${r.expiryKnownAt ?? '<no expiryKnownAt>'}`);
         // Two honest reasons for a null expiry, and only two. Either nobody has
         // read the date yet (a gap somebody owns), or there IS no fixed date
         // because another duty resets the clock — a non-use window rather than a
@@ -566,6 +821,9 @@ export function evaluate(reg, tree, nowMs) {
       } else if (!isIsoDate(r.expires)) {
         bad(`${id} — \`expires\` is not an ISO date: ${JSON.stringify(r.expires)}`);
       } else {
+        // The arithmetic. Counted, because the count is the only thing that
+        // distinguishes "twelve expiries checked" from "twelve rows, none checked".
+        expiryWindowChecks++;
         const t = Date.parse(`${r.expires}T00:00:00Z`);
         const daysLeft = (t - nowMs) / 86_400_000;
         if (daysLeft < 0) bad(`${id} — \`expires: ${r.expires}\` is in the PAST.`);
@@ -620,6 +878,7 @@ export function evaluate(reg, tree, nowMs) {
 
     // ── retention ────────────────────────────────────────────────────────────
     if (r.kind === 'retention') {
+      retentionRows++;
       if (!nonEmpty(r.store)) bad(`${id} — a \`retention\` row must name the \`store\` it covers.`);
       if (!RETENTION_RULES.has(r.rule)) {
         bad(`${id} — \`rule\` must be one of ${[...RETENTION_RULES].join(' · ')}, got ${JSON.stringify(r.rule)}.`);
@@ -627,12 +886,117 @@ export function evaluate(reg, tree, nowMs) {
       if (r.rule === 'keep' && !nonEmpty(r.keepWhy)) {
         bad(`${id} — \`rule: keep\` with no \`keepWhy\`. A keep with no written reason is how "we never got round to it" becomes a policy.`);
       }
-      if (r.rule === 'period' && !(Number.isInteger(r.periodDays) && r.periodDays > 0)) {
-        bad(`${id} — \`rule: period\` needs a positive integer \`periodDays\`.`);
+      if (r.rule === 'period') {
+        periodDeclared++;
+        if (!(Number.isInteger(r.periodDays) && r.periodDays > 0)) {
+          bad(`${id} — \`rule: period\` needs a positive integer \`periodDays\`.`);
+        }
+        // 🔴 [14]O-17's second half, armed 2026-08-06 BEFORE its domain is
+        // non-empty. The acceptance is "deleted on schedule, BY A JOB" — a
+        // period with nothing enforcing it is a policy sentence, which is the
+        // thing the requirement exists to replace. Written now rather than on
+        // the day a period is declared, because a requirement that needs new
+        // code the moment the owner acts is a requirement that will be half-met.
+        if (!nonEmpty(r.deletingJob)) {
+          bad(
+            `${id} — \`rule: period\` with no \`deletingJob\`. [14]O-17 is "deleted on schedule, BY A JOB": a ` +
+              'declared period that nothing enforces is retention as a policy sentence, which is the exact state ' +
+              'this requirement replaces. Name the scheduled job that sweeps this store.',
+          );
+        }
       }
-      if (r.rule === 'period-undeclared' && r.ownerGated !== true) {
-        bad(`${id} — \`rule: period-undeclared\` must be \`ownerGated\` with an \`ownerGap\`. An undeclared period is a gap somebody owns, not a state of nature.`);
+      if (r.rule === 'period-undeclared') {
+        periodUndeclared.push(`${id} (${r.store}) — ${r.ownerGap ?? '<no ownerGap>'}`);
+        if (r.ownerGated !== true) {
+          bad(`${id} — \`rule: period-undeclared\` must be \`ownerGated\` with an \`ownerGap\`. An undeclared period is a gap somebody owns, not a state of nature.`);
+        }
       }
+    }
+  }
+
+  // ── [14]O-11 · THE NULL-EXPIRY TOLERANCE, MADE LOUD AND CAPPED ────────────
+  //
+  // 🔴 WHAT WAS TRUE UNTIL 2026-08-06: twelve `expiring` rows, twelve
+  // `expires: null`, and a tolerance that accepted every one of them because
+  // `ownerGated` + `ownerGap` was present. So `daysLeft <= leadDays` — the whole
+  // of the acceptance — executed ZERO times, and the guard reported clean over
+  // twelve unchecked dates. The requirement was measuring ROW EXISTENCE.
+  //
+  // THE DECISION, and it is a decision rather than an oversight: THE TOLERANCE
+  // STAYS. Not one of the twelve dates is knowable from this repository — eight
+  // are in a vendor console, one is `openssl x509 -enddate` on the Oracle box,
+  // one is a non-use clock with no calendar date at all, and two are business
+  // values CLAUDE.md forbids mirroring out of gitignored `company/` into this
+  // public file. Requiring a date would block all of CI on owner-only work
+  // (CLAUDE.md C-6, which gets guards disabled) or invite an invented one — and
+  // an invented expiry is strictly worse than a null, because the arithmetic
+  // would then run and PASS on a fiction.
+  //
+  // What the tolerance costs instead, and both of these CAN fail:
+  //   · `expiryKnownAt` is mandatory (above) — the tolerance now names its source.
+  //   · `_maxNull` is a CEILING that ratchets DOWN. A thirteenth null fails.
+  //   · the executed-arithmetic count PRINTS, so 0-of-12 can never read as 12.
+  // (The "zero `expiring` rows at all" floor is a REAL-TREE fact and lives in
+  // main() beside the other domain floors — this fixture-facing half must stay
+  // callable with a register that legitimately holds none.)
+  if (expiringRows > 0) {
+    const capNull = reg._expiryCoverage?._maxNull;
+    if (!Number.isInteger(capNull) || capNull < 0) {
+      bad('`_expiryCoverage._maxNull` must be a non-negative integer — it is the ceiling that stops `expires: null` from being free.');
+    } else if (nullExpiries.length > capNull) {
+      bad(
+        `${nullExpiries.length} \`expiring\` row(s) carry \`expires: null\` and the ceiling is ${capNull}. ` +
+          'This number RATCHETS DOWN as dates arrive; it never rises. Raising it is how a limb whose arithmetic ' +
+          'has never executed goes on looking like coverage.',
+      );
+    }
+    prints.push(
+      `[14]O-11 — ${expiringRows} expiring row(s) · ${expiryWindowChecks} lead-window comparison(s) ACTUALLY EXECUTED · ` +
+        `${nullExpiries.length} expiry UNREAD (ceiling ${capNull ?? '?'})`,
+    );
+    if (expiryWindowChecks === 0) {
+      prints.push(
+        '[14]O-11 — 🔴 THE LEAD-WINDOW ARITHMETIC RAN ZERO TIMES ON THIS RUN. Every date is null, so nothing ' +
+          'above could have failed on an expiry. Each unread date and the place it is read from:',
+      );
+      for (const l of nullExpiries) prints.push(`[14]O-11 —     · ${l}`);
+    }
+  }
+
+  // ── [14]O-17 · THE UNDECLARED PERIOD, SAME SHAPE, SAME TREATMENT ──────────
+  //
+  // 🔴 ZERO retention rows declare a period, so "a query returns zero rows older
+  // than the declared period" ranges over nothing and both this guard and
+  // assert-retention-coverage.mjs exit 0 while printing three owner gaps.
+  //
+  // THE DECISION: `period-undeclared` STAYS AND IS CAPPED. The period is a
+  // policy number — stage 8 owns WHAT it is, this stage owns the job that makes
+  // it true — and an agent inventing one would be writing policy into a
+  // published privacy commitment. What changes is that the limb is now ARMED
+  // rather than absent (`rule: period` requires `deletingJob`, above), the
+  // escape hatch has a ratcheting ceiling, and the executed count prints.
+  if (retentionRows > 0) {
+    const capUndeclared = reg._retentionCoverage?._maxUndeclared;
+    if (!Number.isInteger(capUndeclared) || capUndeclared < 0) {
+      bad('`_retentionCoverage._maxUndeclared` must be a non-negative integer — it is the ceiling that stops `period-undeclared` from being free.');
+    } else if (periodUndeclared.length > capUndeclared) {
+      bad(
+        `${periodUndeclared.length} retention row(s) carry \`rule: period-undeclared\` and the ceiling is ${capUndeclared}. ` +
+          'This number RATCHETS DOWN as periods are declared; it never rises. A new store may not arrive with its ' +
+          'period undeclared and no cost.',
+      );
+    }
+    prints.push(
+      `[14]O-17 — ${retentionRows} retention row(s) · ${periodDeclared} declare a PERIOD, so the ` +
+        `"zero rows older than the period" limb ranges over ${periodDeclared} store(s) · ` +
+        `${periodUndeclared.length} period UNDECLARED (ceiling ${capUndeclared ?? '?'})`,
+    );
+    if (periodDeclared === 0) {
+      prints.push(
+        '[14]O-17 — 🔴 THE DELETING-JOB LIMB RANGES OVER ZERO STORES ON THIS RUN. No row declares a period, so ' +
+          'nothing above could have failed on retention. The undeclared periods and who owns each:',
+      );
+      for (const l of periodUndeclared) prints.push(`[14]O-17 —     · ${l}`);
     }
   }
 
@@ -1099,6 +1463,10 @@ export function evaluate(reg, tree, nowMs) {
       companyAnchored,
       datedTripwires,
       gaps,
+      // [14]O-11 / [14]O-17 — the EXECUTION counts, not the row counts. main()
+      // turns an empty domain into COVERAGE LOST; these are what let it.
+      expiry: { rows: expiringRows, executed: expiryWindowChecks, unread: nullExpiries.length },
+      retention: { rows: retentionRows, periods: periodDeclared, undeclared: periodUndeclared.length },
       absence: { duties: dutyRows.length, scheduled: scheduledDuties, proven: watchersProven, pending: watchersPending, gaps: absenceGaps },
     },
     anchored,
@@ -1106,10 +1474,233 @@ export function evaluate(reg, tree, nowMs) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// [14]O-3 · THE READERS. Each one either answers "when did this mechanism last
+// SUCCEED" or says, in one sentence, what it needed and did not have.
+//
+// ⚠️ EVERY READER FAILS TO `unreadable`, NEVER TO A PASS. A reader that swallows
+// its own error and returns "fine" would rebuild the defect this limb replaces,
+// one level down. The distinction that matters: `unreadable` means the QUERY
+// could not run here (no token, wrong OS) and prints; `missing` means the query
+// RAN and answered that the mechanism the register names is gone, and that is a
+// hard failure — a stale row reads as coverage.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const GH_API = 'https://api.github.com';
+const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
+const PROBE_TIMEOUT_MS = 15_000;
+// 🔴 SEPARATE, AND MUCH LARGER, THAN THE NETWORK ONE — measured, not guessed. A
+// COLD `powershell` start plus the ScheduledTasks module autoload exceeded 15 s
+// on this laptop, and the result was not a crash: the probe timed out, reported
+// `unreadable`, and the guard exited 0 with TWO GENUINELY FAILING DUTIES on the
+// machine. That is this limb's own defect reappearing as a timeout — "could not
+// tell" is the correct verdict for a real timeout and the wrong one for a slow
+// process, and only the ceiling distinguishes them.
+const LOCAL_PROBE_TIMEOUT_MS = 90_000;
+
+const ghToken = () => process.env.GITHUB_TOKEN || process.env.GH_TOKEN || null;
+
+async function ghJson(path) {
+  const res = await fetch(`${GH_API}${path}`, {
+    headers: {
+      authorization: `Bearer ${ghToken()}`,
+      accept: 'application/vnd.github+json',
+      'user-agent': 'nikatru-ops-register',
+    },
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`GitHub API returned ${res.status} for ${path}`);
+  return res.json();
+}
+
+/** Windows Task Scheduler. ONE PowerShell process for every task, and the
+ *  script is passed as -EncodedCommand so a task name containing spaces or
+ *  quotes cannot become a shell-quoting bug that reads as "task not found".
+ *
+ *  🔴 THE THING TASK SCHEDULER CANNOT TELL YOU, stated because it changes what a
+ *  red verdict means: it keeps only the MOST RECENT result. `LastTaskResult = 1`
+ *  therefore does not merely mean "the last run failed" — it means THERE IS NO
+ *  RECORD OF ANY SUCCESS to return, which is exactly what the acceptance asks
+ *  for and exactly what these two rows cannot produce today. */
+function probeWindowsTasks(names) {
+  const out = new Map();
+  if (process.platform !== 'win32') {
+    for (const n of names) out.set(n, { unreadable: true, why: `this runner is ${process.platform}, and Task Scheduler exists only on the Windows host the task runs on` });
+    return out;
+  }
+  const list = names.map((n) => `'${String(n).replace(/'/g, "''")}'`).join(',');
+  const ps = [
+    "$ErrorActionPreference='Stop'",
+    `$names = @(${list})`,
+    '$out = @()',
+    'foreach ($n in $names) {',
+    '  try {',
+    '    $i = Get-ScheduledTaskInfo -TaskName $n -ErrorAction Stop',
+    '    $lr = $null',
+    "    if ($i.LastRunTime) { $lr = $i.LastRunTime.ToUniversalTime().ToString('o') }",
+    '    $out += [pscustomobject]@{ task=$n; found=$true; lastRun=$lr; result=[int]$i.LastTaskResult }',
+    '  } catch {',
+    '    $out += [pscustomobject]@{ task=$n; found=$false; lastRun=$null; result=$null }',
+    '  }',
+    '}',
+    'ConvertTo-Json -InputObject @($out) -Compress',
+  ].join('\n');
+  const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+  const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
+    encoding: 'utf8',
+    timeout: LOCAL_PROBE_TIMEOUT_MS,
+  });
+  if (r.error || r.status !== 0) {
+    const why = `powershell could not be run here (${r.error?.message ?? `exit ${r.status}`})`;
+    for (const n of names) out.set(n, { unreadable: true, why });
+    return out;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(r.stdout);
+  } catch (e) {
+    const why = `Get-ScheduledTaskInfo output was not JSON (${e.message})`;
+    for (const n of names) out.set(n, { unreadable: true, why });
+    return out;
+  }
+  for (const row of parsed) {
+    if (!row.found) {
+      out.set(row.task, { missing: true, why: `no scheduled task named "${row.task}" exists on this host` });
+      continue;
+    }
+    // 267011 = SCHED_S_TASK_HAS_NOT_RUN.
+    const ran = row.lastRun ? Date.parse(row.lastRun) : NaN;
+    if (!row.lastRun || Number.isNaN(ran) || new Date(ran).getUTCFullYear() < 2000 || row.result === 267011) {
+      out.set(row.task, { lastSuccessMs: NaN, detail: `"${row.task}" is scheduled and has NEVER RUN.` });
+      continue;
+    }
+    if (row.result === 0) {
+      out.set(row.task, { lastSuccessMs: ran, detail: `"${row.task}" LastTaskResult = 0 at ${row.lastRun}.` });
+      continue;
+    }
+    out.set(row.task, {
+      lastSuccessMs: NaN,
+      detail:
+        `"${row.task}" LastTaskResult = ${row.result} at ${row.lastRun}. Task Scheduler keeps only the MOST ` +
+        'RECENT result, so this record contains no successful run at all — not merely a stale one.',
+    });
+  }
+  return out;
+}
+
+/** The newest SUCCESSFUL run for the declared event. `event=schedule` matters:
+ *  a workflow_dispatch green run proves somebody pressed a button, which is the
+ *  opposite of what a cadence claim means. Same distinction
+ *  assert-e2e-proof-fresh.mjs makes, for the same reason. */
+async function probeGithubRun(q, repo) {
+  const ev = q.event ? `event=${encodeURIComponent(q.event)}&` : '';
+  const body = await ghJson(`/repos/${repo}/actions/workflows/${encodeURIComponent(q.workflow)}/runs?${ev}status=success&per_page=1`);
+  const newest = body?.workflow_runs?.[0];
+  if (!newest) {
+    return {
+      lastSuccessMs: NaN,
+      detail: `${repo} has NO successful \`${q.event ?? 'any'}\` run of ${q.workflow} in its run history at all.`,
+    };
+  }
+  return {
+    lastSuccessMs: Date.parse(newest.updated_at),
+    detail: `run ${newest.id} (${q.event ?? 'any'}) succeeded at ${newest.updated_at}.`,
+  };
+}
+
+/** duty.renovate's record is the Dependency Dashboard issue: Renovate rewrites
+ *  it every time it runs, so its `updated_at` IS the run record. The absence of
+ *  the issue is the interesting case and it is a hard failure, not a pass — a
+ *  Renovate that has stopped being installed leaves exactly no branches and
+ *  exactly no dashboard, which looks identical to a quiet week. */
+async function probeGithubIssue(q, repo) {
+  const query = `repo:${repo} is:issue in:title "${q.titleContains}"`;
+  const body = await ghJson(`/search/issues?q=${encodeURIComponent(query)}&sort=updated&order=desc&per_page=1`);
+  const hit = body?.items?.[0];
+  if (!hit) {
+    return { missing: true, why: `no issue whose title contains "${q.titleContains}" exists in ${repo}` };
+  }
+  return { lastSuccessMs: Date.parse(hit.updated_at), detail: `issue #${hit.number} "${hit.title}" last updated ${hit.updated_at}.` };
+}
+
+/** cron_heartbeat, over the D1 HTTP API, from OUTSIDE Cloudflare — the same
+ *  transport check-heartbeats.mjs uses. `WHERE ok = 1` is the whole point: three
+ *  consecutive nights of rows landed here while every one of them was an HTTP
+ *  401, so "a row exists" and "the duty ran" are different questions. */
+async function probeCloudflareHeartbeat(q, root) {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (!token || !account) {
+    return { unreadable: true, why: 'CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment' };
+  }
+  let dbId = null;
+  try {
+    const cfg = parseJsonc(readFileSync(join(root, q.wrangler), 'utf8'));
+    dbId = (cfg.d1_databases ?? []).find((d) => d.migrations_dir)?.database_id ?? null;
+  } catch (e) {
+    return { unreadable: true, why: `${q.wrangler} could not be read for its database_id (${e.message})` };
+  }
+  if (!dbId) return { unreadable: true, why: `${q.wrangler} carries no D1 binding with a migrations_dir, so the heartbeat database cannot be resolved` };
+  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${dbId}/query`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ sql: `SELECT job, MAX(ran_at) AS ran_at FROM ${q.table} WHERE ok = 1 GROUP BY job` }),
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`the D1 API returned ${res.status}`);
+  const body = await res.json();
+  if (body?.success !== true) throw new Error(`the D1 API reported failure: ${JSON.stringify(body?.errors ?? body).slice(0, 200)}`);
+  const rows = body?.result?.[0]?.results ?? [];
+  if (rows.length === 0) return { lastSuccessMs: NaN, detail: `${q.table} holds no row with ok = 1 for any job.` };
+  // The OLDEST of the per-job newest successes: one silent job inside a cron
+  // that runs several is exactly the [4]B-11 finding (half the cron invisible),
+  // so the duty is only as fresh as its stalest watched job.
+  const stalest = rows.reduce((a, b) => (Date.parse(a.ran_at) <= Date.parse(b.ran_at) ? a : b));
+  return {
+    lastSuccessMs: Date.parse(stalest.ran_at),
+    detail: `${rows.length} job(s) with an ok = 1 row; the STALEST is \`${stalest.job}\` at ${stalest.ran_at}.`,
+  };
+}
+
+async function probeRunRecords(reg, root) {
+  const probes = new Map();
+  const scheduled = (reg.rows ?? []).filter((r) => r.kind === 'duty' && TIME_CADENCE.test(String(r?.cadence ?? '')));
+  const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
+
+  const winRows = scheduled.filter((r) => r?.mechanism?.recordQuery?.reader === 'windows-scheduled-task');
+  if (winRows.length) {
+    const byTask = probeWindowsTasks(winRows.map((r) => r.mechanism.recordQuery.task));
+    for (const r of winRows) probes.set(r.id, byTask.get(r.mechanism.recordQuery.task));
+  }
+
+  for (const r of scheduled) {
+    const q = r?.mechanism?.recordQuery;
+    if (!q || q.reader === 'unreachable' || q.reader === 'windows-scheduled-task') continue;
+    try {
+      if (q.reader === 'github-run-history' || q.reader === 'github-issue-activity') {
+        if (!ghToken()) {
+          probes.set(r.id, { unreadable: true, why: 'neither GITHUB_TOKEN nor GH_TOKEN is in the environment, so the run history cannot be read' });
+          continue;
+        }
+        probes.set(r.id, q.reader === 'github-run-history' ? await probeGithubRun(q, repo) : await probeGithubIssue(q, repo));
+      } else if (q.reader === 'cloudflare-d1-heartbeat') {
+        probes.set(r.id, await probeCloudflareHeartbeat(q, root));
+      }
+    } catch (e) {
+      // 🔴 An error is UNREADABLE, never a pass and never a fail. "I could not
+      // tell" must not read as "it is fine" (check-heartbeats.mjs's own rule),
+      // and it must not redden CI on a transient 502 either — the print carries
+      // the reason so a persistent one is visible on every run.
+      probes.set(r.id, { unreadable: true, why: `the query threw: ${e.message}` });
+    }
+  }
+  return probes;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // The impure half: read the tree, run the coverage self-checks that only make
 // sense against a real repository, then hand the pure half its inputs.
 // ─────────────────────────────────────────────────────────────────────────────
-function main() {
+async function main() {
   const registerPath = join(ROOT, REGISTER_REL);
   if (!existsSync(registerPath)) {
     coverageLost([
@@ -1358,6 +1949,45 @@ function main() {
     }
   }
 
+  // ── THE DOMAIN FLOORS: an acceptance limb may not range over nothing ──────
+  //
+  // 🔴 Three of stage 14's criteria were green on 2026-08-06 for the SAME
+  // reason, and it was not that any check was wrong: [14]O-3's cadence limb
+  // queried no record, [14]O-11's lead-window arithmetic executed zero times
+  // over twelve rows, and [14]O-17's deleting-job limb ranged over zero stores
+  // out of nineteen. One defect, three times — an empty right-hand side rejects
+  // nothing. The counts now PRINT on every run (above), and emptying a domain
+  // entirely is COVERAGE LOST rather than a quieter pass.
+  //
+  // ⚠️ These are FLOORS ON THE DOMAIN, never on the register's size — the
+  // distinction this file's header insists on. "At least twelve rows" is a
+  // threshold somebody lowers; "at least one row of this kind, or the criterion
+  // is checking nothing" is a statement about whether the check exists at all.
+  if (stats.expiry.rows === 0) {
+    coverageLost([
+      'the register holds NO `expiring` row at all, so [14]O-11 ranges over the empty set.',
+      'Two registrars, the Origin CA cert that expires with no notification, the Drive OAuth app and four',
+      'store enrolments do not stop expiring because their rows were deleted — and every expiry check in',
+      'this guard would report clean about nothing.',
+    ]);
+  }
+  if (stats.retention.rows === 0) {
+    coverageLost([
+      'the register holds NO `retention` row at all, so [14]O-17 ranges over the empty set.',
+      "The un-TTL'd nikatru-signups KV this requirement was written about does not stop holding contactable",
+      'email addresses because its row was deleted.',
+    ]);
+  }
+
+  // ── [14]O-3 · QUERY EVERY REACHABLE RUN RECORD ────────────────────────────
+  // Last, because it is the only limb that leaves this machine, and everything
+  // structural should already have decided by the time a socket is opened.
+  const recordProbes = await probeRunRecords(reg, ROOT);
+  const rec = evaluateRunRecords(reg, recordProbes, now);
+  if (rec.coverageLost) coverageLost(rec.coverageLost);
+  errors.push(...(rec.errors ?? []));
+  prints.push(...(rec.prints ?? []));
+
   // ── report ────────────────────────────────────────────────────────────────
   for (const p of prints) console.log(`⬜  ${p}`);
   console.log(
@@ -1397,5 +2027,11 @@ function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  main();
+  // 🔴 An unhandled rejection in a guard exits 0 on some Node versions and 1 on
+  // others. A guard whose exit code depends on the runtime is a guard that can
+  // report clean by accident, so the failure path is explicit here.
+  main().catch((e) => {
+    console.error(`✗ ${REGISTER_REL} — the guard itself threw: ${e?.stack ?? e}`);
+    process.exit(1);
+  });
 }

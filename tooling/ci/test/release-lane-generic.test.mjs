@@ -15,6 +15,20 @@
 // exit 0. A fixture the guard's author wrote encodes the same misunderstanding
 // as the guard, so it can only ever be the second line of evidence.
 //
+// Re-proven 2026-08-06 against the MATRIX lanes, in a `git archive HEAD` copy
+// with `- apps/probe` appended to the workspace list:
+//   · the matrix lanes exit 0 at two apps — the state the literal lanes could
+//     not reach, and the first run in which limb A's `parameterised` branch was
+//     ever taken by the real tree;
+//   · restoring ONE `working-directory: apps/subly` beside the matrix makes
+//     limb A′ exit 1 as MIXED — the case that used to be excused, because
+//     `parameterised` returns ok before the equality is reached;
+//   · deleting the `strategy.matrix` block from e2e.yml while leaving
+//     `apps/${{ matrix.app }}` in place makes limb A′ exit 1 for an undeclared
+//     dimension. That mutant is the exact "guard measuring a stand-in" this
+//     refactor was warned about: GitHub expands the missing context to the empty
+//     string, so the lane runs against `apps/` and reports success.
+//
 // The cases below cover what the real tree cannot show without breaking it: the
 // `env:` hoist bypass the original criterion invited, a matrix over two apps, a
 // parameterised path, the comment bypass, an unowned workflow, and every way a
@@ -76,6 +90,11 @@ function fixture({ workspace = ['apps/subly'], workflows = {}, guards = {} } = {
 const run = (root) => {
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
+};
+
+const emit = (root) => {
+  const r = spawnSync(process.execPath, [GUARD, '--emit-apps', root], { encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout}${r.stderr}`, stdout: r.stdout.trim() };
 };
 
 /** build-platforms.yml, in the shape the real one has: a literal app path. */
@@ -221,6 +240,91 @@ ${literalLane('apps/subly')}`);
     const r = run(fixture({ workflows: {} }));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /COVERAGE LOST/);
+  });
+});
+
+describe("assert-release-lane-generic.mjs — limb A′ (the parameter is real)", () => {
+  /** A lane in the shape the real ones now have: a matrix whose VALUE is a
+   *  run-time expression, and whose KEY is right there in the file. */
+  const dynamicMatrix = `name: Build all 6 platforms
+on:
+  workflow_dispatch:
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      apps: \${{ steps.workspace.outputs.apps }}
+    steps:
+      - run: node tooling/ci/assert-release-lane-generic.mjs --emit-apps
+  build:
+    runs-on: ubuntu-24.04
+    needs: prepare
+    strategy:
+      matrix:
+        app: \${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - name: Build web
+        working-directory: apps/\${{ matrix.app }}
+        run: flutter build web --release
+`;
+
+  test('a matrix whose value is a run-time expression passes — the KEY is what must exist', () => {
+    const r = run(
+      fixture({
+        workspace: ['apps/subly', 'apps/second'],
+        workflows: { 'build-platforms.yml': dynamicMatrix, 'e2e.yml': dynamicMatrix },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /the app segment of its paths is a run-time parameter over a declared dimension/);
+  });
+
+  test('THE STAND-IN — `apps/${{ matrix.app }}` with no matrix declared anywhere fails', () => {
+    // GitHub does not error on an undefined matrix context: it expands to the
+    // empty string and the lane builds `apps/`. Before limb A′ this read as the
+    // most generic lane in the tree.
+    const bare = dynamicMatrix.replace(/    strategy:\n      matrix:\n        app: [^\n]*\n/, '');
+    const r = run(
+      fixture({ workspace: ['apps/subly', 'apps/second'], workflows: { 'build-platforms.yml': bare, 'e2e.yml': dynamicMatrix } }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /build-platforms\.yml addresses its apps as .*but declares no `app:` key/);
+  });
+
+  test('MIXED — one literal path beside the matrix is not a generic lane', () => {
+    const mixed = dynamicMatrix.replace(
+      '        run: flutter build web --release\n',
+      '        run: flutter build web --release\n      - name: Package\n        working-directory: apps/subly\n        run: dart run msix:create\n',
+    );
+    const r = run(
+      fixture({ workspace: ['apps/subly', 'apps/second'], workflows: { 'build-platforms.yml': mixed, 'e2e.yml': dynamicMatrix } }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /build-platforms\.yml is MIXED.*apps\/subly/s);
+  });
+
+  test('--emit-apps prints the workspace app IDS, which is what a matrix iterates', () => {
+    const r = emit(fixture({ workspace: ['packages/core', 'apps/subly', 'apps/second'] }));
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(JSON.parse(r.stdout), ['subly', 'second']);
+  });
+
+  test('--emit-apps REFUSES an empty set rather than emitting `[]`', () => {
+    // A `matrix: []` runs zero jobs and the workflow reports success. Emitting
+    // one would put the green-over-nothing shape into the lane itself.
+    const r = emit(fixture({ workspace: ['packages/core'] }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares no `workspace:` entry under apps\//);
+  });
+
+  test('the emitter and the grader read ONE workspace — the ids round-trip to the paths limb A expects', () => {
+    const root = fixture({
+      workspace: ['apps/subly', 'apps/second'],
+      workflows: { 'build-platforms.yml': dynamicMatrix, 'e2e.yml': dynamicMatrix },
+    });
+    const ids = JSON.parse(emit(root).stdout);
+    const graded = run(root);
+    for (const id of ids) assert.match(graded.out, new RegExp(`apps/${id}`));
   });
 });
 

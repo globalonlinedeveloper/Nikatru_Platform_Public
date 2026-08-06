@@ -25,7 +25,7 @@
 // the lane set from tooling/channel-register.json; limb B below is what stops
 // the NEXT one, and re-introducing that one line is its recorded failing case.)
 //
-// ── THE TWO LIMBS ────────────────────────────────────────────────────────────
+// ── THE THREE LIMBS ──────────────────────────────────────────────────────────
 // LIMB A — EQUALITY, not "resolves to exactly one app". With exactly one app in
 //   the workspace those two are indistinguishable, so the doc's original form
 //   would have demanded a matrix refactor of two workflows on day one to satisfy
@@ -34,6 +34,36 @@
 //   being theoretical. The app set is DERIVED from the root pubspec `workspace:`
 //   list, which already exists, is already maintained, and is already policed by
 //   assert-workspace-coverage.mjs. Never from a list inside this guard.
+//
+// LIMB A′ — THE PARAMETER MUST BE REAL, added 2026-08-06 with the matrix
+//   refactor that made limb A's "parameterised" branch reachable for the first
+//   time. Two ways to satisfy limb A while shipping a broken lane, and both are
+//   now failures:
+//
+//     · A MIXED lane. `parameterised` short-circuited the equality check, so ONE
+//       `apps/${{ matrix.app }}` anywhere in the file excused every remaining
+//       `working-directory: apps/subly` beside it. That lane builds app #2's web
+//       bundle out of app #1's directory. A lane is generic when EVERY app path
+//       is parameterised, so a resolved literal alongside a dynamic one fails.
+//
+//     · A MATRIX KEY NOBODY DECLARED. `apps/${{ matrix.app }}` in a job with no
+//       `strategy.matrix.app` expands to the empty string at run time — GitHub
+//       does not error, it builds `apps/` — and this guard could not tell that
+//       from a real matrix, because both are simply unresolvable here. So the
+//       key a lane's app path names must be DECLARED in a `matrix:` block in the
+//       same file. The declaration's VALUE may be dynamic (`${{ fromJSON(...) }}`
+//       is the correct shape and is what the real lanes use); what cannot be
+//       missing is the key. This is the stand-in check: without it the guard
+//       would be measuring a placeholder and reporting a property.
+//
+//   ⚠️ WHAT THIS STILL CANNOT SEE, stated rather than implied: when the matrix
+//   value is `${{ fromJSON(needs.prepare.outputs.apps) }}`, whether that job
+//   really emits the workspace app set is a RUN-TIME fact. The mitigation is
+//   that `--emit-apps` below is the emitter, so the lane's matrix and this
+//   guard's expected set are produced by ONE function in ONE file — a lane
+//   cannot drift from the workspace without this guard's own reading drifting
+//   with it. It is a shared implementation, not an assertion, and it is the
+//   honest ceiling.
 //
 // LIMB B — a guard that names ONE workflow as its only lane must SAY SO, in its
 //   own file, with a reason. The declaration lives in the bound guard rather
@@ -58,7 +88,16 @@
 // fail" this repo keeps deleting.
 //
 // Usage:  node tooling/ci/assert-release-lane-generic.mjs [repoRoot]
+//         node tooling/ci/assert-release-lane-generic.mjs --emit-apps [repoRoot]
 // Exit 0 = every R-1 lane covers the whole workspace and no guard hides a lane.
+//
+// `--emit-apps` prints the workspace app IDS as a JSON array (`["subly"]`) and
+// exits. THIS IS NOT A CONVENIENCE. `build-platforms.yml` and `e2e.yml` build
+// their `strategy.matrix.app` from this output, so the set a lane iterates and
+// the set this guard grades it against come from the SAME `workspaceApps()`
+// call. The alternative — a second pubspec reader inlined in each workflow — is
+// three implementations of one parse, and this repository's most repeated
+// failure is the copy that quietly stops reading what it thinks it reads.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -68,9 +107,36 @@ import { listDir } from './tree-walk.mjs';
 import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+const argv = process.argv.slice(2);
+const EMIT_APPS = argv[0] === '--emit-apps';
+const ROOT_ARG = EMIT_APPS ? argv[1] : argv[0];
+const ROOT = resolve(ROOT_ARG ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI_DIR = join(ROOT, 'tooling', 'ci');
 const GATE_SCRIPT = 'tooling/ci/assert-gate-passed.mjs';
+
+// ── the emitter the release lanes' matrix is built from ──────────────────────
+// Deliberately BEFORE every coverage floor below: this mode answers one question
+// ("which apps does the workspace declare") and must not be able to fail because
+// an unrelated limb lost its corpus. It fails LOUDLY on an empty answer, because
+// an empty matrix is a workflow that runs zero jobs and reports success — the
+// green-over-nothing shape this whole file exists to remove.
+if (EMIT_APPS) {
+  const found = workspaceApps(ROOT);
+  if (found === null || found.length === 0) {
+    console.error(`FAIL --emit-apps: ${join(ROOT, 'pubspec.yaml')} declares no \`workspace:\` entry under apps/.`);
+    console.error('     A release lane whose matrix is [] runs no build and reports green. Refusing to emit one.');
+    process.exit(1);
+  }
+  const ids = found.map((a) => a.slice('apps/'.length));
+  const nested = ids.filter((id) => id.includes('/'));
+  if (nested.length) {
+    console.error(`FAIL --emit-apps: workspace entr${nested.length === 1 ? 'y' : 'ies'} ${nested.join(', ')} nest below apps/<id>.`);
+    console.error('     The lanes address an app as `apps/${{ matrix.app }}`, which a nested path cannot round-trip.');
+    process.exit(1);
+  }
+  console.log(JSON.stringify(ids));
+  process.exit(0);
+}
 
 const problems = [];
 const ok = (m) => console.log(`ok   ${m}`);
@@ -155,7 +221,7 @@ const tracked =
 // A fixture root is not a git repository, and saying "no tracked workflows" there
 // is the truth rather than a coverage loss — the same distinction
 // assert-guard-coverage.mjs draws with `scanningRealRepo`.
-const scanningRealRepo = process.argv[2] === undefined;
+const scanningRealRepo = ROOT_ARG === undefined;
 if (tracked.length === 0 && scanningRealRepo) {
   coverageLost([
     `\`git ls-files -- ${WORKFLOW_DIR}\` returned no tracked workflow under ${ROOT}.`,
@@ -312,6 +378,34 @@ export function collectMatrix(lines) {
   return map;
 }
 
+/** Every key DECLARED under any `matrix:` block, whatever its value can be read
+ *  as. `collectMatrix` above answers "what does this key expand to" and can only
+ *  answer it for a static list; this answers the strictly weaker "does this key
+ *  exist at all", which is the question limb A′ needs — the correct generic form
+ *  is `app: ${{ fromJSON(needs.prepare.outputs.apps) }}`, whose VALUE is a
+ *  run-time fact and whose KEY is right there in the file.
+ *
+ *  Without this, `apps/${{ matrix.app }}` in a job carrying NO matrix read
+ *  exactly like a real one: both are unresolvable here, and only one of them
+ *  builds anything. GitHub expands the missing key to the empty string, so the
+ *  lane cheerfully runs against `apps/` and this guard called it generic. */
+export function collectMatrixKeys(lines) {
+  const keys = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].text.match(/^(\s*)matrix:\s*$/);
+    if (!m) continue;
+    const indent = m[1].length;
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].text;
+      if (t.trim() === '') continue;
+      if (t.match(/^ */)[0].length <= indent) break;
+      const kv = t.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):/);
+      if (kv) keys.add(kv[1]);
+    }
+  }
+  return keys;
+}
+
 /** One line, with every `${{ … }}` resolved — possibly into SEVERAL lines, when
  *  a matrix key carries several values. Anything this cannot resolve becomes the
  *  DYNAMIC sentinel, which is not a failure: a path whose app segment is a
@@ -349,9 +443,14 @@ const APP_REF = new RegExp(`apps/(${DYNAMIC}|[A-Za-z0-9_.-]+)`, 'g');
  *  explanation as its behaviour. */
 export function laneApps(wf, env, matrix) {
   const resolved = new Set();
+  const exprs = new Set();
   let parameterised = false;
   for (const line of wf.lines) {
     if (!line.text.includes('apps/')) continue;
+    // The expression sitting in the APP SEGMENT itself, before any expansion —
+    // `apps/${{ matrix.app }}` yields `matrix.app`. Limb A′ needs the reference
+    // as written, which the expanded variants have by definition thrown away.
+    for (const m of line.text.matchAll(/apps\/\$\{\{\s*([^}]*?)\s*\}\}/g)) exprs.add(m[1].trim());
     for (const variant of expandExpressions(line.text, env, matrix)) {
       for (const m of variant.matchAll(APP_REF)) {
         if (m[1] === DYNAMIC) parameterised = true;
@@ -359,7 +458,7 @@ export function laneApps(wf, env, matrix) {
       }
     }
   }
-  return { resolved, parameterised };
+  return { resolved, parameterised, exprs };
 }
 
 const expected = [...APPS].sort().join(', ');
@@ -368,7 +467,7 @@ for (const wf of parsed) {
   const file = wf.rel.split('/').pop();
   const env = collectEnv(wf.lines);
   const matrix = collectMatrix(wf.lines);
-  const { resolved, parameterised } = laneApps(wf, env, matrix);
+  const { resolved, parameterised, exprs } = laneApps(wf, env, matrix);
   const got = [...resolved].sort().join(', ') || '(none)';
 
   if (!R1_LANES.includes(file)) {
@@ -377,7 +476,33 @@ for (const wf of parsed) {
   }
   gradedLanes++;
   if (parameterised) {
-    ok(`${file} — the app segment of its paths is a run-time parameter, so it serves any app in the workspace`);
+    // ── LIMB A′ ─────────────────────────────────────────────────────────────
+    // A parameterised lane is generic only if the parameter is REAL and if
+    // NOTHING beside it is still nailed to one app. Both checks exist because
+    // limb A's `parameterised` branch is a short-circuit: it returns ok without
+    // ever reaching the equality, so anything it lets through is unmeasured.
+    const declaredKeys = collectMatrixKeys(wf.lines);
+    const undeclared = [...exprs]
+      .map((e) => e.match(/^matrix\.([A-Za-z_][A-Za-z0-9_-]*)/)?.[1])
+      .filter((k) => k && !declaredKeys.has(k));
+    if (undeclared.length) {
+      fail(
+        `${file} addresses its apps as \`apps/\${{ matrix.${undeclared[0]} }}\` but declares no \`${undeclared[0]}:\` ` +
+          `key under any \`strategy.matrix:\` block (it declares ${declaredKeys.size ? [...declaredKeys].join(', ') : 'none'}). ` +
+          'GitHub expands an undefined matrix context to the EMPTY STRING rather than erroring, so that lane builds ' +
+          '`apps/` on every run while reading here as fully generic — a guard measuring a stand-in, which is the one ' +
+          'defect this file was written to stop repeating. Declare the dimension (`app: ${{ fromJSON(needs.prepare.outputs.apps) }}`).',
+      );
+    } else if (resolved.size) {
+      fail(
+        `${file} is MIXED: its app paths are parameterised, and it ALSO still names ${[...resolved].sort().join(', ')} ` +
+          'literally. A matrix leg for app #2 would run those steps against app #1 — the wrong directory, or the wrong ' +
+          "artifact uploaded under the second app's name — and limb A cannot see it, because `parameterised` returns ok " +
+          'before the equality is reached. Every app path in an R-1 lane is parameterised, or the lane is not generic.',
+      );
+    } else {
+      ok(`${file} — the app segment of its paths is a run-time parameter over a declared dimension, and no path beside it names an app, so it serves any app in the workspace`);
+    }
     continue;
   }
   const missing = [...APPS].filter((a) => !resolved.has(a));

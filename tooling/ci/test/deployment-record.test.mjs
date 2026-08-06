@@ -33,6 +33,8 @@ import {
   resolveEnvironment,
   readSubmissions,
   calendarMonth,
+  SUBMIT_TIME_STATES,
+  STATE_MEANING,
 } from '../deployment-record.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -370,5 +372,113 @@ describe('record-deployment — the store rule is enforced BEFORE anything is wr
     const { code, out } = record([]);
     assert.equal(code, 1);
     assert.match(out, /no environment given/);
+  });
+
+  // ── SUBMITTED IS NOT LIVE ───────────────────────────────────────────────────
+  // The `live` default is correct for a web deploy — the upload finishing IS the
+  // go-live, with no third party in between — and is the single most consequential
+  // thing this ledger could get wrong on a store, where the upload is `in_review`
+  // and the store decides hours-to-weeks later, possibly never. A forgotten flag
+  // must not be what separates "we submitted it" from "the store approved it".
+  test('a STORE environment REFUSES to inherit the `live` default', () => {
+    const { code, out } = record(['subly-windows-store', '--listing-url', 'https://apps.microsoft.com/detail/X']);
+    assert.equal(code, 1);
+    assert.match(out, /no --state was given/);
+    assert.match(out, /NOT live when the upload succeeds/);
+    assert.doesNotMatch(out, /could not record the deployment/); // refused BEFORE the API
+  });
+
+  test('a WEB environment still gets the `live` default — the upload IS the go-live', () => {
+    const { code, out } = record(['subly-web']);
+    assert.equal(code, 1);
+    assert.match(out, /could not record the deployment/); // got past the shape gate
+    assert.doesNotMatch(out, /no --state was given/);
+  });
+
+  test('a SERVICE environment still gets the `live` default', () => {
+    const { code, out } = record(['platform', 'https://platform.nikatru.com']);
+    assert.equal(code, 1);
+    assert.match(out, /could not record the deployment/);
+    assert.doesNotMatch(out, /no --state was given/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 ONE SHAPE, NOT TWO — the defect found live on 2026-08-06.
+//
+// record-deployment.mjs writes a GitHub Deployment AND a Deployment Status, and
+// each carries its own `description`. The status got `encodeDescription(...)`;
+// the deployment got the prose `"<env> deploy"`. Verified against the live API
+// that day: every deployment read `"subly-web deploy"` and every status read
+// `nk1 state=live sha=6525fb7d`.
+//
+// That is not cosmetic. `readSubmissions` decodes `description`, and the ledger
+// source this script's own header documents — `gh api …/deployments` — returns
+// the DEPLOYMENT's field. So the documented query produced rows that all decoded
+// as UNPARSEABLE, and a cadence count over them was a count of zero wearing the
+// look of compliance. Both fields now carry the same encoding.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('record-deployment — the DEPLOYMENT and its STATUS carry the same shape', () => {
+  const source = readFileSync(RECORDER, 'utf8');
+
+  test('no prose description survives anywhere in the writer', () => {
+    assert.doesNotMatch(
+      source,
+      /description:\s*`\$\{environment\}\s+deploy`/,
+      'the deployment body must not write free prose — `readSubmissions` decodes exactly this field',
+    );
+  });
+
+  test('both API bodies send the encoded `description` variable', () => {
+    const bodies = [...source.matchAll(/^\s*description,\s*$/gm)];
+    assert.equal(
+      bodies.length,
+      2,
+      'expected the deployment body AND the status body to send the same encoded `description`; ' +
+        `found ${bodies.length}. Two shapes in one ledger is what this test exists to prevent.`,
+    );
+  });
+
+  test('a ledger built from the DEPLOYMENT field decodes — the shape the fix makes true', () => {
+    // What `gh api …/deployments --jq '[.[]|{environment,createdAt:.created_at,description}]'`
+    // now yields for a store submission, fed to the reader that consumes it.
+    const { records, unreadable } = readSubmissions(
+      [{
+        environment: 'subly-android-play',
+        createdAt: '2026-08-06T00:00:00Z',
+        description: encodeDescription({ state: 'in_review', sha: 'abc12345', listingUrl: 'https://play.google.com/x' }),
+      }],
+      REAL_REGISTER,
+    );
+    assert.deepEqual(unreadable, []);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].state, 'in_review');
+    assert.equal(records[0].channel, 'android-play');
+  });
+
+  test('the OLD deployment-field prose is what the fix removed — it decodes as unreadable', () => {
+    const { records, unreadable } = readSubmissions(
+      [{ environment: 'subly-android-play', createdAt: '2026-08-06T00:00:00Z', description: 'subly-android-play deploy' }],
+      REAL_REGISTER,
+    );
+    assert.deepEqual(records, []);
+    assert.equal(unreadable.length, 1);
+    assert.match(unreadable[0].reason, /not a "nk1" record/);
+  });
+});
+
+describe('deployment-record — SUBMIT_TIME_STATES draws the submitted/live line', () => {
+  test('a submitting run may assert exactly one state', () => {
+    assert.deepEqual([...SUBMIT_TIME_STATES], ['in_review']);
+  });
+
+  test('every state carries a meaning, and every meaning names a state', () => {
+    assert.deepEqual(Object.keys(STATE_MEANING).sort(), [...STATES].sort());
+  });
+
+  test('the store-issued states are NOT assertable at submission time', () => {
+    for (const s of ['live', 'rejected', 'pulled']) {
+      assert.equal(SUBMIT_TIME_STATES.includes(s), false, `${s} is decided after the submitting run has ended`);
+    }
   });
 });

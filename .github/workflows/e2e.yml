@@ -52,10 +52,53 @@ permissions:
   contents: read
 
 jobs:
+  # ── which apps does this factory hold? ──────────────────────────────────────
+  # [pipeline 9]R-1: "adding an app requires no new or edited workflow file."
+  # The nightly proof is a MATRIX over this output, so the set of apps driven
+  # against live Supabase is the root pubspec's `workspace:` list and nothing
+  # else. Identical to build-platforms.yml's `prepare`, and deliberately reading
+  # through the SAME emitter — `assert-release-lane-generic.mjs --emit-apps` is
+  # the guard that grades both lanes, so the set they iterate and the set they
+  # are graded against cannot diverge. A second pubspec reader inlined here would
+  # be the copy that quietly stops reading what it thinks it reads.
+  #
+  # It has NO secret-presence preflight and needs none: it touches no secret, and
+  # the `e2e` job below still fails closed on SUPABASE_SERVICE_ROLE_KEY for every
+  # leg. It emits nothing on an empty workspace — it exits 1 — because a matrix
+  # of `[]` runs zero legs and reports success, which is the exact green-over-
+  # nothing this workflow's header was rewritten to remove.
+  prepare:
+    name: Derive the app set from the pub workspace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.workspace.outputs.apps }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: The matrix comes from the workspace, never from this file
+        id: workspace
+        run: |
+          set -euo pipefail
+          apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+          echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+          echo "Driving: ${apps}" >> "$GITHUB_STEP_SUMMARY"
+
   e2e:
     name: Flutter integration_test (live Supabase + D1)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    needs: prepare
+    # `fail-fast: false` — each app's nightly run is its own proof against live
+    # production, and cancelling app #1's leg because app #2 regressed destroys
+    # the evidence that would have told a real outage from one app's bug. It also
+    # keeps the `always()` purge below reachable on every leg. With one app in the
+    # workspace this changes nothing.
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
@@ -95,7 +138,7 @@ jobs:
         uses: nanasess/setup-chromedriver@ef5c64a93512d266b23b80bae95e46a67f30e703 # v2
 
       - name: flutter pub get
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         run: flutter pub get --enforce-lockfile
 
       - name: Provision throwaway confirmed user
@@ -107,7 +150,7 @@ jobs:
 
       - name: Run integration tests (headless Chrome)
         id: drive
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -186,6 +229,21 @@ jobs:
             echo 'Screenshots up to the failure are in the `e2e-screenshots` artifact on this run.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # ⬜ `SUBLY_D1_DATABASE_ID` IS STILL APP-SPECIFIC, AND IS LEFT THAT WAY ON
+      # PURPOSE. [9]R-1's acceptance is about hard-coded app PATHS, and every one
+      # of those is now a matrix value — but this is a different animal: the app
+      # id is in the VARIABLE NAME, because `tooling/e2e/verify_row.mjs` and
+      # `purge.mjs` read `SUBLY_D1_DATABASE_ID` by that literal name, and the
+      # value is a real per-app D1 database that only exists once an app has a
+      # backend. Making it generic means changing those two scripts to take the
+      # database id as an argument (and a per-app place to hold the id — the
+      # channel register or the app's own config, not this file). That is a
+      # different change with a different blast radius, in files this refactor
+      # does not own. Forcing `${{ matrix.app }}` into an env-var name here would
+      # produce `PROBE_D1_DATABASE_ID` that no script reads: a lane that LOOKS
+      # generic and silently verifies nothing, which is worse than the honest
+      # literal. App #2's leg will fail loudly on a missing id — the correct
+      # outcome, and the thing that will force the real fix.
       - name: Verify the row landed in live D1
         env:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
@@ -205,8 +263,13 @@ jobs:
         if: always() && steps.user.outcome != 'skipped'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: e2e-screenshots
-          path: apps/subly/screenshots/
+          # Per-app, and not for tidiness: `upload-artifact@v4` HARD-FAILS on a
+          # second upload under a name that already exists in the run, so a fixed
+          # name turns app #2's leg red on a step that is `if: always()` — i.e.
+          # it would break the purge's own run. The `alert` job's body still says
+          # "the e2e-screenshots artifact"; that prefix is what a reader matches.
+          name: e2e-screenshots-${{ matrix.app }}
+          path: apps/${{ matrix.app }}/screenshots/
           if-no-files-found: warn
 
       - name: Purge test data (always — keep prod pristine)

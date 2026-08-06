@@ -38,6 +38,48 @@
 //                                                             THAT IS DOWN"
 //   15/15 caught, none crashed, every restore byte-identical and green again.
 //
+// ── [14]O-3 / O-11 / O-17 · REAL-TREE MUTATIONS RUN 2026-08-06 ──────────────
+// 🔴 THE FALSIFIER WAS TRUE AND THE GUARD WAS GREEN, and it was one defect three
+// times: an acceptance limb whose domain is empty. O-3's cadence limb queried NO
+// record (it checked that a row NAMED one); O-11's lead-window arithmetic had
+// executed ZERO times across twelve rows, every one `expires: null`; O-17's
+// deleting-job limb ranged over ZERO stores out of nineteen. All three printed ok.
+//
+// O-3 NEEDED NO SYNTHETIC NEGATIVE TEST — THE TREE PROVIDES IT. Measured on the
+// owner's laptop while the old guard exited 0:
+//     ClaudeTranscriptBackup  LastRun 2026-08-06 02:00:01  LastTaskResult 1
+//     NikatruProjectBackup    LastRun 2026-08-06 02:30:01  LastTaskResult 1
+//     NIKATRU daily backup    LastRun 2026-08-06 10:00:01  LastTaskResult 0
+// The repaired guard queries Task Scheduler and reddens on the first two while
+// passing the third — one substrate, opposite outcomes, which is the argument
+// this requirement was written on.
+//
+// Ten further mutations against the COMMITTED register (each: mutate -> run ->
+// intended message -> restore from the pre-mutation buffer -> byte-compare).
+// ⚠️ NOT `git checkout --`: the change under test was uncommitted, so checkout
+// would have reverted the work instead of the mutation. 10/10 caught, none
+// crashed, restore byte-identical (sha256 eac7da12…), guard back to its
+// baseline of exactly the two failing laptop duties.
+//
+//   N1  a 13th `expires: null` row                -> "and the ceiling is 12"
+//   N2  `expiryKnownAt` stripped from origin-ca   -> "must carry `expiryKnownAt`"
+//   N3  a 4th `period-undeclared` row             -> "and the ceiling is 3"
+//   N4  the signup KV declares a period, no job   -> "`rule: period` with no `deletingJob`"
+//   N5  `recordQuery` deleted from e2e.yml's row  -> "no `mechanism.recordQuery.reader`"
+//   N6  a 6th duty declared `unreachable`         -> "and the ceiling is 5"
+//   N7  EVERY scheduled duty `unreachable`        -> COVERAGE LOST
+//   N8  every `expiring` row deleted              -> COVERAGE LOST
+//   N9  a Windows task name that does not exist   -> "DOES NOT EXIST: no scheduled
+//       (the `missing` path, against the real host)   task named …"
+//   N10 a declared reader no row uses             -> "is declared and no row uses it"
+//
+// 🔴 AND ONE FOUND BY THE HARNESS ITSELF, worth more than any of the ten: on the
+// first pass the probe's 15 s timeout was shorter than a COLD `powershell` start
+// plus the ScheduledTasks module autoload. It did not crash — it reported
+// `unreadable`, and THE GUARD EXITED 0 WITH TWO FAILING DUTIES ON THE MACHINE.
+// That is this limb's own defect returning as a timeout. Local probes now get
+// their own 90 s ceiling, separate from the 15 s network one.
+//
 // ── THE LEAD-WINDOW LIMB, REAL-TREE MUTATIONS RUN 2026-08-04 ─────────────────
 // Same protocol, against this worktree's own tooling/ops/register.json, each
 // restored with `git checkout --` and re-verified green (`git status` clean,
@@ -71,7 +113,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { evaluate, cadenceDays, parseJsonc, findWranglerConfigs } from '../assert-ops-register.mjs';
+import { evaluate, evaluateRunRecords, cadenceDays, parseJsonc, findWranglerConfigs } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-ops-register.mjs');
@@ -95,6 +137,19 @@ function baseRegister() {
     // mappings about nothing while looking like coverage.
     _substrateHosts: { 'github-actions': 'github', 'windows-task-scheduler': 'laptop', 'glitchtip-heartbeat': 'oci' },
     _maxCadenceDays: { surface: 7, duty: 31, expiring: 180, 'recovery-path': 180, revert: 365, retention: 365, review: 120, 'failure-mode': 365 },
+    // [14]O-3/O-11/O-17. The three ceilings are set to the fixture's own state,
+    // not to the real register's, so a test that adds one more null expiry or
+    // one more undeclared period trips the ratchet rather than sailing past it.
+    // `_recordReaders` is read by evaluateRunRecords (which main() calls), never
+    // by evaluate(), so it matters only to the SPAWNED fixture roots below.
+    _recordReaders: {
+      _maxUnreachable: 1,
+      _windowMultiplier: 1.5,
+      'github-run-history': { queries: 'the newest successful scheduled run', needs: 'GITHUB_TOKEN' },
+      unreachable: { queries: 'nothing', needs: 'n/a' },
+    },
+    _expiryCoverage: { _maxNull: 1 },
+    _retentionCoverage: { _maxUndeclared: 1 },
     _requiredCoverage: { ids: ['recovery.bundles'] },
     rows: [
       {
@@ -499,6 +554,10 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       cadence: '180d',
       leadDays: 30,
       expires: null,
+      // [14]O-11, 2026-08-06: the price of the null tolerance. Not optional in
+      // the fixture either — a fixture that opts out of the field under test is
+      // how a guard ships with a check its own tests never exercise.
+      expiryKnownAt: 'the registrar console',
       ownerGated: true,
       ownerGap: 'console-only',
       mechanism: { substrate: 'cloudflare-registrar', anchor: 'company/runbooks/operations.md', record: 'the console', failingValue: 'auto-renew off', readBy: 'nothing yet' },
@@ -860,6 +919,224 @@ describe('assert-ops-register — the helpers it depends on', () => {
   });
 });
 
+describe('assert-ops-register — [14]O-3 · the record-query limb, whose domain must never be empty', () => {
+  // 🔴 WHAT THIS SUITE IS ABOUT. Until 2026-08-06 the cadence limb checked that
+  // a duty row NAMED a `record`, a `readBy` and a `failingValue` — three
+  // assertions about prose — while ClaudeTranscriptBackup and NikatruProjectBackup
+  // returned LastTaskResult = 1 every night and this guard exited 0. The
+  // acceptance asks for "a query against that mechanism's own record"; the real
+  // negative test is the tree itself, and it is recorded in this file's footer.
+  // What is exercised here is the CLASSIFICATION and the anti-vacuity rules,
+  // which no probe can demonstrate.
+  const NOW3 = Date.parse('2026-08-06T12:00:00Z');
+  const readers = () => ({
+    _maxUnreachable: 1,
+    _windowMultiplier: 1.5,
+    'windows-scheduled-task': { queries: 'Get-ScheduledTaskInfo', needs: 'win32' },
+    unreachable: { queries: 'nothing', needs: 'n/a' },
+  });
+  const duty = (id, cadence, recordQuery) => ({
+    id,
+    kind: 'duty',
+    what: 'a scheduled duty',
+    detector: 'x',
+    response: 'y',
+    cadence,
+    mechanism: { substrate: 'windows-task-scheduler', anchor: 'renovate.json', record: 'r', failingValue: 'f', readBy: 'b', recordQuery },
+  });
+  const reg3 = (rows, over = {}) => ({ _recordReaders: { ...readers(), ...over }, rows });
+  const two = () => [
+    duty('duty.win', '1d', { reader: 'windows-scheduled-task', task: 'T' }),
+    duty('duty.box', '1d', { reader: 'unreachable', why: 'on a host nothing here can reach' }),
+  ];
+  const probesOf = (o) => new Map(Object.entries(o));
+
+  test('a reachable record with a fresh SUCCESS passes, and the pass is counted', () => {
+    const r = evaluateRunRecords(reg3(two()), probesOf({ 'duty.win': { lastSuccessMs: NOW3 - 3_600_000, detail: 'ok' } }), NOW3);
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.stats.pass, 1);
+  });
+
+  test('🔴 THE REAL TREE\'S CASE: a reachable record whose only result is a FAILURE is RED, not stale-but-tolerated', () => {
+    const r = evaluateRunRecords(
+      reg3(two()),
+      probesOf({ 'duty.win': { lastSuccessMs: NaN, detail: 'LastTaskResult = 1 at 2026-08-06T02:00:01Z.' } }),
+      NOW3,
+    );
+    assert.match(r.errors.join(' | '), /duty\.win — its record IS reachable and holds NO SUCCESSFUL RUN AT ALL/);
+  });
+
+  test('a success OUTSIDE the 1.5x window is RED, and one INSIDE it is not — the margin is real', () => {
+    const stale = evaluateRunRecords(reg3(two()), probesOf({ 'duty.win': { lastSuccessMs: NOW3 - 37 * 3_600_000, detail: 'd' } }), NOW3);
+    assert.match(stale.errors.join(' | '), /newest SUCCESSFUL run is 37\.0h old, outside its own window \[1d x 1\.5 = 36\.0h\]/);
+    const fresh = evaluateRunRecords(reg3(two()), probesOf({ 'duty.win': { lastSuccessMs: NOW3 - 35 * 3_600_000, detail: 'd' } }), NOW3);
+    assert.deepEqual(fresh.errors, []);
+  });
+
+  test('a reader that could not run here PRINTS and never fails — "I could not tell" is not "it is fine", and not a build break either', () => {
+    const r = evaluateRunRecords(reg3(two()), probesOf({ 'duty.win': { unreadable: true, why: 'this runner is linux' } }), NOW3);
+    assert.deepEqual(r.errors, []);
+    assert.match(r.prints.join(' | '), /could not run here: this runner is linux/);
+    assert.match(r.prints.join(' | '), /🔴 THE RECORD-QUERY LIMB ANSWERED ZERO QUERIES ON THIS RUN/);
+  });
+
+  test('a query that ANSWERS "the mechanism does not exist" is a hard failure — a stale row reads as coverage', () => {
+    const r = evaluateRunRecords(reg3(two()), probesOf({ 'duty.win': { missing: true, why: 'no scheduled task named "T"' } }), NOW3);
+    assert.match(r.errors.join(' | '), /DOES NOT EXIST: no scheduled task named "T"/);
+  });
+
+  test('a scheduled duty with NO reader at all FAILS — it would be inside the count and outside the query', () => {
+    const rows = two();
+    delete rows[0].mechanism.recordQuery;
+    const r = evaluateRunRecords(reg3(rows), new Map(), NOW3);
+    assert.match(r.errors.join(' | '), /no `mechanism\.recordQuery\.reader`/);
+  });
+
+  test('an undeclared reader name FAILS — free text would let a row invent a reader nothing implements', () => {
+    const rows = two();
+    rows[0].mechanism.recordQuery = { reader: 'telepathy' };
+    const r = evaluateRunRecords(reg3(rows), new Map(), NOW3);
+    assert.match(r.errors.join(' | '), /is not declared in `_recordReaders`/);
+  });
+
+  test('`unreachable` with no `why` FAILS — "nothing can read it" may be recorded, never passed over', () => {
+    const rows = two();
+    rows[1].mechanism.recordQuery = { reader: 'unreachable' };
+    const r = evaluateRunRecords(reg3(rows), new Map(), NOW3);
+    assert.match(r.errors.join(' | '), /`reader: "unreachable"` with no `why`/);
+  });
+
+  test('🔴 EVERY duty declared unreachable is COVERAGE LOST — the escape hatch may not become the domain', () => {
+    const rows = [duty('duty.a', '1d', { reader: 'unreachable', why: 'w' }), duty('duty.b', '1d', { reader: 'unreachable', why: 'w' })];
+    const r = evaluateRunRecords(reg3(rows, { _maxUnreachable: 9 }), new Map(), NOW3);
+    assert.ok(r.coverageLost, 'an all-unreachable register must be COVERAGE LOST');
+    assert.match(r.coverageLost.join(' '), /Every outcome would then be a print, this limb could not fail/);
+  });
+
+  test('one more `unreachable` than the ceiling FAILS — the ratchet only goes down', () => {
+    const rows = [...two(), duty('duty.box2', '1d', { reader: 'unreachable', why: 'w' })];
+    const r = evaluateRunRecords(reg3(rows), new Map(), NOW3);
+    assert.match(r.errors.join(' | '), /2 duty row\(s\) declare `reader: "unreachable"` and the ceiling is 1/);
+  });
+
+  test('a declared reader no row uses FAILS — a reader with no member is code that cannot fail', () => {
+    const r = evaluateRunRecords(reg3(two(), { 'file-stamp': { queries: 'an mtime', needs: 'the file' } }), new Map(), NOW3);
+    assert.match(r.errors.join(' | '), /`_recordReaders\.file-stamp` is declared and no row uses it/);
+  });
+
+  test('NO duty on a clock at all is COVERAGE LOST — moving every duty off a timer must not satisfy O-3', () => {
+    const rows = [duty('duty.x', 'on-demand', { reader: 'unreachable', why: 'w' })];
+    const r = evaluateRunRecords(reg3(rows), new Map(), NOW3);
+    assert.ok(r.coverageLost);
+    assert.match(r.coverageLost.join(' '), /ranges over the empty set/);
+  });
+
+  test('deleting `_recordReaders` entirely is COVERAGE LOST, not a silent return to checking prose', () => {
+    const r = evaluateRunRecords({ rows: two() }, new Map(), NOW3);
+    assert.ok(r.coverageLost);
+    assert.match(r.coverageLost.join(' '), /`_recordReaders` is missing/);
+  });
+
+  test('a window multiplier under 1 FAILS — a window shorter than the cadence reports a healthy duty dead', () => {
+    const r = evaluateRunRecords(reg3(two(), { _windowMultiplier: 0.5 }), new Map(), NOW3);
+    assert.match(r.errors.join(' | '), /_windowMultiplier` must be a number >= 1/);
+  });
+});
+
+describe('assert-ops-register — [14]O-11 / [14]O-17 · a tolerance that cannot fail is not a tolerance', () => {
+  // Both requirements shipped BUILT with an empty domain: twelve `expiring` rows
+  // and zero executed lead-window comparisons; nineteen `retention` rows and
+  // zero declared periods. The decision was to KEEP both tolerances — the dates
+  // and the periods are genuinely not this repository's to know — and to make
+  // each cost something that can go red.
+  const withExpiry = (extra) => {
+    const r = baseRegister();
+    r.rows.push({
+      id: 'expiring.thing',
+      kind: 'expiring',
+      what: 'a thing that expires',
+      detector: 'this row',
+      response: 'renew it',
+      cadence: '180d',
+      leadDays: 30,
+      expires: null,
+      expiryKnownAt: 'a vendor console',
+      ownerGated: true,
+      ownerGap: 'console-only',
+      mechanism: { substrate: 'x', anchor: 'company/runbooks/operations.md', record: 'r', failingValue: 'f', readBy: 'nothing yet' },
+      accessProviders: ['cloudflare'],
+      source: 'verified',
+      ...extra,
+    });
+    return r;
+  };
+
+  test('a null expiry with no `expiryKnownAt` FAILS — the tolerance must name its source', () => {
+    assert.match(messages(withExpiry({ expiryKnownAt: undefined })), /must carry `expiryKnownAt`/);
+  });
+
+  test('one more null expiry than the ceiling FAILS — the ratchet only goes down', () => {
+    const r = withExpiry({});
+    r.rows.push({ ...r.rows[r.rows.length - 1], id: 'expiring.second' });
+    assert.match(messages(r), /2 `expiring` row\(s\) carry `expires: null` and the ceiling is 1/);
+  });
+
+  test('the executed-comparison count PRINTS, and reads 0 while every date is null', () => {
+    const p = run(withExpiry({})).prints.join(' | ');
+    assert.match(p, /\[14\]O-11 — 1 expiring row\(s\) · 0 lead-window comparison\(s\) ACTUALLY EXECUTED · 1 expiry UNREAD/);
+    assert.match(p, /THE LEAD-WINDOW ARITHMETIC RAN ZERO TIMES ON THIS RUN/);
+  });
+
+  test('once a real date lands the count moves — the print is measuring, not decorating', () => {
+    const far = new Date(NOW + 300 * 86_400_000).toISOString().slice(0, 10);
+    const p = run(withExpiry({ expires: far, ownerGated: false, ownerGap: undefined })).prints.join(' | ');
+    assert.match(p, /1 lead-window comparison\(s\) ACTUALLY EXECUTED · 0 expiry UNREAD/);
+    assert.doesNotMatch(p, /RAN ZERO TIMES/);
+  });
+
+  test('a declared `period` with no `deletingJob` FAILS — O-17 is "deleted on schedule, BY A JOB"', () => {
+    const r = baseRegister();
+    r.rows.push({
+      id: 'retention.events',
+      kind: 'retention',
+      store: 'd1:platform_db:events',
+      what: 'analytics events',
+      rule: 'period',
+      periodDays: 365,
+      detector: 'the coverage guard',
+      response: 'the sweep',
+      cadence: '365d',
+      mechanism: { substrate: 'cloudflare-d1', anchor: 'company/runbooks/operations.md', record: 'the table', failingValue: 'a row older than the period', readBy: 'the coverage guard' },
+      accessProviders: ['cloudflare'],
+      source: 'verified',
+    });
+    assert.match(messages(r), /`rule: period` with no `deletingJob`/);
+  });
+
+  test('one more undeclared period than the ceiling FAILS, and the count prints while it is 0 declared', () => {
+    const r = baseRegister();
+    const row = (id) => ({
+      id,
+      kind: 'retention',
+      store: `kv:${id}`,
+      what: 'a store',
+      rule: 'period-undeclared',
+      detector: 'the coverage guard',
+      response: 'stage 8 owns the number',
+      cadence: '365d',
+      ownerGated: true,
+      ownerGap: 'the period is a policy decision',
+      mechanism: { substrate: 'cloudflare-kv', anchor: 'company/runbooks/operations.md', record: 'the store', failingValue: 'a key older than the period', readBy: 'the coverage guard' },
+      accessProviders: ['cloudflare'],
+      source: 'verified',
+    });
+    r.rows.push(row('retention.one'));
+    assert.match(run(r).prints.join(' | '), /\[14\]O-17 — 1 retention row\(s\) · 0 declare a PERIOD/);
+    r.rows.push(row('retention.two'));
+    assert.match(messages(r), /2 retention row\(s\) carry `rule: period-undeclared` and the ceiling is 1/);
+  });
+});
+
 describe('assert-ops-register — a named READER must exist, not merely be named', () => {
   // The register's first draft named `tooling/ci/assert-update-coverage.mjs` as
   // the reader for the dependency duty. That file has never existed — so the row
@@ -899,9 +1176,53 @@ describe('assert-ops-register — a named READER must exist, not merely be named
 });
 
 describe('assert-ops-register — end to end, against the real repository', () => {
-  test('the committed register passes its own guard', () => {
+  // 🔴 THIS TEST USED TO ASSERT `status === 0` AND THAT IS NO LONGER A CLAIM IT
+  // MAY MAKE. From 2026-08-06 the [14]O-3 limb QUERIES each mechanism's own run
+  // record, and on the Windows host two of the three Task Scheduler duties are
+  // genuinely returning LastTaskResult = 1 — so a red run there is the guard
+  // working, not the register being malformed. On a Linux CI runner the same
+  // reader reports `unreadable` and the same register is green.
+  //
+  // Asserting 0 would therefore be asserting "no duty is currently failing",
+  // which is a fact about the owner's laptop rather than about this file, and
+  // the fix everybody reaches for when it goes red is to delete the query.
+  // Asserting nothing would be worse. So the claim is the one that IS this
+  // file's: THE REGISTER IS STRUCTURALLY SOUND — every problem, if any, must be
+  // a record-query verdict about a failing duty, never a schema, coverage or
+  // delegation error. A structural break still reddens this test on every OS.
+  const realGuard = () => {
     const r = spawnSync(process.execPath, [GUARD], { cwd: resolve(CI_DIR, '..', '..'), encoding: 'utf8' });
-    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    return { code: r.status, out: `${r.stdout}\n${r.stderr}` };
+  };
+
+  test('the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register', () => {
+    const { code, out } = realGuard();
+    if (code === 0) return;
+    const problems = out
+      .split('\n')
+      .filter((l) => /^ {4}\S/.test(l))
+      .map((l) => l.trim());
+    assert.ok(problems.length > 0, `exit ${code} with no itemised problems:\n${out}`);
+    for (const p of problems) {
+      assert.match(
+        p,
+        /its record IS reachable and (holds NO SUCCESSFUL RUN AT ALL|the newest SUCCESSFUL run)|the mechanism its `recordQuery` names DOES NOT EXIST/,
+        `a NON-record problem in the committed register — this is a structural break and must be fixed, not tolerated:\n${p}`,
+      );
+    }
+  });
+
+  test('the [14]O-3 record limb actually ran, and says how many records it queried', () => {
+    // Without this the previous test is satisfiable by a guard that stopped
+    // querying entirely — the defect the whole limb replaces, one level up.
+    const { out } = realGuard();
+    assert.match(out, /\[14\]O-3 — \d+ scheduled duty\(ies\) · \d+ record\(s\) QUERIED/);
+  });
+
+  test('the [14]O-11 and [14]O-17 execution counts print on every run', () => {
+    const { out } = realGuard();
+    assert.match(out, /\[14\]O-11 — \d+ expiring row\(s\) · \d+ lead-window comparison\(s\) ACTUALLY EXECUTED/);
+    assert.match(out, /\[14\]O-17 — \d+ retention row\(s\) · \d+ declare a PERIOD/);
   });
 
   test('a repository with no operations register is COVERAGE LOST, not a quiet pass', () => {
@@ -934,14 +1255,93 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     reg.rows[1].mechanism.readBy = 'the backup script';
     reg.rows[2].mechanism.readBy = 'this guard';
     writeFileSync(join(root, 'renovate.json'), '{}');
+
+    // ── what main() now demands and evaluate() does not ──────────────────────
+    // These four additions all exist because of the 2026-08-06 [14]O-3/O-11/O-17
+    // repair, and each models the SHAPE the real register has rather than the
+    // minimum that makes the guard quiet:
+    //  · the one scheduled duty declares a reader (an unreachable one, with a why)
+    //  · a second scheduled duty uses the OTHER declared reader, because a reader
+    //    no row uses is an error — and because a register whose every duty is
+    //    `unreachable` is COVERAGE LOST, which is the anti-vacuity rule itself
+    //  · one `expiring` row and one `retention` row, because a register holding
+    //    none of either makes [14]O-11 and [14]O-17 range over the empty set
+    sched(reg).mechanism.recordQuery = { reader: 'unreachable', why: 'the fixture laptop is not reachable from a test runner' };
+    reg.rows.push({
+      id: 'duty.workflow.nightly',
+      kind: 'duty',
+      what: 'a nightly scheduled workflow',
+      detector: 'its own alert job',
+      response: 'read the issue it files',
+      cadence: '1d',
+      mechanism: {
+        substrate: 'github-actions',
+        anchor: 'renovate.json',
+        record: 'GitHub Actions run history, filtered to event = schedule',
+        failingValue: 'conclusion = failure on event = schedule',
+        readBy: 'this guard, by querying the run history',
+        recordQuery: { reader: 'github-run-history', workflow: 'ci.yml', event: 'schedule' },
+      },
+      // [14]O-10 wants an IN-TREE freshness reader or a written gap. This
+      // fixture root has no guards in it, so the gap is the honest answer — and
+      // it exercises the print-don't-fail path rather than routing round it.
+      freshnessGap: 'the fixture root contains no in-tree guards; [14]O-10 is exercised against the real repository elsewhere.',
+      absenceWatcher: {
+        substrate: '(none)',
+        what: 'NOTHING — a push-triggered reader cannot catch the provider dying, because it is on that provider.',
+        ownerGated: true,
+        gap: 'needs a watcher off GitHub; recorded so the count carries it.',
+      },
+      accessProviders: ['github'],
+      source: 'verified',
+    });
+    reg.rows.push({
+      id: 'expiring.fixture-domain',
+      kind: 'expiring',
+      what: 'a domain registration',
+      detector: 'this row',
+      response: 'renew it',
+      cadence: '180d',
+      leadDays: 30,
+      expires: null,
+      expiryKnownAt: 'the registrar console',
+      ownerGated: true,
+      ownerGap: 'console-only',
+      mechanism: { substrate: 'cloudflare-registrar', anchor: 'renovate.json', record: 'the console', failingValue: 'auto-renew off', readBy: 'nothing yet' },
+      accessProviders: ['cloudflare'],
+      source: 'verified',
+    });
+    reg.rows.push({
+      id: 'retention.fixture-table',
+      kind: 'retention',
+      store: 'd1:fixture_db:heartbeat',
+      what: 'an append-only heartbeat table',
+      rule: 'keep',
+      keepWhy: 'append-only by design; the additive-only schema rule forbids dropping it',
+      detector: 'assert-retention-coverage.mjs',
+      response: 'n/a',
+      cadence: '365d',
+      mechanism: { substrate: 'cloudflare-d1', anchor: 'renovate.json', record: 'the table itself', failingValue: 'a row older than the period, once one exists', readBy: 'assert-retention-coverage.mjs' },
+      accessProviders: ['cloudflare'],
+      source: 'verified',
+    });
+
     const state = { reg, monitor: { hosts: [{ hostname: 'example.test' }] } };
     mutate(state, root);
     writeFileSync(join(root, 'tooling/ops/register.json'), JSON.stringify(state.reg));
     if (state.monitor !== null) writeFileSync(join(root, 'tooling/monitor-register.json'), JSON.stringify(state.monitor));
     return root;
   };
+  // 🔴 THE CREDENTIALS ARE SCRUBBED ON PURPOSE. [14]O-3's readers really do
+  // leave the machine, so a developer who happens to have GITHUB_TOKEN exported
+  // would run a DIFFERENT test from CI — and the one that passes locally and
+  // fails in CI (or the reverse) is the test everybody learns to ignore. With
+  // them absent the reader is deterministically `unreadable`, which is a print,
+  // so these tests measure the delegation limb and nothing else.
   const runRoot = (root) => {
-    const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
+    const env = { ...process.env };
+    for (const k of ['GITHUB_TOKEN', 'GH_TOKEN', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) delete env[k];
+    const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8', env });
     return { code: r.status, out: `${r.stdout}\n${r.stderr}` };
   };
 
