@@ -101,8 +101,9 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
 ///
 /// It does three things and each is load-bearing:
 ///  1. asks the consent question, once, when it has never been answered;
-///  2. logs `app_open` — but ONLY once consent is granted, so the funnel's own
-///     denominator is never the event that gets collected without permission;
+///  2. logs the LAUNCH TRIO — `first_launch` · `app_open` · `return_visit` —
+///     but ONLY once consent is granted, so the funnel's own denominator is
+///     never an event collected without permission;
 ///  3. flushes on background. The recorder batches at 20 events, so an app that
 ///     logs a handful per session would otherwise ship NOTHING until the
 ///     twentieth event — a rail that looks wired and delivers nothing.
@@ -197,7 +198,11 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
         !_launchLogged &&
         ref.watch(analyticsConsentProvider) == core.ConsentStatus.granted) {
       _launchLogged = true;
-      logEvent(ref, 'app_open');
+      // 🔴 ALL THREE LAUNCH EVENTS, not just `app_open` ([pipeline 11]E-5). The
+      // trio and its persisted first-launch marker live in
+      // `core.AnalyticsLifecycle`; this line is the consent-gated call site, and
+      // it is the ONLY one — see `logLaunchLifecycle`.
+      logLaunchLifecycle(ref);
     }
 
     // Rendered INLINE rather than via showDialog: this gate sits in

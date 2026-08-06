@@ -607,6 +607,31 @@ Future<void> logEvent(
   await analytics.log(event, params: params);
 }
 
+/// 🔴 THE LAUNCH TRIO ([pipeline 11]E-5). `first_launch` · `app_open` ·
+/// `return_visit` — all three, from the CHASSIS, so a stamped app inherits them
+/// with zero per-app instrumentation edits.
+///
+/// The brick used to log `app_open` here and nothing else: 1 of the 3 lifecycle
+/// events the taxonomy requires, with the property test asserting only the one
+/// that existed. `first_launch` is the denominator every activation and
+/// retention number is divided by, so an app without it is not partly
+/// instrumented — it is unmeasurable.
+///
+/// The rule and the persistence live in [core.AnalyticsLifecycle] rather than
+/// here so they are ONE implementation for fifty stamps, and so "once per
+/// install, ever" is testable without a widget tree.
+///
+/// Uses the SAME storage seam as everything else the chassis persists —
+/// [keyValueStoreProvider] — so no app acquires a dependency to be measured.
+///
+/// ⚠️ CONSENT IS THE CALLER'S JOB, and its only caller is `AnalyticsGate`. Do
+/// not call this anywhere a consent decision has not already been granted.
+Future<void> logLaunchLifecycle(WidgetRef ref) async {
+  final core.Analytics analytics = await ref.read(analyticsProvider.future);
+  final core.KeyValueStore kv = await ref.read(keyValueStoreProvider.future);
+  await core.AnalyticsLifecycle(analytics: analytics, store: kv).onLaunch();
+}
+
 String _generateInstallId() {
   final Random rng = Random.secure();
   final List<int> bytes = List<int>.generate(16, (_) => rng.nextInt(256));

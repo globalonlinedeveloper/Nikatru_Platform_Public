@@ -3167,4 +3167,164 @@ void main() {
       );
     });
   });
+
+  // ── PROPERTY: analytics-lifecycle-complete ────────────────────────────────
+  // [pipeline 11]E-5 — "a stamped app measures itself with zero per-app
+  // instrumentation edits".
+  //
+  // 🔴 WHY THIS IS A SEPARATE PROPERTY FROM THE ONE ABOVE. That one asserts
+  // `contains('app_open')`, and `app_open` was the ONLY lifecycle event a
+  // stamped app could emit: `first_launch` and `return_visit` lived in
+  // apps/subly's own funnel, a file the brick does not carry. So "the lifecycle
+  // events fire" ranged over the single event that existed, and a stamp that
+  // would never emit the other two passed the lane — 1 of 3, reported green.
+  //
+  // 🔴 AND IT IS DRIVEN TWICE ON PURPOSE. One run cannot tell a correct
+  // once-per-install flag from one that fires on every launch — both look
+  // identical from a single launch, and firing every time is the exact bug
+  // [pipeline C-6] found and fixed in Subly. The second run is what makes
+  // "once per install, ever" observable at all.
+  group('property: analytics-lifecycle-complete', () {
+    /// Drive the REAL app root over [store] and return what reached the wire.
+    /// Not a direct call to the lifecycle class: this property is about the
+    /// stamped app emitting, so the widget tree and the consent gate are part
+    /// of what is under test.
+    Future<List<String>> launch(
+      WidgetTester tester,
+      _MemStore store, {
+      required bool grantConsent,
+    }) async {
+      final _FakeEventTransport events = _FakeEventTransport();
+      final ProviderContainer container = _analyticsContainer(
+        store: store,
+        events: events,
+        consent: _FakeConsentTransport(),
+      );
+      addTearDown(container.dispose);
+
+      // 🔴 UNMOUNT FIRST, AND THIS LINE IS THE TEST. Pumping the app root twice
+      // reuses the existing element, so `_AnalyticsGateState` survives with
+      // `_launchLogged` still true and the second run records NOTHING — which is
+      // a widget-test artefact, not the app's behaviour, and it is the exact
+      // shape that makes a two-run assertion worth writing. Blanking the tree is
+      // what makes the next pump a real relaunch.
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const {{app_id.pascalCase()}}App(),
+        ),
+      );
+      await _turns(tester, 24);
+      if (grantConsent && find.text('Allow').evaluate().isNotEmpty) {
+        await tester.tap(find.text('Allow'));
+        await _turns(tester, 24);
+      }
+      await (await container.read(analyticsProvider.future)).flush();
+      return events.sent
+          .map((Map<String, Object?> e) => e['event'] as String)
+          .toList();
+    }
+
+    testWidgets('RUN 1 — a fresh install emits first_launch AND app_open', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      final List<String> sent = await launch(tester, store, grantConsent: true);
+
+      expect(
+        sent,
+        contains('first_launch'),
+        reason:
+            'first_launch is the denominator every activation and retention '
+            'ratio is divided by — a stamp without it is not partly '
+            'instrumented, it is unmeasurable',
+      );
+      expect(sent, contains('app_open'));
+      expect(
+        sent,
+        isNot(contains('return_visit')),
+        reason: 'nobody returns on the launch that installed the app',
+      );
+    });
+
+    testWidgets(
+      'RUN 2 — the next launch emits app_open AND return_visit, and NOT a '
+      'second first_launch',
+      (WidgetTester tester) async {
+        final _MemStore store = _MemStore();
+        await launch(tester, store, grantConsent: true);
+
+        // Backdate the recorded launch: the same store, three days on. This is
+        // what makes the return measurable — `days_since_last` needs a gap.
+        store.data[core.kLastOpenKey] = DateTime.now()
+            .toUtc()
+            .subtract(const Duration(days: 3))
+            .toIso8601String();
+
+        final List<String> sent = await launch(
+          tester,
+          store,
+          grantConsent: false, // already decided — the prompt must not return
+        );
+
+        expect(sent, contains('app_open'));
+        expect(
+          sent,
+          contains('return_visit'),
+          reason:
+              'with no return event the D1/D7/D30 curve cannot be drawn at all',
+        );
+        expect(
+          sent,
+          isNot(contains('first_launch')),
+          reason:
+              'first_launch fires once per INSTALL, ever — a flag that fires '
+              'every launch turns the new-user denominator into a launch count '
+              'and every cohort ratio built on it is wrong',
+        );
+      },
+    );
+
+    test('the flag marks EMISSION, not launch — a declined first run still '
+        'gets its first_launch when consent arrives', () async {
+      // The lifecycle class never sees the consent decision (its caller owns
+      // that), so the marker must not be spent by a launch that collected
+      // nothing. Driven directly: this is a rule about the shared
+      // implementation, and a widget tree would only obscure it.
+      final _MemStore store = _MemStore();
+      final _RecordingAnalytics a = _RecordingAnalytics();
+      await core.AnalyticsLifecycle(analytics: a, store: store).onLaunch();
+      expect(a.events, contains('first_launch'));
+      expect(store.data[core.kFirstLaunchEmittedKey], isNotNull);
+    });
+
+    test('days_since_last is BUCKETED, never a raw count', () {
+      // An unbounded integer is a fingerprinting surface in a row that is
+      // specified as pseudonymous, and the taxonomy allows enumerable values
+      // only. The curve needs D1/D7/D30 shape, not a number.
+      expect(core.AnalyticsLifecycle.bucketDaysSinceLast(0), 'same_day');
+      expect(core.AnalyticsLifecycle.bucketDaysSinceLast(1), '1');
+      expect(core.AnalyticsLifecycle.bucketDaysSinceLast(7), '2_7');
+      expect(core.AnalyticsLifecycle.bucketDaysSinceLast(30), '8_30');
+      expect(core.AnalyticsLifecycle.bucketDaysSinceLast(400), '30_plus');
+    });
+  });
+}
+
+/// Records event NAMES with no consent gate and no transport — for the rules
+/// that belong to the shared lifecycle implementation itself.
+class _RecordingAnalytics implements core.Analytics {
+  final List<String> events = <String>[];
+
+  @override
+  Future<void> log(String event, {Map<String, Object?>? params}) async =>
+      events.add(event);
+
+  @override
+  Future<void> flush() async {}
+
+  @override
+  Future<void> purge() async => events.clear();
 }
