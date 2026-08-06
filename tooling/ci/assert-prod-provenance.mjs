@@ -45,6 +45,24 @@
 // .test.mjs, and limb 2 has one against the REAL TREE: adding a CREATE TABLE to
 // a real migration turns this red.
 //
+// LANE-BOUND: ops-watch.yml — this binding is the POINT of limb 8 rather than an oversight inside it, because ops-watch.yml is the ONLY workflow allowed to hold the credential the monitor needs.
+// assert-release-lane-generic.mjs is right to stop a guard that
+// names one workflow and reports ok for every other; that is how
+// assert-seams-wired.mjs printed ok while build-platforms.yml shipped two
+// artifact lanes with no crash sink. Here the single named workflow is not a
+// release lane at all and appears in no row of tooling/channel-register.json:
+// ops-watch.yml is THE ONE workflow permitted to hold CLOUDFLARE_API_TOKEN,
+// precisely because it has no push/pull_request trigger. That is what makes it
+// the only place the monitor half CAN run, so "the monitor is wired" is a
+// question about that workflow and no other — deriving the name from the channel
+// register would be deriving it from the wrong set.
+//   The subject set that IS derived here is the TABLES (every CREATE TABLE in
+// services/platform/migrations/**, floored by REQUIRED_COVERAGE), so a new table
+// acquires the obligation automatically. What cannot be derived is the single
+// credentialled workflow. If a second such workflow is ever added, this constant
+// must be widened deliberately — and limb 8's no-push-trigger assertion is what
+// makes that a considered act rather than a silent one. [pipeline 9]R-1 limb B.
+//
 // Usage:  node tooling/ci/assert-prod-provenance.mjs [repoRoot]
 // Exit 0 = every table declares how its rows are attributed, and the reader that
 //          can actually look is wired. 1 = it is not.
