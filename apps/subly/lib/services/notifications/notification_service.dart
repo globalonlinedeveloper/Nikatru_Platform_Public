@@ -50,26 +50,56 @@ class NotificationService {
     );
 
     await _plugin.initialize(settings);
-    await _requestPermissions();
+    // 🔴 [pipeline 13]T-4 — `init()` DOES NOT ASK. It used to end with
+    // `await _requestPermissions()`, and `init()` is called from `main()` before
+    // `runApp`, so the OS permission dialog was the first thing a new user saw:
+    // spent at first frame, before the app had shown a single subscription or
+    // any reason to say yes.
+    //
+    // WHY IT MATTERS BEYOND ONE BAD IMPRESSION: on Android 13+ a runtime
+    // permission denied a SECOND time becomes `USER_FIXED` — permanently
+    // non-promptable, no dialog ever again. A launch-time ask spends the first
+    // denial for nothing, so the install is one accidental tap from losing its
+    // return channel for good, silently. (The one-strike variant applies only to
+    // apps targeting ≤ 12L.)
+    //
+    // The shared adapter has always had this shape — `init()` and
+    // `requestPermission()` are separate seam methods in
+    // packages/notifications/lib/src/local_notification_service_io.dart — and
+    // this fork is the only place in the tree that had fused them.
     _ready = true;
   }
 
-  Future<void> _requestPermissions() async {
-    await _plugin
+  /// Asks the OS for notification permission. Returns whether we may post.
+  ///
+  /// CALL THIS FROM A USER GESTURE ONLY — the moment the user turns on a
+  /// reminder-bearing feature. Never from `init()`, a provider `build()`, or a
+  /// widget `initState`. `tooling/ci/assert-stamp-properties.mjs` walks the call
+  /// graph from `main()` and fails the build if any path reaches here.
+  ///
+  /// `!_ready` guards the test path as every other method here does: a fake that
+  /// never ran `init()` gets `false` instead of a `MissingPluginException`.
+  Future<bool> requestPermissions() async {
+    if (kIsWeb || !_ready) return false;
+    final bool? ios = await _plugin
         .resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin
         >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
-    await _plugin
+    final bool? macos = await _plugin
         .resolvePlatformSpecificImplementation<
           MacOSFlutterLocalNotificationsPlugin
         >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
-    await _plugin
+    final bool? android = await _plugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.requestNotificationsPermission();
+    // Exactly one of these resolves on any given platform; the rest are null.
+    // Linux and Windows have no runtime prompt, so all three are null there and
+    // the honest answer is "yes, we may post".
+    return ios ?? macos ?? android ?? true;
   }
 
   NotificationDetails get _details => const NotificationDetails(

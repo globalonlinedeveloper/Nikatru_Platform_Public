@@ -75,7 +75,7 @@
 // `test/…` — is resolved under each root in turn. The Worker route deliberately
 // stays repo-absolute: it exists only on a `needs_backend` stamp, so anchoring it
 // per app would fail the client-only probe for being what it is.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const repo = process.cwd();
@@ -767,7 +767,11 @@ const UNASSERTED = {
 // blank-strings scanner the wiring guard exports would erase the very evidence
 // being looked for. String contents pass through verbatim; comment spans are
 // blanked with their newlines kept.
-function stripDartComments(src) {
+//
+// `blankStrings` is OFF by default because the group markers this guard matches
+// ARE string literals. The boot-path scan below turns it ON: there a call must
+// be a real call and never a mention inside a doc string or a log message.
+function stripDartComments(src, { blankStrings = false } = {}) {
   let out = '';
   let i = 0;
   const n = src.length;
@@ -805,7 +809,7 @@ function stripDartComments(src) {
       out += src.slice(i, j + closeLen);
       j += closeLen;
       while (j < n) {
-        if (!isRaw && src[j] === '\\') { out += src.slice(j, j + 2); j += 2; continue; }
+        if (!isRaw && src[j] === '\\') { out += blankStrings ? '  ' : src.slice(j, j + 2); j += 2; continue; }
         if (src[j] === q && (!triple || (src[j + 1] === q && src[j + 2] === q))) {
           out += src.slice(j, j + closeLen);
           j += closeLen;
@@ -813,7 +817,7 @@ function stripDartComments(src) {
         }
         // an unterminated single-quoted string cannot cross a line
         if (!triple && src[j] === '\n') { out += '\n'; j++; break; }
-        out += src[j]; j++;
+        out += blankStrings ? blank(src[j]) : src[j]; j++;
       }
       i = j;
       continue;
@@ -824,12 +828,185 @@ function stripDartComments(src) {
   return out;
 }
 
+// ── [pipeline 13]T-4 · THE BOOT PATH NEVER SPENDS THE OS PERMISSION ASK ──────
+//
+// THE SENTENCE: *"Notification permission is never requested on the launch
+// path."* The observation that makes it FALSE: booting the app issues an OS
+// permission request without the user having asked for anything.
+//
+// ⚠️ WHAT THIS LIMB CAN AND CANNOT SEE — say it, do not imply a gate that isn't
+// here. The RUNTIME observation is the brick's own property test: mount, settle
+// the first frame, assert `notes.requestPermissionCalls == 0`
+// (`test/chassis_properties_test.dart`). That is the real measurement — and it
+// covers the TEMPLATE only. `apps/subly` is `EXEMPT_APPS` below (39-CHASSIS §4
+// cut 1: it predates the brick, was never stamped, and carries no inherited
+// property test), so the ONE BINARY THAT ACTUALLY SHIPS had no limb at all —
+// and it was the one violating the rule: `main.dart` → `NotificationService
+// .instance.init()` → `_requestPermissions()`, the OS dialog at first frame.
+//
+// So this limb is a STATIC over-approximation of the runtime property: a call
+// GRAPH walk, not a call COUNT. It proves "no path from `main()` reaches a
+// permission ask", which is strictly weaker than "no ask happened" — a reflective
+// or plugin-mediated ask is invisible to it. It is not a substitute for the
+// property test; it is the only thing that reaches an app the property test
+// cannot, and it catches the exact defect that shipped.
+//
+// TWO LIMBS, because `main()` is not the whole launch path:
+//   A. REACHABILITY FROM `main()`. Transitive over FUNCTION/METHOD calls
+//      resolved inside the app's own `lib/`. Constructors (capitalised) are the
+//      BARRIER: `runApp(const ProviderScope(child: XApp()))` is where the widget
+//      tree begins, and descending through it would make every gesture handler
+//      in the app "reachable from main" and the check useless.
+//   B. UNGESTURED LIFECYCLE HOOKS. `initState` / `didChangeDependencies` run at
+//      first frame with no user action, so an ask there is a launch-time ask
+//      that limb A cannot see (the framework calls them, no call site does).
+//      `build` is deliberately NOT in the list — it legitimately contains the
+//      gesture closures the ask is supposed to live behind.
+//
+// EXEMPTIONS ARE NOT APPLIED HERE, on purpose. `EXEMPT_APPS` excuses an app from
+// carrying the inherited property TEST. It cannot excuse it from the boot path:
+// every app that ships has one, and the exempt app is precisely where the defect
+// was. A rule whose only violator is exempt from it is not a rule.
+const BOOT_ROOT_LIB = 'lib';
+// The OS-ask API surface, as the plugins actually name it. Kept in sync by the
+// self-check below, which reddens if this pattern stops recognising the real
+// implementation in packages/notifications — a scanner that silently matches
+// nothing is the failure this repo keeps re-learning.
+const PERMISSION_ASK_RE =
+  /\b(?:requestPermissions?|requestNotificationsPermission|requestExactAlarmsPermission|requestFullScreenIntentPermission)\s*\(/;
+const PERMISSION_ASK_PROBE = 'packages/notifications/lib/src/local_notification_service_io.dart';
+const UNGESTURED_HOOKS = ['initState', 'didChangeDependencies'];
+// Not a Dart parser: these are the words that appear as `word(` without being a
+// call to anything the walk should follow.
+const NOT_A_CALL = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'return', 'assert', 'await', 'super',
+  'this', 'new', 'throw', 'yield', 'else', 'do', 'rethrow', 'case', 'when',
+  'is', 'as', 'in', 'var', 'final', 'const', 'void', 'sync', 'async', 'on',
+]);
+
+/** Index just past the balanced closer for the opener at `open`. -1 if unbalanced. */
+function matchDelim(src, open, o, c) {
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === o) depth++;
+    else if (src[i] === c) { depth--; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
+/**
+ * Bodies of every declaration named `name` in `src` (already comment- AND
+ * string-stripped). A DECLARATION is `name(...)` followed — past an optional
+ * `async`/`async*`/`sync*` — by `{` or `=>`. Anything else with that shape is a
+ * CALL SITE. That one-token lookahead is how the two are told apart without a
+ * Dart parser, and it is the distinction this repo has already got wrong once:
+ * `assert-seams-wired.mjs` shipped matching a function's own declaration and
+ * stayed green with every real caller deleted.
+ */
+function declarationBodies(src, name) {
+  const bodies = [];
+  const re = new RegExp(`(?:^|[^\\w$.])${name}\\s*(?:<[^<>()]*>\\s*)?\\(`, 'g');
+  for (const m of src.matchAll(re)) {
+    const open = m.index + m[0].length - 1;
+    const afterParams = matchDelim(src, open, '(', ')');
+    if (afterParams === -1) continue;
+    const rest = src.slice(afterParams);
+    const head = rest.match(/^\s*(?:(?:async|sync)\s*\*?\s*)?/)[0];
+    const at = afterParams + head.length;
+    if (src[at] === '{') {
+      const end = matchDelim(src, at, '{', '}');
+      if (end !== -1) bodies.push(src.slice(at, end));
+    } else if (src[at] === '=' && src[at + 1] === '>') {
+      const end = src.indexOf(';', at);
+      bodies.push(src.slice(at, end === -1 ? src.length : end));
+    }
+  }
+  return bodies;
+}
+
+/** Lower/underscore-initial callees in a body. Capitalised names are constructors
+ *  — the widget-tree barrier described above — and are never followed. */
+function calledNames(body) {
+  const out = new Set();
+  for (const m of body.matchAll(/(?:^|[^\w$])([a-z_][\w$]*)\s*\(/g)) {
+    if (!NOT_A_CALL.has(m[1])) out.add(m[1]);
+  }
+  return out;
+}
+
+/** Every `.dart` under `dir`, recursively. */
+function dartFilesUnder(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...dartFilesUnder(p));
+    else if (e.name.endsWith('.dart')) out.push(p);
+  }
+  return out;
+}
+
+/** Walk both limbs for one app root. Returns a report; never throws. */
+function auditBootPath(root) {
+  const libDir = join(repo, root, BOOT_ROOT_LIB);
+  const files = dartFilesUnder(libDir).map((abs) => ({
+    rel: abs.slice(join(repo, root).length + 1).split('\\').join('/'),
+    src: stripDartComments(readFileSync(abs, 'utf8'), { blankStrings: true }),
+  }));
+
+  // Limb A — breadth-first over the call graph, carrying the chain so a failure
+  // names the route rather than just the endpoint.
+  const seen = new Set();
+  const queue = [{ name: 'main', chain: ['main()'] }];
+  let reached = 0;
+  let sawMain = false;
+  const violations = [];
+  while (queue.length) {
+    const { name, chain } = queue.shift();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    for (const f of files) {
+      for (const body of declarationBodies(f.src, name)) {
+        reached++;
+        if (name === 'main' && f.rel === 'lib/main.dart') sawMain = true;
+        if (PERMISSION_ASK_RE.test(body)) {
+          violations.push({ limb: 'A', chain: chain.join(' → '), file: `${root}/${f.rel}` });
+          continue;
+        }
+        for (const callee of calledNames(body)) {
+          if (!seen.has(callee)) queue.push({ name: callee, chain: [...chain, `${callee}()`] });
+        }
+      }
+    }
+  }
+
+  // Limb B — the hooks the framework calls for you.
+  for (const hook of UNGESTURED_HOOKS) {
+    for (const f of files) {
+      for (const body of declarationBodies(f.src, hook)) {
+        if (PERMISSION_ASK_RE.test(body)) {
+          violations.push({ limb: 'B', chain: `${hook}() [first frame, no gesture]`, file: `${root}/${f.rel}` });
+        }
+      }
+    }
+  }
+
+  return { files: files.length, reached, sawMain, violations };
+}
+
 // ── THE ROOTS. The brick, plus every non-exempt app on the workspace list. ───
 // The workspace block is the domain rather than `ls apps/` for the reason
 // assert-app-dod.mjs states at length: a directory listing differs between this
 // box and CI (the brick lane stamps `apps/probe` and `apps/probeapi` and never
 // removes them), and a domain that depends on which machine reads it is not one.
 const roots = [BRICK];
+/** [13]T-4: the same domain WITHOUT the exemption. See the boot-path header. */
+const bootRoots = [BRICK];
 let workspaceRead = false;
 try {
   const lines = readFileSync(join(repo, 'pubspec.yaml'), 'utf8').replace(/^\s*#.*$/gm, '').split('\n');
@@ -839,7 +1016,9 @@ try {
     for (const line of lines.slice(at + 1)) {
       if (/^\S/.test(line)) break;
       const m = line.match(/^\s*-\s*(\S+)\s*$/);
-      if (m && m[1].startsWith('apps/') && !EXEMPT_APPS.has(m[1])) roots.push(m[1]);
+      if (!m || !m[1].startsWith('apps/')) continue;
+      bootRoots.push(m[1]);
+      if (!EXEMPT_APPS.has(m[1])) roots.push(m[1]);
     }
   }
 } catch { /* handled by workspaceRead below */ }
@@ -996,6 +1175,86 @@ if (domainSrc) {
     for (const n of gaps) console.log(`   · ${n} — ${UNASSERTED[n]}`);
     console.log('   (printed, not failed: per the C-16 lock new properties arrive WITH their features.)');
   }
+}
+
+// ── [13]T-4 · run the boot-path walk. ───────────────────────────────────────
+//
+// SELF-CHECK FIRST, and it is the one that matters: prove `PERMISSION_ASK_RE`
+// can still SEE an OS ask by pointing it at the real implementation. If the
+// plugin renames its API, this pattern quietly matches nothing and every app
+// reports a clean boot path forever. An absence assertion whose scanner has gone
+// blind is indistinguishable from compliance — that is this guard's whole
+// subject, and it applies to this guard.
+let askRePointsAtSomething = false;
+try {
+  askRePointsAtSomething = PERMISSION_ASK_RE.test(
+    stripDartComments(readFileSync(join(repo, PERMISSION_ASK_PROBE), 'utf8'), { blankStrings: true }),
+  );
+} catch { /* reported immediately below */ }
+if (!askRePointsAtSomething) {
+  fail(
+    `COVERAGE LOST — the [13]T-4 permission pattern no longer matches any call in ${PERMISSION_ASK_PROBE}, ` +
+      'the shared adapter that actually asks the OS. Either the plugin renamed its API or this regex has ' +
+      'gone stale; in both cases the boot-path scan below now proves nothing while printing ok.',
+  );
+}
+
+// And the RUNTIME half this static walk defers to: the brick's own property test
+// counts the calls. If that assertion is deleted, the only real measurement of
+// the property is gone and the static walk would be all that is left — so the
+// deletion must be loud rather than a quiet downgrade.
+const BRICK_BOOT_COUNT_RE = /requestPermissionCalls\s*,\s*0\s*,/;
+try {
+  const brickTest = stripDartComments(readFileSync(join(repo, BRICK, PROP_TEST), 'utf8'));
+  if (!BRICK_BOOT_COUNT_RE.test(brickTest)) {
+    fail(
+      `[13]T-4: ${BRICK}/${PROP_TEST} no longer asserts \`requestPermissionCalls == 0\` after a boot. ` +
+        'That is the only RUNTIME measurement of this property in the tree; the static walk below is an ' +
+        'over-approximation and cannot replace it.',
+    );
+  } else {
+    ok('[13]T-4 boot ask: the brick property test still counts the calls (runtime limb intact)');
+  }
+} catch { /* the missing-PROP_TEST case already failed hard above */ }
+
+let bootRootsScanned = 0;
+for (const root of bootRoots) {
+  if (!existsSync(join(repo, root, 'lib', 'main.dart'))) continue;
+  bootRootsScanned++;
+  const r = auditBootPath(root);
+  if (!r.sawMain) {
+    fail(
+      `COVERAGE LOST — ${root}/lib/main.dart exists but no \`main()\` DECLARATION could be parsed out of it, ` +
+        'so the [13]T-4 boot-path walk started from nothing and would have reported a clean launch path for ' +
+        'any code at all.',
+    );
+    continue;
+  }
+  for (const v of r.violations) {
+    fail(
+      `[13]T-4 ${root}: THE LAUNCH PATH SPENDS THE OS PERMISSION ASK — ${v.chain}, in ${v.file}. ` +
+        'Android 13+ turns a SECOND denial into USER_FIXED, permanently non-promptable, so a launch-time ' +
+        'prompt can burn the return channel for the life of the install. Ask when the user enables a ' +
+        'reminder-bearing feature, never before the app has shown any value.',
+    );
+  }
+  if (!r.violations.length) {
+    ok(
+      `[13]T-4 ${root} — launch path asks for no OS permission ` +
+        `(${r.reached} function(s) reached from main() across ${r.files} lib file(s); ` +
+        `${UNGESTURED_HOOKS.join('/')} clean)`,
+    );
+  }
+}
+// Zero and one must not read the same. The exempt app is on this list precisely
+// because it is the one that shipped the defect, so an empty scan is a red flag.
+if (bootRootsScanned === 0 && workspaceRead) {
+  fail(
+    'COVERAGE LOST — the [13]T-4 boot-path walk found no `lib/main.dart` under any root, so it audited ' +
+      'nothing. On a real checkout the brick template alone guarantees one.',
+  );
+} else {
+  console.log(`ok   [13]T-4 boot-path walk covered ${bootRootsScanned} app root(s): ${bootRoots.join(', ')}`);
 }
 
 // Limbs of a declared property that cannot be exercised where the property
