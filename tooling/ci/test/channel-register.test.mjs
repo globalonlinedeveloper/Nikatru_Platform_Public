@@ -54,11 +54,18 @@ const BUILD_WORKFLOW = '.github/workflows/build-platforms.yml';
  *
  *  `laneBuilds:false` strips the build step: section 3b then has no artifact to
  *  compare the served row's formats against, which must be COVERAGE LOST rather
- *  than a quiet pass. */
-const laneWorkflow = ({ laneBuilds = true, releaseChannel = 'web' } = {}) => `name: Deploy web
+ *  than a quiet pass.
+ *
+ *  `laneSecrets` is section 8's ([9]R-3 limb 2) half. The COMMENT block below
+ *  names `secrets.GHOST_SECRET`, and the run step mentions `scan-secrets.mjs`
+ *  whose own filename contains the literal `secrets.mjs` — two decoys for a guard
+ *  that text-greps `secrets.X` instead of extracting `${{ … }}` expressions from
+ *  comment-stripped YAML. Both were real: the bare-grep version of this check
+ *  reported a secret named `mjs` against the real tree. */
+const laneWorkflow = ({ laneBuilds = true, releaseChannel = 'web', laneSecrets = [] } = {}) => `name: Deploy web
 # The aggregating job all_platforms and the job ghost-job are named here in a
 # comment only. Nothing below declares them. So is --dart-define=RELEASE_CHANNEL=ghost-channel,
-# which must never be read as a stamp.
+# which must never be read as a stamp. Neither is \${{ secrets.GHOST_SECRET }}.
 on:
   push:
 jobs:
@@ -66,7 +73,8 @@ jobs:
     name: Build & deploy
     runs-on: ubuntu-24.04
     steps:
-      - run: >
+      - run: node tooling/ci/scan-secrets.mjs .
+${laneSecrets.map((n) => `      - run: echo "\${{ secrets.${n} }}"`).join('\n')}${laneSecrets.length ? '\n' : ''}      - run: >
           ${laneBuilds ? 'flutter build web --release' : 'echo deploy'}${releaseChannel === null ? '' : `
           --dart-define=RELEASE_CHANNEL=${releaseChannel}`}
 `;
@@ -213,6 +221,8 @@ function tree({
   windowsRun = 'echo windows',
   laneBuilds = true,
   releaseChannel = 'web',
+  // [9]R-3 limb 2 (section 8): which `${{ secrets.X }}` the lane workflow names.
+  laneSecrets = [],
   adrLocked = true,
   adrOnDisk = true,
   // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
@@ -274,7 +284,7 @@ function tree({
 
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
-  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel }));
+  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel, laneSecrets }));
   write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob, windowsRun }));
   if (harnessPresent) {
     // The harness root exists even when the cited ADR does not — that is the
@@ -475,12 +485,28 @@ describe('assert-channel-register — what SERVED obliges a row to carry', () =>
     assert.match(out, /no DATED restore drill/);
   });
 
+  // ⚠️ `ciSecrets` + `laneSecrets` are REQUIRED here as of 2026-08-06 and this is
+  // section 8 ([9]R-3 limb 2) working, not fixture noise: a row that holds a real
+  // key AND has a lane must say which secrets carry that key into CI. Without the
+  // pair, this "everything a served row must carry" fixture was carrying a key
+  // with no declared way to use it — which is the state the real android-play row
+  // was in for the two days `signing.ciSecrets` existed with no reader.
+  const withUploadKey = (c) => {
+    c.signing.keyKind = 'upload-key';
+    c.signing.identity = 'release-keystore/upload.keystore';
+    c.signing.ciSecrets = { names: ['FIXTURE_UPLOAD_KEY'] };
+  };
+  const laneNamesIt = { laneSecrets: ['FIXTURE_UPLOAD_KEY'] };
+
   test('PASSES a served channel whose key IS drilled, with a date', () => {
     const { code, out } = run(
-      servedMutation((c) => {
-        c.signing.keyKind = 'upload-key';
-        c.signing.identity = 'release-keystore/upload.keystore';
-        c.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
+      tree({
+        ...laneNamesIt,
+        mutate: (r) => {
+          const c = r.channels.find((x) => x.id === 'web');
+          withUploadKey(c);
+          c.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
+        },
       }),
     );
     assert.equal(code, 0, out);
@@ -1151,5 +1177,228 @@ describe('assert-channel-register — a signing identity cites an openable, LOCK
     assert.equal(code, 0, out);
     assert.match(out, /IDENTITY ADR UNVERIFIABLE IN THIS CHECKOUT: content-pack-k1/);
     assert.match(out, /A stated limit, not a pass/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [9]R-3 LIMB 2 — "a lane that names a secret not in the register must FAIL".
+//
+// ⚠️ THESE ARE THE SECOND LINE OF EVIDENCE. The first is the mutation run against
+// the REAL tree, recorded in the guard's header: a bogus `secrets.NOT_IN_REGISTER`
+// added to .github/workflows/build-platforms.yml, confirmed RED, and the file
+// restored byte-for-byte. A fixture encodes the same misunderstanding as the
+// guard that wrote it, and this repo has a recorded case of six fixture tests
+// passing against a guard whose real-tree behaviour was broken.
+describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may be named', () => {
+  /** The declared NOT-signing half of the partition, in fixture form. */
+  const secretRegister = (nonSigning) => ({
+    kinds: {
+      'build-config': 'a value compiled into or read by a build; not signing material',
+      'publishing-credential': 'authorises an upload; is not what signs the artifact',
+    },
+    nonSigning,
+  });
+  const buildConfig = (name, why = 'an endpoint the build is compiled against, not signing material') => ({
+    name,
+    kind: 'build-config',
+    why,
+  });
+  /** A served row holding a real key, plus the lane that names its secret — the
+   *  minimum shape in which limb 2 has anything at all to range over. */
+  const signingRow =
+    (names = ['FIXTURE_UPLOAD_KEY']) =>
+    (r) => {
+      const c = r.channels.find((x) => x.id === 'web');
+      c.signing.keyKind = 'upload-key';
+      c.signing.identity = 'release-keystore/upload.keystore';
+      // A dated drill, so the only thing these cases can fail on is limb 2. An
+      // unrelated FAIL riding along makes a green/red result unattributable.
+      c.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
+      c.signing.ciSecrets = { names };
+    };
+
+  test('FAILS when a lane names a secret the register does not declare', () => {
+    const { code, out } = run(tree({ laneSecrets: ['NOT_IN_REGISTER'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /name\(s\) `secrets\.NOT_IN_REGISTER`, which the register does not declare/);
+    assert.match(out, /\[9\]R-3/);
+  });
+
+  test('PASSES once that same secret is declared as non-signing, with a reason', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['NOT_IN_REGISTER'],
+        mutate: (r) => {
+          r.ciSecretRegister = secretRegister([buildConfig('NOT_IN_REGISTER')]);
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /1 secret\(s\) named across .* all declared/);
+  });
+
+  test('FAILS a non-signing entry whose kind the register does not declare', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['NOT_IN_REGISTER'],
+        mutate: (r) => {
+          r.ciSecretRegister = secretRegister([{ ...buildConfig('NOT_IN_REGISTER'), kind: 'vibes' }]);
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /has kind "vibes", which `ciSecretRegister\.kinds` does not declare/);
+  });
+
+  // The classification has to cost something, or the cheapest way to silence a
+  // limb-2 failure is to paste the name into the allowlist.
+  test('FAILS a non-signing entry with no `why` — a bare name is not a classification', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['NOT_IN_REGISTER'],
+        mutate: (r) => {
+          r.ciSecretRegister = secretRegister([{ name: 'NOT_IN_REGISTER', kind: 'build-config' }]);
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /carries no `why`/);
+    assert.match(out, /turns a classification decision into a copy-paste/);
+  });
+
+  test('FAILS when one name is declared BOTH signing and non-signing', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['FIXTURE_UPLOAD_KEY'],
+        mutate: (r) => {
+          signingRow()(r);
+          r.ciSecretRegister = secretRegister([buildConfig('FIXTURE_UPLOAD_KEY')]);
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /is declared BOTH as signing material/);
+  });
+
+  // ── the row-level rule that keeps the coverage floor below REACHABLE ───────
+  // Without it, the way to satisfy "at least one declared signing secret is
+  // named by a lane" is to declare none — an empty domain passing for the wrong
+  // reason, one level up from the check it protects.
+  test('FAILS a row that holds a real key and has a lane but declares no ciSecrets', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => {
+          const c = r.channels.find((x) => x.id === 'web');
+          c.signing.keyKind = 'upload-key';
+          c.signing.identity = 'release-keystore/upload.keystore';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no `signing\.ciSecrets\.names`/);
+    assert.match(out, /an empty authority accepts every name/);
+  });
+
+  test('FAILS a keyKind "none" row that declares ciSecrets anyway', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['FIXTURE_UPLOAD_KEY'],
+        mutate: (r) => {
+          r.channels.find((x) => x.id === 'web').signing.ciSecrets = { names: ['FIXTURE_UPLOAD_KEY'] };
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /cannot both hold no key and need secrets to use one/);
+  });
+
+  // ── REQUIRED_COVERAGE: the empty-domain cases ─────────────────────────────
+  test('COVERAGE LOST when secrets are declared as signing and NO lane names any of them', () => {
+    const { code, out } = run(tree({ mutate: signingRow() }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST/);
+    assert.match(out, /disjoint sets of names/);
+    assert.match(out, /the scan found no/);
+  });
+
+  test('COVERAGE LOST when a register-named lane sits outside the scanned directory', () => {
+    const OUTSIDE = '.github/lanes/deploy-web.yml';
+    const body = [
+      'name: x',
+      'on:',
+      '  push:',
+      'jobs:',
+      '  deploy-web:',
+      '    steps:',
+      '      - run: flutter build web --release --dart-define=RELEASE_CHANNEL=web',
+      '',
+    ].join('\n');
+    const { code, out } = run(
+      tree({
+        extraFiles: { [OUTSIDE]: body },
+        mutate: (r) => {
+          r.channels.find((x) => x.id === 'web').lane.workflow = OUTSIDE;
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST/);
+    assert.match(out, /is NOT in the \.github\/workflows scan/);
+  });
+
+  // ── the converse: a ceiling, not a floor. See the guard header for why. ────
+  test('PRINTS, and does not fail, a declared signing secret no lane names', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['FIXTURE_UPLOAD_KEY'],
+        mutate: signingRow(['FIXTURE_UPLOAD_KEY', 'FIXTURE_UNUSED_KEY']),
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /SIGNING SECRET DECLARED, NO LANE NAMES IT: FIXTURE_UNUSED_KEY/);
+    assert.doesNotMatch(out, /SIGNING SECRET DECLARED, NO LANE NAMES IT: FIXTURE_UPLOAD_KEY/);
+  });
+
+  test('PRINTS a non-signing declaration no workflow references', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['NOT_IN_REGISTER'],
+        mutate: (r) => {
+          r.ciSecretRegister = secretRegister([buildConfig('NOT_IN_REGISTER'), buildConfig('STALE_LEFTOVER')]);
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /DECLARED SECRET NO WORKFLOW NAMES: STALE_LEFTOVER/);
+  });
+
+  // ── the two decoys a text grep falls for, both real ───────────────────────
+  test('does not read a secret out of a COMMENT', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /GHOST_SECRET/);
+  });
+
+  test('does not read `secrets.mjs` out of the filename scan-secrets.mjs', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /secrets\.mjs`, which the register does not declare/);
+  });
+
+  test('FAILS a secret named by EXPRESSION — one indirection would make limb 2 vacuous', () => {
+    const DYN = '.github/workflows/dyn.yml';
+    const body = [
+      'name: d',
+      'on:',
+      '  push:',
+      'jobs:',
+      '  j:',
+      '    steps:',
+      '      - run: echo "${{ secrets[format(\'A_{0}\', 1)] }}"',
+      '',
+    ].join('\n');
+    const { code, out } = run(tree({ extraFiles: { [DYN]: body } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names a secret by EXPRESSION/);
   });
 });

@@ -66,7 +66,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -1199,5 +1199,91 @@ describe('assert-ops-register — [14]O-4 · the absence of a scheduled duty mus
     assert.equal(v.stats.absence.duties, 2);
     assert.equal(v.stats.absence.scheduled, 1);
     assert.match(v.prints.join(' | '), /1 on a CLOCK \(the O-4 domain\) · 1 on `trigger`\/`on-demand`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQUIRED_COVERAGE for the two written-procedure rows — [14]O-19 + [10]D-12.
+//
+// 🔴 THE HOLE THIS CLOSES, AND WHY NO OTHER TEST IN THIS FILE REACHES IT.
+// `_requiredCoverage.ids ⊆ rows` is enforced by the guard, so deleting a ROW
+// while its id stays in the list fails loudly (mutation M-A, run against the
+// real tree on 2026-08-06: exit 1, "_requiredCoverage names
+// `recovery.app-retirement` and no row has that id"). But deleting the row AND
+// its id together passes CLEAN — the domain shrinks and the guard reports ok,
+// because nothing anywhere says WHICH ids the external half must contain. That
+// is check-migrations.mjs's 5-files-to-4 defect exactly, and these two rows are
+// the likeliest victims of it: both are pure-`company/` procedures whose entire
+// machine-readable existence is the register line.
+//
+// So the list is pinned HERE, against the REAL register, rather than against a
+// fixture — a fixture would encode the same misunderstanding as the row. Adding
+// a row is free; REMOVING one of these is a deliberate edit to this file.
+//
+// NEGATIVE-TESTED, not assumed: dropping either id from a copy of the real
+// `_requiredCoverage.ids` reddens `pinned` below; dropping either row reddens
+// `resolves`. Both were run before this suite was committed.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-ops-register — the two written-procedure rows cannot vanish quietly', () => {
+  const REAL = JSON.parse(
+    readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'),
+  );
+
+  /** [14]O-19's contract half and [10]D-12's whole document. Neither is visible
+   *  to any tree walk — `company/` is gitignored — so the register row is the
+   *  only handle CI will ever have on them. */
+  const PINNED = ['recovery.app-retirement', 'recovery.store-enforcement-response'];
+
+  for (const id of PINNED) {
+    test(`\`${id}\` is pinned in the external half (_requiredCoverage.ids)`, () => {
+      assert.ok(
+        REAL._requiredCoverage.ids.includes(id),
+        `${id} is not in _requiredCoverage.ids. Without it, deleting the row and the id together ` +
+          'shrinks the register silently and the guard still prints ok.',
+      );
+    });
+
+    test(`\`${id}\` resolves to a row anchored in company/runbooks/`, () => {
+      const row = REAL.rows.find((r) => r.id === id);
+      assert.ok(row, `${id} is named in _requiredCoverage.ids and is not a row.`);
+      assert.equal(row.kind, 'recovery-path');
+      assert.match(
+        row.mechanism.anchor,
+        /^company\/runbooks\/.+\.md$/,
+        'The anchor must stay a runbook. Repointing it at an in-tree file CI can read would make ' +
+          'the row look verifiable while the procedure it stands for stayed unwritten.',
+      );
+    });
+  }
+
+  test('🔴 the retirement contract is NOT recorded as executed — lastDrill stays null until it is', () => {
+    // [14]O-19's acceptance is "a checklist exists AND has been executed end to
+    // end at least once". Writing company/runbooks/app-retirement.md discharges
+    // the first half only. This assertion exists so that setting the date is a
+    // DELIBERATE act that also edits this line — the built-vs-working confusion
+    // this repo keeps paying for arrives precisely as a quiet field change.
+    // ⚠️ When the procedure IS executed: set lastDrill, append the runbook's §8
+    // entry, and change this test to assert the date instead of the null.
+    const row = REAL.rows.find((r) => r.id === 'recovery.app-retirement');
+    assert.equal(row.lastDrill, null);
+    assert.equal(row.ownerGated, true, 'a null drill must cost a printed gap');
+    assert.ok(row.ownerGap && row.ownerGap.trim().length > 0);
+  });
+
+  test('[10]D-12 limb (d): the enforcement runbook carries a real last-reviewed date on a clock', () => {
+    // The dated half of D-12's acceptance. Unlike the row above this one IS
+    // dated, because its drill is "re-read the four stores' published pages",
+    // which was genuinely performed on the date recorded. The guard turns that
+    // date into a build failure once it passes the cadence — which is the only
+    // limb of D-12 a machine can hold at all.
+    const row = REAL.rows.find((r) => r.id === 'recovery.store-enforcement-response');
+    assert.match(row.lastDrill, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(cadenceDays(row.cadence), 180);
+    assert.equal(
+      row.source,
+      'unverified',
+      'Three of four appeal deadlines could not be established from a primary page. `unverified` ' +
+        'with an `unverifiedWhy` is how this register records that, and it is counted and printed.',
+    );
   });
 });

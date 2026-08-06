@@ -224,6 +224,8 @@
       "recovery.oci-boot-volume",
       "recovery.worker-d1-export",
       "recovery.fresh-host",
+    "recovery.app-retirement",
+    "recovery.store-enforcement-response",
       "failure.laptop-lost",
       "failure.github-account-lost",
       "failure.google-account-lost",
@@ -1494,6 +1496,62 @@
       "ownerGated": true,
       "ownerGap": "Console-only. Owner action.",
       "source": "verified"
+    },
+    {
+      "id": "recovery.app-retirement",
+      "kind": "recovery-path",
+      "what": "Orderly withdrawal of an app from the portfolio — THE RETIREMENT CONTRACT that `review.kill-or-keep` below has instructed its reader to execute since this register was written. Until 2026-08-06 no such document existed, so the portfolio's kill switch terminated in a pointer to nothing — which reads worse than an admitted gap, because it looks as though the hard part was already written down.",
+      "detector": "This row's cadence against lastDrill. 🔴 `lastDrill` is null and null is the ACCURATE value: the procedure is WRITTEN and has NEVER BEEN EXECUTED. [14]O-19's acceptance has two halves — a checklist derived from the surface enumeration, and an end-to-end execution at least once — and writing the file discharges only the first.",
+      "response": "company/runbooks/app-retirement.md. 🔴 THE CONTRACT HALF FIRST — what stays alive and for how long (the config route services/platform/src/routes/config.ts, the entitlement read, the account-deletion URL), how the install base is told (the min_supported_version floor enforced by packages/core/lib/src/config/version_gate.dart is the ONLY channel that reaches a shipped client), and the fate of anything already sold. THEN the teardown half, which walks tooling/channel-register.json, tooling/monitor-register.json, this register's own retention rows and sites/_shared/_data/apps.json rather than restating them, because the surface set grows with every stamped app and a hand-copied list is stale on arrival.",
+      "cadence": "180d",
+      "lastDrill": null,
+      "mechanism": {
+        "substrate": "runbook",
+        "anchor": "company/runbooks/app-retirement.md",
+        "record": "the runbook's §8 execution log — deliberately EMPTY until a retirement happens; an entry is the filled §2 contract table with real dates plus which halves were exercised",
+        "failingValue": "an app withdrawn with no dated §8 entry; a lastDrill older than this cadence; or — the shape that started this — a register row instructing its reader to execute a document that does not exist",
+        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. 🔴 It CANNOT read the runbook's contents: company/ is gitignored and invisible to CI, so the execution half is held as a DATE here rather than as a claim in prose nothing can check."
+      },
+      "accessProviders": [
+        "owner",
+        "github",
+        "cloudflare",
+        "google",
+        "apple",
+        "microsoft",
+        "canonical"
+      ],
+      "ownerGated": true,
+      "ownerGap": "🔴 WRITTEN 2026-08-06, NEVER EXECUTED — this row is not coverage. The split: the TEARDOWN half is agent-doable today against a locally stamped probe app — ⚠️ but `apps/probe`, `apps/probeapi` and `services/probeapi-api` DO NOT EXIST in the tree; they are CI-ephemeral stamps exempted at tooling/ci/assert-lockfile-discipline.mjs:82-84, so a rehearsal must stamp one first, which O-19's evidence block does not say. The KEEP-ALIVE half — config route, entitlement read, deletion URL, the fate of a lifetime unlock — cannot be exercised AT ALL: only the `web` channel is served today, so no app has an install base to keep alive. Dating this row on a teardown-only rehearsal would record half a procedure as a whole one.",
+      "source": "verified"
+    },
+    {
+      "id": "recovery.store-enforcement-response",
+      "kind": "recovery-path",
+      "what": "The response to a store suspension, policy strike or takedown demand, written BEFORE there is an account to suspend: who is notified, which console screen holds the appeal lever, what the appeal deadline is, and what the portfolio does while one app is down — because L21 stakes every app on one identity per platform and Play's enforcement extends to related accounts.",
+      "detector": "This row's cadence against lastDrill, where THE DRILL IS DEFINED AS RE-READING THE FOUR STORES' OWN PUBLISHED ENFORCEMENT PAGES and reconciling them against the runbook — not as being suspended. That is the only form of this drill anybody can perform on demand, and the store pages are the thing that actually moves: Play's 180-day account-termination window only came into effect on 2026-01-28.",
+      "response": "company/runbooks/store-enforcement-response.md — one section per row of tooling/channel-register.json (8 channels, including the three we host ourselves, whose enforcer is Cloudflare or a DMCA notice rather than a store), plus the emergency app-level unpublish path [8]K-9 consumes.",
+      "cadence": "180d",
+      "lastDrill": "2026-08-06",
+      "mechanism": {
+        "substrate": "app-stores",
+        "anchor": "company/runbooks/store-enforcement-response.md",
+        "record": "the stores' own published pages, re-read on the date above — and, when one ever arrives, the enforcement email itself, which is the ONLY document that states the deadline Play and Apple decline to publish",
+        "failingValue": "lastDrill older than this cadence — nobody has re-read the store pages in six months while the runbook goes on asserting their console paths and the one deadline that is established",
+        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. That is [10]D-12 acceptance limb (d), and it is the ONLY limb of D-12 a machine can hold: company/ is gitignored, so CI cannot read one word of the runbook it is keeping fresh."
+      },
+      "accessProviders": [
+        "owner",
+        "google",
+        "apple",
+        "microsoft",
+        "canonical"
+      ],
+      "ownerGated": true,
+      "ownerGap": "⚠️ NO CONSOLE PATH IN THIS RUNBOOK HAS BEEN WALKED — every one is read from a published page, and only the `web` channel is served today, so three of four store accounts do not yet exist to be enforced against. Closing this needs a real submission ([10]D-10 limb iii), which is owner-gated.",
+      "source": "unverified",
+      "unverifiedWhy": "🔴 THREE OF FOUR APPEAL DEADLINES ARE UNPUBLISHED AND ARE RECORDED AS 'COULD NOT ESTABLISH' RATHER THAN GUESSED. Established 2026-08-06 from a primary page: Play ACCOUNT TERMINATION = 180 days from the termination date, after which the option is permanently gone (effective 2026-01-28). NOT established, after reading each store's own page: Play app-removal/suspension, Apple (any), Microsoft (any); Canonical publishes no appeal process at all. Settled by reading the Microsoft App Developer Agreement and the Apple Developer Program License Agreement termination clauses — developer-forum threads are user posts, not publications, and the unsourced '7-day appeal window' carried in 00-STAGE-3-14-RESEARCH.md §4.3 #54 was deliberately NOT imported. A confidently wrong deadline in a runbook is worse than an acknowledged gap, because it gets followed at the one moment nobody has time to check it.",
+      "note": "⚠️ Correction landed with this row: 10-distribution-store.md cites Microsoft's appeal statistics as 1,326 appeals / 702 overturned / 2.85 days. The same page on 2026-08-06 reports 7/1/2025-6/30/2026 as 1,118 appeals / 623 overturned / 2.37 days. The read is unchanged — ~56% of appeals to Microsoft are overturned, in about two days — which is why missing a deadline is an expensive way to lose."
     },
     {
       "id": "review.kill-or-keep",

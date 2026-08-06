@@ -102,6 +102,10 @@ const MONEY_PROVIDERS = 'lib/state/money_providers.dart';
 const SHARED_PREFIX = /^(packages|services|tooling)\//;
 const EXEMPT_APPS = new Set(['apps/subly']);
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
+// [pipeline 11]E-5. Shared tree, deliberately: the launch trio is implemented
+// ONCE for every stamp. Anchoring the event names inside an app would be
+// anchoring the fork this requirement exists to prevent.
+const CORE_LIFECYCLE = 'packages/core/lib/src/analytics/analytics_lifecycle.dart';
 // The stamped Worker's half of G2. Only present on a needs_backend stamp; the
 // mustache section IS the directory name on disk, so this path resolves in the
 // brick source even though it vanishes from a client-only stamp.
@@ -574,6 +578,37 @@ const REQUIRED_COVERAGE = [
     group: /group\(\s*'property: analytics-on-switch-mounted'/,
     sources: [{ file: APP_ROOT, re: /child:\s*AnalyticsGate\(/, what: 'app.dart must mount AnalyticsGate — the analytics on-switch' }],
     why: 'the rail is fail-closed: with nothing calling record() it goes silent and no test goes red',
+  },
+  {
+    // ── [pipeline 11]E-5 · THE LAUNCH TRIO, FROM THE CHASSIS ────────────────
+    //
+    // 🔴 THE DEFECT THIS CLOSES. `analytics-on-switch-mounted` above asserts
+    // `contains('app_open')` — and `app_open` was the ONLY lifecycle event a
+    // stamped app could ever emit, because `first_launch` and `return_visit`
+    // lived in `apps/subly/lib/state/analytics_funnel.dart`, a file the brick
+    // does not carry. So "the lifecycle events fire" ranged over the one event
+    // that existed and a stamp that would never emit the other two passed the
+    // lane. 1 of 3, reported as green.
+    //
+    // FIVE anchors in THREE files, because each one alone survives the others'
+    // deletion while still looking healthy: the shared implementation can emit
+    // all three and nothing call it; the call site can exist over an
+    // implementation that emits one. The event-name anchors sit in `core` on
+    // purpose — that is the whole point of the requirement, one implementation
+    // for fifty stamps rather than fifty copies of an app-local funnel.
+    key: 'analytics-lifecycle-complete',
+    group: /group\(\s*'property: analytics-lifecycle-complete'/,
+    sources: [
+      // The CALL SITE, not the declaration — the declaration lives in
+      // providers.dart and takes `WidgetRef ref`, so it cannot match this.
+      // Same declaration-vs-caller trap the key above records.
+      { file: APP_ROOT, re: /logLaunchLifecycle\(ref\)/, what: 'app.dart must CALL the launch path from inside the consent-gated branch — an implementation nobody calls emits nothing, which is the fail-closed shape [pipeline C-6] exists to catch' },
+      { file: PROVIDERS, re: /core\.AnalyticsLifecycle\(/, what: 'the chassis must build core.AnalyticsLifecycle — re-implementing the trio per app is the fork this requirement exists to prevent' },
+      { file: CORE_LIFECYCLE, re: /log\(\s*'first_launch'\s*\)/, what: "core must emit 'first_launch' — the denominator every activation and retention ratio is divided by" },
+      { file: CORE_LIFECYCLE, re: /log\(\s*'app_open'\s*\)/, what: "core must emit 'app_open' on every launch" },
+      { file: CORE_LIFECYCLE, re: /log\(\s*'return_visit'\s*,/, what: "core must emit 'return_visit' — with no return event the D1/D7/D30 curve cannot be drawn at all" },
+    ],
+    why: 'the taxonomy names THREE launch events and a stamped app emitted one, so every retention and activation number a stamp could produce was missing its denominator',
   },
 ];
 

@@ -56,7 +56,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -201,6 +201,50 @@ const BRICK_REL = join(
   'tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'state', 'providers.dart',
 );
 
+// ── limb 5's fixture is the REAL TREE, copied ───────────────────────────────
+// [pipeline 4]B-14. Every other fixture in this file is hand-written, and that
+// is correct for limbs 1-4: the shapes there (a SQL comment naming a DELETE, a
+// Dart ternary read as a map key) are shapes the real tree does not contain and
+// a scan has to be shown surviving. Limb 5 is the opposite case. Its subject is
+// the ACTUAL wire shape of eight actual routes, and a hand-written stand-in
+// would encode whatever this file's author believed those shapes to be — which
+// is precisely the failure `assert-seams-wired.mjs` shipped with, where all six
+// fixture tests passed against a guard whose caller check matched the function's
+// own declaration. So the limb-5 inputs are COPIED FROM THE REPO and mutated in
+// place: a test that says "renaming this key goes red" is renaming the key that
+// is really there, in the file that really serves it.
+const REPO = resolve(CI_DIR, '..', '..');
+const LIMB5_FILES = [
+  'tooling/platform-register.json',
+  'services/platform/src/index.ts',
+  'services/subly-api/src/index.ts',
+  '.github/workflows/deploy-workers.yml',
+  'services/platform/test/config.test.ts',
+  'apps/subly/test/config_default_test.dart',
+  'services/platform/src/routes/account.ts',
+  'services/subly-api/src/routes/account.ts',
+  'packages/core/lib/src/auth/account_deletion.dart',
+  'services/platform/src/routes/entitlements.ts',
+  'packages/core/lib/src/models/entitlement.dart',
+  'services/platform/src/routes/cancellation.ts',
+  'packages/core/lib/src/cancellation_transport.dart',
+  'packages/api_client/lib/src/dio_cancellation_transport.dart',
+];
+
+const realFiles = () =>
+  Object.fromEntries(LIMB5_FILES.map((rel) => [rel, readFileSync(join(REPO, ...rel.split('/')), 'utf8')]));
+
+/** Replace `from` with `to` in one fixture file, REFUSING if `from` is not there.
+ *  A mutation helper that silently no-ops produces a test asserting the guard is
+ *  red about an unchanged tree — which it would not be, so the test would fail
+ *  for a reason nobody could read. */
+const mutate = (files, rel, from, to) => {
+  const src = files[rel];
+  assert.ok(src !== undefined, `${rel} is not in the fixture`);
+  assert.ok(src.includes(from), `${rel} does not contain the text this mutation replaces:\n${from}`);
+  return { ...files, [rel]: src.replace(from, to) };
+};
+
 /** A fixture repo, with `edit` applied to the default file map. */
 function makeRepo(edit = (f) => f) {
   const root = join(TMP, `r${seq++}`);
@@ -211,6 +255,7 @@ function makeRepo(edit = (f) => f) {
     'packages/api_client/lib/src/dio_event_transport.dart': TRANSPORT_DART,
     'apps/subly/lib/state/analytics_providers.dart': APP_PROVIDERS,
     [BRICK_REL.replaceAll('\\', '/')]: BRICK_PROVIDERS,
+    ...realFiles(),
   });
   for (const [rel, body] of Object.entries(files)) {
     if (body === null) continue; // an omitted file
@@ -486,5 +531,205 @@ describe('assert-analytics-contract — coverage self-checks', () => {
     })));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /COVERAGE LOST — .*no parseable `INSERT INTO consent_artifacts/s);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB 5 — [pipeline 4]B-14, the shared server's wire contract.
+//
+// ⚠️ REAL-TREE MUTATIONS FIRST, BEFORE THESE TESTS EXISTED (2026-08-06, THREE).
+// Every one was `npx tsc --noEmit`-VERIFIED CLEAN in services/platform BEFORE
+// the guard ran, because a compile error looks exactly like a caught mutation —
+// this repo has three recorded "catches" that were really compile errors. Every
+// restore was `git status --porcelain services/`-confirmed empty and re-run to
+// green.
+//
+//   MW1  entitlements.ts: the ITEM key `trial_end`      -> caught: "the server SENDS
+//        renamed to `trial_end_at` (tsc clean)              key(s) no client reads and
+//                                                           that are not declared
+//                                                           server-only: trial_end_at"
+//        services/platform's own suite: 1 of 309 failed — this route's row shape
+//        is the one unpinned shape a test already happened to cover.
+//   MW2  index.ts: `/v1/health`'s `build` renamed to    -> caught: "does not answer
+//        `release` (tsc clean)                              field(s) the deploy smoke
+//                                                           joins on: build"
+//        🔴 ALL 309 services/platform TESTS STILL PASSED. Nothing in the tree
+//           connected the handler's key to the `--field build` the deploy smoke
+//           joins on, so the rename would have shipped and failed the deploy
+//           AFTER the Worker was live — which is what a wire contract breaking a
+//           released consumer looks like from the inside.
+//   MW3  account.ts: a `503` refusal changed to `409`   -> caught: "the server can
+//        (tsc clean — 409 is a valid Hono status)           answer status(es) 409 that
+//                                                           the released client does
+//                                                           not map"
+//        🔴 ALL 309 TESTS STILL PASSED. `forStatus` resolves 409 to `unknown`,
+//           whose message tells the user we cannot tell how much was deleted.
+//
+// The two directions a SERVER-ONLY mutation cannot reach — a client that starts
+// reading a key nobody sends, and a client that stops mapping 502 — are exercised
+// below against the same real files, copied.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-analytics-contract — limb 5, every shared route has a wire pin', () => {
+  test('PASSES on the real tree: 8 routes, 7 pinned, 1 printed gap', () => {
+    const r = run(makeRepo());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /wire health — deploy-smoke fields/);
+    assert.match(r.out, /wire account — status set pinned/);
+    assert.match(r.out, /wire entitlements — body pinned/);
+    assert.match(r.out, /wire plan-cancel — body pinned/);
+    assert.match(r.out, /GAP {2}wire money-webhook/);
+    assert.match(r.out, /8 shared route\(s\) from tooling\/platform-register\.json: 7 pinned, 1 printed gap/);
+  });
+
+  test('FAILS when the server adds a response key nobody declared — MW1 replayed', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/routes/entitlements.ts',
+        'trial_end: r.trial_end,', 'trial_end_at: r.trial_end,')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /server SENDS key\(s\) no client reads and that are not declared server-only: trial_end_at/);
+  });
+
+  test('FAILS when the RELEASED CLIENT reads a key the server does not send', () => {
+    // The direction that breaks a shipped app rather than a build. There is no
+    // forced-update mechanism on Windows, macOS or Linux, so the installed build
+    // goes on asking for `verified_when` forever.
+    const r = run(makeRepo((f) =>
+      mutate(f, 'packages/core/lib/src/models/entitlement.dart',
+        "j['verified_at']", "j['verified_when']")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /released client READS key\(s\) the server does not send: verified_when/);
+  });
+
+  test('COVERAGE LOST when a declared floor key leaves the server response', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/routes/entitlements.ts',
+        'is_pro: rows.some(grants),', 'pro: rows.some(grants),')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — entitlements: key\(s\) is_pro/);
+  });
+
+  test('FAILS when a route answers a status the released client does not map — MW3 replayed', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/routes/account.ts',
+        "return c.json({ error: 'account_deletion_failed' }, 503);",
+        "return c.json({ error: 'account_deletion_failed' }, 409);")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /server can answer status\(es\) 409 that the released client does not map/);
+  });
+
+  test('COVERAGE LOST when the client stops mapping 502 — data gone, login alive', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'packages/core/lib/src/auth/account_deletion.dart',
+        'case 502:', 'case 5020:')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no longer maps status\(es\) 502/);
+  });
+
+  test('COVERAGE LOST when a status-pinned route answers a COMPUTED status', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/routes/account.ts',
+        "return c.json({ error: 'identity_delete_failed' }, 502);",
+        "return c.json({ error: 'identity_delete_failed' }, refusalStatus);")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /answer a COMPUTED status/);
+  });
+
+  test('FAILS when a health handler renames the field the deploy smoke joins on — MW2 replayed', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/src/index.ts',
+        'build: c.env.RELEASE ?? null,', 'release: c.env.RELEASE ?? null,')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /does not answer field\(s\) the deploy smoke joins on: build/);
+  });
+
+  test('and the OTHER health handler is pinned too — one Worker renaming it is enough', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/subly-api/src/index.ts',
+        'build: c.env.RELEASE ?? null,', 'release: c.env.RELEASE ?? null,')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /services\/subly-api\/src\/index\.ts does not answer field\(s\)/);
+  });
+
+  test('COVERAGE LOST when the workflow stops smoking /v1/health at all', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      '.github/workflows/deploy-workers.yml':
+        f['.github/workflows/deploy-workers.yml'].replaceAll('/v1/health', '/v1/ping'),
+    })));
+    assert.equal(r.code, 1, r.out);
+    // The guard now scans EVERY workflow rather than naming deploy-workers.yml
+    // (it tripped assert-release-lane-generic's single-workflow rule, and a
+    // hardcoded consumer would empty this limb the day the smoke moved). The
+    // BEHAVIOUR under test is unchanged — no workflow smokes /v1/health, so the
+    // field pin would range over nothing — only the wording of the diagnostic.
+    assert.match(r.out, /NO workflow under \.github\/workflows invokes post-deploy-smoke\.mjs against \/v1\/health/);
+  });
+
+  test('COVERAGE LOST when the workflow stops joining on `build`', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      '.github/workflows/deploy-workers.yml':
+        f['.github/workflows/deploy-workers.yml'].replaceAll('--field build', '--field version'),
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /deploy smoke no longer reads field\(s\) build/);
+  });
+
+  test('COVERAGE LOST when a ninth route is mounted with no wire contract', () => {
+    const r = run(makeRepo((f) => {
+      const reg = JSON.parse(f['tooling/platform-register.json']);
+      reg.routes.push({ id: 'exports', method: 'POST', path: '/v1/exports', auth: 'required' });
+      return { ...f, 'tooling/platform-register.json': JSON.stringify(reg, null, 2) };
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /Mounted with NO wire contract: exports/);
+  });
+
+  test('COVERAGE LOST when the register itself is gone', () => {
+    const r = run(makeRepo((f) => ({ ...f, 'tooling/platform-register.json': null })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /platform-register\.json does not exist/);
+  });
+
+  test('the printed GAP is a checked claim: a Dart client for /v1/money fails it', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'packages/api_client/lib/src/dio_money_transport.dart':
+        "final res = await _dio.post<dynamic>('${'$'}_base/v1/money/paddle');\n",
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /money-webhook is declared to have no in-repo client/);
+  });
+
+  test('…and a COMMENT naming /v1/money does not fail it — prose is not a client', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'packages/api_client/lib/src/notes.dart':
+        '// The money rail is POST /v1/money/:provider and we deliberately never call it.\n',
+    })));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /GAP {2}wire money-webhook/);
+  });
+
+  test('COVERAGE LOST when a delegated pin loses the marker it points at', () => {
+    // replaceAll, not replace: the marker occurs three times in that file, and
+    // a mutation that removed only the first would leave the guard correctly
+    // green and this test red for a reason that has nothing to do with the guard.
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'services/platform/test/config.test.ts':
+        f['services/platform/test/config.test.ts'].replaceAll('REQUIRED_KEYS', 'EXPECTED_KEYS'),
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no longer contains `REQUIRED_KEYS`/);
+  });
+
+  test('FAILS when the cancel REQUEST key is renamed on the client', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'packages/api_client/lib/src/dio_cancellation_transport.dart',
+        "data: <String, Object?>{'app_id': appId},",
+        "data: <String, Object?>{'application_id': appId},")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the request literal sends \{application_id\}, the pinned shape is \{app_id\}/);
   });
 });

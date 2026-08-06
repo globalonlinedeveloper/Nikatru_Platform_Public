@@ -2488,6 +2488,13 @@ group('property: content-pack-consumed', () {
   test('yy', () {});
   test('zz', () {});
 });
+// [pipeline 11]E-5 — the launch TRIO. Two runs, because one launch cannot tell
+// a once-per-install flag from one that fires every time.
+group('property: analytics-lifecycle-complete', () {
+  testWidgets('run1', (t) async {});
+  testWidgets('run2', (t) async {});
+  test('bucketed', () {});
+});
 `;
   // [pipeline C-11] BOTH themes carry the seed. A fixture with only the light
   // one seeded would agree with the first version of that anchor, which passed
@@ -2522,6 +2529,11 @@ return MaterialApp.router(
     ),
   ),
 );
+
+// [pipeline 11]E-5 The launch trio's ONLY call site, inside the consent-gated
+// branch. The declaration lives in providers.dart and takes a WidgetRef, so it
+// cannot satisfy this anchor — the declaration-vs-caller trap, again.
+logLaunchLifecycle(ref);
 `;
   // [pipeline C-14] The window-class anchors live in the design system, so the
   // fixture carries that file too — Material's exact 600 boundary and all FIVE
@@ -2712,6 +2724,15 @@ final x = () async {
     granted: granted,
   );
 };
+
+// [pipeline 11]E-5 The chassis builds the SHARED trio over the SAME storage
+// seam every other persisted chassis value uses — no app acquires a dependency
+// to be measured, and there is one implementation for fifty stamps.
+Future<void> logLaunchLifecycle(WidgetRef ref) async {
+  final core.Analytics analytics = await ref.read(analyticsProvider.future);
+  final core.KeyValueStore kv = await ref.read(keyValueStoreProvider.future);
+  await core.AnalyticsLifecycle(analytics: analytics, store: kv).onLaunch();
+}
 `;
   const BRICK_PROVIDERS =
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
@@ -2931,6 +2952,31 @@ class CatchUpNudgeBanner extends ConsumerWidget {
   const CORE_CACHE = 'packages/core/lib/src/entitlement_cache.dart';
   const goodCoreCache = 'const Duration kEntitlementStalenessCeiling = Duration(days: 7);\n';
 
+  // [pipeline 11]E-5 · THE LAUNCH TRIO LIVES IN A SHARED TREE, and that is the
+  // requirement rather than a tidiness preference: `first_launch` and
+  // `return_visit` used to live in apps/subly's own funnel, so every stamped app
+  // emitted `app_open` and nothing else — 1 of 3 — while the lane went green.
+  // The fixture carries all three names so the mutation cases below can remove
+  // one at a time.
+  const CORE_LIFECYCLE = 'packages/core/lib/src/analytics/analytics_lifecycle.dart';
+  const goodCoreLifecycle = `
+class AnalyticsLifecycle {
+  Future<void> onLaunch() async {
+    if (isFirst) {
+      await _analytics.log('first_launch');
+      await _store.write(kFirstLaunchEmittedKey, '1');
+    }
+    await _analytics.log('app_open');
+    if (!isFirst && last != null) {
+      await _analytics.log(
+        'return_visit',
+        params: <String, Object?>{'days_since_last': bucketDaysSinceLast(n)},
+      );
+    }
+  }
+}
+`;
+
   const THEME_X = 'packages/design_system/lib/src/theme/app_theme_x.dart';
   const goodThemeX = `
 class AppThemeX extends ThemeExtension<AppThemeX> {
@@ -2997,11 +3043,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, ...extra };
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -3014,6 +3060,66 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     assert.match(out, /theme-triplet-supplied' asserted and implemented/);
     assert.match(out, /analytics-consent-gated' asserted and implemented/);
     assert.match(out, /analytics-on-switch-mounted' asserted and implemented/);
+    assert.match(out, /analytics-lifecycle-complete' asserted and implemented/);
+  });
+
+  // ── [pipeline 11]E-5 · THE LAUNCH TRIO. Five anchors in three files, and each
+  // case below removes exactly one — because any one of them alone leaves the
+  // other four looking perfectly healthy while a stamped app emits less than the
+  // taxonomy requires. The real-tree mutations came first; these encode them.
+  test('FAILS when the launch call site is deleted from app.dart', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-lifecycle-uncalled', { app: goodApp.replace('logLaunchLifecycle(ref);', '') }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /'analytics-lifecycle-complete' is asserted but its IMPLEMENTATION is gone/);
+    assert.match(out, /lib\/app\.dart/);
+  });
+
+  // The regression that made this key necessary: app_open alone, which is
+  // exactly the state a stamped app shipped in while the lane reported green.
+  test('FAILS when core stops emitting first_launch', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-lifecycle-no-first', {
+        coreLifecycle: goodCoreLifecycle.replace("log('first_launch')", "log('app_open')"),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the denominator every activation and retention ratio is divided by/);
+  });
+
+  test('FAILS when core stops emitting return_visit', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-lifecycle-no-return', {
+        coreLifecycle: goodCoreLifecycle.replace("'return_visit',", "'engaged',"),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the D1\/D7\/D30 curve cannot be drawn at all/);
+  });
+
+  // 🔴 THE FORK CASE. An app that re-implements the trio inline satisfies the
+  // call site and the event names would still be findable somewhere — but the
+  // shared construction is what makes it ONE implementation for fifty stamps,
+  // which is the sentence the requirement is made of.
+  test('FAILS when the chassis stops building the SHARED lifecycle', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-lifecycle-forked', {
+        providers: goodProviders.replace('core.AnalyticsLifecycle(', '_MyOwnPrivateFunnel('),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /re-implementing the trio per app is the fork this requirement exists to prevent/);
+  });
+
+  test('FAILS when the property group itself is dropped', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-lifecycle-unasserted', {
+        propTest: goodTest.replace('analytics-lifecycle-complete', 'analytics-lifecycle-ish'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /'analytics-lifecycle-complete' is NOT asserted/);
   });
 
   test('FAILS when the inherited property test is deleted', () => {
