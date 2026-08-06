@@ -6,6 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../core/format/currency.dart';
 import 'analytics_providers.dart';
+import 'providers.dart' show notificationServiceProvider;
 
 /// Where the settings live on disk — the same [core.KeyValueStore] seam the
 /// consent decision and the install id use ([ADR 005]). Namespaced like
@@ -113,12 +114,30 @@ class SettingsController extends Notifier<SettingsState> {
     return _persist();
   }
 
-  Future<void> toggle(String key) {
+  /// The prefs that cause something to be posted to the OS notification centre.
+  /// `unused` only changes what the app draws for itself, so switching it on is
+  /// not the user asking for notifications and must not spend the prompt.
+  static const Set<String> _reminderBearing = <String>{'alerts', 'weekly'};
+
+  Future<void> toggle(String key) async {
     _touched = true;
     final Map<String, bool> next = Map<String, bool>.of(state.prefs);
-    next[key] = !(next[key] ?? false);
+    final bool on = !(next[key] ?? false);
+    next[key] = on;
     state = state.copyWith(prefs: next);
-    return _persist();
+    await _persist();
+
+    // 🔴 [pipeline 13]T-4 — THE IN-CONTEXT ASK. This is one of the only two
+    // places in the app allowed to reach `requestPermissions()`, and it is
+    // reachable ONLY from `SwitchListTile`'s callback: a real user gesture, on
+    // the switch that names the feature being enabled. That gesture requirement
+    // is not just good manners — on Web the permission request is REFUSED
+    // outright unless it happens inside a user-gesture handler.
+    //
+    // Off is never an ask: turning a feature OFF cannot be a reason to prompt.
+    if (on && _reminderBearing.contains(key)) {
+      await ref.read(notificationServiceProvider).requestPermissions();
+    }
   }
 
   /// Fire-and-forget from the UI's point of view (the callbacks are

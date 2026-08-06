@@ -85,6 +85,24 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     // than a per-add counter, and only after the write succeeded.
     if (before != null && before.isEmpty) {
       ref.read(analyticsFunnelProvider).valueOrNull?.onActivation();
+
+      // 🔴 [pipeline 13]T-4 — THE OTHER IN-CONTEXT ASK, and the reason the
+      // settings toggle alone is not enough: `alerts` DEFAULTS ON, so a user who
+      // never touches settings never passes through the toggle and would end up
+      // with renewal reminders scheduled against a permission nobody ever asked
+      // for — a dead channel, which is precisely what this requirement forbids.
+      //
+      // Asked HERE and nowhere else on this path: the first subscription is the
+      // first moment the app has anything to remind anyone about, so it is the
+      // first moment the ask means something to the user. Gated on the empty→
+      // first transition so it happens once per install, not once per add, and
+      // reachable only from the add sheet's submit button — never from `build()`
+      // or the settings listener, both of which run at first frame.
+      if (ReminderPlan.from(
+        ref.read(settingsControllerProvider).prefs,
+      ).syncRenewals) {
+        await ref.read(notificationServiceProvider).requestPermissions();
+      }
     }
   }
 
