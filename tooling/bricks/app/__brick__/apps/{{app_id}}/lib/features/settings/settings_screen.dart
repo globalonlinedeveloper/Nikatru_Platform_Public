@@ -257,8 +257,25 @@ class SettingsScreen extends ConsumerWidget {
               subtitle: Text(l10n.deleteAccountSubtitle),
               onTap: () => _confirmDelete(context, ref, l10n),
             ),
+          // 🔴 [pipeline C-13] `applicationVersion` WAS MISSING, and the
+          // register row for this screen has always promised "version and
+          // legalese". Flutter does not complain: `showAboutDialog` simply
+          // renders no version line, so the dialog looked complete and told a
+          // user reporting a bug nothing about WHICH BUILD they were running —
+          // which is the one fact a support mail is worthless without, and the
+          // reason both stores expect a version to be visible in-app.
+          //
+          // The RUNNING version, not the compiled-in constant: `AppConfig
+          // .appVersion` is a `String.fromEnvironment` default that a build
+          // which forgot `--dart-define` would report as the truth. The
+          // provider reads what is actually installed and falls back to the
+          // constant only while the plugin resolves (and on platforms where it
+          // cannot), exactly as the force-update gate does with the same value.
           AboutListTile(
             applicationName: AppConfig.appName,
+            applicationVersion:
+                ref.watch(packageVersionProvider).valueOrNull ??
+                AppConfig.appVersion,
             applicationLegalese: l10n.legalese,
             child: Text(l10n.about),
           ),

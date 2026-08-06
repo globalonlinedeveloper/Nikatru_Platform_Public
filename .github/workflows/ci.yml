@@ -895,6 +895,25 @@ jobs:
       - name: No release build from an ungated commit, no publish unrecorded
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-release-provenance.mjs
+      # [pipeline 9]R-4 — "a release artifact outlives the run that made it."
+      # Measured before the mechanism landed: 0 git tags, 0 remote tags, no `gh
+      # release create` anywhere, FIVE jobs ending at `actions/upload-artifact`
+      # with `retention-days: 7`, no SHA256SUMS. Seven days is the requirement's
+      # NEGATION, not a weak form of it.
+      #
+      # R-4's own criterion quantified over two EMPTY SETS — "a published
+      # release" (there were none) and "a release workflow" (nothing was declared
+      # to be one, so a literal reading would have skipped the very file R-4's
+      # evidence is drawn from). This guard derives both subjects instead: a
+      # RELEASE LANE is a workflow with a `push: tags:` trigger, and an
+      # INSTALLABLE is an upload path whose extension the channel register
+      # declares — so a `.dmg` channel added to the register is covered here
+      # without an edit. It fails when such a lane's artifact has no destination
+      # but `upload-artifact`, and when a durable publish is not preceded by a
+      # written AND re-verified SHA256SUMS naming every asset.
+      - name: No release lane finishes with the artifact stuck inside the run
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-release-durable.mjs
       # [pipeline 9]R-12, and it must hold BEFORE stage 5's money rail ships. A
       # `--dart-define` writes its value INTO the artifact — on web that is one
       # view-source away — so `secrets.X` says where a value was KEPT and
@@ -1354,6 +1373,16 @@ jobs:
       - name: Every app carries a done-record, and its DoD items really run
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-app-dod.mjs
+      # [pipeline 6]N-9 — this existed and was wired into NOTHING, so the
+      # `selection.sha256` half of the acceptance was enforced by nobody. It
+      # PRINTS rather than fails on an empty set, because the requirement is
+      # "no app ENTERS the factory without passing the gates" — apps/subly
+      # predates them and is exempt, so nothing having entered is the
+      # requirement SATISFIED, not unverified. Its two floors still exit 1:
+      # a stale EXEMPT name, and a directory under apps/ the workspace omits.
+      - name: Selection records resolve (N-9)
+        working-directory: ${{ github.workspace }}
+        run: node tooling/scripts/check-selection-record.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
@@ -1885,6 +1914,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # [pipeline 12]W-3a — the sitemap's `lastmod` is now derived from a
+          # per-file `git log`, so a shallow clone cannot answer the question.
+          # WITHOUT this the guard exits 1 with COVERAGE LOST rather than
+          # passing on an unanswerable one — verified against a real
+          # `git clone --depth 1`.
+          fetch-depth: 0
       # sites/nikatru and sites/rajasekarselvam are deployed by CLOUDFLARE's own
       # Git integration on every push to main — no workflow involved, and
       # Cloudflare cannot read a GitHub check. Until this lane existed nothing in

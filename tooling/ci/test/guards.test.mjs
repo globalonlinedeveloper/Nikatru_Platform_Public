@@ -2594,6 +2594,12 @@ final FutureProvider<core.ContentPack?> contentPackProvider =
 
   const goodProviders = `
 final Provider<core.ConfigTransport> configTransportProvider = X();
+// [pipeline 2]C-13, 2026-08-06 — the offline banner's input. Present here because
+// assert-stamp-properties checks its classification map in BOTH directions: a
+// classification for a provider the scan cannot see is a stale claim and fails.
+// So a new chassis provider has to arrive in this fixture too, or the guard is
+// right and the fixture is lying.
+final StateNotifierProvider<X, bool> networkUnreachableProvider = X();
 final Provider<core.ConfigLoader> configLoaderProvider = X();
 final FutureProvider<core.AppConfig> appConfigProvider = X();
 final FutureProvider<String?> packageVersionProvider = X();
@@ -3859,8 +3865,11 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 2026-08-03: [pipeline 13]T-8 added catchUpNudgeProvider to the first of
       // them. 45 since 2026-08-03: the content-pack rail added four more, all
       // four DRIVEN by the `content-pack-consumed` property rather than
-      // admitted as gaps.
-      assert.match(out, /tracked domain: 45 chassis behaviour\(s\)/);
+      // admitted as gaps. 46 since 2026-08-06: [pipeline 2]C-13 wired
+      // `OfflineNotice`, which had ZERO consumers, and its
+      // `networkUnreachableProvider` joined the domain as an admitted gap —
+      // reachable is not the same claim as behaviourally proven.
+      assert.match(out, /tracked domain: 46 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -3868,7 +3877,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 2026-08-01: the money rail closed two gaps (entitlementCacheProvider and
       // secureStoreProvider, both DRIVEN by the paywall property now) and
       // admitted three of its own.
-      assert.match(out, /10 chassis behaviour\(s\) a stamped app does NOT prove/);
+      assert.match(out, /11 chassis behaviour\(s\) a stamped app does NOT prove/);
       assert.match(out, /mustForceUpdateProvider/);
     });
 
@@ -3897,7 +3906,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 44/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 45/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

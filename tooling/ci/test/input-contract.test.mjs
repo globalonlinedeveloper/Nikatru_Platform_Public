@@ -119,9 +119,53 @@ void run(HookContext context) {
 }
 `;
 
-function tree({ yaml = goodYaml(), pre = goodPreGen(), post = goodPostGen } = {}) {
+// ── [pipeline S-12] the two stamped-backend files ───────────────────────────
+//
+// 🔴 THESE WERE OUTSIDE EVERY SCAN UNTIL 2026-08-06. `provision-backend.mjs`
+// landed 2026-07-29 and the post-gen checklist was updated to name it, but the
+// stamped `wrangler.jsonc` header and the stamped service `README.md` went on
+// telling the reader to transcribe the uuid by hand — the exact step S-12's
+// "no hand-editing of placeholders" exists to delete. This guard exited 0
+// throughout, because `SCAN` covered three brick files and neither was one of
+// them. The two documents a person actually has open while provisioning were
+// the two nothing read.
+const BACKEND = `${BRICK}/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api`;
+const goodWrangler = `{
+  // After stamping, one command — nothing here is hand-edited:
+  //   node tooling/scripts/provision-backend.mjs {{app_id}}
+  // It creates the D1, writes the id below, and applies the migration.
+  "d1_databases": [
+    { "binding": "APP_DB", "database_id": "00000000-0000-0000-0000-000000000000" }
+  ]
+}
+`;
+const goodBackendReadme = `# {{app_id}}-api
+
+## Provision (one command)
+
+    node tooling/scripts/provision-backend.mjs {{app_id}}
+
+Writes \`database_id\` into wrangler.jsonc and applies the starter migration.
+`;
+
+function tree({
+  yaml = goodYaml(),
+  pre = goodPreGen(),
+  post = goodPostGen,
+  wrangler = goodWrangler,
+  backendReadme = goodBackendReadme,
+  omit = [],
+} = {}) {
   const root = join(TMP, `r${seq++}`);
-  for (const [f, body] of Object.entries({ [YAML]: yaml, [PRE]: pre, [POST]: post })) {
+  const files = {
+    [YAML]: yaml,
+    [PRE]: pre,
+    [POST]: post,
+    [`${BACKEND}/wrangler.jsonc`]: wrangler,
+    [`${BACKEND}/README.md`]: backendReadme,
+  };
+  for (const [f, body] of Object.entries(files)) {
+    if (omit.includes(f)) continue;
     const p = join(root, f);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, body);
@@ -361,6 +405,71 @@ describe('assert-input-contract', () => {
   // The relationship, not a typed floor: the raw file and the extracted view are
   // two observations of the same thing, and they must agree. Here the checklist
   // moves into a raw string the literal-extractor cannot see.
+  // ── [pipeline S-12] no hand-edit in the stamped backend ───────────────────
+  //
+  // ⚠️ MUTATED ON THE REAL TREE FIRST, all four caught there before any of these
+  // were written: the original paste line restored to the real `wrangler.jsonc`,
+  // the real README's "Set `database_id` after `wrangler d1 create`" line
+  // restored, the provisioner un-named while `database_id` stayed, and the real
+  // wrangler.jsonc moved away entirely.
+  describe('the stamped backend may not ask for a hand-edit', () => {
+    test('passes on the shipped files, and says how many it read', () => {
+      const { code, out } = run(tree());
+      assert.equal(code, 0);
+      assert.match(out, /the 2 stamped backend file\(s\) name the provisioner and ask for no hand-edit/);
+    });
+
+    test('FAILS when the paste instruction comes back to wrangler.jsonc', () => {
+      const { code, out } = run(tree({
+        wrangler: goodWrangler.replace(
+          '  // It creates the D1',
+          '  //   → paste the id into APP_DB.database_id below.\n  // It creates the D1',
+        ),
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /retired hand-edit instruction — telling the reader to paste/);
+    });
+
+    test('FAILS when the README tells the reader to set database_id afterwards', () => {
+      const { code, out } = run(tree({
+        backendReadme: `${goodBackendReadme}\n- Set \`database_id\` after \`wrangler d1 create x_db --location apac\`.\n`,
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /telling the reader to set `database_id` after creating the database/);
+    });
+
+    // 🔴 THE STRUCTURAL LIMB, and the one that catches the NEXT phrasing rather
+    // than this one. A named-pattern list only ever stops the wordings somebody
+    // already thought of; showing the placeholder without naming what fills it
+    // is the property itself.
+    test('FAILS when database_id is shown but the provisioner is never named', () => {
+      const { code, out } = run(tree({
+        wrangler: goodWrangler.split('provision-backend.mjs').join('some-other-script.mjs'),
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /shows the reader `database_id` but never names `provision-backend\.mjs`/);
+    });
+
+    // A file that says nothing about database_id is not required to name the
+    // provisioner — the rule must not fire on correct input, or it gets
+    // switched off and then guards nothing.
+    test('does NOT fire on a backend file that never mentions database_id', () => {
+      const { code } = run(tree({
+        backendReadme: '# api\n\nRoutes and secrets only.\n',
+      }));
+      assert.equal(code, 0);
+    });
+
+    // COVERAGE: this limb read ZERO files for a week while printing nothing at
+    // all. A missing subject must be loud, never absent.
+    test('COVERAGE LOST when a required backend file is gone', () => {
+      const { code, out } = run(tree({ omit: [`${BACKEND}/wrangler.jsonc`] }));
+      assert.equal(code, 1);
+      assert.match(out, /is REQUIRED_COVERAGE for the S-12 hand-edit rule and could not be read/);
+      assert.match(out, /read 1 of 2 required file\(s\)/);
+    });
+  });
+
   test('COVERAGE LOST when the extractor recovers fewer headers than the file has', () => {
     const { code, out } = run(tree({
       post: goodPostGen.replace(

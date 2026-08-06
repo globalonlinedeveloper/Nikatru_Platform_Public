@@ -646,7 +646,12 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // slack under the floor — the scan could have stopped seeing a quarter of the
 // rail it was just given and still reported clean, which is the precise
 // failure this self-check exists to make impossible.
-const MIN_DOMAIN = 45;
+// 46 since 2026-08-06: [pipeline 2]C-13 wired `OfflineNotice` and its
+// `networkUnreachableProvider` joined the domain. RAISED WITH THE TREE ON
+// PURPOSE — left at 45, deleting a behaviour would leave exactly 45 and the
+// floor would stop catching the deletion it exists to catch. A ratchet that
+// does not follow the thing it measures is a ratchet that has stopped.
+const MIN_DOMAIN = 46;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -731,6 +736,13 @@ const UNASSERTED = {
   cancellationTransportProvider: '2026-08-01 · the ROSCA cancel call. Driven end-to-end in packages/purchases/test/hosted_checkout_rail_test.dart and against a real SQL engine in services/platform/test/cancellation.test.ts; a stamped-app property would need the manage screen pumped with a fake host, which is a widget test worth writing and is not written',
   entitlementConvergenceProvider: '2026-08-01 · the bounded post-checkout wait. Fully exercised in packages/purchases/test/entitlement_convergence_test.dart (backoff, exhaustion, could-not-ask); no stamped-app property because a checkout cannot be opened in a widget test',
   moneyFunnelProvider: '2026-08-01 · the four money events. Their CALLERS are enforced by tooling/ci/assert-pseudonymity-firewall.mjs, which resolves them by SYMBOL, and the funnel itself is unit-tested — but no stamped-app property watches an event reach a transport from the paywall',
+  // [pipeline 2]C-13 wired `OfflineNotice` in 2026-08-06 — it had ZERO consumers
+  // before that, a dead feature reporting healthy. Its reachability anchor proves
+  // the widget is MOUNTED and driven by a failed config fetch; it does NOT prove
+  // the banner appears, because no chassis property drives this provider. Recorded
+  // as an honest gap rather than counted as coverage — `reachable` and `proven`
+  // are different claims and this file is where the difference is kept.
+  networkUnreachableProvider: '2026-08-06 · the offline banner’s input. A stamped app mounts OfflineNotice and a failed config fetch flips it, but nothing asserts the banner RENDERS on a stamp — the widget test would need a transport that fails on demand.',
   configTransportProvider: '2026-07-28 · CFG-1 config resolution has no stamped-app property; a stamp cannot prove network → last-good → default actually degrades in that order',
   configLoaderProvider: '2026-07-28 · as above — the fallback chain is unit-tested in core, never asserted on a stamped app',
   appConfigProvider: '2026-07-28 · as above',

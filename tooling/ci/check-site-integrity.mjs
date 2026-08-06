@@ -52,6 +52,10 @@ import { spawnSync } from 'node:child_process';
 // claims guards. See tooling/ci/text-reductions.mjs for why it is not four copies.
 import { stripInert, visibleText } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+// ONE reading of "when did this page last change", shared with the generator
+// that WRITES sites/nikatru/sitemap.xml. See tooling/sites/lastmod.mjs for why
+// the writer and the checker must evaluate the same function. [pipeline 12]W-3a
+import { lastmodFor, isGitRepo, isShallowRepo } from '../sites/lastmod.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 const claimedRoots = process.argv.slice(3);
@@ -107,6 +111,24 @@ const MIN_LEGAL_TEXT_CHARS = 1000;
  *  repository, so there is no in-tree file to derive it from. [pipeline K-2a] */
 const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
 const MUST_NAME_SELLER = ['terms.html', 'privacy.html'];
+
+/** [12]W-3a — how the lastmod limb proves it is still scanning.
+ *
+ * 🔴 A HARDCODED `['nikatru','rajasekarselvam']` WAS WRITTEN FIRST AND REJECTED,
+ * on evidence rather than taste: it turned seven self-hosted fixtures red,
+ * because a fixture that scaffolds one deploy root can never satisfy a list that
+ * names two. The pressure that creates is entirely in the wrong direction — the
+ * cheap way out is to shorten the list, and a coverage floor somebody shortens
+ * to make a test pass is a coverage floor that has already stopped working.
+ *
+ * What replaced it is a RELATIONSHIP with no number and no name in it: EVERY
+ * deploy root whose sitemap was compared to its pages must also have contributed
+ * at least one `<lastmod>` compared to git. It holds for two roots and for
+ * twenty, it is satisfiable by a one-root fixture, and there is nothing in it to
+ * lower. A root going dark ENTIRELY is deliberately not re-asserted here: the
+ * `claimedRoot` arguments already fail this script when a root named on the CI
+ * run line is not among the roots it scanned, and ci.yml names both. */
+const LASTMOD_FLOOR = 'every sitemap-compared root contributes a git-checked lastmod';
 
 /** Pages an app-facing root owes that CANNOT be a build failure yet, each with
  *  the owner item that unblocks it. The split is [pipeline C-6]'s and this file
@@ -426,6 +448,36 @@ let urlFormRoots = 0;
 let sitemapRootsCompared = 0;
 /** [12]W-3c — how many llms.txt files were read against the app registry. */
 let llmsFilesChecked = 0;
+/** [12]W-3a — how many sitemap `<lastmod>` values were compared to git, and
+ *  WHICH roots contributed. The root NAMES are what the floor asserts: a count
+ *  is a number somebody lowers, and "9 URLs checked" cannot tell you that all
+ *  nine came from one root while the other stopped being scanned. */
+let lastmodChecked = 0;
+const lastmodRootsSeen = new Set();
+/** root name → how many indexable pages it had. The other half of the
+ *  `LASTMOD_FLOOR` relationship; see that constant for why it is not a name list. */
+const sitemapRootsWithPages = new Map();
+
+/** 🔴 SHALLOW CLONES MAKE THE LIMB ABOVE A LIE, NOT MERELY WEAKER. With
+ *  `fetch-depth: 1` the checkout holds ONE synthetic commit that adds every
+ *  file, so `git log -1 -- <any path>` answers with the HEAD date for
+ *  everything — and a sitemap saying one identical date for every URL would
+ *  pass. That is exactly the failure W-3's own research note named: "satisfied
+ *  by any generator that touches git, including one that reads the repo's own
+ *  HEAD date for every URL". So a shallow repository is COVERAGE LOST here, the
+ *  same posture assert-policy-archive.mjs already takes for the same reason.
+ *
+ *  Checked BEFORE the roots are walked so the message is about the checkout and
+ *  not about a date. Skipped when the tree under test is not a git work tree at
+ *  all — guard fixtures are temp directories, and they degrade to `today()` on
+ *  both sides of the comparison, which keeps them self-consistent. */
+if (isGitRepo(repoRoot) && isShallowRepo(repoRoot)) {
+  console.error('✗ COVERAGE LOST — the repository is a SHALLOW clone, so per-file git history is not present.');
+  console.error('    In a depth-1 checkout `git log -1 -- <path>` answers with the single root commit for EVERY');
+  console.error('    file, so a sitemap giving every URL the same date would pass the [12]W-3a lastmod limb');
+  console.error('    forever. The lane that runs this guard must check out with `fetch-depth: 0`.');
+  process.exit(1);
+}
 
 for (const root of siteRoots) {
   const name = root.slice(SITES.length + 1);
@@ -481,6 +533,7 @@ for (const root of siteRoots) {
   // is the other failure: the limb running against ZERO roots and printing ok.
   if (existsSync(sitemapPath)) {
     sitemapRootsCompared++;
+    sitemapRootsWithPages.set(name, wanted.size);
     const entries = sitemapEntries(readFileSync(sitemapPath, 'utf8'));
     const listed = new Set(entries.map((e) => e.loc));
     for (const [url, page] of wanted) {
@@ -498,19 +551,91 @@ for (const root of siteRoots) {
       }
     }
 
+    // ── [12]W-3a · EVERY `lastmod` IS THE FILE'S OWN GIT DATE ───────────────
+    //
+    // 🔴 THE CLAUSE THIS IMPLEMENTS, AND THE HOLE IT CLOSES. W-3's acceptance
+    // says the sitemap's `lastmod` values "come from git history — a hand edit
+    // fails the drift guard". Nothing asserted it. The ONLY `lastmod` limb in
+    // the repository was #34 below, which compares ONE page's date to its
+    // `data-policy-version` — so on 2026-08-06 six of the eight nikatru URLs and
+    // the mirror's only URL could carry ANY date at all and no check would
+    // notice. They did: the file claimed 2026-08-01/2026-08-03 (and 2026-07-18
+    // on the mirror) while every page on both roots last changed 2026-08-04, in
+    // `6605cc1`. Three separate live URLs were telling crawlers a false date.
+    //
+    // 🔴 WHY HERE AND NOT IN THE GENERATOR ALONE. `generate-discovery.mjs`
+    // WRITES `sites/nikatru/sitemap.xml`, and the drift guard re-running it does
+    // fail a hand edit — but only on that one root. `sites/rajasekarselvam` has
+    // no generator and never will (an `apps/` directory there would make the
+    // root app-facing and immediately owe four legal pages, which is why the
+    // discovery generator refuses to touch it). This file already walks EVERY
+    // deploy root and already owns the sitemap↔pages relationship, so this is
+    // where the coverage is. The two sides share `tooling/sites/lastmod.mjs`, so
+    // the writer and the checker evaluate ONE function and cannot disagree.
+    //
+    // ⚠️ A `lastmod` is required on every entry, not merely correct when
+    // present. An optional assertion is one a hand edit escapes by deletion.
+    for (const e of entries) {
+      const page = wanted.get(e.loc);
+      if (page === undefined) continue; // already reported as an unknown <loc>
+      lastmodChecked++;
+      lastmodRootsSeen.add(name);
+      if (e.lastmod === null) {
+        problems.push(
+          `sites/${name}/sitemap.xml lists ${e.loc} with no <lastmod>. Google uses lastmod only where it is verifiably accurate and ignores changefreq/priority entirely, so lastmod is the ONE optional field worth emitting — and an entry without it is an entry a hand edit cannot be caught deleting.`,
+        );
+        continue;
+      }
+      const expected = lastmodFor(repoRoot, `sites/${name}/${page}`);
+      if (e.lastmod !== expected) {
+        problems.push(
+          `sites/${name}/sitemap.xml gives ${e.loc} lastmod ${e.lastmod}, and sites/${name}/${page} last changed ${expected} according to git. The sitemap's dates are a FUNCTION of the repository (tooling/sites/lastmod.mjs), not a field somebody keeps up to date by hand — a date a crawler cannot rely on is worse than none, because it is the signal that decides whether the page is re-fetched. Run \`node tooling/sites/generate-discovery.mjs\` for sites/nikatru; sites/rajasekarselvam has one URL and is edited by hand.`,
+        );
+      }
+    }
+
+    // `changefreq`/`priority` are not merely useless, they are a value nothing
+    // can check sitting next to one everything now can. Google states it ignores
+    // both; keeping them invites a reader to maintain them.
+    for (const dead of ['changefreq', 'priority']) {
+      if (new RegExp(`<${dead}\\s*>`, 'i').test(readFileSync(sitemapPath, 'utf8'))) {
+        problems.push(
+          `sites/${name}/sitemap.xml carries a <${dead}> element. Google ignores changefreq and priority entirely (developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap), so every one of them is an unverifiable claim that costs a reader attention and buys nothing. <loc> + <lastmod>, and nothing else.`,
+        );
+      }
+    }
+
     // ── #34: a policy version and the sitemap date for that page agree ──────
     // The single line that makes the drift catchable. On 2026-08-01 privacy.html
     // said version 2026-07-26 while its sitemap lastmod said 2026-07-18 — eight
     // days of a crawler being told the policy had not changed, and nothing in the
     // repo could notice, because the two facts lived in different files and no
     // check spanned them.
+    //
+    // 🔴 RE-POINTED 2026-08-06 FROM `===` TO `>=`, and it was re-pointed rather
+    // than deleted. Equality was correct while `lastmod` was hand-maintained and
+    // the policy version was the only date anyone had. It is WRONG now that
+    // `lastmod` is git-derived, and it was already wrong on the tree: privacy.html
+    // declares version 2026-08-01 and its file last changed 2026-08-04, because
+    // `6605cc1` edited the brand display name inside the copy without publishing
+    // a new policy. Both facts are true and they answer different questions —
+    // "which text is in force" versus "when did this page last change" — so an
+    // equality between them makes a green tree impossible for a reason neither
+    // fact is at fault for.
+    //
+    // What survives is the drift #34 actually existed to catch, and the recorded
+    // failing case still fails: a page declaring version 2026-07-26 while the
+    // sitemap says the page last changed 2026-07-18 is publishing a policy the
+    // crawler is told does not exist yet. Its writable failing input today is a
+    // POST-DATED version — declare 2026-09-01 in the page and the sitemap can
+    // never reach it, because git cannot report a future date.
     for (const [url, { version, page }] of policyVersions) {
       policyVersionsChecked++;
       const entry = entries.find((e) => e.loc === url);
       if (!entry) continue; // already reported as a missing <loc>
-      if (entry.lastmod !== version) {
+      if (entry.lastmod !== null && entry.lastmod < version) {
         problems.push(
-          `sites/${name}/${page} declares data-policy-version="${version}" and sites/${name}/sitemap.xml gives that page lastmod ${entry.lastmod === null ? '(none)' : entry.lastmod}. The policy page IS its version — publish a new one and the sitemap has to say so, or crawlers and the consent records that cite the version disagree about which text was shown.`,
+          `sites/${name}/${page} declares data-policy-version="${version}" and sites/${name}/sitemap.xml gives that page lastmod ${entry.lastmod} — EARLIER than the version it claims to be serving. The policy page IS its version: a crawler told the page last changed before the version it declares has been told the new text was never published, and the consent records that cite the version disagree with the page about which text was shown.`,
         );
       }
     }
@@ -927,6 +1052,14 @@ if (SCANNING_OWN_REPO) {
   if (llmsFilesChecked === 0) {
     lost.push('NO llms.txt was read against sites/_shared/_data/apps.json, so the machine-readable description of these sites was compared to nothing. Both deploy roots ship one.');
   }
+  if (lastmodChecked === 0) {
+    lost.push(
+      'NO sitemap <lastmod> was compared to git history at all, so [12]W-3a ranged over nothing. Nine URLs ' +
+        'across two deploy roots are checked today. This is the limb that makes a hand-edited date fail; with ' +
+        'it quiet, every sitemap in the tree could carry any date at all and this script would still print ok — ' +
+        'the exact state the repository was in until 2026-08-06.',
+    );
+  }
   if (promiseMarkers === 0) {
     lost.push('NO Pages Function carries a `SITE PROMISE: "…"` marker, so no code-held promise was checked against the copy the site actually serves.');
   }
@@ -940,6 +1073,32 @@ if (SCANNING_OWN_REPO) {
   if (lost.length) {
     console.error(`✗ COVERAGE LOST — ${lost.length} check(s) below ran over an empty set and would report clean forever:`);
     for (const l of lost) console.error(`    ${l}`);
+    process.exit(1);
+  }
+}
+
+// ── [12]W-3a · THE RELATIONSHIP FLOOR, ON EVERY TREE AND NOT JUST THIS ONE ───
+// Runs outside the SCANNING_OWN_REPO block on purpose: the other floors defend
+// facts that are true of THIS repository (a policy version exists, an APPS array
+// exists), and a synthetic tree legitimately has none of them. This one defends
+// a property of the LIMB, which is equally true of any tree it is pointed at — a
+// root whose sitemap was compared to its indexable pages, and which HAS
+// indexable pages, must have had at least one date checked. Anything else means
+// the loop ran and compared nothing, which prints exactly like a clean root.
+{
+  const silent = [...sitemapRootsWithPages]
+    .filter(([name, pages]) => pages > 0 && !lastmodRootsSeen.has(name))
+    .map(([name]) => name);
+  if (silent.length) {
+    console.error(`✗ COVERAGE LOST — ${LASTMOD_FLOOR}, and ${silent.length} did not:`);
+    for (const name of silent) {
+      console.error(
+        `    sites/${name} has ${sitemapRootsWithPages.get(name)} indexable page(s) and a sitemap that was ` +
+          'compared to them, yet ZERO of its <lastmod> values reached the git check. The sitemap↔pages limb ' +
+          'and the lastmod limb walk the same entries, so one running while the other does not means the ' +
+          'entries stopped matching a canonical URL — and a date nothing checks is a date a hand edit owns.',
+      );
+    }
     process.exit(1);
   }
 }
@@ -960,7 +1119,10 @@ console.log(
 );
 for (const b of boundRoots) console.log(`      sites/${b.name} — ${b.count} page(s): ${b.reasons.join('; ')}`);
 console.log(
-  `    one canonical URL form on ${urlFormRoots} root(s); ${policyVersionsChecked} policy version(s) vs sitemap lastmod, ${storeUrlsChecked} store listing URL(s) matched to a page we serve`,
+  `    one canonical URL form on ${urlFormRoots} root(s); ${policyVersionsChecked} policy version(s) not ahead of their sitemap lastmod, ${storeUrlsChecked} store listing URL(s) matched to a page we serve`,
+);
+console.log(
+  `    ${lastmodChecked} sitemap <lastmod> value(s) equal their page's git date, across ${lastmodRootsSeen.size} root(s): ${[...lastmodRootsSeen].sort().join(', ')}`,
 );
 console.log(
   `    ${sellerNameChecks} commercial page(s) name the seller's legal person, not just the brand`,

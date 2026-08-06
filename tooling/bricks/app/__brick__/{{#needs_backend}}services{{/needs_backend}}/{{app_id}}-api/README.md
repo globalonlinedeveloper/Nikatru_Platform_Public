@@ -21,10 +21,27 @@ Per-app backend for **{{{display_name}}}**, stamped from the NIKATRU app brick.
 - `SUPABASE_JWT_SECRET` — optional legacy HS256 fallback; most projects verify
   with the ES256 JWKS and need no secret here.
 
+## Provision (one command — nothing here is hand-edited)
+
+    node tooling/scripts/provision-backend.mjs {{app_id}}
+
+Creates the D1 with `--location apac`, **writes** the returned id into
+`APP_DB.database_id` in `wrangler.jsonc`, and applies the starter migration.
+Run it from the repo root, with `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` in the environment. It is idempotent: a second run
+finds the database, leaves the config unchanged and re-verifies.
+
+Until it has run, `database_id` is the all-zeros placeholder — correct for a
+template, and `assert-d1-bindings.mjs` fails any config under `services/` that
+still carries one.
+
+`--location apac` is create-time-only and can never be changed afterwards, and
+D1 places the primary near whoever issued the create call — so this must not be
+run from a non-APAC CI runner without the flag.
+
 ## Bindings (wrangler.jsonc)
-- `APP_DB` — this app's D1 (`{{app_id}}_db`). The ONLY per-app resource. Set
-  `database_id` after `wrangler d1 create {{app_id}}_db --location apac`
-  (`--location` is create-time-only and can never be changed afterwards).
+- `APP_DB` — this app's D1 (`{{app_id}}_db`). The ONLY per-app resource; its
+  `database_id` is written by the command above.
 - `PLATFORM_DB` — shared entitlements DB (same id in every app).
 - `JWKS_CACHE` — shared KV caching the Supabase JWKS.
 

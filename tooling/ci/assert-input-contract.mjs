@@ -438,6 +438,110 @@ if (postGenSrc === null) {
   }
 }
 
+// ── 4 · [pipeline S-12] THE STAMPED BACKEND MAY NOT ASK FOR A HAND-EDIT ─────
+//
+// S-12's requirement is one sentence: a scripted step provisions the D1, patches
+// the real `database_id` into the stamped `wrangler.jsonc` and applies the
+// starter migration — "**no hand-editing of placeholders**".
+//
+// 🔴 IT WAS FALSE IN THE TEMPLATE FOR A WEEK, AND THIS GUARD EXITED 0 THROUGHOUT.
+// `provision-backend.mjs` landed 2026-07-29 and the post-gen checklist was
+// updated to name it — but the stamped `wrangler.jsonc` header and the stamped
+// service `README.md` went on directing the reader to transcribe the uuid by
+// hand. Section 3 above could not see them: it scans the printed checklist and
+// nothing else, and `SCAN` covered three brick files of which neither was one.
+// So the ONLY two documents a person actually has open while provisioning were
+// the two no guard read. Fixed 2026-08-06, and the fix is the coverage, not the
+// wording — the wording had already been fixed once elsewhere.
+//
+// TWO LIMBS, and the FIRST is the one with teeth:
+//
+//   (a) STRUCTURAL, positive. Any scanned file that mentions `database_id` must
+//       also name `provision-backend.mjs`. That is S-12's property stated
+//       directly — the placeholder is only acceptable BECAUSE something fills
+//       it, so a file that shows the reader the key without naming the filler
+//       has left them to work it out, and "work it out" means edit it by hand.
+//       It cannot false-positive on prose and it cannot be satisfied by prose.
+//
+//   (b) A SMALL NAMED LIST of retired phrasings, the same idiom as section 3 —
+//       not "scan for anything questionable". Each entry is a specific
+//       instruction `provision-backend.mjs` retired.
+//
+// ⚠️ WHY THESE FILES ARE SCANNED WHOLE, COMMENTS INCLUDED, AND WHAT THAT COSTS.
+// Everywhere else in this repo the rule is to strip comments first, because a
+// guard that reads prose matches the note EXPLAINING a defect as readily as the
+// defect. Here that rule inverts: `wrangler.jsonc`'s instructions ARE `//`
+// comments — the retired step lived in one — so stripping them would leave this
+// scanning an empty file and reporting clean. The honest consequence is that
+// these two files CANNOT quote the retired phrasing even to record it, and the
+// historical note in `wrangler.jsonc` is deliberately worded around it. That is
+// a real cost, accepted with its eyes open: a reader of that file cannot tell a
+// quoted instruction from a live one either.
+const BACKEND_STAMP = `${BRICK}/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api`;
+/** REQUIRED_COVERAGE — the files that must actually be read, named literally.
+ *  This limb ranged over ZERO files until 2026-08-06 while reporting nothing at
+ *  all, which is why the floor is a list of names rather than a count: a count
+ *  of zero and a scan of the wrong two files look identical in the output. */
+const HAND_EDIT_SCAN = [
+  `${BACKEND_STAMP}/wrangler.jsonc`,
+  `${BACKEND_STAMP}/README.md`,
+];
+const PROVISIONER = 'provision-backend.mjs';
+const RETIRED_HAND_EDITS = [
+  {
+    pattern: /\bpaste\b/i,
+    what: 'telling the reader to paste a value into the config',
+    why: `\`${PROVISIONER}\` writes \`database_id\` itself. A manual copy of a uuid into one key of a `
+      + 'JSONC file is the shape of edit that goes wrong silently: nothing errors, and the Worker '
+      + 'deploys reading the wrong database.',
+  },
+  {
+    pattern: /\bset\s+`?database_id`?\s+after\b/i,
+    what: 'telling the reader to set `database_id` after creating the database',
+    why: `the create AND the write are one command (\`node tooling/scripts/${PROVISIONER} <app_id>\`). `
+      + 'Naming the two steps separately re-introduces the manual one between them.',
+  },
+];
+
+let handEditScanned = 0;
+const handEdits = [];
+for (const rel of HAND_EDIT_SCAN) {
+  const src = read(rel);
+  if (src === null) {
+    problems.push(
+      `COVERAGE LOST — ${rel} is REQUIRED_COVERAGE for the S-12 hand-edit rule and could not be read. `
+        + 'This limb read zero files and reported nothing for a week; a missing file must be loud, not absent.',
+    );
+    continue;
+  }
+  handEditScanned++;
+  // (a) structural
+  if (/database_id/.test(src) && !src.includes(PROVISIONER)) {
+    problems.push(
+      `${rel} shows the reader \`database_id\` but never names \`${PROVISIONER}\`. [3]S-12 requires the stamped `
+        + 'backend to reach a deployable Worker with NO hand-editing of placeholders — a file that presents the '
+        + 'placeholder without naming the thing that fills it leaves the reader to fill it themselves.',
+    );
+  }
+  // (b) named retirements
+  for (const rule of RETIRED_HAND_EDITS) {
+    const line = src.split('\n').find((l) => rule.pattern.test(l));
+    if (line !== undefined) {
+      handEdits.push(
+        `${rel} still prints a retired hand-edit instruction — ${rule.what}: "${line.trim()}". ${rule.why}`,
+      );
+    }
+  }
+}
+for (const h of handEdits) problems.push(h);
+if (handEditScanned < HAND_EDIT_SCAN.length) {
+  problems.push(
+    `COVERAGE LOST — the S-12 hand-edit rule read ${handEditScanned} of ${HAND_EDIT_SCAN.length} required file(s).`,
+  );
+} else if (!handEdits.length) {
+  ok(`the ${handEditScanned} stamped backend file(s) name the provisioner and ask for no hand-edit`);
+}
+
 /** Is there a file with this basename anywhere we would plausibly mean? */
 function existsAnywhere(name) {
   const roots = [BRICK, 'tooling', '.'];

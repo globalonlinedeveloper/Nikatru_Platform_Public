@@ -51,11 +51,67 @@ final core.AppConfig kAppDefaultConfig = core.AppConfig(
   minSupportedVersion: '1.0.0',
 );
 
+/// 🔴 [pipeline C-13] THE OFFLINE SIGNAL — TRUE ONLY AFTER A REQUEST HAS FAILED.
+///
+/// `OfflineNotice` shipped in the design system on 2026-07-28 and had **zero
+/// consumers anywhere in the repository** until 2026-08-06; `offlineMessage` sat
+/// in both ARB files with nothing reading it. That is the [pipeline C-6] shape
+/// in its purest form — a screen that exists, is anchored, and which no user of
+/// any stamped app could ever see — and `assert-screen-set.mjs` reported it
+/// green because the register asked whether it EXISTED and never whether
+/// anything reached it.
+///
+/// ⚠️ DRIVEN BY A FAILED REQUEST, NEVER BY A CONNECTIVITY PLUGIN, which is the
+/// widget's own documented contract. Knowing the radio is on says nothing about
+/// whether the API is reachable: a captive portal, a DNS failure, an origin
+/// outage and airplane mode all look different to `connectivity_plus` and
+/// identical to the user. The app already knows when a request failed.
+///
+/// Starts FALSE and only ever becomes true because a real fetch returned an
+/// error, so a launch that never touches the network never accuses itself of
+/// being offline.
+class NetworkReachabilityController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// Reported by the config transport on EVERY fetch, in both directions — a
+  /// banner that appears on the first failure and then never leaves is worse
+  /// than none, because the user learns to ignore it.
+  void report({required bool unreachable}) {
+    if (state != unreachable) state = unreachable;
+  }
+}
+
+/// Whether the last real request this app made could not be reached.
+final NotifierProvider<NetworkReachabilityController, bool>
+networkUnreachableProvider =
+    NotifierProvider<NetworkReachabilityController, bool>(
+      NetworkReachabilityController.new,
+    );
+
 /// CFG-1 transport: dio `GET {configBaseUrl}/config/<app>`.
+///
+/// Decorated so the outcome of that fetch — the one network call every stamped
+/// app makes at launch — becomes the offline signal above. The decorator is
+/// where the signal has to live: `ConfigLoader.load` deliberately SWALLOWS a
+/// transport failure and answers `ok(lastGoodConfig)`, which is the right
+/// behaviour for config resolution and the reason the failure is invisible to
+/// every consumer further up.
 final Provider<core.ConfigTransport> configTransportProvider =
     Provider<core.ConfigTransport>(
-      (ref) => DioConfigTransport(configBaseUrl: AppConfig.configBaseUrl),
+      (ref) => core.ReportingConfigTransport(
+        inner: DioConfigTransport(configBaseUrl: AppConfig.configBaseUrl),
+        report: (bool unreachable) => ref
+            .read(networkUnreachableProvider.notifier)
+            .report(unreachable: unreachable),
+      ),
     );
+
+/// Passes the fetch straight through and reports whether it succeeded.
+///
+/// A decorator rather than a change to [appConfigProvider]: the config's public
+/// type is read in a dozen places, and widening it to carry a reachability flag
+/// would make every consumer pay for a fact only one banner needs.
 
 /// CFG-1 loader: network → last-good cache → the compiled-in default above.
 final Provider<core.ConfigLoader> configLoaderProvider =

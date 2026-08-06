@@ -571,7 +571,15 @@ jobs:
   all_platforms:
     name: all-platforms
     runs-on: ubuntu-24.04
-    needs: [gate, prepare, linux_web_android, windows, apple]
+    # `release` is in this list for the same reason every other job is:
+    # assert-channel-register.mjs asserts the aggregator `needs` EVERY other job
+    # in the file, so a durable-release job outside it could fail while "All 6
+    # platforms built" still printed. It is also why `release` carries NO
+    # job-level `if:` — a conditional job resolves to `skipped`, and this
+    # aggregator (correctly) treats `skipped` as not-green. The tag-only part of
+    # that job is therefore a STEP-level condition, which leaves the job itself
+    # running on every trigger and its result meaningful. [pipeline R-5, 9]R-4
+    needs: [gate, prepare, linux_web_android, windows, apple, release]
     if: always()
     steps:
       # A matrix job's `result` is the ROLL-UP of every leg: one red leg makes
@@ -583,7 +591,7 @@ jobs:
       # precisely the run that must not print success.
       - name: Require every platform green
         run: |
-          echo "gate=${{ needs.gate.result }} prepare=${{ needs.prepare.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }}"
+          echo "gate=${{ needs.gate.result }} prepare=${{ needs.prepare.result }} linux_web_android=${{ needs.linux_web_android.result }} windows=${{ needs.windows.result }} apple=${{ needs.apple.result }} release=${{ needs.release.result }}"
           # 'skipped' added by review 2026-07-31: a job-level `if:` on any
           # platform job would otherwise let this print "All 6 platforms built"
           # over a platform that never built.
@@ -591,3 +599,201 @@ jobs:
             echo "::error::One or more platform builds failed"; exit 1
           fi
           echo "All 6 platforms built"
+
+  # ── THE DURABLE HALF — [pipeline 9]R-4 ──────────────────────────────────────
+  # "A release artifact outlives the run that made it. Every artifact intended
+  # for a user is published to a durable, addressable location with an integrity
+  # record, not left as a workflow-scoped artifact."
+  #
+  # 🔴 WHAT THIS JOB REPLACES, MEASURED 2026-08-06 BEFORE IT EXISTED: `git tag`
+  # returned 0, `git ls-remote --tags origin` returned 0, no `gh release create`
+  # appeared anywhere in the repository, and FIVE jobs ended at
+  # `actions/upload-artifact` with `retention-days: 7`. A release artifact
+  # outlived its run by SEVEN DAYS, which is the requirement's negation rather
+  # than a weak form of it.
+  #
+  # THE MECHANISM IS THREE THINGS, because the acceptance names three properties
+  # and no single artefact carries all three:
+  #   · DURABLE      — a GitHub Release. Not a preference: company/requirements/
+  #                    zero-cost-stack.md:46-47 is LOCKED ("GitHub Releases =
+  #                    artifact origin for every installer/APK"). A release asset
+  #                    has no retention clock; an upload-artifact has a 7-day one.
+  #   · ADDRESSABLE  — the git TAG this workflow ALREADY triggers on
+  #                    (`push: tags: ['*-v*']`, above). One trigger now does two
+  #                    jobs: it demands the six-platform proof AND names the
+  #                    release. Nothing app-specific is added — the glob names no
+  #                    app and neither does anything below.
+  #   · INTEGRITY    — SHA256SUMS, written and re-verified by
+  #                    tooling/ci/release-manifest.mjs, carrying the GATED
+  #                    COMMIT SHA in its own header. `sha256sum -c` skips
+  #                    `#`-prefixed lines (verified on GNU coreutils 8.32), so
+  #                    the provenance rides inside the file a downloader already
+  #                    knows how to check.
+  #
+  # ⚠️ THE JOB RUNS ON EVERY TRIGGER; ONLY THE PUBLISH IS TAG-ONLY. Two reasons,
+  # and the first is not stylistic:
+  #   · a job-level `if:` resolves to `skipped`, and `all_platforms` above
+  #     (correctly) fails on `skipped` — a conditional job here would turn every
+  #     weekly cron and every dispatch red.
+  #   · staging, checksumming and RE-VERIFYING on every run is what stops this
+  #     lane's first exercise being release day. The half that can fail today
+  #     fails today; only `gh release create` waits for a tag.
+  #
+  # ⬜ UNPROVEN UNTIL SOMETHING IS PUBLISHED, stated rather than implied: no tag
+  # has ever been pushed and no release has ever been created, so the `gh release
+  # create` step and the deployment records below have NEVER RUN. What IS proven
+  # is everything up to them — staging, the manifest and `--verify` — which is
+  # exactly the part a dry run can prove. Creating a real release is a public,
+  # outward-facing act and belongs to the owner.
+  release:
+    name: Durable release artifacts
+    runs-on: ubuntu-24.04
+    # Block form deliberately. tooling/ci/assert-platform-proof-fresh.mjs reads
+    # the aggregator's dependencies with a WHOLE-FILE `needs:\s*\[([^\]]+)\]` —
+    # the first FLOW-form list in the file — so a second flow list here would be
+    # read as the aggregator's and report the platform jobs unwired. Same trap
+    # the `prepare` note above records; block form sidesteps it, and this job
+    # sitting AFTER `all_platforms` is the belt to that braces.
+    needs:
+      - gate
+      - prepare
+      - linux_web_android
+      - windows
+      - apple
+    permissions:
+      # The three scopes this lane needs, at JOB level so no other job in the
+      # file holds them. [pipeline F-11]
+      #   contents    — create the release and upload its assets
+      #   deployments — write the [10]D-9 record at the end of this job
+      #   actions     — download this run's own artifacts
+      #
+      # ⚠️ NAMED IN FULL-LINE COMMENTS, NOT TRAILING ONES. deployment-record.test.mjs
+      # scans every workflow for `record-deployment.mjs <environment>` and strips
+      # only comments that START a line, while its `\s+` crosses newlines — so an
+      # inline `deployments: write # …record-deployment.mjs` made it read the NEXT
+      # key as an environment name and fail with `environment: 'actions'`. Found
+      # 2026-08-06 by running that suite; recorded here because the trap is
+      # invisible at the call site and the failure names a key nobody wrote.
+      contents: write
+      deployments: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # This run's own artifacts, by the per-app names the build jobs uploaded
+      # under. `pattern` keeps a matrix leg to its own app: with two apps in the
+      # workspace, leg #1 must not publish app #2's binaries under app #1's tag.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: downloads
+          pattern: ${{ matrix.app }}-*
+      # ── assemble ────────────────────────────────────────────────────────────
+      # `--stage` MOVES every installable file (extensions derived from
+      # tooling/channel-register.json, never typed) out of the download tree into
+      # `dist/`, under a name that survives a year in a downloads folder. What
+      # REMAINS is then archived whole, one .tar.gz per platform artifact —
+      # desktop bundles, the web build, anything else the run produced — so
+      # "outlives the run" covers the artifact SET rather than just the
+      # installers. Moving first is what stops the .apk existing twice.
+      #
+      # Expressions go through `env:` rather than into the shell body: a ref name
+      # is attacker-influenced text and `${{ }}` in a `run:` is substituted before
+      # bash ever sees it. [zizmor template-injection]
+      - name: Stage the installers and archive the rest
+        env:
+          APP: ${{ matrix.app }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            TAG="$REF_NAME"
+          else
+            TAG="${APP}-untagged-$(git rev-parse --short HEAD)"
+          fi
+          echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+          mkdir -p dist
+          node tooling/ci/release-manifest.mjs --stage downloads --out dist --app "$APP" --tag "$TAG"
+          for d in downloads/*/; do
+            [ -d "$d" ] || continue
+            n="$(basename "$d")"
+            if [ -z "$(find "$d" -type f -print -quit)" ]; then
+              echo "skip  ${n} — every file in it was staged as an installer"
+              continue
+            fi
+            tar -czf "dist/${TAG}-${n}.tar.gz" -C "$d" .
+            echo "archived  ${TAG}-${n}.tar.gz"
+          done
+      # ── the integrity record, and the proof it describes THIS directory ──────
+      # `--write` then `--verify`, always in that order and always both. `--write`
+      # alone would be a claim; `--verify` re-hashes every file and fails in BOTH
+      # directions — a named file that is absent, and a file in dist/ the manifest
+      # does not name. The second is the one the acceptance's wording turns on.
+      - name: Write the checksum manifest, naming the gated commit
+        env:
+          APP: ${{ matrix.app }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >
+          node tooling/ci/release-manifest.mjs --write dist
+          --app "$APP" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" --run-url "$RUN_URL"
+      - name: Re-verify every asset against the manifest
+        run: node tooling/ci/release-manifest.mjs --verify dist
+      # ── publish ─────────────────────────────────────────────────────────────
+      # 🔴 `gh release create` IS WRITTEN HERE, IN THE WORKFLOW, ON PURPOSE.
+      # assert-release-provenance.mjs classifies a publish from the workflow TEXT
+      # and then demands the publishing job be gated and record what shipped.
+      # Moving this line into release-manifest.mjs would make a real publish
+      # invisible to the guard that exists to hold it — a helper that disarms a
+      # check is worse than no helper. The gate is satisfied through `needs: gate`
+      # (walked transitively by that guard); the record is the step below.
+      #
+      # The asset list comes from `--emit-assets`, which puts SHA256SUMS FIRST and
+      # refuses an empty set, so a release cannot be created without the one file
+      # that makes it verifiable.
+      - name: Publish the GitHub Release (tag pushes only)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Built from commit \`${GITHUB_SHA}\`, which passed \`ci-gate\` before any binary in this release existed."
+            echo
+            echo "Verify every download with a tool you already have:"
+            echo
+            echo "    sha256sum -c SHA256SUMS"
+            echo
+            echo "Produced by ${RUN_URL}"
+          } > dist-notes.md
+          gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file dist-notes.md $(node tooling/ci/release-manifest.mjs --emit-assets dist)
+          echo "RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)" >> "$GITHUB_ENV"
+      # ── record what shipped — [10]D-9, through the script that already does it ─
+      # 🔴 EXTENDED, NOT DUPLICATED. tooling/ci/record-deployment.mjs already
+      # writes the [10]D-9 ledger entry and already resolves an environment
+      # against the channel register; nothing about that was rewritten here. What
+      # is new is the SET it is called over, and that set is DERIVED at run time:
+      # every `kind: "direct"` row whose declared artifactFormats this release
+      # actually carries. Today it resolves to `<app>-windows-direct` and nothing
+      # else — store rows are excluded because a GitHub Release is a download
+      # ORIGIN and not a store submission ([ADR 015] §4), and record-deployment
+      # would rightly refuse a store row with no --state and no --listing-url.
+      # Nothing is hardcoded, so an AppImage lane joins this loop by being given a
+      # register row, not by anybody editing this file.
+      - name: Record what shipped, per channel this release is the origin for
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          for environment in $(node tooling/ci/release-manifest.mjs --emit-environments dist --app "$APP"); do
+            node tooling/ci/record-deployment.mjs "$environment" "$RELEASE_URL"
+          done
