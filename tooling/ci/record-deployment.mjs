@@ -45,7 +45,13 @@
 import { appendFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { encodeDescription, resolveEnvironment, STATES } from './deployment-record.mjs';
+import {
+  encodeDescription,
+  resolveEnvironment,
+  STATES,
+  STATE_MEANING,
+  SUBMIT_TIME_STATES,
+} from './deployment-record.mjs';
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
@@ -105,9 +111,9 @@ async function main() {
   let state;
   let listingUrl;
   try {
-    state = flagValue(argv, 'state') ?? 'live';
+    state = flagValue(argv, 'state');
     listingUrl = flagValue(argv, 'listing-url');
-    if (!STATES.includes(state)) {
+    if (state !== null && !STATES.includes(state)) {
       return fail(
         `--state "${state}" is not one of ${STATES.join(', ')}. A free-text state is a state nobody can ` +
           'query, which is the whole of what [10]D-9 asks for.',
@@ -142,6 +148,23 @@ async function main() {
           'it — the second source of truth [10]D-9 exists to prevent.',
       );
     }
+    // 🔴 A STORE CHANNEL MAY NOT INHERIT THE `live` DEFAULT.
+    // "live" is the right default for a web deploy: the upload finishing IS the
+    // thing going live, and there is no third party in between. On a store it is
+    // the single most consequential thing this ledger could get wrong — an
+    // upload is `in_review`, and the store decides `live` hours-to-weeks later,
+    // possibly never. A forgotten flag must not be the difference between "we
+    // submitted it" and "the store approved it", so a store record has to say
+    // which one it means, out loud, at the call site.
+    if (resolved.channel.kind === 'store' && state === null) {
+      return fail(
+        `"${environment}" is the ${resolved.channel.id} channel (kind: store) and no --state was given. ` +
+          `A store submission is NOT live when the upload succeeds — it is "${SUBMIT_TIME_STATES[0]}" until the ` +
+          `store decides, which happens after this run has ended. There is no default here on purpose: pass ` +
+          `--state ${STATES.join('|')} explicitly. ${STATE_MEANING.in_review}`,
+      );
+    }
+    if (state === null) state = 'live'; // web / service: the upload IS the go-live
     description = encodeDescription({ state, sha, listingUrl });
   } catch (err) {
     return fail(`could not build the deployment record: ${err.message}`);
@@ -155,7 +178,21 @@ async function main() {
     const deployment = await api('deployments', token, repo, {
       ref: sha,
       environment,
-      description: `${environment} deploy`,
+      // 🔴 THE SAME ENCODING AS THE STATUS BELOW — ONE SHAPE, NOT TWO.
+      // This field read `${environment} deploy` until 2026-08-06, so the ledger
+      // carried the nk1 record on the deployment STATUS and free prose on the
+      // DEPLOYMENT. That is not a cosmetic split: the one-call query this
+      // script's own header documents — `gh api …/deployments` — returns the
+      // DEPLOYMENT's description, and `readSubmissions` (the reader D-6's
+      // cadence limb and D-10 limb (iii) both consume) decodes exactly that
+      // field. Verified live 2026-08-06: every deployment read
+      // `"subly-web deploy"` and every status read `nk1 state=live sha=6525fb7d`
+      // — so the documented ledger source decoded as UNPARSEABLE on every row,
+      // and a cadence count over it was a count of zero that looked like
+      // compliance. Reading statuses instead would be one extra API call per
+      // deployment to recover a field we were already writing; writing the
+      // encoding here costs nothing and makes the cheap query the correct one.
+      description,
       auto_merge: false,
       required_contexts: [],
       transient_environment: false,

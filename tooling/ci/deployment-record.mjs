@@ -52,6 +52,36 @@
  *  different runbook. */
 export const STATES = Object.freeze(['in_review', 'live', 'rejected', 'pulled']);
 
+/** 🔴 WHAT A SUBMITTING RUN IS ENTITLED TO ASSERT, AND NOTHING MORE.
+ *
+ *  A store submission is NOT live when the upload succeeds. `upload accepted`
+ *  and `the listing is installable` are separated by a human review that takes
+ *  hours to weeks and can end in `rejected`. A run that uploads therefore knows
+ *  exactly one fact — *it submitted* — and `in_review` is the only state that
+ *  says that.
+ *
+ *  The other three are STORE-ISSUED FACTS. `live`, `rejected` and `pulled` are
+ *  decided after the submitting run has exited, so they can only be recorded by
+ *  a LATER run (a status poll, or a dispatch a human triggers on the review
+ *  email). Writing them at submission time is not a rounding error: it is the
+ *  ledger claiming the store approved something it has not yet looked at, which
+ *  is the precise failure `[10]D-9` exists to prevent — "what is live" answered
+ *  from hope rather than from record.
+ *
+ *  This list is the ONE declaration of that boundary. assert-publish-records.mjs
+ *  reads it to grade `--state` in workflow YAML, and record-deployment.mjs reads
+ *  it to decide that a STORE channel may not fall back to the `live` default. */
+export const SUBMIT_TIME_STATES = Object.freeze(['in_review']);
+
+/** Why each state exists, in the words a report should use. Kept beside STATES
+ *  so a new state cannot be added without saying what it claims. */
+export const STATE_MEANING = Object.freeze({
+  in_review: 'submitted; the store has not decided. The only state a submitting run may assert.',
+  live: 'the store approved it and the listing is installable — a store-issued fact, known only after the submitting run has ended.',
+  rejected: 'the store refused it. Store-issued, and a different runbook from `pulled`.',
+  pulled: 'we withdrew it. Ours, not the store\'s, and deliberately distinct from `rejected`.',
+});
+
 /** GitHub truncates a Deployment Status description past this. A record that
  *  is silently cut is a record that no longer round-trips, and the truncation
  *  lands on the LAST field — the listing URL, i.e. the one thing only the store
