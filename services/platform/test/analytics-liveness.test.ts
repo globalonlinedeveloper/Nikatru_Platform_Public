@@ -120,13 +120,55 @@ describe('analyticsLiveness records what it measured', () => {
     expect(String(rows[0].detail)).toContain('the rail is SILENT');
   });
 
-  it('ok=1 at ZERO events: the work succeeded, nothing was found', async () => {
+  it('ok=0 at ZERO events: ABSENCE IS NOT A GREEN VALUE', async () => {
     const db = realPlatformDb();
     await analyticsLiveness(envWith(db));
-    // `ok` must not conflate "I could not measure" with "I measured nothing".
-    // The keep-alive conflated a rejected request with a successful one for a
-    // month and nobody could tell from the table.
-    expect(liveness(db)[0].ok).toBe(1);
+    // 🔴 THIS TEST ASSERTED `ok === 1` UNTIL 2026-08-06 AND WAS THE BUG'S BEST
+    // DEFENCE. Its reasoning — "`ok` means the work succeeded, never that a row
+    // was found" — reads like the lesson keepAliveSupabase taught, and is its
+    // inversion. `ok` is not a private note: it is the column
+    // duty.platform-cron declares as its `failingValue` and the ONLY column
+    // tooling/ops/check-heartbeats.mjs asserts on. So the job whose entire
+    // purpose is to make silence visible could not, by construction, make
+    // anything red — and it reported ok=1 with "the rail is SILENT" in its own
+    // detail for three consecutive nights in production.
+    //
+    // Zero events is "I could not tell" (a broken rail and a quiet week are
+    // indistinguishable here — see the gap test below), and this repository's
+    // rule for that is already written in check-heartbeats.mjs: UNKNOWN FAILS
+    // CLOSED. "I could not tell" must never read as "it is fine".
+    expect(liveness(db)[0].ok).toBe(0);
+  });
+
+  it('the two ways to be red stay DISTINGUISHABLE — silence is not an outage', async () => {
+    // ok=0 alone would collapse "the rail produced nothing" into "the detector
+    // could not run", which is the conflation that made the keep-alive report a
+    // nightly 401 as success. The detail is what separates them, and a person
+    // reading the heartbeat table has to be able to tell which one happened.
+    const silent = realPlatformDb();
+    await analyticsLiveness(envWith(silent));
+
+    const broken = realPlatformDb();
+    broken.db.exec('DROP TABLE events');
+    await analyticsLiveness(envWith(broken));
+
+    expect(liveness(silent)[0].ok).toBe(0);
+    expect(liveness(broken)[0].ok).toBe(0);
+    expect(String(liveness(silent)[0].detail)).toContain('the rail is SILENT');
+    expect(String(liveness(silent)[0].detail)).not.toContain('liveness query failed');
+    expect(String(liveness(broken)[0].detail)).toContain('liveness query failed');
+    expect(String(liveness(broken)[0].detail)).not.toContain('the rail is SILENT');
+  });
+
+  it('a SINGLE event is enough to be green — the change is some-vs-none, not a threshold', async () => {
+    // The guard against over-correcting. Making absence red must not smuggle in
+    // a minimum count: there is no derivable answer in this repository to "how
+    // many events is too few", so the only line drawn is at zero.
+    const db = realPlatformDb();
+    insertEvent(db, 'subly', hours(1), 'only-one');
+    await analyticsLiveness(envWith(db));
+    expect(liveness(db).every((r) => r.ok === 1)).toBe(true);
+    expect(String(liveness(db).find((r) => r.target === '(portfolio)')!.detail)).toContain('1 event(s)');
   });
 
   it('ok=0 when the query cannot run', async () => {
@@ -174,9 +216,11 @@ describe('analyticsLiveness records what it measured', () => {
     const db = realPlatformDb();
     insertEvent(db, 'subly', hours(1), 'e1');
     await analyticsLiveness(envWith(db));
-    // A single event is not "unhealthy" here, and neither is zero. Deciding
-    // what number is too few has no derivable answer in this repository, so
-    // this job measures and records and never grades.
+    // A single event is not "unhealthy" here. Deciding what number is too few
+    // has no derivable answer in this repository, so this job measures and
+    // records and never grades — the only distinction it draws is some vs NONE,
+    // which needs no number. (Until 2026-08-06 this comment also said "and
+    // neither is zero", which was the bug stated as a virtue.)
     expect(liveness(db).every((r) => r.ok === 1)).toBe(true);
   });
 });

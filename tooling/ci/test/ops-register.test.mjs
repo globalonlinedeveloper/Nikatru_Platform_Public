@@ -89,7 +89,11 @@ const NOW = Date.parse('2026-08-02T00:00:00Z');
 function baseRegister() {
   return {
     _kinds: ['surface', 'duty', 'expiring', 'recovery-path', 'revert', 'retention', 'review', 'failure-mode'],
-    _providers: ['github', 'google', 'cloudflare', 'laptop'],
+    _providers: ['github', 'google', 'cloudflare', 'laptop', 'oci'],
+    // [14]O-4. Kept to the three substrates the fixture rows actually reach: an
+    // unexercised key is an error, on purpose, so this map cannot accumulate
+    // mappings about nothing while looking like coverage.
+    _substrateHosts: { 'github-actions': 'github', 'windows-task-scheduler': 'laptop', 'glitchtip-heartbeat': 'oci' },
     _maxCadenceDays: { surface: 7, duty: 31, expiring: 180, 'recovery-path': 180, revert: 365, retention: 365, review: 120, 'failure-mode': 365 },
     _requiredCoverage: { ids: ['recovery.bundles'] },
     rows: [
@@ -131,9 +135,44 @@ function baseRegister() {
         accessProviders: ['google'],
         source: 'verified',
       },
+      // [14]O-4's domain is duties ON A CLOCK, and the three rows above are not
+      // on one. Appended (never inserted) so every rows[N] index above still
+      // points where its test thinks it does, and anchored OUTSIDE company/ so
+      // the companyAnchored count assertion is untouched.
+      {
+        id: 'duty.laptop.backup',
+        kind: 'duty',
+        what: 'the 8-hourly offsite bundle push',
+        detector: 'a heartbeat monitor on another host',
+        response: 'run it by hand and read its log',
+        cadence: '8h',
+        mechanism: {
+          substrate: 'windows-task-scheduler',
+          anchor: 'renovate.json',
+          record: 'LastTaskResult + the heartbeat monitor',
+          failingValue: 'the heartbeat not arriving inside its grace window',
+          readBy: 'the monitor, from outside the laptop',
+        },
+        absenceWatcher: {
+          substrate: 'glitchtip-heartbeat',
+          what: 'heartbeat monitor 6, on a host the laptop cannot take down',
+          signal: 'no POST inside the interval -> Down -> the alert rule -> email',
+          margin: 'interval 12h against an 8h cadence = 1.5x, so one late run is not an alarm',
+          downTransitionDrill: {
+            date: '2026-07-30',
+            how: 'shrank the window and enqueued the PRODUCTION check task, then restored it',
+            evidence: 'delivery record 4133761a-4c83-48eb-88e0-7af79aa2e8cc at 08:56:23Z',
+          },
+        },
+        accessProviders: ['laptop'],
+        source: 'verified',
+      },
     ],
   };
 }
+
+/** The one scheduled duty, by name rather than by index. */
+const sched = (r) => r.rows.find((x) => x.id === 'duty.laptop.backup');
 
 const tree = { workflows: ['ci.yml'], paths: new Set(['.github/workflows/ci.yml', 'renovate.json']) };
 const run = (reg) => evaluate(reg, tree, NOW);
@@ -641,6 +680,16 @@ describe('assert-ops-register — O-10: a cadence must be READ, not merely decla
         readBy: 'tooling/ci/assert-nightly-fresh.mjs',
         ...over.mechanism,
       },
+      // [14]O-4 applies to this row too — it is on a clock. Given the same
+      // shape the real build-platforms.yml and e2e.yml rows have: a push-driven
+      // reader on the very provider that runs the schedule, which is a real gap
+      // and is declared as one rather than dressed up as an off-host watcher.
+      absenceWatcher: {
+        substrate: 'github-actions',
+        what: 'a push-triggered freshness guard on the same provider as the schedule',
+        ownerGated: true,
+        gap: 'an off-host absence signal needs a monitor only the owner can create',
+      },
       accessProviders: ['github'],
       source: 'verified',
       ...over.row,
@@ -929,5 +978,226 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     }));
     assert.equal(r.code, 1);
     assert.match(r.out, /is not among the 1 host\(s\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [14]O-4 — SOMETHING ON DIFFERENT INFRASTRUCTURE NOTICES THE SILENCE.
+//
+// The property under test is not "a watcher is named". It is: the watcher is on
+// a DIFFERENT MACHINE, and somebody has SEEN IT FIRE. Both halves have already
+// failed in production here — the four Oracle crontab duties are watched by a
+// GlitchTip on the Oracle box (different word, same machine), and monitor 6 was
+// configured, enabled, drawn red and silent for nine days behind a null foreign
+// key. So every test below asks whether the guard can still fail, never whether
+// the register happens to be well-formed today.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-ops-register — [14]O-4 · the absence of a scheduled duty must be noticed from elsewhere', () => {
+  test('the base register is green AND the limb really ran — one proven watcher, counted', () => {
+    const v = run(baseRegister());
+    assert.deepEqual(v.errors, []);
+    assert.equal(v.stats.absence.scheduled, 1);
+    assert.equal(v.stats.absence.proven, 1);
+    assert.equal(v.stats.absence.gaps.length, 0);
+  });
+
+  test('a scheduled duty with NO absenceWatcher FAILS — its own record is written by the thing that dies', () => {
+    const r = baseRegister();
+    delete sched(r).absenceWatcher;
+    assert.match(messages(r), /and no `absenceWatcher`/);
+  });
+
+  test('🔴 A WATCHER ON THE SAME HOST FAILS — and the two substrates are spelled DIFFERENTLY', () => {
+    // The Oracle case, in miniature: `oci-cron` and `glitchtip-heartbeat` are
+    // different words for one box. A string comparison would call this
+    // "different infrastructure"; only resolving both to a host catches it.
+    const r = baseRegister();
+    r._substrateHosts['glitchtip-heartbeat'] = 'laptop';
+    assert.match(messages(r), /THE WATCHER RUNS ON THE THING IT WATCHES/);
+  });
+
+  test('a same-host watcher is ACCEPTED when ownerGated with a written gap, and the gap NAMES the shape', () => {
+    const r = baseRegister();
+    r._substrateHosts['glitchtip-heartbeat'] = 'laptop';
+    const aw = sched(r).absenceWatcher;
+    aw.ownerGated = true;
+    aw.gap = 'closing it needs a monitor on a second provider — console-only work';
+    const v = run(r);
+    assert.deepEqual(v.errors, []);
+    assert.equal(v.stats.absence.proven, 0);
+    assert.equal(v.stats.absence.gaps.length, 1);
+    assert.match(v.stats.absence.gaps[0], /ITS WATCHER SHARES THE DUTY'S HOST/);
+  });
+
+  test('`ownerGated` with no written gap FAILS — a gap nobody describes is a waiver', () => {
+    const r = baseRegister();
+    r._substrateHosts['glitchtip-heartbeat'] = 'laptop';
+    sched(r).absenceWatcher.ownerGated = true;
+    assert.match(messages(r), /`absenceWatcher.ownerGated: true` with no written `gap`/);
+  });
+
+  test('substrate `(none)` FAILS unless it is owner-gated — "nothing watches it" may be recorded, never passed over', () => {
+    const r = baseRegister();
+    const aw = sched(r).absenceWatcher;
+    aw.substrate = '(none)';
+    delete aw.downTransitionDrill;
+    assert.match(messages(r), /is only an honest answer alongside `ownerGated: true`/);
+  });
+
+  test('substrate `(none)` WITH a gap passes and is printed as NOTHING WATCHES IT AT ALL, distinct from a shared host', () => {
+    // Three gaps, three repairs. Rolling them into one count is how the Oracle
+    // rows' shared-host problem hid behind "it has a watcher".
+    const r = baseRegister();
+    const aw = sched(r).absenceWatcher;
+    aw.substrate = '(none)';
+    delete aw.downTransitionDrill;
+    aw.ownerGated = true;
+    aw.gap = 'an event reporter with no heartbeat; the absence half is on-box work';
+    // …and the mapping it used to reach must go with it, which is the unused-key
+    // rule doing its job: `(none)` reaches nothing, so nothing may point at it.
+    delete r._substrateHosts['glitchtip-heartbeat'];
+    const v = run(r);
+    assert.deepEqual(v.errors, []);
+    assert.match(v.stats.absence.gaps[0], /NOTHING WATCHES ITS ABSENCE AT ALL/);
+  });
+
+  // ── the drill: a declaration is not a behaviour ────────────────────────────
+  test('🔴 AN OFF-HOST WATCHER WITH NO DRILL AND NO DATED drillDue FAILS — this is the whole limb', () => {
+    const r = baseRegister();
+    delete sched(r).absenceWatcher.downTransitionDrill;
+    assert.match(messages(r), /neither a `downTransitionDrill` nor a dated `drillDue`/);
+  });
+
+  test('drill evidence that is the WORD "verified" FAILS — monitor 6 was "verified" while telling nobody', () => {
+    const r = baseRegister();
+    sched(r).absenceWatcher.downTransitionDrill.evidence = 'verified';
+    assert.match(messages(r), /names nothing a later reader can look up/);
+  });
+
+  test('drill evidence carrying a durable id in ANY of the accepted shapes passes', () => {
+    for (const evidence of ['issue #151 at 10:08:00Z', 'OPS-3 and OPS-4 resolved', 'run 30899326549']) {
+      const r = baseRegister();
+      sched(r).absenceWatcher.downTransitionDrill.evidence = evidence;
+      assert.deepEqual(run(r).errors, [], evidence);
+    }
+  });
+
+  test('a drill dated in the FUTURE fails — a transition that has not happened cannot be dated', () => {
+    const r = baseRegister();
+    sched(r).absenceWatcher.downTransitionDrill.date = '2099-01-01';
+    assert.match(messages(r), /is in the FUTURE/);
+  });
+
+  test('a drill with no `how` fails — the half a later reader needs to repeat it', () => {
+    const r = baseRegister();
+    delete sched(r).absenceWatcher.downTransitionDrill.how;
+    assert.match(messages(r), /`downTransitionDrill.how` is empty/);
+  });
+
+  test('an owner-gated watcher does NOT licence an unverifiable drill sitting next to it', () => {
+    const r = baseRegister();
+    r._substrateHosts['glitchtip-heartbeat'] = 'laptop';
+    const aw = sched(r).absenceWatcher;
+    aw.ownerGated = true;
+    aw.gap = 'console-only';
+    aw.downTransitionDrill.evidence = 'tested';
+    assert.match(messages(r), /names nothing a later reader can look up/);
+  });
+
+  // ── the drillDue tripwire, with the lead window degradedUntil taught ───────
+  test('`drillDue` far out PRINTS and never blocks; the count of pending drills moves', () => {
+    const r = baseRegister();
+    const aw = sched(r).absenceWatcher;
+    delete aw.downTransitionDrill;
+    Object.assign(aw, { drillDue: '2099-01-01', drillLeadDays: 14, drillGap: 'the transport is proven and this limb is not' });
+    const v = run(r);
+    assert.deepEqual(v.errors, []);
+    assert.equal(v.stats.absence.pending, 1);
+    assert.equal(v.stats.absence.proven, 0);
+    assert.match(v.prints.join(' | '), /off-host but UNDRILLED/);
+  });
+
+  test('`drillDue` with no positive `drillLeadDays` FAILS — the 2026-08-04 finding, applied one level down', () => {
+    const r = baseRegister();
+    const aw = sched(r).absenceWatcher;
+    delete aw.downTransitionDrill;
+    Object.assign(aw, { drillDue: '2099-01-01', drillGap: 'still unobserved' });
+    assert.match(messages(r), /no positive integer `drillLeadDays`/);
+  });
+
+  test('`drillDue` INSIDE its own lead window is RED, with time left to act', () => {
+    const r = baseRegister();
+    const aw = sched(r).absenceWatcher;
+    delete aw.downTransitionDrill;
+    // NOW is 2026-08-02; six days out, inside a 14-day window.
+    Object.assign(aw, { drillDue: '2026-08-08', drillLeadDays: 14, drillGap: 'still unobserved' });
+    assert.match(messages(r), /FIRES IN 6 DAY\(S\), inside its own 14-day lead window/);
+  });
+
+  test('a PASSED `drillDue` is a hard failure that refuses the one move it exists to refuse', () => {
+    const r = baseRegister();
+    const aw = sched(r).absenceWatcher;
+    delete aw.downTransitionDrill;
+    Object.assign(aw, { drillDue: '2026-07-01', drillLeadDays: 14, drillGap: 'still unobserved' });
+    const m = messages(r);
+    assert.match(m, /has PASSED and the down-transition is still unobserved/);
+    assert.match(m, /Moving the date is the one move this field exists to refuse/);
+  });
+
+  // ── the host map is itself checkable ──────────────────────────────────────
+  test('a watcher substrate with no `_substrateHosts` entry FAILS as "cannot be checked"', () => {
+    const r = baseRegister();
+    sched(r).absenceWatcher.substrate = 'carrier-pigeon';
+    assert.match(messages(r), /has no `_substrateHosts` entry, so whether it shares/);
+  });
+
+  test('a DUTY substrate with no `_substrateHosts` entry FAILS — the left-hand side matters too', () => {
+    const r = baseRegister();
+    delete r._substrateHosts['github-actions'];
+    assert.match(messages(r), /this duty's HOST is\s+unknown/);
+  });
+
+  test('a host outside the fixed provider vocabulary FAILS — free text makes it a spelling comparison', () => {
+    const r = baseRegister();
+    r._substrateHosts['glitchtip-heartbeat'] = 'that one box in the corner';
+    assert.match(messages(r), /is not in the fixed provider vocabulary/);
+  });
+
+  test('a `_substrateHosts` key no row reaches FAILS — a mapping about nothing inflates the domain', () => {
+    const r = baseRegister();
+    r._substrateHosts['fax-machine'] = 'laptop';
+    assert.match(messages(r), /is reached by no duty row and by no absence watcher/);
+  });
+
+  // ── COVERAGE LOST: the domain may not empty itself ────────────────────────
+  test('🔴 MOVING EVERY DUTY OFF A CLOCK IS COVERAGE LOST, NOT A PASS', () => {
+    // The vacuity escape. `on-demand` already costs a `why`, but without this
+    // the O-4 domain could still be emptied one row at a time while the guard
+    // went on printing ok — this repository's single most repeated defect.
+    const r = baseRegister();
+    const d = sched(r);
+    d.cadence = 'on-demand';
+    d.why = 'escaping the O-4 domain by leaving the clock';
+    delete d.absenceWatcher;
+    r._substrateHosts = { 'github-actions': 'github', 'windows-task-scheduler': 'laptop' };
+    assert.match(messages(r), /COVERAGE LOST — not one `duty` row carries a TIME cadence/);
+  });
+
+  test('a register with NO duty row at all is COVERAGE LOST', () => {
+    const r = baseRegister();
+    r.rows = r.rows.filter((x) => x.kind !== 'duty');
+    r._requiredCoverage = { ids: ['recovery.bundles'] };
+    r._substrateHosts = {};
+    assert.match(messages(r), /COVERAGE LOST — this register declares NO `duty` row at all/);
+  });
+
+  test('the scoping is REAL: `trigger` and `on-demand` duties need no watcher, and both counts print', () => {
+    // Scoped for the reason [14]O-10 records — a trigger duty has no timer that
+    // can silently die. The scoped-OUT count is printed too, so shrinking the
+    // domain is visible rather than silent.
+    const v = run(baseRegister());
+    assert.equal(v.stats.absence.duties, 2);
+    assert.equal(v.stats.absence.scheduled, 1);
+    assert.match(v.prints.join(' | '), /1 on a CLOCK \(the O-4 domain\) · 1 on `trigger`\/`on-demand`/);
   });
 });
