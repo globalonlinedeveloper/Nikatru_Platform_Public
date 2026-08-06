@@ -115,6 +115,40 @@
     ],
     "hostnames": "tooling/monitor-register.json"
   },
+  "_substrateHosts": {
+    "_why": [
+      "[14]O-4 — WHICH MACHINE IS THIS THING ON. Every `duty` row names the substrate that RUNS it and,",
+      "if it is on a clock, an `absenceWatcher` naming the substrate that notices when it STOPS. The",
+      "criterion is that the watcher is on DIFFERENT INFRASTRUCTURE, and this map is what makes that a",
+      "comparison between two machines instead of between two spellings.",
+      "",
+      "🔴 THE CASE THAT FORCED IT. `oci-cron` and `glitchtip-heartbeat` are different words for THE SAME",
+      "ORACLE BOX. The four crontab duties on that host are watched by a GlitchTip instance running on",
+      "that host, so the machine failure that silences them silences the watcher AND the mail that would",
+      "say so, in the same instant — and the result is indistinguishable from perfect health. A string",
+      "comparison would have called that 'different infrastructure' and printed ok. Resolving both sides",
+      "to a HOST makes it fail, which is the only reason the limb is worth having.",
+      "",
+      "Every value is a member of `_providers` — the same fixed vocabulary O-14's intersection resolves",
+      "against — because free text on the right-hand side is how a comparison stops comparing. A",
+      "substrate with no entry here FAILS as 'cannot be checked' rather than passing, and an entry no row",
+      "reaches is DELETED rather than kept: a mapping about nothing inflates the domain while resolving",
+      "nothing.",
+      "",
+      "⚠️ `renovate-app` resolves to `github` deliberately, and it is the one judgement call in this map.",
+      "The Renovate app is hosted by Mend, not by GitHub — but its RECORD (the Dependency Dashboard issue,",
+      "the `chore/renovate-*` branches) lives entirely on GitHub, and a watcher reading that record",
+      "therefore shares the substrate that carries it. The map answers 'where would a watcher have to",
+      "look', which is the question the criterion is about."
+    ],
+    "cloudflare-cron": "cloudflare",
+    "github-actions": "github",
+    "renovate-app": "github",
+    "oci-console": "oci",
+    "oci-cron": "oci",
+    "glitchtip-heartbeat": "oci",
+    "windows-task-scheduler": "laptop"
+  },
   "_kinds": [
     "duty",
     "expiring",
@@ -167,6 +201,10 @@
       "duty.laptop.nikatru-daily-backup",
       "duty.laptop.claude-transcript-backup",
       "duty.laptop.nikatru-project-backup",
+      "duty.oci.glitchtip-pg-dump",
+      "duty.oci.gt-drive-sync",
+      "duty.oci.backup-liveness",
+      "duty.oci.disk-alert",
       "duty.renovate",
       "expiring.domain.nikatru.com",
       "expiring.domain.rajasekarselvam.com",
@@ -215,6 +253,16 @@
         "failingValue": "ok = 0 — reachable, and reached: three consecutive nights carried it while nothing read the table",
         "readBy": "tooling/ops/check-heartbeats.mjs"
       },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "tooling/ops/check-heartbeats.mjs, run daily by .github/workflows/ops-watch.yml. It reads platform_db.cron_heartbeat over the D1 HTTP API from OUTSIDE Cloudflare and files or refreshes ONE durable GitHub issue, which a human closes.",
+        "signal": "Three ways to be red, and the reader treats all three as failure: ABSENT — no row for a declared job inside 1.5x its cron interval, so the timer has stopped or the job can no longer write. RED — a FRESH row whose ok column is 0 (a check asking only 'did a row land today' is green on exactly this). UNKNOWN — no token, a non-200, unparseable JSON, an unrecognised cron expression; all fail closed, because 'I could not tell' must never read as 'it is fine'.",
+        "margin": "1.5x the 24h cron interval = a 36h ceiling before absence alarms. One missed run is not an alarm; two are. The ratio is the backup chain's own and is written down once, in check-heartbeats.mjs — an interval EQUAL to the cadence would leave zero margin and report Down on a single late run.",
+        "drillDue": "2026-09-01",
+        "drillLeadDays": 14,
+        "drillGap": "🔴 THE TRANSPORT IS OBSERVED AND THE HEARTBEAT LIMB IS NOT, AND THIS ROW REFUSES TO CONFLATE THEM. On 2026-08-04 the scheduled ops-watch run 30899326549 failed and its alert job opened issue #151 'Scheduled duty is not reporting healthy' at 10:08:00Z — still open, because closing it IS the acknowledgement that someone looked. So the workflow -> alert job -> durable issue leg is real, dated and evidenced. BUT THE STEP THAT FAILED WAS THE LIVE-AUTH-CONFIG DRIFT CHECK, NOT check-heartbeats.mjs: the limb that reads cron_heartbeat has never itself transitioned in production. tooling/ops/alarm-chains.json records the identical mistake one level down — subly's uptime limb was green while its issue limb had been dead since the instance was built — and its own words are 'proving one and calling it the alert chain is the mistake this entry exists to stop'. CLOSING IT: force one ok=0 row for a watched job, confirm check-heartbeats.mjs reddens with the RED reason and the issue takes a comment, then restore. Agent-sized, nothing owner-gated about it; the 14-day lead window is a judgement call recorded as one, since the remaining work is a single session.",
+        "note": "🔬 The margin above is why analytics_liveness mattered enough to fix in the same increment: its portfolio row returned ok=1 unconditionally, so the ONE job whose whole purpose is to make silence visible could never make this watcher red. Absence was a green value at the point the value was written."
+      },
       "accessProviders": [
         "cloudflare"
       ],
@@ -254,6 +302,12 @@
         "failingValue": "no scheduled success inside the window — and a manual dispatch deliberately does NOT satisfy it",
         "readBy": "tooling/ci/assert-platform-proof-fresh.mjs"
       },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "tooling/ci/assert-platform-proof-fresh.mjs, on every push: the newest SCHEDULED green run must be inside 14 days, and a manual dispatch deliberately does not satisfy it.",
+        "ownerGated": true,
+        "gap": "⚠️ THE WATCHER IS ON THE PROVIDER IT WATCHES, and the precise size of that is worth stating rather than rounding in either direction. It DOES catch the likeliest silent death: GitHub disables scheduled workflows in inactive public repositories, and this reader is push-triggered, so a schedule that stops still reddens the next push. It does NOT catch the case O-4 is named for — GitHub Actions ceasing to run this repository's jobs at all — because then the reader stops with the thing it reads and the silence is indistinguishable from health. Acceptable for a build proof, which is why the row is not being reworked; NOT an off-host absence signal, which is why this register must not print it as one. Closing it needs a heartbeat on a second provider, i.e. a monitor created in the GlitchTip console: OWNER_QUEUE S-8."
+      },
       "accessProviders": [
         "github"
       ],
@@ -272,6 +326,12 @@
         "record": "GitHub Actions run history + the reused issue titled 'Nightly E2E (live) is failing against production'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
         "readBy": "tooling/ci/assert-e2e-proof-fresh.mjs on every push — the newest SCHEDULED green run must be inside its derived window, and a workflow_dispatch deliberately does not satisfy it; plus the alert job in e2e.yml, whose issue is closed by a human because closing it IS the disposition"
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "tooling/ci/assert-e2e-proof-fresh.mjs, on every push: the newest SCHEDULED green run must be inside its derived window.",
+        "ownerGated": true,
+        "gap": "Same shape and same size as duty.workflow.build-platforms.yml: a push-triggered reader catches the schedule dying, and cannot catch the provider dying, because it is on that provider. Recorded separately rather than cross-referenced because a shared note is a note that gets edited for one row and read for two. OWNER_QUEUE S-8."
       },
       "accessProviders": [
         "github"
@@ -335,6 +395,12 @@
         "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue"
       },
       "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03.",
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING. This is the row [14]O-4 was written from, and it is the only row in the register whose own guard already prints the sentence on every single run.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE — and it is a strictly worse gap than the two rows above, because this workflow IS the absence watcher for duty.platform-cron. Its FAILING is loud (the alert job opens a durable issue; observed 2026-08-04, issue #151). Its silently ceasing to run is not: GitHub disables scheduled workflows in inactive public repositories, and unlike build-platforms.yml and e2e.yml there is no push-triggered reader holding this cadence at all — see this row's own freshnessGap, which the [14]O-10 limb has been printing since 2026-08-03. Closing it needs an absence signal hosted on a second provider, and the mechanism is already proven twice in this portfolio: an hourly poster plus a GlitchTip heartbeat monitor WITH MARGIN (the laptop chain's monitor 6, and the Oracle box's monitor 16 at 3h against an hourly post). Both halves of that need a monitor created in the GlitchTip console: OWNER_QUEUE S-8. The declaration is what this increment can build; the monitor is not."
+      },
       "accessProviders": [
         "github",
         "cloudflare"
@@ -458,6 +524,12 @@
         "failingValue": "a customManager whose pattern matches no file, or matches a file and captures no currentValue, or a pin in tooling/versions.json that no manager reaches and no written exemption covers",
         "readBy": "tooling/ci/assert-update-coverage.mjs for the configuration half; a human reading the Dependency Dashboard issue for the proposal half"
       },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING — and this one was hiding behind a guard that looks like a watcher and is not.",
+        "ownerGated": true,
+        "gap": "🔴 tooling/ci/assert-update-coverage.mjs READS THE CONFIGURATION, NEVER THE RUN. It applies each customManager to the real tree on every push and fails when a manager reaches nothing — which is why it found `wrangler` unreached on its first run — but it would pass identically on a week when Renovate did not execute at all. The two halves of this duty have opposite failure signatures: the config half is checked continuously, and the PROPOSAL half (a Mend-hosted app opening `chore/renovate-*` branches) produces nothing when it stops, and 'no dependency updates this week' is what a healthy quiet week also looks like. So a supply-chain input can stop advancing indefinitely with every guard green. NOT closable from this repository: it needs something outside GitHub watching for the absence of Dependency Dashboard activity. Recorded so the count carries it; no work is being started here."
+      },
       "accessProviders": [
         "github"
       ],
@@ -477,6 +549,12 @@
         "record": "the OCI console's own audit + the runbook checkboxes",
         "failingValue": "the 30-day abandonment clock elapsing with no login, or the alarms still absent",
         "readBy": "nothing in this repo can read a vendor console — this row is the only enumeration, which is why it prints on every run"
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING. A console session that stops happening leaves no artifact anywhere a machine can reach.",
+        "ownerGated": true,
+        "gap": "The duty is a human logging into a vendor console; its absence is precisely the failure (the 30-day abandonment clock) and there is no record of it outside OCI's own audit log. An absence watcher here would have to be a calendar reminder, which is a different mechanism from every other row in this register and is owner-owned. Counted so the shape of the domain is honest: this is one of the rows where 'nothing watches it' is not a defect to fix in code."
       },
       "accessProviders": [
         "oci"
@@ -500,6 +578,18 @@
         "failingValue": "LastTaskResult != 0, or the heartbeat not arriving inside its grace window",
         "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop)"
       },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "GlitchTip heartbeat monitor 6 'Laptop daily backup', project `ops`, on the Oracle box. The script POSTs on success; the monitor alarms on the POST NOT ARRIVING.",
+        "signal": "No heartbeat inside the monitor's interval -> Down transition -> the project's uptime alert rule -> email to support@nikatru.com. The laptop being off, unbootable, or the task silently disabled all produce the same POST-shaped silence, which is the point.",
+        "margin": "Monitor interval 43200s (12h) against an 8h duty cadence = 1.5x, the same ratio check-heartbeats.mjs uses and for the same reason: an interval EQUAL to the cadence leaves zero margin and one late run reports Down. company/runbooks/backup-liveness.md is where that rule is written down.",
+        "downTransitionDrill": {
+          "date": "2026-08-05",
+          "how": "Shrank the heartbeat window to 60s so the production fetch() saw no heartbeat inside it, then enqueued the production perform_checks task — the same task dispatch_checks enqueues, not a test double. Real Down transition 08:56:20Z, real recovery 08:57:01Z after a real POST to the heartbeat endpoint. Interval restored to 43200s; endpoint_id never changed, so the laptop's heartbeat URL still works.",
+          "evidence": "Two Resend delivery records to support@nikatru.com, both status=delivered: 4133761a-4c83-48eb-88e0-7af79aa2e8cc ('GlitchTip: Laptop daily backup is down', 08:56:23Z) and d87ac960-78df-4dce-b56a-f9c44efd6df8 ('… is back up', 08:57:03Z). Full entry in tooling/ops/alarm-chains.json -> chainsObserved.ops.",
+          "whyItHadTo": "🔴 THIS IS THE ROW THAT PROVES A DECLARATION IS NOT A BEHAVIOUR. Before this drill the monitor existed, was enabled, ran on schedule, recorded its transitions and was DRAWN RED ON THE DASHBOARD — and told nobody, for nine days, because it was created with project_id = NULL and GlitchTip finds recipients by joining alert -> project -> monitor. It went Down 13 times of 41 checks. Every surface a person looks at was healthy; the missing thing was a foreign key, and a foreign key has no dashboard. A config-shaped check would have gone green the moment the key was set — the same half-state, one step later."
+        }
+      },
       "accessProviders": [
         "laptop",
         "google",
@@ -514,9 +604,9 @@
     {
       "id": "duty.laptop.claude-transcript-backup",
       "kind": "duty",
-      "what": "The nightly Windows task that copies Claude Code transcripts offsite.",
-      "detector": "🔴 NOTHING TODAY. Its exit code is the only record and nobody reads it.",
-      "response": "🔴 FAILING as of 2026-08-01 (LastTaskResult 1) and has been unwatched. Diagnose on the laptop, then point it at the same heartbeat mechanism duty.laptop.nikatru-daily-backup uses.",
+      "what": "The nightly Windows task that copies Claude Code transcripts offsite, to D:\\ClaudeBackups.",
+      "detector": "🔴 NOTHING TODAY. Its exit code is the only record and nobody reads it — and the exit code is written by the thing that is dying.",
+      "response": "🔴 STILL FAILING, RE-MEASURED 2026-08-06: LastTaskResult = 1, last run 02:00:01. Diagnose on the laptop, then point it at the same heartbeat mechanism duty.laptop.nikatru-daily-backup uses — but AT THE OUTCOME, not the exit code (see the ownerGap: on 2026-08-06 the exit code and the outcome disagreed in BOTH directions on the same day).",
       "cadence": "1d",
       "mechanism": {
         "substrate": "windows-task-scheduler",
@@ -525,12 +615,18 @@
         "failingValue": "LastTaskResult != 0 — currently 1",
         "readBy": "nothing yet — this is the gap, named rather than hidden"
       },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING. This is [14]O-4's live subject: a scheduled duty, genuinely failing today, whose only record is written by the thing that failed.",
+        "ownerGated": true,
+        "gap": "🔴 MEASURED ON THIS LAPTOP 2026-08-06, NOT INFERRED, AND WORSE THAN THE PREVIOUS RECORD. (a) LastTaskResult = 1 on the 02:00:01 run — unchanged since 2026-08-01. (b) THE DESTINATION DISK IS DYING: Get-PhysicalDisk reports `ST1000LM048-2E7172` (HDD, DeviceId 0) as HealthStatus **Warning** / OperationalStatus **Predictive Failure**, while the system SSD is Healthy/OK. (c) The output shows it: D:\\ClaudeBackups has NO FOLDER AT ALL for 2026-08-02 or 2026-08-03, and 2026-08-04 holds **21 files against 4,621 the run before** — a 99.5% loss that produced no signal anywhere. 🔴 AND THE EXIT CODE IS NOT THE INSTRUMENT: on 2026-08-06 the task reported LastTaskResult = 1 while 12,817 files DID land, and on 2026-08-04 it reported the same 1 while 21 landed. The exit code cannot separate those two, so a heartbeat posted from the end of the script would have proven only that the script reached its last line — exactly the mistake /opt/glitchtip/backup-liveness.py was written to avoid on the Oracle box, where it asserts a dump exists, is recent, is not truncated and REACHED Drive. The watcher this row needs is that shape: check the OUTCOME from off the laptop, and treat 'could not confirm' as unhealthy. Owner-gated because both the disk and the heartbeat wiring are on a machine no workflow can reach. ⚠️ This increment is the declaration and the guard; it deliberately does NOT touch the task or the disk."
+      },
       "accessProviders": [
         "laptop",
         "google"
       ],
       "ownerGated": true,
-      "ownerGap": "Both the diagnosis and the heartbeat wiring happen on the laptop, which no workflow can reach. Two of three laptop duties are failing right now and are watched by nothing; that is the sentence this row exists to keep printing.",
+      "ownerGap": "Both the diagnosis and the heartbeat wiring happen on the laptop, which no workflow can reach. Two of three laptop duties are failing right now and are watched by nothing; that is the sentence this row exists to keep printing. 🔴 The destination disk is in Predictive Failure — see absenceWatcher.gap for the measurements.",
       "source": "verified"
     },
     {
@@ -538,7 +634,7 @@
       "kind": "duty",
       "what": "The nightly Windows task that backs up the project folder.",
       "detector": "🔴 NOTHING TODAY. Its exit code is the only record and nobody reads it.",
-      "response": "🔴 FAILING as of 2026-08-01 (LastTaskResult 1). Same remedy as duty.laptop.claude-transcript-backup.",
+      "response": "🔴 STILL FAILING, RE-MEASURED 2026-08-06: LastTaskResult = 1, last run 02:30:01. Same remedy as duty.laptop.claude-transcript-backup.",
       "cadence": "1d",
       "mechanism": {
         "substrate": "windows-task-scheduler",
@@ -546,6 +642,12 @@
         "record": "Windows Task Scheduler LastTaskResult — and NOTHING reads it",
         "failingValue": "LastTaskResult != 0 — currently 1",
         "readBy": "nothing yet — this is the gap, named rather than hidden"
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING — the second of the two unwatched, currently-failing laptop duties.",
+        "ownerGated": true,
+        "gap": "Laptop-side, same shape as duty.laptop.claude-transcript-backup and re-measured the same day (2026-08-06, LastTaskResult = 1 at 02:30:01). Written out rather than cross-referenced only for the part that differs: the THIRD laptop duty, duty.laptop.nikatru-daily-backup, runs on the same machine, reported LastTaskResult = 0 in the same measurement, and is the one with a proven off-host heartbeat. So the mechanism that would close both of these rows already exists, is already paid for, and has already been drilled end to end on this exact machine — what is missing is the wiring, and the wiring is on the laptop."
       },
       "accessProviders": [
         "laptop",
@@ -554,6 +656,145 @@
       "ownerGated": true,
       "ownerGap": "Laptop-side. See duty.laptop.claude-transcript-backup.",
       "source": "verified"
+    },
+    {
+      "_whyTheseFourRowsExist": [
+        "🔴 THE ORACLE BOX'S FOUR CRONTAB DUTIES HAD NO ROWS AT ALL, in a register whose own",
+        "`_requiredCoverage._why` names 'the Oracle box' as one of the reasons the external list exists.",
+        "Any limb quantifying over `duty` rows therefore excluded the most-proven members of the domain:",
+        "these four are the only duties in the portfolio whose detector was built to check the OUTCOME",
+        "rather than an exit code, and they were invisible to every count this file printed.",
+        "",
+        "They also carry the finding that made [14]O-4's substrate comparison a HOST comparison. All four",
+        "run on the Oracle box; the GlitchTip instance that watches them runs on the Oracle box; the alert",
+        "evaluation and the Resend SMTP hop run on the Oracle box. Comparing the substrate NAMES",
+        "(`oci-cron` vs `glitchtip-heartbeat`) would have called that 'different infrastructure'. It is one",
+        "machine, and its death is indistinguishable from perfect health. That is [pipeline E-9b], it is",
+        "recorded as undecided in tooling/monitor-register.json -> observability.spof, and these rows are",
+        "where the count of duties sitting on it becomes readable.",
+        "",
+        "The schedules live ONLY in root crontab on the box (`crontab -l` -> crontab-root.txt, regenerated",
+        "into the backup set at the start of every run). company/runbooks/operations.md and",
+        "company/runbooks/glitchtip.md are the anchors; CI cannot read either, and this guard says so with",
+        "a count rather than pretending the check happened."
+      ],
+      "id": "duty.oci.glitchtip-pg-dump",
+      "kind": "duty",
+      "what": "/opt/glitchtip/backup.sh, root cron 02:00 daily on the Oracle box: pg_dump -Fc from INSIDE the container (consistent, running) plus pg_dumpall --globals-only, written to /opt/glitchtip/backups as gt-<date>.sql.gz.",
+      "detector": "/opt/glitchtip/backup-liveness.py (hourly, :41) — it asserts the dump EXISTS, is RECENT, is NOT TRUNCATED and REACHED Drive, and treats 'could not confirm Drive' as unhealthy rather than as fine. A failure raises a GlitchTip event within a minute and exits non-zero so cron also mails root.",
+      "response": "Read the event. A script can exit 0 having written nothing — which is exactly how the laptop transcript backup failed on a dying disk — so the exit code is never the answer here; the dump's size, age and presence on Drive are.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "oci-cron",
+        "anchor": "company/runbooks/glitchtip.md",
+        "record": "the gt-*.sql.gz files in /opt/glitchtip/backups and their mtimes and sizes",
+        "failingValue": "no dump newer than the window, or one small enough to be truncated — 3,379,805 bytes was the healthy size measured 2026-08-05",
+        "readBy": "/opt/glitchtip/backup-liveness.py on the box"
+      },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "GlitchTip heartbeat monitor 16 'Oracle box backup chain', project `ops`, interval 3h, fed by backup-liveness.py's hourly POST.",
+        "ownerGated": true,
+        "downTransitionDrill": {
+          "date": "2026-08-05",
+          "how": "Two failures were FORCED against the real checker rather than simulated: a stale dump and a truncated one. Each produced a real GlitchTip event. ⚠️ This drilled the OUTCOME-EVENT leg, not the heartbeat-ABSENCE leg — the monitor-16 Down transition itself has never been forced. The two are different code paths (process_event_alerts + send_notification vs send_monitor_notification), which is precisely why the box's disk alert was tested rather than assumed on the same day.",
+          "evidence": "Both events delivered in one mail, '2 errors reported in ops', 13:38:15Z; test issues OPS-3 and OPS-4, both resolved. Recorded in company/runbooks/operations.md."
+        },
+        "gap": "🔴 THE WATCHER IS ON THE MACHINE IT WATCHES. backup-liveness.py, the GlitchTip instance holding monitor 16, the alert evaluation and the Resend hop are all on this one Oracle box — including monitor id 1, which watches GlitchTip itself. If the box is down, the check that would notice is down and the mail that would say so is down with it. Proving the chain delivers WHILE THE BOX IS UP says nothing about the case that matters most. [pipeline E-9b], owner-gated and recorded as undecided in tooling/monitor-register.json -> observability.spof; do NOT read a green verify-alarm-chains.mjs run as an answer to it. The third path — a non-zero exit so cron mails root — does not depend on GlitchTip but still depends on the box."
+      },
+      "accessProviders": [
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "The schedule and the script are on a host this repository cannot reach; only the owner (or an SSH session) can change them. Enumerated here so the duty is countable at all.",
+      "source": "verified",
+      "verifiedHow": "2026-08-05 — a healthy run was measured, not assumed (gt-2026-08-05.sql.gz, 1.2h old, 3,379,805 bytes, present on Drive, heartbeat posted), and then two failures were forced and both produced delivered mail."
+    },
+    {
+      "id": "duty.oci.gt-drive-sync",
+      "kind": "duty",
+      "what": "/opt/glitchtip/gt_drive_sync.sh, root cron 02:30 daily: rclone copy of the dumps to the encrypted `gcrypt:` Drive remote, plus the stack config (compose.yml + .env) to gcrypt:config, plus /coldstorage, plus a fresh crontab-root.txt; then prunes LOCAL dumps to 7 days while Drive keeps the history.",
+      "detector": "/opt/glitchtip/backup-liveness.py, which asserts the dump REACHED DRIVE and requires the stamp /opt/glitchtip/.gt-drive-sync.done — written as this script's LAST action, so a sync that aborted midway cannot look complete.",
+      "response": "Read the event, then check the rclone leg specifically: this script running under `set -euo pipefail` means an abort before the prune step leaves a correctly-sized dump on Drive with every other assertion still passing.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "oci-cron",
+        "anchor": "company/runbooks/glitchtip.md",
+        "record": "the encrypted objects under gcrypt: on Drive, plus /opt/glitchtip/.gt-drive-sync.done",
+        "failingValue": "the newest dump absent from Drive, or the .done stamp older than the newest dump",
+        "readBy": "/opt/glitchtip/backup-liveness.py on the box"
+      },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "The same monitor 16 chain as duty.oci.glitchtip-pg-dump — one heartbeat covers the whole backup chain, which is why the checker asserts four separate properties rather than one exit code.",
+        "ownerGated": true,
+        "gap": "Same single point of failure as duty.oci.glitchtip-pg-dump: the checker, the monitor, the alert rule and the mail hop are all on the box being watched. [pipeline E-9b]. ⚠️ Recorded here as its own row rather than folded into the dump's because the two duties fail independently and for different reasons — a dump can be perfect and unsynced, which is the state the .done stamp exists to make visible."
+      },
+      "accessProviders": [
+        "oci",
+        "google"
+      ],
+      "ownerGated": true,
+      "ownerGap": "On-box schedule and script; unreachable from CI. ⚠️ DR-CRITICAL and unchanged by this row: the rclone crypt password and salt live only in the on-box rclone.conf, so the Drive copies are unrecoverable without the vaulted copy.",
+      "source": "verified",
+      "verifiedHow": "2026-08-05 — the dump was confirmed PRESENT on Drive by the checker's own Drive assertion during a healthy run, not by reading the script."
+    },
+    {
+      "id": "duty.oci.backup-liveness",
+      "kind": "duty",
+      "what": "/opt/glitchtip/backup-liveness.py, root cron hourly at :41 — the box's own backup watchdog, and the reference implementation this factory copies: it checks the OUTCOME (a dump exists, is recent, is not truncated, and reached Drive), POSTs a heartbeat when healthy, and on failure sends an event naming the reason INSTEAD of posting.",
+      "detector": "Its own heartbeat's absence, at monitor 16. Posting from the end of a script proves only that the script reached its last line; withholding the post is what makes the heartbeat mean the outcome was good.",
+      "response": "The box, the checker or the network is gone. Note the ordering property: a broken BACKUP produces an event within a minute, while this script or the box dying produces heartbeat absence within 3h — two independent signals with different latencies, on purpose.",
+      "cadence": "1h",
+      "mechanism": {
+        "substrate": "oci-cron",
+        "anchor": "company/runbooks/operations.md",
+        "record": "the heartbeat POSTs recorded against GlitchTip monitor 16, and the events raised in project `ops`",
+        "failingValue": "no POST inside the 3h monitor interval",
+        "readBy": "GlitchTip monitor 16 — which runs on this same box"
+      },
+      "absenceWatcher": {
+        "substrate": "glitchtip-heartbeat",
+        "what": "GlitchTip monitor 16, interval 3h against an hourly poster.",
+        "ownerGated": true,
+        "margin": "🟢 THE MARGIN IS THE DESIGN, and it is why the poster is hourly rather than once per backup. The box backs up DAILY and GlitchTip caps a monitor interval at 86400s — exactly 24h — so a once-per-backup heartbeat could have no margin at all and one late run would report Down. Hourly poster + 3h interval = three consecutive failures before it alarms. company/runbooks/backup-liveness.md establishes the rule from the laptop's chain.",
+        "gap": "🔴 THE MOST CIRCULAR ROW IN THE REGISTER, and it is worth stating plainly rather than leaving as an inference: this duty IS the box's watcher, and the only thing watching ITS absence is a monitor hosted on the same box, evaluated by a process on the same box, mailing through a hop on the same box. Everything from the failure to the notification shares one machine. [pipeline E-9b], owner-gated and undecided. The closing move is the same one duty.workflow.ops-watch.yml needs — an absence signal on a second provider — which is the shape of O-4 repeating one level down."
+      },
+      "accessProviders": [
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "On-box schedule; unreachable from CI.",
+      "source": "verified",
+      "verifiedHow": "2026-08-05 — proven, not installed: a healthy run posted the heartbeat, and two forced failures each produced a delivered event instead of a post."
+    },
+    {
+      "id": "duty.oci.disk-alert",
+      "kind": "duty",
+      "what": "/opt/glitchtip/disk-alert.py, root cron hourly at :17 — reports resource pressure (>=80% disk) as a GlitchTip EVENT into project `ops`, and was that project's first producer ever.",
+      "detector": "🔴 NOTHING WATCHES THIS ONE AT ALL. It is an event reporter with no heartbeat, deliberately — a heartbeat alarms on absence, which is right for 'did the nightly job run', while disk pressure is a threshold and has to say how bad it is. The consequence is that its own silence carries no information: a disk-alert that has stopped running looks exactly like a box with plenty of disk.",
+      "response": "Fail-loud is the only backstop it has today: if the send fails it exits non-zero so cron mails root, because a monitor that cannot report is worse than none.",
+      "cadence": "1h",
+      "mechanism": {
+        "substrate": "oci-cron",
+        "anchor": "company/runbooks/operations.md",
+        "record": "events in the GlitchTip `ops` project",
+        "failingValue": "no event when usage is over the threshold — which is indistinguishable from no event because usage is under it",
+        "readBy": "nothing — this row is the only enumeration"
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING. An event-only reporter has no absence signal by construction.",
+        "ownerGated": true,
+        "gap": "🔴 AND THE FAILURE MODE IS DEMONSTRATED, NOT THEORETICAL. Until 2026-08-05 the `ops` project 'had received nothing, ever', and that silence was read as 'nothing to report'. It was not: Cloudflare's bot-signature check was returning HTTP 403 / error 1010 to Python's stock `Python-urllib/3.12` User-Agent at the edge, so every server-side send was dropped BEFORE reaching GlitchTip — a plain 403 from the sender's side and pure silence from the sink's. An empty project is indistinguishable from a healthy one, which is this entire criterion in one sentence. The client half is fixed with an explicit UA; the durable fix (Bot Fight Mode OFF) is a P1 owner item. Giving this script a heartbeat as well as its events would close the absence half, and that is on-box work this repository cannot do."
+      },
+      "accessProviders": [
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "On-box schedule; unreachable from CI. The absence half needs a heartbeat this script does not post.",
+      "source": "verified",
+      "verifiedHow": "2026-08-05 — proven end to end rather than installed: a threshold breach was forced, the event landed as OPS-1, and the mail was delivered to support@nikatru.com 42s later. That is a DIFFERENT code path from the uptime alerts proven the same day, which is exactly why it was tested rather than assumed. OPS-1 was synthetic and has been resolved."
     },
     {
       "id": "revert.worker.platform",

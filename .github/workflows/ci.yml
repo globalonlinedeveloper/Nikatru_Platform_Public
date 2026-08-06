@@ -634,6 +634,26 @@ jobs:
       - name: Account deletion reaches every user-owned table, never via a shared secret
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-erasure-reach.mjs
+      # …and the rows a LIVE VERIFICATION leaves behind are attributable. This
+      # repo's own standing rule — "live-test every implementation, once, using
+      # the exact invocation the real caller uses" — necessarily writes to
+      # production, and B-17 is the other half of that permission: every artifact
+      # it creates must be provably removed. The original acceptance criterion
+      # was VACUOUS — "count the rows matching the test-marker convention" with
+      # no convention in existence, so the predicate was empty and the count was
+      # 0 on every possible production state. It is inverted here: count the rows
+      # that cannot be traced to a released build.
+      #
+      # ⚠️ THIS STEP IS THE GATE LIMB AND IT CANNOT SEE A ROW. The falsifier lives
+      # in D1, behind a credential this workflow must never hold. So it asserts
+      # only what the tree decides: every table the migrations create declares a
+      # provenance rule (nine today, and B-17's prose named four), each rule names
+      # a real column, and the reader that CAN look is wired into ops-watch.yml.
+      # The row count itself is a MONITOR — a weaker rung, labelled as one.
+      # [pipeline B-17]
+      - name: Every shared table declares how its rows are attributed
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-prod-provenance.mjs
       # One declaration for every build version. Before this, "3.44.8" appeared in
       # six places and node 24 in eight; wsl-setup.sh carried the comment "keep in
       # lockstep with *.yml", i.e. maintained by hope. The guard compares PARSED

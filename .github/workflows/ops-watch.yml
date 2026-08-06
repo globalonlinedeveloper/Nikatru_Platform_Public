@@ -186,6 +186,70 @@ jobs:
           fi
           exit "$code"
 
+  # ── [pipeline B-17] PRODUCTION CARRIES NO UNATTRIBUTABLE ROWS ──────────────
+  #
+  # 🔴 THIS IS THE MONITOR LIMB, AND IT IS HERE BECAUSE IT CANNOT BE ANYWHERE
+  # ELSE. B-17's falsifier is A ROW IN A DATABASE — outside the repository,
+  # behind a credential. `ci.yml` gates every push including from forks, so it
+  # holds no CLOUDFLARE_API_TOKEN and never can; its guard
+  # (tooling/ci/assert-prod-provenance.mjs) can therefore only assert that every
+  # table declares a provenance rule and that THIS job exists. Whether a row
+  # actually fails one is answerable only here. Green here is the weaker claim:
+  # "nothing has contradicted B-17 since the last run".
+  #
+  # WHAT IT WAS BUILT AGAINST, MEASURED. On 2026-08-06 platform_db held ONE row
+  # in `consent_artifacts` while 04-backend-platform.md's own B-17 evidence block
+  # still recorded `consent_artifacts` 0, and `cron_heartbeat` 16 where the same
+  # block said 3. Nothing was wrong with either number when it was written; the
+  # defect is that nothing looked again, and a number in a document is not a
+  # check. This job is what looks.
+  #
+  # ⚠️ IT DOES NOT READ ROWS. Every query is `SELECT <marker>, COUNT(*) … GROUP
+  # BY <marker>` — one declared column and a tally. `provider_notifications`
+  # stores merchant-of-record payloads verbatim (a buyer's name, email address
+  # and billing country), and a monitor that pulled rows into a public log would
+  # be a worse incident than the residue it hunts.
+  #
+  # `actions: read` is for the RELEASED-BUILD SET: "traced to a released build"
+  # is resolved against the actual successful runs of the served release lane,
+  # not against a list in a file that would go stale the way B-17's own
+  # four-table prose did.
+  prod-provenance:
+    name: Every row in production traces to a released build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # Same three-valued exit as the two readers above, for the same reason:
+      # 2 means the duty did not run, and a run that discovers it cannot do its
+      # job and then reports success is a green tick over an unread database.
+      - name: Count the rows whose provenance does not resolve
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set +e
+          node tooling/ops/check-prod-provenance.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Production provenance is UNKNOWN — the duty did not run::The reader could not reach D1, could not derive the released-build set, or found a table with no provenance rule. NOTHING counted the rows in platform_db. This fails on purpose: 'I could not look' must never read as 'I looked and it was fine' — B-17's own evidence block records consent_artifacts as 0 for exactly that reason."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=Production carries rows that trace to no released build::A live verification wrote to production and did not clean up, or a rail wrote a row it could not attribute. The log above names the table, the marker value and the count. Do not delete anything before establishing which — a consent artifact from a real person is not test residue."
+          fi
+          exit "$code"
+
   # ── Alerting ────────────────────────────────────────────────────────────────
   # Copied from e2e.yml's `alert` job, which is the shape that works here: ONE
   # durable issue, reused, never auto-closed. A notification is read once and
@@ -219,7 +283,13 @@ jobs:
     # is the state this job exists to make visible. The issue IS closeable: the
     # owner adds the two secrets (Settings → Secrets and variables → Actions),
     # the next run goes green, and a human closes it.
-    needs: [heartbeats, status, supabase-drift]
+    #
+    # `prod-provenance` joins them for the same reason `supabase-drift` did: an
+    # unattributable row in production is a scheduled duty reporting unhealthy.
+    # Leaving it out would have made B-17's monitor the one reader in this file
+    # whose red nobody is told about — a check that runs, fails, and is read by
+    # no one is the same as no check, which is B-17's own subject.
+    needs: [heartbeats, status, supabase-drift, prod-provenance]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 5

@@ -213,6 +213,31 @@ const HUMAN_DATED = new Map([
 
 const RETENTION_RULES = new Set(['keep', 'ttl', 'cache', 'period', 'period-undeclared']);
 
+/** A cadence that is a CLOCK. `trigger` and `on-demand` are the two honest ways
+ *  to not be on one, and both already cost something (a named event / a written
+ *  `why` plus a printed count). Used by the [14]O-10 and [14]O-4 limbs, which
+ *  are both about timers that can stop without anybody noticing. */
+const TIME_CADENCE = /^\d+[hd]$/;
+
+/** [14]O-4. The literal substrate a row declares when the honest answer is that
+ *  NOTHING watches its absence. It is not a hole in the schema: it is only legal
+ *  alongside `ownerGated` + a written `gap`, and it is counted and printed
+ *  SEPARATELY from "a watcher exists but shares the duty's host", because those
+ *  are different gaps with different repairs and a single number would hide it. */
+const NO_WATCHER = '(none)';
+
+/** 🔴 EVIDENCE THAT OUTLIVES THE SESSION THAT WROTE IT — the standard
+ *  tooling/ops/alarm-chains.json already sets in its own header: "a delivery
+ *  record id, not the word 'verified'". A drill whose evidence is an adjective
+ *  cannot be re-checked by anybody, which makes the drill field decoration of
+ *  exactly the kind the field exists to replace. So the evidence must carry at
+ *  least one thing a later reader can go and LOOK UP: a delivery-record UUID, a
+ *  wall-clock time, an issue key (OPS-3), a GitHub issue number (#151), or a
+ *  workflow run id. This is deliberately a shape test and NOT a length test — a
+ *  minimum character count is a threshold somebody lowers. */
+const DURABLE_ID =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\b\d{2}:\d{2}:\d{2}\b|\b[A-Z][A-Z0-9]+-\d+\b|#\d{2,}|\b\d{9,}\b/;
+
 /** Structural failure — the scan itself is broken, so nothing below it means
  *  anything. Exits immediately rather than joining the problem list. */
 const coverageLost = (lines) => {
@@ -649,7 +674,6 @@ export function evaluate(reg, tree, nowMs) {
   // would block every merge on work that needs a second provider to host the
   // check, which is not this branch's to build. Zero gaps and three gaps must
   // never read alike, so the count is printed, not just the entries.
-  const TIME_CADENCE = /^\d+[hd]$/;
   let freshnessRead = 0;
   for (const [anchor, row] of anchored) {
     if (row?.mechanism?.substrate !== 'github-actions') continue;
@@ -700,6 +724,338 @@ export function evaluate(reg, tree, nowMs) {
     `[14]O-10 — ${freshnessRead} scheduled workflow duty(ies) have their cadence READ by a named in-tree guard that really names them`,
   );
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // [14]O-4 · SOMETHING ON DIFFERENT INFRASTRUCTURE NOTICES THE SILENCE
+  //
+  // 🔴 THE SUBJECT WAS LIVE ON THE DAY THIS WAS WRITTEN, SO IT NEEDED NO
+  // FIXTURE. The Windows task `ClaudeTranscriptBackup` reported
+  // `LastTaskResult = 1` on 2026-08-06 (and had since 2026-08-01); its
+  // destination disk `ST1000LM048-2E7172` reports HealthStatus **Warning** /
+  // OperationalStatus **Predictive Failure**; `D:\ClaudeBackups` holds no folder
+  // at all for 2026-08-02 or 2026-08-03. Its own exit code is the only record it
+  // produces, and that record is WRITTEN BY THE THING THAT DIED. Nothing looked.
+  //
+  // The distinction this limb turns on, and the reason "does it have a detector"
+  // was never the right question:
+  //
+  //   A duty FAILING is usually loud — a non-zero exit, a red job, an event.
+  //   A duty CEASING is silent, and it is silent in the one way that matters:
+  //   a scheduled thing that stops running produces no signal at all, and no
+  //   signal is byte-identical to a portfolio with nothing wrong.
+  //
+  // So every scheduled duty must declare an `absenceWatcher`, and that watcher
+  // must run somewhere the duty's own death cannot reach.
+  //
+  // ⚠️ "DIFFERENT SUBSTRATE" IS NOT A STRING COMPARISON, AND A STRING
+  // COMPARISON HERE WOULD BE THE DECORATION THIS FILE EXISTS TO REFUSE.
+  // `oci-cron` and `glitchtip-heartbeat` are different words for the SAME
+  // ORACLE BOX — the four crontab duties on that host are watched by a GlitchTip
+  // instance running on that host, so the machine failure that silences them
+  // silences the watcher and the alert path in the same instant. Comparing the
+  // two names would have called that "different infrastructure" and printed ok.
+  // Both substrates therefore resolve through `_substrateHosts` to a member of
+  // the SAME fixed provider vocabulary `_providers` uses, and the comparison is
+  // on the resolved HOST. An unmapped substrate FAILS as "cannot be checked"
+  // rather than passing — the rule `accessProviders` already follows, and the
+  // one that makes [14]O-14 falsifiable.
+  //
+  // ⚠️ AND A MAPPING THAT REACHES NOTHING IS DELETED, NOT KEPT "FOR LATER".
+  // An unexercised `_substrateHosts` key inflates the apparent size of the
+  // domain while resolving nothing, which is the "assertion that cannot fail"
+  // shape one level down. Every key must be reached by a real row.
+  //
+  // ─────────────────────────────────────────────────────────────────────────
+  // 🔴 THE DECLARATION IS NOT THE BEHAVIOUR. THIS IS THE WHOLE LIMB.
+  //
+  // A row saying "a GlitchTip heartbeat monitor watches this" is one artifact
+  // away from the property it claims, and this repository has now found that
+  // exact stand-in six times. GlitchTip monitor 6 — "the one provably complete
+  // alarm chain in the portfolio", written down as the template every other row
+  // was measured against — was created with `project_id = NULL`. The checks ran,
+  // the transitions were recorded, the dashboard drew them red, the alert rule
+  // existed and was enabled. It went Down 13 times of 41 and TOLD NOBODY,
+  // because the recipient set is a join through the project and the project was
+  // null. Every surface a person looks at was healthy. A config-shaped check
+  // answers a config-shaped question and would have gone green the moment the
+  // foreign key was set — the same half-state, one step later.
+  //
+  // So a watcher is not accepted here until somebody has FORCED A REAL STATE
+  // CHANGE AND WATCHED A MESSAGE LAND, and the record of that says WHEN and
+  // names evidence that outlives the session (see DURABLE_ID above). Three
+  // states, and every one of them costs something:
+  //
+  //   `downTransitionDrill`  a dated, evidenced observation. The only state that
+  //                          counts as PROVEN, and the only one that increments
+  //                          the proven count printed on every run.
+  //   `drillDue` + `drillLeadDays` + `drillGap`
+  //                          a DATED TRIPWIRE for a watcher that is genuinely
+  //                          off-host but whose transition has not been forced:
+  //                          prints until the lead window, RED inside it, hard
+  //                          failure after. Identical semantics to
+  //                          `degradedUntil`, for identical reasons — see the
+  //                          `degradedLeadDays` header above, where a tripwire
+  //                          with no lead window went from one quiet print
+  //                          straight to blocking every branch on the day.
+  //   `ownerGated` + `gap`   the repair needs a vendor console, a second
+  //                          provider or the proprietor. PRINTED IN FULL on
+  //                          every run and NEVER blocking (CLAUDE.md C-6: a
+  //                          guard that blocks all of CI on owner-only work gets
+  //                          disabled, and a disabled guard checks nothing).
+  //
+  // ⬜ AND THE OWNER-GATED GAPS ARE PRINTED WITH THEIR SHAPE, NOT AS ONE NUMBER.
+  // "Nothing watches it at all", "the watcher shares the duty's host" and "the
+  // watcher is off-host but has never been seen to fire" are three different
+  // gaps with three different repairs, and rolling them into a single count is
+  // how the second one hid: `duty.laptop.claude-transcript-backup` has NO
+  // watcher, while the four Oracle crontab duties have one that dies with them.
+  //
+  // ⚠️ SCOPED TO A TIME CADENCE, with the same reasoning [14]O-10 records: a
+  // `trigger` duty (ci.yml, the deploys) has no timer that can silently die, and
+  // an `on-demand` one is not claimed to happen at all. Widening it to those
+  // would manufacture obligations that cannot be discharged, which is how a
+  // guard acquires exemptions and stops meaning anything. BOTH counts print, so
+  // moving a row out of the scheduled set to escape this limb is visible.
+  // ─────────────────────────────────────────────────────────────────────────
+  const hostMap = reg._substrateHosts ?? {};
+  const substrateHost = (s) =>
+    typeof s === 'string' && !s.startsWith('_') && Object.prototype.hasOwnProperty.call(hostMap, s)
+      ? hostMap[s]
+      : null;
+  const hostKeysUsed = new Set();
+
+  const dutyRows = rows.filter((r) => r.kind === 'duty');
+  if (dutyRows.length === 0) {
+    bad(
+      'COVERAGE LOST — this register declares NO `duty` row at all, so [14]O-4 quantifies over the empty set and every ' +
+        'absence-watcher check below is vacuously satisfied. An undefined right-hand side rejects nothing; that is the ' +
+        'state eighteen of this stage\'s criteria were already in before this register existed.',
+    );
+  }
+  for (const [k, v] of Object.entries(hostMap)) {
+    if (k.startsWith('_')) continue;
+    if (!providers.has(v)) {
+      bad(
+        `\`_substrateHosts.${k}\` resolves to \`${v}\`, which is not in the fixed provider vocabulary ` +
+          `(${[...providers].join(' · ')}). Free text on the right-hand side makes "the watcher is somewhere else" ` +
+          'a comparison between two spellings rather than between two machines.',
+      );
+    }
+  }
+
+  let scheduledDuties = 0;
+  let watchersProven = 0;
+  let watchersPending = 0;
+  const absenceGaps = [];
+
+  for (const r of dutyRows) {
+    const id = r.id ?? '<no id>';
+    const dutySubstrate = r?.mechanism?.substrate;
+    if (nonEmpty(dutySubstrate)) {
+      hostKeysUsed.add(dutySubstrate);
+      if (substrateHost(dutySubstrate) === null) {
+        bad(
+          `${id} — \`mechanism.substrate\` \`${dutySubstrate}\` has no \`_substrateHosts\` entry, so this duty's HOST is ` +
+            'unknown and "the watcher runs somewhere else" cannot be computed for it. A row that cannot be checked must ' +
+            'fail rather than pass.',
+        );
+      }
+    }
+    if (!TIME_CADENCE.test(String(r.cadence ?? ''))) continue;
+    scheduledDuties++;
+
+    const aw = r.absenceWatcher;
+    if (!aw || typeof aw !== 'object' || Array.isArray(aw)) {
+      bad(
+        `${id} — \`cadence: ${r.cadence}\` and no \`absenceWatcher\`. [14]O-4: this duty's own record is written BY THE ` +
+          'THING THAT DIES, so its silence is the one state it can never report. Declare what notices the ABSENCE and ' +
+          'where that thing runs — or, if closing it needs a console or a second provider, declare ' +
+          '`absenceWatcher.ownerGated: true` with a written `gap`, which prints on every run and never blocks.',
+      );
+      continue;
+    }
+    if (!nonEmpty(aw.what)) bad(`${id} — \`absenceWatcher.what\` is empty. A watcher nobody names is a watcher nobody can check.`);
+
+    const ws = aw.substrate;
+    if (!nonEmpty(ws)) {
+      bad(`${id} — \`absenceWatcher.substrate\` is empty. Name where the watcher RUNS, or \`${NO_WATCHER}\` if the honest answer is that nothing does.`);
+      continue;
+    }
+    const noWatcher = ws === NO_WATCHER;
+    let watcherHost = null;
+    if (!noWatcher) {
+      hostKeysUsed.add(ws);
+      watcherHost = substrateHost(ws);
+      if (watcherHost === null) {
+        bad(
+          `${id} — \`absenceWatcher.substrate\` \`${ws}\` has no \`_substrateHosts\` entry, so whether it shares this ` +
+            'duty\'s host is UNKNOWN. "I could not tell" must never read as "it is somewhere else".',
+        );
+        continue;
+      }
+    }
+    const dutyHost = substrateHost(dutySubstrate);
+    const sameHost = !noWatcher && watcherHost !== null && dutyHost !== null && watcherHost === dutyHost;
+
+    // The drill is validated WHENEVER it is present, owner-gated or not: a gap
+    // does not licence an unverifiable claim sitting next to it.
+    const drill = aw.downTransitionDrill;
+    let drillProven = false;
+    if (drill !== undefined) {
+      if (!drill || typeof drill !== 'object' || Array.isArray(drill)) {
+        bad(`${id} — \`absenceWatcher.downTransitionDrill\` is not an object.`);
+      } else {
+        let good = true;
+        if (!isIsoDate(drill.date)) {
+          bad(`${id} — \`downTransitionDrill.date\` is not an ISO date: ${JSON.stringify(drill.date)}`);
+          good = false;
+        } else if (Date.parse(`${drill.date}T00:00:00Z`) > nowMs) {
+          bad(`${id} — \`downTransitionDrill.date\` is in the FUTURE (${drill.date}). A transition that has not happened cannot be dated.`);
+          good = false;
+        }
+        if (!nonEmpty(drill.how)) {
+          bad(`${id} — \`downTransitionDrill.how\` is empty. Which state was forced, and by what means, is the half a later reader needs to repeat it.`);
+          good = false;
+        }
+        if (!nonEmpty(drill.evidence)) {
+          bad(`${id} — \`downTransitionDrill.evidence\` is empty.`);
+          good = false;
+        } else if (!DURABLE_ID.test(drill.evidence)) {
+          bad(
+            `${id} — \`downTransitionDrill.evidence\` names nothing a later reader can look up: ${JSON.stringify(String(drill.evidence).slice(0, 120))}. ` +
+              'A delivery-record id, a wall-clock time, an issue key or a run id — not the word "verified". Monitor 6 was ' +
+              '"verified" for nine days while its recipient set was empty.',
+          );
+          good = false;
+        }
+        drillProven = good;
+        if (good) {
+          const ageDays = Math.floor((nowMs - Date.parse(`${drill.date}T00:00:00Z`)) / 86_400_000);
+          prints.push(
+            `[14]O-4 — ${id}: absence watcher on \`${ws}\` (host ${watcherHost}) vs duty on \`${dutySubstrate}\` (host ${dutyHost}); ` +
+              `down-transition observed ${drill.date} (${ageDays}d ago) — ${String(drill.evidence).slice(0, 180)}`,
+          );
+        }
+      }
+    }
+
+    if (aw.ownerGated === true) {
+      if (!nonEmpty(aw.gap)) {
+        bad(`${id} — \`absenceWatcher.ownerGated: true\` with no written \`gap\`. A gap nobody describes is a waiver.`);
+      } else {
+        const shape = noWatcher
+          ? '🔴 NOTHING WATCHES ITS ABSENCE AT ALL'
+          : sameHost
+            ? `🔴 ITS WATCHER SHARES THE DUTY'S HOST — \`${ws}\` and \`${dutySubstrate}\` both resolve to \`${dutyHost}\`, so the failure that silences the duty silences the watcher`
+            : `⬜ watcher \`${ws}\` is genuinely off-host (${watcherHost} vs ${dutyHost}) but its down-transition has never been observed`;
+        absenceGaps.push(`${id} (cadence ${r.cadence}) — ${shape} — ${aw.gap}`);
+      }
+      continue;
+    }
+
+    // Not owner-gated: the row CLAIMS a working watcher, so it must be one.
+    if (noWatcher) {
+      bad(
+        `${id} — \`absenceWatcher.substrate: "${NO_WATCHER}"\` is only an honest answer alongside \`ownerGated: true\` and a ` +
+          'written `gap`. "Nothing watches it" is a state this register may record; it is not a state it may pass over.',
+      );
+      continue;
+    }
+    if (sameHost) {
+      bad(
+        `${id} — THE WATCHER RUNS ON THE THING IT WATCHES. \`absenceWatcher.substrate: ${ws}\` and ` +
+          `\`mechanism.substrate: ${dutySubstrate}\` both resolve to host \`${dutyHost}\`. A watcher hosted inside the ` +
+          'system it watches goes down with it and reports nothing, which is indistinguishable from "everything is fine" ' +
+          '— the whole class of failure [14]O-4 names. Move it to a different host, or declare `ownerGated` with a ' +
+          '`gap` so the shared-host fact PRINTS on every run instead of reading as coverage.',
+      );
+      continue;
+    }
+    if (!nonEmpty(aw.signal)) {
+      bad(`${id} — \`absenceWatcher.signal\` is empty: say what ABSENCE looks like to the watcher and what it does about it. A watcher whose failing state nobody wrote down is a watcher nobody can drill.`);
+    }
+    if (!nonEmpty(aw.margin)) {
+      bad(
+        `${id} — \`absenceWatcher.margin\` is empty. An interval EQUAL to the cadence leaves ZERO margin and one late run ` +
+          'reports Down — the rule company/runbooks/backup-liveness.md establishes and the reason the Oracle box posts ' +
+          'hourly against a 3h monitor. Write down how many missed runs it takes to alarm.',
+      );
+    }
+
+    if (drillProven) {
+      watchersProven++;
+      continue;
+    }
+    if (drill !== undefined) continue; // already reported above
+
+    if (!('drillDue' in aw)) {
+      bad(
+        `${id} — an \`absenceWatcher\` with neither a \`downTransitionDrill\` nor a dated \`drillDue\`. A DECLARED watcher ` +
+          'is one artifact away from the behaviour: monitor 6 was configured, enabled, drawn red on the dashboard and ' +
+          'silent for nine days because of a null foreign key. Force the transition and record it, or arm a dated ' +
+          '`drillDue` (+ `drillLeadDays`, + `drillGap`) saying when it will be.',
+      );
+      continue;
+    }
+    watchersPending++;
+    if (!isIsoDate(aw.drillDue)) {
+      bad(`${id} — \`absenceWatcher.drillDue\` must be an ISO date (YYYY-MM-DD).`);
+    } else if (!nonEmpty(aw.drillGap)) {
+      bad(`${id} — \`drillDue\` with no \`drillGap\`. A deadline with no reason attached is a deadline somebody extends.`);
+    } else if (!(Number.isInteger(aw.drillLeadDays) && aw.drillLeadDays > 0)) {
+      bad(
+        `${id} — \`drillDue\` with no positive integer \`drillLeadDays\`. Same finding as \`degradedLeadDays\`, same file: ` +
+          'a dated tripwire with no lead window goes from one quiet print straight to a failure that reddens every branch ' +
+          'on the day, with nothing in between.',
+      );
+    } else {
+      const daysLeft = (Date.parse(`${aw.drillDue}T00:00:00Z`) - nowMs) / 86_400_000;
+      if (daysLeft <= 0) {
+        bad(
+          `${id} — \`absenceWatcher.drillDue: ${aw.drillDue}\` has PASSED and the down-transition is still unobserved. ` +
+            `It went red ${aw.drillLeadDays} day(s) before this, so nothing about today is a surprise. THE GAP: ${aw.drillGap} ` +
+            'Force the transition and record it, or — if it turns out to need the owner — convert the watcher to ' +
+            '`ownerGated` with a written `gap` so it prints forever instead of blocking. Moving the date is the one move ' +
+            'this field exists to refuse.',
+        );
+      } else if (daysLeft <= aw.drillLeadDays) {
+        bad(
+          `${id} — \`absenceWatcher.drillDue: ${aw.drillDue}\` FIRES IN ${Math.ceil(daysLeft)} DAY(S), inside its own ` +
+            `${aw.drillLeadDays}-day lead window, and the down-transition is still unobserved. This is the warning, on ` +
+            `purpose and with time left to act. THE GAP: ${aw.drillGap}`,
+        );
+      } else {
+        prints.push(
+          `[14]O-4 — ${id}: absence watcher on \`${ws}\` is off-host but UNDRILLED. Goes RED in ` +
+            `${Math.ceil(daysLeft - aw.drillLeadDays)} day(s) (${aw.drillLeadDays}-day lead window), hard failure on ` +
+            `${aw.drillDue}: ${aw.drillGap}`,
+        );
+      }
+    }
+  }
+
+  if (dutyRows.length > 0 && scheduledDuties === 0) {
+    bad(
+      'COVERAGE LOST — not one `duty` row carries a TIME cadence, so the [14]O-4 domain is empty and every absence-watcher ' +
+        'check above ranged over nothing while this guard printed ok. Moving every duty to `trigger`/`on-demand` must not ' +
+        'be the way to satisfy a criterion about scheduled duties.',
+    );
+  }
+  for (const k of Object.keys(hostMap)) {
+    if (k.startsWith('_')) continue;
+    if (!hostKeysUsed.has(k)) {
+      bad(
+        `\`_substrateHosts.${k}\` is reached by no duty row and by no absence watcher. A mapping about nothing inflates ` +
+          'the apparent size of the domain while resolving nothing — delete it, or point a row at it.',
+      );
+    }
+  }
+  prints.push(
+    `[14]O-4 — ${dutyRows.length} duty row(s) scanned · ${scheduledDuties} on a CLOCK (the O-4 domain) · ` +
+      `${dutyRows.length - scheduledDuties} on \`trigger\`/\`on-demand\` (no timer that can silently die) · ` +
+      `${watchersProven} absence watcher(s) off-host AND proven by a dated down-transition drill · ` +
+      `${watchersPending} armed drill tripwire(s) · ${absenceGaps.length} owner-gated absence gap(s)`,
+  );
+
   // ── [14]O-7 · A DEPLOY IS NOT TRUSTED UNTIL THE LIVE SURFACE AGREES ───────
   //
   // 🔴 THE MEASURED STATE. The last step of every deploy job was
@@ -735,7 +1091,16 @@ export function evaluate(reg, tree, nowMs) {
   return {
     errors,
     prints,
-    stats: { rows: rows.length, onDemand, unverified, cannotRevert, companyAnchored, datedTripwires, gaps },
+    stats: {
+      rows: rows.length,
+      onDemand,
+      unverified,
+      cannotRevert,
+      companyAnchored,
+      datedTripwires,
+      gaps,
+      absence: { duties: dutyRows.length, scheduled: scheduledDuties, proven: watchersProven, pending: watchersPending, gaps: absenceGaps },
+    },
     anchored,
   };
 }
@@ -1000,6 +1365,20 @@ function main() {
       `${stats.unverified} unverified · ${stats.datedTripwires} dated tripwire(s) armed · ` +
       `${stats.companyAnchored} anchored in company/ (gitignored — this guard CANNOT verify those anchors exist)`,
   );
+  // ⬜ [14]O-4's gaps print IN FULL and SEPARATELY from the row-level ones. They
+  // are a different question — "if this stops, does anything anywhere notice" —
+  // and folding them into the general owner-gated list is how the answer stopped
+  // being asked. Never blocking (CLAUDE.md C-6): every one of these needs a
+  // vendor console, a second provider, or a machine no workflow can reach.
+  const abs = stats.absence;
+  if (abs.gaps.length) {
+    console.log(
+      `⬜  ${abs.gaps.length} SCHEDULED DUTY(IES) WHOSE ABSENCE NOTHING OFF-HOST WOULD NOTICE — printed every run, ` +
+        'never blocking (CLAUDE.md C-6). A duty that ceases produces no signal at all, and no signal is ' +
+        'byte-identical to a portfolio with nothing wrong [pipeline O-4]:',
+    );
+    for (const g of abs.gaps) console.log(`      · ${g}`);
+  }
   if (stats.gaps.length) {
     console.log(`⬜  ${stats.gaps.length} OWNER-GATED gap(s) — printed every run, never blocking (CLAUDE.md C-6):`);
     for (const g of stats.gaps) console.log(`      · ${g}`);

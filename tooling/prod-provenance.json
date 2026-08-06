@@ -1,0 +1,105 @@
+{
+  "_readme": [
+    "THE PROVENANCE REGISTER — [pipeline B-17] company/pipeline/04-backend-platform.md",
+    "",
+    "B-17: 'Verification against production is permitted and expected, but every artifact it creates is",
+    "provably removed, and the check is mechanical rather than remembered.'",
+    "",
+    "🔴 WHY THE ORIGINAL ACCEPTANCE CRITERION WAS REPLACED. It read: 'a single command reports, per",
+    "shared table, the count of rows matching the test-marker convention — and it returns zero.' There",
+    "was no test-marker convention, so 'matches the convention' was the EMPTY PREDICATE: the count is 0",
+    "on any production state whatsoever, forever. Fill `events` with a million probe rows and it still",
+    "returns zero. The criterion was satisfied by the absence of the thing it asked to be built.",
+    "",
+    "THE INVERSION. Instead of counting rows that carry a marker nobody applies, count the rows that",
+    "CANNOT BE TRACED TO A RELEASED BUILD. That set has a non-empty complement, probe rows land in it",
+    "automatically, and it does not depend on anybody remembering to tag anything.",
+    "",
+    "🔴 AND 'EVERY SHARED TABLE MUST BE EMPTY' IS DEAD ON ARRIVAL. `cron_heartbeat` held 16 legitimate",
+    "production rows and `revocation_reasons` 8 seeded reference rows when this register was written.",
+    "Emptiness was never the property; ATTRIBUTABILITY is.",
+    "",
+    "── WHY THE RULES ARE PER TABLE ────────────────────────────────────────────────────────────────",
+    "Because the columns differ, and pretending otherwise is how a check stops checking. Only `events`",
+    "and `consent_artifacts` carry `app_version` (0002_analytics.sql:40, :77). The other seven have no",
+    "such column and never will: they are written by the EDGE — a scheduled handler, a merchant-of-record",
+    "webhook, a route, or the migration itself — and the edge does not know a client version. So each of",
+    "those declares its own marker AND the reason that marker is the honest provenance for that table.",
+    "A single portfolio-wide rule would have had to be `app_version`, seven tables would have been exempt,",
+    "and the exemptions would have been invisible.",
+    "",
+    "── THE TWO LIMBS, AND WHICH IS WHICH ──────────────────────────────────────────────────────────",
+    "GATE    · tooling/ci/assert-prod-provenance.mjs — runs on every push in ci.yml. SECRETLESS, so it",
+    "          CANNOT SEE PRODUCTION. It asserts only what is checkable from the repo: every table the",
+    "          migrations create has a rule here, every rule names a column that table really has, every",
+    "          non-`released-build` rule carries a written reason, and the monitor is wired.",
+    "MONITOR · tooling/ops/check-prod-provenance.mjs — runs daily in ops-watch.yml, which holds",
+    "          CLOUDFLARE_API_TOKEN and has no push trigger. It is the ONLY limb that can see a row.",
+    "          It is a WEAKER RUNG than a gate: green means 'nothing has contradicted this since the",
+    "          last run', never 'this holds'.",
+    "",
+    "Adding a table to services/platform/migrations/ without adding a row here FAILS THE GATE. That is",
+    "the regression this register exists to catch — B-17's prose named four shared tables and the",
+    "migrations create nine, three days apart."
+  ],
+
+  "database": "platform_db",
+  "wrangler": "services/platform/wrangler.jsonc",
+  "migrationsDir": "services/platform/migrations",
+
+  "resolvers": {
+    "released-build": "The marker value must be the version string of a build the release lane actually shipped: `<release_line>.<run_number>+<sha7>`, where a SERVED lane in tooling/channel-register.json has a SUCCESSFUL run numbered <run_number> whose head commit is <sha7>. Derived from the GitHub Actions API at read time — never a list in this file. `dev` (the dart-define default), `c6-localprobe` (the C-6 live probe's literal) and NULL all fail, which is the point.",
+    "live-environment": "The marker value must be exactly `live`. Every row in these tables is written by the money rail, which stamps `live` or `sandbox` on purpose ([5]M-12: a sandbox notification is stored so it is auditable and can never write a live entitlement). A verification against production necessarily runs in sandbox, so `sandbox` IS the test marker for this half of the schema — and NULL is worse than either, because it is a row the rail could not attribute at all.",
+    "cron-job": "The marker value must be a job the deployed Worker both DECLARES and USES — the `export const <NAME>_JOB = '<literal>'` set in services/platform/src, the same derivation tooling/ops/check-heartbeats.mjs uses for its completeness limb. A heartbeat row naming a job no deployed code writes is residue from a renamed or deleted job.",
+    "provider-register": "The marker value must be a rail declared in tooling/legal/provider-register.json. A row naming a provider the register does not carry is either a fabricated row or a rail that reached production without a legal record, and both need a human.",
+    "migration-seed": "The marker value must be one of the literals the migrations themselves INSERT into that column. These are reference rows, not data: their provenance is the migration ledger, and any value outside it was put there by hand."
+  },
+
+  "tables": {
+    "events": {
+      "marker": "app_version",
+      "resolver": "released-build",
+      "reason": "Carries `app_version` (0002_analytics.sql:40), written straight through from the client envelope by services/platform/src/routes/events.ts. This is the nearest thing to a marker that already existed — C-6's live probe rows carried `app_version: c6-localprobe` — which is why the inversion is cheap here."
+    },
+    "consent_artifacts": {
+      "marker": "app_version",
+      "resolver": "released-build",
+      "reason": "Carries `app_version` (0002_analytics.sql:77), same writer, same envelope. Append-only by design, so a stray row can never be corrected by an UPDATE — it can only be deleted, which is exactly the disposition B-17 wants proven."
+    },
+    "entitlements": {
+      "marker": "provider_environment",
+      "resolver": "live-environment",
+      "reason": "NO `app_version` COLUMN AND NEVER WILL HAVE ONE: the row is written by services/platform/src/lib/mor/store.ts from a merchant-of-record notification, not by a client, so no app build is involved and there is no version to record. `provider_environment` (0004_money_rail.sql:73) is the column that answers the same question — which money world produced this row. It is the highest-consequence table in the set: B-17's own first-revenue note is that a test entitlement row in production is a free Pro unlock nobody notices, and a NULL here is precisely such a row."
+    },
+    "cron_heartbeat": {
+      "marker": "job",
+      "resolver": "cron-job",
+      "reason": "NO `app_version` COLUMN: written by the Worker's own scheduled handler (services/platform/src/scheduled.ts), which has no client and no app build. `job` is its only self-describing column, and it is a closed set the source declares. THIS TABLE IS WHY 'shared tables must be empty' had to be abandoned — its 16 rows are the instrument working, not residue."
+    },
+    "provider_notifications": {
+      "marker": "environment",
+      "resolver": "live-environment",
+      "reason": "NO `app_version` COLUMN: written by the MoR webhook (0004 section B) before anything interprets it. `environment` (0004_money_rail.sql:161) is stamped by the rail itself. This is the one non-pseudonymous store in platform_db — it keeps the buyer's name, email and billing country VERBATIM — so a sandbox row lingering here is a real person's data retained for no reason, not just untidiness."
+    },
+    "provider_accounts": {
+      "marker": "provider",
+      "resolver": "provider-register",
+      "reason": "NO `app_version` COLUMN and no `environment` column either: the row is DERIVED from a notification rather than received, so the environment lives on the notification it was derived from. `provider` is the column it does carry, and it is a closed set the legal register owns. The row links a person to a subscription, which is why it deliberately carries `user_id` and joins the erasure sweep."
+    },
+    "unclaimed_payments": {
+      "marker": "environment",
+      "resolver": "live-environment",
+      "reason": "NO `app_version` COLUMN: written by the webhook when money arrived and no account could be resolved. `environment` (0004_money_rail.sql) is stamped by the rail. A sandbox row here is the most misleading kind of residue in the whole schema — it is evidence of an unresolved real payment, and a fake one wastes exactly the investigation the table exists to make possible."
+    },
+    "cancellation_requests": {
+      "marker": "environment",
+      "resolver": "live-environment",
+      "reason": "NO `app_version` COLUMN: written by the cancellation route (0005) from the authenticated session, not from an app envelope. `environment` is NOT NULL in the DDL for the same [5]M-12 reason as the rest of the rail, so the marker is guaranteed present and only its VALUE can be wrong."
+    },
+    "revocation_reasons": {
+      "marker": "reason",
+      "resolver": "migration-seed",
+      "reason": "NO `app_version` COLUMN and no writer at all: this is REFERENCE DATA seeded by 0004_money_rail.sql:282 and extended only by an additive INSERT in a later migration. Nothing in the running system writes it, so 'traced to a released build' is the wrong question — the right one is 'is this row in the migration ledger'. Its 8 rows are the second reason emptiness could never have been the rule."
+    }
+  }
+}

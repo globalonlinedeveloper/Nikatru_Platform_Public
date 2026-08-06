@@ -199,10 +199,39 @@ export async function keepAliveSupabase(env: Env): Promise<void> {
  * something is silent in precisely the situation it exists to report. The
  * portfolio row below is unconditional for that reason.
  *
- * ⚠️ `ok` MEANS THE WORK SUCCEEDED, NEVER THAT A ROW WAS FOUND. That
- * distinction is the same one `keepAliveSupabase` got wrong until 2026-07-30,
- * when `ok` meant `status < 500` and recorded a nightly 401 as success. Here:
- * the query ran ⇒ ok=1, even at zero events; the query threw ⇒ ok=0.
+ * 🔴 `ok` MEANS THE DUTY IS REPORTING HEALTHY — AND ABSENCE IS NOT A GREEN
+ * VALUE. Corrected 2026-08-06, and the previous rule is left here because it was
+ * reasoned, written down, unit-tested, and wrong:
+ *
+ *   "`ok` means the work succeeded, never that a row was found. The query ran
+ *    ⇒ ok=1, even at zero events; the query threw ⇒ ok=0."
+ *
+ * It sounds like the lesson `keepAliveSupabase` taught on 2026-07-30, and it is
+ * its exact inversion. Under it this row returned `ok = 1` while its own
+ * `detail` read "0 events from 0 app(s) in 24h — the rail is SILENT", three
+ * consecutive nights running. `ok` is not a private note: it is the column
+ * `duty.platform-cron` declares as its `failingValue`, and the ONLY column
+ * tooling/ops/check-heartbeats.mjs asserts on. So the one job in this portfolio
+ * whose entire purpose is to make silence visible was, by construction, unable
+ * to make anything red. The detector reported that the thing it detects was
+ * happening, in a green row.
+ *
+ * The tie-break is this repository's own, and it is already written down in
+ * check-heartbeats.mjs's third failure kind: UNKNOWN FAILS CLOSED — "I could not
+ * tell" must never read as "it is fine". Zero events is precisely "I could not
+ * tell" (see the gap below: a broken rail and a quiet week are indistinguishable
+ * here), so it is red. A red that stays red until the rail produces something is
+ * the honest state, not a false alarm — and it is a state a person can close by
+ * looking, which "green and silent" never was.
+ *
+ * The three outcomes stay distinguishable, which is what `ok` alone never did:
+ *   events in the window ⇒ ok=1, detail counts them
+ *   zero events          ⇒ ok=0, detail says "the rail is SILENT"
+ *   the query threw      ⇒ ok=0, detail says "liveness query failed"
+ *
+ * ⚠️ AND THERE IS STILL NO THRESHOLD. Nothing here decides that N events is too
+ * few; the only distinction drawn is between some and NONE, which is the one
+ * distinction that does not need a number nobody can derive.
  *
  * 🔴 AND THE GAP, STATED IN THE DATA RATHER THAN IN A COMMENT NOBODY READS:
  * THIS CANNOT DISTINGUISH "THE RAIL IS BROKEN" FROM "NOBODY OPENED THE APP".
@@ -247,10 +276,12 @@ export async function analyticsLiveness(env: Env): Promise<void> {
       });
     }
     // UNCONDITIONAL. This row is the detector's own proof of life, and it is
-    // the ONLY row that exists when the answer is zero.
+    // the ONLY row that exists when the answer is zero — which is exactly why
+    // its `ok` had to stop being unconditional too. A row that always lands and
+    // always says ok is a row that carries no information at all.
     rows.push({
       target: '(portfolio)',
-      ok: true,
+      ok: total > 0,
       detail:
         total === 0
           ? `0 events from 0 app(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h — the rail is SILENT. Cannot yet distinguish a broken rail from no sessions: no independent liveness signal exists (see analyticsLiveness).`
