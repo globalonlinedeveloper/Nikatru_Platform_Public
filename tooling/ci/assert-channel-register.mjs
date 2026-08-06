@@ -44,6 +44,12 @@
 //   6. the AGGREGATING JOB's `needs` equals every other job in its workflow —
 //      the "never a partial set" half. Parsed structurally, comments stripped.
 //   7. disqualified channels name a LOCKED ADR that exists on disk
+//   8. [9]R-3 LIMB 2 — every `${{ secrets.X }}` a workflow names is DECLARED in
+//      the register, as signing material on a row or as non-signing with a
+//      reason. An undeclared name FAILS; a declared name no lane uses PRINTS.
+//      This was the open clause: until 2026-08-06 nothing in the tree read
+//      `signing.ciSecrets`, so the register documented the secrets without
+//      being an authority over them.
 //
 // ⚠️ DEFERRED-ROW GAPS PRINT, THEY DO NOT FAIL. Apple's Xcode 26 floor is real
 // and unpinned, and the channel is owner-deferred (OWNER_QUEUE A-4). Per the
@@ -1116,6 +1122,229 @@ for (const s of register.nonChannelSigningIdentities ?? []) {
   if (drill.required !== false && !/^\d{4}-\d{2}-\d{2}$/.test(String(drill.date ?? ''))) {
     prints.push(`UNDRILLED IDENTITY: ${s.id} — no dated restore drill on record.`);
   }
+}
+
+// ── 8. [9]R-3 limb 2 — a lane may name only secrets the register declares ────
+//
+// 🔴 THE CLAUSE NOTHING READ. [9]R-3's acceptance has two limbs: a release target
+// must not resolve to a debug or absent identity (covered on the Android lane by
+// assert-artifact-signed.mjs, which reads the signer off the built .aab), AND it
+// must not "name a secret that is not in the declared signing-identity register".
+// Measured 2026-08-06: `grep -rl ciSecrets` returned tooling/channel-register.json
+// and NOTHING ELSE. The four Play secret names sat in the register as prose while
+// android-signing.mjs parsed its names out of build.gradle.kts, so the register
+// was documentation, not an authority — a workflow could name any secret at all
+// and no check in the tree compared it to a declaration.
+//
+// WHY THE COMPARISON NEEDS BOTH SIDES IN THE REGISTER. A release workflow names
+// ~20 secrets that are not signing identities (API_BASE_URL, SUPABASE_ANON_KEY, a
+// store's upload credentials). Compare the lanes against the SIGNING names alone
+// and every workflow in the tree fails; compare against a hardcoded "looks like a
+// key" list in here and the guard becomes a private classifier that silently
+// mis-files the next secret somebody adds — the second declaration [pipeline F-2]
+// exists to forbid, and the exact shape KEY_KINDS was refactored out of. So the
+// register carries a PARTITION and this reads it: a secret a lane names is either
+// signing material on a row (`signing.ciSecrets.names`) or is declared in
+// `ciSecretRegister.nonSigning` with a kind and a reason. Anything else FAILS.
+// The undecided case is the failing one, which is the direction that matters — a
+// new signing secret cannot enter a lane by nobody noticing it.
+//
+// DIRECTION, AND WHY THE CONVERSE ONLY PRINTS. The acceptance sentence is
+// one-directional: it fails a LANE that names an undeclared secret. It makes the
+// register a CEILING on what a lane may name, not a floor on what a lane must
+// name. The floor — "actually applied" — is proved by reading the signature off
+// the artifact (assert-artifact-signed.mjs) and by android-signing.mjs failing a
+// release lane with no secrets; a name appearing in YAML proves nothing about
+// application, so failing on an unused declaration would swap a real proof for a
+// textual one. And the rows that would fail it are ios/macos-appstore, whose
+// identities do not exist because no Apple account does (OWNER_QUEUE A-4) —
+// blocking all CI on owner-gated work, against the standing rule ([pipeline C-6]).
+// So a declared-but-unnamed secret PRINTS on every run instead.
+//
+// ⚠️ WHAT THIS DOES NOT CLOSE, stated rather than implied: it compares the
+// register to the WORKFLOWS, never to apps/*/android/app/build.gradle.kts. Gradle
+// remains the authority android-signing.mjs derives from, so a rename in Gradle
+// alone is still silent. [9]R-3 stays PARTIAL for that reason and for the Apple,
+// Windows-direct and AppImage rows, which have no lane to check at all.
+const WORKFLOW_DIR = '.github/workflows';
+
+/** REQUIRED_COVERAGE — the floor that stops this ranging over nothing.
+ *
+ *  An assertion whose domain is empty passes for the wrong reason, and this file
+ *  already carries one recorded case (section 1's whole reason for existing). The
+ *  ways this check can go blind are all the same shape: the scan finds no
+ *  workflows, the `${{ … }}` extractor breaks, the register's `ciSecrets` names
+ *  drift out of the namespace the lanes speak. Every one of them collapses the
+ *  INTERSECTION of "declared signing secrets" and "secrets a lane names" to zero,
+ *  so that intersection is the floor — checked whenever anything is declared. */
+const REQUIRED_COVERAGE = { declaredSigningSecretsNamedByALane: 1 };
+
+const secretRegister =
+  register.ciSecretRegister !== null && typeof register.ciSecretRegister === 'object' ? register.ciSecretRegister : {};
+const secretKinds = new Set(Object.keys(secretRegister.kinds ?? {}));
+
+/** The declared NOT-signing half of the partition. */
+const nonSigningSecrets = new Map();
+for (const e of Array.isArray(secretRegister.nonSigning) ? secretRegister.nonSigning : []) {
+  const name = typeof e?.name === 'string' ? e.name.trim() : '';
+  if (name === '') {
+    problems.push('`ciSecretRegister.nonSigning` has an entry with no `name`. An unnamed classification classifies nothing.');
+    continue;
+  }
+  if (nonSigningSecrets.has(name)) {
+    problems.push(`\`ciSecretRegister.nonSigning\` declares "${name}" twice. Two entries for one secret are two answers to "is this a signing identity?".`);
+  }
+  if (!secretKinds.has(e?.kind)) {
+    problems.push(
+      `\`ciSecretRegister.nonSigning\` entry "${name}" has kind "${e?.kind}", which \`ciSecretRegister.kinds\` does not declare (${[...secretKinds].join(', ') || 'nothing is declared'}). The vocabulary is derived from the register, never held here.`,
+    );
+  }
+  if (typeof e?.why !== 'string' || e.why.trim().length < 20) {
+    problems.push(
+      `\`ciSecretRegister.nonSigning\` entry "${name}" carries no \`why\`. Without one the cheapest way to silence a [9]R-3 failure is to paste the name into this array, which turns a classification decision into a copy-paste and re-opens the hole limb 2 closes.`,
+    );
+  }
+  nonSigningSecrets.set(name, e);
+}
+
+/** The SIGNING half, collected off the rows. A row whose identity EXISTS and has
+ *  a LANE must say which secrets carry that identity into CI — that is what stops
+ *  the intersection floor below from being satisfiable by deleting the names. A
+ *  row whose identity does not exist yet has nothing to declare and PRINTS. */
+const signingSecrets = new Map();
+const collectSigning = (label, signing, hasLane) => {
+  const keyKind = signing?.keyKind;
+  const names = Array.isArray(signing?.ciSecrets?.names) ? signing.ciSecrets.names : null;
+  const identityExists = typeof signing?.identity === 'string' && signing.identity.trim() !== '';
+  if (names === null) {
+    if (keyKind !== undefined && keyKind !== 'none' && identityExists && hasLane) {
+      problems.push(
+        `${label} holds a "${keyKind}" identity (${signing.identity}) and has a lane, but declares no \`signing.ciSecrets.names\`. [9]R-3 limb 2 makes the register the authority on which secrets carry a signing identity into CI; a row with a key, a lane and no declared secrets leaves that authority empty, and an empty authority accepts every name.`,
+      );
+    } else if (keyKind !== undefined && keyKind !== 'none' && !identityExists) {
+      // ⚠️ TWO DIFFERENT FACTS, AND CONFLATING THEM WOULD PUT A FALSE CLAIM IN
+      // THE OUTPUT. `identity: null` is a row saying its identity does not exist
+      // yet (the Apple rows, owner-gated on A-4). A row with NO `identity` field
+      // is saying nothing about existence — content-pack-k1's key demonstrably
+      // exists, it is pinned in packages/core/lib/src/content/pack_verifier.dart.
+      // Both are uncovered by limb 2; only one of them is uncovered because the
+      // key is missing.
+      const why = Object.hasOwn(signing ?? {}, 'identity')
+        ? 'its identity does not exist yet, so there is no secret to declare (owner-gated)'
+        : 'it names no `identity` this guard can resolve to a CI lane — which is not a claim that no key exists';
+      prints.push(
+        `NO CI SECRETS TO CHECK: ${label} — keyKind "${keyKind}"; ${why}. [9]R-3 limb 2 is UNENFORCEABLE on this row: it is uncovered, not covered.`,
+      );
+    }
+    return;
+  }
+  if (keyKind === 'none') {
+    problems.push(
+      `${label} declares \`signing.ciSecrets\` with keyKind "none" — the register's own vocabulary says that kind means "the channel signs for us". A row cannot both hold no key and need secrets to use one.`,
+    );
+  }
+  if (names.length === 0) {
+    problems.push(`${label} declares \`signing.ciSecrets.names\` as an empty list. Declaring nothing is not declaring.`);
+  }
+  for (const n of names) {
+    if (typeof n !== 'string' || n.trim() === '') {
+      problems.push(`${label} declares a non-string entry in \`signing.ciSecrets.names\`.`);
+      continue;
+    }
+    if (nonSigningSecrets.has(n)) {
+      problems.push(
+        `"${n}" is declared BOTH as signing material on ${label} and as non-signing in \`ciSecretRegister.nonSigning\`. One of the two is wrong and nothing says which — which is worse than either answer.`,
+      );
+    }
+    if (!signingSecrets.has(n)) signingSecrets.set(n, label);
+  }
+};
+for (const c of channels) collectSigning(`channel "${c.id ?? '(unnamed)'}"`, c.signing, c.lane != null);
+for (const s of register.nonChannelSigningIdentities ?? []) collectSigning(`signing identity "${s.id ?? '(unnamed)'}"`, s, false);
+
+/** What the workflows actually name. A secret reference in GitHub Actions is only
+ *  valid inside a `${{ … }}` expression, so the expressions are extracted first
+ *  and the name matched inside them — parsed context, not a bare text grep. The
+ *  bare grep is not a hypothetical: `node tooling/ci/scan-secrets.mjs` contains
+ *  the literal `secrets.mjs` and a text scan reports it as a secret named `mjs`.
+ *  Comments are stripped first, the same way `workflow()` above strips them. */
+const workflowFiles = [];
+if (existsSync(abs(WORKFLOW_DIR))) {
+  for (const entry of listDir(abs(WORKFLOW_DIR))) {
+    if (/\.ya?ml$/.test(entry)) workflowFiles.push(`${WORKFLOW_DIR}/${entry}`);
+  }
+}
+const observedSecrets = new Map();
+for (const rel of workflowFiles) {
+  const raw = read(rel);
+  if (raw === null) continue;
+  const stripped = raw.replace(/^\s*#.*$/gm, '').replace(/\s#.*$/gm, '');
+  for (const expr of stripped.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+    if (/\bsecrets\s*\[/.test(expr[1])) {
+      problems.push(
+        `${rel} names a secret by EXPRESSION (\`secrets[…]\`). A name computed at run time cannot be compared to the register, so [9]R-3 limb 2 cannot be enforced on it — the whole check would be one indirection away from vacuous. Name the secret literally.`,
+      );
+    }
+    for (const m of expr[1].matchAll(/\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+      if (!observedSecrets.has(m[1])) observedSecrets.set(m[1], new Set());
+      observedSecrets.get(m[1]).add(rel);
+    }
+  }
+}
+
+// COVERAGE (a): the lanes the register names must be INSIDE the scanned set, or
+// the scan and the register are describing different directories and the
+// comparison below is between a set and an unrelated one.
+const scannedSet = new Set(workflowFiles);
+for (const c of channels) {
+  for (const w of [c.lane?.workflow, c.submission?.workflow, register.aggregatingJob?.workflow]) {
+    if (typeof w !== 'string' || w === '' || !existsSync(abs(w)) || scannedSet.has(w)) continue;
+    coverageLost([
+      `the register names ${w} as a lane, it exists on disk, and it is NOT in the ${WORKFLOW_DIR} scan.`,
+      'The [9]R-3 limb-2 comparison would then range over workflows that are not the lanes,',
+      'and report clean about the ones that are. Point the scan at the lanes or move the lane.',
+    ]);
+  }
+}
+// COVERAGE (b): the two sides must share at least one name, or they are disjoint
+// namespaces and the comparison proves nothing about signing at all.
+const signingSecretsNamedByALane = [...signingSecrets.keys()].filter((n) => observedSecrets.has(n));
+if (signingSecrets.size > 0 && signingSecretsNamedByALane.length < REQUIRED_COVERAGE.declaredSigningSecretsNamedByALane) {
+  coverageLost([
+    `${signingSecrets.size} signing secret(s) are declared in the register and NONE of them is named by any of the ${workflowFiles.length} workflow(s) scanned.`,
+    `Declared: ${[...signingSecrets.keys()].join(', ')}.`,
+    `Observed across the lanes: ${observedSecrets.size === 0 ? '(none at all — the scan found no `${{ secrets.X }}` reference anywhere)' : [...observedSecrets.keys()].sort().join(', ')}.`,
+    'The register and the lanes are speaking about disjoint sets of names, so every check below',
+    'would range over an empty intersection and report clean. This is COVERAGE, not a mismatch:',
+    'it fires whether the register was renamed, the workflows moved, or the extractor broke.',
+  ]);
+}
+
+// The failing direction: a lane naming a secret nothing declares.
+for (const [name, wfs] of [...observedSecrets.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+  if (signingSecrets.has(name) || nonSigningSecrets.has(name)) continue;
+  problems.push(
+    `${[...wfs].sort().join(', ')} name(s) \`secrets.${name}\`, which the register does not declare. [9]R-3: a release lane may name only secrets the register enumerates — either as signing material on a channel row (\`signing.ciSecrets.names\`) or in \`ciSecretRegister.nonSigning\` with a kind and a reason it is not a signing identity. An unclassified secret is exactly the case limb 2 names: nobody can say whether a signing identity just entered CI unenumerated.`,
+  );
+}
+// The converse PRINTS — see the header for why the acceptance sentence is a
+// ceiling and not a floor.
+for (const [name, owner] of signingSecrets) {
+  if (observedSecrets.has(name)) continue;
+  prints.push(
+    `SIGNING SECRET DECLARED, NO LANE NAMES IT: ${name} (${owner}). Declared as signing material and no workflow references it — the identity is enumerated but not applied. Printed, not failed: the acceptance sentence bounds what a lane MAY name, and "actually applied" is proved by reading the signer off the artifact, not by a name in YAML.`,
+  );
+}
+for (const name of nonSigningSecrets.keys()) {
+  if (observedSecrets.has(name)) continue;
+  prints.push(
+    `DECLARED SECRET NO WORKFLOW NAMES: ${name} — classified in \`ciSecretRegister.nonSigning\` and referenced nowhere. A stale classification is a pre-authorisation for a name nobody uses; delete it when the lane that needed it is gone.`,
+  );
+}
+if (observedSecrets.size > 0) {
+  ok(
+    `${observedSecrets.size} secret(s) named across ${workflowFiles.length} workflow(s), all declared; ${signingSecrets.size} signing, ${signingSecretsNamedByALane.length} of those named by a lane [9]R-3 limb 2`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

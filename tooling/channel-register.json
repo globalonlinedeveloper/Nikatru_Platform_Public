@@ -395,6 +395,149 @@
     "own-signing-key": "our own detached signature, no gatekeeper verifying it for us"
   },
 
+  "ciSecretRegister": {
+    "_why": [
+      "🔴 [9]R-3 LIMB 2 — 'a guard fails if a release build target's signing configuration ... names a",
+      "secret that is not in the declared signing-identity register.' Until 2026-08-06 NOTHING IN THE",
+      "REPOSITORY READ `signing.ciSecrets` — `grep -rl ciSecrets` returned this file and nothing else.",
+      "The four Play names sat here as documentation while android-signing.mjs parsed its names out of",
+      "build.gradle.kts, so the register was not the authority the requirement says it is: a workflow",
+      "could name ANY secret and no check anywhere compared it to a declaration.",
+      "",
+      "WHY THIS BLOCK IS NEEDED AT ALL, rather than just reading `signing.ciSecrets`. The failing",
+      "condition is 'names a secret that is NOT in the register', and a release workflow legitimately",
+      "names ~20 secrets that are not signing identities — API_BASE_URL, SUPABASE_ANON_KEY, a store's",
+      "upload credentials. Checking only against the signing names would fail every workflow in the",
+      "tree; checking only the four that happen to look Android-ish would be a hardcoded classifier",
+      "that silently mis-files the next secret somebody adds. So the register carries BOTH SIDES of a",
+      "PARTITION: a secret a workflow names is either signing material on a channel row, or it is",
+      "declared here as NOT signing material, with a reason. Anything else FAILS — which means a new",
+      "secret cannot enter a lane without a human classifying it, and the fail-closed direction is the",
+      "one that matters (an unclassified secret defaults to 'stop', never to 'assume it is harmless').",
+      "",
+      "⚠️ THIS LIST IS NOT A SECURITY BOUNDARY AND MUST NOT BE READ AS ONE. It records what each name",
+      "IS, so that a signing identity cannot arrive unenumerated. It says nothing about who may read a",
+      "secret at runtime — GitHub's environment protection rules are the only thing that does.",
+      "",
+      "A `why` is REQUIRED on every entry, and the guard enforces it. Without it the cheapest way to",
+      "silence a failure is to paste the name into this array, which converts a classification decision",
+      "into a copy-paste and re-opens exactly the hole limb 2 closes."
+    ],
+    "kinds": {
+      "publishing-credential": "authenticates an upload or deploy to a distribution channel. It authorises PUBLISHING; it is not key material any artifact is signed with — the channel either re-signs (MS Store, Snap) or holds the signing key itself (Play App Signing).",
+      "service-credential": "authenticates CI to a backend service it operates on (Supabase management, service-role access). Never enters an artifact and signs nothing.",
+      "build-config": "a value compiled into or read by a build — an endpoint, a project ref, a publishable key. Held as a repository secret to keep it out of the public tree, not because it is signing material.",
+      "github-provided": "issued by GitHub per run. Nobody declares, rotates or custodies it, so it has no signing-identity dimension at all."
+    },
+    "nonSigning": [
+      {
+        "name": "API_BASE_URL",
+        "kind": "build-config",
+        "why": "The Worker endpoint the app is built against, passed as --dart-define. A URL, not a credential."
+      },
+      {
+        "name": "SUPABASE_URL",
+        "kind": "build-config",
+        "why": "Project endpoint, --dart-define. Public in every shipped client; held as a secret only to keep the project ref out of the public tree."
+      },
+      {
+        "name": "SUPABASE_ANON_KEY",
+        "kind": "build-config",
+        "why": "The PUBLISHABLE key. It ships inside every client binary by design and is bounded by row-level security, not by secrecy."
+      },
+      {
+        "name": "SUPABASE_PROJECT_REF",
+        "kind": "build-config",
+        "why": "Project identifier used by the ops-watch lane to address the right project. An identifier, not an authenticator."
+      },
+      {
+        "name": "GLITCHTIP_DSN",
+        "kind": "build-config",
+        "why": "Crash-sink ingest URL, --dart-define. A DSN is a write-only ingest credential that ships in the client; it authorises no read and signs nothing."
+      },
+      {
+        "name": "SUPABASE_SERVICE_ROLE_KEY",
+        "kind": "service-credential",
+        "why": "Bypasses row-level security, so it is a real secret — but it authenticates CI to the database (e2e seeding, screenshot fixtures). It never touches an artifact and no build target signs with it."
+      },
+      {
+        "name": "SUPABASE_PAT",
+        "kind": "service-credential",
+        "why": "Supabase management-API token used by the ops-watch lane to read project health. Operates the project; signs nothing."
+      },
+      {
+        "name": "CLOUDFLARE_API_TOKEN",
+        "kind": "publishing-credential",
+        "why": "Deploys the web channel and the Workers. The web row's keyKind is `none` for exactly this reason: Cloudflare serves our bytes under Cloudflare's certificate, so there is no identity of ours in the path — losing this token costs a rotation, not a channel."
+      },
+      {
+        "name": "CLOUDFLARE_ACCOUNT_ID",
+        "kind": "publishing-credential",
+        "why": "Account identifier that scopes the token above. Not itself an authenticator; kept as a secret to avoid publishing the account id."
+      },
+      {
+        "name": "PLAY_SERVICE_ACCOUNT_JSON",
+        "kind": "publishing-credential",
+        "why": "🔴 THE DISTINCTION THIS ENTRY EXISTS TO MAKE. This authorises an UPLOAD to the Play Console; the four ANDROID_* names on the android-play row are what SIGNS the bundle. Losing this is a rotation in the Google Cloud console. Losing the upload key is a request to Google to reset it, and losing the app-signing key Play holds would be unrecoverable — which is why only one of the two sets is signing material."
+      },
+      {
+        "name": "APP_STORE_CONNECT_PRIVATE_KEY",
+        "kind": "publishing-credential",
+        "why": "An App Store Connect API key. It signs the JWT that authenticates the upload — NOT the artifact. The Apple identity that signs a build is a distribution certificate, and `ios-appstore.signing.identity` is null because no Apple Developer account exists yet (OWNER_QUEUE A-4). When that certificate arrives it belongs on the row as signing material, not here."
+      },
+      {
+        "name": "APP_STORE_CONNECT_KEY_ID",
+        "kind": "publishing-credential",
+        "why": "Names which ASC API key the private key above is. An identifier."
+      },
+      {
+        "name": "APP_STORE_CONNECT_ISSUER_ID",
+        "kind": "publishing-credential",
+        "why": "The ASC issuer the key belongs to. An identifier."
+      },
+      {
+        "name": "APP_STORE_CONNECT_IOS_APP_ID",
+        "kind": "publishing-credential",
+        "why": "Which App Store record an iOS upload targets. An identifier."
+      },
+      {
+        "name": "APP_STORE_CONNECT_MACOS_APP_ID",
+        "kind": "publishing-credential",
+        "why": "Which App Store record a macOS upload targets. An identifier."
+      },
+      {
+        "name": "MS_STORE_CLIENT_ID",
+        "kind": "publishing-credential",
+        "why": "Partner Center Azure AD application id used to submit the .msix. The windows-store row's keyKind is `none` because the Store re-signs the package, so nothing in this path is key material of ours."
+      },
+      {
+        "name": "MS_STORE_CLIENT_SECRET",
+        "kind": "publishing-credential",
+        "why": "The credential half of the Partner Center application above. Authorises submission; the Store still re-signs."
+      },
+      {
+        "name": "MS_STORE_TENANT_ID",
+        "kind": "publishing-credential",
+        "why": "Azure AD tenant the Partner Center application lives in. An identifier."
+      },
+      {
+        "name": "MS_STORE_PRODUCT_ID",
+        "kind": "publishing-credential",
+        "why": "Which Partner Center product a submission targets. An identifier."
+      },
+      {
+        "name": "SNAPCRAFT_STORE_CREDENTIALS",
+        "kind": "publishing-credential",
+        "why": "Exported `snapcraft` store credentials. The linux-snap row's keyKind is `none` because Canonical signs the binary — this authorises the upload and nothing else."
+      },
+      {
+        "name": "GITHUB_TOKEN",
+        "kind": "github-provided",
+        "why": "Minted by GitHub for the run. Not declared, not rotated, not custodied by us — it has no signing-identity dimension to enumerate."
+      }
+    ]
+  },
+
   "channels": [
     {
       "id": "web",
@@ -501,7 +644,19 @@
             "two copies of that list drift and the drift is silent (the script would export a name Gradle no",
             "longer reads, and every build would fall back to debug with both halves reporting success).",
             "ANDROID_KEYSTORE_BASE64 is the exception and is declared rather than derived: Gradle wants a",
-            "PATH, and a path cannot travel through a repository secret."
+            "PATH, and a path cannot travel through a repository secret.",
+            "",
+            "✅ THIS LIST NOW HAS A READER (2026-08-06). It was written as documentation and, for two days,",
+            "that is all it was — the same 'a value with no reader drifts silently' trap the `_aliasNote`",
+            "below records catching the alias field. assert-channel-register.mjs now scans every workflow",
+            "for `${{ secrets.NAME }}` and requires each name to be either signing material on a row (this",
+            "list) or declared in `ciSecretRegister.nonSigning`. Two consequences worth stating: a lane",
+            "naming a secret nobody declared FAILS, and a name renamed HERE and nowhere else is caught as",
+            "COVERAGE LOST rather than passing over an empty intersection.",
+            "",
+            "⚠️ GRADLE IS STILL THE AUTHORITY FOR THE THREE, and nothing above changes that. The new check",
+            "compares this list to the WORKFLOWS; it does not compare it to build.gradle.kts. A rename in",
+            "Gradle alone is still silent, and that gap is recorded rather than papered over."
           ],
           "names": [
             "ANDROID_KEYSTORE_BASE64",
