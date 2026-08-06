@@ -24,7 +24,7 @@
 // `verifiedOn` date or this guard fails, and a row whose `value` is null is
 // UNVERIFIED — it prints, and deriving a cap from it is itself a failure.
 //
-// ── FIVE LIMBS, EACH WITH A WRITABLE FAILING INPUT ───────────────────────────
+// ── SIX LIMBS, EACH WITH A WRITABLE FAILING INPUT ────────────────────────────
 //   1. every numeric ceiling row is SOURCED and DATED
 //   2. every vendor surface has at least one ceiling row (a relationship to
 //      tooling/capability-register.json, a list assert-vendor-portability.mjs
@@ -36,13 +36,30 @@
 //      directions — a stale entry makes the accounting look complete
 //   5. the deployed configs: cron count, D1 database count, KV namespace count
 //      and every rate-limiter `period`, against their sourced ceilings
+//   6. the WRITE-AMPLIFICATION factor is COUNTED from the schema, not typed
+//
+// ── LIMB 6: A MODEL WHOSE NUMBER NOBODY CAN RE-DERIVE ───────────────────────
+// [pipeline 11]E-14 recorded a capacity model whose acceptance criterion was
+// "a recorded capacity model STATES each ceiling … and NAMES where the numbers
+// are read". Every verb is satisfied by writing prose — and the prose was WRONG
+// BY 5×. D1 bills ROWS WRITTEN, an index row IS a row written, and `events`
+// carries four indexes, so one event costs 1 + 4 = 5 rows and every headroom
+// figure downstream was five times too generous. Nothing could say so, because
+// the factor was a number in a document rather than a count of the schema.
+//
+// So limb 6 parses the migrations for `CREATE INDEX … ON <table>`, computes
+// 1 base row + N index rows, divides the ceiling by it, and FAILS when the
+// stored value disagrees. Adding a fifth index moves the headroom by itself.
 //
 // ⚠️ COVERAGE IS A RELATIONSHIP, NEVER A NUMBER. Limb 2's domain is the vendor
 // surface list; limb 3's is every constant the scan finds; limb 4's is every
-// batch call site on disk; limb 5's is every wrangler config on disk. The only
-// integers here are self-checks that the SCANS still find anything at all —
-// because a parser that matches nothing reports perfect agreement with an empty
-// register, which is this repo's single most repeated failure.
+// batch call site on disk; limb 5's is every wrangler config on disk; limb 6's
+// is every .sql in the declared migrations directory. The only integers here
+// are self-checks that the SCANS still find anything at all — because a parser
+// that matches nothing reports perfect agreement with an empty register, which
+// is this repo's single most repeated failure. Limb 6's own version of that:
+// an index parser that matches NOTHING derives 1 row per event, which is
+// exactly the 5×-optimistic number E-14's research pass rejected.
 //
 // Usage:  node tooling/ci/assert-ceiling-budget.mjs [repoRoot]
 // Exit 0 = every cap derives from a sourced ceiling; 1 = one does not.
@@ -51,6 +68,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CEILINGS = 'tooling/ceilings.json';
@@ -574,6 +592,151 @@ if (configChecksRun === 0) {
   ]);
 }
 
+// ── LIMB 6 — the write-amplification factor is COUNTED, never typed ──────────
+// [11]E-14: "`rows_written_per_event` is computed by counting the indexes on
+// `events`, not typed into a document. Adding a fifth index then changes the
+// headroom number automatically, and a model whose stored value disagrees with
+// the count FAILS."
+const amp = register.writeAmplification;
+if (!amp || typeof amp !== 'object' || Array.isArray(amp)) {
+  coverageLost([
+    `${CEILINGS} declares no \`writeAmplification\` block, so limb 6 never runs.`,
+    'That limb is the whole of E-14\'s replacement acceptance: without the block there is no stored',
+    'number to disagree with the schema, and a capacity model nobody can contradict is exactly the',
+    'prose-satisfies-the-criterion shape E-14 was re-opened for — it read 1 row per event for two days',
+    'while the schema said 5.',
+  ]);
+}
+if (typeof amp.migrationsDir !== 'string' || typeof amp.table !== 'string') {
+  coverageLost([
+    `${CEILINGS} \`writeAmplification\` names no \`migrationsDir\` and/or no \`table\`.`,
+    'Those two ARE limb 6\'s scan domain. With either missing the index count ranges over nothing and',
+    'derives 1 row per event — the 5×-optimistic number this limb exists to make impossible.',
+  ]);
+}
+
+const migDir = abs(amp.migrationsDir);
+const migFiles = existsSync(migDir) && statSync(migDir).isDirectory()
+  ? listDir(migDir).filter((n) => n.toLowerCase().endsWith('.sql')).sort()
+  : [];
+if (migFiles.length === 0) {
+  coverageLost([
+    `\`writeAmplification.migrationsDir\` = "${amp.migrationsDir}" holds NO .sql file.`,
+    'Every index below is counted out of those files. None found, the count is zero, the derived factor',
+    'is 1, and the model reports agreement with a schema it never read.',
+  ]);
+}
+
+/** Every index this migration set leaves in place, by name.
+ *
+ *  🔴 A REAL PARSE, NOT A GREP — the repo rule, and this file is the reason for
+ *  it: 0002_analytics.sql's HEADER COMMENT contains the words "UNIQUE INDEX",
+ *  "write amplification" and "PRIMARY KEY" in a paragraph explaining a shape it
+ *  deliberately does NOT use. A text scan reads that paragraph as schema.
+ *  Comments AND string literals are blanked first (both reductions preserve byte
+ *  offsets, so the line numbers reported below are the real ones), statements are
+ *  split on `;` so a `CREATE INDEX` whose `ON <table>` sits on the NEXT line is
+ *  still one statement — 0002:85-86 is exactly that, and it targets a DIFFERENT
+ *  table, so a line-oriented scan would either miss it or miscount it. */
+const liveIndexes = new Map(); // indexName -> { table, file, line }
+const tablesCreated = new Set();
+let indexStatements = 0;
+
+const CREATE_TABLE_RE = /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`[]?([A-Za-z_][\w$]*)["'`\]]?\s*\(/i;
+// A statement that OPENS with CREATE … INDEX. Deliberately anchored: an
+// unanchored `CREATE[\s\S]*INDEX` also matches a CREATE TABLE whose body happens
+// to contain the word, and a limb that over-counts is as wrong as one that
+// under-counts — it would silently raise the factor and shrink the headroom.
+const INDEX_HEAD_RE = /^\s*CREATE\s+(?:\w+\s+)*?INDEX\b/i;
+const CREATE_INDEX_RE =
+  /^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`[]?([A-Za-z_][\w$]*)["'`\]]?\s+ON\s+["'`[]?([A-Za-z_][\w$]*)["'`\]]?\s*\(/i;
+const DROP_INDEX_RE = /^\s*DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?["'`[]?([A-Za-z_][\w$]*)["'`\]]?/i;
+
+for (const f of migFiles) {
+  const rel = posix.join(amp.migrationsDir, f);
+  const rawSql = readFileSync(join(migDir, f), 'utf8');
+  const sql = stripStringLiterals(stripSourceComments(rawSql, '.sql'));
+  const lineOf = (idx) => rawSql.slice(0, idx).split('\n').length;
+
+  let start = 0;
+  for (let i = 0; i <= sql.length; i++) {
+    if (i !== sql.length && sql[i] !== ';') continue;
+    const stmt = sql.slice(start, i);
+    const at = start;
+    start = i + 1;
+    if (stmt.trim() === '') continue;
+
+    const t = CREATE_TABLE_RE.exec(stmt);
+    if (t) tablesCreated.add(t[1]);
+
+    if (!INDEX_HEAD_RE.test(stmt)) {
+      const d = DROP_INDEX_RE.exec(stmt);
+      if (d) liveIndexes.delete(d[1]);
+      continue;
+    }
+    indexStatements++;
+    const m = CREATE_INDEX_RE.exec(stmt);
+    if (!m) {
+      problems.push(
+        `${rel}:${lineOf(at + stmt.search(/\S/))} opens a \`CREATE … INDEX\` statement whose target table this scan could NOT read, so it was counted for NO table at all. An index the parser cannot attribute is an index missing from the amplification factor, and a failed parse only ever moves that factor DOWN — towards the 1-row-per-event answer that was already wrong by 5×. This is reported rather than skipped for exactly that reason. The known form that lands here is a DOUBLE-QUOTED identifier (\`ON "events"\`): string literals are blanked before this scan — the repo rule, and the reason a comment naming an index is not counted as one — and SQLite's double quotes are indistinguishable from a literal at that stage. No migration in this repo uses that form; write the identifier bare, or teach CREATE_INDEX_RE the shape you need.`,
+      );
+      continue;
+    }
+    liveIndexes.set(m[1], { table: m[2], file: rel, line: lineOf(at + stmt.search(/\S/)) });
+  }
+}
+
+if (!tablesCreated.has(amp.table)) {
+  coverageLost([
+    `no migration in "${amp.migrationsDir}" creates the table \`${amp.table}\` that \`writeAmplification\` sizes.`,
+    `${migFiles.length} .sql file(s) were read and ${tablesCreated.size} table(s) parsed out of them` +
+      `${tablesCreated.size ? ` (${[...tablesCreated].join(', ')})` : ''}.`,
+    'Either the table was renamed and this block still sizes the old one, or the DDL parse has stopped',
+    'reading CREATE TABLE. Both leave the index count below ranging over a table nobody writes to.',
+  ]);
+}
+
+const tableIndexes = [...liveIndexes.values()].filter((x) => x.table === amp.table);
+if (tableIndexes.length === 0) {
+  coverageLost([
+    `ZERO \`CREATE INDEX … ON ${amp.table}\` statements were parsed out of ${migFiles.length} migration file(s).`,
+    `The derived factor would be 1 row written per row inserted — WHICH IS THE EXACT NUMBER [11]E-14's`,
+    'sizing assumed before its research pass, and it was five times too generous. A zero here is a',
+    'broken parser reporting the original defect as a result.',
+  ]);
+}
+
+const ampCeiling = derivable(amp.ceiling);
+if (!ampCeiling.ok) {
+  problems.push(`\`writeAmplification\` derives its headroom from ceiling "${amp.ceiling}" — but ${ampCeiling.why}`);
+}
+
+const derivedPerEvent = 1 + tableIndexes.length;
+const where = tableIndexes.map((x) => `${x.file}:${x.line}`).join(', ');
+
+if (!Number.isFinite(amp.rowsWrittenPerEvent)) {
+  problems.push(
+    `${CEILINGS} \`writeAmplification\` declares no numeric \`rowsWrittenPerEvent\`. The schema says ${derivedPerEvent} (1 base row + ${tableIndexes.length} index rows: ${where}). The field is not optional: with nothing stored there is nothing for the count to contradict, and E-14's whole correction was that an unre-derivable number stayed wrong for two days.`,
+  );
+} else if (amp.rowsWrittenPerEvent !== derivedPerEvent) {
+  problems.push(
+    `${CEILINGS} \`writeAmplification.rowsWrittenPerEvent\` = ${amp.rowsWrittenPerEvent}, and the SCHEMA SAYS ${derivedPerEvent} — 1 base row + ${tableIndexes.length} index row(s) on \`${amp.table}\` (${where}). D1 bills rows written and an index row is a row written ("${ampCeiling.ok ? ampCeiling.row.source : amp.ceiling}"), so this factor multiplies every headroom figure downstream. [11]E-14: the value is COUNTED, never typed — do not edit it to match; either the index set changed on purpose (then this is the number to accept) or an index was added without anyone re-reading the capacity model.`,
+  );
+}
+
+if (ampCeiling.ok && derivedPerEvent > 0) {
+  const derivedPerDay = Math.floor(ampCeiling.row.value / derivedPerEvent);
+  if (!Number.isFinite(amp.eventsPerDayWithinCeiling)) {
+    problems.push(
+      `${CEILINGS} \`writeAmplification\` declares no numeric \`eventsPerDayWithinCeiling\`. It is ⌊${ampCeiling.row.value} ÷ ${derivedPerEvent}⌋ = ${derivedPerDay}, and storing it is what makes the HEADROOM — not just the factor — move by itself when an index lands.`,
+    );
+  } else if (amp.eventsPerDayWithinCeiling !== derivedPerDay) {
+    problems.push(
+      `${CEILINGS} \`writeAmplification.eventsPerDayWithinCeiling\` = ${amp.eventsPerDayWithinCeiling}, and the derivation gives ${derivedPerDay} = ⌊${ampCeiling.row.value} (ceiling "${amp.ceiling}") ÷ ${derivedPerEvent} (rows per event, counted from ${where})⌋. This is the number [11]E-14 states as the portfolio's daily event budget; a stored figure that disagrees with its own inputs is the 5× error again, one recomputation later.`,
+    );
+  }
+}
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (prints.length) {
   console.log('');
@@ -597,5 +760,11 @@ if (problems.length) {
       `(${checkedArithmetic} compared to a sourced ceiling, ${exempted} declared non-bounding)`,
   );
   ok(`${batchesAccounted} of ${foundSites.size} \`.batch(\` call site(s) accounted for; ${configChecksRun} account-wide config ceiling(s) counted across ${parsed.length} wrangler config(s)`);
+  ok(
+    `write amplification DERIVED, not read: ${indexStatements} \`CREATE INDEX\` statement(s) parsed from ` +
+      `${migFiles.length} migration file(s), ${tableIndexes.length} of them on \`${amp.table}\` (${where}) ` +
+      `⇒ ${derivedPerEvent} rows written per event, ⌊${ampCeiling.ok ? ampCeiling.row.value : '?'} ÷ ${derivedPerEvent}⌋ = ` +
+      `${amp.eventsPerDayWithinCeiling} events/day portfolio-wide`,
+  );
   console.log('\nassert-ceiling-budget: ok');
 }

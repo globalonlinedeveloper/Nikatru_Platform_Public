@@ -34,6 +34,9 @@
     "  · LIMB 5 the deployed configs themselves: total cron triggers, distinct D1 database names,",
     "    distinct KV namespaces and every rate-limiter `period` are compared to their sourced",
     "    account-wide ceilings across services/*/wrangler.jsonc AND the brick template     [B-6, B-7]",
+    "  · LIMB 6 the WRITE-AMPLIFICATION factor is COUNTED from the migrations (1 base row + one row per",
+    "    `CREATE INDEX … ON events`), never typed: `writeAmplification.rowsWrittenPerEvent` and the",
+    "    headroom derived from it must equal what the schema says, or the build fails         [11]E-14",
     "",
     "⚠️ THE COVERAGE FLOOR IS A RELATIONSHIP, NOT A NUMBER. Limb 2's left-hand side is the vendor",
     "surface list in tooling/capability-register.json; limb 3's domain is every numeric constant the",
@@ -106,6 +109,19 @@
       "verifiedOn": "2026-08-01",
       "ambiguity": "None.",
       "note": "🔴 THIS IS THE CEILING THAT BINDS FIRST AT SCALE, and it is the arithmetic B-7 turns on. 5 GB across the whole account divided by a 50-app portfolio is ~100 MB per database — FIVE TIMES TIGHTER than the 500 MB per-database limit above. So splitting `events` onto its own database protects the per-database ceiling while doing nothing at all for this one; only a retention rule bounds this. That is exactly why the owner's 2026-07-27 decision was BOTH, and neither substitutes for the other."
+    },
+    {
+      "id": "d1.rowsWrittenPerDay",
+      "value": 100000,
+      "paidValue": null,
+      "unit": "rows",
+      "scope": "per-account-per-day",
+      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "source": "https://developers.cloudflare.com/d1/platform/pricing/",
+      "sourceText": "Rows written | 100,000 / day | First 50 million / month included + $1.00 / million rows",
+      "verifiedOn": "2026-08-06",
+      "ambiguity": "🔴 THE AMPLIFICATION FACTOR IS NOT A CONSTANT, AND THAT IS WHY IT IS COUNTED RATHER THAN TYPED. The vendor states: \"Indexes will add an additional written row when writes include the indexed column, as there are two rows written: one to the table itself, and one to the index.\" The qualifier — *when writes include the indexed column* — means the derived factor is the WORST CASE for a full-row INSERT and an over-estimate for a partial UPDATE. The ingest route issues exactly a full-row INSERT, so the worst case IS the shape this portfolio writes; the `writeAmplification` block below derives it from the schema for that reason and no other. What the page does NOT settle: whether a DELETE amplifies identically (it matters only once [11]E-15's retention prune exists), and whether an `INSERT … ON CONFLICT DO NOTHING` that conflicts writes zero rows or one. Both are recorded rather than assumed, and both would make the derived number CONSERVATIVE, never optimistic. ⚠️ `paidValue: null` DOES NOT MEAN UNLIMITED HERE — unlike kv.readsPerDay, where null is what the vendor's page says. The Paid column of this table is a PRICE ($1.00 per million rows past 50 million per MONTH), not a per-day magnitude, so there is no comparable paid number to record and inventing one would be this register's own worst failure.",
+      "note": "🔴 THE CEILING [11]E-14's ENTIRE ARITHMETIC BINDS ON, AND IT WAS ABSENT FROM THIS REGISTER UNTIL 2026-08-06 — the requirement's headroom table cited a number no guard could reach. Recorded from the PRICING page because that is where Cloudflare prints it, and the Free column there is a PLATFORM LIMIT rather than a price: \"When your account hits the daily read and/or write limits, you will not be able to run queries against D1. D1 API will return errors to your client indicating that your daily limits have been exceeded.\" That sentence is what makes this row belong in a limits register at all — the `_readme`'s NOT-A-PRICING-FILE rule is about the PAID column, which is why `paidValue` is null. Nothing in services/*/src/ derives a `const` from this row: it bounds an AGGREGATE across a day, which no per-request constant can enforce (see ratelimit.accountingAccuracy — the limiters are per-colo and prove nothing account-wide). Its enforcement arm is [11]E-2's aggregate daily-write guard; its arithmetic arm is the `writeAmplification` block below."
     },
     {
       "id": "d1.maxBoundParametersPerQuery",
@@ -289,6 +305,42 @@
         "unboundedReason": "🔴 GENUINELY UNBOUNDED BY DATA, AND THE WORST OF THE FIVE. `ops` grows with the number of subscriptions due today PLUS one payment row per missed billing crossing, so a single app with a few hundred due renewals produces a batch far past 50 with no constant anywhere to annotate. It has never fired because Subly's row count is tiny. Chunking it is [4]B-11's increment (the fan-out already lives there) and must not be bolted on here: a retry/partial-failure policy invented at this call site would be the second one, and the cron's failure semantics are that increment's subject. Recorded, dated 2026-08-01, and printed on every run so it cannot go quiet again."
       }
     ]
+  },
+
+  "writeAmplification": {
+    "_why": [
+      "[pipeline 11]E-14 — 'rows_written_per_event is COMPUTED BY COUNTING THE INDEXES on `events`, not",
+      "typed into a document. Adding a fifth index then changes the headroom number automatically, and a",
+      "model whose stored value disagrees with the count FAILS.'",
+      "",
+      "🔴 WHY THE CLAUSE EXISTS. E-14's original acceptance was 'a recorded capacity model STATES each",
+      "ceiling … and NAMES where the numbers are read, checked at a stated cadence'. Every verb there is",
+      "satisfied by writing prose — and the prose that satisfied it was WRONG BY 5×, because the sizing",
+      "silently assumed one event costs one row written. D1 bills rows written, an index row IS a row",
+      "written, and `events` carries four indexes: one event costs 1 + 4 = 5. The error was not in the",
+      "arithmetic, it was in a number nobody could re-derive.",
+      "",
+      "DERIVED, NOT DECLARED. The two values below are the guard's EXPECTED answers, not its inputs:",
+      "assert-ceiling-budget.mjs parses the migrations for `CREATE INDEX … ON <table>`, computes",
+      "1 base row + N index rows, divides the ceiling by it, and FAILS when either stored number",
+      "disagrees. Editing a number here does not move the model; it breaks the build.",
+      "",
+      "⚠️ THE SCAN DOMAIN IS THE WHOLE MIGRATIONS DIRECTORY, NOT THE ONE FILE E-14 NAMES. The clause says",
+      "'the indexes on `events` in 0002_analytics.sql', which was true when it was written and stops being",
+      "true the moment a later migration adds one — the precise shape of check-migrations.mjs silently",
+      "dropping from 5 files to 4 and reporting PASS. Every .sql in `migrationsDir` is read, in order, and",
+      "a `DROP INDEX` is subtracted, so the count is the schema's LIVE index set rather than one file's.",
+      "",
+      "⚠️ NOT AN ENFORCEMENT ARM. This block makes the capacity MODEL re-derivable. It does not observe a",
+      "single real write — the account-wide daily total is [11]E-2's aggregate guard, and the per-colo rate",
+      "limiters prove nothing about it (ratelimit.accountingAccuracy is the citation for saying so)."
+    ],
+    "ceiling": "d1.rowsWrittenPerDay",
+    "migrationsDir": "services/platform/migrations",
+    "table": "events",
+    "rowsWrittenPerEvent": 5,
+    "eventsPerDayWithinCeiling": 20000,
+    "note": "5 = 1 base row + 4 indexes (0002_analytics.sql: idx_events_event_id, idx_events_app_ts, idx_events_app_evt_ts, idx_events_app_anon_ts). 20,000 = ⌊100,000 ÷ 5⌋, and it is a PORTFOLIO-WIDE daily number shared by every app, not a per-app one. E-14's launches/day and DAU rows are that figure divided by an events-per-launch ESTIMATE, which is a product guess and is deliberately NOT stored here — a guess given the same derived standing as a count is how the 5× error was written in the first place."
   },
 
   "configCeilings": {
