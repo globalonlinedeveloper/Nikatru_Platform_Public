@@ -115,11 +115,23 @@ export class SqliteD1 {
   }
 }
 
+/**
+ * subly_db's migration set, IN APPLICATION ORDER, exactly as
+ * `wrangler d1 migrations apply APP_DB` would apply it.
+ *
+ * Exported rather than kept inline in `realAppDb` because "this set re-applies
+ * cleanly" is itself a property under test ([pipeline B-8]) and a replay test
+ * must be able to name the set without re-listing it — a second list is a second
+ * thing to forget to extend when 0003 lands. Same reasoning, and the same shape,
+ * as `PLATFORM_MIGRATIONS` in services/platform/test/harness.ts.
+ */
+export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002];
+
 /** APP_DB with subly's real migrations applied, in order. `extraSchema` is for
  *  tests that need to force a DB-level failure the route cannot pre-empt (a
  *  trigger, say) in order to observe transaction behaviour. */
 export function realAppDb(extraSchema: string[] = []): SqliteD1 {
-  return new SqliteD1([init0001, init0002, ...extraSchema]);
+  return new SqliteD1([...SUBLY_MIGRATIONS, ...extraSchema]);
 }
 
 /**
