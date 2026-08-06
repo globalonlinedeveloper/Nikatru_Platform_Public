@@ -82,6 +82,15 @@ const COMMENT_STYLES = new Map([
   // and it asserts the reduction actually reduced rather than trusting this map.
   ['.kts', 'c'],
   ['.kt', 'c'],
+  // JSONC — the wrangler config format. C-family delimiters, and the branch
+  // that matters is scanQuoted's: `"https://…"` inside a string value must NOT
+  // be read as opening a line comment, which is the one way a naive JSONC
+  // stripper eats the rest of a config. Three guards carry a hand-rolled copy of
+  // this (assert-clone-contract, check-migrations, assert-platform-register);
+  // assert-no-do-alarms.mjs uses this one instead, and asserts on startup that
+  // the entry below still exists — because an unknown extension is returned
+  // VERBATIM and says nothing, exactly as the .kts note above records.
+  ['.jsonc', 'c'],
   ['.sql', 'sql'],
   ['.yaml', 'hash'],
   ['.yml', 'hash'],
