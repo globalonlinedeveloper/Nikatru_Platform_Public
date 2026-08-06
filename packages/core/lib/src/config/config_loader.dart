@@ -122,3 +122,34 @@ class ConfigLoader {
     return Result<AppConfig>.err(failure);
   }
 }
+
+/// A [ConfigTransport] that reports whether each fetch reached the network,
+/// without changing what the loader sees.
+///
+/// 🔴 THIS LIVES IN `packages/core`, NOT IN THE BRICK, AND THAT IS THE POINT.
+/// It was first written inside `__brick__/…/lib/state/providers.dart`, where
+/// `assert-no-seam-forks.mjs` immediately caught it: a class re-implementing a
+/// registered seam **inside the template** is a fork every stamped app
+/// inherits, which is exactly what [pipeline C-3] and [pipeline C-9] forbid.
+/// The behaviour was right; the address was wrong.
+///
+/// Why a decorator rather than a field on the result: `ConfigLoader.load`
+/// deliberately swallows transport failures so an offline launch still gets the
+/// last-good config, so the reachability signal has to be observed BELOW it.
+/// Widening [Result] would make a dozen consumers pay for a fact one banner
+/// needs.
+class ReportingConfigTransport implements ConfigTransport {
+  ReportingConfigTransport({required this.inner, required this.report});
+
+  final ConfigTransport inner;
+
+  /// Called once per fetch with `true` when the fetch did NOT reach the network.
+  final void Function(bool unreachable) report;
+
+  @override
+  Future<Result<Map<String, Object?>>> fetch(String appId) async {
+    final Result<Map<String, Object?>> r = await inner.fetch(appId);
+    report(!r.isOk);
+    return r;
+  }
+}

@@ -63,23 +63,43 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
       anchor: { file: WIDGETS, symbol: 'NotFoundScreen' },
       reachable: { file: ROUTER, pattern: 'errorBuilder:', why: 'go_router would show its own error page' },
     },
+    // 🔴 THESE TWO CARRIED NO `reachable` UNTIL 2026-08-06, MIRRORING THE REAL
+    // REGISTER — and the fixture passed, which is precisely the bug: `system
+    // .offline` was the entry whose widget had ZERO consumers in the whole
+    // repository while every check reported green. A fixture that keeps the old
+    // shape would now assert that the defect is acceptable.
     {
       id: 'system.offline',
       what: 'offline notice',
       status: 'present',
       anchor: { file: WIDGETS, symbol: 'OfflineNotice' },
+      reachable: { file: ROUTER, pattern: 'OfflineNotice(', why: 'nothing rendered it' },
     },
     {
       id: 'settings.appearance',
       what: 'theme choice',
       status: 'present',
       anchor: { file: ROUTER, symbol: 'SegmentedButton', kind: 'uses' },
+      reachable: { file: ROUTER, pattern: 'themeMode:', why: 'MaterialApp must read the override' },
     },
   ];
-  // Padding to clear the floor without inventing meaning.
-  // 17 since 2026-08-01: MIN_SCREENS went 22 -> 23 when the money rail added
-  // monetization.manage-plan to the register.
-  const padding = Array.from({ length: 17 }, (_, i) => ({
+  // Padding to clear the floors without inventing meaning.
+  //
+  // 🔴 THE PADDING IS `present`, NOT `todo`, SINCE 2026-08-06. It was 17 todos,
+  // which cleared MIN_SCREENS (a floor on how many entries are DECLARED) while
+  // leaving only 3 present — and MIN_PRESENT is a floor on how many are
+  // actually CHECKED. Todo padding would have made every case in this file fail
+  // on the new floor for a reason unrelated to the case under test, which is
+  // how a fixture ends up being weakened to keep itself green.
+  const padding = Array.from({ length: 19 }, (_, i) => ({
+    id: `settings.pad${i}`,
+    what: 'a present, anchored, reachability-proven screen',
+    status: 'present',
+    anchor: { file: ROUTER, symbol: 'SegmentedButton', kind: 'uses' },
+    reachable: { file: ROUTER, pattern: 'errorBuilder:', why: 'padding, proven like any other entry' },
+  }));
+  // A couple of real todos kept, so the todo branch still runs.
+  const todos = Array.from({ length: 2 }, (_, i) => ({
     id: `todo.pad${i}`,
     what: 'not yet built',
     status: 'todo',
@@ -120,7 +140,7 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
       declaredOn: '2026-07-29',
     },
   ];
-  let register = { screens: [...present, ...blocked, ...padding, ...notBuilding] };
+  let register = { screens: [...present, ...blocked, ...padding, ...todos, ...notBuilding] };
   register = mutate(register);
 
   const files = {
@@ -130,7 +150,7 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
       'class NotFoundScreen extends StatelessWidget {\n  const NotFoundScreen({super.key});\n}\n\nclass OfflineNotice extends StatelessWidget {\n  const OfflineNotice({super.key});\n}\n',
     [ROUTER]:
       router ??
-      'final router = GoRouter(\n  errorBuilder: (c, s) => const NotFoundScreen(),\n  routes: [],\n);\nfinal x = SegmentedButton<ThemeMode>(segments: []);\n',
+      'final router = GoRouter(\n  errorBuilder: (c, s) => const NotFoundScreen(),\n  routes: [],\n);\nfinal x = SegmentedButton<ThemeMode>(segments: []);\nfinal t = MaterialApp(themeMode: ref.watch(themeModeProvider));\nfinal o = OfflineNotice(message: m);\n',
     // The brick lib the purchase-path invariant reads.
     //
     // 🔴 ALL FIVE LIMBS PLUS THE GATE, and it has to be all-or-nothing: since
@@ -169,11 +189,11 @@ describe('assert-screen-set', () => {
   test('passes when every declared screen is present and reachable', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /23 screen\(s\) declared/);
-    assert.match(out, /3 screen\(s\) present and anchored/);
+    assert.match(out, /27 screen\(s\) declared/);
+    assert.match(out, /22 screen\(s\) present and anchored; 22 proven reachable/);
     // Blocked and todo must PRINT — a gap nobody sees is a gap that grows.
     assert.match(out, /2 BLOCKED/);
-    assert.match(out, /17 TODO/);
+    assert.match(out, /2 TODO/);
   });
 
   // ── present vs reachable — the distinction that keeps catching real bugs ──
@@ -295,6 +315,109 @@ describe('assert-screen-set', () => {
     }));
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST — the register declares only 3 screen\(s\)/);
+  });
+
+  // ── `reachable` IS MANDATORY (2026-08-06) ────────────────────────────────
+  //
+  // 🔴 THE DEFECT THESE REPLACE. `reachable` was OPTIONAL, so four entries in
+  // the real register simply omitted it and the guard printed
+  // "22 present and anchored; 18 additionally proven reachable" and exited 0.
+  // An absent assertion read exactly like a satisfied one, and it hid a real
+  // dead feature: `OfflineNotice` had ZERO consumers in the entire repository.
+  //
+  // ⚠️ These cases were all NEGATIVE-TESTED ON THE REAL TREE FIRST, not only
+  // here — deleting the real `OfflineNotice(` call site and the real
+  // `onTap: _contactSupport` tile both turned the real guard red. A fixture
+  // encodes the same misunderstanding as the guard it checks.
+  describe('the reachability half cannot be skipped by omission', () => {
+    test('FAILS when a present screen names no `reachable` at all', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => {
+          delete r.screens.find((s) => s.id === 'system.offline').reachable;
+          return r;
+        },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /`system\.offline` is PRESENT but names no `reachable`/);
+      assert.match(out, /SECOND HALF of C-13's acceptance/);
+    });
+
+    // The anchor must stay GREEN while reachability goes red — otherwise this
+    // proves nothing the anchor did not already prove.
+    test('the ANCHOR still passes when only the call site is gone', () => {
+      const { code, out } = run(tree({
+        router:
+          'final router = GoRouter(\n  errorBuilder: (c, s) => const NotFoundScreen(),\n  routes: [],\n);\n'
+          + 'final x = SegmentedButton<ThemeMode>(segments: []);\n'
+          + 'final t = MaterialApp(themeMode: ref.watch(themeModeProvider));\n',
+      }));
+      assert.equal(code, 1);
+      // 22 still ANCHORED — presence is untouched…
+      assert.match(out, /22 screen\(s\) present and anchored/);
+      // …and the offline entry is the one that lost its reachability proof.
+      assert.match(out, /`system\.offline` EXISTS but nothing reaches it/);
+    });
+
+    test('FAILS when an exemption argues nothing', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => {
+          const s = r.screens.find((x) => x.id === 'system.offline');
+          delete s.reachable;
+          s.reachableExempt = { declaredOn: '2026-08-06' }; // no `why`
+          return r;
+        },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /names no `reachable`/);
+    });
+
+    test('FAILS when an exemption is undated', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => {
+          const s = r.screens.find((x) => x.id === 'system.offline');
+          delete s.reachable;
+          s.reachableExempt = { why: 'it is special' };
+          return r;
+        },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /names no `reachable`/);
+    });
+
+    // The escape hatch is LOUD: a well-formed exemption is printed by id and
+    // reason on every run, and still fails the checked-in ceiling of zero.
+    test('a well-formed exemption is PRINTED, and still breaches the ceiling', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => {
+          const s = r.screens.find((x) => x.id === 'system.offline');
+          delete s.reachable;
+          s.reachableExempt = { why: 'no caller can exist', declaredOn: '2026-08-06' };
+          return r;
+        },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /1 PRESENT screen\(s\) EXEMPT from the reachability half/);
+      assert.match(out, /· system\.offline — no caller can exist \(2026-08-06\)/);
+      assert.match(out, /the checked-in ceiling is 0/);
+    });
+  });
+
+  // ── the floor that stops WHOLESALE demotion ──────────────────────────────
+  // Per-entry the mandatory rule is airtight, but moving present screens to
+  // `todo` takes them out of the loop entirely: every message stays truthful
+  // while the guard checks almost nothing.
+  test('FAILS when present screens are demoted to todo wholesale', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => ({
+        screens: r.screens.map((s, i) =>
+          s.status === 'present' && i > 2
+            ? { id: s.id, what: s.what, status: 'todo', declaredOn: '2026-08-06' }
+            : s,
+        ),
+      }),
+    }));
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 22/);
   });
 
   // A register of nothing-but-todo passes every anchor check by having none.

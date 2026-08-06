@@ -19,6 +19,24 @@
 // it EXISTS and `reachable` proves something CALLS it, and the second is the one
 // that keeps catching real defects.
 //
+// 🔴 …AND `reachable` WAS OPTIONAL UNTIL 2026-08-06, WHICH MADE IT SKIPPABLE BY
+// OMISSION. Four `present` entries — `system.offline`, `settings.appearance`,
+// `settings.support`, `settings.about` — carried no `reachable` key at all, and
+// this guard printed `22 present and anchored; 18 additionally proven reachable`
+// and exited 0. The half of C-13's acceptance those four skipped was skipped
+// SILENTLY, because `if (s.reachable)` treats an absent field as "nothing to
+// check" and an empty domain reports exactly like a satisfied one. That is this
+// corpus's named recurring defect, arriving inside the guard written against it.
+//
+// It cost a real dead feature: `OfflineNotice` had ZERO consumers anywhere in
+// the repository — its declaration and its constructor were the only two
+// occurrences — while sitting `present` and green for nine days.
+//
+// So `reachable` is now MANDATORY on every `present` entry. An entry that
+// genuinely cannot have one takes a dated `reachableExempt` instead, and every
+// exemption is PRINTED ON EVERY RUN: an absent assertion must never again be
+// indistinguishable from a passing one.
+//
 // ── WHY A BLOCKER IS ITSELF CHECKED ────────────────────────────────────────
 // `blocked` entries name what must land first. That claim is verified: if the
 // named blocker has already shipped, the build fails. Otherwise "blocked by
@@ -165,6 +183,7 @@ let reachableChecked = 0;
 const todo = [];
 const notBuilding = [];
 const blocked = [];
+const reachableExempt = [];
 
 for (const s of screens) {
   if (!s.id || !s.what || !s.status) {
@@ -214,8 +233,30 @@ for (const s of screens) {
     }
     present++;
 
-    // The half that keeps catching real defects.
-    if (s.reachable) {
+    // ── The half that keeps catching real defects — and it is NOT OPTIONAL ──
+    //
+    // The `else` branch below is the entire point of this change. `if
+    // (s.reachable)` on its own is an assertion whose domain the register can
+    // empty by saying nothing, and four entries had done exactly that.
+    if (!s.reachable) {
+      // The one permitted escape, and it is loud rather than silent. It must
+      // ARGUE — a reason and a date — and it is printed on every run below, so
+      // an exemption cannot decay into an unexamined gap the way an absent
+      // field did.
+      const ex = s.reachableExempt;
+      if (!ex?.why || !/^\d{4}-\d{2}-\d{2}$/.test(ex?.declaredOn ?? '')) {
+        problems.push(
+          `\`${s.id}\` is PRESENT but names no \`reachable\`, so the SECOND HALF of C-13's acceptance ` +
+            '("present in a fresh stamp AND reachable") is not checked for it — and an absent assertion ' +
+            'reads exactly like a satisfied one. Add `reachable` {file, pattern, why} naming something a ' +
+            'stamped app really does, or a `reachableExempt` {why, declaredOn} that argues why it cannot ' +
+            'have one (exemptions are printed every run and cannot hide). `OfflineNotice` sat here with ' +
+            'ZERO consumers in the whole repository while this guard reported it green.',
+        );
+        continue;
+      }
+      reachableExempt.push(s);
+    } else {
       const rp = join(ROOT, s.reachable.file);
       if (!existsSync(rp)) {
         problems.push(`\`${s.id}\`: reachability file \`${s.reachable.file}\` does not exist.`);
@@ -271,9 +312,56 @@ for (const s of screens) {
 if (screens.length > 0 && present === 0) {
   problems.push('COVERAGE LOST — not one screen is marked present, so every anchor check above ranged over nothing.');
 } else if (present > 0) {
-  ok(`${present} screen(s) present and anchored; ${reachableChecked} additionally proven reachable`);
+  ok(`${present} screen(s) present and anchored; ${reachableChecked} proven reachable`);
 }
 
+// ── REQUIRED_COVERAGE — the reachability limb may not shrink ────────────────
+//
+// ⚠️ THERE IS DELIBERATELY NO `reachableChecked >= 22` FLOOR HERE, AND THE FIRST
+// VERSION OF THIS CHANGE HAD ONE. With `reachable` now mandatory and the
+// exemption ceiling at zero, `reachableChecked` is EQUAL TO `present` by
+// construction on every run — so such a floor could never fail on its own, and
+// "an assertion that cannot fail is worse than none: it inflates apparent
+// coverage". The two floors below are the two things that can genuinely move.
+//
+//   · MIN_PRESENT — the mandatory-`reachable` rule stops the domain being
+//     emptied ONE ENTRY AT A TIME; this stops it being emptied WHOLESALE, by
+//     the move that rule cannot see. Demote twenty present screens to `todo`
+//     and every message above stays truthful while the guard checks two. The
+//     todo list is printed, but a printed gap is a note, and this repo's rule
+//     is to prefer a build-failing guard over a note.
+//   · the EXEMPTION CEILING — an escape hatch with no ceiling becomes the norm.
+//
+// Both are checked-in numbers that only ever move with a reason, the same idiom
+// as MIN_SCREENS above and check-migrations.mjs's REQUIRED_COVERAGE.
+const MIN_PRESENT = 22;
+const REQUIRED_COVERAGE = { reachableExempt: 0 };
+if (present > 0 && present < MIN_PRESENT) {
+  problems.push(
+    `COVERAGE LOST — only ${present} screen(s) are PRESENT, expected >= ${MIN_PRESENT}, so the reachability ` +
+      'half ranged over that many. All 22 present entries carried a reachability proof on 2026-08-06; a run ' +
+      'that checks fewer means entries left the `present` set (to todo/blocked/not-building). That is a ' +
+      'legitimate move and it may not happen quietly — screens leaving `present` is exactly how the half of ' +
+      'C-13 that catches dead screens stops running.',
+  );
+}
+if (reachableExempt.length > REQUIRED_COVERAGE.reachableExempt) {
+  problems.push(
+    `${reachableExempt.length} screen(s) claim a reachability EXEMPTION, and the checked-in ceiling is ` +
+      `${REQUIRED_COVERAGE.reachableExempt}. Exemptions are printed rather than hidden, but a ceiling is what stops ` +
+      'them becoming the norm: raise it deliberately in the same change, or prove the screen reachable. ' +
+      `Claimed: ${reachableExempt.map((s) => s.id).join(', ')}.`,
+  );
+}
+
+// PRINTED EVERY RUN, never merely counted. The whole failure this replaces was
+// an unmet clause that produced no output at all.
+if (reachableExempt.length) {
+  notes.push(
+    `⬜ ${reachableExempt.length} PRESENT screen(s) EXEMPT from the reachability half — re-read these, they are the ones nothing proves a user can get to:`,
+  );
+  for (const s of reachableExempt) notes.push(`   · ${s.id} — ${s.reachableExempt.why} (${s.reachableExempt.declaredOn})`);
+}
 if (blocked.length) {
   notes.push(`⬜ ${blocked.length} BLOCKED — the blocker is re-checked every run, so the excuse cannot outlive its reason:`);
   for (const s of blocked) notes.push(`   · ${s.id} — ${s.blockedBy} (${s.declaredOn})`);
@@ -294,5 +382,8 @@ if (problems.length) {
   console.error('\nassert-screen-set: FAILED');
   process.exitCode = 1;
 } else {
-  console.log(`\nassert-screen-set: ok — ${present} present, ${blocked.length} blocked, ${todo.length} to build, ${notBuilding.length} deliberately not built`);
+  console.log(
+    `\nassert-screen-set: ok — ${present} present (${reachableChecked} reachability-proven, ${reachableExempt.length} exempt), ` +
+      `${blocked.length} blocked, ${todo.length} to build, ${notBuilding.length} deliberately not built`,
+  );
 }

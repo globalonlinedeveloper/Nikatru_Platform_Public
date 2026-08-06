@@ -25,11 +25,31 @@
   //    and the tenth stamp cannot create one at all. That is why a backend is
   //    opt-in: the ceiling gets spent on apps that genuinely store user rows.
   //
-  // After stamping:
-  //   wrangler d1 create {{app_id}}_db --location apac
-  //     → paste the id into APP_DB.database_id below.
-  //   `--location apac` matters: location_hint is CREATE-TIME ONLY and can
-  //   never be changed afterwards (company/requirements/architecture.md §18).
+  // ── AFTER STAMPING — ONE COMMAND, AND NOTHING IN THIS FILE IS HAND-EDITED ──
+  //   node tooling/scripts/provision-backend.mjs {{app_id}}
+  // It creates the D1 with `--location apac`, WRITES the returned id into
+  // APP_DB.database_id below, and applies the starter migration. The
+  // all-zeros placeholder is correct until it runs, and `assert-d1-bindings
+  // .mjs` fails any config under services/ that still carries one.
+  //
+  // 🔴 THIS BLOCK USED TO DIRECT THE READER TO TRANSCRIBE THE NEW UUID INTO THE
+  // APP_DB KEY BELOW, BY HAND, and went on saying so for a week after
+  // `provision-backend.mjs` had removed the need. [3]S-12's requirement is
+  // literally "no hand-editing of placeholders", so the template every backend
+  // app is stamped from was directing its owner to perform the exact step the
+  // requirement exists to delete — a manual copy of a uuid into one key of a
+  // JSONC file, which is the shape of edit that goes wrong silently and deploys
+  // a Worker reading the wrong database. No guard reached this file:
+  // assert-input-contract.mjs scanned three brick files and this was not one,
+  // so the instruction was invisible to CI. It is scanned now — see section 4
+  // of that guard, which also explains why this paragraph is worded around the
+  // retired phrasing rather than quoting it.
+  //
+  //   `--location apac` is load-bearing, not cosmetic: location_hint is
+  //   CREATE-TIME ONLY and can never be changed afterwards
+  //   (company/requirements/architecture.md §18), and D1 places the primary
+  //   near WHOEVER ISSUED THE CREATE CALL — so provisioning from a US runner
+  //   would silently land an India-served database in North America.
   // Secrets are NOT set here (never committed): set with `wrangler secret put`.
   // ───────────────────────────────────────────────────────────────────────────
   "name": "{{app_id}}-api",

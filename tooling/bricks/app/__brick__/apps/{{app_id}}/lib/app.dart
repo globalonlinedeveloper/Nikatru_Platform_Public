@@ -73,7 +73,9 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
             child: ForceUpdateGate(
               mustUpdate: mustUpdate,
               onUpdate: () => _openUpdate(updateUrl),
-              child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
+              child: AnalyticsGate(
+                child: _OfflineBanner(child: child ?? const SizedBox.shrink()),
+              ),
             ),
           ),
     );
@@ -86,6 +88,47 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
     } catch (_) {
       // Best-effort — never crash the update screen.
     }
+  }
+}
+
+/// 🔴 [pipeline C-13] `OfflineNotice`'s ONLY CALL SITE — and until 2026-08-06
+/// there was none, anywhere in the repository.
+///
+/// The widget shipped in the design system on 2026-07-28, `offlineMessage` and
+/// `retry` shipped in both ARB files, the register recorded the screen as
+/// `present` with a valid anchor, and **no user of any stamped app could ever
+/// have seen it**. That is the [pipeline C-6] shape: the register asked whether
+/// the screen EXISTED and never whether anything reached it, so an absent
+/// consumer read exactly like a satisfied one.
+///
+/// 🔴 IT RETURNS THE CHILD UNTOUCHED WHEN REACHABLE, and that is deliberate
+/// rather than incidental: inserting a `Column` above the router on every
+/// launch would re-parent every screen in every stamped app in order to
+/// display nothing. The tree is byte-identical to the pre-banner one until a
+/// request has actually failed.
+///
+/// The retry re-runs the config resolution rather than "checking the network",
+/// because the only honest test of reachability is the request the app wanted
+/// to make in the first place.
+class _OfflineBanner extends ConsumerWidget {
+  const _OfflineBanner({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!ref.watch(networkUnreachableProvider)) return child;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return Column(
+      children: <Widget>[
+        OfflineNotice(
+          message: l10n.offlineMessage,
+          retryLabel: l10n.retry,
+          onRetry: () => ref.invalidate(appConfigProvider),
+        ),
+        Expanded(child: child),
+      ],
+    );
   }
 }
 

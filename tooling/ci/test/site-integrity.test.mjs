@@ -33,6 +33,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, read
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+// The same function the guard and the generator both evaluate. [12]W-3a
+import { today } from '../../sites/lastmod.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = 'check-site-integrity.mjs';
@@ -122,12 +124,23 @@ const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
  *  test then reports whatever the module loader said. (Found the moment
  *  `stripInert`/`visibleText` moved into the shared reduction module.) */
 const GUARD_IMPORTS = ['text-reductions.mjs', 'tree-walk.mjs'];
+/** …and the ones that do NOT live in tooling/ci. `lastmod.mjs` is deliberately
+ *  under tooling/sites because the GENERATOR that writes sites/nikatru/sitemap.xml
+ *  and this guard must evaluate one function ([12]W-3a); leaving it out of the
+ *  copy reproduced exactly the failure this list's own comment describes — 33
+ *  cases reporting a module-loader error instead of the assertion under test. */
+const GUARD_IMPORTS_SITES = ['lastmod.mjs'];
 
 function selfHosted(dir, { root = 'a' } = {}) {
   const to = join(dir, 'tooling', 'ci', GUARD);
   mkdirSync(dirname(to), { recursive: true });
   copyFileSync(join(CI_DIR, GUARD), to);
   for (const dep of GUARD_IMPORTS) copyFileSync(join(CI_DIR, dep), join(dirname(to), dep));
+  const sitesDir = join(dir, 'tooling', 'sites');
+  mkdirSync(sitesDir, { recursive: true });
+  for (const dep of GUARD_IMPORTS_SITES) {
+    copyFileSync(join(CI_DIR, '..', 'sites', dep), join(sitesDir, dep));
+  }
 
   const site = join(dir, 'sites', root);
   // Only the homepage is indexable; every other page declares noindex, so the
@@ -154,7 +167,13 @@ function selfHosted(dir, { root = 'a' } = {}) {
   );
   writeFileSync(
     join(site, 'sitemap.xml'),
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset><url><loc>${FIXTURE_ORIGIN}</loc><lastmod>${FIXTURE_VERSION}</lastmod></url></urlset>\n`,
+    // [12]W-3a — the DATE is `today()`, not FIXTURE_VERSION, and the two are now
+    // deliberately different values answering different questions: the page
+    // declares which policy TEXT is in force, the sitemap says when the FILE
+    // last changed. In a fixture (not a git work tree) the latter degrades to
+    // today on both sides, so the scaffold has to write today or every
+    // self-hosted case fails on the date instead of on the limb it is about.
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset><url><loc>${FIXTURE_ORIGIN}</loc><lastmod>${today()}</lastmod></url></urlset>\n`,
   );
   const fn = join(site, 'functions', 'api', 'probe.js');
   mkdirSync(dirname(fn), { recursive: true });
@@ -394,6 +413,19 @@ const page = (url, body = '', head = '') =>
  *  failing for the reason each one names, instead of tripping the stub floor. */
 const POLICY_BODY = `<p data-policy-version="2026-03-04">${'policy sentence. '.repeat(80)}</p>`;
 
+/** [12]W-3a — the date every fixture URL must carry to be CORRECT.
+ *
+ *  A fixture tree is a temp directory and not a git work tree, so
+ *  `tooling/sites/lastmod.mjs` degrades to `today()` for every path in it —
+ *  deliberately, and identically for the generator that writes a sitemap and the
+ *  guard that checks one, so a synthetic tree stays self-consistent instead of
+ *  accidentally green. That makes `today()` the fixtures' "git date", and any
+ *  other value the writable failing input for the limb. (The limb's real-tree
+ *  failing cases are the recorded mutations at the top of this block: the
+ *  nikatru sitemap's privacy lastmod put back to 2026-08-01 → red; the same on
+ *  sites/rajasekarselvam, which no generator writes → red from THIS guard only.) */
+const GIT_DATE = today();
+
 const sitemap = (entries) =>
   '<?xml version="1.0" encoding="UTF-8"?>\n<urlset>\n' +
   entries.map(([loc, lastmod]) => `  <url><loc>${loc}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}</url>\n`).join('') +
@@ -422,7 +454,7 @@ function urlTree(name, over = {}, opts = {}) {
     'sites/nikatru/404.html': '<meta name="robots" content="noindex"><html><body>gone</body></html>\n',
     'sites/nikatru/robots.txt': 'x\n',
     'sites/nikatru/_headers': 'x\n',
-    'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-03-04']]),
+    'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE]]),
     'sites/nikatru/functions/api/probe.js': KEYED_FN,
     'sites/b/index.html': '<html><body>brochure</body></html>\n',
     'sites/b/404.html': '<html></html>\n',
@@ -479,13 +511,13 @@ describe('check-site-integrity · one canonical URL form', () => {
   });
 
   test('FAILS both ways when the sitemap and the pages disagree', () => {
-    const missing = run(urlTree('uf-sm-missing', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01']]) }));
+    const missing = run(urlTree('uf-sm-missing', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE]]) }));
     assert.equal(missing.code, 1);
     assert.match(missing.out, /does not list https:\/\/one\.test\/privacy\.html/);
 
     const extra = run(
       urlTree('uf-sm-extra', {
-        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-03-04'], [`${ORIGIN}ghost.html`, '2026-01-01']]),
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE], [`${ORIGIN}ghost.html`, GIT_DATE]]),
       }),
     );
     assert.equal(extra.code, 1);
@@ -511,7 +543,7 @@ describe('check-site-integrity · one canonical URL form', () => {
     const listed = run(
       urlTree('uf-noindex-listed', {
         'sites/nikatru/draft.html': '<meta name="robots" content="noindex"><html><body>draft</body></html>\n',
-        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-03-04'], [`${ORIGIN}draft.html`, '2026-01-01']]),
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE], [`${ORIGIN}draft.html`, GIT_DATE]]),
       }),
     );
     assert.equal(listed.code, 1);
@@ -533,24 +565,70 @@ describe('check-site-integrity · policy version vs sitemap lastmod', () => {
     // The real defect: privacy.html said version 2026-07-26 while the sitemap
     // said the page last changed 2026-07-18.
     const { code, out } = run(
-      urlTree('pv-drift', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, '2026-01-01']]) }),
+      urlTree('pv-drift', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, '2026-01-01']]) }),
     );
     assert.equal(code, 1);
     assert.match(out, /declares data-policy-version="2026-03-04" and .*lastmod 2026-01-01/);
   });
 
-  test('FAILS when the sitemap gives a policy page no lastmod at all', () => {
+  test('FAILS when the sitemap gives a page no lastmod at all', () => {
+    // 🔴 RE-POINTED WITH THE LIMB. This used to be #34's `lastmod (none)`
+    // message. It is now [12]W-3a's, and that is the stronger owner: #34 only
+    // ever saw pages carrying a `data-policy-version`, so deleting the
+    // `<lastmod>` from any of the other seven nikatru URLs — or from the
+    // mirror's only URL — was silent. Required on EVERY entry now, because an
+    // assertion that only fires when the field is present is one a hand edit
+    // escapes by deleting the field.
     const { code, out } = run(
-      urlTree('pv-none', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, '2026-01-01'], [`${ORIGIN}privacy.html`, null]]) }),
+      urlTree('pv-none', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, null]]) }),
     );
     assert.equal(code, 1);
-    assert.match(out, /lastmod \(none\)/);
+    assert.match(out, /privacy\.html with no <lastmod>/);
   });
 
-  test('a page with no policy version is not held to a date', () => {
-    const { code, out } = run(urlTree('pv-exempt', { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, '<p>' + 'policy sentence. '.repeat(80) + '</p>') }));
+  test('a page with no policy version is still held to its GIT date', () => {
+    // The exemption that survives is narrow and precise: a page with no declared
+    // version is not held to a VERSION. It is still held to the date its file
+    // last changed — which is the whole of W-3a, and the reason five of the six
+    // stale nikatru values could never have been caught by #34.
+    const noVersion = { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, '<p>' + 'policy sentence. '.repeat(80) + '</p>') };
+    const { code, out } = run(urlTree('pv-exempt', noVersion));
     assert.equal(code, 0, out);
-    assert.match(out, /0 policy version\(s\) vs sitemap lastmod/);
+    assert.match(out, /0 policy version\(s\) not ahead of their sitemap lastmod/);
+
+    const wrong = run(
+      urlTree('pv-exempt-wrong', {
+        ...noVersion,
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, '2026-01-01']]),
+      }),
+    );
+    assert.equal(wrong.code, 1);
+    assert.match(wrong.out, /lastmod 2026-01-01, and sites\/nikatru\/privacy\.html last changed/);
+  });
+
+  test('🔴 a POST-DATED policy version still fails — the re-pointed #34 can fail', () => {
+    // Equality was wrong once `lastmod` became git-derived: privacy.html
+    // declares version 2026-08-01 and its file last changed 2026-08-04, both
+    // true, answering different questions. What survives is the direction that
+    // is always a defect — a page claiming to serve a version dated after the
+    // day it was published, which git can never catch up to.
+    const { code, out } = run(
+      urlTree('pv-postdated', {
+        'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, `<p data-policy-version="2099-01-01">${'policy sentence. '.repeat(80)}</p>`),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /EARLIER than the version it claims to be serving/);
+  });
+
+  test('🔴 changefreq and priority are refused — Google ignores both', () => {
+    const withDead = sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE]]).replace(
+      '</urlset>',
+      '  <url><loc>x</loc><changefreq>weekly</changefreq></url>\n</urlset>',
+    );
+    const { code, out } = run(urlTree('pv-changefreq', { 'sites/nikatru/sitemap.xml': withDead }));
+    assert.equal(code, 1);
+    assert.match(out, /carries a <changefreq> element/);
   });
 });
 

@@ -79,6 +79,11 @@
       "anchor": {
         "file": "packages/design_system/lib/src/widgets/system_screens.dart",
         "symbol": "OfflineNotice"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart",
+        "pattern": "OfflineNotice(",
+        "why": "🔴 THIS ENTRY CARRIED NO `reachable` AT ALL UNTIL 2026-08-06, AND THE WIDGET HAD ZERO CONSUMERS ANYWHERE IN THE REPOSITORY — its declaration and its constructor were the only two occurrences, and `offlineMessage` sat in both ARB files with nothing reading it. So the screen was present, anchored, green, and unreachable by every user of every stamped app: the [2]C-6 shape, arrived at by the guard treating a missing field as nothing to check. The banner is driven by a FAILED REQUEST (the config transport's own result, reported in BOTH directions) and never by a connectivity plugin — the radio being on says nothing about whether the API answers. It returns its child untouched while reachable, so the widget tree is unchanged until something has actually failed"
       }
     },
     {
@@ -131,6 +136,11 @@
         "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
         "symbol": "SegmentedButton",
         "kind": "uses"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart",
+        "pattern": "themeMode: ref.watch(themeModeProvider)",
+        "why": "the control and the thing it controls are in DIFFERENT FILES, which is the whole reason presence cannot stand in for reachability here: the picker can render, store the choice and rebuild perfectly while MaterialApp silently defaults to ThemeMode.system, and the only symptom is that nothing changes colour. Identical in shape to `settings.language`, whose `locale:` line carries the same note"
       }
     },
     {
@@ -141,6 +151,11 @@
         "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
         "symbol": "_contactSupport",
         "kind": "member"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "onTap: _contactSupport",
+        "why": "the anchor is a `member`, and that pattern (`_contactSupport\\s*\\(`) matches the method's OWN DECLARATION — so deleting the tile that calls it leaves the anchor green while E1's mandated support contact becomes unreachable from inside the app. The call site is a TEAR-OFF with no parentheses, which is precisely why it needs its own assertion: no `symbol(` pattern can see it"
       }
     },
     {
@@ -166,6 +181,11 @@
         "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
         "symbol": "AboutListTile",
         "kind": "uses"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
+        "pattern": "applicationVersion:",
+        "why": "🔴 THE ONE OF THE FOUR WHOSE ANCHOR IS ALSO ITS CALL SITE — `AboutListTile(` is a Flutter widget we USE, so there is no separate caller to point at, and an honest second assertion has to ask a different question rather than restate the first. The question is whether the dialog it opens carries anything ACTIONABLE. It did not: `applicationVersion` was absent until 2026-08-06, and `showAboutDialog` renders no version line rather than complaining, so a complete-looking dialog told a user reporting a bug nothing about which build they were running. It reads the RUNNING version (`packageVersionProvider`), not the compiled-in `String.fromEnvironment` default a build that forgot its --dart-define would report as truth"
       }
     },
     {

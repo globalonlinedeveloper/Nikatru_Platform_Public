@@ -216,10 +216,12 @@ describe('check-selection-record', () => {
     ...over,
   }, null, 2);
 
-  const tree = ({ record = dod(), companyFile = null } = {}) => fixture({
+  const tree = ({ record = dod(), companyFile = null, companyDecoy = false } = {}) => fixture({
     'pubspec.yaml': 'name: fixture\nworkspace:\n  - apps/subly\n  - apps/probe\n',
     'apps/probe/dod.json': record,
     ...(companyFile === null ? {} : { 'company/app-selection/probe.md': companyFile }),
+    // A company/ that EXISTS but does not hold the target — see the resolve case.
+    ...(companyDecoy ? { 'company/README.md': '# private tree\n' } : {}),
   });
 
   test('passes, and says so, when nothing is linked yet', () => {
@@ -230,7 +232,14 @@ describe('check-selection-record', () => {
 
   test('FAILS when the linked record does not resolve', () => {
     const record = dod({ selection: { record: 'company/app-selection/probe.md', sha256: 'x', decided: '2026-07-30', decidedBy: 'owner', gates: {} } });
-    const { code, out } = run(SELECTION, tree({ record }));
+    // 🔴 THE FIXTURE NOW SHIPS A company/ THAT DOES NOT CONTAIN THE TARGET, and
+    // the distinction is the whole point. "company/ is absent" and "the link
+    // points at nothing" used to be the same fixture, and they are not the same
+    // fact: the first is every CI checkout (company/ is gitignored) and must
+    // print, the second is a real defect and must fail. Modelling the defect as
+    // an absent tree meant wiring this script into CI would have failed every
+    // run the moment one app carried a link.
+    const { code, out } = run(SELECTION, tree({ record, companyFile: null, companyDecoy: true }));
     assert.equal(code, 1, 'CI can only see that the string is there — this is the run that finds out if it points at anything');
     assert.match(out, /does not resolve/);
   });
@@ -253,10 +262,41 @@ describe('check-selection-record', () => {
     assert.match(out, /1 linked record\(s\) resolved and hashed as claimed/);
   });
 
-  test('COVERAGE LOST when every app in the workspace is exempt', () => {
+  test('🔴 RE-POINTED — every app exempt PRINTS, and does NOT redden CI', () => {
+    // This case asserted exit 1 from 2026-08-05 to 2026-08-06, and the exit 1
+    // was why the script was wired into NOTHING: `grep check-selection-record
+    // .github/workflows/*.yml` returned no hit, so N-9's sha256 half was
+    // enforced by nothing at all. Read the requirement's sentence — "no app
+    // ENTERS the factory without passing the three selection gates". Its subject
+    // is an app entering; `apps/subly` predates the gates and is exempt by name;
+    // nothing has entered since. An empty non-exempt set is the requirement
+    // SATISFIED, and failing on it is what got the guard left unwired.
+    //
+    // What must not happen is the empty set being taken on trust, and it is not:
+    // the two cases below are the floors that make the emptiness checkable, and
+    // both are still exit 1.
     const dir = fixture({ 'pubspec.yaml': 'name: fixture\nworkspace:\n  - apps/subly\n' });
     const { code, out } = run(SELECTION, dir);
-    assert.equal(code, 1, 'a run over zero apps has verified nothing and must not say ok');
+    assert.equal(code, 0, out);
+    assert.match(out, /NO APP HAS ENTERED THE FACTORY SINCE THE GATES EXISTED/);
+    assert.match(out, /NOTHING VERIFIED/, 'it must never dress an empty run up as work done');
+  });
+
+  test('🔴 …but a STALE EXEMPTION is still COVERAGE LOST', () => {
+    const dir = fixture({ 'pubspec.yaml': 'name: fixture\nworkspace:\n  - apps/sublite\n' });
+    const { code, out } = run(SELECTION, dir);
+    assert.equal(code, 1, 'an exemption that names no real app makes "0 non-exempt" meaningless');
     assert.match(out, /COVERAGE LOST/);
+  });
+
+  test('🔴 …and so is an app on disk the workspace does not list', () => {
+    const dir = fixture({
+      'pubspec.yaml': 'name: fixture\nworkspace:\n  - apps/subly\n',
+      'apps/ghost/pubspec.yaml': 'name: ghost\n',
+    });
+    const { code, out } = run(SELECTION, dir);
+    assert.equal(code, 1, 'an app the workspace does not list is an app no selection record is demanded for');
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /apps\/ghost/);
   });
 });

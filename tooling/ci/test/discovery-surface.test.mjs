@@ -40,7 +40,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { planDiscovery, rewriteSitemap } from '../../sites/generate-discovery.mjs';
+import { planDiscovery, renderSitemap, rewriteLlms, urlForPage } from '../../sites/generate-discovery.mjs';
+import { today, lastmodFor, isGitRepo } from '../../sites/lastmod.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -206,15 +207,170 @@ describe('the generator', () => {
     assert.match(generate(root).out, /no name for/);
   });
 
-  test('rewriteSitemap replaces only the /apps/ blocks and keeps the rest byte-for-byte', () => {
-    const out = rewriteSitemap(
-      `${SITEMAP_BASE.replace('</urlset>', '  <url>\n    <loc>https://nikatru.com/apps/gone.html</loc>\n  </url>\n</urlset>')}`,
-      ['https://nikatru.com/apps/'],
-    );
-    assert.doesNotMatch(out, /apps\/gone\.html/);
-    assert.match(out, /<loc>https:\/\/nikatru\.com\/<\/loc>/);
-    assert.match(out, /<lastmod>2026-08-01<\/lastmod>/);
-    assert.match(out, /<loc>https:\/\/nikatru\.com\/apps\/<\/loc>/);
+  test('renderSitemap emits <loc> + <lastmod> and nothing else — [12]W-3a', () => {
+    const out = renderSitemap([
+      { loc: 'https://nikatru.com/', lastmod: '2026-08-04' },
+      { loc: 'https://nikatru.com/apps/', lastmod: '2026-08-06' },
+    ]);
+    assert.match(out, /<loc>https:\/\/nikatru\.com\/<\/loc>\n {4}<lastmod>2026-08-04<\/lastmod>/);
+    // Google ignores both entirely, and a field nothing can check is a field
+    // that can only ever be wrong. The guard fails a sitemap carrying either.
+    assert.doesNotMatch(out, /changefreq|priority/);
+  });
+
+  test('urlForPage is the one canonical form — index.html is the bare directory', () => {
+    assert.equal(urlForPage('index.html'), 'https://nikatru.com/');
+    assert.equal(urlForPage('apps/index.html'), 'https://nikatru.com/apps/');
+    assert.equal(urlForPage('privacy.html'), 'https://nikatru.com/privacy.html');
+  });
+
+  test('🔴 the sitemap is the WHOLE page set now, not just the /apps/ blocks', () => {
+    // The half that used to be carried through byte-for-byte was hand-maintained
+    // inside a requirement whose first sentence is "never hand-maintained", and
+    // it had drifted on the real tree: six URLs claiming 2026-08-01/03 while
+    // every page last changed 2026-08-04.
+    const root = tree([SUBLY]);
+    writeFileSync(p(root, 'privacy.html'), '<html><head><link rel="canonical" href="x"></head><body>p</body></html>\n');
+    generate(root);
+    const sitemap = readFileSync(p(root, 'sitemap.xml'), 'utf8');
+    assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/privacy\.html<\/loc>/);
+    // …and a noindex page is excluded BY ITS OWN DECLARATION, never by name.
+    // `_template.html` is the live proof: it is served and must stay unlisted.
+    assert.doesNotMatch(sitemap, /_template/);
+  });
+
+  test('🔴 EVERY <url> carries a <lastmod> — an optional one is one a hand edit escapes by deleting', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    const sitemap = readFileSync(p(root, 'sitemap.xml'), 'utf8');
+    const locs = [...sitemap.matchAll(/<loc>/g)].length;
+    const mods = [...sitemap.matchAll(/<lastmod>/g)].length;
+    assert.ok(locs > 0, 'the fixture must produce at least one URL or this asserts nothing');
+    assert.equal(mods, locs);
+    // A fixture tree is not a git work tree, so every date degrades to today on
+    // BOTH sides — writer and checker evaluate the same function. That is what
+    // keeps a synthetic tree self-consistent rather than accidentally green.
+    assert.match(sitemap, new RegExp(`<lastmod>${today()}</lastmod>`));
+  });
+
+  test('rewriteLlms replaces the ## Apps section and leaves the owner prose alone', () => {
+    const before = '# N\n\n## About\n- Studio: N\n\n## Apps\n- Old — stale — https://old.example (web)\n\n## Key pages\n- Home: /\n';
+    const out = rewriteLlms(before, [
+      { name: 'Subly', tagline: 'Track every subscription in one place', url: 'https://subly.nikatru.com', platforms: ['web'] },
+    ]);
+    assert.match(out, /## Apps\n- Subly — Track every subscription in one place — https:\/\/subly\.nikatru\.com \(web\)\n\n## Key pages/);
+    assert.doesNotMatch(out, /Old — stale/);
+    assert.match(out, /## About\n- Studio: N/);
+  });
+
+  test('🔴 rewriteLlms leaves exactly ONE blank line — the recorded `m`-flag `$` bug', () => {
+    // The first version used /^## Apps\n[\s\S]*?(?=\n## |$)/m. Under `m`, `$`
+    // matches at the end of every LINE, so the body stopped at the end of the
+    // first entry and left the section's own trailing newline for the
+    // replacement to add again. It shipped a double blank line on its first real
+    // run and was caught by reading the diff, not by a fixture asserting the
+    // Subly line was present — which would have passed.
+    const before = '## Apps\n- Old — x — https://o.example (web)\n\n## Key pages\n- Home: /\n';
+    const out = rewriteLlms(before, [{ name: 'A', tagline: 'T', url: 'https://a.example', platforms: ['web'] }]);
+    assert.doesNotMatch(out, /\n\n\n/);
+    assert.equal(out, '## Apps\n- A — T — https://a.example (web)\n\n## Key pages\n- Home: /\n');
+  });
+
+  test('rewriteLlms returns null when its anchor heading is gone, rather than guessing', () => {
+    assert.equal(rewriteLlms('# N\n\n## Key pages\n- Home: /\n', []), null);
+  });
+
+  test('a non-live entry never reaches llms.txt — it is a promise to a stranger', () => {
+    const root = tree([SUBLY, { ...SUBLY, slug: 'lingo', name: 'Lingo', url: 'https://lingo.nikatru.com', status: 'preview' }]);
+    writeFileSync(p(root, 'llms.txt'), '# N\n\n## Apps\n- placeholder\n\n## Key pages\n- Home: /\n');
+    generate(root);
+    const llms = readFileSync(p(root, 'llms.txt'), 'utf8');
+    assert.match(llms, /- Subly —/);
+    assert.doesNotMatch(llms, /Lingo|lingo\.nikatru\.com/);
+  });
+
+  test('a renamed ## Apps heading FAILS rather than silently returning the catalogue to hand maintenance', () => {
+    const root = tree([SUBLY]);
+    writeFileSync(p(root, 'llms.txt'), '# N\n\n## Applications\n- whatever\n');
+    const r = generate(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /has no `## Apps` heading/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [12]W-3a · lastmodFor, against a REAL git repository.
+//
+// This is the fixed point the generator's own header said could not be reached:
+// a git-derived `<lastmod>` written into a file committed alongside its subject
+// cannot know the commit date that does not exist yet. The resolution is the
+// three branches below, and they are tested against real commits rather than a
+// stubbed `git`, because a fake git would only prove the fake behaves.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('lastmodFor — the value a URL will carry once this state is committed', () => {
+  const git = (dir, ...args) => spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
+
+  function gitRepo() {
+    const root = join(TMP, `g${seq++}`);
+    mkdirSync(root, { recursive: true });
+    git(root, 'init', '--quiet');
+    git(root, 'config', 'user.email', 'fixture@example.invalid');
+    git(root, 'config', 'user.name', 'Fixture');
+    return root;
+  }
+
+  test('a file with no history at all resolves to today — it is being ADDED in this commit', () => {
+    const root = gitRepo();
+    writeFileSync(join(root, 'page.html'), 'v1\n');
+    assert.equal(lastmodFor(root, 'page.html'), today());
+  });
+
+  test('🔴 a committed, unchanged file resolves to its OWN commit date, not to HEAD', () => {
+    // The distinction the whole clause turns on. W-3's research note warned the
+    // criterion is "satisfied by any generator that touches git, including one
+    // that reads the repo's own HEAD date for every URL" — so a later commit
+    // that does not touch this file must not move its date.
+    const root = gitRepo();
+    writeFileSync(join(root, 'page.html'), 'v1\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '--quiet', '--date=2026-03-04T10:00:00', '-m', 'add page');
+    writeFileSync(join(root, 'other.html'), 'x\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '--quiet', '--date=2026-05-06T10:00:00', '-m', 'unrelated');
+    assert.equal(lastmodFor(root, 'page.html'), '2026-03-04');
+    assert.equal(lastmodFor(root, 'other.html'), '2026-05-06');
+  });
+
+  test('🔴 a committed file whose PLANNED bytes differ resolves to today — it is being changed now', () => {
+    // This is what makes the generator idempotent across `generate → commit →
+    // CI regenerates → diff`. Without it the first run would write the OLD
+    // commit date for a page it is about to rewrite, and the second run would
+    // write a different one — so `0 changed` could never hold and CI's
+    // regenerate-and-diff could never be green.
+    const root = gitRepo();
+    writeFileSync(join(root, 'page.html'), 'v1\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '--quiet', '--date=2026-03-04T10:00:00', '-m', 'add page');
+    assert.equal(lastmodFor(root, 'page.html', 'v1\n'), '2026-03-04');
+    assert.equal(lastmodFor(root, 'page.html', 'v2\n'), today());
+  });
+
+  test('a DIRTY working tree resolves to today even with no planned bytes — the guard reads the tree', () => {
+    const root = gitRepo();
+    writeFileSync(join(root, 'page.html'), 'v1\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '--quiet', '--date=2026-03-04T10:00:00', '-m', 'add page');
+    assert.equal(lastmodFor(root, 'page.html'), '2026-03-04');
+    writeFileSync(join(root, 'page.html'), 'edited\n');
+    assert.equal(lastmodFor(root, 'page.html'), today());
+  });
+
+  test('a tree that is not a git work tree degrades to today, identically for writer and checker', () => {
+    const plain = join(TMP, `p${seq++}`);
+    mkdirSync(plain, { recursive: true });
+    writeFileSync(join(plain, 'page.html'), 'v1\n');
+    assert.equal(isGitRepo(plain), false);
+    assert.equal(lastmodFor(plain, 'page.html'), today());
   });
 });
 
@@ -242,10 +398,16 @@ describe('the drift limb (W-9)', () => {
     const root = tree([SUBLY]);
     generate(root);
     const f = p(root, 'sitemap.xml');
-    writeFileSync(
-      f,
-      readFileSync(f, 'utf8').replace('  <url>\n    <loc>https://nikatru.com/apps/subly.html</loc>\n  </url>\n', ''),
-    );
+    // ⚠️ MATCHED BY REGEX, NOT BY A LITERAL BLOCK. The literal this replaced
+    // stopped matching the moment [12]W-3a put a `<lastmod>` inside every
+    // `<url>` — and a `String.replace` that matches nothing removes nothing, so
+    // the mutation silently became a no-op and this test passed a guard it was
+    // no longer feeding bad input to. Exactly the shape F-10 exists to catch,
+    // caught here only because the guard then returned 0 where 1 was asserted.
+    const before = readFileSync(f, 'utf8');
+    const after = before.replace(/[ \t]*<url>\s*<loc>https:\/\/nikatru\.com\/apps\/subly\.html<\/loc>[\s\S]*?<\/url>\n/, '');
+    assert.notEqual(after, before, 'the mutation must actually remove the block, or this test asserts nothing');
+    writeFileSync(f, after);
     const r = guard(root);
     assert.equal(r.code, 1);
     assert.match(r.out, /sites\/nikatru\/sitemap\.xml DRIFTED/);
