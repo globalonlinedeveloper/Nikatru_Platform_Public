@@ -29,11 +29,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // THREE WAYS TO BE RED, AND THE THIRD IS THE ONE THAT MATTERS.
 //
-//   1. ABSENT   — no row for a declared job inside 1.5× its declared cron
-//                 interval. The 1.5 ratio is the one the backup chain already
-//                 uses, and its reasoning is recorded in backup-liveness.md:
-//                 tight enough to catch a dead timer within one cycle, loose
-//                 enough that a single late run is not an alarm.
+//   1. ABSENT   — the job's most recent SCHEDULED OCCURRENCE left no row, and
+//                 the grace on that occurrence has expired. Anchored on when the
+//                 run was DUE, not on how old the newest row is.
+//                 🔴 It was the latter until 2026-08-06 — "older than 1.5× the
+//                 interval" — and that rule is GREEN ON A SINGLE MISSED NIGHTLY
+//                 RUN, because a daily reader looking at a daily cron sees a
+//                 ~28h-old row the morning after a miss and 28 < 36. It was not
+//                 reasoned wrong, it was MEASURED wrong: the Worker's 06:00Z
+//                 cron did not fire on 2026-08-06 and ops-watch run
+//                 31091922078 reported healthy that morning. See
+//                 MISSED_RUN_GRACE_HOURS for the full arithmetic and evidence.
 //   2. RED      — the newest row for a job carries the failing value.
 //                 ⚠️ `ok = 1` IS NO LONGER A SAFE PROXY FOR "A ROW EXISTS". Now
 //                 that the semantics are correct, a check that merely asserts
@@ -66,8 +72,50 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REGISTER_REL = 'tooling/ops/register.json';
 
-/** The ratio the backup chain already uses; see the header. One constant. */
-const STALENESS_RATIO = 1.5;
+/**
+ * How long after a SCHEDULED OCCURRENCE a missing row is still merely late.
+ *
+ * 🔴 THIS REPLACED A `1.5 x interval` STALENESS CEILING ON 2026-08-06, AND THE
+ * CEILING WAS MEASURED WRONG BY A REAL EVENT RATHER THAN ARGUED WRONG.
+ *
+ * The old rule: red when the newest row is older than `interval x 1.5`. Its
+ * stated reasoning — "tight enough to catch a dead timer within one cycle" —
+ * was inherited verbatim from the backup chain and never re-derived for THIS
+ * chain. It is false here, and the arithmetic is not subtle:
+ *
+ *   the cron is `0 6 * * *`             -> interval 24h, ceiling 36h
+ *   this reader runs from ops-watch.yml -> ONCE A DAY
+ *
+ * so on the morning after a missed run the newest row is ~28h old, which is
+ * INSIDE 36h, and the next day either the cron recovered (a fresh row, green)
+ * or it did not (49h, red). **A single missed nightly run could therefore never
+ * alarm at all** — the watcher had to miss twice in a row to say anything.
+ *
+ * That is not a hypothesis. On 2026-08-06 the platform Worker's 06:00Z cron did
+ * not fire (proven: zero `eventType: cron` events in Cloudflare's own
+ * observability log for 05:55–06:05Z, against three on 08-05, with 20 fetch
+ * events from the same script inside the same window proving the query could
+ * see). `ops-watch` run 31091922078 ran at 10:06Z that morning and went GREEN.
+ * The watcher built to make an absent run visible reported health through the
+ * only absent run it has ever had to see.
+ *
+ * ── WHY AN OCCURRENCE, NOT A BIGGER RATIO ────────────────────────────────────
+ * Shrinking 1.5 to 1.1 would move the ceiling to 26.4h and appear to fix it.
+ * It does not: the ceiling is measured from the LAST SUCCESS, so it drifts with
+ * whatever time the previous run happened to land, and it still answers "how
+ * stale is the newest row" when the question is "did the run that was supposed
+ * to happen, happen". Those come apart precisely when a schedule stops. So the
+ * limb now names the occurrence: the most recent time the cron was DUE, and
+ * whether a row exists at or after it.
+ *
+ * The grace is what keeps a LATE run from being an alarm — the property the old
+ * ratio was really buying, now bought explicitly and at a tenth of the cost.
+ * Two hours: Cloudflare documents cron triggers as best-effort and this one is
+ * consistently ~36s late, while `ops-watch` itself lands 2.5–4h after its own
+ * `30 7` schedule (GitHub queue delay, measured across six runs), so the reader
+ * always looks well after the grace has expired on a genuinely missed run.
+ */
+const MISSED_RUN_GRACE_HOURS = 2;
 
 // `indexOf` returns -1 when absent, and -1 + 1 === 0 silently selects argv[0].
 // That off-by-one shipped once in this repo and blocked both production deploys
@@ -124,10 +172,68 @@ export function cronIntervalHours(expr) {
 }
 
 /**
- * The decision, kept pure. `rows` are the newest-first heartbeat rows for ONE
- * job; `intervalHours` is that job's declared cron interval.
+ * Cron expression → the most recent time it was DUE, at or before `nowMs`.
+ *
+ * Deliberately as narrow as `cronIntervalHours` and rejecting the same shapes,
+ * so the two never disagree about what this reader understands: a widened
+ * parser here would silently compute an occurrence for a schedule the interval
+ * limb had already refused, and the two answers would drift apart unseen.
+ *
+ * All arithmetic is UTC. `cron_heartbeat.ran_at` is written with `toISOString()`
+ * and Cloudflare's scheduler is UTC, so introducing a local timezone anywhere on
+ * this path would move the expected fire by hours on this machine and by zero in
+ * CI — a difference that shows up as a flaky alarm rather than a wrong answer.
  */
-export function evaluateJob(job, rows, intervalHours, nowMs) {
+export function lastExpectedFireMs(expr, nowMs) {
+  const parts = String(expr ?? '').trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const [min, hour, dom, mon, dow] = parts;
+  const literal = (v) => /^\d+$/.test(v);
+  if (!literal(min) || !literal(hour)) return null;
+  if (mon !== '*') return null;
+  const m = Number(min);
+  const h = Number(hour);
+  if (m > 59 || h > 23) return null;
+
+  const now = new Date(nowMs);
+  const at = (dayShift) =>
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dayShift, h, m, 0, 0);
+
+  if (dom === '*' && dow === '*') {
+    const today = at(0);
+    return today <= nowMs ? today : at(-1);
+  }
+  if (dom === '*' && literal(dow)) {
+    const want = Number(dow);
+    // Walk back at most a full week; the first matching weekday whose time has
+    // already passed is the occurrence.
+    //
+    // ⚠️ NO `if (want > 6) return null` HERE, AND ITS ABSENCE IS A MEASURED
+    // RESULT, NOT AN OVERSIGHT. That check was written, then mutation-tested:
+    // widening it to `want > 99` changed NO test outcome, because the bounded
+    // walk below already returns null for any `want` no weekday can equal. A
+    // redundant guard inflates apparent coverage while asserting nothing, so it
+    // was removed rather than kept for comfort — the same call this repo made on
+    // the Ed25519 length checks. `'0 6 * * 9'` is still negative-tested.
+    for (let back = 0; back <= 7; back++) {
+      const t = at(-back);
+      if (t <= nowMs && new Date(t).getUTCDay() === want) return t;
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * The decision, kept pure. `rows` are the newest-first heartbeat rows for ONE
+ * job; `cronExpr` is that job's declared cron expression.
+ *
+ * ⚠️ It takes the EXPRESSION, not a precomputed interval, and that is the whole
+ * repair: an interval can only answer "how old is the newest row", which is a
+ * different question from "did the run that was due actually run". See
+ * MISSED_RUN_GRACE_HOURS for the real event that separated them.
+ */
+export function evaluateJob(job, rows, cronExpr, nowMs) {
   if (!Array.isArray(rows)) {
     return { ok: false, kind: 'unknown', reason: `${job}: the query result was not an array — an unreadable answer is a failure, not a pass` };
   }
@@ -140,15 +246,35 @@ export function evaluateJob(job, rows, intervalHours, nowMs) {
     return { ok: false, kind: 'unknown', reason: `${job}: newest row has an unparseable ran_at (${newest.ran_at})` };
   }
   const ageHours = (nowMs - stamp) / 3_600_000;
-  const ceiling = intervalHours * STALENESS_RATIO;
-  if (ageHours > ceiling) {
+
+  // ── THE ABSENCE LIMB, ANCHORED ON THE OCCURRENCE ─────────────────────────
+  // An unparseable expression is UNKNOWN, never a pass: `deriveWatchedJobs`
+  // already refuses to build a job from a cron this reader cannot read, so
+  // reaching here with one means the two parsers disagree — which is exactly
+  // the state that must fail closed rather than be assumed benign.
+  const dueMs = lastExpectedFireMs(cronExpr, nowMs);
+  if (dueMs === null) {
+    return {
+      ok: false,
+      kind: 'unknown',
+      ageHours,
+      reason:
+        `${job}: cron expression \`${cronExpr}\` yields no computable occurrence, so "was the run that was due missed?" ` +
+        'cannot be asked. Failing closed rather than falling back to a staleness guess.',
+    };
+  }
+  const sinceDueHours = (nowMs - dueMs) / 3_600_000;
+  if (sinceDueHours > MISSED_RUN_GRACE_HOURS && stamp < dueMs) {
     return {
       ok: false,
       kind: 'absent',
       ageHours,
       reason:
-        `${job}: newest heartbeat is ${ageHours.toFixed(1)}h old and the ceiling is ${ceiling.toFixed(1)}h ` +
-        `(${intervalHours}h interval x ${STALENESS_RATIO}). The timer has stopped, or the job can no longer write.`,
+        `${job}: the run due at ${new Date(dueMs).toISOString()} (cron \`${cronExpr}\`) left NO row. ` +
+        `It is now ${sinceDueHours.toFixed(1)}h past due, beyond the ${MISSED_RUN_GRACE_HOURS}h grace, and the newest row is ` +
+        `${new Date(stamp).toISOString()} (${ageHours.toFixed(1)}h old) — written BEFORE that occurrence. ` +
+        'The timer did not fire, or the job can no longer write. ' +
+        'A staleness ceiling of 1.5x the interval is green on exactly this, which is how the 2026-08-06 miss went unreported.',
     };
   }
   // ⚠️ Presence is NOT the assertion. The outcome column is.
@@ -164,7 +290,16 @@ export function evaluateJob(job, rows, intervalHours, nowMs) {
         'A check that only asked "did a row land today" would be green on exactly this.',
     };
   }
-  return { ok: true, ageHours, reason: `${job}: fresh (${ageHours.toFixed(1)}h old) and ok=1` };
+  // The green line names the occurrence it covered, so a reader can check the
+  // pass rather than take it. "fresh (28.1h old)" was literally true on the
+  // morning of the miss and told nobody anything.
+  return {
+    ok: true,
+    ageHours,
+    reason:
+      `${job}: the run due ${new Date(dueMs).toISOString()} is recorded — newest row ${new Date(stamp).toISOString()} ` +
+      `(${ageHours.toFixed(1)}h old), ok=1`,
+  };
 }
 
 /** The watched set, DERIVED from the register + the wrangler config it anchors,
@@ -208,9 +343,20 @@ export function deriveWatchedJobs(root) {
       problems.push(`COVERAGE LOST — ${cfgRel} declares no \`triggers.crons\`, but ${row.id} says it is a cron duty. The register and the config disagree about whether the job exists at all.`);
       continue;
     }
+    // BOTH parsers must accept the expression, and they are checked against each
+    // other here rather than trusted to stay in step. They are separate functions
+    // over the same narrow grammar, so the failure that matters is one of them
+    // being widened alone: the reader would then compute an occurrence for a
+    // schedule the other had already refused, and nothing would say so.
     const intervalHours = cronIntervalHours(crons[0]);
-    if (intervalHours === null) {
-      problems.push(`${row.id}: cron expression \`${crons[0]}\` is not one this reader can turn into an interval, so the staleness window is UNKNOWN — failing closed rather than guessing.`);
+    const probeDue = lastExpectedFireMs(crons[0], Date.now());
+    if (intervalHours === null || probeDue === null) {
+      problems.push(
+        `${row.id}: cron expression \`${crons[0]}\` is not one this reader can read ` +
+          `(interval=${intervalHours === null ? 'refused' : intervalHours + 'h'}, ` +
+          `occurrence=${probeDue === null ? 'refused' : 'computable'}), so "was the run that was due missed?" ` +
+          'cannot be asked — failing closed rather than guessing.',
+      );
       continue;
     }
     const watched = row.watchedJobs;
@@ -234,7 +380,7 @@ export function deriveWatchedJobs(root) {
         );
         continue;
       }
-      jobs.push({ id: row.id, job, intervalHours, databaseId: dbId, cron: crons[0] });
+      jobs.push({ id: row.id, job, databaseId: dbId, cron: crons[0] });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -368,7 +514,7 @@ async function main() {
       failures.push(`${j.job}: ${e.message}`);
       continue;
     }
-    const verdict = evaluateJob(j.job, rows, j.intervalHours, nowMs);
+    const verdict = evaluateJob(j.job, rows, j.cron, nowMs);
     if (verdict.ok) okLines.push(verdict.reason);
     else failures.push(verdict.reason);
   }
