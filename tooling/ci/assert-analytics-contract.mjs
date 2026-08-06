@@ -111,6 +111,23 @@
 //       to nothing is the failure this repo has shipped six times. Each names a
 //       file AND a marker inside it, both of which must exist.
 //
+//       🔵 WIDENED AGAIN 2026-08-06 — B-14's LAST OPEN CLAUSE. An `elsewhere`
+//       pointer must now also declare a `clientHalf` that RESOLVES INSIDE THE
+//       BRICK'S TEST TREE. The config route pointed at
+//       `apps/subly/test/config_default_test.dart`: the pointer resolved, the
+//       marker was found, and the route printed `pinned` — while `apps/subly` is
+//       ONE stamped app, so the property "a change to the config route's shape
+//       turns the client red" held for Subly and for nothing the factory stamps
+//       next. Every new app was born outside the one contract stage 4 had built.
+//       The client half is now `tooling/bricks/app/__brick__/apps/{{app_id}}/
+//       test/config_contract_test.dart`, and three things are checked, not one:
+//       its PATH is under the brick test root; its declared key list EQUALS the
+//       server's `REQUIRED_KEYS` in both directions; and every key in it is one
+//       `AppConfig.fromJson` actually subscripts. The list's own declaration is
+//       stripped before a USE of it is looked for — anchoring on a symbol's own
+//       declaration is how `assert-seams-wired` passed with every real caller
+//       deleted, fixtures and all.
+//
 // Usage:  node tooling/ci/assert-analytics-contract.mjs [repoRoot]
 // Exit 0 = clean, 1 = violation or lost coverage.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,6 +227,56 @@ const WIRE_REGISTER = 'tooling/platform-register.json';
  *  found no error response, or no success response, is COVERAGE LOST. */
 const ERROR_ENVELOPE_KEY = 'error';
 
+/** WHERE A CLIENT HALF HAS TO LIVE FOR A STAMPED APP TO INHERIT IT.
+ *
+ *  🔴 [4]B-14's residual open clause, and the reason it stayed open at BUILT:
+ *  *"the client half of each pair must live where a stamped app inherits it —
+ *  the brick's test tree — not in `apps/subly`."* `apps/subly` is ONE stamped
+ *  app. A pin there says the config route's shape is protected for Subly and
+ *  says NOTHING about app #2, which is the entire subject of an app factory —
+ *  and it says nothing in the way that reads as done, because the pointer
+ *  resolves, the marker is found, and the route prints `pinned`.
+ *
+ *  So the path is asserted, not merely recorded. A `clientHalf` outside this
+ *  root is COVERAGE LOST rather than a pass. */
+const BRICK_TEST_ROOT = 'tooling/bricks/app/__brick__/apps/{{app_id}}/test';
+
+/** The config route's client half, and the three things that make it a contract
+ *  rather than a file that exists.
+ *
+ *  1 · `declares` — a list of wire keys parsed out of the brick test, which must
+ *      EQUAL the server's `REQUIRED_KEYS` in both directions. The two files are
+ *      in different languages and cannot import each other, so this equality is
+ *      the whole mechanism: a key added on the server alone, or deleted from the
+ *      brick alone, fails here.
+ *  2 · ⚠️ THE LIST MUST BE USED, NOT MERELY DECLARED. Its own declaration is
+ *      stripped before the usage is looked for. This repo has shipped a check
+ *      whose anchor matched the symbol's own declaration — `assert-seams-wired`
+ *      passed with every real caller deleted, and all six of its fixture tests
+ *      passed too. A `const kConfigWireKeys = [...]` nothing iterates is a
+ *      comment with brackets.
+ *  3 · `reads` — the keys must be ones the RELEASED client genuinely subscripts
+ *      out of `AppConfig.fromJson`. A key nobody parses cannot break an app when
+ *      it changes, so pinning it would inflate the count without protecting
+ *      anything. */
+const CONFIG_CLIENT_HALF = {
+  file: `${BRICK_TEST_ROOT}/config_contract_test.dart`,
+  declares: 'kConfigWireKeys',
+  server: { file: 'services/platform/test/config.test.ts', marker: 'const REQUIRED_KEYS = ' },
+  reads: {
+    file: join('packages', 'core', 'lib', 'src', 'config', 'app_config.dart'),
+    member: 'factory AppConfig.fromJson(',
+    reader: 'json',
+  },
+  /** THE FLOOR. Two keys whose absence from either side is the failure this pin
+   *  was widened for: `update_url` is the force-update wall's destination, which
+   *  a build cannot change by shipping (that build is the one the wall exists to
+   *  replace), and `min_supported_version` is what arms the wall at all. Both
+   *  landed server-side while the runtime branch was unreachable and nothing was
+   *  red, because falling back is correct when a value is absent. */
+  floor: ['min_supported_version', 'update_url'],
+};
+
 /** ONE ENTRY PER SHARED ROUTE, and the id must be the register's id. The set is
  *  checked against the register in BOTH directions before anything below runs,
  *  so this array cannot silently fall behind the server. */
@@ -245,8 +312,12 @@ const WIRE_CONTRACTS = [
     why: 'the one limb of B-14 that was already BUILT — a REQUIRED_KEYS list plus a no-stray-keys assertion on the server, mirrored by an equality test on the client. Pointed at rather than duplicated, because a second copy of a contract is a second thing to drift.',
     pins: [
       { file: 'services/platform/test/config.test.ts', marker: 'REQUIRED_KEYS' },
+      // Subly's own bundled-default pin. STILL REAL and still checked — it pins
+      // Subly's VALUES against the server's — but it is no longer what satisfies
+      // this route: see `clientHalf` below for why one stamped app cannot.
       { file: 'apps/subly/test/config_default_test.dart', marker: 'kSublyDefaultConfig equals the server contract values' },
     ],
+    clientHalf: CONFIG_CLIENT_HALF,
   },
   {
     id: 'events',
@@ -933,6 +1004,133 @@ function routeShape(rel) {
   return { rel, responses, success, errorShapes, opaque, spreads, unparsedParts, statuses, computedStatus };
 }
 
+/** A `[ … ]` list of quoted lower-snake names opening after `marker`, plus the
+ *  span of the declaration itself so a caller can STRIP it before looking for a
+ *  use. Comment-stripped text only: `REQUIRED_KEYS` carries eighteen lines of
+ *  prose naming other keys, and a scan that read those would pin a set nobody
+ *  wrote. */
+function declaredStringList(text, marker) {
+  const at = text.indexOf(marker);
+  if (at === -1) return null;
+  const open = text.indexOf('[', at + marker.length);
+  if (open === -1) return null;
+  const span = balanced(text, open);
+  if (!span) return null;
+  return {
+    keys: [...span.body.matchAll(/['"]([a-z][a-z0-9_]*)['"]/g)].map((m) => m[1]),
+    start: at,
+    end: span.end,
+  };
+}
+
+/** [4]B-14's residual clause, enforced: the client half of a delegated pin must
+ *  resolve INSIDE the brick's test tree, must agree with the server key for key,
+ *  and must name keys the released client actually reads.
+ *
+ *  Returns `{ keys, pinned }`. `pinned:false` means a real disagreement was
+ *  reported with `fail()` — the route is not counted as pinned, because a
+ *  contract whose two halves disagree is the thing this limb exists to find. */
+function clientHalfOf(contract) {
+  const half = contract.clientHalf;
+  if (!half) {
+    coverageLost(
+      `${contract.id}: this route delegates its pin ELSEWHERE and declares no \`clientHalf\`. B-14's acceptance is ` +
+        'that a change on either side turns the OTHER red for every app the factory stamps, so a delegated pin with ' +
+        'no inherited client half is the "one route of four reads as done" shape at the level of one route.',
+    );
+  }
+  const rel = half.file.replaceAll('\\', '/');
+  if (!rel.startsWith(`${BRICK_TEST_ROOT}/`)) {
+    coverageLost(
+      `${contract.id}: its client half is declared at ${rel}, which is not under ${BRICK_TEST_ROOT}/. ` +
+        'apps/subly is ONE stamped app: a pin there protects Subly and says nothing about the next app the brick ' +
+        'stamps, which is the whole point of an app factory. B-14: "the client half of each pair must live where a ' +
+        'stamped app inherits it — the brick\'s test tree — not in apps/subly".',
+    );
+  }
+  if (!has(half.file)) {
+    coverageLost(`${contract.id}: the inherited client half ${rel} does not exist, so no stamped app carries this pin.`);
+  }
+  const dart = stripSourceComments(read(half.file), '.dart');
+  const declared = declaredStringList(dart, half.declares);
+  if (!declared || declared.keys.length === 0) {
+    coverageLost(
+      `${contract.id}: no wire-key list was parsed out of \`${half.declares}\` in ${rel}. The client half of this ` +
+        'contract would be compared against the empty set, which every server key set satisfies.',
+    );
+  }
+  // ⚠️ THE DECLARATION IS STRIPPED BEFORE THE USE IS LOOKED FOR. Anchoring on
+  // the symbol's own declaration is the defect assert-seams-wired shipped with:
+  // it passed with every real caller deleted, and its fixtures passed too.
+  const withoutDecl = dart.slice(0, declared.start) + dart.slice(declared.end + 1);
+  if (!withoutDecl.includes(half.declares)) {
+    coverageLost(
+      `${contract.id}: \`${half.declares}\` is DECLARED in ${rel} and used nowhere else in it. A list no test ` +
+        'iterates is a comment with brackets: the stamped app would carry the contract as data and assert nothing ' +
+        'about it, while this guard went on comparing it to the server and printing ok.',
+    );
+  }
+
+  if (!has(half.server.file)) {
+    coverageLost(`${contract.id}: the server half ${half.server.file} does not exist.`);
+  }
+  const serverList = declaredStringList(stripSourceComments(read(half.server.file), '.ts'), half.server.marker);
+  if (!serverList || serverList.keys.length === 0) {
+    coverageLost(
+      `${contract.id}: no key list was parsed out of \`${half.server.marker}\` in ${half.server.file}, so the ` +
+        'equality below would hold against nothing.',
+    );
+  }
+  const floorMissing = half.floor.filter((k) => !serverList.keys.includes(k) || !declared.keys.includes(k));
+  if (floorMissing.length) {
+    coverageLost(
+      `${contract.id}: key(s) ${floorMissing.join(', ')} are the declared floor of the config contract and are no ` +
+        'longer on both sides. `update_url` is where the force-update wall sends users — a value a broken build ' +
+        'cannot change by shipping, because that build is the one the wall exists to replace.',
+    );
+  }
+
+  const serverOnly = serverList.keys.filter((k) => !declared.keys.includes(k)).sort();
+  const brickOnly = declared.keys.filter((k) => !serverList.keys.includes(k)).sort();
+  if (serverOnly.length || brickOnly.length) {
+    fail(
+      `${contract.id} — the config contract's two halves name different key sets. ` +
+        (serverOnly.length ? `On the server (${half.server.file}) and NOT in the brick: ${serverOnly.join(', ')}. ` : '') +
+        (brickOnly.length ? `In the brick (${rel}) and NOT on the server: ${brickOnly.join(', ')}. ` : '') +
+        'They are in different languages and cannot import each other, so this equality IS the contract: a field ' +
+        'added on one side alone reaches production as a field every stamped app silently ignores.',
+    );
+    return { keys: declared.keys, pinned: false };
+  }
+
+  if (!has(half.reads.file)) {
+    coverageLost(`${contract.id}: ${half.reads.file} — the parse the pinned keys must be read by — does not exist.`);
+  }
+  const body = dartMemberBody(stripSourceComments(read(half.reads.file), '.dart'), half.reads.member);
+  if (body === null) {
+    coverageLost(
+      `${contract.id}: ${half.reads.file} no longer contains \`${half.reads.member}\`. Every "is this key read" ` +
+        'question below would be asked of an empty body and answered yes.',
+    );
+  }
+  const subscripted = new Set(dartSubscripts(body, half.reads.reader));
+  if (subscripted.size === 0) {
+    coverageLost(`${contract.id}: \`${half.reads.member}\` subscripts no key off \`${half.reads.reader}\`.`);
+  }
+  const unread = declared.keys.filter((k) => !subscripted.has(k)).sort();
+  if (unread.length) {
+    fail(
+      `${contract.id} — key(s) ${unread.join(', ')} are pinned on both sides and ` +
+        `${half.reads.file.replaceAll('\\', '/')} never reads ` +
+        `them off \`${half.reads.reader}\`. The shared server sends the field to every app in the portfolio and ` +
+        'every app drops it on the floor — which no server test can see, and which the config route answering 200 ' +
+        'actively conceals.',
+    );
+    return { keys: declared.keys, pinned: false };
+  }
+  return { keys: declared.keys, pinned: true };
+}
+
 let wireGaps = 0;
 let wirePinned = 0;
 
@@ -950,8 +1148,17 @@ for (const contract of WIRE_CONTRACTS) {
         );
       }
     }
-    wirePinned++;
-    ok(`wire ${contract.id} — pinned by ${contract.pins.map((p) => p.file).join(' + ')}`);
+    const half = clientHalfOf(contract);
+    if (half.pinned) {
+      wirePinned++;
+      ok(
+        `wire ${contract.id} — pinned by ${contract.pins.map((p) => p.file).join(' + ')}; client half INHERITED by ` +
+          `every stamped app: ${half.keys.length} key(s) in ${contract.clientHalf.file.replaceAll('\\', '/')} equal ` +
+          `the server's \`${contract.clientHalf.server.marker.replace(/^const\s+/, '').replace(/\s*=\s*$/, '')}\`, ` +
+          'all of them read by ' +
+          `${contract.clientHalf.reads.member.replace('(', '')}`,
+      );
+    }
     continue;
   }
 
