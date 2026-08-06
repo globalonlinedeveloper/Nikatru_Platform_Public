@@ -46,6 +46,12 @@ class _FakePlugin implements NotificationPlugin {
   Future<void> cancelAll() async => calls.add('cancelAll');
 }
 
+/// One zone the resolver can name, paired with what a 02:00 reminder MUST
+/// become in it. The expectation is written as an ABSOLUTE UTC instant rather
+/// than as arithmetic over [utcOffset], so the test cannot re-derive its answer
+/// with the same mistake the code under test might be making.
+typedef _ZoneCase = ({String zone, Duration utcOffset, List<int> utcYmdHm});
+
 void main() {
   setUpAll(tz_data.initializeTimeZones);
 
@@ -342,6 +348,124 @@ void main() {
           p.scheduledFor.single.toUtc().minute,
         ],
         <int>[3, 45],
+      );
+    });
+  });
+
+  // ── [13]T-3: THE RESOLVER PATH, PINNED IN TWO ZONES ────────────────────────
+  // The group above pins the BARE-DEVICE path (no resolver) and both of its
+  // fallbacks. What it cannot pin is the resolver path, and one zone is not
+  // enough to pin that: an assertion about 'Asia/Kolkata' alone passes equally
+  // well against a service that hard-codes that zone, ignores the resolver
+  // entirely, or merely inherited `tz.local` from an earlier test. Two zones
+  // driven through the SAME reminder rule all three out — the only way both
+  // can be right is if the resolver's answer is what reaches the port.
+  //
+  // 02:00 is chosen, not incidental: at that wall clock the two zones fall on
+  // DIFFERENT UTC calendar days (Kolkata is the previous day in UTC, Los
+  // Angeles the same day). A mid-afternoon hour keeps both on one date and
+  // hides every date-rollover error; this hour makes the rollover testable.
+  group('[13]T-3 the resolver decides the zone — proven in two of them', () {
+    // `tz.local` is process-global and `init()` sets it. Put it back so no
+    // later test can inherit a zone this group installed.
+    tearDown(() => tz.setLocalLocation(tz.UTC));
+
+    const DailyReminder earlyReminder = DailyReminder(
+      id: 21,
+      title: 'Early bird',
+      body: '02:00 on the user\'s own wall clock',
+      hour: 2,
+      minute: 0,
+    );
+
+    const List<_ZoneCase> cases = <_ZoneCase>[
+      // +05:30, no DST. 02:00 on the 2nd is 20:30 UTC on the 1st.
+      (
+        zone: 'Asia/Kolkata',
+        utcOffset: Duration(hours: 5, minutes: 30),
+        utcYmdHm: <int>[2026, 1, 1, 20, 30],
+      ),
+      // -08:00 in January (PST). 02:00 on the 2nd is 10:00 UTC on the 2nd.
+      (
+        zone: 'America/Los_Angeles',
+        utcOffset: Duration(hours: -8),
+        utcYmdHm: <int>[2026, 1, 2, 10, 0],
+      ),
+    ];
+
+    /// Schedules [earlyReminder] with a resolver that names [zone], and returns
+    /// the instant that actually reached the plugin port.
+    Future<tz.TZDateTime> scheduleIn(String zone) async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = LocalNotificationService(
+        plugin: p,
+        platform: TargetPlatform.android,
+        localTimezone: () async => zone,
+        // An offset NEITHER case is on. If the resolver were ignored and the
+        // device fallback taken, the zone name below reads `device+0945` and
+        // every instant is wrong — the fallback cannot fake a pass here.
+        deviceUtcOffset: () => const Duration(hours: 9, minutes: 45),
+        // Read INSIDE the closure so it sees the location init() installed.
+        now: () => tz.TZDateTime(tz.local, 2026, 1, 1, 6, 0),
+      );
+      await s.init();
+      await s.scheduleDaily(earlyReminder);
+      return p.scheduledFor.single;
+    }
+
+    for (final _ZoneCase c in cases) {
+      test('a 02:00 reminder resolves into ${c.zone}', () async {
+        final tz.TZDateTime when = await scheduleIn(c.zone);
+
+        expect(
+          when.location.name,
+          c.zone,
+          reason: 'the TZDateTime handed to the plugin must carry the zone the '
+              'resolver named, not whatever tz.local happened to already be',
+        );
+        expect(tz.local.name, c.zone);
+
+        expect(
+          <int>[when.hour, when.minute],
+          <int>[2, 0],
+          reason: 'the wall clock the user reads in ${c.zone} must say 02:00',
+        );
+        expect(
+          when.timeZoneOffset,
+          c.utcOffset,
+          reason: '${c.zone} is ${c.utcOffset} from UTC on this date',
+        );
+
+        final tz.TZDateTime utc = when.toUtc();
+        expect(
+          <int>[utc.year, utc.month, utc.day, utc.hour, utc.minute],
+          c.utcYmdHm,
+          reason: '02:00 in ${c.zone} is one fixed instant; if the UTC DATE is '
+              'wrong the reminder fires a day out, which an hour-only '
+              'assertion would never see',
+        );
+      });
+    }
+
+    // Guards the pair above against being quietly re-tuned to a convenient
+    // hour. The whole reason for 02:00 is that the two zones straddle the UTC
+    // date boundary; move the reminder to 09:15 and every assertion above
+    // still passes while this one goes red.
+    test('the two zones fall on DIFFERENT UTC calendar days', () async {
+      final tz.TZDateTime kolkata = await scheduleIn('Asia/Kolkata');
+      final tz.TZDateTime la = await scheduleIn('America/Los_Angeles');
+
+      expect(
+        kolkata.day,
+        la.day,
+        reason: 'both reminders are the same LOCAL calendar day…',
+      );
+      expect(
+        kolkata.toUtc().day,
+        isNot(la.toUtc().day),
+        reason: '…but land on different UTC days. That straddle is the '
+            'coverage this pair exists to provide; if it ever stops being '
+            'true, the two-zone test has lost its point',
       );
     });
   });
