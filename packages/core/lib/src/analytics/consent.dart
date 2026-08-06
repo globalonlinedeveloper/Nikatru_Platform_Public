@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../storage/key_value_store.dart';
 import 'ids.dart';
+import 'privacy_signal.dart';
 
 /// What a consent decision covers. Consent is **per purpose**, never a single
 /// blanket flag — a user who accepts analytics has not thereby accepted cloud
@@ -117,18 +118,44 @@ class ConsentController {
   ConsentController({
     required KeyValueStore store,
     String keyPrefix = 'nikatru.consent.',
+    PrivacySignal? privacySignal,
   })  : _store = store,
-        _keyPrefix = keyPrefix;
+        _keyPrefix = keyPrefix,
+        _privacySignal = privacySignal ?? const NoPrivacySignal();
 
   final KeyValueStore _store;
   final String _keyPrefix;
+  final PrivacySignal _privacySignal;
   final Map<String, ConsentArtifact> _cache = <String, ConsentArtifact>{};
+
+  /// [pipeline K-15] Purposes a device-level opt-out speaks for.
+  ///
+  /// GPC is a "do not sell or share" signal. It says nothing about whether the
+  /// user wants their own data synced to their own devices, so it must NOT
+  /// suppress [ConsentPurpose.syncBackup] — treating one signal as blanket
+  /// consent-withdrawal is the same error as a single blanket consent flag,
+  /// which this file rejects at the top.
+  static const Set<String> _signalGovernedPurposes = <String>{'analytics'};
+
+  /// True when a device-level opt-out is speaking for [purpose] right now.
+  ///
+  /// Read live on every consult — the user can toggle GPC mid-session, and a
+  /// cached `false` would outlive their turning it on.
+  bool optedOutBySignal(ConsentPurpose purpose) =>
+      _signalGovernedPurposes.contains(purpose.value) &&
+      _privacySignal.optedOut;
 
   String _key(ConsentPurpose p) => '$_keyPrefix${p.value}';
 
   /// Load the persisted decision for [purpose] into memory. Call once at start
   /// up before consulting [statusOf].
   Future<ConsentStatus> hydrate(ConsentPurpose purpose) async {
+    // [pipeline K-15] The device signal is consulted BEFORE the store, and it
+    // wins. It is not merged with the stored decision and it does not overwrite
+    // it: a user who once granted and then switched GPC on gets `denied` now,
+    // and their original artifact is left untouched so switching GPC off
+    // restores what they actually chose. Nothing is collected in between.
+    if (optedOutBySignal(purpose)) return ConsentStatus.denied;
     try {
       final String? raw = await _store.read(_key(purpose));
       if (raw == null || raw.isEmpty) return ConsentStatus.unknown;
@@ -148,6 +175,10 @@ class ConsentController {
   /// The in-memory decision. [ConsentStatus.unknown] until [hydrate] or
   /// [record] has run — and unknown never permits collection.
   ConsentStatus statusOf(ConsentPurpose purpose) {
+    // [pipeline K-15] The signal wins here too, and this is the line that makes
+    // "no prompt is shown" true: a UI that prompts on `unknown` never sees
+    // `unknown` for a GPC user — it sees `denied`, which is a decided state.
+    if (optedOutBySignal(purpose)) return ConsentStatus.denied;
     final ConsentArtifact? a = _cache[purpose.value];
     if (a == null) return ConsentStatus.unknown;
     return a.granted ? ConsentStatus.granted : ConsentStatus.denied;

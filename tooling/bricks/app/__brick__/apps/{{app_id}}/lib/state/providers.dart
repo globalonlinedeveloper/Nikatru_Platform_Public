@@ -429,7 +429,15 @@ final FutureProvider<core.ConsentController> consentControllerProvider =
       final core.KeyValueStore kv = await ref.watch(
         keyValueStoreProvider.future,
       );
-      final core.ConsentController c = core.ConsentController(store: kv);
+      // [pipeline K-15] The device-level opt-out is wired HERE, in the chassis,
+      // so every stamped app honours Global Privacy Control with zero per-app
+      // edits. On Web this reads `navigator.globalPrivacyControl`; on the other
+      // five platforms there is no such concept and it is always false, so
+      // nothing changes for them.
+      final core.ConsentController c = core.ConsentController(
+        store: kv,
+        privacySignal: core.createPrivacySignal(),
+      );
       await c.hydrate(core.ConsentPurpose.analytics);
       return c;
     });
