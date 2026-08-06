@@ -191,7 +191,7 @@ events.post('/events', async (c) => {
   // 1 · SHED FIRST, ON A KEY THAT NEEDS NO BODY. Nothing below this line runs
   //     for a caller already over the per-(colo, asn) ceiling — including the
   //     read.
-  if (!(await withinEdgeCeiling(c.env.EVENTS_CEILING_LIMITER, c))) {
+  if (!(await withinEdgeCeiling(c.env.EVENTS_CEILING_LIMITER, c, 'EVENTS_CEILING_LIMITER'))) {
     return c.json(RATE_LIMITED_BATCH, 429);
   }
 
@@ -247,7 +247,7 @@ events.post('/events', async (c) => {
   const firstAnon = str(list[0]?.anon_id, MAX_ID_LEN);
   if (!firstAnon) return c.json({ error: 'missing_anon_id' }, 400);
   // 3 · The body-derived half, reached only once the ceiling has allowed.
-  if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `${appId}:${firstAnon}`))) {
+  if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `${appId}:${firstAnon}`, 'EVENTS_LIMITER'))) {
     return c.json(RATE_LIMITED_BATCH, 429);
   }
 
@@ -321,7 +321,7 @@ events.post('/consent', async (c) => {
   // server-derived key first, bound the body, then parse. A consent artifact is
   // a dozen short fields, so its ceiling is far tighter than the batch route's —
   // there is no legitimate 256 KB consent record.
-  if (!(await withinEdgeCeiling(c.env.EVENTS_CEILING_LIMITER, c))) {
+  if (!(await withinEdgeCeiling(c.env.EVENTS_CEILING_LIMITER, c, 'EVENTS_CEILING_LIMITER'))) {
     return c.json(RATE_LIMITED, 429);
   }
 
@@ -352,7 +352,9 @@ events.post('/consent', async (c) => {
   c.set('appId', appId); // [pipeline B-16], same rule as /v1/events above.
   // Same two-key breaker as /v1/events: the consent row is a D1 write on the
   // same unauthenticated surface, so a rotating caller must be shed here too.
-  if (!(await withinRateLimit(c.env.EVENTS_LIMITER, `consent:${appId}:${anonId}`))) {
+  if (
+    !(await withinRateLimit(c.env.EVENTS_LIMITER, `consent:${appId}:${anonId}`, 'EVENTS_LIMITER'))
+  ) {
     return c.json(RATE_LIMITED, 429);
   }
 
