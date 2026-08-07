@@ -458,7 +458,12 @@ jobs:
       # The CORS allowlist is EXACT, so it fails closed and silently — dropping
       # an origin breaks that surface in the browser with nothing logged server
       # side. This guards the deployed config; cors.test.ts guards the behaviour.
-      - name: CORS allowlist still covers every origin in use
+      # [4]B-2 + [3]S-11: the required origins are DERIVED from the app catalogue
+      # (sites/_shared/_data/apps.json), so stamping a new app into the factory
+      # cannot depend on a human remembering to edit a comma-separated string in
+      # two wrangler configs. The catalogue is also a CEILING — an origin nothing
+      # justifies is a standing CORS grant nobody reviewed.
+      - name: CORS allowlist is derived from the app catalogue
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-cors-allowlist.mjs
       # Every deployable unit must be claimed by some lane. The lane list is

@@ -406,10 +406,20 @@ describe('assert-cors-allowlist', () => {
   const config = (origins) =>
     `{\n  // a Worker\n  "vars": { "ALLOWED_ORIGINS": "${origins.join(',')}" }\n}\n`;
 
+  /** The app catalogue every required origin is DERIVED from ([4]B-2, [3]S-11).
+   *  Without it the guard reports COVERAGE LOST rather than checking anything,
+   *  so every fixture below is a tree that has one. */
+  const CATALOGUE = JSON.stringify(
+    [{ slug: 'subly', name: 'Subly', url: 'https://subly.nikatru.com', status: 'live' }],
+    null,
+    2,
+  );
+
   /** Both Workers, each overridable. Anything less is not a valid tree — the
    *  guard is supposed to insist that every service it knows about is present. */
   const build = (name, { platform = config(PLATFORM), subly = config(SUBLY), extra = {} } = {}) =>
     fixture(name, {
+      'sites/_shared/_data/apps.json': CATALOGUE,
       'services/platform/wrangler.jsonc': platform,
       'services/subly-api/wrangler.jsonc': subly,
       ...extra,
@@ -485,6 +495,7 @@ describe('assert-cors-allowlist', () => {
     // The rename case: services/subly-api moves and the guard keeps printing a
     // healthy tally over whatever is left.
     const dir = fixture('cors-renamed', {
+      'sites/_shared/_data/apps.json': CATALOGUE,
       'services/platform/wrangler.jsonc': config(PLATFORM),
       'services/subly-backend/wrangler.jsonc': config(SUBLY),
     });
@@ -496,6 +507,7 @@ describe('assert-cors-allowlist', () => {
 
   test('FAILS its own coverage check when fewer Workers than expected are found', () => {
     const dir = fixture('cors-one-worker', {
+      'sites/_shared/_data/apps.json': CATALOGUE,
       'services/platform/wrangler.jsonc': config(PLATFORM),
     });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
