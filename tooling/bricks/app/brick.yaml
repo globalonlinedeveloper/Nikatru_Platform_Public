@@ -84,6 +84,39 @@ vars:
       hooks/pre_gen.dart enforces that from the channel register's SOURCED
       number, never from one written here.
     prompt: Short description (one line, <= 80 chars — the store listing uses it)
+  markets:
+    type: string
+    description: >-
+      COMMA-SEPARATED list of the markets this app is offered in, e.g. `in` or
+      `in,eu`. [pipeline K-1] A STAMP THAT DECLARES NO MARKET IS REFUSED, and so
+      is one naming a market this factory cannot resolve a duty in.
+      ⚠️ THE VOCABULARY IS NOT WRITTEN HERE, deliberately. It is the union of the
+      `markets` arrays on the rows of tooling/legal/duty-matrix.json, computed by
+      hooks/pre_gen.dart at stamp time, so a market becomes declarable only by
+      adding the duty row that makes it resolvable — which is the work, not a
+      line in a list. A token resolving to ZERO rows is refused BY NAME with the
+      resolvable set printed, which is what stops `global` meaning nothing at
+      all. A second list of "markets we support" would be the first thing to
+      drift, so there is not one.
+    prompt: Markets offered in (comma-separated, e.g. in)
+  audience:
+    type: string
+    description: >-
+      Who the app is offered to — `general` or `children`. [pipeline K-16]
+      Declaring `children` is REFUSED for as long as the children's surface does
+      not exist. 🔴 THE VERDICT IS READ, NOT HARDCODED: hooks/pre_gen.dart opens
+      the `children-surface-before-a-kids-app` row in
+      tooling/legal/duty-matrix.json and requires it to be `implemented` AND to
+      name an `artefact` that is really on disk. So the day the surface is built
+      and filed there the stamp starts accepting a kids app with nobody
+      remembering to unblock it, and a status flipped to `implemented` without a
+      real artefact still cannot buy a pass.
+      ⚠️ NOTHING IN A REPOSITORY CAN DERIVE AN INTENDED AUDIENCE — the same
+      question in apps/subly/store/android-play/content-rating.json says so of
+      itself. This value is a human's declaration; what is mechanical is that it
+      cannot outrun the surface it obliges.
+    prompt: Audience (general | children)
+    default: general
   subtitle:
     type: string
     description: >-

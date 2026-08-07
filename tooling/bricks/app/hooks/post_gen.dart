@@ -38,6 +38,19 @@ void run(HookContext context) {
     // platform Worker. Writing `api-<app>.nikatru.com` here would publish a
     // hostname that will never resolve into a PUBLIC catalog ([ADR 020]).
     api: (!needsBackend || apiDomain.isEmpty) ? '' : 'https://$apiDomain',
+    // [pipeline K-1 · K-16] THE DECLARATION HAS TO OUTLIVE THE STAMP. pre_gen
+    // refuses a spec with no market and normalises what survives; if the value
+    // stopped there, "every app declares the markets it is offered in" would be
+    // true for the length of one command. The catalogue row is where it belongs:
+    // it is the public record of what this app IS, and it is the file a person
+    // asking "where is this offered, and who to?" already opens.
+    markets: (v['markets'] ?? '')
+        .toString()
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList(),
+    audience: (v['audience'] ?? '').toString(),
   );
 
   _registerInWorkspace(context, id: id);
@@ -283,6 +296,8 @@ void _appendToAppsJson(
   required String tagline,
   required String url,
   required String api,
+  required List<String> markets,
+  required String audience,
 }) {
   final file = File('sites/_shared/_data/apps.json');
   if (!file.existsSync()) {
@@ -307,6 +322,8 @@ void _appendToAppsJson(
     'url': url,
     'api': api,
     'platforms': <String>['web'],
+    'markets': markets,
+    'audience': audience,
     'status': 'preview',
   });
   const encoder = JsonEncoder.withIndent('  ');
@@ -389,14 +406,16 @@ void _writeMsixConfig(
 }) {
   final file = File('apps/$id/pubspec.yaml');
   if (!file.existsSync()) {
-    context.logger
-        .warn('apps/$id/pubspec.yaml not found; msix_config skipped.');
+    context.logger.warn(
+      'apps/$id/pubspec.yaml not found; msix_config skipped.',
+    );
     return;
   }
   final existing = file.readAsStringSync();
   if (existing.contains(RegExp(r'^msix_config:', multiLine: true))) {
-    context.logger
-        .info('apps/$id/pubspec.yaml already has msix_config; left unchanged.');
+    context.logger.info(
+      'apps/$id/pubspec.yaml already has msix_config; left unchanged.',
+    );
     return;
   }
   final register = File('tooling/channel-register.json');
@@ -414,7 +433,8 @@ void _writeMsixConfig(
         );
     if (rows.isEmpty) {
       context.logger.info(
-          'store identity: no store channel declares a packageIdentity; nothing to stamp.');
+        'store identity: no store channel declares a packageIdentity; nothing to stamp.',
+      );
       return;
     }
     final identity = rows.first['packageIdentity'] as Map;
@@ -422,25 +442,34 @@ void _writeMsixConfig(
     final buffer = StringBuffer(existing.endsWith('\n') ? '' : '\n')
       ..writeln()
       ..writeln(
-          '# ─────────────────────────────────────────────────────────────────────────────')
+        '# ─────────────────────────────────────────────────────────────────────────────',
+      )
       ..writeln(
-          '# MSIX PACKAGING IDENTITY — stamped from tooling/channel-register.json')
+        '# MSIX PACKAGING IDENTITY — stamped from tooling/channel-register.json',
+      )
       ..writeln(
-          '# ─────────────────────────────────────────────────────────────────────────────')
+        '# ─────────────────────────────────────────────────────────────────────────────',
+      )
       ..writeln(
-          '# 🔴 DO NOT EDIT THESE THREE BY HAND. The register is the single declaration')
+        '# 🔴 DO NOT EDIT THESE THREE BY HAND. The register is the single declaration',
+      )
       ..writeln(
-          '# and tooling/ci/assert-store-metadata.mjs fails the build when this block and')
+        '# and tooling/ci/assert-store-metadata.mjs fails the build when this block and',
+      )
       ..writeln(
-          '# that row disagree. Without the block at all, `msix` packages under its')
+        '# that row disagree. Without the block at all, `msix` packages under its',
+      )
       ..writeln(
-          '# fallback identity `com.flutter.<name>` — which belongs to nobody, cannot be')
+        '# fallback identity `com.flutter.<name>` — which belongs to nobody, cannot be',
+      )
       ..writeln('# submitted, and still builds successfully.')
       ..writeln('#')
       ..writeln(
-          '# The sentinel values are assigned by Partner Center after OWNER_QUEUE A-2.')
+        '# The sentinel values are assigned by Partner Center after OWNER_QUEUE A-2.',
+      )
       ..writeln(
-          '# There is nothing to derive them from, and an invented value would publish')
+        '# There is nothing to derive them from, and an invented value would publish',
+      )
       ..writeln('# under an identity we do not own.')
       ..writeln('msix_config:')
       ..writeln('  display_name: $displayName')
@@ -448,15 +477,19 @@ void _writeMsixConfig(
       ..writeln('  identity_name: ${field('identityName')}')
       ..writeln('  publisher: ${field('publisher')}')
       ..writeln(
-          '  # The Store re-signs the submitted package, so nothing here holds or needs a')
+        '  # The Store re-signs the submitted package, so nothing here holds or needs a',
+      )
       ..writeln(
-          '  # certificate and `msix` skips signing entirely. Flipping this to false')
+        '  # certificate and `msix` skips signing entirely. Flipping this to false',
+      )
       ..writeln('  # silently re-introduces a test certificate nobody owns.')
       ..writeln('  store: true')
       ..writeln(
-          '  # The release lane has already run `flutter build windows --release`; letting')
+        '  # The release lane has already run `flutter build windows --release`; letting',
+      )
       ..writeln(
-          '  # msix build again would package a DIFFERENT build from the one CI proved.')
+        '  # msix build again would package a DIFFERENT build from the one CI proved.',
+      )
       ..writeln('  build_windows: false')
       ..writeln('  architecture: x64')
       ..writeln('  languages: en-us')
