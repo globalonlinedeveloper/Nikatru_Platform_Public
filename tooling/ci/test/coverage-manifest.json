@@ -64,7 +64,7 @@
   "play-submission.test.mjs": 35,
   "policy-archive.test.mjs": 26,
   "policy-claims.test.mjs": 34,
-  "post-deploy-smoke.test.mjs": 20,
+  "post-deploy-smoke.test.mjs": 41,
   "price-literals.test.mjs": 11,
   "prod-provenance.test.mjs": 33,
   "provision-backend.test.mjs": 9,

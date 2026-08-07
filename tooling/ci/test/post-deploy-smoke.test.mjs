@@ -18,14 +18,16 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { judge, judgeOk, flag } from '../../ops/post-deploy-smoke.mjs';
+import { judge, judgeOk, flag, judgeCacheControl, isWebChannelSmoke, WEB_ENTRY_POINTS } from '../../ops/post-deploy-smoke.mjs';
 
-const SCRIPT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'ops', 'post-deploy-smoke.mjs');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SCRIPT = resolve(HERE, '..', '..', 'ops', 'post-deploy-smoke.mjs');
+const ROOT = resolve(HERE, '..', '..', '..');
 
 let TMP;
 let seq = 0;
@@ -201,6 +203,261 @@ describe('post-deploy-smoke — end to end, through the real script', () => {
 
   test('🔴 exit 2 on an unreadable fixture — never a silent pass', () => {
     const r = spawnSync(process.execPath, [SCRIPT, ...WEB, '--fixture', join(TMP, 'nope.json')], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE EDGE CACHE LIMB — [14]O-8, `revert.mitigation.force-update`.
+//
+// The row was DEGRADED on exactly this: `assert-web-cache-policy.mjs` reads the
+// DECLARED policy in `apps/subly/web/_headers` and nothing in this repository
+// read the header the EDGE returns. The measured failure was the nikatru.com
+// zone's Browser Cache TTL of 14400 stamping `public, max-age=14400,
+// must-revalidate` over a correct origin header on `.js` — four hours in which
+// a client keeps the previous build and reports the previous version honestly,
+// which is the one client the force-update gate cannot see.
+//
+// ⚠️ THE EXPECTATION UNDER TEST IS THE DECLARED REQUIREMENT, NOT A MEASUREMENT.
+// Production on 2026-08-07 serves `public, max-age=0, must-revalidate` on both
+// entry points — it AGREES with `_headers` today. A guard written to match that
+// observation would pass by construction, so the tests below are built the
+// other way round: the historical failing value is the first input, and it must
+// go red.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The live values measured against production on 2026-08-07, pasted verbatim. */
+const LIVE_OK = 'public, max-age=0, must-revalidate';
+/** The value measured on 2026-08-04, before the zone moved to "Respect Existing Headers". */
+const LIVE_BAD = 'public, max-age=14400, must-revalidate';
+
+const JS = 'application/javascript';
+
+/** Runs the real script with BOTH fixtures, so the limb is exercised end to end
+ *  through the actual exit codes rather than only as a pure function. */
+function runCache(responses, args, cacheMap) {
+  const f = join(TMP, `fx-${(seq += 1)}.json`);
+  const c = join(TMP, `cf-${(seq += 1)}.json`);
+  writeFileSync(f, JSON.stringify(responses));
+  writeFileSync(c, JSON.stringify(cacheMap));
+  const r = spawnSync(process.execPath, [SCRIPT, ...args, '--fixture', f, '--cache-fixture', c], { encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+/** Every path the limb looks at, all serving the value production serves. */
+const cacheAllGood = () => ({
+  '/version.json': { status: 200, headers: { 'content-type': 'application/json', 'cache-control': LIVE_OK } },
+  '/flutter_bootstrap.js': { status: 200, headers: { 'content-type': JS, 'cache-control': LIVE_OK } },
+  '/main.dart.js': { status: 200, headers: { 'content-type': JS, 'cache-control': LIVE_OK } },
+});
+
+describe('post-deploy-smoke — the edge cache decision [14]O-8', () => {
+  test('PASSES on the value production actually serves', () => {
+    const v = judgeCacheControl({ status: 200, contentType: JS, cacheControl: LIVE_OK, expectType: /javascript/ });
+    assert.equal(v.ok, true);
+    assert.equal(v.actual, LIVE_OK);
+  });
+
+  test('🔴 FAILS on the MEASURED 2026-08-04 value, and does NOT retry', () => {
+    // The whole reason this limb exists. It is configuration — a zone setting —
+    // so it is identical one second after the deploy and one hour after, and
+    // waiting could only turn a real divergence into a slower real divergence.
+    const v = judgeCacheControl({ status: 200, contentType: JS, cacheControl: LIVE_BAD, expectType: /javascript/ });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, false);
+    assert.match(v.reason, /max-age=14400/);
+    assert.match(v.reason, /force-update gate cannot see/);
+  });
+
+  test('🔴 FAILS on ANY positive max-age, not just the one that was measured', () => {
+    // An assertion pinned to 14400 would pass on 14399 — decoration.
+    for (const cc of ['public, max-age=1', 'max-age=60, must-revalidate', 'public, max-age=31536000']) {
+      const v = judgeCacheControl({ status: 200, contentType: JS, cacheControl: cc, expectType: /javascript/ });
+      assert.equal(v.ok, false, `${cc} must fail`);
+    }
+  });
+
+  test('🔴 FAILS on `immutable` — the exact thing /assets/* wrongly declared', () => {
+    const v = judgeCacheControl({
+      status: 200,
+      contentType: JS,
+      cacheControl: 'public, max-age=31536000, immutable',
+      expectType: /javascript/,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, false);
+    assert.match(v.reason, /immutable/);
+  });
+
+  test('🔴 FAILS when the edge returns NO Cache-Control at all', () => {
+    // The platform-default state `_headers` was written to end. Absent must
+    // never read as fine: "I could not tell" reading as "it is fine" is how
+    // max-age=14400 lived behind a green build.
+    for (const cc of [undefined, null, '', '   ']) {
+      const v = judgeCacheControl({ status: 200, contentType: JS, cacheControl: cc, expectType: /javascript/ });
+      assert.equal(v.ok, false, `${JSON.stringify(cc)} must fail`);
+      assert.equal(v.retry, false);
+      assert.match(v.reason, /NO Cache-Control at all/);
+    }
+  });
+
+  test('🔴 FAILS on a header that sets no freshness lifetime at all', () => {
+    const v = judgeCacheControl({ status: 200, contentType: JS, cacheControl: 'public', expectType: /javascript/ });
+    assert.equal(v.ok, false);
+    assert.match(v.reason, /no freshness lifetime/);
+  });
+
+  test('🔴 FAILS on s-maxage>0 even when max-age is 0 — the edge IS a shared cache', () => {
+    const v = judgeCacheControl({
+      status: 200,
+      contentType: JS,
+      cacheControl: 'public, max-age=0, s-maxage=14400, must-revalidate',
+      expectType: /javascript/,
+    });
+    assert.equal(v.ok, false);
+    assert.match(v.reason, /s-maxage=14400/);
+  });
+
+  test('no-cache and no-store PASS — they are stricter than max-age=0', () => {
+    // The property is "ask before reusing", not a literal string. Exact string
+    // equality would fail on an equally-correct header and get deleted.
+    for (const cc of ['no-cache', 'no-store', 'private, no-cache', 'MAX-AGE=0, PUBLIC']) {
+      assert.equal(
+        judgeCacheControl({ status: 200, contentType: JS, cacheControl: cc, expectType: /javascript/ }).ok,
+        true,
+        `${cc} must pass`,
+      );
+    }
+  });
+
+  test('🔴 an SPA shell where JavaScript belongs is a MISSING asset — and RETRIES', () => {
+    // Pages answers an unknown path with index.html at 200. Judging its header
+    // would report on a file that is not there.
+    const v = judgeCacheControl({
+      status: 200,
+      contentType: 'text/html; charset=utf-8',
+      cacheControl: LIVE_OK,
+      expectType: /javascript/,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, true);
+    assert.match(v.reason, /text\/html/);
+  });
+
+  test('🔴 a non-200 entry point fails, and RETRIES — that is what propagation looks like', () => {
+    const v = judgeCacheControl({ status: 404, contentType: JS, cacheControl: LIVE_OK, expectType: /javascript/ });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, true);
+    assert.match(v.reason, /HTTP 404/);
+  });
+
+  test('the limb covers exactly the entry points the register row names', () => {
+    // `main.dart.js` is compiled output but its NAME is stable, so it is an
+    // entry point by the rule _headers states: the split is by whether the name
+    // carries a hash, not by file type.
+    assert.deepEqual(WEB_ENTRY_POINTS, ['/flutter_bootstrap.js', '/main.dart.js']);
+  });
+
+  test('the predicate separates the web channel from the Workers', () => {
+    assert.equal(isWebChannelSmoke('https://subly.nikatru.com/version.json'), true);
+    assert.equal(isWebChannelSmoke('https://api.nikatru.com/v1/health'), false);
+    assert.equal(isWebChannelSmoke('not a url'), false);
+  });
+
+  test('REQUIRED COVERAGE: deploy-web.yml still smokes the URL the limb keys on', () => {
+    // ⚠️ THE LIMB IS SCOPED BY THE SMOKED URL'S PATH, which is a coupling to the
+    // caller. If deploy-web.yml ever smokes a different URL the limb goes QUIET
+    // rather than red — the exact "a check that silently stopped checking"
+    // failure this repository keeps paying for. This asserts the coupling
+    // against the REAL workflow, so that change breaks a test instead.
+    const wf = readFileSync(join(ROOT, '.github', 'workflows', 'deploy-web.yml'), 'utf8');
+    // ⚠️ `node ...` and not the bare filename: the first mention in this file is
+    // the `paths:` trigger list, which carries no --url. Matching that instead
+    // of the RUN step is how this assertion would have reported on the wrong
+    // line — it did, on the first run, which is why the anchor is spelled out.
+    const at = wf.indexOf('node tooling/ops/post-deploy-smoke.mjs');
+    assert.notEqual(at, -1, 'deploy-web.yml no longer invokes post-deploy-smoke.mjs at all');
+    const window = wf.slice(at, at + 400);
+    // The whole rest of the line, not \S+: the value is
+    // `${{ steps.target.outputs.site_url }}/version.json` and an expression with
+    // spaces in it would otherwise truncate to `${{`.
+    const url = window.match(/--url[ \t]+(.+)/);
+    assert.ok(url, 'the smoke invocation in deploy-web.yml has no --url');
+    assert.match(
+      url[1].trim(),
+      /\/version\.json$/,
+      `deploy-web.yml smokes ${url[1]}, but the edge cache limb only fires on /version.json — it is now silent on every web deploy`,
+    );
+  });
+});
+
+describe('post-deploy-smoke — the edge cache limb, end to end', () => {
+  test('exit 0 and NAMES every header it saw', () => {
+    const r = runCache([{ status: 200, body: '{"build_number":482}' }], WEB, cacheAllGood());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /flutter_bootstrap\.js revalidates/);
+    assert.match(r.out, /main\.dart\.js revalidates/);
+  });
+
+  test('🔴 exit 1 when ONE entry point carries the measured bad value', () => {
+    // main.dart.js only — a limb that checked the bootstrap alone would pass.
+    const m = cacheAllGood();
+    m['/main.dart.js'].headers['cache-control'] = LIVE_BAD;
+    const r = runCache([{ status: 200, body: '{"build_number":482}' }], WEB, m);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /EDGE CACHE POLICY FAILED for https:\/\/subly\.nikatru\.com\/main\.dart\.js/);
+    assert.match(r.out, /max-age=14400/);
+    assert.match(r.out, /kill-switch cannot see/);
+  });
+
+  test('🔴 exit 1 when the bootstrap carries NO Cache-Control', () => {
+    const m = cacheAllGood();
+    delete m['/flutter_bootstrap.js'].headers['cache-control'];
+    const r = runCache([{ status: 200, body: '{"build_number":482}' }], WEB, m);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /flutter_bootstrap\.js — the edge returned NO Cache-Control/);
+  });
+
+  test('🔴 exit 1 when an entry point is not served at all', () => {
+    const m = cacheAllGood();
+    delete m['/main.dart.js'];
+    const r = runCache([{ status: 200, body: '{"build_number":482}' }], WEB, m);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /HTTP 404/);
+  });
+
+  test('🔴 exit 1 on the SMOKED url itself, not only the two entry points', () => {
+    const m = cacheAllGood();
+    m['/version.json'].headers['cache-control'] = LIVE_BAD;
+    const r = runCache([{ status: 200, body: '{"build_number":482}' }], WEB, m);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /FAILED for https:\/\/subly\.nikatru\.com\/version\.json/);
+  });
+
+  test('a Worker deploy is NOT failed by a policy that does not govern it', () => {
+    // api.nikatru.com/v1/health serves no Cache-Control at all — measured
+    // 2026-08-07. Applying the web channel's _headers rule there would fail
+    // every Workers deploy for a file that does not exist.
+    const r = run([{ status: 200, body: '{"build":"abc123","ok":true}' }], API);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /not applicable/);
+  });
+
+  test('under --fixture alone the limb SKIPS, and says so loudly', () => {
+    // There is no live edge to look at offline. A silent skip here would be the
+    // limb quietly not existing.
+    const r = run([{ status: 200, body: '{"build_number":482}' }], WEB);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /SKIPPED: --fixture is set and --cache-fixture is not/);
+    assert.match(r.out, /must never appear in a real CI log/);
+  });
+
+  test('🔴 exit 2 on an unreadable cache fixture — never a silent pass', () => {
+    const r = spawnSync(
+      process.execPath,
+      [SCRIPT, ...WEB, '--cache-fixture', join(TMP, 'nope.json')],
+      { encoding: 'utf8' },
+    );
     assert.equal(r.status, 2);
   });
 });
