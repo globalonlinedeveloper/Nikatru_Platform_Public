@@ -92,12 +92,25 @@ on:
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
-# Least privilege: this job only needs to read the repo and read ci-gate's
-# verdict. It deploys via a Cloudflare token, not GITHUB_TOKEN. [pipeline F-5b]
+# Least privilege. It deploys via a Cloudflare token, not GITHUB_TOKEN. [pipeline F-5b]
+#
+# 🔴 SCOPED DOWN 2026-08-07, AND THE REASON IS THE [10]D-2b REFACTOR ITSELF.
+# This block used to carry `checks: read` and `deployments: write` too, which was
+# correct while this lane was ONE job: workflow-level and job-level were the same
+# grant. Splitting it into `prepare` + `deploy-web` silently widened both — a job
+# that only emits an app list inherited the right to write GitHub Deployments.
+# `zizmor` caught it as `excessive-permissions` (high confidence) on the first CI
+# run after the merge, and it is a real finding, not noise: `prepare` runs a node
+# script whose input is repository content, on a lane that holds
+# CLOUDFLARE_API_TOKEN.
+#
+# 📌 The generalisable point: SPLITTING A JOB WIDENS EVERY WORKFLOW-LEVEL GRANT,
+# and nothing about the diff looks like a permissions change. The grants now sit
+# on the job that uses them — `checks: read` for assert-gate-passed, and
+# `deployments: write` for record-deployment.mjs — so the next split cannot
+# repeat this.
 permissions:
   contents: read
-  checks: read
-  deployments: write
 
 jobs:
   # ── which apps does this factory hold? ──────────────────────────────────────
@@ -133,6 +146,15 @@ jobs:
     name: Build & deploy web to Cloudflare Pages
     runs-on: ubuntu-24.04
     needs: prepare
+    # The two grants the workflow level no longer makes, held by the only job
+    # that uses them: `checks: read` for assert-gate-passed.mjs (it reads
+    # ci-gate's verdict) and `deployments: write` for record-deployment.mjs.
+    # `contents: read` is restated because naming any permission here replaces
+    # the workflow-level set outright rather than adding to it.
+    permissions:
+      contents: read
+      checks: read
+      deployments: write
     # `fail-fast: false` because each leg is an independent DELIVERY, not a
     # stage of one: app #2 failing to build is no reason to cancel a deploy of
     # app #1 that has already uploaded and is waiting to be smoked and recorded.
