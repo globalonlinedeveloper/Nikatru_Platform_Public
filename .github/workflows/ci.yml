@@ -401,6 +401,28 @@ jobs:
       - name: The shared server declares every route and every binding
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-platform-register.mjs
+      # …and the set of apps that server serves is DATA, not a literal in it.
+      # Measured live 2026-08-06: `GET config.nikatru.com/config/subly` → 200,
+      # `GET …/config/lingo` → 404 `unknown_app`, for a content pack that has
+      # been in this repo since the content pipeline shipped. The registry was an
+      # object literal in services/platform/src/config.ts, so onboarding app #2
+      # meant editing and redeploying the ONE Worker on every app's launch path
+      # — the per-app manual step this factory exists to abolish.
+      #
+      # The set now comes from sites/_shared/_data/apps.json (the catalogue
+      # post_gen.dart already writes) and the values from
+      # services/platform/src/app-config-data.json. This guard holds that shape:
+      # the catalogue reaches the builder, no app id is a literal in the Worker,
+      # `defaults` is a COMPLETE AppConfig (so app #2 is onboarded whole rather
+      # than onboarded broken), and the shared api base the server serves a
+      # client-only app is the same string pre_gen.dart compiles into it.
+      #
+      # It does NOT claim the live 404 is gone: both files are bundled at build
+      # time, so a catalogue row reaches the edge only after a deploy. It prints
+      # the served set every run instead. [pipeline 4]B-2
+      - name: The served app set is data, and onboarding needs no Worker edit
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-config-registry.mjs
       # …and when that server throws, somebody finds out. Measured at HEAD
       # 2026-08-02: `grep -rn "sentry|glitchtip|toucan" services/` → ZERO HITS,
       # while the Flutter app's crashes had been reaching GlitchTip since July.

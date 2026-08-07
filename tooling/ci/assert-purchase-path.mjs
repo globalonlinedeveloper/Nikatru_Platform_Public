@@ -44,8 +44,55 @@ const RAIL_TEST = 'packages/purchases/test/hosted_checkout_rail_test.dart';
 const CONVERGENCE = 'packages/purchases/lib/src/entitlement_convergence.dart';
 const CACHE = 'packages/core/lib/src/entitlement_cache.dart';
 const CHANNELS = 'tooling/channel-register.json';
-const SERVER_CONFIG = 'services/platform/src/config.ts';
+// [pipeline 4]B-2 — THE RAIL CONFIG IS DATA, AND THIS FILE USED TO GREP IT.
+// The offerings (`product_id`, `term`, `trial_days`) and `paywall.enabled` were
+// read out of `services/platform/src/config.ts` with regexes over TypeScript
+// literals. B-2 moved the served values into a JSON document so onboarding an
+// app needs no Worker source edit; the regexes then matched nothing and this
+// guard went COVERAGE LOST on its first run after the refactor — which is
+// exactly what it was built to do. It is re-pointed at the document and now
+// PARSES rather than greps, which is what this repo asks for anyway.
+const SERVER_CONFIG = 'services/platform/src/app-config-data.json';
 const SERVER_TYPES = 'services/platform/src/types.ts';
+
+/**
+ * Every offering the rail declares, and whether any app's paywall is live.
+ *
+ * 🔴 RESOLVED PER APP, NOT READ OFF ONE OBJECT. An app with no entry of its own
+ * is served `defaults`, so the domain is `defaults` ∪ every per-app entry — the
+ * same union the Worker's `buildRegistry` produces. Reading only `defaults`
+ * would report zero offerings while subly sells two, and "0 of 0" reads exactly
+ * like a compliant portfolio, which is the ambiguity T-11 was deferred over.
+ */
+function railFromData(json) {
+  const offerings = [];
+  let paywallLive = false;
+  const seen = new Set();
+  const take = (label, node) => {
+    if (!node || typeof node !== 'object') return;
+    const pw = node.paywall;
+    if (!pw || typeof pw !== 'object') return;
+    if (pw.enabled === true) paywallLive = true;
+    if (!Array.isArray(pw.offerings)) return;
+    for (const o of pw.offerings) {
+      if (!o || typeof o !== 'object') continue;
+      // Keyed so an app that inherits `defaults` does not double-count the same
+      // sku: the count is printed in the T-11 verdict and has to mean something.
+      const key = `${label}:${o.product_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      offerings.push({
+        id: typeof o.product_id === 'string' ? o.product_id : '(unnamed)',
+        term: typeof o.term === 'string' ? o.term : null,
+        trialDays: Number.isFinite(o.trial_days) ? Number(o.trial_days) : 0,
+      });
+    }
+  };
+  take('_defaults', json?.defaults);
+  const apps = json?.apps;
+  if (apps && typeof apps === 'object') for (const k of Object.keys(apps)) take(k, apps[k]);
+  return { offerings, paywallLive };
+}
 const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 
@@ -205,8 +252,14 @@ let permitted = [];
       );
     } else {
       const ceilingDays = Number(m[1]);
-      const trials = [...code(cfgRaw).matchAll(/trial_days:\s*(\d+)/g)].map((t) => Number(t[1]));
-      const terms = [...code(cfgRaw).matchAll(/term:\s*'(\w+)'/g)].map((t) => t[1]);
+      let railOfferings = [];
+      try {
+        railOfferings = railFromData(JSON.parse(cfgRaw)).offerings;
+      } catch (e) {
+        problems.push(`COVERAGE LOST — ${SERVER_CONFIG} does not parse (${e.message}); the rail's terms could not be read.`);
+      }
+      const trials = railOfferings.map((o) => o.trialDays);
+      const terms = railOfferings.map((o) => o.term).filter((t) => t !== null);
       if (trials.length === 0 || terms.length === 0) {
         problems.push(
           `COVERAGE LOST — no \`trial_days\` / \`term\` found in ${SERVER_CONFIG}'s rail config, so the ceiling was compared against nothing. The two facts M-8's bound is relative to have to come from the config, not from this file.`,
@@ -479,19 +532,18 @@ let permitted = [];
       `COVERAGE LOST — ${SERVER_CONFIG} or ${SERVER_TYPES} is missing, so the qualifying-SKU domain was computed over nothing. An empty domain reads exactly like a compliant one.`,
     );
   } else {
-    const cfg = code(cfgRaw);
-    // Parsed per offering, not by two independent greps: `[...trial_days]` and
+    // Parsed per offering, never by two independent greps: `[...trial_days]` and
     // `[...term]` collected separately cannot tell WHICH sku has which, so a
     // one-time sku with a trial and a renewing one without would classify as
-    // the reverse and the count would still look right.
-    const offerings = [...cfg.matchAll(/\{\s*product_id:\s*'([^']+)'[^}]*\}/g)].map((m) => {
-      const body = m[0];
-      return {
-        id: m[1],
-        term: /term:\s*'(\w+)'/.exec(body)?.[1] ?? null,
-        trialDays: Number(/trial_days:\s*(\d+)/.exec(body)?.[1] ?? 0),
-      };
-    });
+    // the reverse and the count would still look right. That property is now
+    // free — the document is JSON and each offering is one object.
+    let offerings = [];
+    let paywallLive = false;
+    try {
+      ({ offerings, paywallLive } = railFromData(JSON.parse(cfgRaw)));
+    } catch (e) {
+      problems.push(`COVERAGE LOST — ${SERVER_CONFIG} does not parse (${e.message}); T-11's SKU domain is empty for a reason that is not "no products".`);
+    }
     if (offerings.length === 0) {
       problems.push(
         `COVERAGE LOST — no offering could be parsed out of ${SERVER_CONFIG}'s rail config. T-11's domain is the declared SKU set; with nothing parsed the tripwire below is satisfied by having no products, which is not the same as having compliant ones.`,
@@ -501,15 +553,40 @@ let permitted = [];
       // Both are the shape consumer-renewal law is written about; a genuine
       // one-time purchase with no trial is not.
       const qualifying = offerings.filter((o) => (o.term !== null && o.term !== 'one_time') || o.trialDays > 0);
-      // The one readable "is it live" signal in the tree. A stamped app is born
-      // with the paywall off, so today this is false for every app.
-      const paywallLive = /paywall:\s*\{[^}]*enabled:\s*true/.test(cfg);
+      // `paywallLive` — the one readable "is it live" signal in the tree — is
+      // resolved above, over `defaults` AND every per-app entry. A stamped app is
+      // born with the paywall off, so today this is false for every app.
       // What would close the gap, named so the waiver cannot outlive it: a
       // typed `renewal_notice` on the config contract AND a non-null value.
       // Naming the closing evidence is what stops "we are still deciding" from
       // becoming permanent.
+      //
+      // ⚠️ THE SECOND OPERAND WAS A LATENT CRASH FOR ONE COMMIT. When this file
+      // moved off the TS source it kept testing a variable (`cfg`) the refactor
+      // had deleted — and NOTHING went red, because `renewal_notice` is absent
+      // from types.ts today so `&&` short-circuited before reaching it. The
+      // guard would have thrown `ReferenceError` on the exact day the feature
+      // arrived, i.e. the one day it matters. It reads the parsed document now,
+      // so the operand is evaluated on every run and cannot rot unobserved.
+      const noticeValues = [];
+      {
+        const collect = (node) => {
+          if (node && typeof node === 'object' && Object.prototype.hasOwnProperty.call(node, 'renewal_notice')) {
+            noticeValues.push(node.renewal_notice);
+          }
+        };
+        try {
+          const parsed = JSON.parse(cfgRaw);
+          collect(parsed?.defaults);
+          if (parsed?.apps && typeof parsed.apps === 'object') {
+            for (const k of Object.keys(parsed.apps)) collect(parsed.apps[k]);
+          }
+        } catch {
+          // Already reported as COVERAGE LOST above; do not double-report.
+        }
+      }
       const noticeDeclared =
-        /renewal_notice/.test(code(typesRaw)) && /renewal_notice\s*:\s*(?!null)/.test(cfg);
+        /renewal_notice/.test(code(typesRaw)) && noticeValues.some((v) => v !== null && v !== undefined);
 
       if (qualifying.length > 0 && paywallLive && !noticeDeclared) {
         problems.push(

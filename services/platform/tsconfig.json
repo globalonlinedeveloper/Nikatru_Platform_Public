@@ -9,7 +9,17 @@
     "skipLibCheck": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // [pipeline 4]B-2. src/config.ts imports the app catalogue
+    // (sites/_shared/_data/apps.json) and src/app-config-data.json, so the
+    // served app set is DATA rather than a literal in the Worker's source.
+    // esbuild (wrangler) inlines both at build time — a Worker has no
+    // filesystem — and tsc needs this flag to type the same two imports.
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  // `src/**/*.json` is listed so the value document is a checked input rather
+  // than an untyped side effect of the import; the CATALOGUE is deliberately NOT
+  // listed — it lives outside this package and is pulled in by the import alone,
+  // so this tsconfig never claims ownership of a public file it does not write.
+  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts"]
 }
