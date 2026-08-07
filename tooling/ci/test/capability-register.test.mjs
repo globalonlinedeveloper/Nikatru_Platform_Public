@@ -291,3 +291,201 @@ describe('the guard knows when it is not looking', () => {
     assert.match(out, /no `capabilities` array/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [13]T-12 — THE DEMAND GATE
+//
+// ⚠️ SECOND line of evidence again, not the first. Six mutations were run against
+// the REAL repository before any of these existed — including the one that
+// matters most: a habit package that is fully and correctly registered with an
+// accepted `unconsumedReason`, which every pre-existing check in this guard
+// passes and only the demand gate catches. The header of
+// assert-capability-register.mjs lists all six with their outcomes.
+//
+// The guard's own three coverage checks (app domain non-empty, the positive
+// control, and the un-deletable rows) are gated on SCANNING_OWN_REPO, so they do
+// not run here — a synthetic register legitimately owes nothing. They were
+// falsified against the real tree instead, which is the only place they mean
+// anything.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A demand-gate row over a module named `habit`, with `declaredBy` empty. */
+function gateRow(over = {}) {
+  return {
+    id: 'habit',
+    requirement: '[13]T-12',
+    capability: 'the streak / daily-goal chassis module',
+    declaredBy: [],
+    module: {
+      owner: 'packages/habit',
+      package: 'nikatru_habit',
+      symbols: ['HabitService', 'StreakService'],
+    },
+    neverPerApp: true,
+    why: 'demand-gated: nothing needs it yet',
+    ...over,
+  };
+}
+
+const withGate = (reg, row) => {
+  reg.demandGatedModules = { modules: [row] };
+};
+
+/** Build the module for real: a package dir, a Dart file declaring the symbol,
+ *  and — when `registered` — the capability entry and the consumer wiring that
+ *  make the tree correct by every OTHER check in this guard. */
+function buildModule(reg, files, root, { registered = false, consumers = [] } = {}) {
+  mkdirSync(join(root, 'packages', 'habit', 'lib'), { recursive: true });
+  files[join(root, 'packages', 'habit', 'lib', 'habit.dart')] = 'class HabitService {}\n';
+  if (!registered) return;
+  reg.capabilities.push({
+    id: 'habit',
+    capability: 'the habit module',
+    owner: 'packages/habit',
+    package: 'nikatru_habit',
+    seam: 'packages/habit/lib/habit.dart',
+    consumers,
+    ...(consumers.length
+      ? {}
+      : { unconsumedReason: 'nothing consumes it yet — an accepted [C-2] reason' }),
+  });
+  if (consumers.includes('apps/app1')) {
+    const deps = [
+      ...BASE.map((id) => `  nikatru_${id}:\n    path: ../../packages/${id}`),
+      '  nikatru_habit:\n    path: ../../packages/habit',
+    ].join('\n');
+    files[join(root, 'apps', 'app1', 'pubspec.yaml')] = `name: app1\ndependencies:\n${deps}\n`;
+  }
+}
+
+describe('[13]T-12 — the demand gate', () => {
+  test('no demand and no module is the LEGAL state, and it says so, dated', () => {
+    const { code, out } = run(tree({ mutate: (reg) => withGate(reg, gateRow()) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /^⬜ \d{4}-\d{2}-\d{2} — no consumer declares the habit module\.$/m);
+    assert.match(out, /1 demand-gated module\(s\) evaluated over 1 app root\(s\)/);
+  });
+
+  test('a module NOBODY declared fails, even when the rest of the register is correct', () => {
+    // The register entry and the accepted `unconsumedReason` satisfy checks 2
+    // and 6, so this is exactly the tree that used to pass: correct by every
+    // rule that existed, and carrying a capability no app asked for.
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, root) => {
+          withGate(reg, gateRow());
+          buildModule(reg, files, root, { registered: true });
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /the habit module EXISTS and no app declares a need for it/);
+    assert.match(out, /\[2\]C-2/);
+  });
+
+  test('an app declaring a need with NO module fails the build', () => {
+    const { code, out } = run(
+      tree({ mutate: (reg) => withGate(reg, gateRow({ declaredBy: ['apps/app1'] })) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/app1 declares a need for the habit module, and it is not there/);
+    assert.match(out, /no `packages\/habit` directory/);
+  });
+
+  test('an app declaring a need WITH the module, shared and registered, passes', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, root) => {
+          withGate(reg, gateRow({ declaredBy: ['apps/app1'] }));
+          buildModule(reg, files, root, { registered: true, consumers: ['apps/app1'] });
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /1 consumer\(s\) declare the habit module: apps\/app1/);
+  });
+
+  test('the module built but not REGISTERED still fails a declared need', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, root) => {
+          withGate(reg, gateRow({ declaredBy: ['apps/app1'] }));
+          buildModule(reg, files, root); // dir + code, no capability entry
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /no `capabilities` entry owning `nikatru_habit`/);
+  });
+
+  test('a declared need whose register entry omits the declarer fails', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, root) => {
+          withGate(reg, gateRow({ declaredBy: ['apps/app1'] }));
+          buildModule(reg, files, root, { registered: true });
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /does not list it as a consumer/);
+  });
+
+  test('the module implemented INSIDE an app fails on "never per app"', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, root) => {
+          withGate(reg, gateRow());
+          mkdirSync(join(root, 'apps', 'app1', 'lib'), { recursive: true });
+          files[join(root, 'apps', 'app1', 'lib', 'streak.dart')] = 'class StreakService {}\n';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /implemented PER APP at apps\/app1\/lib\/streak\.dart/);
+  });
+
+  test('a declarer that is not an app consumerRoot fails — the domain is real', () => {
+    const { code, out } = run(
+      tree({ mutate: (reg) => withGate(reg, gateRow({ declaredBy: ['packages/core'] })) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /not one of this register's app consumerRoots/);
+  });
+
+  test('a requirement that is not a pipeline id fails', () => {
+    const { code, out } = run(
+      tree({ mutate: (reg) => withGate(reg, gateRow({ requirement: 'somebody should do this' })) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /names no pipeline id/);
+  });
+
+  test('a row with no symbols fails rather than searching for nothing', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (reg) =>
+          withGate(
+            reg,
+            gateRow({ module: { owner: 'packages/habit', package: 'nikatru_habit', symbols: [] } }),
+          ),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /non-empty `symbols` list/);
+  });
+
+  test('PROSE about the module does not count as the module', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, root) => {
+          withGate(reg, gateRow());
+          files[join(root, 'packages', 'core', 'lib', 'nikatru_core.dart')] =
+            "// class StreakService is deliberately NOT built here.\nconst kNote = 'class HabitService';\n";
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /no consumer declares the habit module\./);
+  });
+});

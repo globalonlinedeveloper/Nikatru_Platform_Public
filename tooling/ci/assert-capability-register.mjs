@@ -35,6 +35,9 @@
 //      DECLARED as a violation, and a declared violation whose file has
 //      gone must be removed from the register                            [C-3]
 //   6. every capability has a consumer, or a recorded reason              [C-2]
+//   7. every DEMAND-GATED module is in exactly one of two legal states: no app
+//      declares it and it does not exist, or an app declares it and it exists as
+//      shared code with a register entry. Both violations fail.       [13]T-12
 //
 // ⚠️ VIOLATIONS AND MISSING SEAM METHODS ARE PRINTED ON EVERY RUN, pass or fail —
 // the posture assert-seams-wired.mjs takes for owner-gated gaps. A known gap
@@ -605,6 +608,255 @@ for (const cap of capabilities) {
   );
 }
 
+// ── 7. [13]T-12 — THE DEMAND GATE ────────────────────────────────────────────
+//
+// "No app declares a habit-module need ⇒ the module must not exist. The moment
+// an app declares one ⇒ the module must exist as shared code with a register
+// entry, and the build fails until it does."
+//
+// ── WHY THE DECLARATION SURFACE IS A REGISTER ROW AND NOT A BRICK VAR ────────
+// The requirement quantifies over apps, so the guard needs a set of apps and a
+// per-app fact. Two surfaces were available and the choice is not cosmetic:
+//
+//   · A BRICK VAR + app spec field. Rejected. A mason var is consumed at STAMP
+//     time — mustache eats it — so unless it is written back into a new per-app
+//     file there is nothing on disk to quantify over, and inventing a per-app
+//     spec file to hold one boolean puts app metadata in a fourth place beside
+//     pubspec.yaml, sites/_shared/_data/apps.json and the registers, which is
+//     the [C-1] "one declared home" argument turned on itself. Worse, it would
+//     be a domain that EXCLUDES THE ONLY SHIPPED APP: apps/subly was never
+//     stamped by this brick and would carry no such field. A scan whose domain
+//     silently omits the real app is this repo's recurring failure with a new
+//     name — it prints ok over the set it can see.
+//   · A ROW IN tooling/capability-register.json. Chosen. `consumerRoots` is
+//     already the machine-readable set of apps here, each verified against a
+//     real pubspec by check 4, so the domain is real, non-empty and typo-checked
+//     for free. And this file is the ONLY one in the tree whose contract already
+//     includes DESCRIBING ABSENCE — `missingMethods`, `violations`,
+//     `unconsumedReason` all name things that are not there. A demand gate is a
+//     statement about absence, so it belongs where absence is already speakable.
+//
+// A pubspec dependency was considered as the declaration and is not viable: a
+// `path:` dependency on a package that does not exist breaks workspace
+// resolution for the WHOLE tree before any guard runs, so the declaration could
+// never be committed ahead of the module — which is the exact ordering the
+// requirement asks for.
+//
+// ── WHAT IS DELIBERATELY NOT BUILT HERE ──────────────────────────────────────
+// The same requirement denylists points / xp / coins / gems / currency / score
+// from the module's public API. That limb is NOT built, and not from oversight:
+// the module does not exist, so no input to this tree can make it fail. An
+// assertion that cannot fail is worse than none — it inflates apparent coverage
+// — so it lands with the module's first line.
+//
+// ── COVERAGE, which matters MORE here than anywhere else in this file ────────
+// This guard's domain is deliberately near-empty: the correct answer today is
+// "nothing found", and "nothing found" is exactly what a broken scanner also
+// reports. So three things are asserted before the gate's verdict is believed:
+//   (a) the app domain is non-empty — a gate over zero apps can never fail;
+//   (b) a POSITIVE CONTROL through the very same matcher. `NotificationService`
+//       is a class this tree certainly declares; if the module scanner cannot
+//       find it, the scanner is broken and its "no habit module" is a false
+//       negative rather than a fact. It is a safe anchor rather than one more
+//       thing to keep in step, because a rename of that symbol ALREADY fails
+//       this file twice over — check 3 verifies the register's seam entry and
+//       SEAMS_OWING_A_DECLARED_GAP forbids losing it;
+//   (c) the required rows may not simply be DELETED. Same REQUIRED_COVERAGE
+//       idiom, and the same reason, as SEAMS_OWING_A_DECLARED_GAP above: the
+//       list lives in this .mjs, not in the JSON it protects, so removing the
+//       row is not a one-file edit that quietly empties the domain.
+//
+// ── MUTATIONS RUN AGAINST THE REAL TREE, 2026-08-07 (not fixtures) ───────────
+// Each was `dart analyze`-clean first, so the red was this guard's verdict and
+// not a broken tree, and each was reverted byte-identical:
+//   1. `packages/habit` + `class StreakService`, nothing declaring   → RED (ii)
+//   2. the same, PLUS a full `capabilities` entry with an accepted
+//      `unconsumedReason` — i.e. checks 2 and 6 both satisfied       → RED (ii)
+//      ALONE. That is the proof this limb is not redundant with what
+//      was already here: the tree was correct by every pre-existing
+//      rule and still had a capability nobody asked for.
+//   3. `declaredBy: ["apps/subly"]` with no module                  → RED (iii)
+//   4. the `habit` row deleted / the whole key deleted           → COVERAGE LOST
+//   5. `class StreakService` under apps/subly/lib                    → RED (i)
+//   6. the scanner's `class` regex broken to `clazz`              → COVERAGE LOST
+//      while the module verdict still read "not built" — the exact false
+//      negative (b) exists to catch.
+// And the false-POSITIVE case, because a gate that fires on prose gets deleted:
+// appending `// … class StreakService is deliberately NOT built here.` to a real
+// Dart file left the guard green. Comments are stripped before the match.
+const DEMAND_GATES_OWED = ['habit'];
+const CONTROL_SYMBOL = 'NotificationService';
+
+/** Consumer roots that can DECLARE demand: an app, or the brick template every
+ *  future app is stamped from. `packages/purchases` is a consumerRoot too and is
+ *  not an app — the requirement quantifies over apps, so it is not in the domain. */
+const demandRoots = consumerRoots.filter((r) => r.startsWith('apps/') || r.includes('__brick__'));
+
+/** Is this path a PER-APP location? apps/, or the brick's per-app template tree
+ *  (stamping the module into every app is per-app duplication wearing a
+ *  template's clothes, which is precisely what "never per app" forbids). */
+const isPerApp = (rel) => rel.startsWith('apps/') || rel.includes('__brick__/apps/');
+
+/** Files declaring `class <symbol>` for any of `symbols`, in stripped source —
+ *  so the prose in packages/core's notification seam, which discusses streaks and
+ *  daily goals at length, cannot be mistaken for an implementation. */
+function filesDeclaring(symbols) {
+  const hits = [];
+  if (!symbols.length) return hits;
+  const re = new RegExp(`\\bclass\\s+(?:${symbols.join('|')})\\b`);
+  for (const rel of allDartFiles()) {
+    if (re.test(stripDart(readFileSync(join(ROOT, rel), 'utf8')))) hits.push(rel);
+  }
+  return hits;
+}
+
+const gatedModules = Array.isArray(register.demandGatedModules?.modules)
+  ? register.demandGatedModules.modules
+  : null;
+
+if (SCANNING_OWN_REPO) {
+  if (gatedModules === null) {
+    problems.push(
+      'COVERAGE LOST — the register declares no `demandGatedModules.modules` array. [13]T-12 is a gate ' +
+        'over a domain, and the domain has gone: every demand-gated module would now pass by being absent ' +
+        'from the list rather than by being correctly unbuilt.',
+    );
+  }
+  if (demandRoots.length === 0) {
+    problems.push(
+      'COVERAGE LOST — the demand gate quantified over ZERO apps. `consumerRoots` names no app and no ' +
+        'brick template, so no app could ever declare a need and the gate could never fail.',
+    );
+  }
+  if (filesDeclaring([CONTROL_SYMBOL]).length === 0) {
+    problems.push(
+      `COVERAGE LOST — the module scanner cannot find \`class ${CONTROL_SYMBOL}\`, which this tree ` +
+        'certainly declares. The scanner is broken, not the tree: every "the module does not exist" ' +
+        'verdict below would be a false negative, and a demand gate whose scanner sees nothing reports ' +
+        'the correct answer for the wrong reason, forever.',
+    );
+  }
+  for (const owed of DEMAND_GATES_OWED) {
+    if (!(gatedModules ?? []).some((m) => m?.id === owed)) {
+      problems.push(
+        `COVERAGE LOST — the demand-gate row for \`${owed}\` is gone. Deleting the row does not remove the ` +
+          'requirement; it only stops anyone hearing about it, and leaves the module free to be built ' +
+          'unasked. Remove it deliberately by removing it from DEMAND_GATES_OWED in this guard.',
+      );
+    }
+  }
+}
+
+const gateStamp = new Date().toISOString().slice(0, 10);
+const gatePrints = [];
+
+for (const m of gatedModules ?? []) {
+  const label = `demand-gate ${m?.id ?? '<unnamed>'}`;
+  if (!m?.id || !m?.module?.owner || !m?.module?.package || !Array.isArray(m?.module?.symbols) || !m.module.symbols.length) {
+    problems.push(
+      `${label} — a demand-gate row needs \`id\` and a \`module\` with \`owner\`, \`package\` and a ` +
+        'non-empty `symbols` list. Without the symbols there is nothing to look for, and the gate would ' +
+        'report "not built" over an empty search.',
+    );
+    continue;
+  }
+  for (const field of ['requirement', 'capability', 'why']) {
+    if (!String(m[field] ?? '').trim()) {
+      problems.push(`${label} — declares no \`${field}\`. A deferral with no owner and no reason is a note.`);
+    }
+  }
+  if (m.requirement && !PIPELINE_ID.test(m.requirement)) {
+    problems.push(
+      `${label} — \`requirement\` is ${JSON.stringify(m.requirement)}, which names no pipeline id ` +
+        '(form `[13]T-12`). A deferral whose owner is a sentence is one nobody is accountable for.',
+    );
+  }
+
+  const declaredBy = Array.isArray(m.declaredBy) ? m.declaredBy : [];
+  for (const d of declaredBy) {
+    if (!demandRoots.includes(d)) {
+      problems.push(
+        `${label} — \`${d}\` declares a need, but it is not one of this register's app consumerRoots ` +
+          `(${demandRoots.join(', ') || 'none'}). A declaration from something that is not an app in the ` +
+          'tree is a demand nobody can satisfy.',
+      );
+    }
+  }
+
+  const ownerOnDisk = existsSync(join(ROOT, m.module.owner));
+  const entry = capabilities.find((c) => c.id === m.id || c.package === m.module.package) ?? null;
+  const hits = filesDeclaring(m.module.symbols);
+  const perAppHits = hits.filter(isPerApp);
+  const sharedHits = hits.filter((h) => !isPerApp(h));
+  const built = ownerOnDisk || entry !== null || hits.length > 0;
+
+  // (i) "Never per app" — its own limb, checked whether or not demand exists.
+  if (m.neverPerApp !== false && perAppHits.length) {
+    problems.push(
+      `${label} — implemented PER APP at ${perAppHits.join(', ')}. [13]T-12: the module is "built once ` +
+        'when the first app that needs it is being built, and inherited thereafter. Never per app." ' +
+        'Move it into shared code.',
+    );
+  }
+
+  if (declaredBy.length === 0) {
+    // (ii) direction one — a module nobody asked for.
+    if (built) {
+      const found = [
+        ownerOnDisk ? `\`${m.module.owner}\` exists on disk` : null,
+        entry ? `capability \`${entry.id}\` is registered for \`${m.module.package}\`` : null,
+        hits.length ? `${hits.length} file(s) declare it (${hits.slice(0, 3).join(', ')})` : null,
+      ].filter(Boolean);
+      problems.push(
+        `${label} — the ${m.id} module EXISTS and no app declares a need for it: ${found.join('; ')}. ` +
+          '[2]C-2 — presence is not delivery. A capability with no consumer is wired, guarded, green and ' +
+          `useless, and it costs a pubspec, an analysis_options, a workspace entry, a test harness and a ` +
+          'CI surface forever. Either an app declares it in `demandGatedModules` and it becomes a real ' +
+          'capability entry, or it does not get built.',
+      );
+    }
+  } else {
+    // (iii) direction two — demand declared, so the module is now owed.
+    const missing = [];
+    if (!ownerOnDisk) missing.push(`no \`${m.module.owner}\` directory`);
+    if (!sharedHits.length) missing.push(`no shared code declaring ${m.module.symbols.join(' / ')} outside apps/`);
+    if (!entry) missing.push(`no \`capabilities\` entry owning \`${m.module.package}\``);
+    if (missing.length) {
+      problems.push(
+        `${label} — ${declaredBy.join(', ')} declare${declaredBy.length === 1 ? 's' : ''} a need for the ` +
+          `${m.id} module, and it is not there: ${missing.join('; ')}. ${m.requirement ?? ''} The build ` +
+          'fails until it exists as shared code with a register entry — that is what a demand gate is for.',
+      );
+    } else {
+      for (const d of declaredBy) {
+        if (!(entry.consumers ?? []).includes(d)) {
+          problems.push(
+            `${label} — \`${d}\` declares a need for the ${m.id} module, but capability \`${entry.id}\` does ` +
+              'not list it as a consumer. The declaration and the register disagree about who it is for.',
+          );
+        }
+      }
+    }
+  }
+
+  // THE PRINT. Emitted here rather than in the block below the fail-exit, so it
+  // appears on EVERY run — including a failing one. A gate whose status is only
+  // visible when the build is already green is a gate nobody reads.
+  if (declaredBy.length === 0 && !built) {
+    gatePrints.push(`⬜ ${gateStamp} — no consumer declares the ${m.id} module.`);
+    gatePrints.push(
+      `     ${m.requirement ?? ''} not built, on purpose. Checked ${demandRoots.length} app root(s) and ` +
+        `${allDartFiles().length} Dart file(s): \`${m.module.owner}\` absent, no \`${m.module.package}\` ` +
+        `capability entry, zero files declaring ${m.module.symbols.join(' / ')}.`,
+    );
+  } else if (declaredBy.length > 0) {
+    gatePrints.push(
+      `⚠  ${gateStamp} — ${declaredBy.length} consumer(s) declare the ${m.id} module: ${declaredBy.join(', ')}.`,
+    );
+  }
+}
+for (const line of gatePrints) console.log(line);
+
 if (problems.length) {
   console.error(`✗ capability register — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -646,4 +898,11 @@ console.log(
 console.log(
   `    ${missingMethodEntries} declared missing-surface gap(s), each with a pipeline owner and the evidence ` +
     `that would close it; ${SEAMS_OWING_A_DECLARED_GAP.length} seam(s) may not have theirs deleted`,
+);
+// The demand gate's own counts, for the same reason the line above prints a
+// COUNT: its correct state is "nothing found", which is indistinguishable from a
+// scan that reached nothing unless the size of what it reached is printed.
+console.log(
+  `    ${(gatedModules ?? []).length} demand-gated module(s) evaluated over ${demandRoots.length} app root(s) ` +
+    `and ${allDartFiles().length} Dart file(s); ${DEMAND_GATES_OWED.length} row(s) may not be deleted`,
 );
