@@ -2504,6 +2504,23 @@ group('property: analytics-lifecycle-complete', () {
   testWidgets('run2', (t) async {});
   test('bucketed', () {});
 });
+// [pipeline 11]E-6 — the four money events as a SET, not four calls. Nine
+// anchors across the paywall, the shared funnel and the provider that puts them
+// on the consented rail.
+group('property: money-funnel-emitted-as-a-set', () {
+  testWidgets('set', (t) async {});
+  testWidgets('params', (t) async {});
+});
+// [pipeline 10]D-8 — and the URL the update wall opens. \`kProbeUpdateUrl\` is
+// parsed by the guard itself: the injected value must differ from every
+// channel's compile-time default, or the property below passes with the runtime
+// resolution deleted.
+const String kProbeUpdateUrl = 'https://update.invalid/from-config';
+group('property: update-url-resolved-from-config', () {
+  testWidgets('resolved', (t) async {});
+  testWidgets('fallback', (t) async {});
+  test('empty', () {});
+});
 `;
   // [pipeline C-11] BOTH themes carry the seed. A fixture with only the light
   // one seeded would agree with the first version of that anchor, which passed
@@ -2522,6 +2539,13 @@ void initState() {
   });
 }
 
+// [pipeline 10]D-8 The wall's destination, RESOLVED then wired. The resolution
+// and the button are separate anchors because computing a value the button does
+// not use reads exactly like a working feature.
+final String updateUrl =
+    ref.watch(appConfigProvider).valueOrNull?.updateUrl ??
+    AppConfig.updateUrl;
+
 return MaterialApp.router(
   theme: buildAppTheme(seed: const Color(0xFF6459F5)),
   darkTheme: buildAppTheme(
@@ -2534,6 +2558,7 @@ return MaterialApp.router(
     minScaleFactor: 1.0,
     maxScaleFactor: 2.0,
     child: ForceUpdateGate(
+      onUpdate: () => _openUpdate(updateUrl),
       child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
     ),
   ),
@@ -2924,7 +2949,12 @@ final Provider<core.EntitlementTransport> entitlementTransportProvider = X();
 final Provider<core.CancellationTransport> cancellationTransportProvider = X();
 final Provider<PurchaseRail> purchaseRailProvider = X();
 final Provider<EntitlementConvergence> entitlementConvergenceProvider = X();
-final FutureProvider<MoneyFunnel> moneyFunnelProvider = X();
+// [pipeline 11]E-6 The funnel rides the SAME recorder as every other event. A
+// funnel handed its own Analytics emits four correct events belonging to nobody.
+final FutureProvider<MoneyFunnel> moneyFunnelProvider =
+    FutureProvider<MoneyFunnel>(
+      (ref) async => MoneyFunnel(await ref.watch(analyticsProvider.future)),
+    );
 final FutureProvider<core.Entitlements> entitlementsProvider =
     FutureProvider<core.Entitlements>((ref) async {
       final core.Result<core.Entitlements> fresh = await ref
@@ -3089,6 +3119,11 @@ class NotificationService {
   // is the site root and `apiBaseUrl` is not a page at all — both are in the
   // fixture so the parser has to discriminate rather than match any URL.
   const APP_CONFIG = `${BRICK}/lib/core/app_config.dart`;
+  // [pipeline 10]D-8 also parses `updateUrl` out of this file — and follows the
+  // IDENTIFIER, so `defaultValue: companyUrl` is compared as the URL it really
+  // is rather than as the word "companyUrl". The fixture keeps that indirection
+  // because the real template has it, and a fixture that inlined the literal
+  // would agree with a guard that never resolved the name.
   const goodAppConfig = `
 class AppConfig {
   static const String companyUrl = 'https://nikatru.com';
@@ -3096,8 +3131,87 @@ class AppConfig {
   static const String privacyUrl = 'https://nikatru.com/privacy.html';
   static const String termsUrl = 'https://nikatru.com/terms.html';
   static const String refundUrl = 'https://nikatru.com/refund.html';
+  static const String updateUrl = String.fromEnvironment(
+    'UPDATE_URL',
+    defaultValue: companyUrl,
+  );
 }
 `;
+
+  // ── [pipeline 11]E-6 · the funnel's three files ───────────────────────────
+  // The CALL SITES and the NAMES are deliberately in different fixtures: the
+  // screen can call a funnel that logs nothing, and the package can emit perfect
+  // names nobody calls, and each looks healthy from the other's file.
+  const PAYWALL = `${BRICK}/lib/features/monetization/paywall_screen.dart`;
+  const goodPaywall = `
+void initState() {
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    final MoneyFunnel funnel = await ref.read(moneyFunnelProvider.future);
+    await funnel.onPaywallViewed(widget.trigger.code);
+  });
+}
+
+Future<void> _buy(Offering offering) async {
+  await funnel.onCheckoutStarted(offering.productId);
+  if (start is CheckoutRefused) {
+    await funnel.onPurchaseFailed(start.reason.name);
+    return;
+  }
+  if (result.isUnlocked) {
+    await funnel.onPurchaseSuccess(offering.productId);
+  }
+}
+`;
+  const MONEY_FUNNEL = 'packages/purchases/lib/src/money_funnel.dart';
+  const goodMoneyFunnel = `
+class MoneyFunnel {
+  Future<void> onPaywallViewed(String trigger) =>
+      _log('paywall_viewed', <String, Object?>{'trigger': trigger});
+  Future<void> onCheckoutStarted(String sku) =>
+      _log('checkout_started', <String, Object?>{'sku': sku});
+  Future<void> onPurchaseSuccess(String sku) =>
+      _log('purchase_success', <String, Object?>{'sku': sku});
+  Future<void> onPurchaseFailed(String reason) =>
+      _log('purchase_failed', <String, Object?>{'reason': reason});
+}
+`;
+
+  // ── [pipeline 10]D-8 · the server halves ──────────────────────────────────
+  // The wire contract, and the registry that serves it. The config fixture
+  // carries PROSE naming a URL identical to the compiled-in default outside the
+  // registry — a text search would "find" it and fail on a comment, which is the
+  // recorded [pipeline F-10] lesson and is a failing input below.
+  const PLATFORM_TYPES = 'services/platform/src/types.ts';
+  const goodPlatformTypes = `
+export interface AppConfig {
+  /** Where the force-update wall sends users. See config.ts for why it is null. */
+  update_url: string | null;
+}
+`;
+  const PLATFORM_CONFIG = 'services/platform/src/config.ts';
+  const platformConfig = (updateUrl = 'null') => `
+// Prose that names https://nikatru.com while explaining why update_url is NOT
+// that value. A grep would match this comment and call it a violation.
+export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = {
+  subly: {
+    app_id: 'subly',
+    min_supported_version: '1.0.0',
+    update_url: ${updateUrl},
+  },
+};
+`;
+  const goodPlatformConfig = platformConfig();
+  // The channel set the comparison ranges over. Two rows with a lane and one
+  // without, because a null lane is the common case in the real register and
+  // must fall back to the template's default rather than be skipped.
+  const CHANNEL_REGISTER = 'tooling/channel-register.json';
+  const goodChannelRegister = JSON.stringify({
+    channels: [
+      { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml' } },
+      { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml' } },
+      { id: 'linux-appimage', lane: null },
+    ],
+  });
   // …and the LEGAL section that actually opens them. A declared constant no
   // screen links leaves the page exactly as unreachable as never declaring it,
   // while making the set equality above go green.
@@ -3107,11 +3221,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformConfigTs = goodPlatformConfig, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, ...extra };
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CONFIG]: platformConfigTs, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -3184,6 +3298,190 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     });
     assert.equal(code, 1);
     assert.match(out, /'analytics-lifecycle-complete' is NOT asserted/);
+  });
+
+  // ── [pipeline 11]E-6 · THE FUNNEL AS A SET ─────────────────────────────────
+  //
+  // Every case below was FIRST run as a mutation of the REAL tree against a
+  // freshly stamped `apps/probe`, with `flutter analyze` clean before each run
+  // so a compile error could not be mistaken for a catch. The recorded results:
+  //   · deleting `await funnel.onCheckoutStarted(...)` from the brick's paywall
+  //     → `flutter test` red on the set assertion (`{paywall_viewed,
+  //     purchase_failed, purchase_success}` is not the four), and this guard red
+  //     on the call-site anchor.
+  //   · making `AnalyticsRecorder.sessionId` mint a fresh uuid on every read —
+  //     four individually correct events under four session ids — → the set
+  //     assertion still passed and the SESSION assertion went red, which is the
+  //     whole distinction this requirement is about.
+  test('FAILS when the paywall drops one stage of the funnel', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-funnel-stage', {
+        paywall: goodPaywall.replace('funnel.onCheckoutStarted(', 'debugPrint('),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the drop-off between seeing a price and trying to pay is invisible/);
+  });
+
+  // A RENAMED EVENT IS A SILENTLY EMPTY COLUMN, never an error: the app keeps
+  // logging, the sink keeps accepting, and one row of the funnel is simply
+  // always zero.
+  test('FAILS when the shared funnel renames an event', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-funnel-rename', {
+        moneyFunnel: goodMoneyFunnel.replace("'purchase_success'", "'purchase_ok'"),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the shared funnel must emit 'purchase_success'/);
+  });
+
+  // THE JOIN. A funnel built over its own recorder emits four perfectly correct
+  // events under a second session and a second anon id — the failure this
+  // property exists for, and the one that looks healthiest from every other file.
+  test('FAILS when the funnel is built off the consented recorder', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-funnel-join', {
+        moneyProviders: goodMoneyProviders.replace(
+          'MoneyFunnel(await ref.watch(analyticsProvider.future))',
+          'MoneyFunnel(core.AnalyticsRecorder(anonId: uuidV4()))',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a second one mints a second session and a second anon id/);
+  });
+
+  // ── [pipeline 10]D-8 · THE UPDATE DESTINATION ──────────────────────────────
+  //
+  // Real-tree mutations first, `flutter analyze` clean each time:
+  //   · `final String updateUrl = AppConfig.updateUrl;` in the brick's app.dart
+  //     — the compile-time default, wired to the button → `flutter test` red
+  //     (`https://nikatru.com` where the served value was expected) and this
+  //     guard red on the resolution anchor.
+  //   · `update_url: 'https://nikatru.com'` in services/platform/src/config.ts
+  //     — a served value identical to the fallback → limb (c) red on all eight
+  //     channels, `flutter test` still green, which is the point of limb (c).
+  test('FAILS when the wall stops resolving the url at runtime', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-compiled', {
+        app: goodApp.replace(
+          'ref.watch(appConfigProvider).valueOrNull?.updateUrl ??\n    AppConfig.updateUrl',
+          'AppConfig.updateUrl',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /dropping the runtime half restores the circular kill-switch/);
+  });
+
+  // The resolution can be perfect and unused. Computing a value the button does
+  // not open reads exactly like a working feature in review.
+  test('FAILS when the button is wired to the compile-time default', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-button', {
+        app: goodApp.replace('_openUpdate(updateUrl)', '_openUpdate(AppConfig.updateUrl)'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /wiring it to AppConfig\.updateUrl leaves the resolution above computed and unused/);
+  });
+
+  test('FAILS when the wire contract stops carrying update_url', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-wire', {
+        platformTypes: goodPlatformTypes.replace('update_url: string | null;', 'legacy_url?: string;'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /there is nothing for the client to resolve/);
+  });
+
+  // ── limb (c). The two ways a resolved URL becomes indistinguishable from the
+  //    fallback, and neither can be caught by the widget test itself.
+  test('limb (c) FAILS when a served update_url equals the compiled-in default', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-same', { platformConfigTs: platformConfig("'https://nikatru.com'") }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /which is EXACTLY what a 'web' build already compiles in/);
+    // Every channel, not the first one that matched.
+    assert.match(out, /a 'linux-appimage' build already compiles in/);
+  });
+
+  test('limb (c) FAILS when the probe injects the compile-time default', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-probe-same', {
+        propTest: goodTest.replace(
+          "kProbeUpdateUrl = 'https://update.invalid/from-config'",
+          "kProbeUpdateUrl = 'https://nikatru.com'",
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /would then pass with the runtime resolution deleted/);
+  });
+
+  test('limb (c) FAILS when the probe constant is deleted outright', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-probe-gone', {
+        propTest: goodTest.replace('const String kProbeUpdateUrl', 'const String kSomethingElse'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /declares no `kProbeUpdateUrl`/);
+  });
+
+  // 🔴 A CHANNEL'S OWN DEFINE COUNTS. A release lane can compile a different
+  // destination into its artifact, so "the compile-time default" has one answer
+  // per channel — and a check against the template's alone would pass while a
+  // channel's build made the two indistinguishable.
+  test('limb (c) reads the UPDATE_URL a release lane compiles in', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-lane-define', {
+        platformConfigTs: platformConfig("'https://dl.nikatru.com/win'"),
+        extra: {
+          '.github/workflows/build-platforms.yml':
+            '# a comment naming --dart-define=UPDATE_URL=https://commented.invalid is not a stamp\n' +
+            'jobs:\n  b:\n    steps:\n      - run: flutter build windows --dart-define=UPDATE_URL=https://dl.nikatru.com/win\n',
+        },
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a 'windows-store' build already compiles in/);
+    // …and NOT the web channel, whose lane stamps no UPDATE_URL and therefore
+    // still falls back to the template's default.
+    assert.doesNotMatch(out, /a 'web' build already compiles in/);
+  });
+
+  // COVERAGE SELF-CHECK. A registry that parses as empty makes every comparison
+  // above vacuously true — the failure this whole file is about.
+  test('limb (c) refuses a config registry it cannot parse', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-noreg', { platformConfigTs: '// nothing here at all\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /parsed 0 app\(s\) out of services\/platform\/src\/config\.ts/);
+  });
+
+  test('limb (c) refuses an unparseable compile-time default', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-nodefault', {
+        appConfig: goodAppConfig.replace("'UPDATE_URL',", "'UPDATE_URL_V2',"),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /could not parse the compile-time default/);
+  });
+
+  // 🔴 PROSE IS NOT A VALUE — [pipeline F-10]'s recorded lesson. The good config
+  // fixture NAMES `https://nikatru.com` in a comment while serving null; a text
+  // search would call that a violation, and the guard must not.
+  test('limb (c) does not fire on a comment naming the default url', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-d8-prose') });
+    assert.equal(code, 0);
+    assert.match(out, /\[10\]D-8 update destination: 3 channel\(s\) × 1 served app\(s\)/);
+    assert.match(out, /1 app\(s\) serve null/);
   });
 
   // ── [pipeline 13]T-4 · THE BOOT PATH NEVER SPENDS THE OS PERMISSION ASK ────
@@ -3425,6 +3723,11 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     [`${dir}/lib/core/router.dart`]: over.router ?? goodRouter,
     [`${dir}/lib/main.dart`]: over.brickMain ?? goodMain,
     [`${dir}/lib/features/firstrun/onboarding_screen.dart`]: over.onboarding ?? goodOnboarding,
+    // [pipeline 11]E-6. App-relative on purpose: every stamped app carries its
+    // OWN paywall, so any one of them can drop a stage from the funnel without
+    // touching the brick — which is exactly the per-app hole clause 7 closed for
+    // the property test itself.
+    [`${dir}/lib/features/monetization/paywall_screen.dart`]: over.paywall ?? goodPaywall,
     [`${dir}/lib/l10n/app_ta.arb`]: over.arbTa ?? goodArbTa,
   });
   const WS_WITH_PROBE = 'name: nikatru_workspace\nworkspace:\n  - packages/core\n  - apps/subly\n  - apps/probe\n';
@@ -4077,8 +4380,18 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // 2026-08-01: the money rail closed two gaps (entitlementCacheProvider and
       // secureStoreProvider, both DRIVEN by the paywall property now) and
       // admitted three of its own.
-      assert.match(out, /11 chassis behaviour\(s\) a stamped app does NOT prove/);
-      assert.match(out, /mustForceUpdateProvider/);
+      //
+      // 8 since 2026-08-07: three gaps closed at once, and the number moving
+      // DOWN is the event worth asserting. [11]E-6 drove `moneyFunnelProvider`
+      // and `entitlementConvergenceProvider` — the second was admitted on the
+      // grounds that "a checkout cannot be opened in a widget test", which was
+      // simply untrue: the rail is an interface precisely so a test can open
+      // one. [10]D-8 drove `mustForceUpdateProvider`, the switch that had been
+      // inert for 55 builds with nothing able to say so.
+      assert.match(out, /8 chassis behaviour\(s\) a stamped app does NOT prove/);
+      // A gap that is STILL a gap, named — so this assertion cannot be
+      // satisfied by the list going empty.
+      assert.match(out, /featureFlagsProvider/);
     });
 
     // HOLE 2. Adding a provider to the real template changed nothing before this.
