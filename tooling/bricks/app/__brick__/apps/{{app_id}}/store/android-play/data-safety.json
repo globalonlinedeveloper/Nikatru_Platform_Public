@@ -1,0 +1,59 @@
+{
+  "_readme": [
+    "THE GOOGLE PLAY DATA SAFETY DECLARATION — {{{short_name}}}, channel `android-play`. STAMPED UNANSWERED.",
+    "",
+    "This is the repo-native source of truth. The Play Console is a COPY of it, exactly as [10]D-5",
+    "says of the listing text. Required present and non-empty by tooling/channel-register.json ->",
+    "storeMetadataContract.perChannel[\"android-play\"].additionalFiles.",
+    "",
+    "Google's User Data policy: \"All developers must complete a clear and accurate Data safety section for every app detailing collection, use, and sharing of user data. The developer is responsible for the accuracy of the label.\"",
+    "",
+    "🔴 EVERY ANSWER BELOW IS `null`, AND null IS A REAL ANSWER MEANING \"NOBODY HAS ANSWERED THIS YET\".",
+    "It is deliberately NOT filled with a plausible value. A template cannot know what this app does —",
+    "it was generated the moment the app was stamped, before a line of product code existed — and a",
+    "confidently wrong sworn declaration is worse than an obviously incomplete one.",
+    "",
+    "⚠️ THE FORM CANNOT BE SUBMITTED WHILE AN `unresolved` ROW REMAINS. Answer each against THIS app's",
+    "real code, cite the page you read (host and fetch date), and model the finished file on",
+    "apps/subly/store/android-play/ — which carries the worked example, including the two questions",
+    "that were closed on 2026-08-04 and why each had been recorded as needing something it did not.",
+    "",
+    "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER. Rows record what this repository can OBSERVE."
+  ],
+  "app": "{{app_id}}",
+  "channel": "android-play",
+  "sources": {
+    "_why": "Every external requirement must carry a URL and a fetch date, and the host must be the body that WROTE the rule or the platform that ENFORCES it. Empty until somebody reads a page.",
+    "allowedHosts": [
+      "support.google.com",
+      "developer.android.com",
+      "play.google.com"
+    ],
+    "cited": []
+  },
+  "buildPosture": null,
+  "collectsData": null,
+  "sharesData": null,
+  "dataTypes": null,
+  "encryptedInTransit": null,
+  "deletionRequestSupported": null,
+  "unresolved": [
+    {
+      "question": "buildPosture — which artefact does Play actually receive?",
+      "why": "Every other answer depends on it. Compile-time constants over the dart-defines the .aab lane passes decide whether this build runs real identity and analytics or their inert doubles, so the same source tree has two different honest answers. Read the .aab lane in .github/workflows/build-platforms.yml and record BOTH columns."
+    },
+    {
+      "question": "collectsData / sharesData / dataTypes — what leaves the device, and to whom?",
+      "why": "Derivable from this app's own code once it has some: enumerate every outbound call and every SDK that makes one. The chassis alone makes exactly one kind of request in a stamped app (a crash report), but this app is not the chassis alone for long."
+    },
+    {
+      "question": "encryptedInTransit — is every outbound request https?",
+      "why": "Derivable from the code. Answer it by enumerating the hosts, not by assuming the default."
+    },
+    {
+      "question": "deletionRequestSupported — can a user delete their account and its data?",
+      "why": "The chassis stamps the control and tooling/ci/assert-deletion-control.mjs asserts it is wired. Confirm it reaches THIS app's data before declaring it to Google."
+    }
+  ],
+  "resolved": []
+}

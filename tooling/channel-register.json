@@ -120,12 +120,46 @@
     "urlFiles": ["privacy-policy-url.txt", "support-url.txt"],
     "derivedFields": {
       "_why": "GENERATED FROM THE SPEC is [10]D-5's headline, and a README saying so is not a mechanism. Each entry names the ONE place the value already lives, and the guard compares the file to it — so a listing edited in a console and pasted back here without touching the spec fails the build instead of quietly forking.",
-      "title.txt": { "source": "apps.json", "field": "name" },
-      "short-description.txt": { "source": "apps.json", "field": "tagline" },
-      "privacy-policy-url.txt": { "source": "appConfig", "field": "privacyUrl" },
-      "support-url.txt": { "source": "appConfig", "field": "contactUrl" }
+      "_brickVarWhy": [
+        "`brickVar` names the mason var the BRICK's template must interpolate for this field, and it is",
+        "what lets assert-store-metadata.mjs ask the FACTORY the same question it asks a shipped app.",
+        "Both vars are written by hooks/pre_gen.dart into the vars mason hands the templates AND",
+        "post_gen.dart, so the catalogue row and the listing title are the same string by construction",
+        "rather than by two spellings agreeing today."
+      ],
+      "title.txt": { "source": "apps.json", "field": "name", "brickVar": "short_name" },
+      "short-description.txt": { "source": "apps.json", "field": "tagline", "brickVar": "description" },
+      "privacy-policy-url.txt": { "source": "portfolioUrls", "field": "privacyUrl" },
+      "support-url.txt": { "source": "portfolioUrls", "field": "supportUrl" }
     },
-    "appConfigPath": "apps/{app}/lib/core/config/app_config.dart",
+    "portfolioUrls": {
+      "_why": [
+        "🔴 THESE TWO WERE `appConfig` FIELDS AND THE SCAN DID NOT REACH A STAMPED APP. The lookup was",
+        "`apps/{app}/lib/core/config/app_config.dart` — apps/subly's layout. The BRICK stamps",
+        "`lib/core/app_config.dart`, so for every app the factory produces the file was simply not",
+        "there and the guard PRINTED `CANNOT DERIVE` instead of comparing. A print is the quiet half of",
+        "this repository's signature defect: the check reported healthy about a file it never opened.",
+        "",
+        "And `contactUrl` could not be fixed by moving the lookup, because the brick's app_config does",
+        "not declare it AT ALL — nor should it. assert-stamp-properties.mjs treats every",
+        "`https://nikatru.com/<page>.html` constant in that file as a LEGAL page that check-site-integrity",
+        ".mjs must publish in LEGAL_PAGES and the settings screen must link; contact.html is a support",
+        "page, not a legal document, and forcing it into that set to satisfy a listing field would drag a",
+        "1000-character legal-text floor onto a contact page. Wrong shape.",
+        "",
+        "So the portfolio's two listing URLs are declared HERE, once, and both limbs read them: the",
+        "per-app trees and the brick's templates. `appConfigPaths` below still exists and is still",
+        "checked — `privacyUrl` must AGREE with every app_config that declares it, in both layouts — so",
+        "moving the declaration bought reach without losing the tie to the code."
+      ],
+      "privacyUrl": "https://nikatru.com/privacy.html",
+      "supportUrl": "https://nikatru.com/contact.html",
+      "agreesWithAppConfigConst": { "privacyUrl": "privacyUrl" }
+    },
+    "appConfigPaths": [
+      "apps/{app}/lib/core/config/app_config.dart",
+      "apps/{app}/lib/core/app_config.dart"
+    ],
     "perChannel": {
       "_why": [
         "🔴 EVERY NUMBER IN THIS BLOCK CARRIES ITS CITATION, AND A FIELD WITH NO SOURCED LIMIT",

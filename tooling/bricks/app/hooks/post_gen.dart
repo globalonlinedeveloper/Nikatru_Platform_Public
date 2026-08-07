@@ -23,10 +23,15 @@ void run(HookContext context) {
   // and these two disagreeing is precisely the divergence S-8 exists to stop.
   final webHost = subdomain.isEmpty ? '$id.nikatru.com' : subdomain;
 
+  // [pipeline 10]D-5 — pre_gen owns the split now and writes `short_name` back
+  // into the vars mason hands both the templates and this hook, so the
+  // catalogue `name` and every `store/*/title.txt` are the SAME string by
+  // construction. The fallback is for a hook invoked without pre_gen having run
+  // (nothing in this repo does that) and computes nothing of its own.
   _appendToAppsJson(
     context,
     id: id,
-    name: _shortName(displayName),
+    name: (v['short_name'] ?? displayName).toString(),
     tagline: tagline,
     url: 'https://$webHost',
     // A client-only app has NO API host of its own — it calls the shared
@@ -46,15 +51,53 @@ void run(HookContext context) {
   // at all, and a re-stamp reproduces it byte-for-byte ([3]S-15).
   _writeBrandAssets(context, id: id, seedHex: (v['seed_hex'] ?? '').toString());
 
+  // [pipeline 10]D-5. The listing TEXT is stamped by the templates under
+  // `__brick__/apps/{{app_id}}/store/`; the two Play GRAPHICS cannot be, because
+  // a template file is text. They are generated here from the same `app_id` +
+  // `seed_hex` the icons come from, at the dimensions the channel register
+  // declares. Without them a stamped app's android-play tree is INCOMPLETE and
+  // `assert-store-metadata.mjs` fails the first CI run after the app joins the
+  // catalogue — the factory would be shipping app #2 a red build.
+  _writeStoreGraphics(
+    context,
+    id: id,
+    seedHex: (v['seed_hex'] ?? '').toString(),
+  );
+
+  // 🔴 THE INTEGRATION HALF OF THE SAME REQUIREMENT, AND IT ONLY BECAME
+  // REACHABLE WHEN THE LISTING DID. assert-store-metadata.mjs treats a store
+  // metadata TREE as the app's commitment to that channel: an app that carries
+  // one and has no `msix_config:` gets packaged by `msix` under its fallback
+  // identity `com.flutter.<name>` — a name that belongs to nobody — and the
+  // build still succeeds. That was a PRINT for as long as no stamped app had a
+  // tree, with the guard's own comment saying "that is the brick work D-5 still
+  // owes". The first stamp after the store templates landed turned it into a
+  // FAIL, exactly as designed. This is that debt paid.
+  _writeMsixConfig(
+    context,
+    id: id,
+    displayName: (v['short_name'] ?? displayName).toString(),
+  );
+
   final apiHost = apiDomain.isEmpty ? 'api-$id.nikatru.com' : apiDomain;
 
   context.logger.info('');
   if (needsBackend) {
     context.logger
       ..success('Stamped $id (apps/$id + services/$id-api). Owner checklist:')
+      // [pipeline 10]D-5. This step USED TO READ "Add store metadata for
+      // apps/$id" — the factory instructing its owner to hand-write, per app,
+      // the one artefact D-5 says is GENERATED from the spec. It was the
+      // clearest statement in the repository that the brick emitted no listing,
+      // and it printed on every stamp. The brick now stamps all five store trees
+      // and their graphics, so this is a REVIEW step, not an authoring one.
       ..info(
-        '  1. Add store metadata for apps/\$id. Web icons were GENERATED '
-        'from seed_hex — replace them only if you have real art.',
+        '  1. Review apps/$id/store/ — five complete store listings were '
+        'GENERATED from the spec, and so were the web icons and the Play '
+        'graphics. Derived fields (title, short description, the two URLs) are '
+        'compared to their source on every CI run: change the spec, not the '
+        'copy. Editorial fields (long-description, keywords, search terms) are '
+        'yours to sharpen. Replace the generated art only if you have real art.',
       )
       // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subly FOUR
       // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
@@ -124,9 +167,19 @@ void run(HookContext context) {
   } else {
     context.logger
       ..success('Stamped $id (apps/$id — CLIENT-ONLY). Owner checklist:')
+      // [pipeline 10]D-5. This step USED TO READ "Add store metadata for
+      // apps/$id" — the factory instructing its owner to hand-write, per app,
+      // the one artefact D-5 says is GENERATED from the spec. It was the
+      // clearest statement in the repository that the brick emitted no listing,
+      // and it printed on every stamp. The brick now stamps all five store trees
+      // and their graphics, so this is a REVIEW step, not an authoring one.
       ..info(
-        '  1. Add store metadata for apps/\$id. Web icons were GENERATED '
-        'from seed_hex — replace them only if you have real art.',
+        '  1. Review apps/$id/store/ — five complete store listings were '
+        'GENERATED from the spec, and so were the web icons and the Play '
+        'graphics. Derived fields (title, short description, the two URLs) are '
+        'compared to their source on every CI run: change the spec, not the '
+        'copy. Editorial fields (long-description, keywords, search terms) are '
+        'yours to sharpen. Replace the generated art only if you have real art.',
       )
       // 🔴 THE STEP THAT WAS MISSING, AND ITS ABSENCE COST apps/subly FOUR
       // PLATFORMS — 29 icon files byte-identical to `flutter create`, measured
@@ -221,32 +274,6 @@ void _registerInWorkspace(HookContext context, {required String id}) {
   context.logger.success('pubspec.yaml: added "apps/$id" to the workspace.');
 }
 
-/// "Lingo — Offline Phrasebook" -> "Lingo". "E-Book Reader" -> "E-Book Reader".
-///
-/// 🔴 THE SPLIT IS ON A SUBTITLE SEPARATOR, NOT ON "A DASH". `brick.yaml`'s own
-/// example is `Lingo — Offline Phrasebook`: the catalogue wants the NAME and the
-/// display name carries `<name> <separator> <tagline>`. The separator is a dash
-/// **surrounded by whitespace** — that whitespace is the entire signal, and it
-/// is what tells a separator apart from a hyphen inside a word.
-///
-/// The previous spelling was `indexOf(RegExp(r'[—-]'))`. Inside a character
-/// class a trailing `-` is a literal, so that matched an ordinary hyphen too,
-/// anywhere — and "E-Book Reader" entered the public catalogue as **"E"**. Not a
-/// contrived name: hyphens are ordinary in product names (E-Book, Wi-Fi, To-Do,
-/// Co-op, Multi-Timer), and the corruption is silent everywhere except the
-/// catalogue page a visitor reads.
-///
-/// En dash is accepted alongside em dash and hyphen because a `–` between spaces
-/// is the same authorial gesture; nothing in the input contract prefers one.
-String _shortName(String displayName) {
-  final trimmed = displayName.trim();
-  final separator = RegExp(r'\s+[—–-]\s+').firstMatch(trimmed);
-  final base = (separator != null && separator.start > 0)
-      ? trimmed.substring(0, separator.start)
-      : trimmed;
-  return base.trim();
-}
-
 /// SHOW-1: append `id` to the shared apps catalog if not already present.
 /// Idempotent; leaves the file untouched when the slug already exists.
 void _appendToAppsJson(
@@ -338,6 +365,188 @@ void _writeBrandAssets(
     context.logger.warn(
       'brand assets: native icon sources failed ($e); NOT written. The app '
       'would take Flutter\'s default launcher icon on every native platform.',
+    );
+  }
+}
+
+/// [pipeline 10]D-5 — the MSIX packaging identity, from its ONE declaration.
+///
+/// The values are READ from `tooling/channel-register.json` rather than written
+/// into the brick's pubspec template, for the reason the register's own row
+/// gives: an identity that lives in two places is how the wrong one ships, and
+/// an MSIX published under the wrong identity cannot be taken back. Today every
+/// field is the `PARTNER-CENTER-PENDING` sentinel, so a stamped app packages
+/// nothing real and `assert-store-metadata.mjs` PRINTS "not yet configured"
+/// instead of failing — which is the honest state until OWNER_QUEUE A-2.
+///
+/// Idempotent, and a text append rather than a YAML round-trip: the stamped
+/// pubspec carries comments a parse-and-rewrite would strip, same as
+/// `_registerInWorkspace`.
+void _writeMsixConfig(
+  HookContext context, {
+  required String id,
+  required String displayName,
+}) {
+  final file = File('apps/$id/pubspec.yaml');
+  if (!file.existsSync()) {
+    context.logger
+        .warn('apps/$id/pubspec.yaml not found; msix_config skipped.');
+    return;
+  }
+  final existing = file.readAsStringSync();
+  if (existing.contains(RegExp(r'^msix_config:', multiLine: true))) {
+    context.logger
+        .info('apps/$id/pubspec.yaml already has msix_config; left unchanged.');
+    return;
+  }
+  final register = File('tooling/channel-register.json');
+  if (!register.existsSync()) {
+    context.logger.warn(
+      'store identity: tooling/channel-register.json not found; msix_config NOT '
+      'written. The app carries a windows-store listing it cannot package.',
+    );
+    return;
+  }
+  try {
+    final decoded = jsonDecode(register.readAsStringSync()) as Map;
+    final rows = (decoded['channels'] as List).whereType<Map>().where(
+          (r) => r['kind'] == 'store' && r['packageIdentity'] is Map,
+        );
+    if (rows.isEmpty) {
+      context.logger.info(
+          'store identity: no store channel declares a packageIdentity; nothing to stamp.');
+      return;
+    }
+    final identity = rows.first['packageIdentity'] as Map;
+    String field(String key) => (identity[key] ?? '').toString();
+    final buffer = StringBuffer(existing.endsWith('\n') ? '' : '\n')
+      ..writeln()
+      ..writeln(
+          '# ─────────────────────────────────────────────────────────────────────────────')
+      ..writeln(
+          '# MSIX PACKAGING IDENTITY — stamped from tooling/channel-register.json')
+      ..writeln(
+          '# ─────────────────────────────────────────────────────────────────────────────')
+      ..writeln(
+          '# 🔴 DO NOT EDIT THESE THREE BY HAND. The register is the single declaration')
+      ..writeln(
+          '# and tooling/ci/assert-store-metadata.mjs fails the build when this block and')
+      ..writeln(
+          '# that row disagree. Without the block at all, `msix` packages under its')
+      ..writeln(
+          '# fallback identity `com.flutter.<name>` — which belongs to nobody, cannot be')
+      ..writeln('# submitted, and still builds successfully.')
+      ..writeln('#')
+      ..writeln(
+          '# The sentinel values are assigned by Partner Center after OWNER_QUEUE A-2.')
+      ..writeln(
+          '# There is nothing to derive them from, and an invented value would publish')
+      ..writeln('# under an identity we do not own.')
+      ..writeln('msix_config:')
+      ..writeln('  display_name: $displayName')
+      ..writeln('  publisher_display_name: ${field('publisherDisplayName')}')
+      ..writeln('  identity_name: ${field('identityName')}')
+      ..writeln('  publisher: ${field('publisher')}')
+      ..writeln(
+          '  # The Store re-signs the submitted package, so nothing here holds or needs a')
+      ..writeln(
+          '  # certificate and `msix` skips signing entirely. Flipping this to false')
+      ..writeln('  # silently re-introduces a test certificate nobody owns.')
+      ..writeln('  store: true')
+      ..writeln(
+          '  # The release lane has already run `flutter build windows --release`; letting')
+      ..writeln(
+          '  # msix build again would package a DIFFERENT build from the one CI proved.')
+      ..writeln('  build_windows: false')
+      ..writeln('  architecture: x64')
+      ..writeln('  languages: en-us')
+      ..writeln('  capabilities: internetClient')
+      ..writeln('  output_path: build/windows/msix');
+    file.writeAsStringSync(existing + buffer.toString());
+    context.logger.success(
+      'store identity: stamped msix_config into apps/$id/pubspec.yaml from the '
+      'channel register (identity is PARTNER-CENTER-PENDING until A-2).',
+    );
+  } catch (e) {
+    context.logger.warn(
+      'store identity: msix_config NOT written ($e). The app carries a '
+      'windows-store listing it cannot package, and CI will say so.',
+    );
+  }
+}
+
+/// [pipeline 10]D-5 — the store listing GRAPHICS, generated from the spec.
+///
+/// GENERIC OVER THE REGISTER, never over `android-play`: every `kind: "store"`
+/// row that declares `graphicAssets.assets` gets its files written into that
+/// row's own `storeMetadataDir`. Play is the only channel that declares any
+/// today; naming it here would mean that the day a second channel publishes its
+/// dimensions, the stamp would keep emitting one channel's graphics and the
+/// guard would fail on the other with nothing in the factory to fix.
+///
+/// Warns rather than throws, for the reason `_writeBrandAssets` does: post_gen
+/// runs AFTER the tree is written, so throwing here leaves a half-stamped app —
+/// the half-state [3]S-13's refusal exists to prevent. The gap is not silent:
+/// `tooling/ci/assert-store-metadata.mjs` fails on a store tree missing a file
+/// the contract requires.
+void _writeStoreGraphics(
+  HookContext context, {
+  required String id,
+  required String seedHex,
+}) {
+  final register = File('tooling/channel-register.json');
+  if (!register.existsSync()) {
+    context.logger.warn(
+      'store graphics: tooling/channel-register.json not found from '
+      '${Directory.current.path}; listing graphics NOT written.',
+    );
+    return;
+  }
+  try {
+    final decoded = jsonDecode(register.readAsStringSync()) as Map;
+    final contract = decoded['storeMetadataContract'] as Map;
+    final perChannel = contract['perChannel'] as Map;
+    final channels = (decoded['channels'] as List).whereType<Map>();
+
+    var total = 0;
+    for (final Map row in channels) {
+      if (row['kind'] != 'store') continue;
+      final Object? dirTemplate = row['storeMetadataDir'];
+      if (dirTemplate is! String || !dirTemplate.contains('{app}')) continue;
+      final Object? per = perChannel[row['id']];
+      if (per is! Map) continue;
+      final Object? graphics = per['graphicAssets'];
+      if (graphics is! Map) continue;
+      final Object? assets = graphics['assets'];
+      if (assets is! Map) continue;
+
+      final written = writeStoreGraphics(
+        storeDir: Directory(dirTemplate.replaceAll('{app}', id)),
+        appId: id,
+        seedHex: seedHex,
+        assetSpecs: assets.cast<String, Object?>(),
+      );
+      total += written.length;
+    }
+    if (total == 0) {
+      // Said out loud rather than passed over: zero is the number a broken read
+      // produces, and it is indistinguishable from "no channel declares any"
+      // unless somebody names which one it was.
+      context.logger.warn(
+        'store graphics: the channel register declares NO `graphicAssets` for '
+        'any store channel, so none were generated. If a channel does declare '
+        'them, this read is broken.',
+      );
+    } else {
+      context.logger.success(
+        'store graphics: generated $total listing graphic(s) for "$id" from '
+        'seed #$seedHex, at the dimensions the channel register declares.',
+      );
+    }
+  } catch (e) {
+    context.logger.warn(
+      'store graphics: generation failed ($e); listing graphics NOT written. '
+      'The stamped store tree is incomplete and CI will say so.',
     );
   }
 }

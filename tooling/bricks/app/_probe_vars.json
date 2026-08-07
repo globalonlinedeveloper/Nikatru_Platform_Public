@@ -5,6 +5,7 @@
   "api_domain": "",
   "seed_hex": "6459F5",
   "category": "productivity",
-  "description": "Throwaway app stamped in CI to prove the brick compiles + analyzes: & ' / \" survive.",
+  "description": "CI probe: & ' / \" survive the stamp.",
+  "subtitle": "Probe's & \"only\" smoke test",
   "needs_backend": false
 }
