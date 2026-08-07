@@ -970,7 +970,17 @@ describe('assert-ceiling-budget — a cap without a sourced ceiling is the failu
     for (const row of on.ceilings) row.verifiedOn = daysAgo(180);
     const rOn = run(tree({ ceilings: on }));
     assert.equal(rOn.code, 0, rOn.out);
-    assert.match(rOn.out, /0 day\(s\) before it fails/);
+    // 🔴 THIS ASSERTED `0 day(s) before it fails` UNTIL 2026-08-07, AND IT
+    // CONTRADICTED THE LINE ABOVE IT. The run is GREEN at 180 (asserted on the
+    // previous line) and red at 181 (asserted below), so exactly ONE day remains
+    // — "0 days before it fails" says it fails today, which this same test
+    // disproves two lines up. The guard's countdown had the same off-by-one
+    // (`CADENCE_DAYS - age`, naming the last green day instead of the first red
+    // one) and the fixture agreed with it, so the pair was self-consistently
+    // wrong and 73 passing tests said nothing.
+    // *A fixture written from the same misunderstanding as the guard cannot
+    // detect that misunderstanding — only the predicate can settle it.*
+    assert.match(rOn.out, /1 day\(s\) before it fails/);
 
     const past = baseCeilings();
     for (const row of past.ceilings) row.verifiedOn = daysAgo(181);

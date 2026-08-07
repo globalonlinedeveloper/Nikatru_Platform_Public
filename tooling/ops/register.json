@@ -1655,6 +1655,28 @@
       "expiryKnownAt": "Snapcraft dashboard -> the Ubuntu One account and its developer agreement. Console-only."
     },
     {
+      "id": "expiring.ceilings-citations",
+      "kind": "expiring",
+      "what": "The vendor-limit citations in tooling/ceilings.json, and the 180d re-read they are due. Every row carries a `verifiedOn`; limb 7 of the ceiling guard fails the build once the OLDEST of them is past the register's own declared `verificationCadence.cadence`. 🔴 NOTHING SCHEDULED THAT RE-READ. The obligation was dated and armed and appeared in no register, so the first signal it existed would have been the hard red build itself — a deadline with no lead window is one discovered on the morning it blocks work unrelated to it.",
+      "detector": "This row's `expires` against its `leadDays`, evaluated by tooling/ci/assert-ops-register.mjs on every push. The ceiling guard's own staleness limb is the BACKSTOP, not the warning: it goes from silent to red with nothing in between, which is exactly why the lead window has to live somewhere that reads dates ahead of time.",
+      "response": "Open each row's `source` in tooling/ceilings.json, confirm the quoted `sourceText` and its number still say what the row says, and set that row's `verifiedOn` to the day you read it — moving `value`/`paidValue` if the limit moved, which re-checks every derived cap. THEN recompute this row's `expires` as the new oldest `verifiedOn` plus the cadence. 🔴 Bumping either date without opening the page converts both guards into the thing they replaced, and no guard can tell the difference.",
+      "cadence": "180d",
+      "expires": "2027-01-28",
+      "leadDays": 30,
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ceilings.json",
+        "record": "the `verifiedOn` field on every row of tooling/ceilings.json, against the `verificationCadence.cadence` declared in the same file",
+        "failingValue": "the oldest `verifiedOn` plus the declared cadence lands inside this row's 30-day lead window — i.e. the re-read is due and unstarted",
+        "readBy": "tooling/ci/assert-ceiling-budget.mjs"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified",
+      "expiryKnownAt": "tooling/ceilings.json itself, which is why this is the one `expiring` row whose date is not owner-gated: it is the OLDEST `verifiedOn` across the `ceilings` array plus `verificationCadence.cadence`. Computed 2026-08-07 — oldest is 2026-08-01 (fifteen of sixteen rows; only `d1.rowsWrittenPerDay` is newer, at 2026-08-06), and 2026-08-01 + 180d = 2027-01-28. RECOMPUTE it, never carry it forward: re-reading a single row moves this date."
+    },
+    {
       "id": "recovery.app-retirement",
       "kind": "recovery-path",
       "what": "Orderly withdrawal of an app from the portfolio — THE RETIREMENT CONTRACT that `review.kill-or-keep` below has instructed its reader to execute since this register was written. Until 2026-08-06 no such document existed, so the portfolio's kill switch terminated in a pointer to nothing — which reads worse than an admitted gap, because it looks as though the hard part was already written down.",
