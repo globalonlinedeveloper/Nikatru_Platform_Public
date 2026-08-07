@@ -1339,6 +1339,16 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
     mkdirSync(join(root, 'services/svc'), { recursive: true });
     writeFileSync(join(root, '.github/workflows/ci.yml'), 'name: CI\n');
     writeFileSync(join(root, 'services/svc/wrangler.jsonc'), JSON.stringify({ name: 'svc' }));
+    // The `cloudflare-cron` confinement limb reads this file to confirm the
+    // coupling it guards still exists, so a fixture root without it is an
+    // INCOMPLETE model of the subject and reports COVERAGE LOST — which is the
+    // limb working, not a fixture bug. Copy the REAL reader rather than writing
+    // a stub containing the literal: a stub would encode the assumption the
+    // limb exists to check, and would keep passing after the real file changed.
+    writeFileSync(
+      join(root, 'tooling/ops/check-heartbeats.mjs'),
+      readFileSync(resolve(CI_DIR, '..', 'ops', 'check-heartbeats.mjs'), 'utf8'),
+    );
 
     const reg = baseRegister();
     reg._delegated = { hostnames: 'tooling/monitor-register.json' };
@@ -1681,6 +1691,49 @@ describe('assert-ops-register — [14]O-4 · the absence of a scheduled duty mus
     r._requiredCoverage = { ids: ['recovery.bundles'] };
     r._substrateHosts = {};
     assert.match(messages(r), /COVERAGE LOST — this register declares NO `duty` row at all/);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // `cloudflare-cron` CONFINEMENT — the other side of the `kind === 'duty'` filter.
+  //
+  // check-heartbeats.mjs derives its watched set with
+  // `kind === 'duty' && substrate === 'cloudflare-cron'`, and this guard's own
+  // `anchored` map is built from `kind === 'duty'` alone. A NON-duty row carrying
+  // that substrate is therefore invisible to BOTH — it names a Cloudflare cron
+  // whose outcome nothing reads, and before 2026-08-07 every limb passed it.
+  //
+  // Found by mutation, not by reading: a `cloudflare-cron` substrate on an
+  // `expiring` row produced no COVERAGE LOST from either reader. The premise
+  // that it would was stated in a brief and was WRONG IN THE DANGEROUS DIRECTION.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('a NON-duty row declaring `cloudflare-cron` FAILS — nothing would ever read its outcome', () => {
+    const r = baseRegister();
+    // ANY non-duty kind, not a named one. The first draft looked for `expiring`
+    // and this fixture has none — the assert below caught it rather than the
+    // test silently passing over an absent victim, which is the whole reason it
+    // is written as a guard and not as a comment.
+    const victim = r.rows.find((x) => x.kind !== 'duty' && x.mechanism);
+    assert.ok(victim, 'fixture must contain a NON-duty row with a mechanism, or this test asserts nothing');
+    victim.mechanism.substrate = 'cloudflare-cron';
+    assert.match(messages(r), /declares `mechanism\.substrate: "cloudflare-cron"`/);
+    assert.match(messages(r), new RegExp(`${victim.id.replace(/\./g, '\\.')} —`));
+  });
+
+  test('the confinement scan has a NON-EMPTY domain and prints its size', () => {
+    // A confinement rule over zero rows is the vacuous pass this repo keeps
+    // re-finding. The count is asserted, not just the absence of an error.
+    const v = run(baseRegister());
+    const line = v.prints.find((p) => p.includes('`cloudflare-cron` confinement'));
+    assert.ok(line, `no confinement line printed; prints were: ${v.prints.join(' | ')}`);
+    const n = Number(line.match(/(\d+) non-duty row\(s\) scanned/)?.[1] ?? 0);
+    assert.ok(n > 0, `confinement scanned ${n} rows — an empty domain passes forever`);
+  });
+
+  test('a DUTY row declaring `cloudflare-cron` is fine — the rule confines, it does not ban', () => {
+    // The mutation that proves the rule is not simply "reject this substrate".
+    const r = baseRegister();
+    sched(r).mechanism.substrate = 'cloudflare-cron';
+    assert.doesNotMatch(messages(r), /declares `mechanism\.substrate: "cloudflare-cron"`/);
   });
 
   test('the scoping is REAL: `trigger` and `on-demand` duties need no watcher, and both counts print', () => {
