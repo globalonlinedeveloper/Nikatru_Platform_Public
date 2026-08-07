@@ -2420,7 +2420,16 @@ group('property: reminder-intent-persisted', () {
   test('ff', () {});
 });
 group('property: reminders-resync-on-start', () {
-  test('xx1', () {});
+  test('xx1', () {
+    // [pipeline 13]T-4's RUNTIME limb, mirrored from the real template: the
+    // static boot-path walk defers to this count, so the guard checks it is
+    // still here and still compares against zero.
+    expect(
+      notes.requestPermissionCalls,
+      0,
+      reason: 'the boot path must never spend the OS ask',
+    );
+  });
   test('xx2', () {});
   test('xx3', () {});
 });
@@ -3006,6 +3015,55 @@ class AppThemeX extends ThemeExtension<AppThemeX> {
   const WORKSPACE = 'pubspec.yaml';
   const goodWorkspace = 'name: nikatru_workspace\nworkspace:\n  - packages/core\n  - apps/subly\n';
 
+  // ── [pipeline 13]T-4 · THE BOOT PATH NEVER SPENDS THE OS PERMISSION ASK ────
+  //
+  // The shared adapter that actually asks the OS. The guard points its pattern
+  // at this file on every run to prove the pattern still RECOGNISES an ask — a
+  // regex that has gone stale reports every app's launch path clean forever, and
+  // an absence assertion whose scanner has gone blind is indistinguishable from
+  // compliance.
+  const PERMISSION_PROBE = 'packages/notifications/lib/src/local_notification_service_io.dart';
+  const goodPermissionProbe = `
+class LocalNotificationService {
+  Future<bool> requestPermission() async {
+    return (await ios.requestPermissions(alert: true, badge: true, sound: true)) ?? false;
+  }
+}
+`;
+  // An app that ships. The workspace above lists apps/subly, which is EXEMPT
+  // from carrying the inherited property test and deliberately NOT exempt from
+  // this: the exempt app is the one that shipped the defect.
+  const SUBLY_MAIN = 'apps/subly/lib/main.dart';
+  const SUBLY_NOTIFS = 'apps/subly/lib/services/notifications/notification_service.dart';
+  const goodSublyMain = `
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.instance.init();
+  runApp(const ProviderScope(child: SublyApp()));
+}
+`;
+  // \`init()\` and \`requestPermissions()\` SEPARATE, which is the whole property.
+  // The declaration of the ask lives here in the passing fixture too — a guard
+  // that fired on the declaration rather than on a reachable call site would be
+  // red on this input, which is the mistake assert-seams-wired.mjs already made.
+  const goodSublyNotifs = `
+class NotificationService {
+  Future<void> init() async {
+    await _plugin.initialize(settings);
+    _ready = true;
+  }
+
+  Future<bool> requestPermissions() async {
+    if (!_ready) return false;
+    return (await ios.requestPermissions(alert: true, badge: true, sound: true)) ?? false;
+  }
+
+  Future<void> toggleReminders(bool on) async {
+    if (on) await requestPermissions();
+  }
+}
+`;
+
   // ── [pipeline 8]K-6 · THE IN-APP LEGAL SET vs THE PUBLISHED LEGAL SET ──────
   //
   // 🔴 The defect: the brick declared TWO legal URLs, the site publishes FOUR,
@@ -3049,11 +3107,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, ...extra };
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -3126,6 +3184,136 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     });
     assert.equal(code, 1);
     assert.match(out, /'analytics-lifecycle-complete' is NOT asserted/);
+  });
+
+  // ── [pipeline 13]T-4 · THE BOOT PATH NEVER SPENDS THE OS PERMISSION ASK ────
+  //
+  // THE SENTENCE: *"Notification permission is never requested on the launch
+  // path."* The observation that makes it FALSE: booting the app issues an OS
+  // permission request with no user action.
+  //
+  // Every case below was FIRST run as a mutation of the REAL tree, because a
+  // fixture the guard's author also wrote encodes the same misunderstanding as
+  // the guard. The recorded real-tree results, `flutter analyze` clean each time
+  // (21 info, 0 errors — identical to baseline, so no case is a compile error
+  // masquerading as a catch):
+  //   · apps/subly SHIPPED the violation. The very first run of this limb was
+  //     red on the untouched tree: `main() → init() → _requestPermissions()`.
+  //   · a direct `await NotificationService.instance.requestPermissions();` in
+  //     apps/subly/lib/main.dart          → red at `main()`.
+  //   · the ask moved into ScanScreen's `initState`  → red at limb B.
+  //   · the brick's runtime count weakened from `0` to `greaterThanOrEqualTo(0)`
+  //     — a mutation `flutter test` stays GREEN on → red at the runtime anchor.
+  test('passes when init() and the permission ask are separate', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-t4-ok') });
+    assert.equal(code, 0);
+    assert.match(out, /\[13\]T-4 apps\/subly — launch path asks for no OS permission/);
+    // The EXEMPT app is covered. That exemption is about the inherited property
+    // test, and it cannot excuse an app from the boot path — it is the one that
+    // shipped the defect.
+    assert.match(out, /boot-path walk covered 2 app root\(s\)/);
+  });
+
+  test('FAILS when main() itself asks for permission', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-main-asks', {
+        sublyMain: goodSublyMain.replace(
+          'await NotificationService.instance.init();',
+          'await NotificationService.instance.init();\n  await NotificationService.instance.requestPermissions();',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /THE LAUNCH PATH SPENDS THE OS PERMISSION ASK — main\(\)/);
+    assert.match(out, /apps\/subly\/lib\/main\.dart/);
+  });
+
+  // 🔴 THE ONE THAT ACTUALLY SHIPPED, and the reason a one-file scan of
+  // main.dart would not have been enough: the ask is two hops away, in a file
+  // main.dart only names through a method call.
+  test('FAILS when the ask is TRANSITIVELY reachable from main()', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-transitive', {
+        sublyNotifs: goodSublyNotifs.replace(
+          'await _plugin.initialize(settings);',
+          'await _plugin.initialize(settings);\n    await requestPermissions();',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /main\(\) → init\(\)/);
+  });
+
+  // Limb B. `initState` has no call site anywhere — the framework calls it — so
+  // limb A cannot see it, and "moved into an initState" is the named way this
+  // property regresses without main.dart changing at all.
+  test('FAILS when the ask sits in an ungestured lifecycle hook', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-initstate', {
+        extra: {
+          'apps/subly/lib/features/scan/scan_screen.dart':
+            'class _S extends State<S> {\n  @override\n  void initState() {\n    super.initState();\n    NotificationService.instance.requestPermissions();\n  }\n}\n',
+        },
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /initState\(\) \[first frame, no gesture\]/);
+  });
+
+  // The BARRIER. Everything in an app is transitively reachable from `runApp`,
+  // so a walk that descended through the widget tree would call every gesture
+  // handler "launch path" and be useless. Constructors stop the walk — and this
+  // input proves the stop is real rather than asserted.
+  test('passes when the ask is behind a gesture handler in the widget tree', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-gesture', {
+        extra: {
+          'apps/subly/lib/features/settings/toggle.dart':
+            'class ReminderTile extends StatelessWidget {\n  Widget build(BuildContext c) => SwitchListTile(\n    onChanged: (bool on) => _onToggle(on),\n  );\n  Future<void> _onToggle(bool on) async {\n    if (on) await NotificationService.instance.requestPermissions();\n  }\n}\n',
+        },
+      }),
+    });
+    assert.equal(code, 0);
+    assert.match(out, /\[13\]T-4 apps\/subly — launch path asks for no OS permission/);
+  });
+
+  // A guard that has stopped seeing an OS ask reports every app clean forever,
+  // and that is indistinguishable from compliance. The pattern is pointed at the
+  // real adapter on every run so a plugin rename reddens the build.
+  test('FAILS when the permission pattern no longer matches the real adapter', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-blind-regex', {
+        permissionProbe: goodPermissionProbe.replace(/requestPermissions?/g, 'askTheUserNicely'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the \[13\]T-4 permission pattern no longer matches any call/);
+  });
+
+  // The RUNTIME limb this static walk defers to. Weakening the matcher leaves
+  // `flutter test` green — the classic gate-weakening move — so the guard
+  // compares against the literal zero, not merely the identifier's presence.
+  test('FAILS when the brick stops counting the boot-path asks', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-runtime-limb-weakened', {
+        propTest: goodTest.replace(
+          'notes.requestPermissionCalls,\n      0,',
+          'notes.requestPermissionCalls,\n      greaterThanOrEqualTo(0),',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /no longer asserts `requestPermissionCalls == 0` after a boot/);
+  });
+
+  // COVERAGE SELF-CHECK. A main.dart the walk cannot parse would start the whole
+  // check from nothing and report a clean launch path for any code at all.
+  test('FAILS when main() cannot be parsed out of an app that has a main.dart', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-unparseable-main', { sublyMain: '// everything commented out\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /no `main\(\)` DECLARATION could be parsed/);
   });
 
   test('FAILS when the inherited property test is deleted', () => {
@@ -3291,10 +3479,22 @@ onTap: () => _openUrl(AppConfig.refundUrl),
   // keep. Exempting it BY NAME is what stops this guard demanding a retrofit the
   // freeze forbids — and this case is what stops the exemption being silently
   // widened to every app.
+  //
+  // ⚠️ NARROWED 2026-08-06 ([pipeline 13]T-4). This read
+  // `doesNotMatch(out, /apps\/subly/)` — an assertion far broader than its own
+  // title, which said "does NOT demand a property TEST". Read literally it made
+  // apps/subly unmentionable by this guard for ANY reason, and so it would have
+  // blocked the T-4 boot-path limb — a check the frozen app is deliberately NOT
+  // exempt from, and the one whose defect it was shipping. The exemption covers
+  // the inherited property test; it never covered the launch path. Both
+  // directions are now asserted, so neither can be quietly widened.
   test('does NOT demand a property test from the frozen apps/subly', () => {
     const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-subly-exempt') });
     assert.equal(code, 0, out);
-    assert.doesNotMatch(out, /apps\/subly/);
+    assert.doesNotMatch(out, /apps\/subly: property/);
+    assert.doesNotMatch(out, /apps\/subly\/test\/chassis_properties_test\.dart/);
+    // …and it IS held to the boot path.
+    assert.match(out, /\[13\]T-4 apps\/subly — launch path asks for no OS permission/);
   });
 
   // The domain itself. An unreadable workspace list silently shrinks the scan

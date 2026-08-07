@@ -50,6 +50,11 @@
 //      This was the open clause: until 2026-08-06 nothing in the tree read
 //      `signing.ciSecrets`, so the register documented the secrets without
 //      being an authority over them.
+//   9. [9]R-3 REGISTER ↔ GRADLE — the same declaration compared to the REAL
+//      `apps/*/android/app/build.gradle.kts`, which is where the signing
+//      identity is actually read. Section 8 compares the register to the
+//      WORKFLOWS and stopped there, and its own header recorded the hole: "a
+//      rename in Gradle alone is still silent". It is not, now.
 //
 // ⚠️ DEFERRED-ROW GAPS PRINT, THEY DO NOT FAIL. Apple's Xcode 26 floor is real
 // and unpinned, and the channel is owner-deferred (OWNER_QUEUE A-4). Per the
@@ -79,8 +84,14 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+/** No argument means CI's own invocation against the real repository, where the
+ *  Android row MUST exist. A fixture root is a weaker situation and says so
+ *  (section 9) instead of quietly accepting a register with nothing to check.
+ *  Same idiom, same reason, as assert-android-target-sdk.mjs. */
+const scanningRealRepo = process.argv[2] === undefined;
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'sites/_shared/_data/apps.json';
 const VERSIONS = 'tooling/versions.json';
@@ -1161,11 +1172,13 @@ for (const s of register.nonChannelSigningIdentities ?? []) {
 // blocking all CI on owner-gated work, against the standing rule ([pipeline C-6]).
 // So a declared-but-unnamed secret PRINTS on every run instead.
 //
-// ⚠️ WHAT THIS DOES NOT CLOSE, stated rather than implied: it compares the
-// register to the WORKFLOWS, never to apps/*/android/app/build.gradle.kts. Gradle
-// remains the authority android-signing.mjs derives from, so a rename in Gradle
-// alone is still silent. [9]R-3 stays PARTIAL for that reason and for the Apple,
-// Windows-direct and AppImage rows, which have no lane to check at all.
+// ⚠️ WHAT THIS SECTION DOES NOT CLOSE, stated rather than implied: it compares
+// the register to the WORKFLOWS only. Gradle remains the authority
+// android-signing.mjs derives its names from, and until 2026-08-06 a rename in
+// Gradle alone was silent — SECTION 9 below is that half, and this paragraph is
+// kept as the record of where the boundary was rather than deleted. [9]R-3 stays
+// PARTIAL for the Apple, Windows-direct and AppImage rows, which have no signing
+// identity and no lane to check at all (owner-gated, OWNER_QUEUE S-5).
 const WORKFLOW_DIR = '.github/workflows';
 
 /** REQUIRED_COVERAGE — the floor that stops this ranging over nothing.
@@ -1176,8 +1189,13 @@ const WORKFLOW_DIR = '.github/workflows';
  *  workflows, the `${{ … }}` extractor breaks, the register's `ciSecrets` names
  *  drift out of the namespace the lanes speak. Every one of them collapses the
  *  INTERSECTION of "declared signing secrets" and "secrets a lane names" to zero,
- *  so that intersection is the floor — checked whenever anything is declared. */
-const REQUIRED_COVERAGE = { declaredSigningSecretsNamedByALane: 1 };
+ *  so that intersection is the floor — checked whenever anything is declared.
+ *
+ *  `androidGradleFilesCrossChecked` is section 9's equivalent floor and it is the
+ *  same shape one level over: a row can declare a Gradle contract whose
+ *  `declaredIn` template resolves to nothing on disk, and a comparison against a
+ *  file that was never read agrees with everything. */
+const REQUIRED_COVERAGE = { declaredSigningSecretsNamedByALane: 1, androidGradleFilesCrossChecked: 1 };
 
 const secretRegister =
   register.ciSecretRegister !== null && typeof register.ciSecretRegister === 'object' ? register.ciSecretRegister : {};
@@ -1344,6 +1362,289 @@ for (const name of nonSigningSecrets.keys()) {
 if (observedSecrets.size > 0) {
   ok(
     `${observedSecrets.size} secret(s) named across ${workflowFiles.length} workflow(s), all declared; ${signingSecrets.size} signing, ${signingSecretsNamedByALane.length} of those named by a lane [9]R-3 limb 2`,
+  );
+}
+
+// ── 9. [9]R-3 — the register's signing declaration vs the REAL Gradle build ──
+//
+// 🔴 THE HALF SECTION 8 LEFT OPEN, IN ITS OWN WORDS: "it compares the register to
+// the WORKFLOWS, never to apps/*/android/app/build.gradle.kts … a rename in Gradle
+// alone is still silent." That silence is not a small one. build.gradle.kts is
+// where the four signing values are actually READ, and everything upstream —
+// tooling/ci/android-signing.mjs, tooling/release/submit-play.mjs — deliberately
+// PARSES its names out of that file rather than repeating them, precisely so the
+// two cannot drift. The register did repeat them, and nothing compared the copy
+// to the original. Rename a value in Gradle and: the register goes on naming the
+// old one, the workflows go on passing the old one, android-signing.mjs exports
+// the NEW one because it derives from Gradle, and the build takes the debug
+// fallback with every check in the tree green. That is the exact defect shape
+// recorded at the top of android-signing.mjs, one level up.
+//
+// WHAT IS ASSERTED: the register and the build file agree about WHICH FOUR VALUES
+// CARRY THE SIGNING IDENTITY. Not their contents — no secret is read here — the
+// NAMES, as a set, in both directions. A rename on either side breaks the set
+// equality and goes red naming which side moved.
+//
+// ⚠️ ANCHORED ON USE, NOT ON THE MAP'S OWN DECLARATION, because this repository
+// has shipped that mistake: assert-seams-wired.mjs matched a function's own
+// declaration, so deleting every caller left it green. `val releaseSigningEnv =
+// mapOf(…)` sitting in the file proves nothing — a build whose signing config
+// reads none of it is unconditionally debug-signed with the declaration intact.
+// So three uses are required beside it: the symbol is referenced somewhere other
+// than its own declaration, every key it declares is ASSIGNED inside the named
+// signing config, and the release build type reaches that config through
+// `signingConfigs.getByName(…)`.
+//
+// 🔒 THE DEBUG FALLBACK IS DELIBERATELY NOT RE-ASSERTED HERE. It is a recorded
+// owner decision (build-platforms.yml's weekly keyless run is a build PROOF) and
+// tooling/release/submit-play.mjs already fails its removal. A second copy of
+// that assertion is the [pipeline F-2] sin this file removed KEY_KINDS to avoid,
+// and the two copies would drift the day the fallback's shape changes. Nothing in
+// this section requires `getByName("release")` to be UNCONDITIONAL — the real
+// file reaches it from inside `if (hasReleaseSigning)`, and the `else` branch
+// that yields the debug config is none of this section's business.
+//
+// STRUCTURE, NEVER PROSE. The build file's header is 60 lines of comment naming
+// ANDROID_KEYSTORE_BASE64, `signingConfigs.getByName("debug")` and the whole
+// mechanism — a text scan would match its own documentation, which is the defect
+// `grep '"r2_buckets"'` found. Comments go first (the shared reduction), then
+// string CONTENTS are blanked for the brace/paren arithmetic only.
+const ANDROID = 'android';
+const rx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Non-space character count — the measure that proves a reduction REDUCED. */
+const dense = (s) => s.replace(/ /g, '').length;
+
+/** End of the balanced run opening at `open`, or -1.
+ *
+ *  Run over the SKELETON: comments blanked by `stripSourceComments` and string
+ *  contents blanked by `stripStringLiterals`, so no delimiter can be hiding
+ *  inside a literal and a plain depth count is exact. Both reductions replace
+ *  with spaces rather than deleting, so byte offsets are preserved and an index
+ *  found here indexes the comment-stripped text too — a property asserted below
+ *  rather than assumed.
+ *
+ *  ⚠️ KNOWN LIMIT, and its direction is the safe one: Kotlin's `"""raw"""` is not
+ *  understood by `stripStringLiterals`, so a brace inside one would be counted.
+ *  No build file in this tree uses one, and the failure it would cause is a FALSE
+ *  RED somebody investigates — never a silent pass. */
+function balanced(skeleton, open, l, r) {
+  let depth = 0;
+  for (let i = open; i < skeleton.length; i++) {
+    if (skeleton[i] === l) depth++;
+    else if (skeleton[i] === r) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+const androidRows = channels.filter((c) => Array.isArray(c.platforms) && c.platforms.includes(ANDROID));
+let gradleFilesCrossChecked = 0;
+let gradleNamesAgreed = 0;
+
+for (const c of channels) {
+  const label = `channel "${c.id ?? '(unnamed)'}"`;
+  const ciSecrets = c.signing?.ciSecrets;
+  const contract = ciSecrets?.gradleContract;
+  const isAndroid = Array.isArray(c.platforms) && c.platforms.includes(ANDROID);
+  const names = Array.isArray(ciSecrets?.names) ? ciSecrets.names.filter((n) => typeof n === 'string') : null;
+
+  if (!isAndroid) {
+    if (contract !== undefined) {
+      problems.push(
+        `${label} declares \`signing.ciSecrets.gradleContract\` but ships to ${JSON.stringify(c.platforms ?? null)}, not "${ANDROID}". A Gradle contract on a row with no Android module points this comparison at a file that channel never builds, and a comparison against an absent file agrees with everything.`,
+      );
+    }
+    continue;
+  }
+  // A row with no `ciSecrets` at all has already been FAILED or PRINTED by
+  // section 8 on the stronger ground that it declares no secrets whatsoever.
+  // Speaking again here would attach two messages to one fault.
+  if (names === null) continue;
+
+  if (contract === null || typeof contract !== 'object' || Array.isArray(contract)) {
+    problems.push(
+      `${label} ships to "${ANDROID}" and declares \`signing.ciSecrets.names\`, but no \`signing.ciSecrets.gradleContract\`. [9]R-3: apps/{app}/android/app/build.gradle.kts is where those four values are actually READ, and without this block nothing compares the register's copy of the names to the original. A rename in Gradle alone then leaves the register naming the old value, the lane passing the old value, and the build silently taking the debug fallback with every check green.`,
+    );
+    continue;
+  }
+
+  const declaredIn = typeof contract.declaredIn === 'string' ? contract.declaredIn.trim() : '';
+  const envMap = typeof contract.envMap === 'string' ? contract.envMap.trim() : '';
+  const signingConfig = typeof contract.signingConfig === 'string' ? contract.signingConfig.trim() : '';
+  const buildType = typeof contract.buildType === 'string' ? contract.buildType.trim() : '';
+  const transportName = typeof contract.transport?.name === 'string' ? contract.transport.name.trim() : '';
+  const substitutes = typeof contract.transport?.substitutes === 'string' ? contract.transport.substitutes.trim() : '';
+  const transportWhy = typeof contract.transport?.why === 'string' ? contract.transport.why.trim() : '';
+
+  const shape = [];
+  if (!declaredIn.includes('{app}')) {
+    shape.push('`declaredIn` must be a path TEMPLATE containing `{app}`. One register row covers every app the factory stamps, so a literal path would check the flagship and silently miss the next module');
+  }
+  if (envMap === '') shape.push('`envMap` names nothing. It is the Kotlin symbol whose `mapOf` carries the value→variable names, and naming it in the register rather than in here is what stops this guard from being a second declaration of Gradle\'s shape');
+  if (signingConfig === '') shape.push('`signingConfig` names nothing. It is the AGP signing config the release build type must reach, and it is the anchor that makes this a check on USE');
+  if (buildType === '') shape.push('`buildType` names nothing. It is the build type whose artifact goes to the store — the one whose signing config decides what the .aab is signed with');
+  if (transportName === '') shape.push('`transport.name` names nothing. Exactly one declared secret is NOT one of Gradle\'s variables (Gradle wants a path, and a path cannot travel through a repository secret), and an unnamed exception makes the set comparison below fail on a correct register');
+  if (substitutes === '') shape.push('`transport.substitutes` names nothing. It is the Gradle key the transport stands in for, and without it nothing says WHICH of Gradle\'s variables is produced rather than passed through');
+  if (transportWhy.length < 20) {
+    shape.push('`transport.why` carries no reason. A name exempted from this comparison with no reason recorded is an exemption anybody can add to silence a failure — the same cost `ciSecretRegister.nonSigning` entries pay for the same reason');
+  }
+  if (shape.length) {
+    for (const s of shape) problems.push(`${label}'s \`signing.ciSecrets.gradleContract\`: ${s}.`);
+    continue;
+  }
+
+  const tried = [];
+  let readForThisRow = 0;
+  for (const a of apps) {
+    const slug = typeof a?.slug === 'string' && a.slug.trim() !== '' ? a.slug.trim() : null;
+    if (slug === null) continue;
+    const rel = declaredIn.split('{app}').join(slug);
+    tried.push(rel);
+    const raw = read(rel);
+    // An app with no Android module yet is not a fault — `tooling/bricks/app`
+    // ships no android/ template. The REQUIRED_COVERAGE floor below is what
+    // stops "no module anywhere" from reading as agreement.
+    if (raw === null) continue;
+    readForThisRow++;
+
+    // ── the reductions, each one asserted rather than trusted ────────────────
+    const code = stripSourceComments(raw, '.kts');
+    if (raw.includes('//') && dense(code) >= dense(raw)) {
+      coverageLost([
+        `${rel} contains \`//\` comments and \`stripSourceComments(…, '.kts')\` removed none of them.`,
+        'That reduction returns an UNKNOWN EXTENSION VERBATIM, so dropping .kts from its map turns this',
+        'whole section into a scan of the build file\'s 60-line header — which names ANDROID_KEYSTORE_BASE64,',
+        'the signing configs and the whole mechanism, and would satisfy every check below out of prose.',
+      ]);
+    }
+    const skeleton = stripStringLiterals(code);
+    if (skeleton.length !== code.length) {
+      coverageLost([
+        `${rel}: \`stripStringLiterals\` changed the text LENGTH (${code.length} → ${skeleton.length}).`,
+        'Every index below is found in the skeleton and used to slice the comment-stripped text, so the',
+        'two must stay byte-aligned. They no longer are, and the slices would be off by an unknown amount.',
+      ]);
+    }
+
+    // ── the map, anchored on the symbol the REGISTER names ──────────────────
+    const decl = new RegExp(`\\bval\\s+${rx(envMap)}\\s*=\\s*mapOf\\s*\\(`).exec(code);
+    if (decl === null) {
+      coverageLost([
+        `${rel} declares no \`val ${envMap} = mapOf(…)\` outside its comments.`,
+        `The register's gradleContract names ${envMap} as the map that carries the signing value names.`,
+        'With it gone (or renamed, or moved into a comment) the release build reads no keystore variables',
+        'at all and is unconditionally debug-signed — and comparing the register against nothing agrees.',
+      ]);
+    }
+    const openParen = decl.index + decl[0].length - 1;
+    const closeParen = balanced(skeleton, openParen, '(', ')');
+    if (closeParen === -1) {
+      coverageLost([`${rel}: the \`${envMap}\` mapOf( at offset ${openParen} is never closed. The file does not parse and nothing below can be trusted.`]);
+    }
+    const pairs = [...code.slice(openParen + 1, closeParen).matchAll(/"([A-Za-z_]\w*)"\s+to\s+"([A-Za-z_]\w*)"/g)].map((x) => [x[1], x[2]]);
+    if (pairs.length === 0) {
+      coverageLost([
+        `${rel}'s \`${envMap}\` map declares no "key" to "VARIABLE" pairs.`,
+        'An empty map is a release signing config that reads nothing, and an empty comparison passes.',
+      ]);
+    }
+
+    // ── USE, not declaration ────────────────────────────────────────────────
+    const usedElsewhere = [...code.matchAll(new RegExp(`\\b${rx(envMap)}\\b`, 'g'))].filter(
+      (u) => u.index < decl.index || u.index > closeParen,
+    );
+    if (usedElsewhere.length === 0) {
+      problems.push(
+        `${rel} declares \`${envMap}\` and NOTHING outside that declaration reads it. The map existing is not the signing identity being read: a build whose config consults none of it takes the debug fallback with the declaration sitting there intact. This repository shipped exactly that shape once already — assert-seams-wired.mjs anchored on a function's own declaration and stayed green after every caller was deleted.`,
+      );
+    }
+    if (!new RegExp(`signingConfigs\\s*\\.\\s*getByName\\s*\\(\\s*"${rx(signingConfig)}"\\s*\\)`).test(code)) {
+      problems.push(
+        `${rel} never reaches the "${signingConfig}" signing config through \`signingConfigs.getByName("${signingConfig}")\`. The register's gradleContract says the "${buildType}" build type is signed by it; with that wiring gone the build type falls to whatever AGP defaults to and the four values are read into a config nothing applies. (This does NOT require the call to be unconditional — the recorded debug fallback branch is deliberately none of this check's business.)`,
+      );
+    }
+    const create = new RegExp(`\\bcreate\\s*\\(\\s*"${rx(signingConfig)}"\\s*\\)\\s*\\{`).exec(code);
+    if (create === null) {
+      problems.push(
+        `${rel} declares no \`create("${signingConfig}") { … }\` signing config, which the register's gradleContract names as the one carrying this channel's identity.`,
+      );
+    } else {
+      const openBrace = create.index + create[0].length - 1;
+      const closeBrace = balanced(skeleton, openBrace, '{', '}');
+      if (closeBrace === -1) {
+        coverageLost([`${rel}: the \`create("${signingConfig}")\` block at offset ${openBrace} is never closed.`]);
+      }
+      const body = code.slice(openBrace + 1, closeBrace);
+      for (const [key] of pairs) {
+        if (!new RegExp(`\\b${rx(key)}\\s*=`).test(body)) {
+          problems.push(
+            `${rel}: \`${envMap}\` declares the value "${key}" and the \`create("${signingConfig}")\` block never assigns it. A value the map names and the signing config ignores is a value that carries nothing — the map would still list four names while three reached the signer.`,
+          );
+        }
+      }
+    }
+
+    // ── the agreement itself, both directions ───────────────────────────────
+    const substituted = pairs.find(([k]) => k === substitutes);
+    if (substituted === undefined) {
+      problems.push(
+        `${rel}: the register's \`transport.substitutes\` names Gradle key "${substitutes}", and \`${envMap}\` declares ${pairs.map(([k]) => `"${k}"`).join(', ')}. The transport declaration is stale, so the one name that is legitimately NOT a Gradle variable can no longer be identified and every comparison below would be against the wrong set.`,
+      );
+      continue;
+    }
+    /** name → how the build file justifies it. The transport is the single
+     *  declared secret that is not one of Gradle's variables. */
+    const expected = new Map([[transportName, `the declared transport for Gradle's "${substitutes}" (${transportWhy})`]]);
+    for (const [k, v] of pairs) if (k !== substitutes) expected.set(v, `Gradle's "${k}"`);
+    const declared = new Set(names);
+
+    for (const [n, why] of expected) {
+      if (declared.has(n)) continue;
+      problems.push(
+        `${rel} carries the signing identity in ${n} (${why}) and ${label} does not declare it in \`signing.ciSecrets.names\` (which lists ${names.join(', ') || 'nothing'}). [9]R-3: the register is the authority on which secrets carry a signing identity into CI, and it is naming a set the build no longer reads. tooling/ci/android-signing.mjs derives from the BUILD, so this drift ends with the lane exporting one set of names while the register documents another and the .aab silently debug-signed.`,
+      );
+    }
+    for (const n of declared) {
+      if (expected.has(n)) continue;
+      problems.push(
+        n === substituted[1]
+          ? `${label} declares "${n}" in \`signing.ciSecrets.names\`, and ${rel} reads it as Gradle's "${substitutes}" — the value the register's own \`transport\` says is PRODUCED at run time (${transportWhy}) rather than supplied as a repository secret. Declaring it as a secret invites somebody to create one, and tooling/ci/android-signing.mjs overwrites it on every run.`
+          : `${label} declares "${n}" in \`signing.ciSecrets.names\` and ${rel} never reads it. Either the build was renamed and the register was not, or the register names a secret that carries no signing identity — and an authority that over-declares accepts names nothing uses, which is the empty-authority failure limb 2 closes from the other side.`,
+      );
+    }
+    gradleNamesAgreed += [...expected.keys()].filter((n) => declared.has(n)).length;
+    gradleFilesCrossChecked++;
+  }
+
+  // The floor, and it is REQUIRED_COVERAGE's only reader on purpose. An earlier
+  // draft of this line also tested the cross-checked total and read
+  // `total > 0 && total < 1` — a condition no input can satisfy. An assertion
+  // that cannot fail is worse than none: it inflates apparent coverage. Raising
+  // the constant to 2 changes this guard's behaviour, which is the test that it
+  // is still connected to something.
+  if (readForThisRow < REQUIRED_COVERAGE.androidGradleFilesCrossChecked) {
+    coverageLost([
+      `${label} declares a \`gradleContract\` whose \`declaredIn\` template reached ${readForThisRow} file(s) on disk; REQUIRED_COVERAGE is ${REQUIRED_COVERAGE.androidGradleFilesCrossChecked}.`,
+      `Tried: ${tried.join(', ') || '(no app slugs in ' + APPS + ')'}.`,
+      'A comparison against a file that was never read agrees with everything — so moving or renaming the',
+      'build file is COVERAGE LOST here rather than a silent pass. Point `declaredIn` at the module.',
+    ]);
+  }
+}
+
+if (scanningRealRepo && androidRows.length === 0) {
+  coverageLost([
+    `${REGISTER} declares no channel row whose \`platforms\` includes "${ANDROID}".`,
+    'Section 9 then has nothing to cross-check against apps/*/android/app/build.gradle.kts and reports',
+    'clean over the empty set — which is how deleting the row becomes the cheapest way to pass. The',
+    'Android module is in this tree and it is signed; a register that does not mention it is wrong.',
+  ]);
+}
+if (gradleFilesCrossChecked > 0) {
+  ok(
+    `${gradleFilesCrossChecked} Android build file(s) cross-checked against the register — ${gradleNamesAgreed} signing value name(s) agree, read from the config that actually applies them [9]R-3`,
   );
 }
 

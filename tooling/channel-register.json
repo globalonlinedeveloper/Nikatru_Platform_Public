@@ -654,16 +654,53 @@
             "naming a secret nobody declared FAILS, and a name renamed HERE and nowhere else is caught as",
             "COVERAGE LOST rather than passing over an empty intersection.",
             "",
-            "⚠️ GRADLE IS STILL THE AUTHORITY FOR THE THREE, and nothing above changes that. The new check",
-            "compares this list to the WORKFLOWS; it does not compare it to build.gradle.kts. A rename in",
-            "Gradle alone is still silent, and that gap is recorded rather than papered over."
+            "⚠️ GRADLE IS STILL THE AUTHORITY FOR THE THREE, and nothing below changes that. What changed",
+            "on 2026-08-06 is that the COPY is now compared to the original: `gradleContract` beneath this",
+            "block tells assert-channel-register.mjs §9 where the build file is, which symbol carries the",
+            "names, and which single name is the exception — so a rename in Gradle alone is no longer",
+            "silent. It was, until then, and the previous wording of this paragraph recorded that gap."
           ],
           "names": [
             "ANDROID_KEYSTORE_BASE64",
             "ANDROID_KEYSTORE_PASSWORD",
             "ANDROID_KEY_ALIAS",
             "ANDROID_KEY_PASSWORD"
-          ]
+          ],
+          "gradleContract": {
+            "_why": [
+              "🔴 THE BRIDGE BETWEEN THIS LIST AND THE FILE THAT ACTUALLY READS THE KEY. `names` above is a",
+              "COPY. apps/{app}/android/app/build.gradle.kts is the original: it maps each signing value to",
+              "the environment variable it is read from, and tooling/ci/android-signing.mjs and",
+              "tooling/release/submit-play.mjs both PARSE that map rather than repeating it, precisely because",
+              "two copies drift silently. This register carried the third copy and nothing compared it.",
+              "",
+              "The failure it removes, concretely: rename ANDROID_KEY_ALIAS in Gradle and android-signing.mjs",
+              "starts exporting the new name (it derives), the workflows keep passing the old one (they do",
+              "not), Gradle sees three of four values, and — on a non-release lane — the build takes the",
+              "recorded debug fallback. Every check in the tree stays green and the .aab is debug-signed.",
+              "",
+              "THIS BLOCK DECLARES ONLY WHERE TO LOOK, never what to find. The four names are read out of the",
+              "build file; putting them here too would be the fourth copy. `envMap`, `signingConfig` and",
+              "`buildType` are Kotlin symbols in that file, and naming them here rather than in the guard is",
+              "what keeps assert-channel-register.mjs from becoming a second declaration of Gradle's shape.",
+              "",
+              "`transport` is the one exception the comparison needs. Gradle's `storeFile` wants a filesystem",
+              "PATH and a path cannot travel through a repository secret, so ANDROID_KEYSTORE_BASE64 carries",
+              "the keystore BYTES instead and android-signing.mjs writes the file and sets the path variable",
+              "itself. It is therefore the single declared secret that is not one of Gradle's variables — and",
+              "the corollary is asserted too: ANDROID_KEYSTORE_PATH must NOT appear in `names`, because",
+              "creating a repository secret for it would be creating one this build overwrites every run."
+            ],
+            "declaredIn": "apps/{app}/android/app/build.gradle.kts",
+            "envMap": "releaseSigningEnv",
+            "signingConfig": "release",
+            "buildType": "release",
+            "transport": {
+              "name": "ANDROID_KEYSTORE_BASE64",
+              "substitutes": "storeFile",
+              "why": "Gradle wants a filesystem path and a path cannot travel through a repository secret, so the keystore travels as base64 bytes and tooling/ci/android-signing.mjs materialises the file into $RUNNER_TEMP and sets Gradle's path variable itself"
+            }
+          }
         },
         "restoreDrill": {
           "date": null,

@@ -204,6 +204,122 @@ const submitWorkflow = ({ jobRunsScript = true } = {}) =>
     '',
   ].join('\n');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 9's fixtures — the register's Android signing declaration vs the REAL
+// build file. Off by default (`withAndroid`), so the ~50 cases above keep their
+// exact output and a failure here can only be section 9.
+const ANDROID_ID = 'android-play';
+const ANDROID_SECRETS = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'];
+const GRADLE_TEMPLATE = 'apps/{app}/android/app/build.gradle.kts';
+
+const androidPlay = () => ({
+  id: ANDROID_ID,
+  name: 'Google Play',
+  platforms: ['android'],
+  kind: 'store',
+  served: false,
+  submittable: true,
+  artifactFormats: ['.aab'],
+  signing: {
+    keyKind: 'upload-key',
+    identity: 'release-keystore/release.keystore',
+    custody: 'recorded in the private SSoT',
+    restoreDrill: { date: '2026-08-04', required: true, note: 'drilled' },
+    ciSecrets: {
+      names: [...ANDROID_SECRETS],
+      gradleContract: {
+        declaredIn: GRADLE_TEMPLATE,
+        envMap: 'releaseSigningEnv',
+        signingConfig: 'release',
+        buildType: 'release',
+        transport: {
+          name: 'ANDROID_KEYSTORE_BASE64',
+          substitutes: 'storeFile',
+          why: 'Gradle wants a filesystem path and a path cannot travel through a repository secret',
+        },
+      },
+    },
+  },
+  minimumToolchain: ['flutter'],
+  lane: null,
+  deploymentEnvironment: '{app}-android-play',
+  storeMetadataDir: 'apps/{app}/store/android-play',
+  ownerQueue: 'S-5',
+  accountStatus: { status: 'none', asOf: '2026-08-03', note: 'no Play developer account' },
+});
+
+/** A build file shaped like the real one — INCLUDING a decoy header comment that
+ *  names the map, a fourth variable that does not exist, the signing config and
+ *  an assignment. All four are the strings a text scan would look for, and none
+ *  of them is code. The real file's header is 60 such lines.
+ *
+ *  🔴 `useMap:false` is the case that matters most: the `val` declaration stays
+ *  EXACTLY as written and every consumer of it is deleted. A guard anchored on a
+ *  symbol's own declaration passes that, which is how assert-seams-wired.mjs
+ *  shipped green after every caller was removed. */
+const gradleFile = ({
+  envMap = 'releaseSigningEnv',
+  pairs = [
+    ['storeFile', 'ANDROID_KEYSTORE_PATH'],
+    ['storePassword', 'ANDROID_KEYSTORE_PASSWORD'],
+    ['keyAlias', 'ANDROID_KEY_ALIAS'],
+    ['keyPassword', 'ANDROID_KEY_PASSWORD'],
+  ],
+  assigns = null,
+  useMap = true,
+  wireBuildType = true,
+  commentOutMap = false,
+  signingConfig = 'release',
+} = {}) => {
+  const map = [
+    `val ${envMap} = mapOf(`,
+    ...pairs.map(([k, v]) => `    "${k}" to "${v}",`),
+    ')',
+  ];
+  const assigned = assigns ?? pairs.map(([k]) => k);
+  return [
+    '// 🔴 DECOY. Every string a prose scan would match lives in this comment and',
+    '// nowhere else in the file:',
+    `//     val ${envMap} = mapOf("keyAlias" to "GHOST_VARIABLE")`,
+    `//     signingConfigs.getByName("${signingConfig}")`,
+    '//     keyAlias = signingValue("keyAlias")',
+    'import java.util.Properties',
+    '',
+    ...(commentOutMap ? map.map((l) => `// ${l}`) : map),
+    '',
+    ...(useMap
+      ? [
+          `val suppliedSigningKeys = ${envMap}.keys.filter { signingValue(it) != null }`,
+          `val hasReleaseSigning = suppliedSigningKeys.size == ${envMap}.size`,
+        ]
+      : ['val hasReleaseSigning = false']),
+    '',
+    'android {',
+    '    signingConfigs {',
+    '        if (hasReleaseSigning) {',
+    `            create("${signingConfig}") {`,
+    ...assigned.map((k) => `                ${k} = signingValue("${k}")`),
+    '            }',
+    '        }',
+    '    }',
+    '    buildTypes {',
+    '        release {',
+    '            signingConfig =',
+    '                if (hasReleaseSigning) {',
+    // 🔒 The debug branch is IDENTICAL in both arms. Breaking the wiring must not
+    // be expressible as "delete the fallback" — that fallback is a recorded owner
+    // decision and tooling/release/submit-play.mjs already fails its removal.
+    `                    ${wireBuildType ? `signingConfigs.getByName("${signingConfig}")` : 'null'}`,
+    '                } else {',
+    '                    signingConfigs.getByName("debug")',
+    '                }',
+    '        }',
+    '    }',
+    '}',
+    '',
+  ].join('\n');
+};
+
 /**
  * Build a fixture repo. Everything is valid unless a knob says otherwise.
  * `mutate(register)` breaks exactly one thing, so a failure is attributable.
@@ -223,6 +339,12 @@ function tree({
   releaseChannel = 'web',
   // [9]R-3 limb 2 (section 8): which `${{ secrets.X }}` the lane workflow names.
   laneSecrets = [],
+  // ── section 9 ──────────────────────────────────────────────────────────────
+  // `withAndroid` adds the android-play row (which carries a `gradleContract`)
+  // AND the build file it points at. Both off by default.
+  withAndroid = false,
+  gradle = {},
+  omitGradleFile = false,
   adrLocked = true,
   adrOnDisk = true,
   // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
@@ -280,11 +402,23 @@ function tree({
       runbook: 'company/runbooks/store-submission-thing.md',
     };
   }
+  // Pushed BEFORE `mutate` so the existing knob can break section 9's row the
+  // same way it breaks every other one — one mutation, one attributable failure.
+  if (withAndroid) register.channels.push(androidPlay());
   if (mutate) mutate(register);
+
+  // 🔴 DERIVED FROM THE REGISTER AFTER THE MUTATION, never typed. A case that
+  // renames a secret HERE would otherwise leave the lane naming the old one, and
+  // section 8 would fail alongside section 9 — two messages for one mutation, and
+  // a red result nobody can attribute. Deriving keeps section 8 silent throughout.
+  const androidNames = withAndroid
+    ? (register.channels.find((c) => c.id === ANDROID_ID)?.signing?.ciSecrets?.names ?? []).filter((n) => typeof n === 'string')
+    : [];
 
   write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
-  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel, laneSecrets }));
+  write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel, laneSecrets: [...laneSecrets, ...androidNames] }));
+  if (withAndroid && !omitGradleFile) write(GRADLE_TEMPLATE.split('{app}').join('subly'), gradleFile(gradle));
   write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob, windowsRun }));
   if (harnessPresent) {
     // The harness root exists even when the cited ADR does not — that is the
@@ -1400,5 +1534,232 @@ describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may b
     const { code, out } = run(tree({ extraFiles: { [DYN]: body } }));
     assert.equal(code, 1, out);
     assert.match(out, /names a secret by EXPRESSION/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 9 — [9]R-3: the register's signing declaration vs the REAL Gradle
+// build. Section 8 compares the register to the WORKFLOWS and its own header
+// recorded what that left open: "a rename in Gradle alone is still silent".
+//
+// ⚠️ SECOND LINE OF EVIDENCE, AS EVER. The first is 10 mutations of the REAL
+// tree, each restored and SHA-256-verified byte-identical: renaming a value in
+// apps/subly/android/app/build.gradle.kts, renaming one in
+// tooling/channel-register.json, deleting a real assignment from the signing
+// config, unwiring the release build type, commenting the map out, going stale
+// on `transport.substitutes`, deleting `gradleContract`, pointing `declaredIn`
+// at a moved file, dropping `.kts` from the SHARED comment reduction, and
+// deleting the android row entirely. All ten red. A fixture encodes the same
+// misunderstanding as the guard that wrote it; these keep the ten closed.
+describe('assert-channel-register — [9]R-3: the register agrees with the real build.gradle.kts', () => {
+  const contract = (r) => r.channels.find((c) => c.id === ANDROID_ID).signing.ciSecrets.gradleContract;
+  const secrets = (r) => r.channels.find((c) => c.id === ANDROID_ID).signing.ciSecrets;
+
+  test('PASSES when the register and the build file name the same four values', () => {
+    const { code, out } = run(tree({ withAndroid: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 Android build file\(s\) cross-checked against the register — 4 signing value name\(s\) agree/);
+  });
+
+  // ── direction 1: the build moves ──────────────────────────────────────────
+  test('FAILS when the BUILD FILE renames a value and the register does not', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        gradle: {
+          pairs: [
+            ['storeFile', 'ANDROID_KEYSTORE_PATH'],
+            ['storePassword', 'ANDROID_KEYSTORE_PASSWORD'],
+            ['keyAlias', 'ANDROID_KEY_ALIAS_V2'],
+            ['keyPassword', 'ANDROID_KEY_PASSWORD'],
+          ],
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /carries the signing identity in ANDROID_KEY_ALIAS_V2 \(Gradle's "keyAlias"\)/);
+    assert.match(out, /declares "ANDROID_KEY_ALIAS" in `signing\.ciSecrets\.names` and .* never reads it/);
+  });
+
+  // ── direction 2: the register moves ───────────────────────────────────────
+  test('FAILS when the REGISTER renames a value and the build file does not', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          secrets(r).names = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD_V2'];
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /carries the signing identity in ANDROID_KEY_PASSWORD \(Gradle's "keyPassword"\)/);
+    assert.match(out, /declares "ANDROID_KEY_PASSWORD_V2" in `signing\.ciSecrets\.names` and .* never reads it/);
+    // Section 8 stays SILENT — the lane names whatever the register declares, so
+    // this red is attributable to section 9 alone.
+    assert.doesNotMatch(out, /which the register does not declare/);
+  });
+
+  test('FAILS when the register declares the variable Gradle PRODUCES as a secret', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          secrets(r).names = [...ANDROID_SECRETS, 'ANDROID_KEYSTORE_PATH'];
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /reads it as Gradle's "storeFile" — the value the register's own `transport` says is PRODUCED at run time/);
+    assert.match(out, /overwrites it on every run/);
+  });
+
+  // ── USE, never the declaration ────────────────────────────────────────────
+  test('FAILS when the map is declared and nothing outside the declaration reads it', () => {
+    const { code, out } = run(tree({ withAndroid: true, gradle: { useMap: false } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares `releaseSigningEnv` and NOTHING outside that declaration reads it/);
+    assert.match(out, /assert-seams-wired\.mjs anchored on a function's own declaration/);
+  });
+
+  test('FAILS when the signing config never assigns a value the map declares', () => {
+    const { code, out } = run(
+      tree({ withAndroid: true, gradle: { assigns: ['storeFile', 'storePassword', 'keyPassword'] } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /declares the value "keyAlias" and the `create\("release"\)` block never assigns it/);
+  });
+
+  // 🔒 The debug fallback is UNTOUCHED in this fixture — `signingConfigs.getByName
+  // ("debug")` is still there, in the same `else`. So this cannot pass by matching
+  // `getByName(` generically, and it cannot be satisfied by deleting the fallback.
+  test('FAILS when the release build type no longer reaches the signing config', () => {
+    const { code, out } = run(tree({ withAndroid: true, gradle: { wireBuildType: false } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reaches the "release" signing config through `signingConfigs\.getByName\("release"\)`/);
+  });
+
+  test('FAILS when `signingConfig` names a config the build file does not declare', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          contract(r).signingConfig = 'upload';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no `create\("upload"\) \{ … \}` signing config/);
+    assert.match(out, /never reaches the "upload" signing config/);
+  });
+
+  // ── prose cannot satisfy a check ──────────────────────────────────────────
+  test('COVERAGE LOST when the map exists only inside a comment', () => {
+    const { code, out } = run(tree({ withAndroid: true, gradle: { commentOutMap: true } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST/);
+    assert.match(out, /declares no `val releaseSigningEnv = mapOf\(…\)` outside its comments/);
+  });
+
+  test('COVERAGE LOST when the map declares no pairs at all', () => {
+    const { code, out } = run(tree({ withAndroid: true, gradle: { pairs: [] } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST/);
+    assert.match(out, /declares no "key" to "VARIABLE" pairs/);
+  });
+
+  // ── the scan must reach what it thinks ────────────────────────────────────
+  test('COVERAGE LOST when `declaredIn` resolves to no file on disk', () => {
+    const { code, out } = run(tree({ withAndroid: true, omitGradleFile: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST/);
+    assert.match(out, /`declaredIn` template reached 0 file\(s\) on disk; REQUIRED_COVERAGE is 1/);
+    assert.match(out, /Tried: apps\/subly\/android\/app\/build\.gradle\.kts/);
+  });
+
+  test('COVERAGE LOST when `envMap` names a symbol the build file does not declare', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          contract(r).envMap = 'signingEnvNames';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST/);
+    assert.match(out, /declares no `val signingEnvNames = mapOf\(…\)`/);
+  });
+
+  // ── the contract cannot be deleted to pass ────────────────────────────────
+  test('FAILS an android row that declares ciSecrets and no gradleContract', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          delete secrets(r).gradleContract;
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /ships to "android" and declares `signing\.ciSecrets\.names`, but no `signing\.ciSecrets\.gradleContract`/);
+  });
+
+  test('FAILS a NON-android row that declares a gradleContract', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        laneSecrets: ['FIXTURE_UPLOAD_KEY'],
+        mutate: (r) => {
+          const web = r.channels.find((c) => c.id === 'web');
+          web.signing.keyKind = 'upload-key';
+          web.signing.identity = 'release-keystore/upload.keystore';
+          web.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
+          web.signing.ciSecrets = { names: ['FIXTURE_UPLOAD_KEY'], gradleContract: { ...contract(r) } };
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /declares `signing\.ciSecrets\.gradleContract` but ships to \["web"\], not "android"/);
+  });
+
+  // ── the transport exemption has to cost something ─────────────────────────
+  test('FAILS when `transport.substitutes` names a key the map does not declare', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          contract(r).transport.substitutes = 'storePath';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /names Gradle key "storePath", and `releaseSigningEnv` declares "storeFile", "storePassword", "keyAlias", "keyPassword"/);
+    assert.match(out, /transport declaration is stale/);
+  });
+
+  test('FAILS a transport exemption with no `why` — an exemption anybody can add', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          delete contract(r).transport.why;
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /`transport\.why` carries no reason/);
+  });
+
+  test('FAILS a `declaredIn` that is a literal path rather than a {app} template', () => {
+    const { code, out } = run(
+      tree({
+        withAndroid: true,
+        mutate: (r) => {
+          contract(r).declaredIn = 'apps/subly/android/app/build.gradle.kts';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /must be a path TEMPLATE containing `\{app\}`/);
   });
 });

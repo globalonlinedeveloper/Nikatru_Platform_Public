@@ -221,6 +221,11 @@ const LIMB5_FILES = [
   '.github/workflows/deploy-workers.yml',
   'services/platform/test/config.test.ts',
   'apps/subly/test/config_default_test.dart',
+  // The config route's client half, in the BRICK's test tree — [4]B-14's last
+  // open clause. Copied, not written: the whole point of the clause is that the
+  // pin a STAMPED app inherits is the real one.
+  'tooling/bricks/app/__brick__/apps/{{app_id}}/test/config_contract_test.dart',
+  'packages/core/lib/src/config/app_config.dart',
   'services/platform/src/routes/account.ts',
   'services/subly-api/src/routes/account.ts',
   'packages/core/lib/src/auth/account_deletion.dart',
@@ -579,6 +584,9 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /wire plan-cancel — body pinned/);
     assert.match(r.out, /GAP {2}wire money-webhook/);
     assert.match(r.out, /8 shared route\(s\) from tooling\/platform-register\.json: 7 pinned, 1 printed gap/);
+    // [4]B-14's last clause: the config route's client half resolves in the
+    // BRICK, so the count above is about apps that do not exist yet too.
+    assert.match(r.out, /wire config — .*client half INHERITED by every stamped app: 10 key\(s\) in tooling\/bricks\//);
   });
 
   test('FAILS when the server adds a response key nobody declared — MW1 replayed', () => {
@@ -722,6 +730,97 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     })));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no longer contains `REQUIRED_KEYS`/);
+  });
+
+  // ── [4]B-14's last open clause: the client half must be INHERITED ──────────
+  // Real-tree mutations first, as always, and all six restored byte-identical
+  // (md5 compared against a copy taken before the first one):
+  //
+  //   MB1  the brick test file moved out of the brick     -> COVERAGE LOST: "the inherited
+  //        test tree entirely                                 client half … does not exist"
+  //   MB2  the SAME pin, rendered for subly, placed in    -> COVERAGE LOST: "is declared at
+  //        apps/subly/test/ and the pointer moved to it       apps/subly/test/… which is not
+  //        — i.e. exactly the state B-14 was held at         under tooling/bricks/…/test/"
+  //        🔴 THE POINTER RESOLVED AND THE MARKER WAS FOUND. That is the state this
+  //           clause exists to reject: `pinned` printed for eight routes while a
+  //           freshly stamped app inherited none of the config contract.
+  //   MB3  every USE of kConfigWireKeys deleted, the      -> COVERAGE LOST: "DECLARED …
+  //        declaration left intact (dart format clean         and used nowhere else in it"
+  //        on the rendered file, so it still parses)
+  //        🔴 This is the assert-seams-wired defect replayed on purpose.
+  //   MB4  'support_url' added to the server's            -> FAIL: "On the server … and NOT
+  //        REQUIRED_KEYS only                                 in the brick: support_url"
+  //   MB5  'copy' deleted from the brick list only        -> FAIL: the mirror image
+  //   MB6  'update_url' deleted from the brick list       -> COVERAGE LOST: the declared floor
+  //   MB7  `json['update_url']` renamed to                -> FAIL: "pinned on both sides and
+  //        `json['update_link']` in core's                    …/app_config.dart never reads
+  //        AppConfig.fromJson (3 reads)                       them off `json`"
+  //        🔴 `dart analyze packages/core/lib/src/config/app_config.dart` printed
+  //           "No issues found!" on the mutated tree AND on the baseline. A compile
+  //           error looks identical to a caught mutation; this one is not that.
+  test('COVERAGE LOST when the config client half is not in the brick test tree', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/test/config_contract_test.dart': null,
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the inherited client half .*config_contract_test\.dart does not exist/);
+  });
+
+  test('COVERAGE LOST when the pinned list is DECLARED and never used', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'tooling/bricks/app/__brick__/apps/{{app_id}}/test/config_contract_test.dart',
+        'for (final String key in kConfigWireKeys) {',
+        'for (final String key in _serverBody().keys) {')));
+    // The equality assertion is the OTHER use, so this alone must not be enough
+    // to make the list unused — the guard is red only when every use is gone.
+    assert.equal(r.code, 0, r.out);
+    const gone = run(makeRepo((f) => {
+      const stripped = mutate(f, 'tooling/bricks/app/__brick__/apps/{{app_id}}/test/config_contract_test.dart',
+        'for (final String key in kConfigWireKeys) {',
+        'for (final String key in _serverBody().keys) {');
+      return mutate(stripped, 'tooling/bricks/app/__brick__/apps/{{app_id}}/test/config_contract_test.dart',
+        'expect(_serverBody().keys.toSet(), kConfigWireKeys.toSet());',
+        'expect(_serverBody().keys.toSet(), _serverBody().keys.toSet());');
+    }));
+    assert.equal(gone.code, 1, gone.out);
+    assert.match(gone.out, /`kConfigWireKeys` is DECLARED in .* and used nowhere else in it/);
+  });
+
+  test('FAILS when the server gains a config key the brick does not carry', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'services/platform/test/config.test.ts',
+        "    'update_url',\n  ] as const;", "    'update_url',\n    'support_url',\n  ] as const;")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /On the server \(services\/platform\/test\/config\.test\.ts\) and NOT in the brick: support_url/);
+    // and the route stops counting as pinned — the number moves, honestly
+    assert.match(r.out, /6 pinned, 1 printed gap/);
+  });
+
+  test('FAILS when the brick drops a key the server still requires', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'tooling/bricks/app/__brick__/apps/{{app_id}}/test/config_contract_test.dart',
+        "  'copy',\n  'min_supported_version',", "  'min_supported_version',")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /and NOT in the brick: copy/);
+  });
+
+  test('COVERAGE LOST when the floor key `update_url` leaves either side', () => {
+    const r = run(makeRepo((f) =>
+      mutate(f, 'tooling/bricks/app/__brick__/apps/{{app_id}}/test/config_contract_test.dart',
+        "  'max_promos_per_week',\n  'update_url',\n];", "  'max_promos_per_week',\n];")));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /key\(s\) update_url are the declared floor of the config contract/);
+  });
+
+  test('FAILS when the released client stops READING a pinned key — MB7 replayed', () => {
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'packages/core/lib/src/config/app_config.dart':
+        f['packages/core/lib/src/config/app_config.dart'].replaceAll("json['update_url']", "json['update_link']"),
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /key\(s\) update_url are pinned on both sides and .*never reads them off `json`/);
   });
 
   test('FAILS when the cancel REQUEST key is renamed on the client', () => {
