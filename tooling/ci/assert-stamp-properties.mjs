@@ -107,6 +107,22 @@ const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 // ONCE for every stamp. Anchoring the event names inside an app would be
 // anchoring the fork this requirement exists to prevent.
 const CORE_LIFECYCLE = 'packages/core/lib/src/analytics/analytics_lifecycle.dart';
+// [pipeline 11]E-6. The screen that emits the four money events — app-relative,
+// because every stamped app carries its own copy of the paywall and any one of
+// them can drop a stage from the funnel on its own.
+const PAYWALL = 'lib/features/monetization/paywall_screen.dart';
+// …and their one shared implementation. Same reason as CORE_LIFECYCLE: the event
+// NAMES belong to the package, or fifty stamps grow fifty funnels.
+const MONEY_FUNNEL = 'packages/purchases/lib/src/money_funnel.dart';
+// [pipeline 10]D-8. The two server-side halves of the update destination: the
+// wire contract that lets a config carry one, and the registry that serves it.
+const PLATFORM_TYPES = 'services/platform/src/types.ts';
+const PLATFORM_CONFIG = 'services/platform/src/config.ts';
+// …and the set of channels a binary can be built for. `update_url` is resolved
+// per app but SPENT per channel: each channel compiles its own `UPDATE_URL`
+// define (or inherits the brick's `defaultValue`), so "equals the compile-time
+// default" is a question with one answer per channel, not one answer.
+const CHANNEL_REGISTER = 'tooling/channel-register.json';
 // The stamped Worker's half of G2. Only present on a needs_backend stamp; the
 // mustache section IS the directory name on disk, so this path resolves in the
 // brick source even though it vanishes from a client-only stamp.
@@ -252,6 +268,229 @@ function checkLegalLinkSet() {
   ok(
     `[8]K-6 legal set: ${mustLink.length} published page(s) linked in the chassis` +
       `${LINK_EXEMPT_LEGAL_PAGES.size ? `, ${LINK_EXEMPT_LEGAL_PAGES.size} reached by an in-app control instead` : ''}`,
+  );
+}
+
+// ── [pipeline 10]D-8 limb (c) · A RESOLVED UPDATE URL MAY NEVER EQUAL THE ────
+//    COMPILE-TIME DEFAULT OF ANY CHANNEL.
+//
+// 🔴 WHY THIS IS A SEPARATE LIMB AND NOT A LINE IN THE WIDGET TEST. Limb (b) —
+// the stamped-app probe — asserts the button opens the URL the config served. It
+// can only tell the two sources apart while the injected value DIFFERS from the
+// compiled-in fallback. The day somebody "fixes" a red probe by injecting
+// `AppConfig.updateUrl`, every assertion in that group goes green with the whole
+// runtime resolution deleted: it would be measuring the fallback and reporting
+// the feature. That is the assertion-that-cannot-fail shape, arriving through a
+// test edit rather than through a code edit, and no test can catch it about
+// itself.
+//
+// AND IT IS PER CHANNEL, because the compile-time default is. `AppConfig
+// .updateUrl` is `String.fromEnvironment('UPDATE_URL', defaultValue: …)`, so a
+// release lane can compile a different destination into each artifact; the value
+// a given binary falls back to is its channel's, not the template's. A check
+// against the template's default alone would pass while a channel's own build
+// made the two indistinguishable.
+//
+// TWO SUBJECTS, both structural:
+//   (1) the probe's injected constant, parsed off the brick's property test;
+//   (2) every `update_url` the config service SERVES, parsed off DEFAULT_CONFIGS.
+// (2) ranges over `null` today — no non-store channel is served, so there is
+// nowhere to send anybody and null is the finding. That is printed rather than
+// hidden, and the check is written so the one-line edit that makes it wrong
+// (`update_url: 'https://nikatru.com'`) turns it red.
+const CHANNEL_CONFIG_FLOOR = 1;
+
+/**
+ * Comments out of a TS source, string literals KEPT.
+ *
+ * Hand-rolled rather than `stripDartComments` because this file is TypeScript:
+ * it has BACKTICK template literals (`config:${appId}`), which that stripper
+ * does not know and would walk straight through, and Dart's `r'…'` raw-string
+ * rule would misread an identifier ending in `r` next to a quote. The strings
+ * survive because the values being read ARE string literals.
+ */
+function stripTsComments(src) {
+  let out = '';
+  for (let i = 0; i < src.length; ) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '/' && c2 === '/') {
+      while (i < src.length && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      out += '  '; i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+        out += src[i] === '\n' ? '\n' : ' '; i++;
+      }
+      out += '  '; i += 2;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      out += c; i++;
+      while (i < src.length) {
+        if (src[i] === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
+        out += src[i];
+        if (src[i] === c) { i++; break; }
+        // An unterminated quote cannot cross a line; a backtick can.
+        if (c !== '`' && src[i] === '\n') { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
+/** The literal `AppConfig.updateUrl` falls back to, or null if unparseable. */
+function compiledInUpdateUrl(brickConfigSrc) {
+  const decl = brickConfigSrc.match(
+    /static\s+const\s+String\s+updateUrl\s*=\s*String\.fromEnvironment\(\s*'UPDATE_URL'\s*,\s*defaultValue:\s*([^,)]+?)\s*,?\s*\)/,
+  );
+  if (!decl) return null;
+  const expr = decl[1].trim();
+  const literal = expr.match(/^'([^']*)'$/) ?? expr.match(/^"([^"]*)"$/);
+  if (literal) return literal[1];
+  // An identifier — resolve it in the same class, so `defaultValue: companyUrl`
+  // is followed to the URL it actually is rather than compared as a name.
+  const named = brickConfigSrc.match(
+    new RegExp(`static\\s+const\\s+String\\s+${expr}\\s*=\\s*'([^']*)'`),
+  );
+  return named ? named[1] : null;
+}
+
+function checkUpdateDestinationIsRepointable() {
+  let compiled;
+  try {
+    compiled = compiledInUpdateUrl(
+      stripDartComments(readFileSync(join(repo, BRICK, APP_CONFIG), 'utf8')),
+    );
+  } catch (e) {
+    fail(`COVERAGE LOST — ${BRICK}/${APP_CONFIG} unreadable: ${e.message}`);
+    return;
+  }
+  if (!compiled) {
+    fail(
+      `COVERAGE LOST — [10]D-8: could not parse the compile-time default out of ${BRICK}/${APP_CONFIG} ` +
+        "(`static const String updateUrl = String.fromEnvironment('UPDATE_URL', defaultValue: …)`). " +
+        'Every comparison below is against that value, so an unparsed one makes this whole limb ' +
+        'compare against nothing while printing ok.',
+    );
+    return;
+  }
+
+  // ── the per-channel compile-time value ────────────────────────────────────
+  let channels;
+  try {
+    channels = JSON.parse(readFileSync(join(repo, CHANNEL_REGISTER), 'utf8')).channels;
+  } catch (e) {
+    fail(`COVERAGE LOST — ${CHANNEL_REGISTER} unreadable: ${e.message}`);
+    return;
+  }
+  if (!Array.isArray(channels) || channels.length === 0) {
+    fail(
+      `COVERAGE LOST — ${CHANNEL_REGISTER} declares no channels, so "the compile-time default for ` +
+        'any channel" ranges over nothing and cannot reject a value.',
+    );
+    return;
+  }
+  /** channel id → the UPDATE_URL a build for it compiles in. */
+  const compiledByChannel = new Map();
+  for (const row of channels) {
+    let value = compiled;
+    const wf = row?.lane?.workflow;
+    if (typeof wf === 'string' && existsSync(join(repo, wf))) {
+      for (const line of readFileSync(join(repo, wf), 'utf8').split('\n')) {
+        // A COMMENT NAMING A DEFINE IS NOT A DEFINE — the same discrimination
+        // assert-channel-register.mjs makes for RELEASE_CHANNEL.
+        const code = line.replace(/#.*$/, '');
+        const m = /--dart-define(?:=|\s+)UPDATE_URL=(\S+)/.exec(code);
+        if (m) value = m[1];
+      }
+    }
+    compiledByChannel.set(row.id, value);
+  }
+
+  // ── (1) the probe's injected constant ─────────────────────────────────────
+  let probeUrl = null;
+  try {
+    const propSrc = stripDartComments(readFileSync(join(repo, BRICK, PROP_TEST), 'utf8'));
+    probeUrl = propSrc.match(/const\s+String\s+kProbeUpdateUrl\s*=\s*'([^']*)'/)?.[1] ?? null;
+  } catch { /* the missing-PROP_TEST case already failed hard above */ }
+  if (probeUrl === null) {
+    fail(
+      `[10]D-8(c): ${BRICK}/${PROP_TEST} declares no \`kProbeUpdateUrl\`. That constant is the URL the ` +
+        'update-url property injects as the SERVED value; without it the property is either gone or ' +
+        'testing something else, and this limb has nothing to compare.',
+    );
+  } else {
+    for (const [id, value] of compiledByChannel) {
+      if (probeUrl === value) {
+        fail(
+          `[10]D-8(c): the property test injects '${probeUrl}' as the served update_url, which is EXACTLY ` +
+            `what a '${id}' build compiles in as its fallback. The assertion that the button opens the ` +
+            'RESOLVED url would then pass with the runtime resolution deleted — it would be measuring ' +
+            'the fallback and reporting the feature.',
+        );
+      }
+    }
+  }
+
+  // ── (2) every value the config service serves ─────────────────────────────
+  let served;
+  try {
+    served = stripTsComments(readFileSync(join(repo, PLATFORM_CONFIG), 'utf8'));
+  } catch (e) {
+    fail(`COVERAGE LOST — ${PLATFORM_CONFIG} unreadable: ${e.message}`);
+    return;
+  }
+  const at = served.indexOf('DEFAULT_CONFIGS');
+  const registry = at === -1 ? '' : served.slice(at);
+  const apps = [...registry.matchAll(/^\s{2}(\w+):\s*\{/gm)];
+  if (apps.length < CHANNEL_CONFIG_FLOOR) {
+    fail(
+      `COVERAGE LOST — parsed ${apps.length} app(s) out of ${PLATFORM_CONFIG} DEFAULT_CONFIGS, expected ` +
+        `>= ${CHANNEL_CONFIG_FLOOR}. A registry that parsed as empty makes every comparison below ` +
+        'vacuously true, which is the shape this guard exists to refuse.',
+    );
+    return;
+  }
+  let nullServed = 0;
+  let compared = 0;
+  for (let i = 0; i < apps.length; i++) {
+    const body = registry.slice(
+      apps[i].index,
+      i + 1 < apps.length ? apps[i + 1].index : registry.length,
+    );
+    const m = body.match(/\bupdate_url:\s*(null|'([^']*)'|"([^"]*)")/);
+    if (!m) {
+      fail(
+        `[10]D-8: ${PLATFORM_CONFIG} serves app '${apps[i][1]}' with NO \`update_url\` key at all. The ` +
+          'force-update wall would fall back to the compiled-in destination with no way to repoint it, ' +
+          'which is the circular kill-switch owner decision #19 removed.',
+      );
+      continue;
+    }
+    const value = m[2] ?? m[3] ?? null;
+    if (value === null) { nullServed++; continue; }
+    for (const [id, base] of compiledByChannel) {
+      compared++;
+      if (value === base) {
+        fail(
+          `[10]D-8(c): ${PLATFORM_CONFIG} serves '${apps[i][1]}' an update_url of '${value}', which is ` +
+            `EXACTLY what a '${id}' build already compiles in. Serving a value identical to the fallback ` +
+            'means the wall opens the same place whether config resolved or not, so nothing — no test, ' +
+            'no user, no incident — can tell the runtime path from a dead one.',
+        );
+      }
+    }
+  }
+  ok(
+    `[10]D-8 update destination: ${compiledByChannel.size} channel(s) × ${apps.length} served app(s) — ` +
+      `${compared} comparison(s), ${nullServed} app(s) serve null (the wall keeps its compiled-in ` +
+      `fallback, which is the recorded state while no non-store channel is served)` +
+      `${probeUrl ? `; the probe injects '${probeUrl}', distinct from every channel's default` : ''}`,
   );
 }
 
@@ -611,6 +850,74 @@ const REQUIRED_COVERAGE = [
     ],
     why: 'the taxonomy names THREE launch events and a stamped app emitted one, so every retention and activation number a stamp could produce was missing its denominator',
   },
+  {
+    // ── [pipeline 11]E-6 · THE PURCHASE FUNNEL ARRIVES AS A SET ─────────────
+    //
+    // 🔴 WHAT WAS ALREADY GREEN, AND WHY IT WAS NOT THE REQUIREMENT. All four
+    // calls fire from the brick's own paywall and assert-pseudonymity-firewall
+    // resolves them BY SYMBOL, so "the four events exist" has been true for a
+    // while. Nothing anywhere asserted the thing a conversion rate is actually
+    // made of: that they arrive TOGETHER, in one session, under one anon id.
+    // Four individually-correct events scattered across three sessions describe
+    // three users who each did a third of a purchase — not a noisy funnel, a
+    // different one, and a plausible-looking one.
+    //
+    // NINE anchors in three files, and the split is the point. The four in the
+    // PAYWALL are call sites; the four in the package are the event NAMES; the
+    // provider line is what puts them on the consented rail. Any one of them
+    // deleted leaves the other eight looking healthy while a stamped app emits
+    // less than a funnel: the screen can call a funnel that logs nothing, and
+    // the package can emit perfect names nobody calls.
+    key: 'money-funnel-emitted-as-a-set',
+    group: /group\(\s*'property: money-funnel-emitted-as-a-set'/,
+    sources: [
+      // CALL SITES. The declarations live in MONEY_FUNNEL, which is a different
+      // file, so none of these can be satisfied by the method existing — the
+      // declaration-vs-caller trap this guard has been bitten by twice.
+      { file: PAYWALL, re: /funnel\.onPaywallViewed\(/, what: 'the paywall must emit the DENOMINATOR — with no paywall_viewed there is nothing to divide by and the conversion rate cannot be computed at all' },
+      { file: PAYWALL, re: /funnel\.onCheckoutStarted\(/, what: 'the intent must be emitted where the checkout is opened, or the drop-off between seeing a price and trying to pay is invisible' },
+      { file: PAYWALL, re: /funnel\.onPurchaseSuccess\(/, what: 'the SERVER-confirmed unlock must be emitted — this is the numerator, and it is the one event that must never fire on the checkout’s return' },
+      { file: PAYWALL, re: /funnel\.onPurchaseFailed\(/, what: 'both refusal paths must be emitted, or a rail that refuses every buyer looks identical to one nobody tried' },
+      // …and the NAMES, in the shared package. An app-local funnel is the fork
+      // [5]M-16 moved this class out of apps/subly to prevent.
+      { file: MONEY_FUNNEL, re: /_log\(\s*'paywall_viewed'/, what: "the shared funnel must emit 'paywall_viewed' — a renamed event is a silently empty column, not an error" },
+      { file: MONEY_FUNNEL, re: /_log\(\s*'checkout_started'/, what: "the shared funnel must emit 'checkout_started'" },
+      { file: MONEY_FUNNEL, re: /_log\(\s*'purchase_success'/, what: "the shared funnel must emit 'purchase_success'" },
+      { file: MONEY_FUNNEL, re: /_log\(\s*'purchase_failed'/, what: "the shared funnel must emit 'purchase_failed'" },
+      // The JOIN. Building the funnel over the CONSENTED recorder is what gives
+      // the four events one session id and one anon id; a funnel handed its own
+      // Analytics would emit four correct events belonging to nobody.
+      { file: MONEY_PROVIDERS, re: /MoneyFunnel\(await ref\.watch\(analyticsProvider\.future\)\)/, what: 'the funnel must ride the SAME recorder as every other event — a second one mints a second session and a second anon id, and the paying cohort stops being joinable to anything' },
+    ],
+    why: 'a funnel is only a funnel as a set: a missing stage does not make the rate imprecise, it makes it the answer to a different question, and nothing downstream can tell',
+  },
+  {
+    // ── [pipeline 10]D-8 · THE WALL OPENS THE URL THE CONFIG RESOLVED ───────
+    //
+    // 🔴 THE DEFECT SHAPE. A compiled-in destination makes the kill-switch
+    // circular: the one thing the wall must do in an emergency is send users
+    // somewhere else, and moving it would mean shipping the very build the wall
+    // exists to replace — to installs that, by definition, are not updating.
+    // Owner decision #19 moved it to runtime; `types.ts` declares `update_url`,
+    // `config.ts` serves it, `app.dart` reads it with the define as the offline
+    // fallback — and for the whole life of that work NOTHING proved a resolved
+    // value ever reached the button, because the wall had never been raised on a
+    // stamped app in any test (`packageVersionProvider` answers null in a widget
+    // test, so the gate fails open). `mustForceUpdateProvider` sat in UNASSERTED
+    // below as "the switch that was inert for 55 builds".
+    //
+    // Limb (c) — a resolved URL must never equal any channel's compile-time
+    // default — is enforced structurally by checkUpdateDestinationIsRepointable
+    // above, because it is a statement about the TEST as much as the code.
+    key: 'update-url-resolved-from-config',
+    group: /group\(\s*'property: update-url-resolved-from-config'/,
+    sources: [
+      { file: APP_ROOT, re: /ref\.watch\(appConfigProvider\)\.valueOrNull\?\.updateUrl\s*\?\?/, what: 'app.dart must RESOLVE the destination at runtime and fall back to the define — dropping the runtime half restores the circular kill-switch, and dropping the fallback leaves the button with nowhere to go while config is unresolved' },
+      { file: APP_ROOT, re: /onUpdate:\s*\(\)\s*=>\s*_openUpdate\(updateUrl\)/, what: 'the BUTTON must be wired to the resolved value — wiring it to AppConfig.updateUrl leaves the resolution above computed and unused, which reads as a working feature in review' },
+      { file: PLATFORM_TYPES, re: /^\s*update_url:\s*string \| null;/m, what: 'the wire contract must carry the key, or there is nothing for the client to resolve and the runtime branch is unreachable in production' },
+    ],
+    why: 'a force-update wall whose destination is frozen at build time cannot be repointed by the builds that need it most, which is the whole reason the kill-switch exists',
+  },
 ];
 
 // ── THE TRACKED DOMAIN — what "every" ranges over. ──────────────────────────
@@ -724,6 +1031,24 @@ const COVERED_BY = {
   entitlementsProvider: 'paywall-gate-driven-by-server',
   paywallLockedProvider: 'paywall-gate-driven-by-server',
   purchaseRailProvider: 'paywall-gate-driven-by-server',
+  // ── [pipeline 11]E-6 · reclassified 2026-08-07, and the moves are the point.
+  //
+  // `moneyFunnelProvider` was an admitted gap ("no stamped-app property watches
+  // an event reach a transport from the paywall") and `entitlementConvergence
+  // Provider` was another ("a checkout cannot be opened in a widget test"). The
+  // second was the load-bearing one and it was simply not true: the rail is an
+  // INTERFACE with exactly one implementation precisely so a test can construct
+  // a purchase path, and a fake rail that opens one lets the REAL convergence
+  // poll the fake server until the entitlement appears. Both are now DRIVEN —
+  // the property taps the real upgrade button and reads what reached the wire.
+  // An admitted gap is not a permanent one.
+  moneyFunnelProvider: 'money-funnel-emitted-as-a-set',
+  entitlementConvergenceProvider: 'money-funnel-emitted-as-a-set',
+  // [pipeline 10]D-8. DRIVEN, not constructed: the property serves a version
+  // floor above the running version, asserts the wall really appears on a
+  // stamped app, and taps its button. This was "the switch that was inert for 55
+  // builds" and nothing had ever raised it.
+  mustForceUpdateProvider: 'update-url-resolved-from-config',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what
@@ -735,8 +1060,6 @@ const UNASSERTED = {
   // own suite; what is missing is a STAMPED-APP assertion, which is a different
   // and stronger claim.
   cancellationTransportProvider: '2026-08-01 · the ROSCA cancel call. Driven end-to-end in packages/purchases/test/hosted_checkout_rail_test.dart and against a real SQL engine in services/platform/test/cancellation.test.ts; a stamped-app property would need the manage screen pumped with a fake host, which is a widget test worth writing and is not written',
-  entitlementConvergenceProvider: '2026-08-01 · the bounded post-checkout wait. Fully exercised in packages/purchases/test/entitlement_convergence_test.dart (backoff, exhaustion, could-not-ask); no stamped-app property because a checkout cannot be opened in a widget test',
-  moneyFunnelProvider: '2026-08-01 · the four money events. Their CALLERS are enforced by tooling/ci/assert-pseudonymity-firewall.mjs, which resolves them by SYMBOL, and the funnel itself is unit-tested — but no stamped-app property watches an event reach a transport from the paywall',
   // [pipeline 2]C-13 wired `OfflineNotice` in 2026-08-06 — it had ZERO consumers
   // before that, a dead feature reporting healthy. Its reachability anchor proves
   // the widget is MOUNTED and driven by a failed config fetch; it does NOT prove
@@ -747,8 +1070,7 @@ const UNASSERTED = {
   configTransportProvider: '2026-07-28 · CFG-1 config resolution has no stamped-app property; a stamp cannot prove network → last-good → default actually degrades in that order',
   configLoaderProvider: '2026-07-28 · as above — the fallback chain is unit-tested in core, never asserted on a stamped app',
   appConfigProvider: '2026-07-28 · as above',
-  packageVersionProvider: '2026-07-28 · force-update input; returns null in widget tests by design, so a stamped-app assertion needs a seam that does not exist yet',
-  mustForceUpdateProvider: '2026-07-28 · the force-update kill-switch. NOTHING proves the update wall appears on a stamped app — and this is the switch that was inert for 55 builds',
+  packageVersionProvider: '2026-08-07 · SUBSTITUTED rather than driven by `update-url-resolved-from-config`: the real provider reads a platform channel a widget test has not got and answers null BY DESIGN, which is what made the wall fail open and kept it unproven. The property overrides it to raise the wall; the plugin read itself is still asserted nowhere',
   featureFlagsProvider: '2026-07-28 · rollout bucketing is unasserted in the stamp; core tests the maths, nothing tests that a stamped app buckets',
   analyticsConsentProvider: '2026-07-28 · the UI-facing read; consentDecidedProvider is the limb the property test drives, and it is the one that decides whether to prompt',
 };
@@ -1185,6 +1507,12 @@ if (domainSrc) {
     console.log('   (printed, not failed: per the C-16 lock new properties arrive WITH their features.)');
   }
 }
+
+// ── [10]D-8 limb (c) · run the update-destination check. ────────────────────
+// OUTSIDE the `if (domainSrc)` block on purpose: this limb is about the config
+// service and the channel register, not about the chassis's provider domain, and
+// an unrelated failure to read a providers file must not be able to skip it.
+checkUpdateDestinationIsRepointable();
 
 // ── [13]T-4 · run the boot-path walk. ───────────────────────────────────────
 //

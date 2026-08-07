@@ -97,6 +97,20 @@ const REQUIRED_TEMPLATE_TOKENS = [
   '[SNAP OR dl.nikatru.com APPIMAGE URL]',
 ];
 
+/** THE PACK-WALK CANARY, and the second one in this file for the same reason.
+ *  [12]W-5, W-6 and W-8 all defer on ONE measurement — "does a registry app own
+ *  a committed content pack?" — and the failure that measurement can hide is not
+ *  a wrong answer, it is a WALK THAT STOPPED REACHING. A walk that finds nothing
+ *  reports `0 owned by a registry slug`, which is byte-identical to the correct
+ *  answer today, so all three requirements would read DEFERRED forever on
+ *  evidence nobody gathered. `lingo` is a real committed pack, not a fixture:
+ *  tooling/content_pipeline/examples/lingo-phrases/recipe.json calls itself
+ *  "REAL INPUT rather than a fixture" and assert-pack-roundtrip.mjs rebuilds
+ *  packages/core/test/fixtures/pack/v1/ from it on every push. NAMED rather than
+ *  counted, for REQUIRED_TEMPLATE_TOKENS' reason: a count is a number somebody
+ *  lowers, and a name says which one went. */
+const REQUIRED_PACK_IDS = ['lingo'];
+
 // ── the plan ─────────────────────────────────────────────────────────────────
 const { files, registry, live, problems: registryProblems } = planDiscovery(ROOT);
 for (const p of registryProblems) problems.push(p);
@@ -433,13 +447,44 @@ for (const [rel, expected] of served) {
 // COMPUTED from the tree on every run and printed with its current answer. The
 // print flips by itself the day the tree changes; nothing here fails the build,
 // because "you shipped a second app" must not turn CI red.
-if (SCANNING_OWN_REPO) {
+//
+// 🔴 THIS LIMB IS NOT GATED ON `SCANNING_OWN_REPO`, AND THE GATE IT LOST IS THE
+// WHOLE POINT OF THIS EDIT. It shipped inside `if (SCANNING_OWN_REPO)`, which
+// made the `🔔 TRIGGER FIRED` branch UNREACHABLE BY ANY TEST: every fixture root
+// lives in a temp directory, so the flag is false there and limb F emitted
+// nothing at all. Measured on 2026-08-07 against a fixture carrying TWO LIVE
+// registry entries — precisely W-4's stated trigger — the guard printed no W-4
+// line whatsoever, and `/TRIGGER FIRED/` did not match its output.
+//
+// The test that was supposed to cover this ('a second live registry entry FLIPS
+// W-4's trigger print') never ran the guard: it called `planDiscovery` and
+// asserted `live.length === 2`, which is a property of the GENERATOR, not of the
+// print it names. That is the recorded assert-seams-wired.mjs shape — an
+// assertion aimed one artifact away from its subject — and it left this file's
+// own header claim, "the print flips by itself the day the tree changes",
+// entirely unproven. Four requirements were relying on a flip nobody had seen.
+//
+// Nothing here needs the real repository: `live` comes from the registry, and
+// the pack and pubspec walks are `existsSync`-guarded, so a fixture with no
+// packages/ tree measures zero packs and prints DEFERRED — which is the honest
+// answer for that tree. Only the CANARY below is own-repo-gated, exactly as the
+// `_template.html` canary is, because only this repository is known to carry the
+// pack it names.
+{
   // The shared measurement W-5, W-6 and W-8 all key off: does any committed
   // content pack belong to an app the registry knows about? A pack that no
   // registry entry owns has no landing to funnel to and no app to be shared
   // from. Test fixtures are excluded by path — packages/core/test/fixtures/pack
   // exists to prove the FORMAT, and counting it would report the trigger fired
   // on a file whose whole purpose is to be synthetic.
+  //
+  // ⚠️ `build` IS PRUNED FOR THE SAME REASON, and it was missing while
+  // `walkPubspecs` twenty lines below already had it. Build output is not
+  // committed but this walk reads the WORKING TREE, so a developer who has run
+  // `flutter build web` measures a different tree than CI does — and a pack
+  // copied into build output could fire a trigger that the repository does not
+  // actually satisfy. That is the green-in-CI-red-on-a-developer-machine shape
+  // tree-walk.mjs exists to prevent, in miniature.
   const packIds = new Set();
   const walkPacks = (dir) => {
     let entries;
@@ -449,7 +494,7 @@ if (SCANNING_OWN_REPO) {
       return;
     }
     for (const e of entries) {
-      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      if (e.name === 'node_modules' || e.name === 'build' || e.name.startsWith('.')) continue;
       const p = join(dir, e.name);
       if (e.isDirectory()) {
         walkPacks(p);
@@ -469,6 +514,23 @@ if (SCANNING_OWN_REPO) {
   }
   const slugs = new Set(registry.map((a) => a?.slug).filter((s) => typeof s === 'string'));
   const ownedPacks = [...packIds].filter((id) => slugs.has(id));
+
+  // THE CANARY for the walk above. Own-repo only: a fixture tree legitimately
+  // carries no packs, and demanding one there would make every other test in
+  // this file build a content pipeline it does not care about.
+  if (SCANNING_OWN_REPO) {
+    const lostPacks = REQUIRED_PACK_IDS.filter((id) => !packIds.has(id));
+    if (lostPacks.length) {
+      coverageLost([
+        `the pack walk no longer finds ${lostPacks.length} of its ${REQUIRED_PACK_IDS.length} canary pack id(s): ${lostPacks.join(', ')}.`,
+        'That walk is the SOLE evidence behind three deferrals — [12]W-5, W-6 and W-8 all key off "does a',
+        'registry app own a committed pack?". A walk that reaches nothing answers `0 owned by a registry',
+        'slug`, which is the same string the correct answer prints today, so all three would go on reading',
+        'DEFERRED while nothing was actually being measured. If the pack moved or was retired deliberately,',
+        'update REQUIRED_PACK_IDS in this file in the same commit, naming what remains.',
+      ]);
+    }
+  }
 
   // A vendor is DECLARED only when it appears in a dependency block, never when
   // a comment mentions it. `packages/platform_storage/pubspec.yaml:27` names

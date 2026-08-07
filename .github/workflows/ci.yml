@@ -1721,6 +1721,29 @@ jobs:
       # COVERAGE LOST rather than passing, so the order enforces itself.
       - name: Stamped text is the spec's, its release id is its own, and blank hosts were DERIVED
         run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_vars.json
+      # 🔴 [pipeline 10]D-5 — THE RENDERED LISTING, not the template. The
+      # `platform` lane runs this same guard on a clean checkout, where its
+      # subjects are apps/subly's hand-made tree and the BRICK's templates. Only
+      # here does a real mason render exist to check, and only here does the
+      # freshly stamped app carry a catalogue row for the derived fields to be
+      # compared against — so this is where "stamp an app and its listing is
+      # complete, derived and within every sourced store limit" is actually
+      # observed rather than inferred from the templates.
+      #
+      # Measured locally 2026-08-06 before this step existed: a stamp produced
+      # 5 complete trees, 40 derived fields agreeing with their sources and both
+      # Play graphics at 1024x500 (no alpha) and 512x512 (with alpha) — and it
+      # found a real integration defect on the first run, that a stamped app
+      # carried a windows-store tree with no `msix_config:` and would have
+      # packaged under `com.flutter.<name>`.
+      #
+      # 🔴 ORDERING IS LOAD-BEARING, same shape as the two steps above: this
+      # reads the catalogue ROW the stamp appended, and the SHOW-1 step below
+      # reverts sites/_shared/_data/apps.json. Run it after that revert and the
+      # stamped app is no longer in the expected set — the guard would pass by
+      # having nothing new to check, which is this requirement's original defect.
+      - name: A freshly stamped app carries a COMPLETE, spec-derived store listing
+        run: node tooling/ci/assert-store-metadata.mjs
       - name: SHOW-1 — probe is in apps.json, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
