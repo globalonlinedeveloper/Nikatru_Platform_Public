@@ -66,6 +66,38 @@
   "melos": "8.2.2",
   "mason_cli": "0.1.3",
 
+  "$xcode_comment": [
+    "THE APPLE TOOLCHAIN FLOOR — AND IT IS A STORE POLICY, NOT A PACKAGE VERSION.",
+    "",
+    "developer.apple.com/news/upcoming-requirements/ (fetched 2026-07-29, recorded in",
+    "company/pipeline/10-distribution-store.md): apps uploaded to App Store Connect 'must be built",
+    "with Xcode 26 or later' — effective 28 April 2026, so it is ALREADY IN FORCE, not upcoming.",
+    "",
+    "WHY IT IS DECLARED HERE WHILE NO LANE READS IT YET. tooling/channel-register.json's",
+    "`minimumToolchain` names versions.json KEYS, never values ([pipeline F-2]) — so until this key",
+    "existed the ios-appstore and macos-appstore rows named a floor that resolved to nothing, and",
+    "assert-channel-register.mjs printed `(deferred) needs a pinned \\`xcode\\`` on every run. That",
+    "print was CORRECT and it is what this line closes. The register's ios-appstore `notes` recorded",
+    "the same gap in prose ('tooling/versions.json has no `xcode` key') and was corrected in the same",
+    "change — a note that outlives the gap it describes is the defect this repo keeps paying for.",
+    "",
+    "⚠️ THIS IS NOT THE XCODE CI RUNS, AND NOTHING HERE CLAIMS IT IS. build-platforms.yml pins the",
+    "runner IMAGE (`runner_macos`) and the image decides which Xcode is selected; $runners_comment",
+    "below records windows-2025 changing COMPILERS under an unchanged pin, which is the identical",
+    "hazard one platform over. Selecting an Xcode in the Apple lane (`xcode-select -s`, or",
+    "maxim-lobanov/setup-xcode) is deferred with the Apple channels themselves (OWNER_QUEUE A-4), so",
+    "tooling/ci/assert-version-consistency.mjs carries NO rule for this key and compares it to no",
+    "call site. That is a STATED GAP rather than an oversight: a drift rule whose scan has no target",
+    "is an assertion that cannot fail, and this repository deletes those instead of counting them.",
+    "",
+    "🔴 THE VALUE IS A FLOOR, SO IT IS A MAJOR AND NOT A FULL VERSION. Apple's sentence is 'Xcode 26",
+    "or later'. Writing 26.6 would pin whatever Xcode the macos-26 image happened to carry on the day",
+    "somebody looked (the ios-appstore row's own notes record 'Xcode 26.6 / 17F113'), and a floor",
+    "that moves with the image is not a floor — it is the image, restated. Same shape as `node`",
+    "and `java` above, which are majors for the same reason."
+  ],
+  "xcode": "26",
+
   "$runners_comment": [
     "PINNED — owner decision 2026-07-26. Previously all 17 `runs-on:` values were",
     "'-latest', which carries the same hazard as a floating action tag: macos-latest",
@@ -154,6 +186,10 @@
     {
       "key": "runner_macos",
       "why": "Same as runner_ubuntu. It also decides which Xcode compiles iOS and macOS, so moving it is a deliberate act with a six-platform build behind it, not a routine dependency PR."
+    },
+    {
+      "key": "xcode",
+      "why": "A STORE POLICY FLOOR, not a package this repo installs. It advances when APPLE RAISES ITS REQUIREMENT — published as a dated announcement on developer.apple.com/news/upcoming-requirements/, which is not a release feed — and no Renovate datasource resolves 'the OLDEST Xcode App Store Connect still accepts'. The datasources that do exist resolve the NEWEST Xcode, which is a different number entirely: a bot advancing this pin to it would silently overstate the floor, and an invented limit fires on CORRECT input — the rule tooling/ceilings.json and assert-store-metadata.mjs have both already paid for (a made-up '120 characters or fewer' once rejected this repo's own 129-character fixture). Which Xcode CI actually RUNS is decided by `runner_macos`, exempted directly above for the neighbouring reason, and the two must not be confused: see $xcode_comment. Advanced by the owner when Apple publishes the next requirement."
     }
   ]
 }
