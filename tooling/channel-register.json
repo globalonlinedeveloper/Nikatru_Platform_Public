@@ -57,6 +57,16 @@
     "    not (hardened 2026-08-01): a DEFERRED row's lane is how [10]D-5/D-10 build the path BEFORE the",
     "    account exists, and until this check a deferred lane could name a job nobody had written",
     "                                                                              [R-6, D-5, D-10]",
+    "  · every secret a row declares as signing material carries a WRITTEN `why`, exactly as every",
+    "    `ciSecretRegister.nonSigning` entry does (added 2026-08-08). The partition had that rule on ONE",
+    "    SIDE ONLY, so for any row section 9 cannot reach — every non-Android row — pasting a name into",
+    "    `signing.ciSecrets.names` silenced the undeclared-secret failure with no reason recorded and",
+    "    nothing for a reviewer to disagree with                                    [9]R-3 limb 2",
+    "  · a `signing.*` block carrying a `notYetConfiguredSentinel` (a pinned certificate fingerprint or",
+    "    public key) is dated, sourced and either FULLY on its sentinel or FULLY real. A SERVED row still",
+    "    on the sentinel FAILS, a deferred row PRINTS, and a HALF-configured block fails in either state —",
+    "    the same rule `packageIdentity` follows, for the same reason: a half-filled identity packages and",
+    "    ships cleanly under the wrong name                                          [9]R-3",
     "  · every `kind: store` row names an `ownerQueue` id. SHAPE ONLY: CI cannot read OWNER_QUEUE.md",
     "    (see below), but a store row with no id at all is checkable here          [D-4]",
     "  · the aggregating job's `needs` equals every other job in its workflow — the 'never a partial",
@@ -72,8 +82,13 @@
     "⚠️ MINIMUM TOOLCHAIN NAMES KEYS, NOT VALUES. [pipeline F-2] says every version is declared once;",
     "duplicating '3.44.8' here would make this file the second declaration and the first to drift. So a",
     "row names the tooling/versions.json KEYS that gate it, and the guard asserts they are pinned there.",
-    "A served row naming an unpinned key FAILS; a deferred row naming one PRINTS — which is how Apple's",
-    "Xcode 26 floor stays visible without blocking CI on an owner-deferred channel."
+    "A served row naming an unpinned key FAILS; a deferred row naming one PRINTS.",
+    "🟢 THE PRINT DID ITS JOB AND IS NOW SILENT. These lines used to end '— which is how Apple's Xcode 26",
+    "floor stays visible without blocking CI on an owner-deferred channel', because the two Apple rows",
+    "named an `xcode` key versions.json did not have. It has one as of 2026-08-08 (`\"xcode\": \"26\"`, with",
+    "$xcode_comment recording Apple's dated requirement and $updateExemptions recording why no bot can",
+    "advance a store-policy floor), so the gap is closed and the guard prints nothing for it. Corrected",
+    "here in the same change: a sentence describing a gap that has closed reads as a live gap forever."
   ],
 
   "aggregatingJob": {
@@ -455,7 +470,16 @@
       "",
       "A `why` is REQUIRED on every entry, and the guard enforces it. Without it the cheapest way to",
       "silence a failure is to paste the name into this array, which converts a classification decision",
-      "into a copy-paste and re-opens exactly the hole limb 2 closes."
+      "into a copy-paste and re-opens exactly the hole limb 2 closes.",
+      "",
+      "🔴 THAT ARGUMENT IS ABOUT THE PARTITION, AND A PARTITION HAS TWO SIDES — which this block did not",
+      "notice until 2026-08-08. The rule lived HERE only, so the cheapest way to silence the same failure",
+      "was to paste the name into a row's `signing.ciSecrets.names` instead: unreasoned, unreviewed, and",
+      "on the SIGNING side of the partition, which is the more expensive place to be wrong. Section 9",
+      "hides that for the Android row by comparing its list to build.gradle.kts name for name; no other",
+      "row has a build file to compare against, and the four registered on that date have no lane at all.",
+      "So `signing.ciSecrets.why` is now required and enforced identically, with the same 20-character",
+      "floor reused rather than re-chosen — two thresholds for one property is [pipeline F-2] in miniature."
     ],
     "kinds": {
       "publishing-credential": "authenticates an upload or deploy to a distribution channel. It authorises PUBLISHING; it is not key material any artifact is signed with — the channel either re-signs (MS Store, Snap) or holds the signing key itself (Play App Signing).",
@@ -568,6 +592,11 @@
         "name": "GITHUB_TOKEN",
         "kind": "github-provided",
         "why": "Minted by GitHub for the run. Not declared, not rotated, not custodied by us — it has no signing-identity dimension to enumerate."
+      },
+      {
+        "name": "GH_BILLING_TOKEN",
+        "kind": "service-credential",
+        "why": "🔴 READS THE ACCOUNT'S ACTIONS BILLING LEDGER, WHICH GITHUB_TOKEN CANNOT. tooling/ci/assert-runner-budget.mjs asks GET /users/{owner}/settings/billing/usage how much Actions capacity this ACCOUNT is consuming, because quota exhaustion is one of the ways a scheduled workflow turns off silently and the freshness guards notice that up to 14 days later. The billing endpoints are ACCOUNT-scoped while GITHUB_TOKEN is an installation token scoped to one repository, so `actions: read` has no plan dimension to grant — a classic PAT needs `user`, a fine-grained one needs the account-level \"Plan\" read permission. It authenticates CI to a GitHub account surface it operates on and never enters an artifact, which is exactly what SUPABASE_PAT is classified as one entry over. It signs nothing. ⬜ DECLARED AHEAD OF ITS LANE ON PURPOSE (2026-08-08): [9]R-3 limb 2 makes this register a CEILING on what a workflow may name, so the increment that wires the ops-watch job would FAIL on an undeclared name — this entry is what lets the YAML land as a reviewable one-line change instead. Until it does, the guard prints `DECLARED SECRET NO WORKFLOW NAMES` on every run, which is the register's own convention for a classification that is ahead of its consumer."
       }
     ]
   },
@@ -700,6 +729,27 @@
             "ANDROID_KEY_ALIAS",
             "ANDROID_KEY_PASSWORD"
           ],
+          "why": {
+            "_why": [
+              "ADDED 2026-08-08 with the limb that enforces it. `ciSecretRegister.nonSigning` has required a",
+              "written `why` per entry since it was created, on the stated ground that 'without it the cheapest",
+              "way to silence a [9]R-3 failure is to paste the name into this array'. That argument is about",
+              "the PARTITION, not about one half of it — and the signing half had no such requirement, so the",
+              "cheapest way to silence an undeclared-secret failure on any NON-ANDROID row was to paste the",
+              "name in here instead, with no reason recorded and nothing to review. §9 closes that hole for",
+              "Android rows by comparing this list to Gradle; the four Apple/Windows/AppImage rows added the",
+              "same day have no build file to compare against, which is exactly why the reason is the check.",
+              "",
+              "The four below are the ONE case where a reason can be derived rather than asserted:",
+              "apps/{app}/android/app/build.gradle.kts is the authority (`gradleContract` beneath this block)",
+              "and §9 already proves the set agreement. These sentences say what each value DOES, which the",
+              "set comparison cannot."
+            ],
+            "ANDROID_KEYSTORE_BASE64": "The release keystore's BYTES, base64-encoded. The one declared name that is NOT one of Gradle's variables: `storeFile` wants a filesystem PATH and a path cannot travel through a repository secret, so tooling/ci/android-signing.mjs materialises the file into $RUNNER_TEMP — outside the workspace, where no upload-artifact glob can reach it — and sets the path variable itself. Declared, never derived; see `gradleContract.transport`.",
+            "ANDROID_KEYSTORE_PASSWORD": "The keystore container's passphrase, read by Gradle through the `releaseSigningEnv` map. Play App Signing means losing it is a reset-and-continue rather than the unrecoverable event `app-signing-key` describes — the asymmetry `keyKind: upload-key` exists to record.",
+            "ANDROID_KEY_ALIAS": "Which entry inside the keystore signs. `nikatru-upload` since [ADR 030] made it ONE SHARED UPLOAD KEY FOR THE WHOLE FACTORY; this secret is the AUTHORITY for that name, and `uploadCertificate._aliasNote` above records the documentation copy drifting away from it unnoticed for exactly as long as nothing read it.",
+            "ANDROID_KEY_PASSWORD": "The passphrase on the key entry itself, distinct from the keystore's. Supplying three of the four values is the state that used to fall back to `signingConfigs.getByName(\"debug\")` and produce an artifact nobody could explain — the lane now FAILS on a partial set instead."
+          },
           "gradleContract": {
             "_why": [
               "🔴 THE BRIDGE BETWEEN THIS LIST AND THE FILE THAT ACTUALLY READS THE KEY. `names` above is a",
@@ -903,6 +953,48 @@
           "date": null,
           "required": true,
           "note": "Nothing to drill until the account exists."
+        },
+        "ciSecrets": {
+          "_why": [
+            "🔴 THE FOUR NAMES THE APPLE SIGNING SEAM WILL USE, DECLARED BEFORE THE SEAM EXISTS — and",
+            "that ordering is the point, not an accident of sequencing. [9]R-3 limb 2 makes this register",
+            "a CEILING on what a lane may name: assert-channel-register.mjs §8 FAILS any workflow that",
+            "references a `${{ secrets.X }}` the register does not declare. So the increment that wires",
+            "the Apple lane either lands these four names here in the same commit, or it goes red — and",
+            "the review that would have asked 'is this a signing identity?' happens on a JSON diff that",
+            "can be read in isolation rather than buried inside a YAML change nobody diffs carefully.",
+            "",
+            "⚠️ NOTHING CONSUMES THEM YET AND THE REGISTER SAYS SO OUT LOUD. §8's converse limb prints",
+            "`SIGNING SECRET DECLARED, NO LANE NAMES IT` for each of these on every run, deliberately as",
+            "a PRINT and not a failure: the acceptance sentence bounds what a lane MAY name, and 'the",
+            "identity is actually applied' is proved by reading the signer off the artifact",
+            "(assert-artifact-signed.mjs), never by a name appearing in YAML. Failing on an unused",
+            "declaration would block all CI on OWNER_QUEUE A-4, which is not ours to close.",
+            "",
+            "🔴 THESE ARE NOT THE APP STORE CONNECT API KEY. `APP_STORE_CONNECT_*` is already classified",
+            "in `ciSecretRegister.nonSigning` as a publishing-credential, and its own entry says why: it",
+            "signs the JWT that AUTHENTICATES AN UPLOAD, not the artifact. The four below are what SIGNS",
+            "the .ipa. That entry also predicted this block — 'when that certificate arrives it belongs",
+            "on the row as signing material, not here' — so the partition is being followed, not bent.",
+            "",
+            "SAME FOUR NAMES ON THE macos-appstore ROW, and that is correct rather than duplication: one",
+            "Apple Developer account issues ONE distribution certificate that signs both platforms. Two",
+            "rows naming one set is how a reader sees that both are blocked on the same A-4 action, and",
+            "§8 keys its map by NAME, so the second row adds no second declaration."
+          ],
+          "names": [
+            "APPLE_DIST_CERT_P12_BASE64",
+            "APPLE_DIST_CERT_PASSWORD",
+            "APPLE_PROVISIONING_PROFILES_BASE64",
+            "APPLE_TEAM_ID"
+          ],
+          "why": {
+            "_why": "One written reason per name, enforced by assert-channel-register.mjs §8 — the SAME requirement `ciSecretRegister.nonSigning` entries already carry, and for the identical reason: without it the cheapest way to silence an undeclared-secret failure is to paste the name into `names`, which turns a classification decision into a copy-paste and re-opens the hole limb 2 closes from the other side.",
+            "APPLE_DIST_CERT_P12_BASE64": "The Apple Distribution certificate and its private key, exported as a PKCS#12 and base64-encoded because `security import` wants a FILE and a path cannot travel through a repository secret — the same transport problem ANDROID_KEYSTORE_BASE64 solves on the Play row. This is the key material itself: losing it costs a revoke-and-reissue in the Apple Developer portal, and every provisioning profile built against it.",
+            "APPLE_DIST_CERT_PASSWORD": "The passphrase on the .p12 above. Useless alone and useless without it — they are one credential in two secrets because that is the only shape `security import -P` accepts.",
+            "APPLE_PROVISIONING_PROFILES_BASE64": "The .mobileprovision / .provisionprofile set, base64-encoded for the same path reason. NOT key material, but Apple's codesign refuses without it and the profile binds the certificate to the bundle id and entitlements — a build signed by the right key against the wrong profile is rejected at upload, so it is signing configuration and belongs on this side of the partition rather than in nonSigning.",
+            "APPLE_TEAM_ID": "The 10-character Apple Developer Team identifier xcodebuild resolves the signing identity against. An identifier, not an authenticator — declared here rather than in nonSigning because it is an INPUT TO SIGNING: with the wrong team id xcodebuild selects a different identity or none, which is the failure mode limb 2 exists to make visible."
+          }
         }
       },
       "minimumToolchain": ["flutter", "xcode"],
@@ -967,12 +1059,23 @@
         "alsoBlockedBy": "No Apple hardware for device testing, VoiceOver accessibility, or submission."
       },
       "notes": [
-        "🔴 UNPINNED TOOLCHAIN FLOOR, ALREADY IN FORCE. developer.apple.com/news/upcoming-requirements/",
-        "(fetched 2026-07-29): apps uploaded to App Store Connect 'must be built with Xcode 26 or later'",
-        "— effective 28 April 2026. build-platforms.yml runs on `macos-26` and pins NO Xcode, and",
-        "tooling/versions.json has no `xcode` key. The guard prints this gap on every run rather than",
-        "failing, because the channel is owner-deferred. versions.json's own $runners_comment names this",
-        "exact hazard and the fix it shipped pins the IMAGE LABEL, not the toolchain."
+        "🟡 TOOLCHAIN FLOOR — HALF CLOSED 2026-08-08, AND THE OPEN HALF IS NAMED RATHER THAN IMPLIED.",
+        "developer.apple.com/news/upcoming-requirements/ (fetched 2026-07-29): apps uploaded to App Store",
+        "Connect 'must be built with Xcode 26 or later' — effective 28 April 2026, so it is in force now.",
+        "",
+        "✅ CLOSED: tooling/versions.json now declares `xcode: \"26\"`, so this row's `minimumToolchain`",
+        "resolves and assert-channel-register.mjs no longer prints `(deferred) needs a pinned \\`xcode\\``.",
+        "⚠️ THESE THREE LINES PREVIOUSLY READ 'tooling/versions.json has no `xcode` key' AND WERE CORRECT",
+        "WHEN WRITTEN. They are corrected in the same change that made them false — a note describing a",
+        "gap that has closed is the exact defect this row's neighbours record catching twice (`accountStatus`",
+        "on android-play, `deferral.alsoBlockedBy` on windows-store), both in the PUBLIC repo, both for days.",
+        "",
+        "⬜ STILL OPEN: build-platforms.yml runs on `macos-26` and pins NO Xcode. A KEY IN versions.json IS",
+        "A DECLARED FLOOR, NOT AN ENFORCED ONE — the image decides which Xcode is selected, and",
+        "assert-version-consistency.mjs has no rule for this key because there is no call site to compare.",
+        "Selecting the toolchain in the Apple lane is deferred with the channel itself (OWNER_QUEUE A-4).",
+        "versions.json's $runners_comment names this exact hazard, with the receipt: windows-2025 changed",
+        "COMPILERS under an unchanged pin. PINNING AN IMAGE LABEL NARROWS THE DRIFT; IT DOES NOT REMOVE IT."
       ]
     },
     {
@@ -991,6 +1094,38 @@
           "date": null,
           "required": true,
           "note": "Nothing to drill until the account exists."
+        },
+        "ciSecrets": {
+          "_why": [
+            "THE SAME FOUR NAMES AS ios-appstore, AND THE REPETITION IS THE FACT BEING RECORDED. One",
+            "Apple Developer account (OWNER_QUEUE A-4) issues one distribution certificate, and it signs",
+            "both platforms — so a reader asking 'what does macOS signing need?' gets an answer from THIS",
+            "row instead of a cross-reference, while assert-channel-register.mjs §8 keys its map by NAME",
+            "and therefore records one declaration, not two. The same arrangement `submission.script`",
+            "already uses for these two rows: one script, both rows naming it.",
+            "",
+            "⚠️ WHAT IS NOT SHARED IS THE PROFILE. `APPLE_PROVISIONING_PROFILES_BASE64` is plural for a",
+            "reason: iOS ships a .mobileprovision and macOS a .provisionprofile, bound to different",
+            "capabilities, and a Mac App Store submission is NOT notarized (notarization is the Developer",
+            "ID direct-distribution path, which this register does not yet carry as a row). One secret",
+            "carries the SET; the lane picks the profile for the platform it is building.",
+            "",
+            "⚠️ NOTHING CONSUMES THEM YET — §8 prints `SIGNING SECRET DECLARED, NO LANE NAMES IT` on every",
+            "run, as a print rather than a failure, because the channel is owner-deferred ([pipeline C-6])."
+          ],
+          "names": [
+            "APPLE_DIST_CERT_P12_BASE64",
+            "APPLE_DIST_CERT_PASSWORD",
+            "APPLE_PROVISIONING_PROFILES_BASE64",
+            "APPLE_TEAM_ID"
+          ],
+          "why": {
+            "_why": "One written reason per name, enforced by assert-channel-register.mjs §8. Stated per row rather than referenced, because a `why` that says 'see the other row' is a `why` that survives the other row being edited.",
+            "APPLE_DIST_CERT_P12_BASE64": "The Apple Distribution certificate and private key as a base64 PKCS#12. The SAME certificate as ios-appstore — one account, one identity — carried as a file's bytes because `security import` wants a path and a path cannot travel through a repository secret.",
+            "APPLE_DIST_CERT_PASSWORD": "The passphrase on that .p12. Two secrets for one credential because that is the only shape `security import -P` accepts.",
+            "APPLE_PROVISIONING_PROFILES_BASE64": "The .provisionprofile for the Mac App Store record, base64 for the same path reason. Signing CONFIGURATION rather than key material: it binds the certificate to this bundle id and its entitlements, and a build signed by the right key against the wrong profile is refused at upload.",
+            "APPLE_TEAM_ID": "The 10-character Team identifier xcodebuild resolves the signing identity against. An identifier, but an INPUT TO SIGNING — with the wrong value xcodebuild selects a different identity or none at all."
+          }
         }
       },
       "minimumToolchain": ["flutter", "xcode"],
@@ -1166,6 +1301,69 @@
           "date": null,
           "required": true,
           "note": "No certificate purchased. Nothing to drill."
+        },
+        "codeSigningCertificate": {
+          "_why": [
+            "🔴 THE WINDOWS ANALOGUE OF android-play's `uploadCertificate`, AND IT PINS THE SAME PROPERTY:",
+            "not that a certificate EXISTS, but that the one that signed this artifact is OURS. The Play",
+            "row's block records what that check is worth — every .aab CI produced was DEBUG-SIGNED for",
+            "weeks while every configuration check stayed green, because everything in the tree read the",
+            "CONFIG and nothing read the SIGNATURE. A purchased certificate has the same failure surface",
+            "with a worse blast radius: a certificate quietly swapped for a different-but-valid one (a",
+            "copy-paste between repositories, a half-applied renewal, a restore from the wrong backup)",
+            "produces a binary that installs perfectly and is signed by somebody else's identity.",
+            "",
+            "⬜ SENTINEL-VALUED, EXACTLY AS windows-store's `packageIdentity` IS, AND FOR THE SAME REASON.",
+            "No certificate has been purchased (`custody` above), so there is no fingerprint to record.",
+            "A plausible-looking invented value would validate as configured and be compared against on the",
+            "first real signing run, so the placeholder is one that CANNOT be mistaken for a thumbprint:",
+            "a real Authenticode SHA-256 is 64 hex characters, and this is not hex.",
+            "",
+            "🔴 IT HAS A READER FROM THE DAY IT LANDS, and that is deliberate. This register records what",
+            "an unread field costs one row over: `uploadCertificate._aliasNote` describes its own `alias`",
+            "drifting to a stale value with NOTHING NOTICING, because assert-artifact-signed.mjs consumes",
+            "only `.sha256`. So assert-channel-register.mjs now checks every `signing.*` block carrying a",
+            "`notYetConfiguredSentinel`: a SERVED row still on the sentinel FAILS (a channel cannot ship",
+            "through an identity that does not exist), a deferred row PRINTS ([pipeline C-6]), and a block",
+            "with SOME fields real and some still sentinel FAILS in either state — the half-configured",
+            "case, which is the one `packageIdentity`'s own _why calls out as unrecoverable once published.",
+            "",
+            "BOTH FIELDS, NOT JUST THE THUMBPRINT. `subject` is what Windows shows a user in the UAC",
+            "prompt and what the CA binds to the legal entity; `sha256` is what identifies the exact",
+            "certificate. A renewal changes the thumbprint and keeps the subject, so recording only one of",
+            "the two cannot tell a renewal from a substitution — and those are the two events a pin exists",
+            "to distinguish."
+          ],
+          "notYetConfiguredSentinel": "CODE-SIGNING-CERT-NOT-PURCHASED",
+          "sha256": "CODE-SIGNING-CERT-NOT-PURCHASED",
+          "subject": "CODE-SIGNING-CERT-NOT-PURCHASED",
+          "asOf": "2026-08-08",
+          "source": "To be transcribed from the issued certificate with `Get-PfxCertificate <file> | Format-List Subject,Thumbprint` (or `certutil -dump`) on the day OWNER_QUEUE's code-signing purchase completes. Microsoft Store Policies v7.19 §10.2.9 is the requirement that makes the certificate necessary at all: for non-gaming direct download 'the binary and all of its Portable Executable (PE) files must be digitally signed with a code signing certificate that chains up to a certificate issued by a Certificate Authority (CA) that is part of the Microsoft Trusted Root Program'."
+        },
+        "ciSecrets": {
+          "_why": [
+            "THE TWO NAMES THE WINDOWS DIRECT-DOWNLOAD SIGNING SEAM WILL USE, declared before the seam",
+            "exists so that the increment which wires it cannot introduce an unclassified secret. [9]R-3",
+            "limb 2 makes this register a CEILING on what a lane may name — assert-channel-register.mjs §8",
+            "FAILS a workflow referencing a `${{ secrets.X }}` nothing declares — so the declaration has to",
+            "land in the same commit as the lane or earlier, and earlier is the one that gets reviewed.",
+            "",
+            "⚠️ THIS ROW, NOT windows-store. The two Windows rows have OPPOSITE signing answers and that is",
+            "the entire reason the register carries both: the Store RE-SIGNS the submitted MSIX (keyKind",
+            "\"none\", and its Partner Center credentials are publishing-credentials in `nonSigning`), while",
+            "direct download requires a certificate of ours. Putting these names on the Store row would",
+            "record a key on the one Windows path that holds none.",
+            "",
+            "⚠️ NOTHING CONSUMES THEM YET — §8 prints `SIGNING SECRET DECLARED, NO LANE NAMES IT` on every",
+            "run, as a print and not a failure. The channel is deferred (39-CHASSIS §4 cut 5) and its",
+            "blocker is a PURCHASE, which is owner work; failing here would block every merge on it."
+          ],
+          "names": ["WINDOWS_CODESIGN_PFX_BASE64", "WINDOWS_CODESIGN_PFX_PASSWORD"],
+          "why": {
+            "_why": "One written reason per name, enforced by assert-channel-register.mjs §8 — the same requirement every `ciSecretRegister.nonSigning` entry carries, so that adding a name to this list stays a classification decision rather than a copy-paste.",
+            "WINDOWS_CODESIGN_PFX_BASE64": "The purchased code-signing certificate and its private key as a base64 PKCS#12. It is the key material `signtool sign /f` consumes, and it travels as bytes because signtool wants a FILE — the identical transport problem ANDROID_KEYSTORE_BASE64 solves on the Play row, and the reason that name is also the one exception to Gradle's variable map there. Losing it is a re-purchase, not a reset: unlike the Play upload key, no gatekeeper can reissue it for us.",
+            "WINDOWS_CODESIGN_PFX_PASSWORD": "The passphrase on that .pfx, passed as `signtool sign /p`. Two secrets for one credential because that is the shape signtool accepts; neither half is usable alone."
+          }
         }
       },
       "minimumToolchain": ["flutter"],
@@ -1269,6 +1467,64 @@
           "date": null,
           "required": true,
           "note": "No key generated."
+        },
+        "signingPublicKey": {
+          "_why": [
+            "🔴 THE PUBLIC HALF, PINNED — WHICH ON THIS ROW IS THE WHOLE VERIFICATION STORY. Every other",
+            "channel has a gatekeeper that checks a signature for somebody: Play pins the upload",
+            "certificate, the Microsoft Store re-signs, Canonical signs the snap, Apple's Gatekeeper",
+            "verifies at launch. `own-signing-key` means NOBODY DOES. `custody` above says so in prose;",
+            "this block is the mechanical consequence — the only thing that can ever tell a user (or a",
+            "later CI run) that an .AppImage came from us is comparing its detached signature to a public",
+            "key published somewhere they already trust, and this register is that somewhere.",
+            "",
+            "THE PATTERN IS android-play's `uploadCertificate`, ONE ROW OVER, and its reasoning transfers",
+            "line for line: a key quietly swapped for a different-but-valid one — a half-applied rotation,",
+            "a restore from the wrong backup, a copy-paste between repositories — produces an artifact that",
+            "verifies perfectly against the WRONG identity. Pinning is what turns 'signed by some key' into",
+            "'signed by OUR key'. The same shape already exists in this tree for content packs: `k1` is",
+            "pinned in packages/core/lib/src/content/pack_verifier.dart rather than fetched.",
+            "",
+            "IT IS NOT A SECRET, AND NOTHING HERE EVER WILL BE. This is the PUBLIC half of a keypair; the",
+            "seed's custody is `nonChannelSigningIdentities`-style private-SSoT work (compare",
+            "content-pack-k1, whose entry was REDACTED on 2026-07-31 precisely because a public register",
+            "must say THAT custody is recorded, never where a key lives).",
+            "",
+            "⬜ SENTINEL-VALUED: no key has been generated (`restoreDrill.note`), so there is no public key",
+            "to record. The placeholder cannot be mistaken for one — an Ed25519 public key is 32 bytes and",
+            "44 base64 characters, and this is neither. assert-channel-register.mjs reads the sentinel: a",
+            "SERVED row still carrying it FAILS, a deferred row PRINTS ([pipeline C-6]), and a half-filled",
+            "block FAILS in either state."
+          ],
+          "notYetConfiguredSentinel": "APPIMAGE-SIGNING-KEY-NOT-GENERATED",
+          "algorithm": "ed25519",
+          "publicKeyBase64": "APPIMAGE-SIGNING-KEY-NOT-GENERATED",
+          "asOf": "2026-08-08",
+          "source": "To be transcribed on the day the keypair is generated, from the public half only. [ADR 015] §4 is what makes the signature load-bearing rather than decorative: the AppImage is served from dl.nikatru.com on R2 and never a direct GitHub link, so the download has no platform identity behind it — 'the invariant is that CI produces the signed artifact, not where it is served from'."
+        },
+        "ciSecrets": {
+          "_why": [
+            "THE ONE NAME THE APPIMAGE SIGNING SEAM WILL USE, declared before the seam exists so the",
+            "increment that wires it cannot introduce an unclassified secret: [9]R-3 limb 2 makes this",
+            "register a CEILING on what a lane may name, and assert-channel-register.mjs §8 FAILS a",
+            "workflow naming a `${{ secrets.X }}` nothing declares.",
+            "",
+            "🔴 ONE SECRET, NOT TWO, AND THE ASYMMETRY WITH THE OTHER ROWS IS REAL. The Apple and Windows",
+            "rows each carry a passphrase alongside their key material because PKCS#12 is the container",
+            "their tools accept and it is encrypted by construction. A raw Ed25519 seed has no such",
+            "container: adding a passphrase secret here would invent a field nothing consumes — the",
+            "`_aliasNote` failure one row over, created on purpose. The seed's protection is GitHub's",
+            "secret storage and the environment protection rules on the lane, which is what",
+            "`ciSecretRegister`'s own _why says this list is NOT a substitute for.",
+            "",
+            "⚠️ NOTHING CONSUMES IT YET — §8 prints `SIGNING SECRET DECLARED, NO LANE NAMES IT` on every",
+            "run, as a print and not a failure. Native Linux is deferred by [ADR 015] §2 until revenue."
+          ],
+          "names": ["APPIMAGE_SIGNING_KEY_B64"],
+          "why": {
+            "_why": "One written reason per name, enforced by assert-channel-register.mjs §8 — the same requirement every `ciSecretRegister.nonSigning` entry carries, so a name cannot enter this list by copy-paste.",
+            "APPIMAGE_SIGNING_KEY_B64": "The base64 Ed25519 PRIVATE seed the release lane signs the .AppImage with, matching `signingPublicKey.publicKeyBase64` above. It is real key material and the register's most exposed kind: `own-signing-key` means no gatekeeper re-signs and no store can reissue, so losing it silently breaks every future update's provenance for users who verified an earlier one, and disclosing it lets anyone publish an .AppImage this project cannot disown."
+          }
         }
       },
       "minimumToolchain": ["flutter"],

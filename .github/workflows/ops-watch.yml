@@ -284,6 +284,68 @@ jobs:
           fi
           exit "$code"
 
+  # ── [pipeline F-4 · O-4] THE QUOTA THAT TURNS THE SCHEDULED PROOFS OFF ─────
+  #
+  # 🔴 assert-platform-proof-fresh.mjs's own header names this failure and then
+  # detects it FOURTEEN DAYS LATE: "a schedule can quietly stop (GitHub disables
+  # scheduled workflows in public repos after a long inactive stretch; a renamed
+  # branch or a QUOTA CHANGE does the same)". When an account passes a spending
+  # limit GitHub stops STARTING runs — the workflow file is unchanged, the cron
+  # entry is unchanged, `gh run list` returns nothing, and that is precisely what
+  # a quiet fortnight looks like. This job reads the CAUSE instead of waiting for
+  # the age check to notice the symptom, by which point the 6-platform proof, the
+  # nightly e2e proof and this alarm chain have all been dark for two weeks.
+  #
+  # IT LIVES HERE AND NOT IN ci.yml, for the same reason `supabase-drift` does.
+  # ci.yml gates every push including from forks, so it can hold no account-scoped
+  # credential; and blocking a developer's merge on the owner's billing settings is
+  # exactly what the print-do-not-fail convention exists to prevent. THIS WORKFLOW
+  # IS SCHEDULED AND GATES NOTHING — a red here costs no one a merge and files one
+  # durable issue naming the owner action, which is the whole point of `alert`.
+  #
+  # ⚠️ `actions: read` IS NOT KNOWN TO BE SUFFICIENT AND THIS JOB DOES NOT PRETEND
+  # IT IS. The billing endpoints are ACCOUNT-scoped; GITHUB_TOKEN is an installation
+  # token scoped to this repository, so `actions: read` has no plan dimension to
+  # grant. It is declared and passed anyway so the FIRST REAL RUN settles the
+  # question in a log rather than in a comment. GH_BILLING_TOKEN — a classic PAT
+  # with `user`, or a fine-grained token with the account-level "Plan" read
+  # permission — takes precedence when the owner creates it. Until it exists the
+  # guard's dated tripwire PRINTS and exits 0; from 2026-09-08 it fails closed.
+  runner-budget:
+    name: Actions quota cannot silently stop the scheduled proofs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # The same three-valued exit as the three readers above, for the same
+      # reason: 2 means the duty did not run, and a run that discovers it cannot
+      # do its job and then reports success is a green tick over an unread ledger.
+      - name: Read the Actions usage ledger and compare it to the declared ceiling
+        env:
+          GH_BILLING_TOKEN: ${{ secrets.GH_BILLING_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set +e
+          node tooling/ci/assert-runner-budget.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Actions quota is UNKNOWN — the duty did not run::NOTHING read the account's Actions billing ledger, so 'can the scheduled proofs still run tomorrow?' is unanswered. This fails on purpose: 'I could not look' must never read as 'I looked and it was fine'. OWNER ACTION — add a GH_BILLING_TOKEN repository secret from a token with billing read (classic PAT with the 'user' scope, or a fine-grained token with the account-level 'Plan' read permission). GITHUB_TOKEN is repository-scoped and is not expected to carry a billing dimension."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=Actions usage is being BILLED — quota can now stop the schedules::The current billing period's net-billed Actions spend is over the declared ceiling, so a spending limit can stop runs from STARTING and every scheduled proof in this repository goes dark together. Establish WHICH assumption broke — did the repository go private, did a lane move to a larger runner class, or did another repository on this account exhaust the shared allowance — before touching the ceiling."
+          fi
+          exit "$code"
+
   # ── Alerting ────────────────────────────────────────────────────────────────
   # Copied from e2e.yml's `alert` job, which is the shape that works here: ONE
   # durable issue, reused, never auto-closed. A notification is read once and
@@ -323,7 +385,7 @@ jobs:
     # Leaving it out would have made B-17's monitor the one reader in this file
     # whose red nobody is told about — a check that runs, fails, and is read by
     # no one is the same as no check, which is B-17's own subject.
-    needs: [heartbeats, status, supabase-drift, prod-provenance]
+    needs: [heartbeats, status, supabase-drift, prod-provenance, runner-budget]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 5

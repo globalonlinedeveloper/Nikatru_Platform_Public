@@ -227,6 +227,13 @@ const androidPlay = () => ({
     restoreDrill: { date: '2026-08-04', required: true, note: 'drilled' },
     ciSecrets: {
       names: [...ANDROID_SECRETS],
+      // §8b, as of 2026-08-08: every declared signing secret carries a written
+      // reason, the same rule `ciSecretRegister.nonSigning` entries have always
+      // had. Built from the name list rather than typed out, so a case that adds
+      // a name to `names` cannot fail on a missing `why` it did not mean to test.
+      why: Object.fromEntries(
+        ANDROID_SECRETS.map((n) => [n, `${n} carries part of the release signing identity into CI`]),
+      ),
       gradleContract: {
         declaredIn: GRADLE_TEMPLATE,
         envMap: 'releaseSigningEnv',
@@ -628,7 +635,10 @@ describe('assert-channel-register — what SERVED obliges a row to carry', () =>
   const withUploadKey = (c) => {
     c.signing.keyKind = 'upload-key';
     c.signing.identity = 'release-keystore/upload.keystore';
-    c.signing.ciSecrets = { names: ['FIXTURE_UPLOAD_KEY'] };
+    c.signing.ciSecrets = {
+      names: ['FIXTURE_UPLOAD_KEY'],
+      why: { FIXTURE_UPLOAD_KEY: 'the fixture keystore this served row signs with' },
+    };
   };
   const laneNamesIt = { laneSecrets: ['FIXTURE_UPLOAD_KEY'] };
 
@@ -1348,7 +1358,13 @@ describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may b
       // A dated drill, so the only thing these cases can fail on is limb 2. An
       // unrelated FAIL riding along makes a green/red result unattributable.
       c.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
-      c.signing.ciSecrets = { names };
+      // §8b: a written reason per declared name, derived from `names` so that a
+      // case exercising limb 2 never fails on the reason limb by accident. The
+      // reason limb has its own cases below, where the `why` is removed on purpose.
+      c.signing.ciSecrets = {
+        names,
+        why: Object.fromEntries(names.map((n) => [n, `${n} carries the fixture signing identity into CI`])),
+      };
     };
 
   test('FAILS when a lane names a secret the register does not declare', () => {
@@ -1761,5 +1777,252 @@ describe('assert-channel-register — [9]R-3: the register agrees with the real 
     );
     assert.equal(code, 1, out);
     assert.match(out, /must be a path TEMPLATE containing `\{app\}`/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8b — a WRITTEN REASON per declared signing secret.
+//
+// 🔴 THE HOLE THIS CLOSES, AND WHY IT IS NOT SYMMETRY FOR ITS OWN SAKE.
+// `ciSecretRegister.nonSigning` has required a `why` per entry since it was
+// written, on its own stated ground: without one, the cheapest way to silence a
+// [9]R-3 limb 2 failure is to paste the name into the array. That argument is
+// about the PARTITION, and the SIGNING side of it had no such rule — so for any
+// row section 9 cannot reach (every non-Android row) pasting a name into
+// `signing.ciSecrets.names` silenced the identical failure, unreasoned and
+// unreviewed, on the more expensive side of the partition.
+//
+// The negative cases below are the ones that matter: a name with no reason, a
+// reason too short to be one, a `why` that is not a map, and a reason left
+// behind by a name that has gone. The last is the `$updateExemptions` failure
+// wearing different clothes — a waiver outliving the thing it waived.
+describe('assert-channel-register — §8b: a declared signing secret carries a written reason', () => {
+  /** A served row holding a real key whose secret the lane names — the shape in
+   *  which limb 2 has a subject at all. Each case breaks exactly one thing. */
+  const signingRow = (ciSecrets) => (r) => {
+    const c = r.channels.find((x) => x.id === 'web');
+    c.signing.keyKind = 'upload-key';
+    c.signing.identity = 'release-keystore/upload.keystore';
+    c.signing.restoreDrill = { date: '2026-07-31', required: true, note: 'drilled' };
+    c.signing.ciSecrets = ciSecrets;
+  };
+  const laneNamesIt = { laneSecrets: ['FIXTURE_UPLOAD_KEY'] };
+  const REASON = 'the fixture keystore this served row signs its artifact with';
+
+  test('PASSES when every declared name carries a reason', () => {
+    const { code, out } = run(
+      tree({
+        ...laneNamesIt,
+        mutate: signingRow({ names: ['FIXTURE_UPLOAD_KEY'], why: { FIXTURE_UPLOAD_KEY: REASON } }),
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the row declares names and NO `why` map at all', () => {
+    const { code, out } = run(tree({ ...laneNamesIt, mutate: signingRow({ names: ['FIXTURE_UPLOAD_KEY'] }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `signing\.ciSecrets\.why` map/);
+    assert.match(out, /copy-paste, not a classification/);
+  });
+
+  test('FAILS when one name of several has no reason — not merely when all do', () => {
+    const { code, out } = run(
+      tree({
+        laneSecrets: ['FIXTURE_UPLOAD_KEY', 'FIXTURE_UPLOAD_PASSWORD'],
+        mutate: signingRow({
+          names: ['FIXTURE_UPLOAD_KEY', 'FIXTURE_UPLOAD_PASSWORD'],
+          why: { FIXTURE_UPLOAD_KEY: REASON },
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /declares signing secret "FIXTURE_UPLOAD_PASSWORD" with no/);
+  });
+
+  // The floor is `nonSigning`'s own 20 characters, reused rather than re-chosen.
+  // A one-word "why" satisfies a presence check and justifies nothing, which is
+  // the whole failure the reason exists to prevent.
+  test('FAILS a reason too short to be one', () => {
+    const { code, out } = run(
+      tree({
+        ...laneNamesIt,
+        mutate: signingRow({ names: ['FIXTURE_UPLOAD_KEY'], why: { FIXTURE_UPLOAD_KEY: 'signing' } }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /at least 20 characters/);
+  });
+
+  test('FAILS a `why` that is an array rather than a name-to-reason map', () => {
+    const { code, out } = run(
+      tree({ ...laneNamesIt, mutate: signingRow({ names: ['FIXTURE_UPLOAD_KEY'], why: [REASON] }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /no `signing\.ciSecrets\.why` map/);
+  });
+
+  // The converse, and it is the `$updateExemptions` rule one level over: a
+  // reason for a name the row no longer declares reads as a live classification.
+  test('FAILS a reason left behind by a name that is gone', () => {
+    const { code, out } = run(
+      tree({
+        ...laneNamesIt,
+        mutate: signingRow({
+          names: ['FIXTURE_UPLOAD_KEY'],
+          why: { FIXTURE_UPLOAD_KEY: REASON, FIXTURE_RETIRED_KEY: REASON },
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /records `signing\.ciSecrets\.why\["FIXTURE_RETIRED_KEY"\]` and does not declare/);
+  });
+
+  // `_why` is this register's prose namespace and appears inside these blocks in
+  // the real file. Reading it as an undeclared secret name would fail the real
+  // tree — the false positive that gets a guard disabled rather than fixed.
+  test('PASSES a `why` map carrying an `_why` prose key beside the reasons', () => {
+    const { code, out } = run(
+      tree({
+        ...laneNamesIt,
+        mutate: signingRow({
+          names: ['FIXTURE_UPLOAD_KEY'],
+          why: { _why: ['prose about the block, not a secret name'], FIXTURE_UPLOAD_KEY: REASON },
+        }),
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 6d — a pinned certificate fingerprint or public key, and its sentinel.
+//
+// 🔴 WHY A PIN NEEDS ITS OWN READER, IN THE REGISTER'S OWN WORDS. The Play row's
+// `uploadCertificate._aliasNote` records its `alias` field drifting to a stale
+// value with NOTHING NOTICING, because the only consumer reads `.sha256` alone:
+// "a value with no reader drifts silently and its `asOf` date goes on looking
+// fresh." The windows-direct and linux-appimage pins added 2026-08-08 would have
+// been two more of those. These cases are what stops that.
+//
+// The middle state is the expensive one and it has its own case: SOME fields
+// real and some still the sentinel is the identity that packages and ships
+// cleanly under the wrong name — `packageIdentity`'s own _why calls that
+// unrecoverable once published, which is why it fails rather than waits.
+describe('assert-channel-register — §6d: pinned signing material and its sentinel', () => {
+  const SENTINEL = 'CERT-NOT-PURCHASED';
+  const pin = (over = {}) => ({
+    notYetConfiguredSentinel: SENTINEL,
+    sha256: SENTINEL,
+    subject: SENTINEL,
+    asOf: '2026-08-08',
+    source: 'transcribed from the issued certificate on the day the purchase completes',
+    ...over,
+  });
+  /** Hang the pin on the DEFERRED row by default — the state the real tree is in. */
+  const onDeferred = (over) => (r) => {
+    r.channels.find((c) => c.id === 'windows-store').signing.codeSigningCertificate = pin(over);
+  };
+  const onServed = (over) => (r) => {
+    r.channels.find((c) => c.id === 'web').signing.codeSigningCertificate = pin(over);
+  };
+
+  test('PRINTS, and does not fail, a DEFERRED row whose pin is still all sentinel', () => {
+    const { code, out } = run(tree({ mutate: onDeferred() }));
+    assert.equal(code, 0, out);
+    assert.match(out, /SIGNING PIN NOT CONFIGURED/);
+    assert.match(out, /windows-store" signing\.codeSigningCertificate/);
+  });
+
+  test('PASSES a fully configured pin, and counts it', () => {
+    const { code, out } = run(tree({ mutate: onDeferred({ sha256: 'AA:BB:CC', subject: 'CN=Nikatru' }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 pinned signing-material block\(s\), 1 configured/);
+  });
+
+  // The case the whole limb exists for.
+  test('FAILS a HALF configured pin — one field real, one still the sentinel', () => {
+    const { code, out } = run(tree({ mutate: onDeferred({ sha256: 'AA:BB:CC' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is HALF CONFIGURED/);
+    assert.match(out, /ships cleanly under the wrong name/);
+  });
+
+  // A deferred row PRINTS the same state; a SERVED one cannot, because a channel
+  // cannot publish through an identity that does not exist.
+  test('FAILS a SERVED row whose pin is still on the sentinel', () => {
+    const { code, out } = run(tree({ mutate: onServed() }));
+    assert.equal(code, 1, out);
+    assert.match(out, /The row is SERVED\./);
+  });
+
+  test('FAILS a pin with no `asOf` — an undated claim about an external artefact', () => {
+    const { code, out } = run(tree({ mutate: onDeferred({ asOf: undefined }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /carries no `asOf` date/);
+  });
+
+  test('FAILS a pin with no `source` — a value that arrived from nowhere', () => {
+    const { code, out } = run(tree({ mutate: onDeferred({ source: undefined }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /carries no `source`/);
+  });
+
+  test('FAILS a sentinel that is not a non-empty string', () => {
+    const { code, out } = run(tree({ mutate: onDeferred({ notYetConfiguredSentinel: '' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`notYetConfiguredSentinel` that is not a non-empty string/);
+  });
+
+  // An empty pin block satisfies every check by having nothing to check — the
+  // empty-domain pass section 1 exists to remove, one level down.
+  test('FAILS a pin block declaring a sentinel and NO value field', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => {
+          r.channels.find((c) => c.id === 'windows-store').signing.codeSigningCertificate = {
+            notYetConfiguredSentinel: SENTINEL,
+            asOf: '2026-08-08',
+            source: 'transcribed from the issued certificate on the day the purchase completes',
+          };
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /NO value field for it to stand in for/);
+  });
+
+  // `alias` names a keystore ENTRY whose authority is a repository secret, not a
+  // value the pin identifies — so it must not demand a sentinel of its own. The
+  // real android-play row carries one, and reading it as a value field would
+  // report the live upload-certificate pin as HALF CONFIGURED on every run.
+  test('does not treat the bookkeeping fields as pinned values', () => {
+    const { code, out } = run(
+      tree({
+        mutate: onDeferred({
+          sha256: 'AA:BB:CC',
+          subject: 'CN=Nikatru',
+          alias: 'nikatru-upload',
+          declaredIn: 'somewhere',
+        }),
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /1 configured/);
+  });
+
+  // A block with no sentinel at all is not a pin block and must not acquire the
+  // checks: android-play's `uploadCertificate` is exactly that shape today, and
+  // firing on it would fail the real tree for a certificate that IS configured.
+  test('ignores a signing block that declares no sentinel', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (r) => {
+          r.channels.find((c) => c.id === 'windows-store').signing.uploadCertificate = { sha256: 'AA:BB', alias: 'x' };
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /pinned signing-material block/);
   });
 });
