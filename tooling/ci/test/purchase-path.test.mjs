@@ -165,19 +165,36 @@ class EntitlementCache {
 const Duration kEntitlementStalenessCeiling = Duration(days: 7);
 `;
 
-const SERVER_CONFIG = `
-export const DEFAULT_CONFIGS = {
-  subly: {
-    paywall: {
-      enabled: false,
-      offerings: [
-        { product_id: 'pro_monthly', amount_minor: 499, currency_code: 'USD', term: 'month', trial_days: 30 },
-        { product_id: 'pro_yearly', amount_minor: 1999, currency_code: 'USD', term: 'year', trial_days: 30 },
-      ],
+// [pipeline 4]B-2 — THE RAIL CONFIG IS DATA NOW, AND SO IS THIS FIXTURE. It was
+// a TypeScript literal (`export const DEFAULT_CONFIGS = { subly: { paywall: … } }`)
+// that the guard regexed. B-2 moved the served values into
+// `services/platform/src/app-config-data.json` so onboarding an app needs no
+// Worker source edit; the guard `JSON.parse`s it and reads structure.
+//
+// 🔴 THE CASES BELOW MUTATE AN OBJECT, NOT A STRING. Every T-11 case used to be
+// a `.replace('enabled: false', 'enabled: true')` against source text — which
+// silently does nothing the day the source is reformatted, and a fixture whose
+// mutation is a no-op tests the PASSING case while claiming to test the failing
+// one. `railData()` takes the dimension as an argument, so a case that stops
+// mutating cannot look like one that does.
+const OFFERINGS = [
+  { product_id: 'pro_monthly', amount_minor: 499, currency_code: 'USD', term: 'month', trial_days: 30 },
+  { product_id: 'pro_yearly', amount_minor: 1999, currency_code: 'USD', term: 'year', trial_days: 30 },
+];
+const railData = ({ enabled = false, offerings = OFFERINGS, paywallExtra = {} } = {}) =>
+  JSON.stringify(
+    {
+      sharedApiBaseUrl: 'https://platform.nikatru.com/v1',
+      // An app with no entry of its own resolves to these, so the guard's domain
+      // is `defaults` ∪ every per-app entry. Empty here on purpose: a portfolio
+      // default that sold something would make every stamped app a seller.
+      defaults: { paywall: { enabled: false, offerings: [] }, update_url: null },
+      apps: { subly: { paywall: { enabled, offerings, ...paywallExtra } } },
     },
-  },
-};
-`;
+    null,
+    2,
+  );
+const SERVER_CONFIG = railData();
 
 // [pipeline 13]T-11. The config CONTRACT, which is where a renewal-notice
 // declaration would have to be typed. Deliberately without one, because that is
@@ -280,7 +297,7 @@ function run(o = {}) {
   if (o.railTest !== null) write(root, 'packages/purchases/test/hosted_checkout_rail_test.dart', o.railTest ?? RAIL_TEST);
   write(root, 'packages/purchases/lib/src/entitlement_convergence.dart', o.convergence ?? CONVERGENCE);
   write(root, 'packages/core/lib/src/entitlement_cache.dart', o.cache ?? CACHE);
-  write(root, 'services/platform/src/config.ts', o.serverConfig ?? SERVER_CONFIG);
+  write(root, 'services/platform/src/app-config-data.json', o.serverConfig ?? SERVER_CONFIG);
   if (o.serverTypes !== null) write(root, 'services/platform/src/types.ts', o.serverTypes ?? SERVER_TYPES);
   write(root, `${BRICK}/lib/core/router.dart`, o.router ?? ROUTER);
   write(root, `${BRICK}/lib/features/home/home_screen.dart`, o.home ?? HOME);
@@ -359,7 +376,7 @@ describe('assert-purchase-path — the client money rail', () => {
     // the one that fires, which is what keeps the two limbs distinguishable.
     const r = run({
       cache: CACHE.replace('Duration(days: 7)', 'Duration(days: 14)'),
-      serverConfig: SERVER_CONFIG.replaceAll('trial_days: 30', 'trial_days: 7'),
+      serverConfig: railData({ offerings: OFFERINGS.map((o) => ({ ...o, trial_days: 7 })) }),
     });
     assert.equal(r.code, 1);
     assert.match(r.out, /THE BOUND OUTLIVES THE TRIAL/);
@@ -382,7 +399,7 @@ describe('assert-purchase-path — the client money rail', () => {
   });
 
   test('COVERAGE LOST when the rail config declares no trial or term to compare against', () => {
-    const r = run({ serverConfig: 'export const DEFAULT_CONFIGS = { subly: { paywall: { enabled: false } } };' });
+    const r = run({ serverConfig: railData({ offerings: [] }) });
     assert.equal(r.code, 1);
     assert.match(r.out, /COVERAGE LOST — no `trial_days`/);
   });
@@ -467,7 +484,7 @@ describe('assert-purchase-path — the client money rail', () => {
   // COVERAGE LOST lines (M-8's and T-11's). The fixtures re-encode those inputs;
   // they are not the evidence.
   test('🔴 FAILS when a qualifying SKU goes LIVE with no declared notice mechanism', () => {
-    const r = run({ serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true') });
+    const r = run({ serverConfig: railData({ enabled: true }) });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /QUALIFYING AUTO-RENEWING SKU IS LIVE/);
     assert.match(r.out, /2 of 2 offering\(s\)/);
@@ -478,10 +495,7 @@ describe('assert-purchase-path — the client money rail', () => {
     // The tripwire must be SATISFIABLE, or it is a permanent block rather than a
     // gate — and a permanent block is one somebody deletes.
     const r = run({
-      serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true').replace(
-        'offerings: [',
-        "renewal_notice: { medium: 'email' },\n      offerings: [",
-      ),
+      serverConfig: railData({ enabled: true, paywallExtra: { renewal_notice: { medium: 'email' } } }),
       serverTypes: `${SERVER_TYPES}\nexport interface PaywallConfig { renewal_notice: RenewalNotice | null; }\n`,
     });
     assert.equal(r.code, 0, r.out);
@@ -491,10 +505,10 @@ describe('assert-purchase-path — the client money rail', () => {
     // The classifier must not fire on every product that exists. A genuine
     // one-off purchase carries no renewal to give notice of.
     const r = run({
-      serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true').replace(
-        /offerings: \[[\s\S]*?\],/,
-        "offerings: [\n        { product_id: 'lifetime', amount_minor: 4999, currency_code: 'USD', term: 'one_time', trial_days: 0 },\n      ],",
-      ),
+      serverConfig: railData({
+        enabled: true,
+        offerings: [{ product_id: 'lifetime', amount_minor: 4999, currency_code: 'USD', term: 'one_time', trial_days: 0 }],
+      }),
       // M-8's bound is relative to the shortest trial, and this catalogue has no
       // trial at all — so the ceiling has to come down with it or that
       // (unrelated) limb fires and the case stops isolating T-11.
@@ -508,10 +522,10 @@ describe('assert-purchase-path — the client money rail', () => {
     // "Free now, charged later" is the other half of the shape, and a rule
     // keyed only on `term` would miss it.
     const r = run({
-      serverConfig: SERVER_CONFIG.replace('enabled: false', 'enabled: true').replace(
-        /offerings: \[[\s\S]*?\],/,
-        "offerings: [\n        { product_id: 'lifetime', amount_minor: 4999, currency_code: 'USD', term: 'one_time', trial_days: 14 },\n      ],",
-      ),
+      serverConfig: railData({
+        enabled: true,
+        offerings: [{ product_id: 'lifetime', amount_minor: 4999, currency_code: 'USD', term: 'one_time', trial_days: 14 }],
+      }),
     });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /1 of 1 offering\(s\)/);
@@ -533,7 +547,7 @@ describe('assert-purchase-path — the client money rail', () => {
   });
 
   test('COVERAGE LOST when no offering can be parsed at all', () => {
-    const r = run({ serverConfig: SERVER_CONFIG.replace(/\{ product_id:[\s\S]*?\},\n/g, '') });
+    const r = run({ serverConfig: railData({ offerings: [] }) });
     assert.equal(r.code, 1);
     assert.match(r.out, /no offering could be parsed/);
   });

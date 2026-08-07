@@ -1,0 +1,62 @@
+{
+  "_readme": [
+    "THE SERVED CONFIG VALUES — [pipeline 4]B-2, company/pipeline/04-backend-platform.md",
+    "",
+    "WHAT THIS FILE IS NOT: it is NOT the list of apps this Worker serves. That set comes from",
+    "sites/_shared/_data/apps.json — the catalogue the STAMP already writes (post_gen.dart",
+    "_appendToAppsJson, SHOW-1). An app absent from `apps` below is still SERVED; it simply resolves to",
+    "`defaults` in full. Adding a key here for an app that is not in the catalogue serves nobody, and",
+    "tooling/ci/assert-config-registry.mjs fails on exactly that, because dead data that reads as",
+    "configuration is worse than no data.",
+    "",
+    "WHY THE VALUES ARE DATA AND NOT A TS LITERAL. Until 2026-08-07 they were an object literal",
+    "`DEFAULT_CONFIGS` in src/config.ts keyed by app id, so `GET /config/lingo` answered 404",
+    "`unknown_app` for a content pack that has existed in this repo since the pipeline shipped —",
+    "onboarding app #2 meant editing and redeploying the shared Worker, which is the per-app manual step",
+    "this factory exists to abolish. A deploy is still required for a catalogue change to reach the",
+    "edge (the Worker bundles both files at build time); what is gone is the SOURCE EDIT.",
+    "",
+    "THREE READERS, and they read STRUCTURE — this file is JSON precisely so none of them has to grep:",
+    "  · services/platform/src/config.ts        builds the served registry from catalogue x this file",
+    "  · tooling/ci/assert-stamp-properties.mjs [10]D-8 — every served `update_url`",
+    "  · tooling/ci/assert-purchase-path.mjs    [5]M-8/T-11 — every offering's term + trial"
+  ],
+
+  "sharedApiBaseUrl": "https://platform.nikatru.com/v1",
+
+  "defaults": {
+    "features": {},
+    "flags": {},
+    "paywall": { "enabled": false, "offerings": [] },
+    "content_pack": null,
+    "copy": {},
+    "min_supported_version": "1.0.0",
+    "max_promos_per_week": 0,
+    "update_url": null
+  },
+
+  "apps": {
+    "subly": {
+      "features": { "renewals": true, "budgets": true, "exports": true },
+      "paywall": {
+        "enabled": false,
+        "offerings": [
+          {
+            "product_id": "pro_monthly",
+            "amount_minor": 499,
+            "currency_code": "USD",
+            "term": "month",
+            "trial_days": 30
+          },
+          {
+            "product_id": "pro_yearly",
+            "amount_minor": 1999,
+            "currency_code": "USD",
+            "term": "year",
+            "trial_days": 30
+          }
+        ]
+      }
+    }
+  }
+}
