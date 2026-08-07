@@ -299,10 +299,13 @@ function checkLegalLinkSet() {
 // TWO SUBJECTS, both structural:
 //   (1) the probe's injected constant, parsed off the brick's property test;
 //   (2) every `update_url` the config service SERVES, parsed off DEFAULT_CONFIGS.
-// (2) ranges over `null` today — no non-store channel is served, so there is
-// nowhere to send anybody and null is the finding. That is printed rather than
-// hidden, and the check is written so the one-line edit that makes it wrong
-// (`update_url: 'https://nikatru.com'`) turns it red.
+// (2) ranges over `null` today — no non-web channel is live, so there is nowhere
+// to send anybody and null is the finding. That is printed rather than hidden,
+// and the check is written so the one-line edit that makes it wrong
+// (`update_url: 'https://nikatru.com'`) turns it red. Since 2026-08-07 the
+// TOLERANCE of that null is derived too, from the channel register's `served` /
+// `deferral` fields — see limb (2a) below for the mutation that proved the
+// previous wording was a claim nothing checked.
 const CHANNEL_CONFIG_FLOOR = 1;
 
 // ⚠️ A HAND-ROLLED `stripTsComments` LIVED HERE AND IS GONE — DELETED, NOT
@@ -454,6 +457,49 @@ function checkUpdateDestinationIsRepointable() {
     );
     return;
   }
+  // ── (2a) WHEN IS A SERVED `null` TOLERABLE? THE REGISTER ANSWERS. ──────────
+  //
+  // 🔴 THIS COUPLING REPLACES A SENTENCE NOTHING DERIVED. `nullServed` was
+  // counted, printed, and compared against nothing, while the passing line
+  // asserted in prose that null was "the recorded state while no non-store
+  // channel is served". Measured 2026-08-07 on the real tree: flipping
+  // `linux-appimage` to `"served": true, "deferral": null` — leaving
+  // `defaults.update_url` null — left this guard at EXIT 0 reprinting that exact
+  // sentence about a tree that had just falsified it. A claim in an `ok(...)`
+  // string reads to every future maintainer as a checked fact; if no code derives
+  // it, it is prose wearing a guard's clothes, which is this repository's
+  // signature defect.
+  //
+  // THE RULE. A channel that is not the web channel gets no store reload and no
+  // refreshed browser tab, so [10]D-8's locked path (config `min_supported_version`
+  // → `ForceUpdateGate` → `update_url`) is the only way a user of that channel is
+  // ever told to update. If such a channel is LIVE, a served `update_url` of null
+  // means the wall opens the compiled-in fallback with no way to repoint it —
+  // exactly the circular kill-switch owner decision #19 removed.
+  //
+  // LIVE = `served: true`, OR nothing defers it. The register's own convention is
+  // that a deferral and `served: false` travel together (all seven non-web rows
+  // carry a deferral object; the served `web` row carries none), so `deferral:
+  // null`, an absent `deferral`, or a non-object one all read the same way: this
+  // row claims nothing holds it back. Reading only `=== null` would leave
+  // `delete row.deferral` as a one-key escape from the check.
+  //
+  // ⚠️ WIDER THAN D-8's OWN WORDING, DELIBERATELY. D-8 names channels with "no
+  // store-driven auto-update", which is `kind: "direct"`. `kind !== "web"` also
+  // covers a SERVED store row, and that is the fail-closed direction rather than
+  // an invented limit: the force-update wall ships inside the store build too, and
+  // with null served it opens the company home page instead of that store's
+  // listing. A store channel going live is a reviewed event, and "what does the
+  // wall open?" is a question that should be answered at exactly that moment.
+  const isDeferred = (d) => typeof d === 'object' && d !== null;
+  const liveNonWeb = channels
+    .filter((row) => row?.kind !== 'web' && (row?.served === true || !isDeferred(row?.deferral)))
+    .map(
+      (row) =>
+        `${row?.id ?? '<unnamed row>'} (kind=${row?.kind ?? 'none'}, served=${row?.served === true}, ` +
+        `deferral=${isDeferred(row?.deferral) ? 'declared' : 'none'})`,
+    );
+
   let nullServed = 0;
   let compared = 0;
   for (const appId of apps) {
@@ -471,7 +517,22 @@ function checkUpdateDestinationIsRepointable() {
     }
     const raw = hasOwnKey ? own.update_url : defaults.update_url;
     const value = typeof raw === 'string' ? raw : null;
-    if (value === null) { nullServed++; continue; }
+    if (value === null) {
+      if (liveNonWeb.length > 0) {
+        fail(
+          `[10]D-8: ${PLATFORM_CONFIG_DATA} serves '${appId}' an update_url of null while ` +
+            `${CHANNEL_REGISTER} carries ${liveNonWeb.length} live non-web channel(s) — ${liveNonWeb.join('; ')}. ` +
+            'A channel is live here when it is `served: true` or when nothing defers it, and such a ' +
+            'channel has no store reload to fall back on: config `min_supported_version` → ' +
+            '`ForceUpdateGate` → `update_url` is the only way its users are ever told to update, and a ' +
+            'null destination leaves the wall opening the compiled-in fallback with no way to repoint ' +
+            "it. Serve a real update_url for this app, or record the channel's deferral in the " +
+            'register — live and null cannot both be true.',
+        );
+      }
+      nullServed++;
+      continue;
+    }
     for (const [id, base] of compiledByChannel) {
       compared++;
       if (value === base) {
@@ -484,10 +545,15 @@ function checkUpdateDestinationIsRepointable() {
       }
     }
   }
+  // The null count is printed BESIDE the number that licenses it, both derived —
+  // so the passing line states the coupling instead of claiming it. A rise in the
+  // second number with the first still non-zero is not a line to read past: it is
+  // a build failure above.
   ok(
     `[10]D-8 update destination: ${compiledByChannel.size} channel(s) × ${apps.length} served app(s) — ` +
-      `${compared} comparison(s), ${nullServed} app(s) serve null (the wall keeps its compiled-in ` +
-      `fallback, which is the recorded state while no non-store channel is served)` +
+      `${compared} comparison(s), ${nullServed} app(s) serve null, ${liveNonWeb.length} live non-web ` +
+      `channel(s) (the wall keeps its compiled-in fallback, tolerated only while that second number ` +
+      `is 0 — derived from ${CHANNEL_REGISTER}'s \`served\`/\`deferral\`, not asserted here)` +
       `${probeUrl ? `; the probe injects '${probeUrl}', distinct from every channel's default` : ''}`,
   );
 }
