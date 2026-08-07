@@ -8,6 +8,7 @@
   "app-dod.test.mjs": 33,
   "app-versioning.test.mjs": 38,
   "appstore-submission.test.mjs": 37,
+  "artifact-shape.test.mjs": 22,
   "assert-deploy-triggers-deploy.test.mjs": 11,
   "capability-register-seams.test.mjs": 27,
   "capability-register.test.mjs": 29,
