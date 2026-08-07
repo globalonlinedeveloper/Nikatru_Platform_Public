@@ -2744,8 +2744,14 @@ class RemindersEnabledController extends Notifier<bool> {
   Future<bool> applyReminderChoice({required bool on, required String title, required String body}) async {
     final core.NotificationService svc = ref.read(notificationServiceProvider);
     await svc.init();
+    // [pipeline 13]T-4 limb C — THE BRICK'S ENABLE-PATH ASK, mirrored from the
+    // real template (providers.dart, applyReminderChoice). It is here and not in
+    // main.dart because that is the whole property: reached from the switch, not
+    // from the launch path. Without this line the fixture models a template whose
+    // notification channel can never be turned on.
+    final bool granted = await svc.requestPermission();
     await svc.scheduleDaily(core.DailyReminder(id: kDailyReminderId, title: title, body: body, hour: 20, minute: 0));
-    return on;
+    return on && granted;
   }
   // [pipeline T-7] The reboot / DST / timezone-change repair path.
   Future<void> resyncOnStart({required String title, required String body}) async {
@@ -3741,6 +3747,94 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     });
     assert.equal(code, 1);
     assert.match(out, /no longer asserts `requestPermissionCalls == 0` after a boot/);
+  });
+
+  // ── limb C · THE ENABLE PATH ASKS AT ALL ───────────────────────────────────
+  //
+  // Added 2026-08-07. Everything above is an ABSENCE assertion, so deleting
+  // every call site made this property report GREENER than the real tree while
+  // restoring the defect from the other side: a notification channel that can
+  // never be enabled, because nothing ever asks.
+  //
+  // Real-tree mutations, run BEFORE these fixtures existed (a fixture the
+  // guard's author also wrote encodes the same misunderstanding as the guard),
+  // `flutter analyze` 21 issues / 0 errors on each — identical to baseline, so
+  // no case below is a compile error masquerading as a catch:
+  //   · baseline: apps/subly 2 call site(s) — settings_controller.dart:139,
+  //     subscriptions_controller.dart:104; brick 1 — providers.dart:1045.
+  //   · BOTH real call sites replaced with `.init()` → limb C red at apps/subly,
+  //     while limb A/B printed the SAME `ok` line as baseline ("2 function(s)
+  //     reached from main() across 45 lib file(s); initState/… clean") and the
+  //     runtime `requestPermissionCalls == 0` limb also stayed ok. 2 → 0 asks,
+  //     every pre-existing limb green: the hole, measured.
+  //   · that same tree + `unawaited(NotificationService.instance
+  //     .requestPermissions())` in ScanScreen's real `initState` → limb B AND
+  //     limb C both red. One call site, satisfying NEITHER half. That is the
+  //     disjointness of D⁻ and D⁺ demonstrated on the real tree, and it is
+  //     exactly the input a naive "the symbol appears somewhere" positive check
+  //     would have called compliant.
+  test('passes when an ask exists on the enable path, and names the call sites', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-t4-enable-ok') });
+    assert.equal(code, 0);
+    // Both roots, not just the stamped one: the brick's ask lives in
+    // applyReminderChoice, the app's in a controller the walk never reaches.
+    assert.match(out, /apps\/subly — the enable path asks: 1 call site\(s\)/);
+    assert.match(out, /\{\{app_id\}\} — the enable path asks: 1 call site\(s\)/);
+  });
+
+  // 🔴 THE ONE THIS LIMB EXISTS FOR, and the one every other limb goes GREENER
+  // on: the call site is gone and the app still reads clean everywhere else.
+  //
+  // The fixture deliberately KEEPS `Future<bool> requestPermissions() async {
+  // … ios.requestPermissions(…) }` — so the symbol still occurs THREE times
+  // under lib/ with nothing calling it. A positive check written as "the symbol
+  // appears somewhere" is green on this input; so is one that forgot to strip
+  // the declaration, which is the recorded assert-seams-wired.mjs defect.
+  test('FAILS when the enable-path call site is deleted but the declaration stays', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-enable-deleted', {
+        sublyNotifs: goodSublyNotifs.replace('if (on) await requestPermissions();', 'if (on) await init();'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /apps\/subly: THE ENABLE PATH NEVER ASKS/);
+    // The proof that the two halves point opposite ways: the same input leaves
+    // the launch-path limb printing ok.
+    assert.match(out, /\[13\]T-4 apps\/subly — launch path asks for no OS permission/);
+  });
+
+  // DISJOINTNESS. Exactly ONE ask in the app, sitting in an ungestured hook. It
+  // must satisfy NEITHER limb — "never at launch" and "somewhere on the enable
+  // path" cannot both be paid for by the same call site.
+  test('FAILS on BOTH limbs when the only ask sits in an ungestured hook', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-enable-vs-firstframe', {
+        sublyNotifs: goodSublyNotifs.replace('if (on) await requestPermissions();', 'if (on) await init();'),
+        extra: {
+          'apps/subly/lib/features/scan/scan_screen.dart':
+            'class _S extends State<S> {\n  @override\n  void initState() {\n    super.initState();\n    NotificationService.instance.requestPermissions();\n  }\n}\n',
+        },
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /initState\(\) \[first frame, no gesture\]/);
+    assert.match(out, /apps\/subly: THE ENABLE PATH NEVER ASKS/);
+  });
+
+  // The other direction of the same barrier: an ask inside a function the walk
+  // DID reach from main() is limb A's violation and must not double as limb C's
+  // evidence, or a launch-time ask would "prove" the enable path works.
+  test('an ask reachable from main() does not satisfy the enable-path limb', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t4-enable-not-paid-by-main', {
+        sublyNotifs: goodSublyNotifs
+          .replace('if (on) await requestPermissions();', 'if (on) await init();')
+          .replace('await _plugin.initialize(settings);', 'await _plugin.initialize(settings);\n    await requestPermissions();'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /main\(\) → init\(\)/);
+    assert.match(out, /apps\/subly: THE ENABLE PATH NEVER ASKS/);
   });
 
   // COVERAGE SELF-CHECK. A main.dart the walk cannot parse would start the whole
