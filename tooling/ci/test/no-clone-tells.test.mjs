@@ -188,3 +188,38 @@ describe('the guard knows when it is not looking', () => {
     assert.match(out, /COVERAGE LOST/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE STRIPPER WAS THREE REGEXES AND A `//` COMMENT COULD BLIND IT (2026-08-07)
+//
+// `stripComments` ran the block pattern FIRST, so a `/*` inside a LINE comment
+// opened a phantom block running to the next `*​/` — swallowing every line
+// between, INCLUDING real code. Measured the same day in
+// assert-ops-register.mjs, where the identical pair ate lines 32-134 of
+// assert-ceiling-budget.mjs and the real `const CEILINGS = 'tooling/ceilings.json';`.
+//
+// Today's 217-file Dart corpus lost only comment prose, which is exactly why
+// this needed a mutation rather than a green run: the blindness is a property of
+// the scanner, not of the comments that happen to be in the tree this week.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the stripper is a tokenizer — a comment cannot hide a tell', () => {
+  test('🔴 an app name AFTER a line comment containing `/*` still fails', () => {
+    const { code, out } = run(tree({
+      extra: {
+        'packages/core/lib/x.dart':
+          '// generated files live under services/*/src/ — see the runbook\n' +
+          "const k = 'subly';\n" +
+          "const doc = 'the span above would close here */';\n",
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /shared code names the app "subly"/i);
+  });
+
+  test('a tell inside a REAL comment is still exempt — the repair is not collateral damage', () => {
+    const { code, out } = run(tree({
+      extra: { 'packages/core/lib/x.dart': '// subly used to do this\n/* and subscription too */\nclass A {}\n' },
+    }));
+    assert.equal(code, 0, out);
+  });
+});

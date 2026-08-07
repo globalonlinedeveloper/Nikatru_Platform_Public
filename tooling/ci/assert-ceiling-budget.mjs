@@ -978,9 +978,17 @@ if (problems.length) {
     `REQUIRED_COVERAGE — ${surfaces.length} vendor surface(s), every one named by a ceiling row; ` +
       `${sourced} sourced+dated ceiling(s), ${unverified} recorded UNVERIFIED and not derivable from`,
   );
+  // ⚠️ `+ 1` IS NOT A FUDGE — IT IS THE PREDICATE. The staleness limb above fires
+  // on `age > CADENCE_DAYS` (:376), so age === CADENCE_DAYS still PASSES and the
+  // first failing age is CADENCE_DAYS + 1. A naive `CADENCE_DAYS - age` therefore
+  // names the last GREEN day, not the first RED one, and understates the runway by
+  // exactly one day. Measured 2026-08-07 under a faked clock: at the 180d cadence
+  // the guard is green on 2027-01-28 and red on 2027-01-29, while this line was
+  // printing the 28th. A countdown that disagrees with the condition it counts down
+  // to is a diagnostic making a false claim — the same class as asserting in prose.
   ok(
     `${datedRows} of ${byId.size} ceiling(s) dated and WITHIN the stated \`${cadenceBlock.cadence}\` re-verification cadence; ` +
-      `oldest is "${oldestId}" at ${oldestAge} day(s), ${CADENCE_DAYS - oldestAge} day(s) before it fails`,
+      `oldest is "${oldestId}" at ${oldestAge} day(s), ${CADENCE_DAYS - oldestAge + 1} day(s) before it fails`,
   );
   ok(
     `${readByCeiling.size} human read location(s) printed above for ${observedOnly.length} account-wide ceiling(s) ` +

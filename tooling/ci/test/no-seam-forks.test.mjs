@@ -191,3 +191,43 @@ describe('the guard knows when it is not looking', () => {
     assert.match(out, /COVERAGE LOST — no capability register/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 FIX (1) IN THE HEADER — "comments are now stripped" — WAS TWO REGEXES, AND
+// TWO REGEXES ARE NOT A TOKENIZER (2026-08-07).
+//
+// The block pattern ran FIRST, so a `/*` inside a `//` line comment opened a
+// phantom block that ran to the next `*​/` and blanked everything between it —
+// including a `class X implements <Contract>` declaration. The guard then found
+// no fork and printed ok, which is this file's own subject one level up: a check
+// that silently stopped checking. ZERO of the 217 real Dart files were affected,
+// so only a mutation could find it. Same defect and same repair as
+// assert-ops-register.mjs (which lost 103 lines of a real file) and
+// assert-no-clone-tells.mjs; all three now share text-reductions.mjs.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the stripper is a tokenizer — a comment cannot hide a fork', () => {
+  test('🔴 a fork AFTER a line comment containing `/*` is still found', () => {
+    const { code, out } = run(tree({
+      extra: {
+        'apps/app1/lib/f.dart':
+          // NotificationService, not AuthRepository: the latter is deliberately
+          // homeless in this fixture, and a homeless class is reported as
+          // [2]C-15 work at exit 0 — which would have made this assertion pass
+          // for the wrong reason and prove nothing about the stripper.
+          '// worker sources live under services/*/src/ — unrelated to this file\n' +
+          'class MyNotifier implements NotificationService {}\n' +
+          "const doc = 'the span above would close here */';\n",
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /MyNotifier/);
+  });
+
+  test('a declaration inside a REAL comment is still not a fork', () => {
+    const { code, out } = run(tree({
+      extra: { 'apps/app1/lib/f.dart': '// class Ghost implements AuthRepository {}\n/* class Ghost2 implements Analytics {} */\nclass B {}\n' },
+    }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /Ghost/);
+  });
+});
