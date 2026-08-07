@@ -3218,14 +3218,30 @@ export interface AppConfig {
   // The channel set the comparison ranges over. Two rows with a lane and one
   // without, because a null lane is the common case in the real register and
   // must fall back to the template's default rather than be skipped.
+  //
+  // 🔴 THE ROWS CARRY `kind` / `served` / `deferral` SINCE 2026-08-07, and that is
+  // not tidying. The guard's null-tolerance is now DERIVED from those three fields
+  // (see assert-stamp-properties.mjs limb (2a)), so a fixture that omitted them
+  // was a fixture in which the coupling could not be exercised at all — the shape
+  // that lets a check pass over a question it never asked. The default row set
+  // mirrors the real register's convention: the served `web` row carries no
+  // deferral, every non-web row carries one.
   const CHANNEL_REGISTER = 'tooling/channel-register.json';
-  const goodChannelRegister = JSON.stringify({
-    channels: [
-      { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml' } },
-      { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml' } },
-      { id: 'linux-appimage', lane: null },
-    ],
-  });
+  const channelRegister = (appimage = { kind: 'direct', served: false, deferral: { reason: '[ADR 015] §2' } }) =>
+    JSON.stringify({
+      channels: [
+        { id: 'web', kind: 'web', served: true, lane: { workflow: '.github/workflows/deploy-web.yml' } },
+        {
+          id: 'windows-store',
+          kind: 'store',
+          served: false,
+          deferral: { reason: '39-CHASSIS §4 cut 5' },
+          lane: { workflow: '.github/workflows/build-platforms.yml' },
+        },
+        { id: 'linux-appimage', lane: null, ...appimage },
+      ],
+    });
+  const goodChannelRegister = channelRegister();
   // …and the LEGAL section that actually opens them. A declared constant no
   // screen links leaves the page exactly as unreachable as never declaring it,
   // while making the set equality above go green.
@@ -3522,6 +3538,77 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     assert.equal(code, 0);
     assert.match(out, /\[10\]D-8 update destination: 3 channel\(s\) × 1 served app\(s\)/);
     assert.match(out, /1 app\(s\) serve null/);
+  });
+
+  // ── limb (2a) · NULL IS TOLERATED BY THE REGISTER, NOT BY A SENTENCE ────────
+  //
+  // 🔴 WHAT WAS WRONG, MEASURED ON THE REAL TREE BEFORE THESE CASES EXISTED. The
+  // passing line printed "…which is the recorded state while no non-store channel
+  // is served" while NOTHING derived that clause: `nullServed` was counted,
+  // printed, and compared against nothing. Flipping `linux-appimage` to
+  // `"served": true, "deferral": null` in the real tooling/channel-register.json,
+  // with services/platform/src/app-config-data.json untouched at
+  // `defaults.update_url: null`, left the guard at EXIT 0 reprinting that exact
+  // sentence about a tree that had just falsified it. Restored byte-identical
+  // (md5 9a57515477aa830d1eae9b81df322f97) and re-run green before the fix landed.
+  //
+  // The fixture cases below encode that mutation; the real-tree run came first,
+  // because a fixture its own author wrote encodes the same misunderstanding as
+  // the guard its own author wrote — assert-seams-wired.mjs shipped broken with
+  // all six of its fixture tests passing.
+  test('limb (2a) FAILS when a SERVED non-web channel is served a null update_url', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-live-null', {
+        channelRegister: channelRegister({ kind: 'direct', served: true, deferral: null }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /an update_url of null while/);
+    // The row is NAMED, with the two fields the decision was made on. A failure
+    // that says "some channel" sends the reader back to the register to guess.
+    assert.match(out, /linux-appimage \(kind=direct, served=true, deferral=none\)/);
+  });
+
+  // A DEFERRAL IS THE ONLY THING TOLERATING THE NULL, so deleting the key must
+  // not be the cheap way out. `deferral: null` and no `deferral` key are the same
+  // claim — nothing holds this channel back — and the register's own convention
+  // is that the served row is the one without one.
+  test('limb (2a) FAILS when a non-web channel declares no deferral at all', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-nodeferral', {
+        channelRegister: channelRegister({ kind: 'direct', served: false }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /linux-appimage \(kind=direct, served=false, deferral=none\)/);
+  });
+
+  // THE CONTROL, and it is the whole reason this limb is a coupling rather than a
+  // ban on null: the recorded state — every non-web row deferred — must stay
+  // green, and the passing line must PRINT the derived number it is tolerating on.
+  test('limb (2a) tolerates a null update_url while every non-web channel is deferred', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-d8-prose') });
+    assert.equal(code, 0, out);
+    assert.match(out, /1 app\(s\) serve null, 0 live non-web channel\(s\)/);
+    assert.doesNotMatch(out, /an update_url of null while/);
+  });
+
+  // WIDER THAN "AppImage", ON PURPOSE. A served STORE row with a null destination
+  // fails too — the force-update wall is compiled into that build as well, and
+  // with null served it opens the company home page instead of the listing.
+  test('limb (2a) fires on a served STORE row too, not only a direct one', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-live-store', {
+        channelRegister: JSON.stringify({
+          channels: [
+            { id: 'web', kind: 'web', served: true, lane: null },
+            { id: 'android-play', kind: 'store', served: true, deferral: null, lane: null },
+          ],
+        }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /android-play \(kind=store, served=true, deferral=none\)/);
   });
 
   // ── [pipeline 13]T-4 · THE BOOT PATH NEVER SPENDS THE OS PERMISSION ASK ────

@@ -37,6 +37,12 @@
     "  · LIMB 6 the WRITE-AMPLIFICATION factor is COUNTED from the migrations (1 base row + one row per",
     "    `CREATE INDEX … ON events`), never typed: `writeAmplification.rowsWrittenPerEvent` and the",
     "    headroom derived from it must equal what the schema says, or the build fails         [11]E-14",
+    "  · LIMB 7 every row's `verifiedOn` is compared to `verificationCadence.cadence`, and a citation",
+    "    OLDER than that FAILS. Limb 1 only ever checked the date's SHAPE — every row backdated to",
+    "    2019-01-01 exited 0 — so 'dated' and 'current' were the same word here             [11]E-14",
+    "  · LIMB 8 every account-wide ceiling that no `configCeilings` check can count names, in",
+    "    `actualsReadFrom`, the place its ACTUAL number is read — and every one PRINTS on every run,",
+    "    because that read is `human` and an honest gap that goes quiet becomes permanent    [11]E-14",
     "",
     "⚠️ THE COVERAGE FLOOR IS A RELATIONSHIP, NOT A NUMBER. Limb 2's left-hand side is the vendor",
     "surface list in tooling/capability-register.json; limb 3's domain is every numeric constant the",
@@ -55,6 +61,94 @@
     ],
     "cloudflare": "workers-free",
     "note": "Cloudflare publishes Free and Paid side by side on the same pages. Where both exist, the row records the FREE value in `value` and the paid one in `paidValue`, so an upgrade is a one-line edit rather than a re-research."
+  },
+
+  "verificationCadence": {
+    "_why": [
+      "[pipeline 11]E-14 — 'The ceilings carry the date they were last checked against the vendor, and a",
+      "check older than the stated cadence FAILS rather than being assumed current.'",
+      "",
+      "🔴 WHY THE CLAUSE EXISTS. Every row below has carried a `verifiedOn` since 2026-08-01, and until",
+      "limb 7 shipped NOTHING READ IT. The guard tested that the string matched YYYY-MM-DD and stopped",
+      "there — measured: all sixteen rows backdated to `2019-01-01` and assert-ceiling-budget exited 0.",
+      "A date the build never compares is the same object as no date at all: the row still looks cited,",
+      "the vendor page has moved on underneath it, and the first symptom is a limit refusing a write in",
+      "production. `sourceText` is what a reviewer compares; this is what makes them do it again.",
+      "",
+      "THE CADENCE IS DECLARED HERE, NOT COMPILED INTO THE GUARD, so it is a reviewable fact rather than",
+      "a guard author's opinion — and it is parsed by `cadenceDays()` imported from",
+      "tooling/ci/assert-ops-register.mjs, the same parser tooling/ops/register.json's duty cadences use.",
+      "One duration vocabulary in this repo (1h · 8h · 1d · 7d · 30d · 120d · 180d · 365d), not two that",
+      "agree until the day they do not.",
+      "",
+      "⚠️ RE-VERIFYING MEANS OPENING THE PAGE. Editing `verifiedOn` without re-reading the source turns",
+      "this limb into the thing it replaced, and no guard can tell the difference. That is the one part",
+      "of this check that rests on discipline; everything around it is arithmetic on purpose."
+    ],
+    "cadence": "180d",
+    "reason": "🔴 NOT CHOSEN TO KEEP TODAY GREEN. Any value at or above 7d passes the current rows (they are 1–6 days old), so the number is only doing work in the future and the question is solely how long a MOVED limit may sit unnoticed. 180d is the shorter of the two long cadences already in this repo's vocabulary (tooling/ops/register.json uses 120d and 365d): 365d would let a Free-tier change go a full year undetected on the shared platform every app depends on, and Cloudflare HAS changed D1's Free tier before. 120d — the quarterly cadence — is what this repo uses for things that genuinely move quarterly, and a vendor's published platform limits do not; spending a re-read of nine pages four times a year buys nothing over twice. Twice a year also happens to be the cheapest cadence that cannot silently skip a calendar year. The honest counter-argument: a limit that moves the day after a sweep is invisible for 180 days, and this cadence does NOT protect against that — only the aggregate daily-write guard ([11]E-2) observes a real number. This is a bound on how long a DOCUMENTED change stays unread, and nothing more.",
+    "howToReVerify": "Open each row's `source`, confirm the `sourceText` sentence and its number still say what the row says, then set that row's `verifiedOn` to the day you read it. If a value MOVED, change `value`/`paidValue` too — limbs 3, 5 and 6 will then re-check every cap and every derived figure against the new number, which is the point of doing it here rather than in prose."
+  },
+
+  "actualsReadFrom": {
+    "_why": [
+      "[pipeline 11]E-14 — 'Where the actual numbers are read is still `human` (Cloudflare account",
+      "analytics), and that is legitimate — but it must PRINT on every run, never silently pass, because",
+      "it is the limb nobody can automate today.'",
+      "",
+      "EVERY NUMBER ELSEWHERE IN THIS FILE IS WHAT THE VENDOR ALLOWS. Not one of them is what this",
+      "account actually SPENDS. E-14 asks for both — 'the ceiling is watched rather than discovered' —",
+      "and the watching half has no observer anywhere in this repo for the rows listed below.",
+      "",
+      "⚠️ THE DOMAIN IS DERIVED, NOT TYPED. The guard does not read a count from here. It computes the",
+      "set: every ceiling whose `scope` is account-wide AND which no `configCeilings` check counts. Limb 5",
+      "counts what a wrangler config DECLARES (crons, databases, namespaces); a per-DAY TOTAL is declared",
+      "nowhere, and the rate limiters are per-colo and prove nothing account-wide (ratelimit.",
+      "accountingAccuracy is the citation for saying so). So the honest fix for a new row appearing here",
+      "is a read location — or a real counting check, if the number turns out to be derivable from the",
+      "repo after all. Deleting the ceiling is not available: limb 2 catches that through `surfaces`.",
+      "",
+      "⚠️ HELD TO A LOWER BAR THAN A CEILING ROW, DELIBERATELY. A ceiling's `source` cites a MAGNITUDE and",
+      "must quote the sentence carrying it. These entries cite NAVIGATION — where to click and which",
+      "figure to read — so each carries the vendor's own observability documentation for that metric",
+      "rather than a dashboard deep link, because a `dash.cloudflare.com/?to=/:account/...` URL written",
+      "from memory is an invented citation in the one file whose first rule forbids them. The magnitude",
+      "each figure must stay under is NOT repeated here either: the guard reads it off the ceiling row,",
+      "so the printed reminder cannot drift away from the limit it is about."
+    ],
+    "whyNotAutomated": "The numbers exist in a machine-readable form — Cloudflare's GraphQL Analytics API serves account-level Workers, D1 and KV usage — so this is a gap with a known shape, not an impossibility. What blocks it is that reading them needs an account-scoped Analytics token and a live network call at CI time, which this gate does not have and should not acquire: a build that fails because a vendor API was briefly unreachable teaches everyone to ignore it. The read therefore stays HUMAN, and the automated arm is [11]E-2's aggregate daily-write guard, which observes the one number that matters most from inside the Worker rather than from CI.",
+    "locations": [
+      {
+        "ceiling": "workers.requestsPerDay",
+        "where": "Cloudflare dashboard → Workers & Pages → (account overview) → Metrics — the account-wide request count for the current UTC day, NOT a single Worker's. Free resets at midnight UTC and answers Error 1027 past the limit.",
+        "url": "https://developers.cloudflare.com/workers/observability/metrics-and-analytics/",
+        "reads": "total requests today, summed across every Worker on the account"
+      },
+      {
+        "ceiling": "d1.rowsWrittenPerDay",
+        "where": "Cloudflare dashboard → Storage & Databases → D1 → each database → Metrics. 🔴 SUM IT ACROSS EVERY DATABASE: the ceiling is per-ACCOUNT-per-day and the dashboard reports per-database, so reading one database's figure understates the number that actually binds.",
+        "url": "https://developers.cloudflare.com/d1/observability/metrics-analytics/",
+        "reads": "rows written today, summed across platform_db, subly_db and every stamped app database"
+      },
+      {
+        "ceiling": "d1.storagePerAccount",
+        "where": "Cloudflare dashboard → Storage & Databases → D1 — the size column per database, summed. Note the open question recorded on the row itself: deleting rows may not reclaim the space this figure counts (cloudflare/workerd#1618), so a number that does not fall after a prune is not necessarily a bad read.",
+        "url": "https://developers.cloudflare.com/d1/observability/metrics-analytics/",
+        "reads": "database size, summed across every D1 database on the account"
+      },
+      {
+        "ceiling": "kv.readsPerDay",
+        "where": "Cloudflare dashboard → Storage & Databases → KV → each namespace → Metrics, summed across CONFIG_KV and JWKS_CACHE.",
+        "url": "https://developers.cloudflare.com/kv/observability/metrics-analytics/",
+        "reads": "read operations today, summed across every namespace"
+      },
+      {
+        "ceiling": "kv.writesPerDay",
+        "where": "Cloudflare dashboard → Storage & Databases → KV → each namespace → Metrics, summed. This is the TIGHT one (1,000/day) and the one a misbehaving cache warmer exhausts in minutes, so it is worth reading first.",
+        "url": "https://developers.cloudflare.com/kv/observability/metrics-analytics/",
+        "reads": "write operations today, summed across every namespace"
+      }
+    ]
   },
 
   "ceilings": [

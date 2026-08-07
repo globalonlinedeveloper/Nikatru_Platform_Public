@@ -24,7 +24,7 @@
 // `verifiedOn` date or this guard fails, and a row whose `value` is null is
 // UNVERIFIED — it prints, and deriving a cap from it is itself a failure.
 //
-// ── SIX LIMBS, EACH WITH A WRITABLE FAILING INPUT ────────────────────────────
+// ── EIGHT LIMBS, EACH WITH A WRITABLE FAILING INPUT ──────────────────────────
 //   1. every numeric ceiling row is SOURCED and DATED
 //   2. every vendor surface has at least one ceiling row (a relationship to
 //      tooling/capability-register.json, a list assert-vendor-portability.mjs
@@ -37,6 +37,46 @@
 //   5. the deployed configs: cron count, D1 database count, KV namespace count
 //      and every rate-limiter `period`, against their sourced ceilings
 //   6. the WRITE-AMPLIFICATION factor is COUNTED from the schema, not typed
+//   7. every row's `verifiedOn` is YOUNGER than the register's stated
+//      `verificationCadence` — a citation past that age FAILS
+//   8. every account-wide ceiling no `configCeilings` check can count names the
+//      place its ACTUAL number is read, and that place PRINTS on every run
+//
+// ── LIMBS 7 AND 8: "DATED" IS NOT "CURRENT", AND A HUMAN LIMB MUST BE LOUD ──
+// [11]E-14's replacement acceptance, both halves:
+//
+//   (1) "The ceilings carry the date they were last checked against the vendor,
+//        and a check older than the stated cadence FAILS rather than being
+//        assumed current."
+//   (2) "Where the actual numbers are read is still `human` (Cloudflare account
+//        analytics), and that is legitimate — but it must PRINT on every run,
+//        never silently pass, because it is the limb nobody can automate today."
+//
+// 🔴 LIMB 1 CHECKED THE DATE'S FORMAT AND NOTHING ELSE. `verifiedOn` matched
+// /^\d{4}-\d{2}-\d{2}$/ and was never compared to anything, so `2019-01-01` on
+// every one of the sixteen rows exited 0 — MEASURED, before limb 7 existed. A
+// date the build never reads is the same object as no date: the row still looks
+// cited, the vendor page has moved on, and the first symptom is a 429 nobody
+// predicted. Limb 7 gives the age a threshold, and the threshold is declared in
+// the register (`verificationCadence.cadence`) rather than compiled in here, so
+// the cadence is a reviewable fact and not a guard author's opinion.
+//
+// The cadence is parsed with `cadenceDays()` imported from assert-ops-register
+// — the SAME parser tooling/ops/register.json's duty cadences use. One duration
+// vocabulary in this repo (`1h 8h 1d 7d 30d 120d 180d 365d`), not two that
+// disagree at the edges.
+//
+// 🔴 LIMB 8 IS THE OPPOSITE FAILURE: a limb that CANNOT be automated must not be
+// silent. Four ceilings here bound an ACCOUNT-WIDE DAILY TOTAL — requests/day,
+// rows written/day, KV reads and writes/day — plus storage/account. Nothing in
+// this repo observes any of them: the rate limiters are per-colo and prove
+// nothing account-wide (ratelimit.accountingAccuracy is the citation), and
+// limb 5 counts only what a wrangler config DECLARES. So the actual numbers
+// exist in exactly one place — the Cloudflare dashboard — and the honest state
+// is `human`. The failure mode of an honest gap is that it goes quiet, which is
+// why limb 8's domain is DERIVED (an account-wide row that no configCeilings
+// check counts) and every entry lands in `prints`, on green runs and red ones
+// alike. The same treatment `@ceiling-exceeds` and `unboundedReason` already get.
 //
 // ── LIMB 6: A MODEL WHOSE NUMBER NOBODY CAN RE-DERIVE ───────────────────────
 // [pipeline 11]E-14 recorded a capacity model whose acceptance criterion was
@@ -69,6 +109,13 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+// ONE duration vocabulary in this repo. `cadenceDays` is the parser
+// tooling/ops/register.json's duty cadences already run through; a second
+// implementation here would agree with it until the day it did not.
+// (assert-ops-register.mjs gates its own main run on `process.argv[1]`, so this
+// import runs no guard — tooling/ci/test/ops-register.test.mjs imports it the
+// same way.)
+import { cadenceDays } from './assert-ops-register.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CEILINGS = 'tooling/ceilings.json';
@@ -188,6 +235,10 @@ let sourced = 0;
 let unverified = 0;
 const HTTPS = /^https:\/\/\S+$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** Ids limb 1 has already faulted for their date, so limb 7 does not say it
+ *  twice about one edit. Two messages for one defect is how the specific line
+ *  to fix gets lost in the noise. */
+const dateReported = new Set();
 
 for (const r of byId.values()) {
   const hasMagnitude = Number.isFinite(r.value);
@@ -214,6 +265,7 @@ for (const r of byId.values()) {
     continue;
   }
   if (typeof r.verifiedOn !== 'string' || !ISO_DATE.test(r.verifiedOn.trim())) {
+    dateReported.add(r.id);
     problems.push(
       `ceiling "${r.id}" has a \`source\` but no valid \`verifiedOn\` (YYYY-MM-DD). Vendor limits move — Cloudflare has changed D1's Free tier before — and an undated citation cannot decay. The date is what makes "we checked" a fact with an age rather than a claim.`,
     );
@@ -247,6 +299,85 @@ function derivable(id) {
     };
   }
   return { ok: true, row: r };
+}
+
+// ── LIMB 7 — a citation older than the stated cadence FAILS ─────────────────
+// [11]E-14: "The ceilings carry the date they were last checked against the
+// vendor, and a check older than the stated cadence FAILS rather than being
+// assumed current."
+//
+// 🔴 THE STATE THIS REPLACES, MEASURED: `verifiedOn` on all sixteen rows set to
+// `2019-01-01` — the guard exited 0. Limb 1 tests the date's SHAPE; nothing
+// tested its AGE, so "dated" and "current" were the same word here.
+const cadenceBlock = register.verificationCadence;
+if (!cadenceBlock || typeof cadenceBlock !== 'object' || Array.isArray(cadenceBlock)) {
+  coverageLost([
+    `${CEILINGS} declares no \`verificationCadence\` block, so limb 7 never runs.`,
+    'Every `verifiedOn` in this file is then checked for its FORMAT and never for its AGE — which is the',
+    'state E-14\'s replacement acceptance was written against, and it exits 0 with every row dated 2019.',
+  ]);
+}
+const CADENCE_DAYS = cadenceDays(cadenceBlock.cadence);
+if (CADENCE_DAYS === null) {
+  coverageLost([
+    `${CEILINGS} \`verificationCadence.cadence\` = ${JSON.stringify(cadenceBlock.cadence)} is not a duration this repo can parse.`,
+    'The accepted vocabulary is `<n>h` / `<n>d` (cadenceDays in assert-ops-register.mjs — the same parser',
+    'tooling/ops/register.json uses). An unparseable cadence has no threshold to compare against, so EVERY',
+    'row would be within it: a stale register reporting itself current, which is this limb\'s whole subject.',
+  ]);
+}
+if (typeof cadenceBlock.reason !== 'string' || cadenceBlock.reason.trim() === '') {
+  problems.push(
+    `${CEILINGS} \`verificationCadence\` states a cadence of ${JSON.stringify(cadenceBlock.cadence)} and no \`reason\`. A re-verification interval is a JUDGEMENT about how fast this vendor's published limits move, and an unexplained interval is indistinguishable from one chosen because it happens to keep today's dates green. Same rule as a ceiling row's \`ambiguity\`: say it, however briefly.`,
+  );
+}
+
+/** UTC midnight today. Whole days only — an hours-level answer would make the
+ *  same tree pass and fail depending on the hour CI happened to start. */
+const TODAY_MS = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+/** Strict: the regex admits `2026-13-45`. A date that does not round-trip is not
+ *  a date, and `Date.parse` alone would silently roll it over. */
+function ageDays(iso) {
+  const ms = Date.parse(`${iso}T00:00:00Z`);
+  if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== iso) return null;
+  return Math.round((TODAY_MS - ms) / 86400000);
+}
+
+let datedRows = 0;
+let oldestAge = -Infinity;
+let oldestId = null;
+for (const r of byId.values()) {
+  const iso = typeof r.verifiedOn === 'string' ? r.verifiedOn.trim() : '';
+  const age = ISO_DATE.test(iso) ? ageDays(iso) : null;
+
+  if (age === null) {
+    // 🔴 UNVERIFIED ROWS ARE CHECKED TOO, and limb 1 never reaches them — it
+    // `continue`s at `value: null` before the date is looked at. "The vendor
+    // states there is no accurate number to have" is ITSELF a claim about a
+    // vendor page, and it can stop being true. An undatable row would otherwise
+    // be the one place in this register where a citation never decays.
+    if (!dateReported.has(r.id)) {
+      problems.push(
+        `ceiling "${r.id}" carries no valid \`verifiedOn\` (YYYY-MM-DD) — found ${JSON.stringify(r.verifiedOn)}. Limb 7 dates EVERY row, including UNVERIFIED ones: "the vendor publishes no number here" is a reading of a vendor page like any other, and a row with no date is the one row whose citation can never go stale. Recording when it was last looked at is free.`,
+      );
+    }
+    continue;
+  }
+
+  datedRows++;
+  if (age > oldestAge) { oldestAge = age; oldestId = r.id; }
+
+  if (age < 0) {
+    problems.push(
+      `ceiling "${r.id}" is dated ${iso}, which is ${-age} day(s) in the FUTURE. A forward date is permanently inside any cadence, so it is the one value that makes this limb unable to fire — an invented threshold in the shape of a typo. Use the day the vendor page was actually read.`,
+    );
+    continue;
+  }
+  if (age > CADENCE_DAYS) {
+    problems.push(
+      `STALE CITATION: ceiling "${r.id}" was last checked against the vendor on ${iso} — ${age} days ago, past the register's stated \`${cadenceBlock.cadence}\` cadence (${CADENCE_DAYS} days). Re-read ${r.source ?? '(no source URL)'}, confirm the number and the quoted \`sourceText\` still say what this row says, and set \`verifiedOn\` to the day you read it — and if the limit MOVED, the value moves with it and every cap derived from it is re-checked by the limbs above. Do NOT bump the date without opening the page: that converts this guard into the thing it replaced. [11]E-14 — a check older than the cadence FAILS rather than being assumed current.`,
+    );
+  }
 }
 
 // ── LIMB 2 — every vendor surface has a ceiling ──────────────────────────────
@@ -737,6 +868,98 @@ if (ampCeiling.ok && derivedPerEvent > 0) {
   }
 }
 
+// ── LIMB 8 — where the ACTUAL numbers are read, PRINTED on every run ─────────
+// [11]E-14: "Where the actual numbers are read is still `human` (Cloudflare
+// account analytics), and that is legitimate — but it must PRINT on every run,
+// never silently pass, because it is the limb nobody can automate today."
+//
+// ⚠️ THE DOMAIN IS DERIVED, NOT TYPED. A hand-written list of "the three that
+// need a dashboard" is a number to tune, and it would stop covering the fourth
+// ceiling the day one was added. The rule instead: a row whose `scope` is
+// account-wide AND which no `configCeilings` check counts has NO observer
+// anywhere in this repo. Limb 5 counts what a wrangler config DECLARES (crons,
+// databases, namespaces); a daily TOTAL is not declared anywhere, and the rate
+// limiters are per-colo and prove nothing account-wide. So for those rows the
+// vendor dashboard is the only place the real number exists — and the honest
+// fix for one appearing here is either a read location or a real counting
+// check, never deleting the row (limb 2 catches that through `surfaces`).
+const readsBlock = register.actualsReadFrom;
+if (!readsBlock || typeof readsBlock !== 'object' || Array.isArray(readsBlock)) {
+  coverageLost([
+    `${CEILINGS} declares no \`actualsReadFrom\` block, so limb 8 never runs and NOTHING prints.`,
+    'The ceilings would then be a capacity model with no reading: every number in it is what the vendor',
+    'ALLOWS, and not one is what this account actually SPENDS. E-14 asks for both — "the ceiling is watched',
+    'rather than discovered" — and the watching half is the half that cannot be automated here, which is',
+    'exactly why its absence has to be loud instead of green.',
+  ]);
+}
+if (typeof readsBlock.whyNotAutomated !== 'string' || readsBlock.whyNotAutomated.trim() === '') {
+  problems.push(
+    `${CEILINGS} \`actualsReadFrom\` declares no \`whyNotAutomated\`. This block exists because a limb is being left to a human, and a hand-done step with no recorded reason is one nobody can ever judge as still-necessary. It prints on every run alongside the locations.`,
+  );
+}
+
+const readEntries = Array.isArray(readsBlock.locations) ? readsBlock.locations : [];
+const countedByConfigCheck = new Set(checks.map((c) => c?.ceiling).filter((x) => typeof x === 'string'));
+const observedOnly = [...byId.values()].filter(
+  (r) => typeof r.scope === 'string' && r.scope.startsWith('per-account') && !countedByConfigCheck.has(r.id),
+);
+if (observedOnly.length === 0) {
+  coverageLost([
+    `ZERO account-wide ceilings were derived as "observable only at the vendor" out of ${byId.size} row(s).`,
+    `Either every \`scope\` stopped starting with "per-account" (a rename), or a configCeilings check now`,
+    'claims to count all of them. Both make limb 8 range over the empty set — every account-wide ceiling has',
+    'a read location, in zero comparisons — and the daily-total ceilings are the ones with no observer in CI.',
+  ]);
+}
+
+const readByCeiling = new Map();
+for (const e of readEntries) {
+  if (!e || typeof e.ceiling !== 'string' || e.ceiling.trim() === '') {
+    problems.push(`${CEILINGS} \`actualsReadFrom.locations\` holds an entry naming no \`ceiling\`. It cannot be matched to anything, so it reads as coverage while covering nothing.`);
+    continue;
+  }
+  if (!byId.has(e.ceiling)) {
+    problems.push(
+      `${CEILINGS} \`actualsReadFrom\` names ceiling "${e.ceiling}", which no row in this register declares. A read location pointing at an id nobody has is the stale-entry defect from limb 4 in a new place: the block looks complete and the ceiling it claims to watch is gone or renamed.`,
+    );
+    continue;
+  }
+  const where = typeof e.where === 'string' ? e.where.trim() : '';
+  const url = typeof e.url === 'string' ? e.url.trim() : '';
+  const reads = typeof e.reads === 'string' ? e.reads.trim() : '';
+  if (where === '' || reads === '') {
+    problems.push(
+      `${CEILINGS} \`actualsReadFrom\` entry for "${e.ceiling}" is missing a non-empty \`where\` and/or \`reads\`. "It is read from the dashboard" names no page and no figure; the entry has to be followable by someone who has never done it, or the run prints a reminder nobody can act on.`,
+    );
+    continue;
+  }
+  if (!HTTPS.test(url)) {
+    problems.push(
+      `${CEILINGS} \`actualsReadFrom\` entry for "${e.ceiling}" carries no https \`url\`. Same rule as a ceiling's \`source\`: a navigation path with no link decays into folklore about a UI that has since been rearranged.`,
+    );
+    continue;
+  }
+  readByCeiling.set(e.ceiling, e);
+
+  const row = byId.get(e.ceiling);
+  const bound = Number.isFinite(row.value) ? `${row.value}${row.unit ? ` ${row.unit}` : ''} (${row.scope})` : 'UNVERIFIED — no numeric ceiling to compare against';
+  // The magnitude is READ FROM THE ROW, never repeated in the entry: a number
+  // typed twice is a number that disagrees with itself eventually, and this
+  // print would be the copy nobody re-derives.
+  prints.push(`READ BY HUMAN — "${e.ceiling}": ${where} → ${url}\n      read ${reads}; it must stay under ${bound}`);
+}
+
+for (const r of observedOnly) {
+  if (!readByCeiling.has(r.id)) {
+    problems.push(
+      `ceiling "${r.id}" is account-wide (\`scope: ${r.scope}\`) and NO \`configCeilings\` check counts it, so nothing in this repo can observe what is actually being spent against it — and \`actualsReadFrom\` names no place to read it either. That is a ceiling discovered rather than watched: the first signal is the vendor refusing a write. Add a location (dashboard path + https url + the figure to read), or add a real counting check to \`configCeilings\` if the number can in fact be derived from the repo.`,
+    );
+  }
+}
+
+if (readsBlock.whyNotAutomated) prints.push(`READ LOCATION IS \`human\` — ${readsBlock.whyNotAutomated}`);
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (prints.length) {
   console.log('');
@@ -754,6 +977,14 @@ if (problems.length) {
   ok(
     `REQUIRED_COVERAGE — ${surfaces.length} vendor surface(s), every one named by a ceiling row; ` +
       `${sourced} sourced+dated ceiling(s), ${unverified} recorded UNVERIFIED and not derivable from`,
+  );
+  ok(
+    `${datedRows} of ${byId.size} ceiling(s) dated and WITHIN the stated \`${cadenceBlock.cadence}\` re-verification cadence; ` +
+      `oldest is "${oldestId}" at ${oldestAge} day(s), ${CADENCE_DAYS - oldestAge} day(s) before it fails`,
+  );
+  ok(
+    `${readByCeiling.size} human read location(s) printed above for ${observedOnly.length} account-wide ceiling(s) ` +
+      `no configCeilings check can count (${observedOnly.map((r) => r.id).join(', ')})`,
   );
   ok(
     `${constLocations.size} numeric constant(s) in ${sourceFiles.length} source file(s): ${annotated} annotated ` +
