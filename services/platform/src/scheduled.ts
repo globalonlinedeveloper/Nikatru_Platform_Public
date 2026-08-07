@@ -275,17 +275,35 @@ export async function analyticsLiveness(env: Env): Promise<void> {
         detail: `${r.n} event(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
       });
     }
-    // UNCONDITIONAL. This row is the detector's own proof of life, and it is
-    // the ONLY row that exists when the answer is zero — which is exactly why
-    // its `ok` had to stop being unconditional too. A row that always lands and
-    // always says ok is a row that carries no information at all.
+    // UNCONDITIONAL. This row is the detector's own proof of life, and it is the
+    // ONLY row that exists when the answer is zero.
+    //
+    // 🔴 `ok` IS `true` HERE EVEN AT ZERO EVENTS, AND THAT IS [ADR 035], NOT A
+    // REGRESSION. It was `total > 0` for one day (2026-08-06 → 08-07) and the
+    // first real cron run after that shipped proved the cost: `analytics_liveness`
+    // wrote ok=0, `tooling/ops/check-heartbeats.mjs` went exit 1, and it would
+    // have done so EVERY DAY — for the owner-gated reason that no app has shipped.
+    // A daily red nobody can act on is how an alarm gets muted.
+    //
+    // `ok` answers exactly one question, the same one for every writer: DID THE
+    // WORK SUCCEED. A query that ran and correctly found nothing has succeeded.
+    // Whether that silence is a FAULT is a different question, owned by [11]E-13
+    // (a baseline the events rail cannot silence) — and judged by a different
+    // reader. The `catch` below keeps ok=0 for its real meaning: the query could
+    // not run.
+    //
+    // ⚠️ The zero-events fact is NOT lost, and it is deliberately not left as
+    // prose: `events=` and `apps=` lead the detail so a reader can parse the
+    // count without interpreting a sentence. [ADR 035] requires that — matching
+    // on the English would be asserting by grepping prose, which this repo has a
+    // rule against and a scar from.
     rows.push({
       target: '(portfolio)',
-      ok: total > 0,
+      ok: true,
       detail:
         total === 0
-          ? `0 events from 0 app(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h — the rail is SILENT. Cannot yet distinguish a broken rail from no sessions: no independent liveness signal exists (see analyticsLiveness).`
-          : `${total} event(s) from ${counts.length} app(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
+          ? `events=0 apps=0 window=${ANALYTICS_LIVENESS_WINDOW_HOURS}h — the rail is SILENT. Cannot yet distinguish a broken rail from no sessions: no independent liveness signal exists (see analyticsLiveness).`
+          : `events=${total} apps=${counts.length} window=${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
     });
   } catch (err) {
     // ok=0 means THE WORK FAILED. A query that could not run tells us nothing
