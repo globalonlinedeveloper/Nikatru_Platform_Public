@@ -49,6 +49,48 @@
 // everything" is how an owner-gated exemption eats the check it was meant to
 // scope. What is owner-gated is CREATING a tree, not KEEPING one.
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// ── AND EVERY WORD ABOVE WAS ABOUT ONE HAND-MADE DIRECTORY ──────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// The requirement's sentence is "store listing metadata is GENERATED from the
+// app's spec fields and lives in the repo". The observation that makes it FALSE
+// is: STAMP A FRESH APP AND YOU GET NO `store/` TREE.
+//
+// Measured on `main` @ 26c2303: `find tooling/bricks/app -ipath "*store*"`
+// returned ZERO FILES, and this guard exited 0 reporting "5 present and
+// complete" — because every subject it had was `apps/subly/store/`, which a
+// human wrote by hand. Real guard, running, green, pointed one artifact away
+// from the behaviour the requirement names. The seventh recorded instance of
+// this corpus's signature defect.
+//
+// The limb at "THE FACTORY" below is the fix: its subject is the BRICK, so
+// removing a store template from `tooling/bricks/app` turns this guard RED. That
+// is the mutation the previous version slept through.
+//
+// ── WHAT HAPPENS TO apps/subly/store/, AND WHY ──────────────────────────────
+// It STAYS, byte for byte, and it is NOT regenerated from the new templates.
+// Three reasons, in order of weight:
+//
+//   1. It is a SHIPPED app's reviewed listing copy. `long-description.txt` is
+//      written prose about what Subly actually does; `data-safety.json` and
+//      `content-rating.json` are SWORN DECLARATIONS about Subly's real code,
+//      each answer carrying its own citation and two of them closed by reading
+//      a vendored SDK. Regenerating would replace all of that with template
+//      filler that is true of no app in particular — trading a reviewed listing
+//      for a uniform one, and swapping accurate declarations for `null`.
+//   2. It is not the source of truth for the templates and must not become one.
+//      What the brick inherited from this tree is its SHAPE and the CHANNEL
+//      facts (the sourced limits, the UNVERIFIED marks, the reason a snap name
+//      is claimed once). Its COPY is Subly's.
+//   3. Nothing is lost by leaving it. The fields that MUST be generated — title,
+//      short description, the two URLs — are already compared to their sources
+//      on every run, above, and Subly passes. "Generated" and "agrees with the
+//      spec" are the same property here, and the second is already enforced.
+//
+// The one thing that would have made regeneration necessary is if the hand-made
+// tree and the generated one could disagree without anybody noticing. They
+// cannot: both are checked against the same `derivedFields` block.
+//
 // Usage:  node tooling/ci/assert-store-metadata.mjs [repoRoot]
 // Exit 0 = every tree that exists is complete and derived; 1 = it is not.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,7 +165,30 @@ if (requiredFiles.length === 0) {
 }
 const urlFiles = new Set(Array.isArray(contract.urlFiles) ? contract.urlFiles : []);
 const derived = contract.derivedFields ?? {};
-const appConfigTemplate = typeof contract.appConfigPath === 'string' ? contract.appConfigPath : null;
+/** ORDERED CANDIDATES, not one path. `apps/subly` keeps its config at
+ *  `lib/core/config/app_config.dart` and the BRICK stamps `lib/core/
+ *  app_config.dart`; the single template that used to live here matched only the
+ *  first, so every app the factory produces fell through to a `CANNOT DERIVE`
+ *  print. See `portfolioUrls._why` in the register. */
+const appConfigPaths = Array.isArray(contract.appConfigPaths)
+  ? contract.appConfigPaths.filter((p) => typeof p === 'string' && p.includes('{app}'))
+  : [];
+if (appConfigPaths.length === 0) {
+  coverageLost([
+    `${REGISTER} storeMetadataContract.appConfigPaths is missing, empty, or holds no \`{app}\` template.`,
+    'It is the only way this guard locates an app\'s compiled config, and the portfolio-URL agreement',
+    'check below quantifies over what it finds. Empty, that check compares nothing and reports ok.',
+  ]);
+}
+const portfolioUrls = contract.portfolioUrls;
+if (portfolioUrls === null || typeof portfolioUrls !== 'object' || Array.isArray(portfolioUrls)) {
+  coverageLost([
+    `${REGISTER} declares no \`storeMetadataContract.portfolioUrls\`.`,
+    'The privacy-policy and support URLs in every listing are compared to it. Without the block those',
+    'two fields are checked for being non-empty https and nothing else — which is satisfied by any',
+    'URL at all, including one pointing at somebody else\'s policy.',
+  ]);
+}
 
 // ── the apps: the right factor of the expected set ───────────────────────────
 const appsRaw = read(APPS);
@@ -205,20 +270,26 @@ function dartConst(text, name) {
   return m ? m[1] : null;
 }
 
+/** Every path from `appConfigPaths` that exists for `slug`, in declared order. */
+function appConfigsFor(slug) {
+  return appConfigPaths.map((t) => t.replace('{app}', slug)).filter((rel) => read(rel) !== null);
+}
+
 function specValue(app, spec) {
   if (spec.source === 'apps.json') {
     const v = app[spec.field];
     return typeof v === 'string' && v.trim() !== '' ? { value: v.trim() } : { gap: `${APPS} entry "${app.slug}" has no \`${spec.field}\`` };
   }
-  if (spec.source === 'appConfig') {
-    if (!appConfigTemplate) return { gap: 'storeMetadataContract.appConfigPath is not declared' };
-    const rel = appConfigTemplate.replace('{app}', app.slug);
-    const text = read(rel);
-    if (text === null) return { gap: `${rel} does not exist` };
-    const v = dartConst(text, spec.field);
-    return v ? { value: v } : { gap: `${rel} declares no \`static const String ${spec.field}\`` };
+  if (spec.source === 'portfolioUrls') {
+    const v = portfolioUrls[spec.field];
+    // NOT a gap. The block is the register's own declaration, so a missing key
+    // is a broken contract rather than an app that has not got there yet —
+    // printing it would let the listing field go unchecked forever.
+    return typeof v === 'string' && v.trim() !== ''
+      ? { value: v.trim() }
+      : { problem: `${REGISTER} storeMetadataContract.portfolioUrls has no \`${spec.field}\`, so this listing field is compared to nothing.` };
   }
-  return { gap: `unknown derivation source "${spec.source}"` };
+  return { problem: `${REGISTER} storeMetadataContract.derivedFields declares source "${spec.source}", which this guard cannot resolve. A derivation nobody can evaluate is a field nobody checks.` };
 }
 
 // ── per tree ─────────────────────────────────────────────────────────────────
@@ -348,7 +419,9 @@ for (const { row, app, dir } of expected) {
     const spec = derived[rel];
     if (spec && typeof spec === 'object' && typeof spec.source === 'string') {
       const got = specValue(app, spec);
-      if (got.gap) {
+      if (got.problem) {
+        problems.push(got.problem);
+      } else if (got.gap) {
         prints.push(`CANNOT DERIVE ${p} — ${got.gap}. The field is present and non-empty; it just could not be compared to its spec source.`);
       } else {
         derivedChecked++;
@@ -396,6 +469,259 @@ if (treesChecked > 0 && Object.keys(derived).filter((k) => k !== '_why').length 
     `${treesChecked} metadata tree(s) exist, ${Object.keys(derived).length - 1} derived field(s) are declared, and NOT ONE comparison ran.`,
     '"Generated from the spec" is D-5\'s headline. With no comparison reaching a spec source, the',
     'listing and the app can say different things and this guard cannot tell.',
+  ]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── THE FACTORY: does a NEW app get a listing without anybody typing one? ────
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 EVERYTHING ABOVE THIS LINE READS `apps/subly/store/`, WHICH WAS HAND-MADE.
+// D-5's sentence is "store listing metadata is GENERATED from the app's spec
+// fields". The observation that makes it false is: STAMP A FRESH APP AND YOU GET
+// NO `store/` TREE. Measured on `main` @ 26c2303 — `find tooling/bricks/app
+// -ipath "*store*"` returned ZERO files while this guard exited 0 reporting
+// "5 present and complete". The guard was real, it ran, it was green, and its
+// subject was one directory a human wrote by hand.
+//
+// So this limb's subject is the BRICK. It is the only limb that can see the
+// falsifying observation, and it needs no stamp to do it: the templates are
+// committed, so the check works in a tree where `apps/probe` is absent (which is
+// every tree — the probe is CI-ephemeral and gitignored).
+//
+// ── STATED LIMIT ────────────────────────────────────────────────────────────
+// This proves the brick EMITS a complete listing and that its derived fields
+// reference the spec. It does not prove mason RENDERS them — that is what the
+// `app_brick` lane's stamp does, and `assert-stamp-text-fidelity.mjs` is what
+// fails on an HTML entity in the rendered output.
+const BRICK = 'tooling/bricks/app';
+const BRICK_APP_TOKEN = '{{app_id}}';
+/** The brick's copy of a per-app path: `apps/{app}/x` -> `<brick>/apps/{{app_id}}/x`. */
+const brickPath = (perAppTemplate) =>
+  `${BRICK}/__brick__/${perAppTemplate.replace('{app}', BRICK_APP_TOKEN)}`;
+
+/** Dart source with COMMENTS REMOVED and string literals copied through.
+ *
+ *  🔴 MEASURED, NOT PRECAUTIONARY. Commenting the call out —
+ *  `final written = <String>[]; // writeStoreGraphics(` — left the wiring check
+ *  below GREEN while a stamp wrote no listing graphics at all. That is this
+ *  repository's oldest recorded guard defect wearing a Dart hat: a `grep
+ *  '"r2_buckets"'` once matched the template comment explaining why there is no
+ *  r2_buckets. A hook file whose entire purpose is explained in prose ABOUT the
+ *  functions it calls is the worst possible input for a text scan.
+ *
+ *  String literals are copied through rather than stripped: `'…'` bodies are not
+ *  comments, and a call spelled inside one would be prose too — but blanking
+ *  them would change offsets for no gain, and the patterns here are function
+ *  calls, which do not occur inside a Dart string in this file. */
+function stripDartComments(src) {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const two = src.slice(i, i + 2);
+    if (two === '//') {
+      while (i < src.length && src[i] !== '\n') i++;
+    } else if (two === '/*') {
+      const end = src.indexOf('*/', i + 2);
+      i = end === -1 ? src.length : end + 2;
+    } else if (src[i] === "'" || src[i] === '"') {
+      const quote = src[i];
+      out += src[i++];
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === '\\') out += src[i++];
+        out += src[i++];
+      }
+      if (i < src.length) out += src[i++];
+    } else {
+      out += src[i++];
+    }
+  }
+  return out;
+}
+
+/** A template body that is exactly one triple-stached mustache tag.
+ *  TRIPLE on purpose: mason HTML-escapes every DOUBLE stache (& < > " ' /), and
+ *  a listing is text, so `{{short_name}}` would stamp `Probe&#x27;s` into a
+ *  store title. Matching only `{{{…}}}` makes that a build failure here rather
+ *  than a corrupt listing nobody reads until review. */
+const MUSTACHE_ONLY = /^\{\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}\}$/;
+
+let brickTreesChecked = 0;
+let brickFilesChecked = 0;
+let brickDerivedChecked = 0;
+
+/** Files a store tree carries that the brick CANNOT template, because a mason
+ *  template is text and these are PNGs. They are generated by post_gen from
+ *  `app_id` + `seed_hex`; the wiring check below is what stops that generation
+ *  being quietly removed. */
+const generatedGraphics = new Set();
+for (const row of storeRows) {
+  const assets = contract.perChannel?.[row.id]?.graphicAssets?.assets ?? {};
+  for (const name of Object.keys(assets)) if (!name.startsWith('_')) generatedGraphics.add(name);
+}
+
+for (const row of storeRows) {
+  const template = row.storeMetadataDir;
+  if (typeof template !== 'string' || !template.includes('{app}')) continue; // already a problem above
+  const dir = brickPath(template);
+
+  if (!isDir(dir)) {
+    problems.push(
+      `THE BRICK EMITS NO STORE LISTING for channel "${row.id}": ${dir} does not exist. [10]D-5 is that listing metadata is GENERATED from the app's spec — stamp app #2 today and its ${row.id} listing has to be hand-typed into a console, which is the one outcome D-5 names. This is the failure the previous version of this guard could not see, because its only subject was apps/subly/store, which a human wrote.`,
+    );
+    continue;
+  }
+  brickTreesChecked++;
+
+  const extraFiles = (contract.perChannel?.[row.id]?.additionalFiles ?? []).filter((f) => typeof f === 'string');
+  for (const rel of [...requiredFiles, ...extraFiles]) {
+    if (generatedGraphics.has(rel)) continue; // covered by the wiring check below
+    const p = posix.join(dir, rel);
+    const text = read(p);
+    if (text === null) {
+      problems.push(
+        `${p} is missing from the brick. ${REGISTER} requires "${rel}" in every store metadata tree, so a stamped app's "${row.id}" listing would be INCOMPLETE the moment the app joins the catalogue — and this guard would then fail on the app rather than on the factory that produced it.`,
+      );
+      continue;
+    }
+    if (text.trim() === '') {
+      problems.push(`${p} is an EMPTY template, so every app the factory stamps gets a blank "${rel}" in its "${row.id}" listing.`);
+      continue;
+    }
+    brickFilesChecked++;
+
+    // ── the headline: is the field GENERATED, or is it a literal? ───────────
+    const spec = derived[rel];
+    if (!spec || typeof spec !== 'object') continue;
+    const body = text.trim();
+    if (spec.source === 'apps.json') {
+      const brickVar = spec.brickVar;
+      if (typeof brickVar !== 'string' || brickVar === '') {
+        problems.push(
+          `${REGISTER} storeMetadataContract.derivedFields["${rel}"] is sourced from ${APPS}.${spec.field} but names no \`brickVar\`. Nothing then says WHICH mason var the template must interpolate, so this limb cannot tell a generated field from a hand-typed one — the exact blindness [10]D-5 is about.`,
+        );
+        continue;
+      }
+      const m = MUSTACHE_ONLY.exec(body);
+      if (!m) {
+        problems.push(
+          `${p} is not generated: it reads ${JSON.stringify(body.slice(0, 60))} where it must be exactly \`{{{${brickVar}}}}\`. A literal in the template is the same listing for all fifty apps — hand-written once instead of once per app, which is not the fix [10]D-5 asks for. (Triple stache: mason HTML-escapes double staches and a store title is text.)`,
+        );
+      } else if (m[1] !== brickVar) {
+        problems.push(
+          `${p} interpolates \`{{{${m[1]}}}}\` but ${APPS}.${spec.field} — the value this field is compared against on every run — is stamped from \`${brickVar}\`. The two would disagree for any app where the vars differ, and the per-app check above would then fail on the app.`,
+        );
+      } else {
+        brickDerivedChecked++;
+      }
+    } else if (spec.source === 'portfolioUrls') {
+      const want = portfolioUrls[spec.field];
+      if (typeof want !== 'string' || want.trim() === '') continue; // reported by specValue
+      if (body !== want.trim()) {
+        problems.push(
+          `${p} reads ${JSON.stringify(body)} and ${REGISTER} storeMetadataContract.portfolioUrls.${spec.field} says ${JSON.stringify(want.trim())}. Every app this factory stamps would publish the wrong ${spec.field} in its "${row.id}" listing, and the per-app check would then fail on each of them in turn.`,
+        );
+      } else {
+        brickDerivedChecked++;
+      }
+    }
+  }
+}
+
+// ── the two PNGs the brick cannot template, and the wiring that writes them ──
+// A mason template is text; a feature graphic is not. post_gen generates both
+// from `app_id` + `seed_hex`. That is a CLAIM about the stamping path, so it is
+// checked as one — and deliberately across TWO FILES: the declaration is in
+// brand_assets.dart and the call must be in post_gen.dart, which contains no
+// declaration of it. That is the 2026-07-26 lesson stated as a shape rather than
+// a note (assert-seams-wired.mjs shipped with its "is it called" check matching
+// the function's own declaration, so deleting every real caller still passed).
+if (generatedGraphics.size > 0) {
+  const DECL = `${BRICK}/hooks/brand_assets.dart`;
+  const CALL = `${BRICK}/hooks/post_gen.dart`;
+  const declRaw = read(DECL);
+  const callRaw = read(CALL);
+  const declSrc = declRaw === null ? null : stripDartComments(declRaw);
+  const callSrc = callRaw === null ? null : stripDartComments(callRaw);
+  if (declSrc === null || callSrc === null) {
+    coverageLost([
+      `${declSrc === null ? DECL : CALL} does not exist.`,
+      'The store listing graphics are generated by the stamp, and this is the only check that they',
+      'still are. With the file gone the check ranges over nothing and reports the factory healthy.',
+    ]);
+  }
+  // 🔴 THE LOOKBEHIND IS THE WHOLE CHECK. Without `(?<![\w$])` this matches
+  // `_writeStoreGraphics(` — post_gen's own PRIVATE WRAPPER, which is a
+  // different function that merely shares a suffix. MEASURED, not reasoned:
+  // with the bare pattern, gutting the real call inside that wrapper
+  // (`final written = <String>[]; // writeStoreGraphics(`) left this guard GREEN
+  // while a stamp wrote no listing graphics at all. Same family as the 2026-07-26
+  // seams defect — a "is it called" check satisfied by something that is not the
+  // call — found the same way, by mutating the real tree rather than a fixture.
+  const CALLS = /(?<![\w$])writeStoreGraphics\s*\(/;
+  if (!new RegExp(`List<String>\\s+${CALLS.source.replace('(?<![\\w$])', '')}`).test(declSrc)) {
+    problems.push(
+      `${DECL} declares no \`writeStoreGraphics\`. ${[...generatedGraphics].join(', ')} would then never be written by a stamp, and every app the factory produces would carry an INCOMPLETE store tree.`,
+    );
+  }
+  if (!CALLS.test(callSrc)) {
+    problems.push(
+      `${CALL} never calls \`writeStoreGraphics\` — comments stripped, and not counting its own private \`_writeStoreGraphics\` wrapper. The generator exists and nothing runs it, so a stamped app gets ${[...generatedGraphics].join(' and ')} not at all and this guard then fails on the APP rather than on the factory that shorted it.`,
+    );
+  }
+  if (!/channel-register\.json/.test(callSrc)) {
+    problems.push(
+      `${CALL} does not read tooling/channel-register.json. Play's dimensions and its two OPPOSITE alpha requirements are declared there with the URL and date they were fetched from; a stamp that hard-codes them instead is the second declaration and the first to drift, and getting the alpha backwards produces a file that looks perfect and is rejected at upload.`,
+    );
+  }
+}
+
+// ── ⚠️ AND THERE IS DELIBERATELY NO `COVERAGE LOST` FOR THIS LIMB ───────────
+// Every other scan in this file needs one because its domain can silently
+// become empty. This one's cannot: a store row with no brick tree is a FAIL by
+// name, and every required file missing from a tree that exists is a FAIL by
+// name. So "the scan reached nothing" is not a silent zero here — it is N
+// explicit failures, one per channel, printed with the channel id.
+//
+// The two backstops that were written first (`brickFilesChecked === 0` and
+// `brickDerivedChecked === 0`) were REMOVED rather than kept: neither could be
+// reached without a per-row FAIL already firing, and the COVERAGE LOST exits
+// immediately — so their only possible effect was to MASK the specific
+// diagnosis with a vaguer one. An assertion that cannot fail is worse than
+// none, and one that can only fire by hiding a better message is worse again.
+// The numbers are still REPORTED, on the REQUIRED_COVERAGE line below, which is
+// where a shrinking scan shows up to a human reading a green run.
+
+// ── the portfolio URLs still agree with the code that ships them ────────────
+// `portfolioUrls` moved OUT of app_config so the check could reach a stamped app
+// (see the register's `_why`). This is what stops that move loosening anything:
+// every app_config in the tree that declares one of these constants must still
+// agree with the register, in BOTH layouts, brick included.
+const agrees = portfolioUrls.agreesWithAppConfigConst ?? {};
+let configsCompared = 0;
+const configSubjects = [
+  ...apps.filter((a) => typeof a.slug === 'string' && a.slug !== '').flatMap((a) => appConfigsFor(a.slug)),
+  ...appConfigPaths.map((t) => brickPath(t)).filter((rel) => read(rel) !== null),
+];
+for (const [urlKey, constName] of Object.entries(agrees)) {
+  const want = portfolioUrls[urlKey];
+  if (typeof want !== 'string' || want.trim() === '') continue;
+  for (const rel of configSubjects) {
+    const declaredValue = dartConst(read(rel), constName);
+    if (declaredValue === null) continue; // this config does not declare it
+    configsCompared++;
+    if (declaredValue !== want.trim()) {
+      problems.push(
+        `${rel} compiles \`${constName} = ${JSON.stringify(declaredValue)}\` while ${REGISTER} storeMetadataContract.portfolioUrls.${urlKey} publishes ${JSON.stringify(want.trim())} in every store listing. The app sends users to one page and the store listing to another, and both look correct on their own.`,
+      );
+    }
+  }
+}
+if (Object.keys(agrees).length > 0 && configsCompared === 0) {
+  coverageLost([
+    `storeMetadataContract.portfolioUrls.agreesWithAppConfigConst names ${Object.keys(agrees).length} constant(s) and NOT ONE app_config in this tree declares any of them.`,
+    `Subjects searched: ${configSubjects.length ? configSubjects.join(', ') : '(none found — appConfigPaths matched nothing)'}.`,
+    'Either the constant was renamed or appConfigPaths has stopped locating the config. Both leave the',
+    'listing URL tied to nothing while this block still claims it is tied to the code.',
   ]);
 }
 
@@ -523,5 +849,10 @@ if (problems.length) {
       `${treesChecked} present and complete, ${expected.length - treesChecked} printed as owner-gated gaps`,
   );
   ok(`${filesChecked} listing field(s) non-empty, ${derivedChecked} of them compared to their spec source, ${limitsChecked} measured against a SOURCED store limit, ${identitiesChecked} package-identity field(s) agree`);
+  ok(
+    `REQUIRED_COVERAGE (THE FACTORY) — ${storeRows.length} store channel(s) → ${brickTreesChecked} brick template tree(s) under ${BRICK}, ` +
+      `${brickFilesChecked} template(s) read, ${brickDerivedChecked} field(s) proven GENERATED from a spec var rather than typed, ` +
+      `${generatedGraphics.size} graphic(s) wired to the stamp, ${configsCompared} app_config constant(s) agree with the register`,
+  );
   console.log('\nassert-store-metadata: ok');
 }

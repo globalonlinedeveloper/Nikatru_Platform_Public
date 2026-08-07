@@ -1,0 +1,18 @@
+{{{short_name}}} — {{{description}}}
+
+{{{short_name}}} is a {{category}} app from Nikatru. It runs on your device,
+keeps your data on it, and does not ask for an account before it is useful.
+
+WHAT YOU GET
+- Works offline. What you enter is stored on the device and stays readable
+  without a connection.
+- No ads, and nothing sold on. Analytics are OFF until you turn them on.
+- Dark and light themes, and the choice is remembered.
+- Your data is yours: export it, and delete your account and everything in it
+  from inside the app.
+
+PRIVACY
+{{{short_name}}} does not sell your data and does not show advertising. The
+full policy is at https://nikatru.com/privacy.html.
+
+Made by Nikatru. Questions: https://nikatru.com/contact.html

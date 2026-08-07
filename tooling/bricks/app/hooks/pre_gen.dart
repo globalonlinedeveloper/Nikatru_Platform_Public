@@ -125,7 +125,8 @@ void run(HookContext context) {
   if (!RegExp(r'^[0-9A-Fa-f]{6}$').hasMatch(seed)) {
     final String hint = seed.startsWith('#') ? ' Drop the leading "#".' : '';
     problems.add(
-        'seed_hex must be exactly 6 hex digits (RRGGBB) — got "$seed".$hint');
+      'seed_hex must be exactly 6 hex digits (RRGGBB) — got "$seed".$hint',
+    );
   }
 
   // ── category ──────────────────────────────────────────────────────────────
@@ -145,7 +146,8 @@ void run(HookContext context) {
   final String category = v('category');
   if (!categories.contains(category)) {
     problems.add(
-        'category must be one of ${categories.join(', ')} — got "$category".');
+      'category must be one of ${categories.join(', ')} — got "$category".',
+    );
   }
 
   // ── description ───────────────────────────────────────────────────────────
@@ -157,6 +159,37 @@ void run(HookContext context) {
       'description must be a single line — got ${description.split('\n').length} lines.',
     );
   }
+  // [pipeline 10]D-5 — EMPTY IS NO LONGER ALLOWED, and the reason changed under
+  // it. This used to be "a listing line, not a build input", true while the
+  // brick stamped no listing: a blank line reached nobody. The brick now
+  // GENERATES `store/<channel>/short-description.txt` from this var for all five
+  // store channels, and a store's short description may not be blank — so a
+  // blank here stamps an app whose listing fails its own build the moment it is
+  // registered in the catalogue.
+  if (description.isEmpty) {
+    problems.add(
+      'description must not be empty — it is the SHORT DESCRIPTION of every '
+      'store listing this stamp generates (and the catalogue tagline). One '
+      'sentence saying what the app does for somebody who has never seen it.',
+    );
+  }
+
+  // ── subtitle ──────────────────────────────────────────────────────────────
+  // [pipeline 10]D-5. A real App Store field, and the one listing value that
+  // cannot be derived from anything else in this spec: Apple caps it at 30
+  // characters and condensing a free-length description to 30 would either
+  // truncate mid-word or invent copy. So the SPEC carries it, exactly as it
+  // carries the description, and both App Store trees interpolate it.
+  final String subtitle = v('subtitle');
+  if (subtitle.isEmpty) {
+    problems.add(
+      'subtitle must not be empty — it is the App Store subtitle in the '
+      'ios-appstore and macos-appstore listings this stamp generates.',
+    );
+  }
+  if (subtitle.contains('\n')) {
+    problems.add('subtitle must be a single line.');
+  }
   // 🔴 THE LENGTH CAP WAS REMOVED, and how it went is the point. "120 characters
   // or fewer" came from nothing — no store publishes that number — and it
   // immediately rejected THIS REPO'S OWN backend probe fixture at 129
@@ -165,6 +198,32 @@ void run(HookContext context) {
   //
   // A validation rule nobody can defend fires on CORRECT input. That is the
   // same defect as an assertion that cannot fire at all, pointed the other way.
+  //
+  // 🔴 …AND THAT IS EXACTLY WHY THE CAPS BELOW ARE NOT WRITTEN HERE. They are
+  // READ from tooling/channel-register.json, where each one sits beside the
+  // primary-source URL and the date it was fetched, and a limit whose `source`
+  // is missing is IGNORED rather than enforced — the same rule
+  // assert-store-metadata.mjs applies to the same block. Nothing in this file
+  // may invent a number; it may only refuse to stamp a spec that a sourced
+  // number already forbids.
+  final String shortName = _shortName(displayName);
+  problems.addAll(
+    _sourcedListingLimits(
+      <String, String>{
+        'title.txt': shortName,
+        'short-description.txt': description,
+        'subtitle.txt': subtitle,
+      },
+      <String, String>{
+        'title.txt':
+            'title.txt is DERIVED from the catalogue `name`, which is the display '
+            'name up to its subtitle separator ("$shortName")',
+        'short-description.txt':
+            'short-description.txt is DERIVED from `description`',
+        'subtitle.txt': 'subtitle.txt is DERIVED from `subtitle`',
+      },
+    ),
+  );
 
   // ── [pipeline S-13] REFUSE, NEVER OVERWRITE ───────────────────────────────
   // Checked LAST, after the spec is known good, so the message is about the one
@@ -246,6 +305,13 @@ void run(HookContext context) {
   // renders as an apostrophe while a raw `"` would end the attribute early.
   vars['display_name'] = displayName;
   vars['description'] = description;
+  vars['subtitle'] = subtitle;
+  // [pipeline 10]D-5. The catalogue `name` and `store/*/title.txt` must be the
+  // SAME string — assert-store-metadata.mjs compares them on every run — so the
+  // split runs ONCE, here, and both consumers read the result. post_gen used to
+  // own `_shortName` and the templates had no access to it at all, which is how
+  // a listing title could only ever have been hand-typed.
+  vars['short_name'] = shortName;
   vars['display_name_dart'] = _dartSingleQuoted(displayName);
   vars['display_name_json'] = _jsonBody(displayName);
   vars['description_json'] = _jsonBody(description);
@@ -268,6 +334,134 @@ String _dartSingleQuoted(String s) => s
     .replaceAll('\r', r'\r')
     .replaceAll('\n', r'\n')
     .replaceAll('\t', r'\t');
+
+/// "Lingo — Offline Phrasebook" -> "Lingo". "E-Book Reader" -> "E-Book Reader".
+///
+/// 🔴 THE SPLIT IS ON A SUBTITLE SEPARATOR, NOT ON "A DASH". `brick.yaml`'s own
+/// example is `Lingo — Offline Phrasebook`: the catalogue wants the NAME and the
+/// display name carries `<name> <separator> <tagline>`. The separator is a dash
+/// **surrounded by whitespace** — that whitespace is the entire signal, and it
+/// is what tells a separator apart from a hyphen inside a word.
+///
+/// An earlier spelling was `indexOf(RegExp(r'[—-]'))`. Inside a character class a
+/// trailing `-` is a literal, so that matched an ordinary hyphen too, anywhere —
+/// and "E-Book Reader" entered the public catalogue as **"E"**. Not a contrived
+/// name: hyphens are ordinary in product names (E-Book, Wi-Fi, To-Do, Co-op).
+///
+/// En dash is accepted alongside em dash and hyphen because a `–` between spaces
+/// is the same authorial gesture; nothing in the input contract prefers one.
+///
+/// ⚠️ LIVES HERE, NOT IN post_gen.dart, SINCE [10]D-5. Two consumers now need
+/// the result — the catalogue row post_gen appends AND the `title.txt` the
+/// templates stamp — and a guard compares them to each other. Two spellings of
+/// one split is how they would come to disagree.
+String _shortName(String displayName) {
+  final trimmed = displayName.trim();
+  final separator = RegExp(r'\s+[—–-]\s+').firstMatch(trimmed);
+  final base = (separator != null && separator.start > 0)
+      ? trimmed.substring(0, separator.start)
+      : trimmed;
+  return base.trim();
+}
+
+/// Refuse a spec that a SOURCED store limit already forbids.
+///
+/// [values] maps a listing FILE to the spec value the templates stamp into it;
+/// [why] explains the derivation in the refusal message, because "title.txt is
+/// 34 characters" is useless to somebody who typed a display name.
+///
+/// ── WHY THE NUMBERS ARE READ AND NOT WRITTEN ────────────────────────────────
+/// `tooling/channel-register.json` -> `storeMetadataContract.perChannel.<id>
+/// .maxChars` is the ONE declaration of every store's field limits, and every
+/// entry carries the URL and date it was fetched from. The same block is read by
+/// `tooling/ci/assert-store-metadata.mjs`. Restating a number here would make
+/// this the second declaration and the first to drift — and a drifted cap that
+/// rejects correct input is the failure this brick has already paid for once.
+///
+/// 🔴 AN ENTRY WITHOUT A `source` IS IGNORED, exactly as the guard ignores it.
+/// A limit nobody sourced must never refuse somebody's app.
+///
+/// ⚠️ THE BINDING LIMIT ACROSS CHANNELS, not each channel's own: one spec stamps
+/// all five trees, so the value has to satisfy the tightest max and the loosest
+/// min. Apple's name minimum of 2 and Play's maximum of 30 are both real, and an
+/// app must clear both.
+///
+/// COUNTED IN UNICODE CODE POINTS, never `String.length`, which in Dart is UTF-16
+/// units: a 30-character name made of astral characters scores 60 and would be
+/// refused at a limit both stores accept. Same rule as the guard's `charCount`.
+List<String> _sourcedListingLimits(
+  Map<String, String> values,
+  Map<String, String> why,
+) {
+  final problems = <String>[];
+  final file = File('tooling/channel-register.json');
+  if (!file.existsSync()) {
+    // REFUSE rather than skip. This brick edits the root pubspec and the shared
+    // catalogue; it is repo-local by construction, so a missing register means
+    // the stamp is running somewhere it cannot complete — and silently skipping
+    // a check is how a limit stops being enforced without anybody noticing.
+    return <String>[
+      'tooling/channel-register.json was not found from the current directory '
+          '(${Directory.current.path}). Stamp from the repository root: the '
+          'store listing this brick generates takes its field limits from that '
+          'file, and it also has to append the app to the shared catalogue and '
+          'the workspace.',
+    ];
+  }
+  Map<String, dynamic> perChannel;
+  try {
+    final decoded = jsonDecode(file.readAsStringSync());
+    final contract = (decoded as Map)['storeMetadataContract'];
+    perChannel = ((contract as Map)['perChannel'] as Map)
+        .cast<String, dynamic>();
+  } catch (e) {
+    return <String>[
+      'tooling/channel-register.json could not be read for its store field '
+          'limits ($e). Nothing was stamped: a listing generated against limits '
+          'nobody could read is a listing nobody has checked.',
+    ];
+  }
+
+  for (final MapEntry<String, String> entry in values.entries) {
+    int? boundMax;
+    int? boundMin;
+    String maxSource = '';
+    String minSource = '';
+    for (final Object? channel in perChannel.values) {
+      if (channel is! Map) continue;
+      final Object? limits = channel['maxChars'];
+      if (limits is! Map) continue;
+      final Object? limit = limits[entry.key];
+      if (limit is! Map) continue;
+      final Object? source = limit['source'];
+      if (source is! String || source.trim().isEmpty) continue; // unsourced
+      final Object? max = limit['max'];
+      if (max is int && (boundMax == null || max < boundMax)) {
+        boundMax = max;
+        maxSource = source;
+      }
+      final Object? min = limit['min'];
+      if (min is int && (boundMin == null || min > boundMin)) {
+        boundMin = min;
+        minSource = source;
+      }
+    }
+    final int n = entry.value.runes.length;
+    if (boundMax != null && n > boundMax) {
+      problems.add(
+        '${entry.key} would be $n characters and the limit is $boundMax. '
+        '${why[entry.key] ?? ''}. Source: $maxSource',
+      );
+    }
+    if (boundMin != null && n < boundMin) {
+      problems.add(
+        '${entry.key} would be $n characters and the minimum is $boundMin. '
+        '${why[entry.key] ?? ''}. Source: $minSource',
+      );
+    }
+  }
+  return problems;
+}
 
 /// Escape [s] for use inside a JSON string, WITHOUT the surrounding quotes.
 ///

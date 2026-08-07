@@ -75,6 +75,22 @@ vars:
     default: productivity
   description:
     type: string
-    description: One-line differentiation for store listings
-    prompt: Differentiation line
-    default: ""
+    description: >-
+      The SHORT DESCRIPTION of every store listing this stamp generates, and the
+      catalogue tagline. One line, and it MUST NOT BE BLANK — [pipeline 10]D-5
+      made the brick generate `apps/<id>/store/<channel>/short-description.txt`
+      from this var for all five store channels, so a blank stamps a listing
+      that fails its own build. Google Play caps it at 80 characters and
+      hooks/pre_gen.dart enforces that from the channel register's SOURCED
+      number, never from one written here.
+    prompt: Short description (one line, <= 80 chars — the store listing uses it)
+  subtitle:
+    type: string
+    description: >-
+      The App Store SUBTITLE, <= 30 characters — a real field on both the iOS
+      and macOS listings. It is a spec field of its own rather than a slice of
+      `description` because condensing free-length prose to 30 characters either
+      truncates mid-word or invents copy, and a store listing is not the place to
+      guess. The limit is read from tooling/channel-register.json, where it sits
+      beside the Apple page and fetch date it came from.
+    prompt: App Store subtitle (<= 30 chars)

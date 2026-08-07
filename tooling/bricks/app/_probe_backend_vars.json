@@ -5,6 +5,7 @@
   "api_domain": "",
   "seed_hex": "0E7C6B",
   "category": "productivity",
-  "description": "Throwaway app stamped in CI with needs_backend=true, to prove the OPT-IN Worker + D1 half of the clone contract still typechecks (& ' / \" survive).",
+  "description": "Backend CI probe: opt-in Worker & D1; ' / \" survive.",
+  "subtitle": "Backend probe & \"D1\" smoke",
   "needs_backend": true
 }

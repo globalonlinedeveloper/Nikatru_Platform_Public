@@ -1,0 +1,53 @@
+{
+  "_readme": [
+    "THE IARC CONTENT-RATING QUESTIONNAIRE — {{{short_name}}}, channel `android-play`. STAMPED UNANSWERED.",
+    "",
+    "This is the repo-native source of truth. The Play Console is a COPY of it, exactly as [10]D-5",
+    "says of the listing text. Required present and non-empty by tooling/channel-register.json ->",
+    "storeMetadataContract.perChannel[\"android-play\"].additionalFiles.",
+    "",
+    "The rating is issued by IARC from answers the developer swears to, and an inaccurate questionnaire can have the rating revoked and the app removed. The questions are ABOUT THE CODE AND THE CONTENT, so they are answered here and copied into the Console, never the other way round.",
+    "",
+    "🔴 EVERY ANSWER BELOW IS `null`, AND null IS A REAL ANSWER MEANING \"NOBODY HAS ANSWERED THIS YET\".",
+    "It is deliberately NOT filled with a plausible value. A template cannot know what this app does —",
+    "it was generated the moment the app was stamped, before a line of product code existed — and a",
+    "confidently wrong sworn declaration is worse than an obviously incomplete one.",
+    "",
+    "⚠️ THE FORM CANNOT BE SUBMITTED WHILE AN `unresolved` ROW REMAINS. Answer each against THIS app's",
+    "real code, cite the page you read (host and fetch date), and model the finished file on",
+    "apps/subly/store/android-play/ — which carries the worked example, including the two questions",
+    "that were closed on 2026-08-04 and why each had been recorded as needing something it did not.",
+    "",
+    "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER. Rows record what this repository can OBSERVE."
+  ],
+  "app": "{{app_id}}",
+  "channel": "android-play",
+  "sources": {
+    "allowedHosts": [
+      "support.google.com",
+      "globalratings.com",
+      "play.google.com"
+    ],
+    "cited": []
+  },
+  "category": "{{category}}",
+  "violence": null,
+  "sexuality": null,
+  "language": null,
+  "controlledSubstance": null,
+  "gambling": null,
+  "userGeneratedContent": null,
+  "userToUserCommunication": null,
+  "sharesLocation": null,
+  "digitalPurchases": null,
+  "unresolved": [
+    {
+      "question": "every content question above",
+      "why": "They describe CONTENT this app does not have yet — it was stamped from a template. Answer them against the shipped build, from the current IARC questionnaire, and record the fetch date. Answering them from the template would be swearing to the contents of an app nobody has written."
+    },
+    {
+      "question": "digitalPurchases — does this app sell anything?",
+      "why": "The chassis stamps a paywall behind a gate that is OFF by default, so the honest answer changes the day the gate opens. Derivable from the entitlement wiring; re-answer it in the same increment that turns monetization on."
+    }
+  ]
+}
