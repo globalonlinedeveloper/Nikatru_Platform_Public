@@ -206,6 +206,123 @@ void run(HookContext context) {
   // assert-store-metadata.mjs applies to the same block. Nothing in this file
   // may invent a number; it may only refuse to stamp a spec that a sourced
   // number already forbids.
+  // ── markets · audience ────────────────────────────────────────────────────
+  // [pipeline K-1 · K-16] Both are resolved against the SAME file — the duty
+  // matrix — so it is read once, and a matrix that cannot be read is a refusal
+  // rather than a skip, for the same reason `_sourcedListingLimits` refuses:
+  // silently skipping a check is how a rule stops being enforced with nobody
+  // noticing.
+  final _DutyMatrix matrix = _readDutyMatrix();
+  if (matrix.error != null) {
+    problems.add(matrix.error!);
+  }
+
+  // ── markets ───────────────────────────────────────────────────────────────
+  // [pipeline K-1] "Every app declares the markets it is offered in." The
+  // declaration is only worth having if it RESOLVES to something, which is the
+  // second limb: `global` is a word, not a market, and an app declared into
+  // `global` has had no per-market duty looked at at all.
+  //
+  // 🔴 THE VOCABULARY IS COMPUTED FROM THE DUTY MATRIX, NEVER WRITTEN HERE. A
+  // list of "markets we support" in this file would be a second declaration and
+  // the first to drift — and the drift is silent in the dangerous direction:
+  // add `global` to the list, every stamp passes, and the thing the list was
+  // for is gone. Computing it means a market can only become declarable by
+  // adding the duty row that makes a duty resolvable in it.
+  final List<String> markets = v('markets')
+      .split(',')
+      .map((String s) => s.trim().toLowerCase())
+      .where((String s) => s.isNotEmpty)
+      .toList();
+  if (markets.isEmpty) {
+    problems.add(
+      'markets must name at least one market — got "${v('markets')}". Every '
+      'per-market duty in tooling/legal/duty-matrix.json is resolved from this '
+      'list, and a duty resolved from a blank is a duty nobody resolved. '
+      'Resolvable today: ${matrix.vocabulary.join(', ')}.',
+    );
+  } else if (markets.toSet().length != markets.length) {
+    problems.add(
+      'markets lists the same market twice — got "${markets.join(', ')}". Two '
+      'spellings of one market is how a per-market duty gets discharged once '
+      'and counted twice.',
+    );
+  } else if (matrix.error == null) {
+    // COVERAGE SELF-CHECK, and it is the one this limb genuinely needs. If no
+    // row in the matrix carries a `markets` array the vocabulary is EMPTY, and
+    // then every market on earth "resolves to zero rows" — the check would
+    // refuse every correct spec while looking like it was working. That is the
+    // mirror image of an assertion that cannot fail, and it must be named
+    // rather than left to be inferred from a confusing per-market failure.
+    if (matrix.vocabulary.isEmpty) {
+      problems.add(
+        'COVERAGE LOST — not one row in tooling/legal/duty-matrix.json carries a '
+        '`markets` array, so the market vocabulary is empty and EVERY declared '
+        'market would resolve to zero duties. This check would then refuse every '
+        'correct spec. Either the tags were deleted, or this hook has stopped '
+        'seeing them.',
+      );
+    } else {
+      final List<String> unresolvable =
+          markets.where((String m) => matrix.rowsFor(m).isEmpty).toList();
+      if (unresolvable.isNotEmpty) {
+        problems.add(
+          'these declared market(s) resolve to ZERO duty rows in '
+          'tooling/legal/duty-matrix.json: ${unresolvable.join(', ')}. A market '
+          'nothing in the compliance corpus is scoped to is a market nobody has '
+          'done the work for, so declaring it would record a promise the tree '
+          'cannot keep — that is exactly how "global" comes to mean nothing. '
+          'Resolvable today: ${matrix.vocabulary.join(', ')}. To add one, tag '
+          'the duty row that applies there with its market and stamp again.',
+        );
+      }
+    }
+  }
+
+  // ── audience ──────────────────────────────────────────────────────────────
+  // [pipeline K-16] "No kids app without the children's surface."
+  //
+  // 🔴 THE VERDICT IS READ OUT OF THE DUTY MATRIX, NOT WRITTEN HERE. A bare
+  // `if (audience == 'children') throw` would be a rule that can never pass:
+  // correct once, then permanently wrong the day somebody builds the surface,
+  // and the only thing standing between the two is a person remembering to come
+  // back and delete a line. So the condition is the ROW's own state — status
+  // `implemented` AND an `artefact` that is really on disk. Both halves matter:
+  // the status alone can be flipped by anybody, and an artefact path alone
+  // proves nothing about whether the duty was discharged.
+  const List<String> audiences = <String>['general', 'children'];
+  final String audience = v('audience').toLowerCase();
+  if (!audiences.contains(audience)) {
+    problems.add(
+      'audience must be one of ${audiences.join(', ')} — got "$audience". '
+      'Nothing in a repository can derive an intended audience; this is a '
+      'declaration, and it decides which duties the app has taken on.',
+    );
+  } else if (audience == 'children' && matrix.error == null) {
+    final Map<String, dynamic>? row = matrix.rowById(
+      'children-surface-before-a-kids-app',
+    );
+    if (row == null) {
+      problems.add(
+        'COVERAGE LOST — tooling/legal/duty-matrix.json has no '
+        '`children-surface-before-a-kids-app` row, so a children\'s audience '
+        'has nothing to be checked against. An absent row reads exactly like a '
+        'discharged one and must not be treated as a pass.',
+      );
+    } else if (!_surfaceExists(row)) {
+      problems.add(
+        'audience is "children" and the children\'s surface does not exist. '
+        'tooling/legal/duty-matrix.json row `children-surface-before-a-kids-app` '
+        '[K-16] is "${row['status']}" and names '
+        '${row['artefact'] == null ? 'no artefact' : 'artefact ${row['artefact']}'}'
+        ' — the duty is "no app is offered to children without the surface a '
+        'children\'s audience requires", and this spec would offer one. Build '
+        'the surface, set that row to `implemented` naming it, and stamp again; '
+        'until then declare audience: general.',
+      );
+    }
+  }
+
   final String shortName = _shortName(displayName);
   problems.addAll(
     _sourcedListingLimits(
@@ -217,7 +334,7 @@ void run(HookContext context) {
       <String, String>{
         'title.txt':
             'title.txt is DERIVED from the catalogue `name`, which is the display '
-            'name up to its subtitle separator ("$shortName")',
+                'name up to its subtitle separator ("$shortName")',
         'short-description.txt':
             'short-description.txt is DERIVED from `description`',
         'subtitle.txt': 'subtitle.txt is DERIVED from `subtitle`',
@@ -315,8 +432,119 @@ void run(HookContext context) {
   vars['display_name_dart'] = _dartSingleQuoted(displayName);
   vars['display_name_json'] = _jsonBody(displayName);
   vars['description_json'] = _jsonBody(description);
+  // [pipeline K-1] THE RESOLVED LIST, so the declaration OUTLIVES THE STAMP. A
+  // var that is validated and then dropped makes "every app declares its
+  // markets" true for the duration of one command and false forever after —
+  // post_gen writes these into the app's catalogue row, which is where a person
+  // asking "where is this offered?" actually looks.
+  vars['markets'] = markets.join(',');
+  vars['audience'] = audience;
 
   context.logger.info('Stamping $displayName ($appId)…');
+}
+
+/// The duty matrix as this hook needs it: the rows, plus the market vocabulary
+/// they imply. [pipeline K-1 · K-16]
+///
+/// FAIL-CLOSED BY CONSTRUCTION. Every way of failing to read the file produces
+/// an [error], and the caller turns that into a refusal — it never produces an
+/// empty row list, which would read to every check downstream as "nothing to
+/// worry about" and pass a spec nobody validated.
+class _DutyMatrix {
+  _DutyMatrix.failed(String this.error) : rows = const <Map<String, dynamic>>[];
+  _DutyMatrix.of(this.rows) : error = null;
+
+  final String? error;
+  final List<Map<String, dynamic>> rows;
+
+  /// Every market token any row declares, sorted. THIS IS THE VOCABULARY —
+  /// there is no other list, deliberately (see the caller's 🔴 note).
+  List<String> get vocabulary {
+    final Set<String> seen = <String>{};
+    for (final Map<String, dynamic> r in rows) {
+      final Object? m = r['markets'];
+      if (m is! List) continue;
+      for (final Object? token in m) {
+        if (token is String && token.trim().isNotEmpty) {
+          seen.add(token.trim().toLowerCase());
+        }
+      }
+    }
+    final List<String> out = seen.toList()..sort();
+    return out;
+  }
+
+  /// The rows scoped to [market]. Empty means the market resolves to no duty.
+  List<Map<String, dynamic>> rowsFor(String market) =>
+      rows.where((Map<String, dynamic> r) {
+        final Object? m = r['markets'];
+        if (m is! List) return false;
+        return m.any(
+          (Object? t) => t is String && t.trim().toLowerCase() == market,
+        );
+      }).toList();
+
+  Map<String, dynamic>? rowById(String id) {
+    for (final Map<String, dynamic> r in rows) {
+      if (r['id'] == id) return r;
+    }
+    return null;
+  }
+}
+
+/// Read `tooling/legal/duty-matrix.json`, or say why not.
+///
+/// Same refusal-not-skip rule as [_sourcedListingLimits], and for the same
+/// reason: this brick is repo-local by construction (it edits the root pubspec
+/// and the shared catalogue), so a matrix that cannot be read means the stamp is
+/// running somewhere it cannot complete — not that there are no duties.
+_DutyMatrix _readDutyMatrix() {
+  final File file = File('tooling/legal/duty-matrix.json');
+  if (!file.existsSync()) {
+    return _DutyMatrix.failed(
+      'tooling/legal/duty-matrix.json was not found from the current directory '
+      '(${Directory.current.path}). Stamp from the repository root: the market '
+      'and audience declarations are resolved against that file, and a market '
+      'resolved against a file nobody could open is a market nobody checked.',
+    );
+  }
+  try {
+    final Object? decoded = jsonDecode(file.readAsStringSync());
+    final Object? duties = (decoded as Map)['duties'];
+    if (duties is! List) {
+      return _DutyMatrix.failed(
+        'tooling/legal/duty-matrix.json has no `duties` array, so no market and '
+        'no audience can be resolved against it. Nothing was stamped.',
+      );
+    }
+    return _DutyMatrix.of(
+      duties
+          .whereType<Map<Object?, Object?>>()
+          .map((Map<Object?, Object?> r) => r.cast<String, dynamic>())
+          .toList(),
+    );
+  } catch (e) {
+    return _DutyMatrix.failed(
+      'tooling/legal/duty-matrix.json could not be read ($e). Nothing was '
+      'stamped: a market declaration checked against an unreadable corpus is a '
+      'declaration nobody checked.',
+    );
+  }
+}
+
+/// Does [row] name a children's surface that is genuinely in the tree?
+///
+/// TWO conditions, and neither is sufficient alone. `status == 'implemented'` is
+/// a word anybody can type; an `artefact` path proves a file exists but not that
+/// the row claims to be done. Together they are the duty matrix's own definition
+/// of discharged ("an artefact in this tree discharges it, and the row names
+/// that artefact"), which is why this reads the row rather than restating it.
+bool _surfaceExists(Map<String, dynamic> row) {
+  if (row['status'] != 'implemented') return false;
+  final Object? artefact = row['artefact'];
+  if (artefact is! String || artefact.trim().isEmpty) return false;
+  final String path = artefact.trim();
+  return File(path).existsSync() || Directory(path).existsSync();
 }
 
 /// Escape [s] for use inside a Dart SINGLE-quoted string literal.
@@ -412,8 +640,8 @@ List<String> _sourcedListingLimits(
   try {
     final decoded = jsonDecode(file.readAsStringSync());
     final contract = (decoded as Map)['storeMetadataContract'];
-    perChannel = ((contract as Map)['perChannel'] as Map)
-        .cast<String, dynamic>();
+    perChannel =
+        ((contract as Map)['perChannel'] as Map).cast<String, dynamic>();
   } catch (e) {
     return <String>[
       'tooling/channel-register.json could not be read for its store field '

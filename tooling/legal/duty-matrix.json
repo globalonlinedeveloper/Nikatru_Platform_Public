@@ -28,6 +28,22 @@
     "that stopped the previous increment). So the declared set here is the requirement ids, in-tree, and",
     "this limitation is written down rather than papered over. See tooling/legal/README.md.",
     "",
+    "🔴 THE MARKET VOCABULARY IS NOT DECLARED ANYWHERE. IT IS THE UNION OF THE `markets` ARRAYS ON THE",
+    "ROWS BELOW, AND THAT IS THE WHOLE POINT. [pipeline K-1] A stamped app declares the markets it is",
+    "offered in, and hooks/pre_gen.dart resolves each declared token against these rows: a token no row",
+    "names resolves to ZERO duties and the stamp is REFUSED by name. A separate list of 'markets we",
+    "support' would be a second declaration and the first to drift — somebody adds `global` to it, every",
+    "stamp passes, and `global` means nothing at all. Here a market can only become declarable by adding",
+    "the row that makes a duty resolvable in it, which is the work rather than a line in a list.",
+    "",
+    "⚠️ A ROW IS TAGGED ONLY WHERE IT ALREADY NAMED ITS JURISDICTION IN ITS OWN TEXT — the DPDP rows say",
+    "India, the AI-Act row cites eur-lex, the GPC row is sourced to oag.ca.gov (California, hence `us-ca`",
+    "and not `us`: the row is about a Californian rule and tagging it `us` would be the invented-scope",
+    "failure this file opens by warning about). AN UNTAGGED ROW IS NOT 'GLOBAL' — it is a row nobody has",
+    "scoped, and deciding which markets a duty reaches is a legal judgement no one here is qualified to",
+    "make. That is why resolution counts TAGGED rows only: the honest reading of `in` resolving to three",
+    "rows is 'this repo has done market-specific work for India', not 'these are all the duties in India'.",
+    "",
     "Enforced by tooling/ci/assert-legal-tripwires.mjs:",
     "  · every declared requirement has at least one row; every row names a declared requirement  [K-13.1]",
     "  · every source URL's host is on the allowlist                                              [K-13.2]",
@@ -113,10 +129,11 @@
       "id": "markets-declared-per-app",
       "requirement": "K-1",
       "duty": "A stamped app declares which markets it is offered in, so a per-market duty can be resolved mechanically rather than remembered.",
-      "status": "not-started",
+      "status": "partial",
+      "artefact": "tooling/bricks/app/hooks/pre_gen.dart",
       "trigger": "The day a second app is stamped. A market field added after five apps exist is five retrofits plus notices already published without it.",
       "verification": "in-tree",
-      "note": "tooling/ci/assert-input-contract.mjs already computes the declared-var ↔ rejection-path relation, so declaring the var MECHANICALLY forces its validation rule. The work is [8]INC-9 and it touches tooling/bricks/app/brick.yaml and hooks/pre_gen.dart, which are stage 3's primary files — deliberately not done in this change."
+      "note": "BUILT 2026-08-07. brick.yaml declares `markets` and hooks/pre_gen.dart refuses a stamp that declares none — atomically, because a throwing pre_gen makes mason exit 64 having written nothing. The SECOND limb is what stops the declaration being decorative: each declared token is resolved against the `markets` arrays on the rows in this file, and a token that resolves to ZERO rows is refused by name with the resolvable set printed, so `global` cannot quietly mean nothing. post_gen writes the resolved list into the app's catalogue row, so the declaration outlives the stamp. NOT BUILT: apps/subly predates the var and its sites/_shared/_data/apps.json row carries no `markets` — WHICH markets a shipped app is offered in is the owner's commercial call, and a value invented here would be exactly the plausible-looking figure this file's own preamble forbids."
     },
     {
       "id": "legal-page-set-published",
@@ -281,6 +298,7 @@
     {
       "id": "global-privacy-control",
       "requirement": "K-15",
+      "markets": ["us-ca"],
       "duty": "Decide whether web builds listen for the Global Privacy Control signal, or record the cut with a trigger.",
       "status": "owner-gated",
       "ownerItem": "K-15 decision",
@@ -292,14 +310,15 @@
       "id": "children-surface-before-a-kids-app",
       "requirement": "K-16",
       "duty": "No app is offered to children without the surface a children's audience requires.",
-      "status": "not-started",
+      "status": "partial",
       "trigger": "The day an app is scheduled with a children's audience, or the day a store listing selects a children's category. Both are declarations somebody makes; neither happens by accident.",
       "verification": "in-tree",
-      "note": "privacy.html today states a bare 'under the age of 13 (or the minimum age required in your country)'. Whether that number is right for a declared market depends on the market's own threshold, and the guard must assert CONSISTENCY WITH THE DECLARED MARKET ROW rather than hardcode a number — see the COULD-NOT-ESTABLISH row below. The audience var itself is [8]INC-9, in stage 3's files."
+      "note": "BUILT 2026-08-07 — the REFUSAL, not the surface. brick.yaml declares `audience` and hooks/pre_gen.dart refuses `audience: children` atomically. 🔴 THE VERDICT IS READ FROM THIS ROW RATHER THAN HARDCODED: the hook requires this row to be `implemented` AND to name an `artefact` that is really on disk, so the day somebody builds the surface and files it here the stamp starts accepting a kids app, with nobody having to remember to unblock it — and equally, a status flipped to `implemented` without an artefact that exists cannot buy a pass. THIS ROW DELIBERATELY CARRIES NO `artefact`: naming pre_gen.dart here would let the thing doing the refusing be mistaken for the surface being refused about. NOT BUILT: the surface itself. privacy.html today states a bare 'under the age of 13 (or the minimum age required in your country)'. Whether that number is right for a declared market depends on the market's own threshold, and the guard must assert CONSISTENCY WITH THE DECLARED MARKET ROW rather than hardcode a number — see the COULD-NOT-ESTABLISH row below. The audience var itself is [8]INC-9, in stage 3's files."
     },
     {
       "id": "dpdp-childrens-age-threshold",
       "requirement": "K-16",
+      "markets": ["in"],
       "duty": "The age below which a user counts as a child under India's data-protection law, and what that then requires.",
       "status": "watching",
       "trigger": "The day a market row declares India AND an app declares a children's audience.",
@@ -309,6 +328,7 @@
     {
       "id": "dpdp-notice-content",
       "requirement": "K-8",
+      "markets": ["in"],
       "duty": "What a data-protection notice must contain, and in which languages it must be available, under India's data-protection law.",
       "status": "watching",
       "trigger": "The day a user in India creates an account, or the day the first paid sale is made to an Indian buyer.",
@@ -318,6 +338,7 @@
     {
       "id": "dpdp-2025-rules-commencement",
       "requirement": "K-13",
+      "markets": ["in"],
       "duty": "When the rules made under India's data-protection Act actually commence, which is what turns several of these watching rows into duties.",
       "status": "watching",
       "trigger": "This row IS the trigger for several others. It is reviewed on the date below rather than when somebody remembers.",
@@ -328,6 +349,7 @@
     {
       "id": "eu-ai-act-marking-grace",
       "requirement": "K-13",
+      "markets": ["eu"],
       "duty": "The transparency marking obligation for AI-generated content, and the date from which it bites.",
       "status": "partial",
       "trigger": "Already partly discharged and the trigger is generation, not publication: every generated asset keeps its provenance marking intact and is logged with model, date and prompt.",
