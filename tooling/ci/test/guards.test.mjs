@@ -3188,19 +3188,33 @@ export interface AppConfig {
   update_url: string | null;
 }
 `;
-  const PLATFORM_CONFIG = 'services/platform/src/config.ts';
-  const platformConfig = (updateUrl = 'null') => `
-// Prose that names https://nikatru.com while explaining why update_url is NOT
-// that value. A grep would match this comment and call it a violation.
-export const DEFAULT_CONFIGS: Readonly<Record<string, AppConfig>> = {
-  subly: {
-    app_id: 'subly',
-    min_supported_version: '1.0.0',
-    update_url: ${updateUrl},
-  },
-};
-`;
-  const goodPlatformConfig = platformConfig();
+  // [pipeline 4]B-2 — THE REGISTRY MOVED, AND SO DID THIS FIXTURE. It used to be
+  // `services/platform/src/config.ts` holding an object literal `DEFAULT_CONFIGS`,
+  // which is what assert-stamp-properties.mjs sliced with a regex. The served set
+  // is DATA now — WHICH apps from the public catalogue the stamp writes, WHAT each
+  // is served from the value document — so the guard `JSON.parse`s both and this
+  // fixture is the pair.
+  //
+  // 🔴 THE PROSE TRAP IS KEPT, DELIBERATELY. `_readme` names a URL identical to
+  // the compiled-in default while explaining that `update_url` is NOT that value.
+  // A text search would "find" it and fail on a comment — the recorded
+  // [pipeline F-10] lesson — and there is a passing case below that proves it
+  // does not, which is only true because the guard reads parsed structure.
+  const PLATFORM_CATALOGUE = 'sites/_shared/_data/apps.json';
+  const goodPlatformCatalogue = JSON.stringify([
+    { slug: 'subly', name: 'Subly', api: 'https://api.nikatru.com', platforms: ['web'], status: 'live' },
+  ]);
+  const PLATFORM_CONFIG_DATA = 'services/platform/src/app-config-data.json';
+  const platformConfigData = (updateUrl = null) =>
+    JSON.stringify({
+      _readme: [
+        'Prose that names https://nikatru.com while explaining why update_url is NOT that value.',
+      ],
+      sharedApiBaseUrl: 'https://platform.nikatru.com/v1',
+      defaults: { min_supported_version: '1.0.0', update_url: updateUrl },
+      apps: { subly: {} },
+    });
+  const goodPlatformConfigData = platformConfigData();
   // The channel set the comparison ranges over. Two rows with a lane and one
   // without, because a null lane is the common case in the real register and
   // must fall back to the template's default rather than be skipped.
@@ -3221,11 +3235,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformConfigTs = goodPlatformConfig, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CONFIG]: platformConfigTs, [CHANNEL_REGISTER]: channelRegister, ...extra };
+    const files = { [APP]: app, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     return fixture(name, files);
@@ -3401,7 +3415,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
   //    fallback, and neither can be caught by the widget test itself.
   test('limb (c) FAILS when a served update_url equals the compiled-in default', () => {
     const { code, out } = run('assert-stamp-properties.mjs', {
-      cwd: build('sp-d8-same', { platformConfigTs: platformConfig("'https://nikatru.com'") }),
+      cwd: build('sp-d8-same', { platformConfigData: platformConfigData('https://nikatru.com') }),
     });
     assert.equal(code, 1);
     assert.match(out, /which is EXACTLY what a 'web' build already compiles in/);
@@ -3439,7 +3453,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
   test('limb (c) reads the UPDATE_URL a release lane compiles in', () => {
     const { code, out } = run('assert-stamp-properties.mjs', {
       cwd: build('sp-d8-lane-define', {
-        platformConfigTs: platformConfig("'https://dl.nikatru.com/win'"),
+        platformConfigData: platformConfigData('https://dl.nikatru.com/win'),
         extra: {
           '.github/workflows/build-platforms.yml':
             '# a comment naming --dart-define=UPDATE_URL=https://commented.invalid is not a stamp\n' +
@@ -3454,14 +3468,40 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     assert.doesNotMatch(out, /a 'web' build already compiles in/);
   });
 
-  // COVERAGE SELF-CHECK. A registry that parses as empty makes every comparison
-  // above vacuously true — the failure this whole file is about.
-  test('limb (c) refuses a config registry it cannot parse', () => {
+  // COVERAGE SELF-CHECK. A served set that parses as empty makes every
+  // comparison above vacuously true — the failure this whole file is about.
+  test('limb (c) refuses a served set it cannot parse', () => {
     const { code, out } = run('assert-stamp-properties.mjs', {
-      cwd: build('sp-d8-noreg', { platformConfigTs: '// nothing here at all\n' }),
+      cwd: build('sp-d8-noreg', { platformCatalogue: '[]' }),
     });
     assert.equal(code, 1);
-    assert.match(out, /parsed 0 app\(s\) out of services\/platform\/src\/config\.ts/);
+    assert.match(out, /parsed 0 app\(s\) out of sites\/_shared\/_data\/apps\.json/);
+  });
+
+  test('limb (c) refuses a value document with no `defaults`', () => {
+    // [pipeline 4]B-2. An app with no entry of its own resolves to `defaults`,
+    // so without it NO app's served update_url can be resolved — and "resolved
+    // to nothing" must not read as "resolved to null", which is a real value
+    // this limb treats as compliant.
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-d8-nodefaults', {
+        platformConfigData: JSON.stringify({ sharedApiBaseUrl: 'x', apps: { subly: {} } }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /has no `defaults`/);
+  });
+
+  test('limb (c) PASSES when the value document is prose-trapped but structurally clean', () => {
+    // 🔴 THE F-10 LESSON, still live after the registry moved. `_readme` names
+    // `https://nikatru.com` — byte-identical to the web channel's compiled-in
+    // default — while `update_url` is null. A text search fails here and calls a
+    // comment a violation; a parse does not. The guard reads parsed structure,
+    // so this is the passing case, and it is the reason the trap stays in the
+    // fixture rather than being tidied out of it.
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-d8-prose') });
+    assert.doesNotMatch(out, /already compiles in/);
+    assert.equal(code, 0, out);
   });
 
   test('limb (c) refuses an unparseable compile-time default', () => {

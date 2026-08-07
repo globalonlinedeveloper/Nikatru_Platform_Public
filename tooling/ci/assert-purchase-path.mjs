@@ -568,11 +568,20 @@ let permitted = [];
       // guard would have thrown `ReferenceError` on the exact day the feature
       // arrived, i.e. the one day it matters. It reads the parsed document now,
       // so the operand is evaluated on every run and cannot rot unobserved.
+      //
+      // BOTH PLACEMENTS ARE ACCEPTED — on the config or on its `paywall` — and
+      // that is not laxity. Where the field lands is part of the [8]K-13 legal
+      // determination that has not been made; the predecessor regex searched the
+      // whole file and so accepted either, and narrowing it here would decide by
+      // accident a question this guard explicitly refuses to decide.
       const noticeValues = [];
       {
         const collect = (node) => {
-          if (node && typeof node === 'object' && Object.prototype.hasOwnProperty.call(node, 'renewal_notice')) {
-            noticeValues.push(node.renewal_notice);
+          if (!node || typeof node !== 'object') return;
+          for (const scope of [node, node.paywall]) {
+            if (scope && typeof scope === 'object' && Object.prototype.hasOwnProperty.call(scope, 'renewal_notice')) {
+              noticeValues.push(scope.renewal_notice);
+            }
           }
         };
         try {
