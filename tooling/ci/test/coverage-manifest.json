@@ -18,6 +18,7 @@
   "config-registry.test.mjs": 22,
   "content-pipeline.test.mjs": 45,
   "content-qa-checks.test.mjs": 7,
+  "cors-allowlist.test.mjs": 16,
   "d1-bindings.test.mjs": 7,
   "data-inventory.test.mjs": 40,
   "deletion-control.test.mjs": 18,
