@@ -5,8 +5,15 @@
 //
 // [pipeline 12]W-9 (regenerate in CI and diff what is SERVED) · the enforcement
 // half of [12]W-1 (a landing per registry entry) and [12]W-2a/W-2c (the hub, at
-// one named URL — `https://nikatru.com/apps/`, recorded in
+// one named URL — `CANONICAL_HUB_URL`, recorded in
 // knowledge/decisions/026-canonical-hub-url.md).
+//
+// ⚠️ THAT URL IS IMPORTED, NEVER RETYPED. It used to be spelled out here in
+// prose and re-composed as `${ORIGIN}apps/` in the print below, and it is now
+// one exported constant in tooling/sites/generate-discovery.mjs — the module
+// that actually WRITES the page. [10]D-11 limb 3 in assert-catalog-reachable.mjs
+// imports the same constant to require a 200 from it, so a hub that moves takes
+// both its generator and its reachability probe with it in one edit.
 //
 // 🔴 WHY A DIFF AND NOT A BUILD STEP. `sites/nikatru` is deployed by Cloudflare's
 // own Git integration with NO build step, so the bytes in the repository are the
@@ -49,10 +56,10 @@ import { listDir } from './tree-walk.mjs';
 import {
   planDiscovery,
   APPS_DIR,
+  CANONICAL_HUB_URL,
   DEPLOY_ROOT,
   NOT_GENERATED,
   REGISTRY,
-  ORIGIN,
 } from '../sites/generate-discovery.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -342,7 +349,7 @@ for (const [rel, expected] of served) {
     const linksHub = /href\s*=\s*["']\/apps\/["']/.test(raw);
     if (!linksHub) {
       prints.push(
-        `UNLINKED HUB (owner decision, [12]D-12): ${ORIGIN}apps/ is generated, indexable and in the sitemap, ` +
+        `UNLINKED HUB (owner decision, [12]D-12): ${CANONICAL_HUB_URL} is generated, indexable and in the sitemap, ` +
           `and ${DEPLOY_ROOT}/index.html does not link to it. LINKING IT IS THE ANNOUNCEMENT DECISION — the ` +
           'same one check-site-integrity.mjs refuses to take about the homepage APPS array, on the stated ' +
           'grounds that a soft launch is a legitimate state and no decision record answers it. This ' +
