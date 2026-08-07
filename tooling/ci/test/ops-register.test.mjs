@@ -113,7 +113,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { evaluate, evaluateRunRecords, cadenceDays, parseJsonc, findWranglerConfigs } from '../assert-ops-register.mjs';
+import { evaluate, evaluateRunRecords, cadenceDays, parseJsonc, findWranglerConfigs, stripComments } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-ops-register.mjs');
@@ -916,6 +916,98 @@ describe('assert-ops-register — the helpers it depends on', () => {
     const { found, excluded } = findWranglerConfigs(root);
     assert.deepEqual(found, ['services/a/wrangler.jsonc']);
     assert.equal(excluded.length, 1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 `stripComments` WAS A REGEX PAIR, AND IT SWALLOWED 103 LINES OF A REAL FILE.
+//
+// Measured 2026-08-07 against the committed tree. The old body ran the block
+// regex FIRST and only then blanked `//` lines:
+//
+//     s.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(...))
+//
+// so a `/*` sitting INSIDE a line comment was read as a block opener.
+// tooling/ci/assert-ceiling-budget.mjs:32 is
+//
+//     //   3. every `const NAME = <number>` in services/*/src/ is annotated
+//
+// and the `/*` in `services/*/src/` opened a phantom block that ran to the next
+// `*/` — blanking lines 32–134, INCLUDING the real code at :121
+// `const CEILINGS = 'tooling/ceilings.json';`. Pre-fix, over that file:
+//   raw includes 'ceilings.json' = true · stripped includes 'ceilings.json' = FALSE.
+//
+// [14]O-10 feeds this function's output to `readerSrc.includes(wfFile)`, so a
+// reader whose only mention of its workflow lived in a swallowed region is
+// reported as never mentioning it — a FALSE VERDICT from a guard that reads.
+// Exactly the family assert-platform-register.mjs already paid for, where
+// `app.use('/v1/plan/*', …)` hid 5 of 12 route mounts.
+//
+// THE FIX IS NOT A BETTER REGEX. Comments, strings and regex literals are one
+// grammar and must be walked in ONE pass; this now delegates to
+// text-reductions.mjs's `stripSourceComments`, which is the tokenizer nine
+// guards already share, rather than becoming a fourth hand-rolled copy.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-ops-register — stripComments is a tokenizer, not a pair of regexes', () => {
+  test('🔴 a `/*` inside a LINE comment does not open a block', () => {
+    const src = ['// scan services/*/src/ for ceilings', "const CEILINGS = 'tooling/ceilings.json';", 'let after = 1; /* real */ let tail = 2;'].join('\n');
+    const out = stripComments(src);
+    assert.match(out, /ceilings\.json/, 'the line comment ended at the newline; the code below it is code');
+    assert.match(out, /let tail = 2;/, 'and everything up to the next `*/` was NOT swallowed');
+    assert.doesNotMatch(out, /scan services/, 'the line comment itself is still gone');
+  });
+
+  test('🔴 THE REAL FILE: assert-ceiling-budget.mjs keeps its ceilings.json constant', () => {
+    // The tree is the fixture. A fixture I wrote encodes the same
+    // misunderstanding as the function I wrote; this one does not.
+    const real = readFileSync(join(CI_DIR, 'assert-ceiling-budget.mjs'), 'utf8');
+    assert.ok(real.includes("const CEILINGS = 'tooling/ceilings.json';"), 'premise: the constant is really there');
+    assert.match(stripComments(real), /const CEILINGS = 'tooling\/ceilings\.json';/);
+  });
+
+  test('a `//` inside a string literal does not start a comment', () => {
+    // ⚠️ `'https://x'` is NOT the falsifying input — the old regex required the
+    // `//` to follow whitespace or a line start, and in `https://` it follows a
+    // colon, so that probe passed against the broken function. An assertion that
+    // cannot fail inflates coverage. A SPACE before the `//` is what fires it.
+    const out = stripComments("bad('run node guard.mjs // then read it'); const n = 1;");
+    assert.match(out, /then read it/, 'the message is a string, not a comment');
+    assert.match(out, /const n = 1;/, 'and the statement after it is still code');
+  });
+
+  test('a `/*` inside a string literal does not open a block', () => {
+    // The assert-platform-register.mjs defect, verbatim: a Hono route path whose
+    // wildcard reads as a block opener, closed by a `*/` inside a LATER string.
+    const out = stripComments(
+      ["app.use('/v1/plan/*', platformAuth);", "app.route('/v1', cancellation);", "const note = 'the span closes here */';"].join('\n'),
+    );
+    assert.match(out, /cancellation/, 'the route after the `/*`-bearing path must survive');
+    assert.match(out, /\/v1\/plan\/\*/);
+  });
+
+  test('a real block comment is still stripped', () => {
+    const out = stripComments('/* app.route(ghost); */ real();');
+    assert.doesNotMatch(out, /ghost/);
+    assert.match(out, /real\(\);/);
+  });
+
+  test('a real line comment is still stripped — full-line and trailing', () => {
+    assert.doesNotMatch(stripComments('// app.route(ghost);\nreal();'), /ghost/);
+    assert.match(stripComments('// app.route(ghost);\nreal();'), /real\(\);/);
+    assert.doesNotMatch(stripComments('real(); // ghost\n'), /ghost/);
+  });
+
+  test('the extension decides the comment grammar — and both grammars in the register REDUCE', () => {
+    // An extension text-reductions.mjs does not know is returned VERBATIM. Every
+    // `mechanism.readBy` in the real register is .mjs or .yml; assert both are
+    // really reduced, so "unknown extension = identity" can never become a
+    // silent no-op here without this test going red.
+    const yaml = "on:\n  push:\n# ghost-workflow.yml\n    branches: ['main'] # ghost-trailing\n";
+    const outY = stripComments(yaml, '.yml');
+    assert.doesNotMatch(outY, /ghost-workflow\.yml/, '.yml must be read with `#` comments');
+    assert.doesNotMatch(outY, /ghost-trailing/);
+    assert.match(outY, /branches: \['main'\]/);
+    assert.doesNotMatch(stripComments('// ghost\nreal();', '.mjs'), /ghost/);
   });
 });
 

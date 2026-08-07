@@ -41,6 +41,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
@@ -122,8 +123,22 @@ if (sharedFiles.length + suspectFiles.length < MIN_SCANNED_FILES) {
  *  `class works implements AuthRepository` — the pattern had spanned out of a doc
  *  comment ("...the class works like...") into the real declaration below it.
  *  Same failure this repo has recorded twice: assert on structure, never on prose. */
+/*  🔴 …AND THE FIRST FIX WAS TWO REGEXES, WHICH IS NOT A TOKENIZER (2026-08-07).
+ *  The block pattern ran FIRST, so a `/*` inside a `//` line comment opened a
+ *  phantom block running to the next `*​/`. The falsifier is this guard's own
+ *  subject, which is what makes it worth the change:
+ *
+ *      // paths like services/​*​/src/ are scanned
+ *      class Ghost implements AuthRepository {}
+ *      const s = 'closes *​/';
+ *
+ *  → `class Ghost` is blanked and the fork this guard exists to find is gone,
+ *  while it prints ok. Zero files in today's 217-file Dart corpus were affected,
+ *  which is exactly why it had to be found by mutation and not by a green run.
+ *  Same defect and same repair as assert-ops-register.mjs and
+ *  assert-no-clone-tells.mjs; all three now share text-reductions.mjs. */
 function stripComments(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  return stripSourceComments(src, '.dart');
 }
 
 /** TWO detection modes, because they catch different forks and neither is enough:

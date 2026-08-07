@@ -172,13 +172,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 // The ONE workflow parser. Four copies of it drift in the way that reports
 // "clean" — which lines they can see — so [14]O-7's deploy-job derivation goes
 // through the same one assert-release-provenance and assert-no-secret-defines use.
 import { parseAllWorkflows, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
+// The ONE comment tokenizer, for the same reason as the workflow parser above.
+import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -303,14 +305,32 @@ const isIsoDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) 
 const nonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
 
 /** Comments out, so a check about BEHAVIOUR can never be satisfied by a
- *  paragraph. Full-line `//`, trailing `//`, and `/* … *​/` blocks. See the
- *  [14]O-10 limb, whose first version was satisfied by another guard's header. */
-const stripComments = (s) =>
-  s
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .map((l) => l.replace(/(^|\s)\/\/.*$/, '$1'))
-    .join('\n');
+ *  paragraph. See the [14]O-10 limb, whose first version was satisfied by
+ *  another guard's header.
+ *
+ *  🔴 THIS WAS TWO REGEXES AND IT SWALLOWED 103 LINES OF A REAL FILE (2026-08-07).
+ *  The old body ran `/\/\*[\s\S]*?\*\//g` FIRST and blanked `//` lines second,
+ *  so a `/*` sitting INSIDE a line comment was read as a block opener.
+ *  `tooling/ci/assert-ceiling-budget.mjs:32` is
+ *
+ *      //   3. every `const NAME = <number>` in services/​*​/src/ is annotated
+ *
+ *  whose `services/*​/src/` opened a phantom block running to the next `*​/` —
+ *  blanking lines 32–134, including the real code at :121
+ *  `const CEILINGS = 'tooling/ceilings.json';`. Anything [14]O-10 asked about a
+ *  reader whose mention lived in a swallowed region got a FALSE VERDICT.
+ *
+ *  Comments, strings and regex literals are ONE grammar and have to be walked in
+ *  ONE pass. Rather than become a fourth hand-rolled copy, this delegates to
+ *  text-reductions.mjs — the tokenizer nine guards already share, which carries
+ *  a test for this exact case (`//` containing `/*`, added after the identical
+ *  defect cost assert-platform-register.mjs 5 of its 12 route mounts).
+ *
+ *  ⚠️ `ext` DECIDES THE GRAMMAR, and an extension text-reductions does not know
+ *  is returned VERBATIM. Every `mechanism.readBy` in the register today is .mjs
+ *  or .yml — both mapped — and ops-register.test.mjs asserts both really reduce,
+ *  so "unknown extension = identity" cannot silently become a no-op here. */
+export const stripComments = (s, ext = '.mjs') => stripSourceComments(s, ext);
 
 /** `8h` / `1d` / `120d` → days. Anything else is not a duration. */
 export function cadenceDays(cadence) {
@@ -1073,7 +1093,10 @@ export function evaluate(reg, tree, nowMs) {
     // times in prose. A comment satisfied a check about behaviour, which is the
     // exact defect a `grep '"r2_buckets"'` once hit against the template comment
     // explaining why there is no r2_buckets. Comments are stripped now.
-    const readerSrc = stripComments(tree.readerSource?.get(readerPath) ?? '');
+    // The extension, not a guess: readers are .mjs guards AND `.github/workflows/
+    // deploy-web.yml`, and C-family rules over YAML blank neither its `#`
+    // comments nor, worse, leave an unquoted `https://…` reading as one.
+    const readerSrc = stripComments(tree.readerSource?.get(readerPath) ?? '', extname(readerPath));
     if (!readerSrc.includes(wfFile)) {
       bad(
         `${row.id} names ${readerPath} as its freshness reader, and that file never mentions \`${wfFile}\`. ` +

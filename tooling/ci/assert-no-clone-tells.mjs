@@ -42,6 +42,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
@@ -129,8 +130,25 @@ if (sharedFiles.length < MIN_SCANNED) {
 /** Comments carry history and rationale and are legitimately allowed to name an
  *  app. Only executable code is scanned. Strings ARE code: a hardcoded 'subly'
  *  config key was a real defect here, so string literals stay in scope. */
+/*  🔴 AND IT WAS THREE REGEXES, WHICH IS NOT A TOKENIZER (fixed 2026-08-07).
+ *  The block pattern ran FIRST, so a `/*` inside a `//` line comment opened a
+ *  phantom block that ran to the next `*​/` and swallowed everything between —
+ *  the same defect measured in assert-ops-register.mjs, where it ate 103 lines
+ *  of assert-ceiling-budget.mjs including a real `const`. A minimal falsifier
+ *  both this copy and assert-no-seam-forks.mjs failed:
+ *
+ *      // paths like services/​*​/src/ are scanned
+ *      class Ghost implements AuthRepository {}
+ *      const s = 'closes *​/';
+ *
+ *  → the `class Ghost` DECLARATION is blanked, so a clone tell (or a seam fork)
+ *  written after any such comment is invisible and the guard prints ok.
+ *  On today's Dart corpus (217 files) the loss was 1 file / 62 chars of comment
+ *  prose and no code — but that is a fact about today's comments, not about the
+ *  scanner. Delegates to the shared tokenizer, which walks comments, strings and
+ *  regex literals in one pass. */
 function stripComments(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ').replace(/\s\/\/.*$/gm, ' ');
+  return stripSourceComments(src, '.dart');
 }
 
 /** ⚠️ A trailing `\b` MISSES camelCase. `\bsubly\b` does not match `SublyThing`,
