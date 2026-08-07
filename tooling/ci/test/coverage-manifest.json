@@ -1,5 +1,6 @@
 {
   "adapter-capabilities.test.mjs": 28,
+  "alert-disposition.test.mjs": 27,
   "analytics-contract.test.mjs": 45,
   "android-signing.test.mjs": 51,
   "android-target-sdk.test.mjs": 34,

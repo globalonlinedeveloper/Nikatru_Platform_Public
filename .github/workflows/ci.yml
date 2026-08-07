@@ -513,6 +513,41 @@ jobs:
           # and the Renovate Dependency Dashboard issue all resolve.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node tooling/ci/assert-ops-register.mjs
+      # …and no alert among them closes itself by being IGNORED.
+      #
+      # O-5's own `Enforced by.` line named "status.mjs (disposition limb)".
+      # Measured 2026-08-07: tooling/ops/status.mjs is 493 lines and the string
+      # `disposition` occurs ZERO times in it. There was no limb — the criterion
+      # ranged over a thing that did not exist and therefore printed nothing,
+      # which reads as nothing wrong. This step is the limb.
+      #
+      # TWO LIMBS, ON PURPOSE, AND ONLY ONE OF THEM FAILS THIS BUILD:
+      #   A · STRUCTURAL, FAILS. Every `failure()`-gated job that files a durable
+      #       issue must be declared by a register row whose `mechanism.record`
+      #       names that issue verbatim, both directions, and the declared firing
+      #       history must actually enumerate against the API. Deleting the
+      #       declaration clause narrows the source set and MUST redden — the
+      #       `check-migrations 5→4` class. Proven by mutating the live
+      #       register.json:503 and running it for real (exit 1).
+      #   B · THE DISPOSITION GAP, PRINTS ONLY. Issue #24 is open 11 days while
+      #       e2e.yml's scheduled runs are green — a real undispositioned firing.
+      #       But duty.workflow.e2e.yml states the disposition IS a human closing
+      #       the issue ("closing it IS the acknowledgement that someone looked"),
+      #       so failing here would block every merge on an act only the owner may
+      #       perform, and an agent closing it would fabricate the very signal
+      #       being measured. [pipeline C-6]: an owner-gated gap prints. #151 is
+      #       open too and is NOT flagged — its source is red right now.
+      #
+      # No GlitchTip limb: GLITCHTIP_TOKEN is not a repository secret
+      # (OWNER_QUEUE S-8) and a limb that skips without one reports ok.
+      # No comment-count heuristic: #24's seven comments are all
+      # `github-actions[bot]`, the alarm manufacturing its own evidence.
+      # FAILS CLOSED with no token. [pipeline 14]O-5
+      - name: Every alerting firing has a recorded disposition
+        working-directory: ${{ github.workspace }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node tooling/ci/assert-alert-disposition.mjs
       # …and every PINNED INPUT is still REACHED by the update mechanism.
       #
       # 🔴 NOT "is Renovate enabled". That question was the drafted acceptance and
