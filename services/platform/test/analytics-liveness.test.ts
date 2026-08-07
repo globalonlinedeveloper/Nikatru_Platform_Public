@@ -104,7 +104,7 @@ describe('analyticsLiveness records what it measured', () => {
     expect(rows.map((r) => r.target)).toEqual(['(portfolio)', 'other', 'subly']);
     expect(rows.every((r) => r.ok === 1)).toBe(true);
     expect(String(rows.find((r) => r.target === 'subly')!.detail)).toContain('2 event(s)');
-    expect(String(rows.find((r) => r.target === '(portfolio)')!.detail)).toContain('3 event(s) from 2 app(s)');
+    expect(String(rows.find((r) => r.target === '(portfolio)')!.detail)).toContain('events=3 apps=2');
   });
 
   it('WRITES A ROW WHEN THERE ARE NO EVENTS AT ALL — the whole point', async () => {
@@ -120,7 +120,7 @@ describe('analyticsLiveness records what it measured', () => {
     expect(String(rows[0].detail)).toContain('the rail is SILENT');
   });
 
-  it('ok=0 at ZERO events: ABSENCE IS NOT A GREEN VALUE', async () => {
+  it('ok=1 at ZERO events: the WORK succeeded — [ADR 035]', async () => {
     const db = realPlatformDb();
     await analyticsLiveness(envWith(db));
     // 🔴 THIS TEST ASSERTED `ok === 1` UNTIL 2026-08-06 AND WAS THE BUG'S BEST
@@ -137,7 +137,22 @@ describe('analyticsLiveness records what it measured', () => {
     // indistinguishable here — see the gap test below), and this repository's
     // rule for that is already written in check-heartbeats.mjs: UNKNOWN FAILS
     // CLOSED. "I could not tell" must never read as "it is fine".
-    expect(liveness(db)[0].ok).toBe(0);
+    //
+    // 🔴 REVERSED AGAIN 2026-08-07 BY [ADR 035], AND THE REVERSAL IS THE POINT.
+    // `ok: total > 0` shipped on 2026-08-06. The first real cron run after it
+    // deployed — 2026-08-07T06:00:23Z — wrote ok=0, `check-heartbeats.mjs` went
+    // exit 1, and it would have done so EVERY DAY for the owner-gated reason
+    // that no app has shipped. A daily red nobody can act on is how an alarm
+    // gets muted, and [pipeline C-6] says an owner-gated gap must PRINT.
+    //
+    // The comment above is right that `ok` is not a private note — it is the
+    // column `duty.platform-cron` declares as its `failingValue`. That is
+    // exactly why it must answer ONE question, the same for every writer: DID
+    // THE WORK SUCCEED. A query that ran and correctly found nothing succeeded.
+    // Whether the silence is a FAULT belongs to [11]E-13's baseline, judged by
+    // a different reader — see the next test, where the two states are now
+    // distinguishable BY `ok` rather than only by prose.
+    expect(liveness(db)[0].ok).toBe(1);
   });
 
   it('the two ways to be red stay DISTINGUISHABLE — silence is not an outage', async () => {
@@ -152,7 +167,10 @@ describe('analyticsLiveness records what it measured', () => {
     broken.db.exec('DROP TABLE events');
     await analyticsLiveness(envWith(broken));
 
-    expect(liveness(silent)[0].ok).toBe(0);
+    // [ADR 035]: these were BOTH ok=0, so only the prose told them apart. Now
+    // `ok` itself separates them — a strictly stronger assertion, and one a
+    // machine can act on without interpreting a sentence.
+    expect(liveness(silent)[0].ok).toBe(1);
     expect(liveness(broken)[0].ok).toBe(0);
     expect(String(liveness(silent)[0].detail)).toContain('the rail is SILENT');
     expect(String(liveness(silent)[0].detail)).not.toContain('liveness query failed');
@@ -160,15 +178,16 @@ describe('analyticsLiveness records what it measured', () => {
     expect(String(liveness(broken)[0].detail)).not.toContain('the rail is SILENT');
   });
 
-  it('a SINGLE event is enough to be green — the change is some-vs-none, not a threshold', async () => {
-    // The guard against over-correcting. Making absence red must not smuggle in
-    // a minimum count: there is no derivable answer in this repository to "how
-    // many events is too few", so the only line drawn is at zero.
+  it('a SINGLE event carries a COUNT, and no threshold is smuggled in', async () => {
+    // The guard against over-correcting. Under [ADR 035] `ok` no longer moves
+    // with the count at all, so this test's job is now the detail: there is no
+    // derivable answer in this repository to "how many events is too few", and
+    // nothing here may invent one.
     const db = realPlatformDb();
     insertEvent(db, 'subly', hours(1), 'only-one');
     await analyticsLiveness(envWith(db));
     expect(liveness(db).every((r) => r.ok === 1)).toBe(true);
-    expect(String(liveness(db).find((r) => r.target === '(portfolio)')!.detail)).toContain('1 event(s)');
+    expect(String(liveness(db).find((r) => r.target === '(portfolio)')!.detail)).toContain('events=1 apps=1');
   });
 
   it('ok=0 when the query cannot run', async () => {
