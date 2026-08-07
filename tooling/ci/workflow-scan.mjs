@@ -200,3 +200,46 @@ export function parseAllWorkflows(root) {
  *  a command, so each segment answers for itself — a `--dry-run` on one segment
  *  must never exonerate a real publish on the next. */
 export const shellSegments = (text) => text.split(/&&|\|\||[;|]/);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE `record-deployment.mjs <env>` CALL SITE — one reader, three callers.
+//
+// 🔴 THERE WERE FOUR COPIES OF THIS REGEX and they did not agree. [10]D-2b made
+// `deploy-web.yml` a matrix over the workspace app set (2026-08-07), so its
+// record step reads `record-deployment.mjs ${{ matrix.app }}-web`, and each copy
+// broke DIFFERENTLY on that one line:
+//   · assert-publish-records.mjs's `[A-Za-z0-9._{}$-]+` stopped at the space
+//     inside the expression and produced the environment `${{`, so the required
+//     `<app>-web` matched nothing and a correctly-recording lane was reported as
+//     never recording — a FALSE RED, the kind that gets a guard switched off;
+//   · assert-ops-register.mjs's `[A-Za-z0-9._-]+` matched NOTHING, so the job
+//     left [14]O-7's domain entirely: five deploy jobs became four and the
+//     guard printed the smaller number as a pass — a SILENT SHRINK, which is
+//     strictly worse;
+//   · deployment-record.test.mjs's copy did the same and tripped its own
+//     "have I lost sight of the workflows" floor, which is the only reason the
+//     third copy was found at all.
+// Three readings of one line, two of them wrong in opposite directions. The
+// repair is not a wider character class in three files.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Every `record-deployment.mjs <env>` call in a blob of workflow text, with the
+ *  environment argument AS WRITTEN. Whole `${{ … }}` expressions are part of the
+ *  token because they legally contain spaces. Global — callers use `matchAll`. */
+export const RECORD_CALL = /record-deployment\.mjs\s+((?:\$\{\{[^}]*\}\}|[A-Za-z0-9._-])+)/g;
+
+/**
+ * A matrix-parameterised environment, expanded over the app set: with
+ * `appSlugs = ['subly']`, `${{ matrix.app }}-web` → `['subly-web']`. Anything
+ * else is returned unchanged, so a literal environment costs nothing.
+ *
+ * ⚠️ IT DOES NOT CHECK THE MATRIX KEY IS DECLARED. GitHub expands an undeclared
+ * matrix context to the EMPTY STRING rather than erroring, and limb A′ of
+ * assert-release-lane-generic.mjs fails the build on exactly that for every
+ * graded lane, on every run. This is the shared READER; that is the check.
+ */
+export function expandMatrixEnvironment(raw, appSlugs) {
+  const m = raw.match(/^\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\s*\}\}(.*)$/);
+  if (!m) return [raw];
+  return (appSlugs ?? []).map((s) => `${s}${m[1]}`);
+}

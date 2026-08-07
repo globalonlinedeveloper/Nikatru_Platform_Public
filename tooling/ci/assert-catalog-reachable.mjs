@@ -39,13 +39,41 @@
 // guard's domain, and a shrink nobody can see is the failure this repo keeps
 // paying for.
 //
+// ── `--emit-url <slug>` — THE ORIGIN THE WEB LANE DEPLOYS TO ─────────────────
+// [10]D-2b. `deploy-web.yml` is a matrix over the workspace app set and must
+// therefore resolve "where does app <id> live" at run time rather than carry one
+// app's hostname in its YAML. That answer already exists exactly once, in the
+// catalogue this guard's whole subject is, and `tooling/monitor-register.json`
+// already derives every watched hostname from the same file
+// (`_derivation.appCatalogue`).
+//
+// 🔴 IT IS EMITTED FROM THE GUARD THAT ASSERTS THOSE URLS ANSWER, and that is
+// the point rather than a shortcut — the same relationship
+// assert-release-lane-generic.mjs `--emit-apps` has with the lanes it grades. A
+// separate reader inlined in the workflow would be a second parse of one file,
+// free to disagree with this one in the only way that reports "clean".
+//
+// It does NOT filter on `status`. `live` is a claim about a surface that already
+// answers; an app is deployed BEFORE it can be live, so requiring `live` here
+// would make the first deploy of every new app impossible. Reachability stays
+// the business of the scan below.
+//
 // Usage:  node tooling/ci/assert-catalog-reachable.mjs [repoRoot]
+//         node tooling/ci/assert-catalog-reachable.mjs --emit-url <slug> [repoRoot]
 // Exit 0 = every advertised app answered, 1 = one did not (or the scan broke).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const ROOT = resolve(process.argv[2] ?? process.cwd());
+// `indexOf` returns -1 when the flag is absent, and -1 + 1 === 0 silently
+// selects argv[0] — the off-by-one that shipped in assert-gate-passed.mjs and
+// blocked both production deploys. Filtered explicitly, never by arithmetic.
+const argv = process.argv.slice(2);
+const emitAt = argv.indexOf('--emit-url');
+const EMIT_SLUG = emitAt === -1 ? null : (argv[emitAt + 1] ?? null);
+const positional = emitAt === -1 ? argv : argv.filter((_, i) => i !== emitAt && i !== emitAt + 1);
+
+const ROOT = resolve(positional[0] ?? process.cwd());
 const CATALOG = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
 
 /** Attempts per entry. A single blip must not fail a build; a dead app must.
@@ -87,6 +115,42 @@ if (entries.length === 0) {
     '✗ COVERAGE LOST — the catalogue is empty.',
     '  Every check below would range over nothing and report success.',
   ]);
+}
+
+// ── the emit mode, BEFORE any network work ───────────────────────────────────
+// Deliberately after the catalogue's structural floors and before the probes:
+// this mode answers one question ("what origin does app <slug> publish to") and
+// must not be able to fail — or hang for ATTEMPTS × TIMEOUT_MS — because a
+// hostname unrelated to it is down. It fails LOUDLY on every "I could not tell"
+// case, because the caller is a deploy lane and an empty answer there resolves
+// to `/version.json` — a smoke against the runner's own filesystem, which is the
+// green-over-nothing shape this repository keeps paying for.
+if (emitAt !== -1) {
+  if (!EMIT_SLUG || EMIT_SLUG.startsWith('-')) {
+    fail([
+      '✗ --emit-url needs an app slug: `--emit-url <slug>`.',
+      `  Got ${EMIT_SLUG === null ? 'nothing' : JSON.stringify(EMIT_SLUG)}. An unresolved slug would emit an empty`,
+      '  origin and the caller would probe a path with no host at all.',
+    ]);
+  }
+  const row = entries.find((e) => e && e.slug === EMIT_SLUG);
+  if (!row) {
+    fail([
+      `✗ the catalogue declares no app with slug "${EMIT_SLUG}".`,
+      `  It holds: ${entries.map((e) => e?.slug ?? '<no slug>').join(', ')}.`,
+      '  [3]S-7 makes the stamp write this row; an app in the pub workspace with no catalogue row is an app',
+      '  the web lane can build and cannot address, so this is a real fault and not a missing convenience.',
+    ]);
+  }
+  const url = typeof row.url === 'string' ? row.url.trim().replace(/\/+$/, '') : '';
+  if (!/^https:\/\/[^\s/]+/.test(url)) {
+    fail([
+      `✗ the catalogue row for "${EMIT_SLUG}" declares url ${JSON.stringify(row.url ?? null)}, which is not an https origin.`,
+      '  The deploy lane appends `/version.json` to this value and the deployment record publishes it verbatim.',
+    ]);
+  }
+  console.log(`site_url=${url}`);
+  process.exit(0);
 }
 
 const live = entries.filter((e) => e && e.status === 'live');

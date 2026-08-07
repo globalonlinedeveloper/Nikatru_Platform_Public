@@ -67,6 +67,33 @@ jobs:
       - run: echo gate
 `;
 
+/** [10]D-2b's lane, in the shape the real one has: a matrix over the workspace,
+ *  a wildcard path filter, and no app id in any field. Written as a DEFAULT
+ *  every fixture carries — like `ci.yml` — because GRADED_LANES names it and a
+ *  root without it is a COVERAGE LOST rather than a case. Individual limb-D
+ *  tests override it. */
+const DEPLOY_WEB = `name: Deploy Web
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+jobs:
+  deploy-web:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        app: \${{ fromJSON(needs.prepare.outputs.apps) }}
+    defaults:
+      run:
+        working-directory: apps/\${{ matrix.app }}
+    steps:
+      - run: flutter build web --release
+      - uses: cloudflare/wrangler-action@0000000000000000000000000000000000000000
+        with:
+          command: pages deploy build/web --project-name=\${{ matrix.app }}
+`;
+
 /** The two lanes R-1 owns, plus whatever else a case needs. Every fixture root
  *  carries a `tooling/ci` so limb B has a corpus, and the real modules the guard
  *  imports are NOT copied — the guard is run from its own location, so its
@@ -80,7 +107,7 @@ function fixture({ workspace = ['apps/subly'], workflows = {}, guards = {} } = {
     join(root, 'pubspec.yaml'),
     `name: ws\nworkspace:\n${workspace.map((w) => `  - ${w}\n`).join('')}\ndev_dependencies:\n  melos: ^8.2.2\n`,
   );
-  const all = { 'ci.yml': CI_YML, ...workflows };
+  const all = { 'ci.yml': CI_YML, 'deploy-web.yml': DEPLOY_WEB, ...workflows };
   for (const [name, body] of Object.entries(all)) writeFileSync(join(root, '.github', 'workflows', name), body);
   writeFileSync(join(root, 'tooling', 'ci', 'assert-gate-passed.mjs'), GATE_STUB);
   for (const [name, body] of Object.entries(guards)) writeFileSync(join(root, 'tooling', 'ci', name), body);
@@ -119,8 +146,12 @@ describe('assert-release-lane-generic.mjs — limb A (the lanes cover the worksp
   test('one app, both R-1 lanes name it: ok', () => {
     const r = run(fixture({ workflows: { 'build-platforms.yml': platforms(literalLane('apps/subly')), 'e2e.yml': E2E } }));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /build-platforms\.yml — covers exactly the workspace app set/);
-    assert.match(r.out, /e2e\.yml — covers exactly the workspace app set/);
+    // The owner tag is part of the line on purpose: three lanes are graded and
+    // two stages own them, so a report that cannot say which requirement a lane
+    // answers to routes its failures to the wrong person.
+    assert.match(r.out, /build-platforms\.yml \(\[pipeline 9\]R-1\) — covers exactly the workspace app set/);
+    assert.match(r.out, /e2e\.yml \(\[pipeline 9\]R-1\) — covers exactly the workspace app set/);
+    assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\)/);
   });
 
   test('THE RECORDED FAILING CASE — a second workspace app no lane covers', () => {
@@ -154,7 +185,7 @@ jobs:
 `;
     const okRun = run(fixture({ workflows: { 'build-platforms.yml': hoisted, 'e2e.yml': E2E } }));
     assert.equal(okRun.code, 0, okRun.out);
-    assert.match(okRun.out, /build-platforms\.yml — covers exactly the workspace app set \{apps\/subly\}/);
+    assert.match(okRun.out, /build-platforms\.yml \(\[pipeline 9\]R-1\) — covers exactly the workspace app set \{apps\/subly\}/);
 
     const badRun = run(
       fixture({ workspace: ['apps/subly', 'apps/second'], workflows: { 'build-platforms.yml': hoisted, 'e2e.yml': E2E } }),
@@ -328,6 +359,72 @@ jobs:
   });
 });
 
+describe('assert-release-lane-generic.mjs — limb D (no literal app id on the deploy path)', () => {
+  const R1 = { 'build-platforms.yml': platforms(literalLane('apps/subly')), 'e2e.yml': E2E };
+  const deployWeb = (field) => DEPLOY_WEB.replace('- run: flutter build web --release', field);
+
+  test('the generic deploy lane passes and the report says how much it read', () => {
+    const r = run(fixture({ workflows: R1 }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /deploy-web\.yml \(\[pipeline 10\]D-2b\).*deploy-path field\(s\) name no app id/);
+  });
+
+  test('THE RECORDED FAILING CASE — a literal app id in `working-directory`', () => {
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': DEPLOY_WEB.replace('apps/${{ matrix.app }}', 'apps/subly') } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /\[pipeline 10\]D-2b · deploy-web\.yml:\d+ names the app id "subly" literally in `working-directory`/);
+  });
+
+  test('…in a step `run:` — the field limbs A/A′ are blind to', () => {
+    // `record-deployment.mjs subly-web` carries no `apps/` prefix at all, so
+    // the app-path limbs resolve it to NOTHING and report the lane generic.
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': deployWeb('- run: node tooling/ci/record-deployment.mjs subly-web') } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names the app id "subly" literally in `run`/);
+  });
+
+  test('…in a `with:` value — `--project-name=subly`', () => {
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': DEPLOY_WEB.replace('--project-name=${{ matrix.app }}', '--project-name=subly') } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names the app id "subly" literally in `with\.command`/);
+  });
+
+  test('…and in the `paths:` filter, which is the one field a matrix cannot reach', () => {
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': DEPLOY_WEB.replace("- 'apps/**'", "- 'apps/subly/**'") } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names the app id "subly" literally in `paths`/);
+  });
+
+  test('the hostname counts — `https://subly.nikatru.com` is the app id in a URL', () => {
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': deployWeb('- run: node smoke.mjs --url https://subly.nikatru.com/version.json') } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names the app id "subly" literally in `run`/);
+  });
+
+  test('the `env:` hoist does not launder it either', () => {
+    const hoisted = DEPLOY_WEB.replace(
+      'jobs:',
+      'env:\n  APP: subly\njobs:',
+    ).replace('- run: flutter build web --release', '- run: node deploy.mjs --project ${{ env.APP }}');
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': hoisted } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names the app id "subly" literally in `run`/);
+  });
+
+  test('a SUBSTRING of an app id is not the app id — no false red on `resubly`', () => {
+    const r = run(fixture({ workflows: { ...R1, 'deploy-web.yml': deployWeb('- run: node tool.mjs --flag resublyx') } }));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('R-1\'s own lanes are NOT held to limb D — the literal-equality shape is their criterion', () => {
+    // build-platforms.yml and e2e.yml name apps/subly literally and pass. Limb D
+    // would overturn limb A's decided design from inside this file.
+    const r = run(fixture({ workflows: R1 }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /build-platforms\.yml \(\[pipeline 9\]R-1\) — covers exactly the workspace app set/);
+  });
+});
+
 describe('assert-release-lane-generic.mjs — limb B (no guard hides a lane)', () => {
   const lanes = { 'build-platforms.yml': platforms(literalLane('apps/subly')), 'e2e.yml': E2E };
 
@@ -368,8 +465,12 @@ describe('assert-release-lane-generic.mjs — limb B (no guard hides a lane)', (
   });
 
   test('a filename in a COMMENT is not a binding either', () => {
+    // deploy-web.yml is a fixture DEFAULT now that GRADED_LANES names it, so
+    // the case no longer supplies one. It used to override it with a literal
+    // lane, which limb D correctly fails — and a limb-B case failing on limb D
+    // proves nothing about limb B.
     const commented = '// this used to read deploy-web.yml and no longer does\nconst X = 1;\n';
-    const r = run(fixture({ workflows: { ...lanes, 'deploy-web.yml': E2E }, guards: { 'assert-thing.mjs': commented } }));
+    const r = run(fixture({ workflows: lanes, guards: { 'assert-thing.mjs': commented } }));
     assert.equal(r.code, 0, r.out);
   });
 

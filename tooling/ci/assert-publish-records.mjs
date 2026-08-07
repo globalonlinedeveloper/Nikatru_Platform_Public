@@ -80,7 +80,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorkflow, parseAllWorkflows, shellSegments } from './workflow-scan.mjs';
+import { parseWorkflow, parseAllWorkflows, shellSegments, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
 import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING } from './deployment-record.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -116,6 +116,12 @@ const apps = readJson(APPS_REL);
 const rows = Array.isArray(register?.channels) ? register.channels : [];
 const servedRows = rows.filter((r) => r?.served === true);
 const submittableRows = rows.filter((r) => r?.submittable === true);
+
+/** The app slugs a matrix-parameterised record call expands over — the SAME
+ *  catalogue `expandEnvironments` below builds the required set from, so a lane
+ *  written as `${{ matrix.app }}-web` is compared against the identical
+ *  right-hand side rather than a second reading of the app set. */
+const APP_SLUGS = (Array.isArray(apps) ? apps : []).map((a) => a?.slug).filter((s) => typeof s === 'string');
 
 /** `{app}-web` × the apps that actually declare that channel's platforms. The
  *  join is the register's own template, so the required set grows the day a
@@ -172,20 +178,29 @@ function stepGuards(job, lineNumber) {
 
 /** Every `record-deployment.mjs <env> …` call in one job, one per shell segment.
  *  Segment-wise because `a ; node record-deployment.mjs x` and a `run: |` block
- *  are the same text to a line matcher and different commands to a shell. */
-function recordCalls(job) {
+ *  are the same text to a line matcher and different commands to a shell.
+ *
+ *  The call-site reader and the matrix expansion are workflow-scan.mjs's — see
+ *  the block above `RECORD_CALL` there for the three disagreeing copies this
+ *  replaced. A `${{ matrix.app }}-web` step records EVERY app's environment,
+ *  which is strictly more than the literal it replaced. */
+function recordCalls(job, appSlugs = APP_SLUGS) {
   const out = [];
   for (const line of jobRunLines(job)) {
     for (const seg of shellSegments(line.text)) {
-      const m = seg.match(new RegExp(`${RECORDER}\\s+([A-Za-z0-9._{}$-]+)`));
+      RECORD_CALL.lastIndex = 0;
+      const m = RECORD_CALL.exec(seg);
       if (!m) continue;
-      out.push({
-        n: line.n,
-        environment: m[1],
-        state: (seg.match(/--state\s+(\S+)/) ?? [])[1] ?? null,
-        listingUrl: (seg.match(/--listing-url\s+(\S+)/) ?? [])[1] ?? null,
-        guards: stepGuards(job, line.n),
-      });
+      for (const environment of expandMatrixEnvironment(m[1], appSlugs)) {
+        out.push({
+          n: line.n,
+          environment,
+          written: m[1],
+          state: (seg.match(/--state\s+(\S+)/) ?? [])[1] ?? null,
+          listingUrl: (seg.match(/--listing-url\s+(\S+)/) ?? [])[1] ?? null,
+          guards: stepGuards(job, line.n),
+        });
+      }
     }
   }
   return out;

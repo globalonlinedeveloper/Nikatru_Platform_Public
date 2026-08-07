@@ -72,13 +72,45 @@
 //   lane-bound guard would never see it. `// LANE-BOUND: <file.yml> — <why>` in
 //   the guard's own header is in front of the only person who can fix it.
 //
+// LIMB D — NO LITERAL APP ID ON THE DEPLOY PATH, added 2026-08-07 with
+//   `[10]D-2b`. Limbs A/A′ quantify over `apps/<id>` PATHS, and that is not the
+//   whole of "takes any app id". `deploy-web.yml` also carried the app id in
+//   three places with no `apps/` prefix at all — `--project-name=subly`,
+//   `record-deployment.mjs subly-web`, and the smoke URL
+//   `https://subly.nikatru.com/version.json`. Every one of them is on the
+//   executable path, every one of them would have had to be hand-edited to ship
+//   app #2, and limbs A/A′ are blind to all three by construction.
+//
+//   So limb D takes D-2b's acceptance at its word and grades the FIELDS it
+//   names — the trigger's `paths:`, `defaults.run.working-directory`, and each
+//   step's `run:` and `with:` — selected BY YAML KEY off the shared parser,
+//   expanded through the same `${{ env.X }}` / `${{ matrix.X }}` resolver as
+//   limb A, and then searched for any workspace app id AS A WHOLE TOKEN. Never
+//   by grepping the file: a `#`-comment naming `apps/subly/web/_headers` in an
+//   explanation is prose, and this repository has already shipped a guard that
+//   matched the comment explaining why a thing did not exist.
+//
+//   ⚠️ ITS SUBJECT IS THE GRADED LANES ONLY. Every other workflow still names
+//   apps freely and is only PRINTED — a store-submission lane that is
+//   `served: false` is another stage's refactor, and failing the build over it
+//   would claim work this guard has no mandate for.
+//
 // ── WHAT IS DELIBERATELY NOT ASSERTED ────────────────────────────────────────
 // The workflows R-1 owns are `build-platforms.yml` and `e2e.yml` — named by
-// company/pipeline/09-release-engineering.md, reconciliation PART 6. The WEB
-// deploy lane's genericity belongs to `[10]D-2b`, and per-channel refactors stay
-// with their channel owners. Every OTHER workflow is still resolved and its app
-// set PRINTED every run, so a divergence is visible without this guard failing
-// a build over another stage's work.
+// company/pipeline/09-release-engineering.md, reconciliation PART 6.
+// `deploy-web.yml` is `[10]D-2b`'s and is graded HERE, in the same limbs, since
+// 2026-08-07: the requirement is that the web delivery path takes any app id,
+// and the machinery that decides whether a lane is app-generic already lived in
+// this file. Two implementations of "is this lane generic" is the copy that
+// quietly stops reading what it thinks it reads. The OWNERSHIP is still
+// separate — `GRADED_LANES` records which stage owns which lane, and a failure
+// message names it — so a red here is attributable to a stage without the
+// second guard.
+//
+// Per-channel refactors of the store lanes stay with their channel owners.
+// Every OTHER workflow is still resolved and its app set PRINTED every run, so
+// a divergence is visible without this guard failing a build over another
+// stage's work.
 //
 // ⚠️ THE HONEST LIMIT, stated rather than papered over: limb B's subject is a
 // guard that binds EXACTLY ONE lane, so a guard could buy silence by naming a
@@ -160,16 +192,34 @@ function coverageLost(lines) {
 // account for FAILS. A new workflow therefore acquires an owner on the day it
 // lands rather than on the day somebody remembers this file exists.
 // ─────────────────────────────────────────────────────────────────────────────
-const R1_LANES = ['build-platforms.yml', 'e2e.yml'];
+// Every lane graded by limbs A/A′/D, with the stage that owns it. The stage is
+// not decoration: company/pipeline/09-release-engineering.md reconciliation
+// PART 6 splits R-1 from D-2b deliberately, and a failure message that cannot
+// say which requirement it belongs to gets routed to the wrong person.
+//
+// `deployPath` is limb D's subject and it is FALSE for R-1's two lanes on
+// purpose, not by omission. R-1's criterion is an EQUALITY — a lane may cover
+// the workspace by naming every app literally, and limb A's header records why
+// that was the right call (the alternative demanded a matrix refactor of two
+// workflows on day one to satisfy an assertion that proved nothing at one app).
+// Limb D forbids the literal form outright. Applying it to R-1's lanes would
+// therefore overturn another stage's decided criterion from inside this file,
+// which is the same boundary violation CLASSIFIED_ELSEWHERE exists to respect.
+// D-2b's acceptance says "no literal app id anywhere on the deploy path", and
+// the deploy path is what this flag marks.
+const GRADED_LANES = new Map([
+  ['build-platforms.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
+  ['e2e.yml', { owner: '[pipeline 9]R-1', deployPath: false }],
+  // [10]D-2b — "the web delivery path takes any app id from the spec: no
+  // per-app workflow authoring, no hardcoded paths." Graded here since
+  // 2026-08-07; before that this row sat in CLASSIFIED_ELSEWHERE and the lane
+  // resolved to exactly one app on every run, PRINTED and never failed.
+  ['deploy-web.yml', { owner: '[pipeline 10]D-2b', deployPath: true }],
+]);
+const GRADED = [...GRADED_LANES.keys()];
+const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(([k]) => k);
 
 const CLASSIFIED_ELSEWHERE = new Map([
-  [
-    'deploy-web.yml',
-    '[10]D-2b owns the WEB deploy lane and its genericity. company/pipeline/09-release-engineering.md ' +
-      'reconciliation PART 6 splits them deliberately: web is the live channel and is buildable today, ' +
-      'the native/release half is deferred by 39-CHASSIS §4 cut 5, and merging the two would put one ' +
-      "stage's exemption on the other's requirement.",
-  ],
   [
     'deploy-workers.yml',
     'deploys services/*, which are Workers and not apps. R-1 quantifies over the workspace APP set, so a ' +
@@ -270,22 +320,23 @@ if (gateName !== null && gateWorkflows.length !== 1 && scanningRealRepo) {
 }
 const GATE_WORKFLOW = gateWorkflows[0] ?? null;
 
-// Every workflow is owned: R-1's, the gate, or a written classification.
+// Every workflow is owned: graded here, the gate, or a written classification.
 const unclassified = seen.filter(
-  (f) => !R1_LANES.includes(f) && f !== GATE_WORKFLOW && !CLASSIFIED_ELSEWHERE.has(f),
+  (f) => !GRADED.includes(f) && f !== GATE_WORKFLOW && !CLASSIFIED_ELSEWHERE.has(f),
 );
 if (unclassified.length) {
   fail(
     `${unclassified.length} workflow(s) belong to no declared owner: ${unclassified.join(', ')}. ` +
-      "Add each to R1_LANES (R-1 grades it against the workspace) or to CLASSIFIED_ELSEWHERE with the stage that owns it. " +
-      'An unclassified lane is one nobody is holding to app-genericity, which is the state R-1 exists to end.',
+      'Add each to GRADED_LANES (graded against the workspace, with the stage that owns it) or to ' +
+      'CLASSIFIED_ELSEWHERE with the stage that owns it. An unclassified lane is one nobody is holding to ' +
+      'app-genericity, which is the state R-1 and D-2b exist to end.',
   );
 }
-const missingR1 = R1_LANES.filter((f) => !seen.includes(f));
-if (missingR1.length) {
+const missingGraded = GRADED.filter((f) => !seen.includes(f));
+if (missingGraded.length) {
   coverageLost([
-    `R-1's declared coverage set names ${missingR1.join(', ')}, which ${missingR1.length === 1 ? 'is' : 'are'} not in ${WORKFLOW_DIR}.`,
-    'Limb A would then grade fewer lanes than R-1 claims and still print ok.',
+    `GRADED_LANES names ${missingGraded.join(', ')}, which ${missingGraded.length === 1 ? 'is' : 'are'} not in ${WORKFLOW_DIR}.`,
+    'Limbs A/A′/D would then grade fewer lanes than this file claims and still print ok.',
   ]);
 }
 
@@ -461,8 +512,92 @@ export function laneApps(wf, env, matrix) {
   return { resolved, parameterised, exprs };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB D — the DEPLOY PATH, field by field. [10]D-2b.
+//
+// The fields are named by the acceptance criterion, not chosen here: the push
+// trigger's `paths:`, `defaults.run.working-directory`, and every step's `run:`
+// and `with:`. They are selected BY YAML KEY off the shared parser — comments
+// are already blanked, so an explanation naming `apps/<id>/web/_headers` can
+// never satisfy or violate a check about behaviour.
+//
+// `working-directory` is taken at ANY depth on purpose: `defaults.run` and a
+// step-level override are the SAME key doing the same job, and a rule that saw
+// only the `defaults:` one would be satisfied by moving the literal down a
+// level — the hoist bypass this whole file was written against, upside down.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `{ n, field, text }` for every value on the deploy path. */
+export function deployPathValues(wf) {
+  const out = [];
+  const lines = wf.lines;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].text;
+    let m;
+    if ((m = t.match(/^(\s*)paths(-ignore)?:\s*$/))) {
+      const indent = m[1].length;
+      for (let j = i + 1; j < lines.length; j++) {
+        const s = lines[j].text;
+        if (s.trim() === '') continue;
+        if (s.match(/^ */)[0].length <= indent) break;
+        const item = s.match(/^\s*-\s*(['"]?)(.+?)\1\s*$/);
+        if (!item) break;
+        out.push({ n: lines[j].n, field: `paths${m[2] ?? ''}`, text: item[2] });
+      }
+      continue;
+    }
+    if ((m = t.match(/^\s*-?\s*working-directory:\s*(\S.*?)\s*$/))) {
+      out.push({ n: lines[i].n, field: 'working-directory', text: m[1].replace(/^['"]|['"]$/g, '') });
+    }
+  }
+  for (const job of wf.jobs.values()) {
+    // `run:` from the LOGICAL lines, so a `>` fold and a `|` block are read as
+    // the commands they are rather than as whatever fragment happens to sit on
+    // the `run:` line itself.
+    for (const l of job.logical) {
+      const m = l.text.match(/^\s*-?\s*run:\s*(\S.*)$/);
+      if (m) out.push({ n: l.n, field: 'run', text: m[1] });
+    }
+    for (let i = 0; i < job.lines.length; i++) {
+      const m = job.lines[i].text.match(/^(\s*)with:\s*$/);
+      if (!m) continue;
+      const indent = m[1].length;
+      for (let j = i + 1; j < job.lines.length; j++) {
+        const s = job.lines[j].text;
+        if (s.trim() === '') continue;
+        if (s.match(/^ */)[0].length <= indent) break;
+        const kv = s.match(/^\s*([A-Za-z_][A-Za-z0-9_-]*):\s*(\S.*?)\s*$/);
+        if (kv) out.push({ n: job.lines[j].n, field: `with.${kv[1]}`, text: kv[2].replace(/^['"]|['"]$/g, '') });
+      }
+    }
+  }
+  return out;
+}
+
+const RE_ESCAPE = /[.*+?^${}()|[\]\\]/g;
+/** An app id as a WHOLE TOKEN. `subly` must be found in `--project-name=subly`,
+ *  in `subly-web` and in `https://subly.nikatru.com`, and must NOT be found
+ *  inside `sublyx` or `resubly` — an id that is merely a substring of another
+ *  word is not this lane naming that app. */
+const idToken = (id) => new RegExp(`(^|[^A-Za-z0-9])${id.replace(RE_ESCAPE, '\\$&')}([^A-Za-z0-9]|$)`);
+
+/** Literal app ids on a lane's deploy path, after expansion. */
+export function literalAppIds(wf, env, matrix, appIds) {
+  const hits = [];
+  for (const v of deployPathValues(wf)) {
+    for (const variant of expandExpressions(v.text, env, matrix)) {
+      for (const id of appIds) {
+        if (idToken(id).test(variant)) hits.push({ ...v, id });
+      }
+    }
+  }
+  return hits;
+}
+
 const expected = [...APPS].sort().join(', ');
+const APP_IDS = [...APPS].map((a) => a.slice('apps/'.length)).filter(Boolean);
 let gradedLanes = 0;
+let deployFieldsRead = 0;
 for (const wf of parsed) {
   const file = wf.rel.split('/').pop();
   const env = collectEnv(wf.lines);
@@ -470,11 +605,38 @@ for (const wf of parsed) {
   const { resolved, parameterised, exprs } = laneApps(wf, env, matrix);
   const got = [...resolved].sort().join(', ') || '(none)';
 
-  if (!R1_LANES.includes(file)) {
+  if (!GRADED.includes(file)) {
     note(`${file} — resolves to ${parameterised ? 'a PARAMETERISED app path' : got}; owned by ${file === GATE_WORKFLOW ? 'the gate, not a channel' : 'another stage'}, not graded here`);
     continue;
   }
   gradedLanes++;
+  const { owner, deployPath } = GRADED_LANES.get(file);
+
+  // ── LIMB D, for the DEPLOY-PATH lanes only ────────────────────────────────
+  let fields = [];
+  if (deployPath) {
+    fields = deployPathValues(wf);
+    deployFieldsRead += fields.length;
+    if (fields.length === 0) {
+      coverageLost([
+        `${file} is graded as a deploy path, and limb D read ZERO fields from it.`,
+        'No `paths:`, no `working-directory:`, no step `run:` and no `with:` — a deploy lane cannot be all four',
+        'at once, so the field selection is broken and limb D would report every lane clean forever.',
+      ]);
+    }
+    const literals = literalAppIds(wf, env, matrix, APP_IDS);
+    if (literals.length) {
+      const first = literals[0];
+      fail(
+        `${owner} · ${file}:${first.n} names the app id "${first.id}" literally in \`${first.field}\` ` +
+          `(${literals.length} field(s) in total: ${[...new Set(literals.map((l) => `${l.field}@:${l.n}`))].join(', ')}). ` +
+          'That is the per-app workflow authoring this criterion abolishes: shipping app #2 means finding and editing ' +
+          'every one of them, on the one lane that reaches users. An app id belongs to the matrix leg — ' +
+          '`${{ matrix.app }}` — or to a file the lane READS at run time, never to this YAML.',
+      );
+    }
+  }
+
   if (parameterised) {
     // ── LIMB A′ ─────────────────────────────────────────────────────────────
     // A parameterised lane is generic only if the parameter is REAL and if
@@ -498,10 +660,14 @@ for (const wf of parsed) {
         `${file} is MIXED: its app paths are parameterised, and it ALSO still names ${[...resolved].sort().join(', ')} ` +
           'literally. A matrix leg for app #2 would run those steps against app #1 — the wrong directory, or the wrong ' +
           "artifact uploaded under the second app's name — and limb A cannot see it, because `parameterised` returns ok " +
-          'before the equality is reached. Every app path in an R-1 lane is parameterised, or the lane is not generic.',
+          'before the equality is reached. Every app path in a graded lane is parameterised, or the lane is not generic.',
       );
     } else {
-      ok(`${file} — the app segment of its paths is a run-time parameter over a declared dimension, and no path beside it names an app, so it serves any app in the workspace`);
+      ok(
+        `${file} (${owner}) — the app segment of its paths is a run-time parameter over a declared dimension` +
+          `${deployPath ? `, and ${fields.length} deploy-path field(s) name no app id` : ', and no path beside it names an app'}` +
+          ', so it serves any app in the workspace',
+      );
     }
     continue;
   }
@@ -516,13 +682,26 @@ for (const wf of parsed) {
         'silent drift has cost this repo the most.',
     );
   } else {
-    ok(`${file} — covers exactly the workspace app set {${got}}`);
+    ok(`${file} (${owner}) — covers exactly the workspace app set {${got}}`);
   }
 }
 if (gradedLanes === 0) {
   coverageLost([
-    'limb A graded ZERO lanes, so the equality it exists to assert ranged over nothing.',
-    `R1_LANES names ${R1_LANES.join(', ')}; if a lane was renamed, rename it here in the same change.`,
+    'limbs A/A′/D graded ZERO lanes, so the equality they exist to assert ranged over nothing.',
+    `GRADED_LANES names ${GRADED.join(', ')}; if a lane was renamed, rename it here in the same change.`,
+  ]);
+}
+if (APP_IDS.length === 0) {
+  coverageLost([
+    'limb D has an EMPTY app-id set, so "does this lane name an app literally" was asked about no app at all.',
+    `The set is derived from the workspace entries {${expected}}; an empty right-hand side certifies every lane.`,
+  ]);
+}
+if (deployFieldsRead === 0) {
+  coverageLost([
+    `limb D read ZERO deploy-path fields across ${DEPLOY_PATH_LANES.length} declared deploy lane(s) (${DEPLOY_PATH_LANES.join(', ') || 'none'}).`,
+    'D-2b\'s criterion then ranged over nothing while every other limb still printed ok — a lane graded for',
+    'app-genericity by an assertion with no subject.',
   ]);
 }
 
@@ -629,7 +808,10 @@ if (problems.length > bindingProblems) {
   ok(`lane bindings — ${boundGuards} guard(s) bind exactly one lane, ${declared} declaration(s), all matched`);
 }
 
-console.log(`\nscanned ${seen.length} workflow(s) and ${guardFiles.length} guard(s); workspace apps: {${expected}}`);
+console.log(
+  `\nscanned ${seen.length} workflow(s) and ${guardFiles.length} guard(s); graded ${gradedLanes} lane(s) ` +
+    `(${GRADED.join(', ')}) over ${deployFieldsRead} deploy-path field(s); workspace apps: {${expected}}`,
+);
 
 if (problems.length) {
   console.error('');
