@@ -369,6 +369,39 @@
       "source": "verified"
     },
     {
+      "_whyAnchoredAtTheScript": "🔴 THE ANCHOR IS THE READER, NOT ops-watch.yml, AND THE REASON IS MECHANICAL RATHER THAN STYLISTIC. assert-ops-register.mjs builds its `anchored` map as `anchor -> row`, so a SECOND duty row anchored at .github/workflows/ops-watch.yml would silently overwrite duty.workflow.ops-watch.yml in that map and take its place in the [14]O-10 freshness limb — dropping that row's `freshnessGap` print with nothing said. A guard that quietly stops checking one row is the single defect this repository keeps re-finding, so the anchor names the file this duty actually IS. The coupling is not weakened by it: the [14]O-10 limb takes the anchor's basename and requires the named reader to mention it, so deleting the step from ops-watch.yml reddens assert-ops-register.mjs.",
+      "id": "duty.analytics-silence-judgment",
+      "kind": "duty",
+      "what": "[11]E-13 — the judgement duty.platform-cron's analytics_liveness limb deliberately does NOT make. The writer records `events=` beside `consents=` and keeps `ok` answering one question (did the work succeed); this reads the newest (portfolio) row and decides whether the silence is a FAULT: consent artifacts inside the window with zero events means reach is PROVEN and arrivals are ZERO.",
+      "detector": "tooling/ops/check-analytics-liveness.mjs, run daily by .github/workflows/ops-watch.yml in the same job as check-heartbeats.mjs and behind `if: !cancelled()`, so a failing heartbeat read cannot skip it. Three-valued: 0 verified · 1 the rail is provably silent while users consented · 2 COULD NOT LOOK (no credential, no (portfolio) row, an unparseable detail, or a writer that could not run).",
+      "response": "Exit 1 fails the heartbeats job, which opens or comments the durable ops-watch issue. The named order of investigation travels with the annotation: the client event queue flushing at all, then POST /v1/events answering 2xx from the app origin (CORS), then the ingest dedup, which drops a duplicate event_id silently by design. Exit 2 is the separate 'nothing judged it' state and fails too.",
+      "cadence": "1d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ops/check-analytics-liveness.mjs",
+        "record": "GitHub Actions run history for .github/workflows/ops-watch.yml (event = schedule) — a failing step is a failing run, and the durable-issue leg is duty.workflow.ops-watch.yml's alert job. ⚠️ THE DURABLE-ISSUE DECLARATION CLAUSE IS DELIBERATELY NOT RESTATED IN THIS FIELD: tooling/ci/assert-alert-disposition.mjs DERIVES its alerting sources from that clause, so a second row repeating it declares ONE durable issue TWICE — and its own mutation tests replace the FIRST occurrence in the file, which a duplicate silently makes the wrong one. Measured on this branch 2026-08-08: with the clause restated here, two of that guard's tests went red while the guard itself still printed two sources.",
+        "failingValue": "a non-zero exit from tooling/ops/check-analytics-liveness.mjs. REACHABLE AND REACHED TODAY: production platform_db holds three granted consent_artifacts rows (newest 2026-08-07T17:57:28Z, app subly) against `SELECT COUNT(*) FROM events` = 0, which is exactly the exit-1 condition.",
+        "readBy": ".github/workflows/ops-watch.yml — its alert job files the durable issue, and disposition is a human closing it. The literals this reader filters on (the job name and the (portfolio) target) are DERIVED from services/platform/src/scheduled.ts rather than typed twice, so a rename fails closed here instead of querying a name nothing writes.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "event": "schedule"
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING, and it is the SAME gap duty.workflow.ops-watch.yml already carries rather than a new one: this duty is a step inside that workflow, so whatever silences the workflow silences this too. Recorded separately instead of borrowed, because a gap inherited by implication is a gap nobody counts.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THIS STEP'S ABSENCE, for the same reason and with the same repair as duty.workflow.ops-watch.yml: GitHub disables scheduled workflows in inactive public repositories, and a dead cron here looks exactly like a portfolio with nothing wrong. Its FAILING is loud (the alert job opens a durable issue; observed 2026-08-04, issue #151, and again 2026-08-07 run 31162205780). Closing the absence half needs a signal hosted on a second provider — the mechanism is proven twice in this portfolio (an hourly poster plus a GlitchTip heartbeat monitor WITH MARGIN) and both halves need a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Declared 2026-08-08."
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The reader has never run against the live D1 table. Its verdicts, its token parser and all three exit codes are exercised end-to-end in tooling/ci/test/analytics-liveness.test.mjs (28 cases, including the process-level exit codes), and the writer's tokens in services/platform/test/analytics-liveness.test.ts — but a fixture is not the production row, and this repository has shipped a guard whose six fixture tests passed against a version that could not fail. Flip to `verified` only with a dated observation of a real run: the expected first result is EXIT 1, because consents>0 with events=0 is the live state."
+    },
+    {
       "id": "duty.workflow.ci.yml",
       "kind": "duty",
       "what": "The full gate: every guard, both Workers, the brick stamp, the sites.",

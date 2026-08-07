@@ -69,7 +69,39 @@ const insertEvent = (db: ReturnType<typeof realPlatformDb>, appId: string, serve
     )
     .run(id, appId, 'anon-1', 'app_open', '{}', serverTs);
 
+/** A consent artifact, the INDEPENDENT signal. Written by `POST /v1/consent` in
+ *  production — a different route, a different client transport and a different
+ *  table from the events rail, which is the whole reason it can still be there
+ *  when the events rail produces nothing. */
+const insertConsent = (
+  db: ReturnType<typeof realPlatformDb>,
+  appId: string,
+  serverTs: string,
+  id: string,
+  granted = 1,
+) =>
+  db.db
+    .prepare(
+      'INSERT INTO consent_artifacts (consent_id, app_id, anon_id, purpose, granted, policy_version, server_ts) VALUES (?,?,?,?,?,?,?)',
+    )
+    .run(id, appId, 'anon-1', 'analytics', granted, 'v1', serverTs);
+
 const hours = (n: number) => new Date(Date.now() - n * 60 * 60 * 1000).toISOString();
+
+/** The leading `key=value` run, parsed the way the READER parses it. Asserting
+ *  through the same reduction is the point: [ADR 035] says readers parse tokens
+ *  and never prose, so a test that matched the English would be checking a
+ *  different contract from the one production depends on. */
+const tokens = (detail: unknown): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const m of String(detail).matchAll(/([A-Za-z_][A-Za-z0-9_]*)=(\S+)/g)) {
+    if (!(m[1] in out)) out[m[1]] = m[2];
+  }
+  return out;
+};
+
+const portfolio = (db: ReturnType<typeof realPlatformDb>) =>
+  liveness(db).find((r) => r.target === '(portfolio)')!;
 
 const liveness = (db: ReturnType<typeof realPlatformDb>) =>
   db.rows(`SELECT * FROM cron_heartbeat WHERE job = '${ANALYTICS_LIVENESS_JOB}' ORDER BY target`);
@@ -241,5 +273,165 @@ describe('analyticsLiveness records what it measured', () => {
     // which needs no number. (Until 2026-08-06 this comment also said "and
     // neither is zero", which was the bug stated as a virtue.)
     expect(liveness(db).every((r) => r.ok === 1)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [11]E-13 — THE FOURTH SIGNAL: `consent_artifacts`, WHICH THE EVENTS RAIL
+// CANNOT SILENCE.
+//
+// The three baselines the doc comment rejects (Cloudflare Free-plan analytics,
+// GlitchTip events, a server-side count of the pre-consent config fetch) were
+// all being judged on ONE property: could a break in the events path make the
+// baseline go quiet too. A consent artifact answers no — it arrives on
+// `POST /v1/consent`, as an immediate single write rather than through the
+// offline batch queue, into a different table.
+//
+// 🔴 IT IS TRUE IN PRODUCTION TODAY, WHICH IS WHY THIS IS NOT A HYPOTHETICAL
+// FIXTURE. platform_db holds THREE granted `consent_artifacts` rows (newest
+// 2026-08-07T17:57:28Z, app subly, source web) and `SELECT COUNT(*) FROM events`
+// = 0. `consents>0 && events=0` is the live state, so the failing case below is
+// the system's actual condition rather than a shape somebody imagined.
+//
+// ⚠️ THE WRITER STILL DOES NOT JUDGE, AND THESE TESTS ASSERT THAT IT DOES NOT.
+// `ok` stays 1 in every branch where the queries ran ([ADR 035]); what changes
+// is that the portfolio row now carries the counts a SEPARATE reader
+// (tooling/ops/check-analytics-liveness.mjs) needs to draw the verdict. Putting
+// the judgement here would have been a second meaning for `ok`, which is the
+// exact reversal 2026-08-06 → 08-07 already paid for once.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the portfolio row carries the independent consent signal', () => {
+  it('consent AND events — all four counts, ok=1, nothing red', async () => {
+    const db = realPlatformDb();
+    insertEvent(db, 'subly', hours(1), 'e1');
+    insertEvent(db, 'other', hours(2), 'e2');
+    insertConsent(db, 'subly', hours(3), 'c1');
+    insertConsent(db, 'subly', hours(4), 'c2');
+
+    await analyticsLiveness(envWith(db));
+
+    const t = tokens(portfolio(db).detail);
+    expect(t).toMatchObject({ events: '2', apps: '2', consented_apps: '1', consents: '2' });
+    expect(t.window).toBe(`${ANALYTICS_LIVENESS_WINDOW_HOURS}h`);
+    expect(liveness(db).every((r) => r.ok === 1)).toBe(true);
+  });
+
+  it('🔴 CONSENT AND ZERO EVENTS — the live state, and the row says so IN TOKENS', async () => {
+    // Somebody answered a consent prompt in a shipped build inside this window
+    // and the events rail produced nothing. A reader can decide that from
+    // `consents=3` next to `events=0` without interpreting one word of English.
+    const db = realPlatformDb();
+    insertConsent(db, 'subly', hours(1), 'c1');
+    insertConsent(db, 'subly', hours(2), 'c2');
+    insertConsent(db, 'subly', hours(3), 'c3');
+
+    await analyticsLiveness(envWith(db));
+
+    const row = portfolio(db);
+    expect(tokens(row.detail)).toMatchObject({
+      events: '0',
+      apps: '0',
+      consented_apps: '1',
+      consents: '3',
+    });
+    // [ADR 035] — the WRITER still succeeded. The verdict is the reader's.
+    expect(row.ok).toBe(1);
+    // And the gap sentence is GONE from this branch, because in this branch it
+    // is false: an independent signal did fire.
+    expect(String(row.detail)).not.toContain('no independent liveness signal exists');
+    expect(String(row.detail)).toContain('the rail is SILENT');
+  });
+
+  it('zero and zero — the THIRD state, still ambiguous, and it still says so', async () => {
+    // The one branch where the original gap paragraph is still true: with no
+    // consent either, a broken rail and a quiet week remain indistinguishable.
+    // It is deliberately NOT a failure — [pipeline C-6], an owner-gated silence
+    // (no app has shipped) must PRINT, not block.
+    const db = realPlatformDb();
+
+    await analyticsLiveness(envWith(db));
+
+    const row = portfolio(db);
+    expect(tokens(row.detail)).toMatchObject({ events: '0', apps: '0', consented_apps: '0', consents: '0' });
+    expect(row.ok).toBe(1);
+    expect(String(row.detail)).toContain('no independent liveness signal exists');
+  });
+
+  it('a WITHDRAWAL is not reach — only `granted = 1` counts', async () => {
+    // The table is append-only: withdrawing analytics consent appends a row with
+    // granted=0. Counting one as reach would let a user turning analytics OFF
+    // read as evidence that events ought to be arriving — an alarm that fires
+    // hardest on the person who opted out.
+    const db = realPlatformDb();
+    insertConsent(db, 'subly', hours(1), 'withdrawn', 0);
+
+    await analyticsLiveness(envWith(db));
+
+    expect(tokens(portfolio(db).detail)).toMatchObject({ consents: '0', consented_apps: '0' });
+  });
+
+  it('the consent count obeys the SAME trailing window as the events count', async () => {
+    // Two windows that drift apart would compare a year of consent against a day
+    // of events and call every quiet day an outage.
+    const db = realPlatformDb();
+    insertConsent(db, 'subly', hours(1), 'recent');
+    insertConsent(db, 'subly', hours(ANALYTICS_LIVENESS_WINDOW_HOURS + 5), 'stale');
+
+    await analyticsLiveness(envWith(db));
+
+    expect(tokens(portfolio(db).detail).consents).toBe('1');
+    // Both queries bound on the EDGE clock, for the reason the events limb
+    // already records: a client clock is untrusted and offline-queued.
+    expect(db.sql.filter((s) => s.includes('server_ts >=')).length).toBe(2);
+    expect(db.sql.some((s) => s.includes('consent_artifacts'))).toBe(true);
+  });
+
+  it('a consent query that cannot run is ok=0 — the same meaning as before', async () => {
+    // The second query is inside the SAME try block, so "the detector could not
+    // run" stays one state rather than becoming two. Without this, dropping
+    // consent_artifacts would have produced a row that looked like measured
+    // silence.
+    const db = realPlatformDb();
+    db.db.exec('DROP TABLE consent_artifacts');
+
+    await analyticsLiveness(envWith(db));
+
+    const rows = liveness(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ok).toBe(0);
+    expect(String(rows[0].detail)).toContain('liveness query failed');
+  });
+
+  it('NO detail is truncated — recordHeartbeat slices at 200 and the tail is a token', async () => {
+    // 🔴 A SILENT TRUNCATION WOULD EAT THE LAST TOKEN AND THE READER WOULD CALL
+    // IT UNPARSEABLE — i.e. exit 2, "I could not look", for a purely cosmetic
+    // reason. The three branches are measured here rather than counted by eye.
+    const cases: Record<string, unknown>[] = [];
+
+    const both = realPlatformDb();
+    insertEvent(both, 'subly', hours(1), 'e1');
+    insertConsent(both, 'subly', hours(1), 'c1');
+    await analyticsLiveness(envWith(both));
+    cases.push(portfolio(both));
+
+    const silentWithConsent = realPlatformDb();
+    insertConsent(silentWithConsent, 'subly', hours(1), 'c1');
+    await analyticsLiveness(envWith(silentWithConsent));
+    cases.push(portfolio(silentWithConsent));
+
+    const silent = realPlatformDb();
+    await analyticsLiveness(envWith(silent));
+    cases.push(portfolio(silent));
+
+    for (const row of cases) {
+      const detail = String(row.detail);
+      expect(detail.length).toBeLessThanOrEqual(200);
+      // Every branch ends in a character the writer put there, not mid-word.
+      expect(detail).toMatch(/(h|\.)$/);
+      // And every token the reader needs survived the slice.
+      expect(Object.keys(tokens(detail))).toEqual(
+        expect.arrayContaining(['events', 'apps', 'consented_apps', 'consents', 'window']),
+      );
+    }
   });
 });

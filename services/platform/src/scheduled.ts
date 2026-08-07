@@ -250,6 +250,27 @@ export async function keepAliveSupabase(env: Env): Promise<void> {
  * So the honest form is this repository's established one for an unautomatable
  * limb: measure what is measurable, write it down every run, and PRINT THE GAP
  * rather than invent a threshold that would make the gap look closed.
+ *
+ * ✅ AND THE FOURTH SIGNAL, WHICH THE THREE ABOVE NEVER CONSIDERED: THIS SAME
+ * DATABASE'S `consent_artifacts`. A consent artifact is written by `POST
+ * /v1/consent` — a DIFFERENT ROUTE, a DIFFERENT CLIENT TRANSPORT (an immediate
+ * single write, not the offline batch queue) and a DIFFERENT TABLE — so no
+ * break anywhere in the events path can silence it, which is precisely the
+ * independence the three rejected candidates were being judged on. It needs no
+ * vendor API, no new collection posture and no credential this cron does not
+ * already hold, because it is a second table in the D1 binding already bound
+ * here. It is NOT contaminated the way GlitchTip's Electron visits are: a
+ * consent row exists only because a human answered a consent prompt in a
+ * shipped build.
+ *
+ * ⚠️ IT NARROWS THE GAP, IT DOES NOT CLOSE IT, and the counts are written down
+ * rather than graded here. `consents>0 && events=0` is REACH PROVEN WITH ZERO
+ * ARRIVALS — a person used the app and the events rail produced nothing.
+ * `consents=0 && events=0` is still exactly as ambiguous as it always was, so
+ * the paragraph above stands unstruck. Which of the two happened is a JUDGEMENT,
+ * and [ADR 035] puts judgement in a separate reader
+ * (tooling/ops/check-analytics-liveness.mjs) rather than in a second boolean
+ * here: `ok` keeps answering the one question every writer's `ok` answers.
  */
 export async function analyticsLiveness(env: Env): Promise<void> {
   const since = new Date(
@@ -275,6 +296,32 @@ export async function analyticsLiveness(env: Env): Promise<void> {
         detail: `${r.n} event(s) in ${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
       });
     }
+
+    // ── THE INDEPENDENT SIGNAL, same cron, same window, same DB ──────────────
+    // Same shape as the query above (one GROUP BY, no row bodies) and bounded by
+    // the same `since`, so the two numbers describe the SAME period and are
+    // comparable without anybody aligning windows by hand.
+    //
+    // `granted = 1` only: a withdrawal is appended as a NEW row with granted=0
+    // (the table is append-only by design), and counting a withdrawal as reach
+    // would let a user turning analytics OFF look like evidence that events
+    // should be arriving.
+    //
+    // ⚠️ NO PER-APP ROW IS WRITTEN FOR THIS. The portfolio row carries the
+    // aggregate and the reader judges the aggregate; adding per-app consent rows
+    // would change this job's row cardinality, and check-heartbeats.mjs picks
+    // "the newest row" for a job by `ran_at` across ALL targets — every row in
+    // one run shares a `ran_at`, so a new target class would change which row
+    // that reduction lands on for reasons unrelated to health.
+    const consentRes = await env.PLATFORM_DB.prepare(
+      'SELECT app_id, COUNT(*) AS n FROM consent_artifacts WHERE server_ts >= ? AND granted = 1 GROUP BY app_id',
+    )
+      .bind(since)
+      .all<{ app_id: string; n: number }>();
+    const consentCounts = consentRes.results ?? [];
+    let consentTotal = 0;
+    for (const r of consentCounts) consentTotal += Number(r.n) || 0;
+
     // UNCONDITIONAL. This row is the detector's own proof of life, and it is the
     // ONLY row that exists when the answer is zero.
     //
@@ -296,14 +343,31 @@ export async function analyticsLiveness(env: Env): Promise<void> {
     // prose: `events=` and `apps=` lead the detail so a reader can parse the
     // count without interpreting a sentence. [ADR 035] requires that — matching
     // on the English would be asserting by grepping prose, which this repo has a
-    // rule against and a scar from.
+    // rule against and a scar from. `consented_apps=` and `consents=` join them
+    // for the same reason and in the same leading run: THE JUDGEMENT LIVES IN
+    // tooling/ops/check-analytics-liveness.mjs AND IT READS THESE TOKENS, so a
+    // reworded sentence must never be able to change a verdict.
+    //
+    // ⚠️ recordHeartbeat slices `detail` to 200 chars. Every branch below is
+    // under that with the window at its declared 24 — asserted in
+    // test/analytics-liveness.test.ts, because a truncated tail would silently
+    // eat the last token if the token order were ever rearranged.
     rows.push({
       target: '(portfolio)',
       ok: true,
       detail:
         total === 0
-          ? `events=0 apps=0 window=${ANALYTICS_LIVENESS_WINDOW_HOURS}h — the rail is SILENT. Cannot yet distinguish a broken rail from no sessions: no independent liveness signal exists (see analyticsLiveness).`
-          : `events=${total} apps=${counts.length} window=${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
+          ? consentTotal > 0
+            ? // 🔴 REACH PROVEN, ZERO ARRIVALS. Somebody answered a consent
+              // prompt in a shipped build inside this same window and the events
+              // rail still produced nothing. This is the state the three
+              // rejected baselines were being sought for, and the one the
+              // reader turns red on.
+              `events=0 apps=0 consented_apps=${consentCounts.length} consents=${consentTotal} window=${ANALYTICS_LIVENESS_WINDOW_HOURS}h — the rail is SILENT while consent artifacts landed in the same window — reach is PROVEN, so the events path is what produced nothing.`
+            : // Unchanged, and deliberately so: with no consent either, a broken
+              // rail and a quiet week are still indistinguishable here.
+              `events=0 apps=0 consented_apps=0 consents=0 window=${ANALYTICS_LIVENESS_WINDOW_HOURS}h — the rail is SILENT. Cannot yet distinguish a broken rail from no sessions: no independent liveness signal exists (see analyticsLiveness).`
+          : `events=${total} apps=${counts.length} consented_apps=${consentCounts.length} consents=${consentTotal} window=${ANALYTICS_LIVENESS_WINDOW_HOURS}h`,
     });
   } catch (err) {
     // ok=0 means THE WORK FAILED. A query that could not run tells us nothing
