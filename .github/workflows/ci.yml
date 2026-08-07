@@ -2079,6 +2079,18 @@ jobs:
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           melos run test
+      # [pipeline K-15] The web arm of the GPC seam is the one arm the lane
+      # above cannot reach: on the VM `navigator` does not exist, so the
+      # conditional import resolves to the io arm and the GPC-on cases run
+      # against a hand-written double. dart2js in a real Chrome is the ONLY
+      # place the truthy-string trap in privacy_signal_web.dart is observable.
+      - name: Web arm in a real browser (dart test -p chrome)
+        working-directory: packages/core
+        run: |
+          set -euo pipefail
+          export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
+          echo "Chrome: $CHROME_EXECUTABLE"
+          dart test -p chrome
 
   # 🔴 THE ROOT OF TRUST. `assert-gate-passed.mjs` reads THIS job's check-run
   # conclusion and nothing else, and deploy-web, deploy-workers and
