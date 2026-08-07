@@ -1229,6 +1229,63 @@ export function evaluate(reg, tree, nowMs) {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // THE OTHER SIDE OF THE `kind === 'duty'` FILTER, AND IT FAILED SILENTLY.
+  //
+  // `tooling/ops/check-heartbeats.mjs` derives the cron jobs it watches with
+  // `kind === 'duty' && mechanism.substrate === 'cloudflare-cron'`, and the
+  // `anchored` map at :1026 in THIS file is built from `kind === 'duty'` alone.
+  // So a NON-duty row declaring `cloudflare-cron` is invisible to both: it names
+  // a scheduled Cloudflare job that NOTHING watches, and every existing limb
+  // passes it. Measured 2026-08-07 by mutation — a `cloudflare-cron` substrate
+  // on an `expiring` row produced no COVERAGE LOST from either reader.
+  //
+  // The rule is not stylistic. `cloudflare-cron` MEANS "a timer fires this on
+  // Cloudflare", which is precisely what `kind: 'duty'` denotes; a row carrying
+  // that substrate under any other kind is either miscategorised or has the
+  // wrong substrate, and both readings end in an unwatched cron.
+  //
+  // ⚠️ THE LITERAL IS PINNED TO ITS READER, not hard-coded and hoped for. If
+  // check-heartbeats stops keying on this exact string, the coupling this limb
+  // exists to protect is gone and the limb would keep printing green over
+  // nothing — the defect this repo keeps re-finding. So the string must still
+  // appear in that file, and its absence is COVERAGE LOST rather than a pass.
+  const CRON_SUBSTRATE = 'cloudflare-cron';
+  const heartbeatReaderRel = 'tooling/ops/check-heartbeats.mjs';
+  const heartbeatReaderAbs = join(ROOT, heartbeatReaderRel);
+  if (!existsSync(heartbeatReaderAbs)) {
+    bad(
+      `COVERAGE LOST — ${heartbeatReaderRel} does not exist, so the \`${CRON_SUBSTRATE}\` coupling below is ` +
+        'checked against nothing and would pass forever.',
+    );
+  } else {
+    const heartbeatSrc = stripSourceComments(readFileSync(heartbeatReaderAbs, 'utf8'), '.mjs');
+    if (!heartbeatSrc.includes(`'${CRON_SUBSTRATE}'`) && !heartbeatSrc.includes(`"${CRON_SUBSTRATE}"`)) {
+      bad(
+        `COVERAGE LOST — ${heartbeatReaderRel} no longer contains the literal \`${CRON_SUBSTRATE}\`, so this limb is ` +
+          'guarding a coupling that no longer exists. Re-derive which substrate that reader keys on, or delete this check ' +
+          '— an assertion whose subject moved is worse than none, because it still prints green.',
+      );
+    }
+  }
+  const nonDutyRows = rows.filter((r) => r.kind !== 'duty');
+  let cronSubstrateScanned = 0;
+  for (const r of nonDutyRows) {
+    cronSubstrateScanned++;
+    if (r?.mechanism?.substrate === CRON_SUBSTRATE) {
+      bad(
+        `${r.id ?? '<no id>'} — \`kind: "${r.kind}"\` declares \`mechanism.substrate: "${CRON_SUBSTRATE}"\`, but ` +
+          `${heartbeatReaderRel} only watches rows whose \`kind\` is \`duty\`. This row names a Cloudflare cron that ` +
+          'NOTHING reads the outcome of, and it passes every other limb in this guard. Either it is a scheduled duty ' +
+          '(change `kind` to `duty`, which arms the absence watcher) or the substrate is wrong.',
+      );
+    }
+  }
+  prints.push(
+    `[14]O-4 — \`${CRON_SUBSTRATE}\` confinement: ${cronSubstrateScanned} non-duty row(s) scanned, none declaring it; ` +
+      `the literal is still present in ${heartbeatReaderRel}, so the coupling this checks is the one that exists`,
+  );
+
   let scheduledDuties = 0;
   let watchersProven = 0;
   let watchersPending = 0;
