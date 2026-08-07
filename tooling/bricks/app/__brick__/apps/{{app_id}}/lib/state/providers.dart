@@ -651,6 +651,18 @@ final FutureProvider<core.Analytics> analyticsProvider =
           'app_version': kAnalyticsAppVersion,
         },
       );
+      // 🔴 THE RECORDER OWNS A TIMER NOW ([11]E-4a), SO SOMETHING MUST OWN THE
+      // RECORDER. This provider is rebuilt every time a consent decision lands
+      // (`recordAnalyticsConsent` invalidates `consentControllerProvider`), and
+      // without this the discarded recorder's armed deadline outlives it. In a
+      // `testWidgets` body that is not a leak that goes unnoticed — it is an
+      // outright failure ("A Timer is still pending even after the widget tree
+      // was disposed") attributed to the stamped app.
+      //
+      // It is also what stops `AnalyticsRecorder.dispose` from being a method
+      // with no call site, which is the shape `assert-seams-wired` exists to
+      // catch: an implementation nobody calls does nothing, quietly.
+      ref.onDispose(recorder.dispose);
       await recorder.hydrate();
       return recorder;
     });
