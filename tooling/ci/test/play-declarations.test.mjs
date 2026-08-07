@@ -318,6 +318,21 @@ jobs:
           --dart-define=GLITCHTIP_DSN=x
 `;
 
+// The Runner Info.plists, carrying real keys and NOT ONE NS…UsageDescription —
+// which is exactly the real tree's state. They are REQUIRED_COVERAGE for the iOS
+// usage-key haystack: that haystack is legitimately empty, so its floor is on
+// whether the files were found and parsed, never on how many keys they held.
+const PLIST = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>subly</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+</dict>
+</plist>
+`;
+
 function writeFile(root, rel, body) {
   const abs = join(root, rel);
   mkdirSync(dirname(abs), { recursive: true });
@@ -333,6 +348,8 @@ function makeRoot(patch = {}) {
   const inv = INVENTORY();
   const files = {
     'apps/subly/android/app/src/main/AndroidManifest.xml': MANIFEST,
+    'apps/subly/ios/Runner/Info.plist': PLIST,
+    'apps/subly/macos/Runner/Info.plist': PLIST,
     'apps/subly/pubspec.yaml': PUBSPEC,
     'pubspec.lock': LOCK,
     '.github/workflows/build-platforms.yml': WORKFLOW,
@@ -530,6 +547,87 @@ describe('assert-play-declarations — the code tells', () => {
     // It fails on the permission EQUALITY (undeclared permission), not on the tell.
     assert.match(out(r), /A permission is the loudest single tell/);
     assert.doesNotMatch(out(r), /NEVER collected, and android\.permission\.ACCESS_FINE_LOCATION/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ONE HAYSTACK THAT IS LEGITIMATELY EMPTY.
+//
+// On the real tree the iOS usage-key set has ZERO members and that is TRUE — no
+// native Apple capability is used and neither Apple store has been shipped to.
+// Meanwhile 18 declared tell entries (17 distinct keys) compare against it, so
+// all 18 are constant-false, inside a summary line that reads `0 iOS usage
+// key(s)` whether the instrument is working or not.
+//
+// So the floor CANNOT be `usageKeys.size > 0` — that is a red no code change can
+// clear, i.e. an alarm that gets muted rather than fixed. It is on the
+// INSTRUMENT: were the plists located, and does the same reduction the key scan
+// uses still yield plist structure from them? The last test in this block is the
+// guard-on-the-guard: a true zero must still PASS.
+//
+// MUTATION-PROVEN AGAINST THE REAL TREE, not only these fixtures — 3/3 caught,
+// baseline exit 0 before and after, files byte-restored:
+//   · apps/subly/ios/Runner/Info.plist renamed away    → REQUIRED_COVERAGE fires
+//   · all 3 Info.plists under ios/+macos/ renamed away → "found NO Info.plist"
+//   · the ios plist body wrapped in <!-- -->           → "ZERO <key> … stripInert"
+// The third mutation FIRST reported NOT CAUGHT and the harness was wrong, not the
+// guard: the plist has four nested <dict>s and anchoring on the FIRST </dict>
+// commented out an inner block, leaving 20+ keys readable. A no-op mutation is a
+// broken test, not a weak guard — and it is invisible until you go and look.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-play-declarations — the iOS usage-key haystack, floored on the instrument', () => {
+  test('ZERO usage keys PASSES — the floor is not on how many keys the files held', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /0 iOS usage key\(s\)/);
+  });
+
+  test('the zero is PRINTED, loudly, with the number of tells it silences', () => {
+    // Self-declaring emptiness. Without this the only trace is `0 iOS usage
+    // key(s)` in an ok line, which reads the same when the walk is broken.
+    const r = run(makeRoot({ ds: (x) => { findAnswer(x, 'Precise location').tells.iosUsageDescriptionKeys = ['NSLocationWhenInUseUsageDescription', 'NSLocationAlwaysUsageDescription']; } }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /iOS USAGE-KEY HAYSTACK IS EMPTY, AND THAT IS CURRENTLY TRUE/);
+    assert.match(out(r), /2 Info\.plist file\(s\) located/);
+    assert.match(out(r), /all 2 declared iOS-usage-key tell\(s\) are constant-false today/);
+  });
+
+  test('the required iOS Runner Info.plist going missing is COVERAGE LOST, not "no keys"', () => {
+    const r = run(makeRoot({ files: (f) => { f['apps/subly/ios/Runner/Info.plist'] = null; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /apps\/subly\/ios\/Runner\/Info\.plist is REQUIRED_COVERAGE for the iOS usage-key haystack/);
+    assert.doesNotMatch(out(r), /assert-play-declarations: ok/);
+  });
+
+  test('the required macOS Runner Info.plist going missing is COVERAGE LOST too', () => {
+    const r = run(makeRoot({ files: (f) => { f['apps/subly/macos/Runner/Info.plist'] = null; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /apps\/subly\/macos\/Runner\/Info\.plist is REQUIRED_COVERAGE/);
+  });
+
+  test('the walk reaching NO Info.plist at all is COVERAGE LOST — the walk() regression', () => {
+    const r = run(makeRoot({ files: (f) => { f['apps/subly/ios/Runner/Info.plist'] = null; f['apps/subly/macos/Runner/Info.plist'] = null; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /found NO Info\.plist at all/);
+    assert.match(out(r), /An absence that is indistinguishable from a broken reading is/);
+  });
+
+  test('a plist the REDUCTION eats is COVERAGE LOST — a blank page is not a clean bill of health', () => {
+    // stripInert() removes comments before the key scan. A plist whose body is
+    // inside <!-- --> is found, is parsed, and yields nothing — the exact shape
+    // of "the instrument stopped working" that a file-count check would miss.
+    const r = run(makeRoot({ files: (f) => { f['apps/subly/ios/Runner/Info.plist'] = '<plist><dict><!--<key>CFBundleName</key><string>subly</string>--></dict></plist>\n'; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /apps\/subly\/ios\/Runner\/Info\.plist was found but yielded ZERO <key> elements after stripInert\(\)/);
+  });
+
+  test('a plist with keys but no NS…UsageDescription is NOT a failure — the zero is honest', () => {
+    // The guard-on-the-guard. If this ever goes red, the floor has migrated from
+    // the instrument onto the result and become an unclearable daily red.
+    const r = run(makeRoot({ files: (f) => { f['apps/subly/ios/Runner/Info.plist'] = '<plist><dict><key>CFBundleIdentifier</key><string>tru.nika.subly</string></dict></plist>\n'; } }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /assert-play-declarations: ok/);
   });
 });
 

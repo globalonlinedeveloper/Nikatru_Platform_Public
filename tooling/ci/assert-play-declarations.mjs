@@ -431,9 +431,89 @@ if (directDeps.size === 0) {
 //     permission, and a second independent tell for the same capabilities.
 const plistFiles = [...walk(`${APP_DIR}/ios`), ...walk(`${APP_DIR}/macos`)].filter((f) => f.endsWith('Info.plist')).sort();
 const usageKeys = new Set();
+const plistKeysRead = new Map();
 for (const f of plistFiles) {
   const plist = stripInert(read(f) ?? '');
+  plistKeysRead.set(f, (plist.match(/<key>/g) ?? []).length);
   for (const m of plist.matchAll(/<key>\s*(NS[A-Za-z]+UsageDescription)\s*<\/key>/g)) usageKeys.add(m[1]);
+}
+
+// 🔴 THE FLOOR ON THIS HAYSTACK, AND IT GOES ON THE INSTRUMENT, NOT THE RESULT.
+//
+// This is the ONE tell-haystack that is legitimately EMPTY: usageKeys.size is 0
+// today and that is correct — no native Apple capability is used, iOS/macOS are
+// CI-only here, and nothing has shipped to either store. Meanwhile the
+// declaration carries 17 distinct iOS usage-description keys across 18 tell
+// entries, every one of which is therefore comparing against an empty Set and
+// can only ever answer "absent". The permission haystack and the dependency
+// haystack are both floored above; this one was not, and it is the empty one.
+//
+// So a floor of `usageKeys.size > 0` would be WRONG — it would fail the build on
+// a true and acceptable state, every day, with no code change able to clear it,
+// which is how an alarm gets muted rather than fixed. The question that CAN go
+// wrong is not "how many keys did the files contain" but "were the files found
+// and read at all": if walk() narrows, or the plists move, or stripInert stops
+// yielding plist structure, those 18 tells stay constant-false FOREVER while the
+// summary keeps printing `0 iOS usage key(s)` — a line that reads identically in
+// the working case and the broken one. That is a false "never collected" on a
+// sworn store declaration, i.e. a takedown, not a red build.
+//
+// Hence: assert the instrument. Files located ⊇ REQUIRED_PLISTS, and each of
+// those still parses to at least one <key> element after the same reduction the
+// key scan uses. The zero itself is PRINTED, loudly, with the count of tells it
+// silences — the property the other empty domains in this repo have and this one
+// did not: it declares its own emptiness instead of hiding inside an ok line.
+const REQUIRED_PLISTS = [`${APP_DIR}/ios/Runner/Info.plist`, `${APP_DIR}/macos/Runner/Info.plist`];
+if (plistFiles.length === 0) {
+  coverageLost([
+    `the walk over ${APP_DIR}/ios and ${APP_DIR}/macos found NO Info.plist at all.`,
+    'Every iOS-usage-key tell below compares against a set built only from those files. With no file read,',
+    'the set is empty for a reason that has nothing to do with the app, and every one of those tells becomes',
+    'permanently constant-false while the summary still prints "0 iOS usage key(s)" — the same words it',
+    'prints when the instrument is working. An absence that is indistinguishable from a broken reading is',
+    'not evidence of absence.',
+  ]);
+}
+for (const req of REQUIRED_PLISTS) {
+  if (!plistFiles.includes(req)) {
+    coverageLost([
+      `${req} is REQUIRED_COVERAGE for the iOS usage-key haystack and the walk did not reach it (it found: ${plistFiles.join(', ') || 'nothing'}).`,
+      'A usage-description key can only ever be written into a Runner Info.plist, so this is the only file',
+      'whose contents can ever make an iOS tell fire. Off the walked list, the tells are quantifying over a',
+      'set that no longer has any way to become non-empty. If the file genuinely moved, move this entry with',
+      'it in the same change; if it did not, walk() or the .endsWith filter just got narrower.',
+    ]);
+  }
+  if ((plistKeysRead.get(req) ?? 0) === 0) {
+    coverageLost([
+      `${req} was found but yielded ZERO <key> elements after stripInert().`,
+      'The key scan runs on exactly this reduced text, so a plist that reduces to nothing contributes nothing',
+      'and looks exactly like a plist that declares no usage keys. Either the file stopped being a plist, or',
+      'its body is now inside a comment, or the reduction started eating it — in all three cases the tells',
+      'below are reading a blank page and reporting it as a clean bill of health.',
+    ]);
+  }
+}
+// The honest zero, said out loud rather than left to be inferred from an ok line.
+{
+  const iosTellEntries = answers.reduce(
+    (n, a) =>
+      n +
+      (a?.tells?.iosUsageDescriptionKeys?.length ?? 0) +
+      (a?.clientAbsence?.iosUsageDescriptionKeys?.length ?? 0),
+    0,
+  );
+  const totalKeysRead = [...plistKeysRead.values()].reduce((n, v) => n + v, 0);
+  if (usageKeys.size === 0) {
+    prints.push(
+      `iOS USAGE-KEY HAYSTACK IS EMPTY, AND THAT IS CURRENTLY TRUE — ${plistFiles.length} Info.plist file(s) located ` +
+        `(${plistFiles.join(', ')}), ${totalKeysRead} <key> element(s) read, and NOT ONE is an NS…UsageDescription. ` +
+        `So all ${iosTellEntries} declared iOS-usage-key tell(s) are constant-false today: they cannot fail, and they ` +
+        `are not evidence for any "not collected" answer — the Android permission and Dart package tells are. ` +
+        `They become load-bearing the day a native Apple capability is used. The floor above is what keeps this a ` +
+        `TRUE zero rather than a broken reading.`,
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
