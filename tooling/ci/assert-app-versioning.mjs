@@ -386,8 +386,25 @@ for (const laneRow of servedLanes) {
 
   // 1. The version must be DERIVED from pubspec by this very script, so the
   //    number that gets built and the number that gets asserted share a parser.
+  //
+  //    The argument may name the app path LITERALLY, or be the MATRIX LEG that
+  //    expands to it. [10]D-2b made deploy-web.yml a matrix over the workspace
+  //    app set (2026-08-07), so `--emit apps/${{ matrix.app }}` derives the
+  //    version for EVERY app rather than for the one somebody typed — strictly
+  //    stronger than the literal. A guard that knew only the literal would have
+  //    failed the refactor that satisfies the requirement, which is how a check
+  //    gets switched off rather than fixed.
+  //
+  //    ⚠️ IT DOES NOT RE-CHECK THAT THE MATRIX KEY IS DECLARED, and the omission
+  //    is deliberate: GitHub expands an undeclared matrix context to the EMPTY
+  //    STRING, and limb A′ of assert-release-lane-generic.mjs fails the build on
+  //    exactly that, on every run, for every graded lane. A second copy here
+  //    would be two implementations of one check, drifting in the way this file's
+  //    own header says such copies always drift.
+  const EMIT_ARG =
+    `(?:${lane.app.replace(/\//g, '[/\\\\]')}\\b|apps[/\\\\]\\$\\{\\{[^}]*\\}\\})`;
   const emitLine = lines.findIndex((l) =>
-    new RegExp(`assert-app-versioning\\.mjs\\s+--emit\\s+${lane.app.replace(/\//g, '[/\\\\]')}\\b`).test(l),
+    new RegExp(`assert-app-versioning\\.mjs\\s+--emit\\s+${EMIT_ARG}`).test(l),
   );
   let stepId = null;
   if (emitLine === -1) {

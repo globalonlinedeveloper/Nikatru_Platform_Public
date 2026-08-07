@@ -36,6 +36,7 @@ import {
   SUBMIT_TIME_STATES,
   STATE_MEANING,
 } from '../deployment-record.mjs';
+import { RECORD_CALL, expandMatrixEnvironment } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
@@ -208,14 +209,25 @@ describe('deployment-record — the environment resolves against the register', 
   // job is added, which is the same silent-drift class the register exists for.
   test('every record-deployment.mjs call site in every workflow resolves', () => {
     const dir = resolve(ROOT, '.github/workflows');
+    // The app slugs a matrix leg expands over. [10]D-2b made deploy-web.yml a
+    // matrix over the workspace, so its call site is
+    // `record-deployment.mjs ${{ matrix.app }}-web` — and this test's OWN copy
+    // of the call-site regex was one of the three that could not read it (it
+    // matched nothing, and only the floor below noticed). The reader is
+    // workflow-scan.mjs's now, shared with the two guards that need it.
+    const slugs = JSON.parse(readFileSync(resolve(ROOT, 'sites/_shared/_data/apps.json'), 'utf8'))
+      .map((a) => a?.slug)
+      .filter(Boolean);
+    assert.ok(slugs.length > 0, 'the app catalogue yielded no slug — a matrix leg would expand to nothing');
     const callSites = [];
     for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
       const yaml = readFileSync(join(dir, file), 'utf8')
         .split('\n')
         .filter((l) => !/^\s*#/.test(l))
         .join('\n');
-      for (const m of yaml.matchAll(/record-deployment\.mjs\s+([A-Za-z0-9._-]+)/g)) {
-        callSites.push({ file, environment: m[1] });
+      RECORD_CALL.lastIndex = 0;
+      for (const m of yaml.matchAll(RECORD_CALL)) {
+        for (const environment of expandMatrixEnvironment(m[1], slugs)) callSites.push({ file, environment });
       }
     }
 
