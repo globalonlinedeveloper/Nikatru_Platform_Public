@@ -13,6 +13,40 @@ const Duration kSessionIdleTimeout = Duration(minutes: 30);
 /// Ship once this many events are queued.
 const int kFlushBatchSize = 20;
 
+/// 🔴 THE DEADLINE A PARTIAL BATCH SHIPS ON ANYWAY — [pipeline 11]E-4a.
+///
+/// Without this the ONLY delivery paths were "20 events queued" and an explicit
+/// [flush]. A launch emits THREE events (`first_launch`, `app_open`,
+/// `return_visit`) and an ordinary session adds a handful more — nothing reaches
+/// 20 — so the queue was persisted on every [log] and POSTed never. Measured on
+/// subly.nikatru.com: three real browsers granted analytics consent and ZERO
+/// events were ever delivered. `apps/subly`'s app root carries no lifecycle
+/// observer at all, so it had no second path even in principle; the brick's does,
+/// and a page unload still beats a fire-and-forget POST launched from it.
+///
+/// A rail that collects, persists and never transmits is not "partly
+/// instrumented" — it is a privacy cost with no analytical benefit, the same
+/// trade `assert-analytics-contract.mjs` fails the build over when the client
+/// sends a key no column stores.
+///
+/// WHY TEN SECONDS — not zero, not a minute:
+///   · **0 (ship every event)** throws batching away. The launch trio is emitted
+///     inside one frame, so it would become three POSTs on every cold start of
+///     every app in the portfolio. A 10 s window coalesces them into one.
+///   · **The cost of the delay is bounded by the session-length distribution.**
+///     A session shorter than the window is one the unload race would have lost
+///     regardless — a timer cannot beat a tab close it never got to observe.
+///     That case belongs to the lifecycle [flush], and both exist.
+///   · **60 s+** would strand a whole short session on desktop, where
+///     `paused`/`detached` are never entered at all (dart:ui: paused "is only
+///     entered on iOS and Android") and closing the window ends the process.
+///
+/// ONE-SHOT, NEVER PERIODIC, and never restarted by a later event: the deadline
+/// belongs to the OLDEST queued event. A debounce that restarted on every [log]
+/// would let a steady trickle push delivery back forever — which is the defect
+/// above with extra steps.
+const Duration kFlushInterval = Duration(seconds: 10);
+
 /// Hard cap on the offline queue. Beyond this the OLDEST events are dropped:
 /// an unbounded queue on a device that is offline for a week is a storage leak,
 /// and recent behaviour is worth more than stale behaviour.
@@ -47,6 +81,7 @@ class AnalyticsRecorder implements Analytics {
     String queueKey = 'nikatru.analytics.queue',
     this.batchSize = kFlushBatchSize,
     this.maxQueued = kMaxQueuedEvents,
+    this.flushInterval = kFlushInterval,
   })  : _transport = transport,
         _consent = consent,
         _queueStore = queueStore,
@@ -72,10 +107,24 @@ class AnalyticsRecorder implements Analytics {
   final int batchSize;
   final int maxQueued;
 
+  /// How long a partial batch may wait. Injected so a test can shrink the window
+  /// instead of sleeping for the real one — the same reason [clock] is injected
+  /// for the session timeout. `Duration.zero` (or negative) disables the timer
+  /// entirely, which is how a caller that wants the pre-E-4a batch-only
+  /// behaviour asks for it explicitly rather than by omission.
+  final Duration flushInterval;
+
   final List<AnalyticsEvent> _queue = <AnalyticsEvent>[];
   String? _sessionId;
   DateTime? _lastActivity;
   bool _flushing = false;
+
+  /// The armed deadline, if any. One-shot; see [kFlushInterval].
+  Timer? _flushTimer;
+
+  /// Set by [dispose]. Latched rather than checked-and-forgotten so a callback
+  /// already queued on the event loop cannot re-arm a disposed recorder.
+  bool _disposed = false;
 
   /// Bumped by [purge]. A flush that was already awaiting its request when the
   /// user withdrew must not write the queue back to a key the withdrawal just
@@ -84,6 +133,14 @@ class AnalyticsRecorder implements Analytics {
 
   /// Events waiting to be delivered (test/diagnostic view).
   int get queuedCount => _queue.length;
+
+  /// Whether a time-based flush is currently armed (test/diagnostic view).
+  ///
+  /// Exposed because "the timer was cancelled" is otherwise only observable by
+  /// waiting for the window to pass and asserting that nothing happened — an
+  /// assertion that also passes when the timer fired and the flush silently did
+  /// nothing. The tests assert both halves.
+  bool get hasPendingFlush => _flushTimer != null;
 
   /// The current session id, rotating after [kSessionIdleTimeout] of inactivity.
   String get sessionId {
@@ -141,6 +198,10 @@ class AnalyticsRecorder implements Analytics {
         }
       }
       _trim();
+      // A restored queue is, by definition, events a previous run could not
+      // deliver. Arming here is what stops a launch that logs nothing new from
+      // sitting on the same backlog a second time.
+      _armFlushTimer();
     } catch (_) {
       // Corrupt queue ⇒ start clean. Losing analytics beats crashing an app.
     }
@@ -162,17 +223,75 @@ class AnalyticsRecorder implements Analytics {
     await _persist();
     if (_queue.length >= batchSize) {
       await flush();
+    } else {
+      // The batch rule is UNCHANGED — this is the else limb, reached only when
+      // the queue is still short of [batchSize]. Arming here (rather than
+      // restarting a timer on every log) is what anchors the deadline to the
+      // oldest queued event: [_armFlushTimer] is a no-op while one is running.
+      _armFlushTimer();
     }
+  }
+
+  /// Start the deadline for whatever is queued, if one is not already running.
+  ///
+  /// No-op when: a timer is already armed (the running one belongs to the OLDEST
+  /// event and must not be pushed back), the queue is empty (nothing to ship),
+  /// the recorder is disposed, or [flushInterval] is not positive (the timer is
+  /// switched off by construction).
+  void _armFlushTimer() {
+    if (_disposed || _flushTimer != null || _queue.isEmpty) return;
+    if (flushInterval <= Duration.zero) return;
+    _flushTimer = Timer(flushInterval, () {
+      // Cleared BEFORE the flush so `hasPendingFlush` never reports an armed
+      // deadline for a timer that has already fired, and so the flush's own
+      // re-arm in `finally` is not swallowed by a stale non-null handle.
+      _flushTimer = null;
+      // Unawaited by construction: nothing owns this call's future. `flush`
+      // swallows every error, so there is no unhandled rejection to leak.
+      unawaited(flush());
+    });
+  }
+
+  /// Disarm. ⚠️ THE TWO LINES ARE ONE IDEA AND LIVE TOGETHER ON PURPOSE.
+  ///
+  /// They were written inline at all three call sites until a mutation run
+  /// proved the pair is separable in exactly the way that reports clean:
+  /// deleting the `cancel()` and keeping the `= null` passed all 246 tests. The
+  /// handle is dropped, so `hasPendingFlush` reads false and every "the deadline
+  /// was cancelled" assertion holds — while the OS timer is still live. When it
+  /// fires it finds an empty queue and no-ops, so nothing is observable HERE;
+  /// what it costs is a leaked timer, and a leaked timer is what fails a
+  /// `testWidgets` body ("A Timer is still pending even after the widget tree was
+  /// disposed") over in the brick's chassis lane, attributed to the stamp rather
+  /// than to this file. One call, so the deletion that hides is no longer
+  /// available: removing `_cancelFlushTimer()` turns `hasPendingFlush` red.
+  void _cancelFlushTimer() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
   }
 
   @override
   Future<void> flush() async {
+    // ANY flush supersedes the pending deadline — the batch-size one from [log],
+    // the lifecycle one from the app root, and the timer's own. Cancelling first
+    // is what makes "no double-send" structural rather than timing-dependent: a
+    // deadline that outlived the flush it was superseded by would fire on a queue
+    // that has already gone out.
+    _cancelFlushTimer();
+
+    // The re-entrancy guard is UNCHANGED. A timer that fires mid-flight lands
+    // here and returns without sending; the in-flight flush's `finally` re-arms
+    // if anything is still queued, so the no-op does not strand the remainder.
     if (_flushing || _queue.isEmpty) return;
     if (_consent.statusOf(ConsentPurpose.analytics) != ConsentStatus.granted) {
       return;
     }
     _flushing = true;
     final int epoch = _epoch;
+
+    // Did this attempt actually hand events over? Only a delivery re-arms —
+    // see the `finally` below.
+    bool delivered = false;
     try {
       // Snapshot: events logged during the in-flight request stay queued for
       // the next flush rather than being dropped by a wholesale clear.
@@ -191,6 +310,7 @@ class AnalyticsRecorder implements Analytics {
         // the outbox file back moments after the user asked for it to go.
         if (epoch != _epoch) return;
         _removeSent(batch);
+        delivered = true;
         await _persist();
       }
       // On Err: keep everything. The next log() or flush() retries, and the
@@ -199,6 +319,16 @@ class AnalyticsRecorder implements Analytics {
       // Analytics must never surface an error into a user-facing flow.
     } finally {
       _flushing = false;
+      // ⚠️ ONLY ON A DELIVERY, and this asymmetry is deliberate. Re-arming after
+      // a FAILED send would turn the timer into a fixed-interval retry loop:
+      // a device offline for an hour would attempt a POST every 10 s for the
+      // whole hour, which is a battery and data cost paid for nothing. On a
+      // failure the recorder keeps the pre-E-4a behaviour exactly — the next
+      // log() (which finds no timer armed and arms one) or the next explicit
+      // flush retries. On a SUCCESS with events still queued there is a further
+      // batch ready to go now, so it is armed to drain rather than left waiting
+      // on a log that may never come.
+      if (delivered) _armFlushTimer();
     }
   }
 
@@ -220,8 +350,33 @@ class AnalyticsRecorder implements Analytics {
   @override
   Future<void> purge() async {
     _epoch++;
+    // A withdrawal must leave no armed delivery behind. The timer would find an
+    // empty queue and no-op, but "it happens to be harmless" is not the property
+    // this method is supposed to establish.
+    _cancelFlushTimer();
     _queue.clear();
     await _clearStore();
+  }
+
+  /// Release the timer. Call this when the recorder is discarded — the app's
+  /// `analyticsProvider` does it from `ref.onDispose`.
+  ///
+  /// 🔴 AN UNCANCELLED TIMER IS A TEST FAILURE, NOT A LEAK NOBODY NOTICES.
+  /// `flutter_test` fails a `testWidgets` body outright with "A Timer is still
+  /// pending even after the widget tree was disposed", and under `dart test` a
+  /// pending timer keeps the isolate's event loop alive past the assertion it
+  /// belongs to. The chassis property tests drive a real recorder through the
+  /// real widget tree, so this is the difference between a green lane and a lane
+  /// that fails on a stamped app for reasons unrelated to the stamp.
+  ///
+  /// Deliberately does NOT flush. Its callers — provider teardown and widget
+  /// disposal — are synchronous, so a POST launched here would outlive the
+  /// object that owns the queue, and there is nothing left to await it or to
+  /// write the result back. Nothing is lost: [log] persists after every event,
+  /// so the next [hydrate] picks the queue up and re-arms it.
+  void dispose() {
+    _disposed = true;
+    _cancelFlushTimer();
   }
 
   /// Drop exactly the events that were DELIVERED, wherever they now sit.
