@@ -74,10 +74,33 @@
 // to the guard that demands it be gated and recorded. A helper that quietly
 // disarms a guard is worse than no helper.
 //
+// ── 🔴 `--verify` PROVES CONSISTENCY, NOT COMPLETENESS — [pipeline G3] ───────
+// Measured 2026-08-08 before this was written: stage a release holding the .apk
+// and the .aab, leave the .msix out entirely, `--write` then `--verify`, and it
+// prints `ok  2 asset(s) verified`. Every word of that is true. The manifest
+// describes exactly the directory it was handed — and the directory is missing a
+// whole platform. A release can therefore ship Windows-less with the integrity
+// record, the guard and the aggregator all green, because each of them is asking
+// whether the set is SELF-CONSISTENT and none is asking whether it is COMPLETE.
+//
+// `--expect-formats` is the completeness half, and the expected set is DERIVED so
+// nothing here is a list somebody maintains (`expectedReleaseFormats` below):
+// every installable extension a channel row with a declared LANE accepts, plus the
+// declared extras, minus the bundle members that never travel loose. A format no
+// lane emits (.ipa, .pkg, .snap, .AppImage today) is a channel that does not exist
+// yet — demanding it would fail every release for work nobody has started, which
+// is the "assertion that cannot pass" mirror of an assertion that cannot fail.
+//
+// ⚠️ IT IS OPT-IN AND THE DEFAULT IS UNCHANGED. The release job passes it in a
+// LATER increment; until then `--verify` alone behaves exactly as it did, so
+// nothing already green goes red on a workflow file this increment cannot edit.
+// RECORDED FAILING CASE: stage the .apk and .aab and omit the .msix →
+// `--verify --expect-formats` exits 1 naming `.msix`; plain `--verify` exits 0.
+//
 // Usage:
 //   node tooling/ci/release-manifest.mjs --stage  <fromDir> --out <dir> --app <id> --tag <tag>
 //   node tooling/ci/release-manifest.mjs --write  <dir> --app <id> --tag <tag> --sha <sha> [--run-url <url>]
-//   node tooling/ci/release-manifest.mjs --verify <dir>
+//   node tooling/ci/release-manifest.mjs --verify <dir> [--expect-formats]
 //   node tooling/ci/release-manifest.mjs --emit-assets <dir>
 //   node tooling/ci/release-manifest.mjs --emit-environments <dir> --app <id>
 //   [--repo-root <path>]   point the register lookup at another tree (tests)
@@ -169,6 +192,51 @@ export function installableExtensions(register) {
   }
   for (const e of EXTRA_INSTALLABLE.keys()) found.add(e);
   return found;
+}
+
+/**
+ * The formats a staged release is EXPECTED to carry — the completeness half that
+ * `--verify` cannot answer on its own.
+ *
+ * Derived on three axes, every one of them already maintained elsewhere:
+ *   · `installableExtensions()` above is the SINGLE declaration of "what counts as
+ *     an installable at all". This narrows that set; it never widens it, so a
+ *     format that escapes the classifier cannot be demanded here either.
+ *   · a channel row must have a declared `lane`. That is the register saying some
+ *     job in this factory EMITS the format. Rows with `lane: null` (ios-appstore,
+ *     macos-appstore, linux-snap, linux-appimage, windows-direct today) are
+ *     channels that do not exist yet, and demanding their artifacts would make
+ *     every release red for work that has not started.
+ *   · minus `BUNDLE_MEMBERS`. A `.exe` never travels loose — `--stage` leaves it
+ *     inside its platform archive on purpose — so it can never appear in the flat
+ *     release directory and requiring it would be an assertion that cannot pass.
+ * Plus the declared extras: the `.apk` has no channel row and cannot have one, and
+ * it is the only Android artifact a person can install.
+ *
+ * ⚠️ IT CAN GO EMPTY, and that is a COVERAGE LOST at the call site rather than a
+ * quiet pass — an empty expectation set makes "is this release complete" answer
+ * yes for a directory holding nothing.
+ */
+export function expectedReleaseFormats(register) {
+  const installable = installableExtensions(register);
+  const laneBacked = new Set();
+  for (const c of register?.channels ?? []) {
+    const lane = c?.lane;
+    if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
+    for (const f of c?.artifactFormats ?? []) if (typeof f === 'string' && /^\.[A-Za-z0-9]+$/.test(f)) laneBacked.add(f);
+  }
+  for (const e of EXTRA_INSTALLABLE.keys()) laneBacked.add(e);
+  const out = new Set();
+  for (const e of laneBacked) if (installable.has(e) && !BUNDLE_MEMBERS.has(e)) out.add(e);
+  return out;
+}
+
+/** Which expected formats this asset set does NOT carry. Sorted, so the failure
+ *  message is stable and diffable across runs. */
+export function missingReleaseFormats(expected, assetNames) {
+  return [...expected]
+    .filter((f) => !assetNames.some((n) => n.toLowerCase().endsWith(f.toLowerCase())))
+    .sort();
 }
 
 /**
@@ -457,6 +525,42 @@ function main() {
       process.exit(1);
     }
     console.log(`ok  ${entries.length} asset(s) verified against ${MANIFEST_NAME}; commit ${meta.commit ?? '(none recorded)'}, tag ${meta.tag ?? '(none recorded)'}`);
+
+    // ── the completeness half, opt-in — see the header ────────────────────────
+    if (has('expect-formats')) {
+      const expected = expectedReleaseFormats(loadRegister());
+      // 🔴 THE COVERAGE RAIL IS ON THE REGISTER'S CONTRIBUTION, NOT ON THE TOTAL.
+      // The total can never be empty — `EXTRA_INSTALLABLE` always carries the
+      // `.apk` — so a check for `expected.size === 0` would be an assertion with
+      // no input that makes it fail, which this repository deletes rather than
+      // keeps. What CAN go empty, and what would silently gut this mode, is the
+      // REGISTER's half: if every row loses its `lane` (or the lane derivation
+      // stops reading them), the expectation collapses to the hardcoded extras
+      // and a release missing every store artifact passes on the strength of one
+      // sideloadable .apk. Reachable, and reached by a test.
+      const fromRegister = [...expected].filter((e) => !EXTRA_INSTALLABLE.has(e));
+      if (fromRegister.length === 0) {
+        die(
+          `COVERAGE LOST — no channel row in ${REGISTER_REL} with a declared \`lane\` contributes an installable format.`,
+          `The expectation collapsed to the declared extras alone (${[...expected].sort().join(', ') || 'nothing'}), so this mode would certify`,
+          'a release that carries none of the artifacts the factory actually ships. Either every row lost its lane, or the',
+          'lane derivation has stopped reading them — and both look identical from the outside.',
+        );
+      }
+      const { names } = assetFiles(dir);
+      const missing = missingReleaseFormats(expected, names);
+      if (missing.length) {
+        die(
+          `${dir} is missing ${missing.length} expected release format(s): ${missing.join(', ')}.`,
+          `Expected (derived from ${REGISTER_REL}): ${[...expected].sort().join(', ')}.`,
+          `Present: ${names.join(', ') || '(nothing)'}.`,
+          'The manifest above is CORRECT — it describes this directory exactly. That is the point: a release missing a',
+          'whole platform verifies clean, because --verify asks whether the set is self-consistent and never whether it',
+          'is complete. A lane that lost an artifact upstream would otherwise publish a platform short with every check green.',
+        );
+      }
+      console.log(`ok  all ${expected.size} expected format(s) present: ${[...expected].sort().join(', ')}`);
+    }
     process.exit(0);
   }
 

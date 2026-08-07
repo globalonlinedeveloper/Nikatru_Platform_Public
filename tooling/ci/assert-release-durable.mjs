@@ -82,14 +82,58 @@
 //       matching is the failure this file exists to prevent, and it would
 //       otherwise report a clean tree with no subjects at all.
 //
-// ⚠️ THE HONEST LIMIT, stated rather than papered over. Limb 1 proves a durable
-// destination EXISTS and is reachable; it cannot prove the step will RUN on a
-// given trigger. A step-level `if:` is checked only for the literal `false`, and
-// the condition of every durable step is PRINTED so a reader can see it. Proving
-// reachability under GitHub's expression semantics would need an evaluator, and a
-// half-written one that silently mis-evaluates is worse than a printed condition.
+// ⚠️ THE HONEST LIMIT, restated 2026-08-08 after it was measured. Limb 1 proves a
+// durable destination EXISTS and is reachable; it cannot prove the step will RUN
+// on a given trigger, because proving reachability under GitHub's expression
+// semantics needs an evaluator and a half-written one that silently mis-evaluates
+// is worse than a printed condition.
 //
-// Usage:  node tooling/ci/assert-release-durable.mjs [repoRoot]
+// 🔴 WHAT THE LIMIT USED TO BE, AND WHY IT WAS NOT A LIMIT BUT A HOLE. The
+// dead-destination check fired ONLY on the literal `if: false`. Measured against a
+// fixture before this repair: `if: github.ref_type == 'tag' && github.run_number
+// < 0` — never true, on any run, ever — exited 0, and so did `if: github.event_name
+// == 'never_a_real_event'`. Anyone disabling a publish writes one of those, not
+// `false`; `false` is the one form that reads as disabled in a diff, which is
+// exactly why it is the one form nobody uses to hide something.
+//
+// The repair is not an evaluator. It is an ALLOWLIST OF ONE: a durable step either
+// carries no `if:` at all, or its condition must normalise to the same token
+// sequence as the canonical tag-publish condition (`CANONICAL_PUBLISH_IF` below,
+// which is the form the live release lane writes). Anything else is named in the
+// failure with its condition quoted, so a deliberate new form is a one-line edit
+// here rather than a silent pass. Normalising rather than string-comparing is what
+// keeps `if: "${{ github.ref_type == 'tag' }}"` and `if: github.ref_type=='tag'`
+// from being false reds on the same condition written two legal ways.
+//
+// ── LIMB 4 — THE MIXED UPLOAD PATH, SHIPPED AS A **WARNING** THIS INCREMENT ───
+// An `upload-artifact` step whose `path:` block mixes an EXTENSION GLOB with a
+// bare DIRECTORY defeats `if-no-files-found: error`: that setting fires only when
+// the WHOLE union is empty, so the directory alone always satisfies it and a
+// missing `.msix` (or `.aab`, or `.apk`) uploads silently as a smaller artifact.
+// The release lane downstream then stages whatever arrived, `--verify` confirms
+// the manifest describes exactly the reduced set it was handed, and the release
+// ships a platform short with every check green. That is the [pipeline G3] shape:
+// internal consistency proving nothing about completeness.
+//
+// ⚠️ IT IS A WARNING AND NOT A FAILURE **ONLY FOR THIS INCREMENT**. Two steps in
+// the live build-platforms.yml are that exact shape today (the `windows` upload
+// and the `linux_web_android` one), that file is being restructured in this same
+// wave by another agent, and a limb that reds the tree on a file this increment
+// cannot edit would block the gate on work it does not own.
+//   · TODAY:     it prints `⚠` per offending step and does not affect the exit.
+//   · TO FLIP:   `--fail-on-mixed-upload-paths` makes it a hard failure, and the
+//                recorded failing case below runs exactly that.
+//   · NEXT:      once build-platforms.yml's uploads are split, delete the flag and
+//                make the failure unconditional. The warning is dated on purpose —
+//                a limb that only ever prints is one nobody closes.
+//
+// RECORDED FAILING CASES for the two new limbs (tooling/ci/test/release-durable.test.mjs):
+//   · a publish gated on `github.ref_type == 'tag' && github.run_number < 0` → exit 1
+//     naming the condition (it exited 0 before this change; measured, not assumed)
+//   · a mixed `path:` block under `--fail-on-mixed-upload-paths`               → exit 1
+//   · the same tree WITHOUT the flag                                           → exit 0 with `⚠`
+//
+// Usage:  node tooling/ci/assert-release-durable.mjs [repoRoot] [--fail-on-mixed-upload-paths]
 // Exit 0 = no release lane can finish without a durable, verifiable artifact.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
@@ -99,8 +143,13 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { parseWorkflow, WORKFLOW_DIR, shellSegments } from './workflow-scan.mjs';
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-const ROOT_ARG = process.argv[2];
+// Flags are filtered out of the positional scan BEFORE the root is taken, or
+// `--fail-on-mixed-upload-paths` would be resolved as a repository path and every
+// derivation below would run against a directory that does not exist.
+const ARGS = process.argv.slice(2);
+const FAIL_ON_MIXED_PATHS = ARGS.includes('--fail-on-mixed-upload-paths');
+const ROOT_ARG = ARGS.find((a) => !a.startsWith('--'));
+const ROOT = resolve(ROOT_ARG ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 /** A fixture root is not a git repository and holds no channel register; saying
  *  so is the truth there rather than a coverage loss. Same distinction
  *  assert-guard-coverage.mjs and assert-release-lane-generic.mjs both draw. */
@@ -110,6 +159,7 @@ const REGISTER_REL = 'tooling/channel-register.json';
 const MANIFEST_SCRIPT_REL = 'tooling/ci/release-manifest.mjs';
 
 const problems = [];
+const warnings = [];
 const ok = (m) => console.log(`ok   ${m}`);
 const note = (m) => console.log(`--   ${m}`);
 
@@ -316,6 +366,89 @@ export function stepIf(step) {
 }
 
 /**
+ * 🔴 THE ONE CONDITION A DURABLE PUBLISH MAY CARRY, as the live release lane in
+ * build-platforms.yml writes it. Everything else — `false`, a never-true
+ * conjunction, an event name nothing emits — is a destination that reads as alive
+ * in every diff and can never run.
+ *
+ * A one-entry allowlist is the deliberate choice over an expression evaluator:
+ * this factory has exactly one publish condition, "is this a tag push", and a
+ * second legitimate form should cost a reviewed line here rather than arriving
+ * unnoticed inside a condition nobody evaluated.
+ */
+export const CANONICAL_PUBLISH_IF = "github.ref_type == 'tag'";
+
+/**
+ * A condition reduced to its token sequence, so two legal spellings of one
+ * condition compare equal and a different condition never does:
+ *   · the optional `${{ … }}` wrapper is removed (both forms are legal in `if:`)
+ *   · double-quoted literals become single-quoted (`"tag"` and `'tag'` are one value)
+ *   · operators get whitespace around them, so `a=='tag'` and `a == 'tag'` agree
+ *   · runs of whitespace collapse to one space
+ * Nothing is reordered: `a && b` and `b && a` are deliberately NOT equal, because
+ * treating them as equal is the first step towards evaluating rather than matching.
+ */
+export function conditionTokens(cond) {
+  let s = String(cond ?? '').trim();
+  // Peel YAML quoting and the `${{ }}` wrapper in either order and in either
+  // nesting — `"${{ github.ref_type == 'tag' }}"` is the same condition as the
+  // bare form, and stripping only one layer left it comparing unequal. The
+  // outer-quote peel refuses when the same quote character occurs inside, so
+  // `"a" == "b"` is never mangled into `a" == "b`.
+  for (let i = 0; i < 3; i++) {
+    const before = s;
+    s = s.replace(/^(['"])([\s\S]*)\1$/, (m, q, inner) => (inner.includes(q) ? m : inner)).trim();
+    s = s.replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1').trim();
+    if (s === before) break;
+  }
+  return s
+    .replace(/"([^"]*)"/g, "'$1'")
+    .replace(/(!=|==|<=|>=|&&|\|\||[<>()!])/g, ' $1 ')
+    .trim()
+    .split(/\s+/)
+    .join(' ');
+}
+
+const CANONICAL_TOKENS = conditionTokens(CANONICAL_PUBLISH_IF);
+
+/** Does this step-level condition let the step actually run on a release? */
+export const conditionIsLive = (cond) => cond === null || conditionTokens(cond) === CANONICAL_TOKENS;
+
+/** The basename of an upload path, with `${{ … }}` expressions neutralised. */
+const pathBase = (raw) =>
+  raw
+    .replace(/\$\{\{[^}]*\}\}/g, '_')
+    .trim()
+    .replace(/\/+$/, '')
+    .split('/')
+    .pop() ?? '';
+
+/**
+ * LIMB 4's classifier. An upload `path:` block that mixes an EXTENSION GLOB with
+ * a bare DIRECTORY defeats `if-no-files-found: error`, because that setting asks
+ * whether the WHOLE union matched nothing — and the directory always matches. The
+ * glob can then produce zero files, the artifact uploads a platform short, and
+ * every check downstream agrees with the reduced set it was handed.
+ *
+ * Returns `{ globs, dirs }` or null. A block of only globs is fine (an empty union
+ * fails the step); a block of only directories is fine for the same reason.
+ */
+export function mixedUploadPaths(paths) {
+  const globs = [];
+  const dirs = [];
+  for (const p of paths) {
+    const base = pathBase(p);
+    if (base === '') continue;
+    if (base.includes('*')) {
+      if (/\.[A-Za-z0-9]+$/.test(base)) globs.push(p);
+      continue;
+    }
+    if (!/\.[A-Za-z0-9]+$/.test(base)) dirs.push(p);
+  }
+  return globs.length > 0 && dirs.length > 0 ? { globs, dirs } : null;
+}
+
+/**
  * Does an upload path name something a person installs?
  *
  * Two shapes, and the second is the acceptance's own wording. A path ending in a
@@ -388,6 +521,11 @@ export function releaseTriggerLine(wf) {
 
 // ── classify every job ───────────────────────────────────────────────────────
 let installableUploads = 0;
+let durableSteps = 0;
+let durableWithRawIf = 0;
+let durableWithParsedIf = 0;
+let durableCanonical = 0;
+const mixedPathSteps = [];
 for (const wf of workflows) {
   wf.releaseTrigger = releaseTriggerLine(wf);
 
@@ -397,16 +535,41 @@ for (const wf of workflows) {
     job.durable = [];
     for (const step of job.steps) {
       if (/uses:\s*actions\/upload-artifact@/.test(step.text)) {
-        const hits = stepPaths(step).filter((p) => isInstallablePath(p, EXTS));
+        const paths = stepPaths(step);
+        const hits = paths.filter((p) => isInstallablePath(p, EXTS));
         if (hits.length) {
           installableUploads++;
           job.installable.push({ n: step.n, paths: hits });
         }
+        const mixed = mixedUploadPaths(paths);
+        if (mixed) mixedPathSteps.push({ rel: wf.rel, job: job.name, n: step.n, ...mixed });
       }
       const what = durableIn(step);
-      if (what) job.durable.push({ n: step.n, what, if: stepIf(step), text: step.text });
+      if (what) {
+        const cond = stepIf(step);
+        durableSteps++;
+        // The PARSER's own liveness, not the step's. If `stepIf` ever stops
+        // reading conditions, every durable step reads as unconditional — which
+        // is the "live" answer — and limb 1's dead-destination clause silently
+        // stops checking anything. So the raw presence of an `if:` line inside a
+        // durable step is counted separately from the parse of one, and the two
+        // are compared below.
+        if (/^\s+if:\s*\S/m.test(step.text)) durableWithRawIf++;
+        if (cond) durableWithParsedIf++;
+        if (cond && conditionIsLive(cond.cond)) durableCanonical++;
+        job.durable.push({ n: step.n, what, if: cond, text: step.text });
+      }
     }
   }
+}
+
+// ── the dead-destination clause must still be able to READ a condition ───────
+if (durableWithRawIf > 0 && durableWithParsedIf === 0) {
+  coverageLost([
+    `${durableWithRawIf} durable publish step(s) contain an \`if:\` line and \`stepIf\` parsed NONE of them.`,
+    'An unparsed condition reads as "no condition", which reads as "this step runs" — so the dead-destination',
+    'clause would certify every publish in the tree, including one gated on a condition that is never true.',
+  ]);
 }
 
 // ── (5) the classifier must still be matching something ──────────────────────
@@ -460,14 +623,41 @@ for (const wf of workflows) {
       );
       continue;
     }
-    const dead = found.filter((d) => d.if && /^false$/i.test(d.if.cond));
+    // EVERY reachable destination gated on something other than the canonical
+    // tag-publish condition means the lane has no destination that can run.
+    const dead = found.filter((d) => d.if && !conditionIsLive(d.if.cond));
     if (dead.length === found.length) {
+      const d = dead[0];
+      const literalFalse = /^false$/i.test(d.if.cond);
       problems.push(
-        `${wf.rel}: job "${job.name}"'s only durable destination is ${found[0].what} in job "${found[0].job}" at :${found[0].n}, whose step-level \`if:\` is the literal \`false\`. ` +
+        `${wf.rel}: job "${job.name}"'s only durable destination is ${d.what} in job "${d.job}" at :${d.n}, whose step-level \`if:\` is ` +
+          (literalFalse
+            ? 'the literal `false`. '
+            : `\`${d.if.cond}\` — not the canonical tag-publish condition \`${CANONICAL_PUBLISH_IF}\`. ` +
+              'This guard matches that one condition and does not evaluate expressions, so anything else is treated as unable to run: ' +
+              '`github.run_number < 0` and an event name nothing emits both read exactly like a live publish otherwise. ' +
+              'If this IS a new legitimate publish condition, add it to `CANONICAL_PUBLISH_IF` in this guard in the same commit. ') +
           'A destination that can never run is the same as no destination, and it reads as one in every diff.',
       );
     }
   }
+}
+
+// ── limb 4 — the mixed upload path (WARNING this increment; see the header) ──
+// ⚠️ THE WORD `glob` IS NEVER WRITTEN IMMEDIATELY BEFORE AN OPENING PAREN in this
+// file, here or anywhere. assert-walks-bounded.mjs forbids the fs enumerators in
+// tooling/ci and matches them as `<name>\s*\(` over comment-stripped source — so
+// the prose `…an extension glob (${…})` inside a template literal read as a call
+// to `glob(` and failed this guard's own lane on its first run. Same family as
+// the `services/*` block-comment trap recorded further up. Square brackets.
+for (const m of mixedPathSteps) {
+  const line =
+    `${m.rel}: job "${m.job}" uploads at :${m.n} with a \`path:\` block that mixes an extension glob [${m.globs.join(', ')}] ` +
+    `with a bare directory [${m.dirs.join(', ')}]. \`if-no-files-found: error\` fires only when the WHOLE union is empty, so the ` +
+    'directory always satisfies it and the glob is free to match nothing: the artifact uploads a platform short and every check ' +
+    'downstream agrees with the reduced set it was handed. Split them into separate upload steps so each one can fail on its own.';
+  if (FAIL_ON_MIXED_PATHS) problems.push(line);
+  else warnings.push(line);
 }
 
 // ── limb 2 ───────────────────────────────────────────────────────────────────
@@ -549,7 +739,26 @@ ok(
   `REQUIRED_COVERAGE — ${EXTS.size} installable extension(s) {${[...EXTS].sort().join(' ')}} covering all ${declaredInRegister.size} declared in ` +
     `${REGISTER_REL}${EXTRA_INSTALLABLE ? ` + ${EXTRA_INSTALLABLE.size} declared extra(s)` : ''}; ${lanesChecked} register lane(s) resolved; manifest name read from ${MANIFEST_SCRIPT_REL} as ${MANIFEST_NAME}`,
 );
+ok(
+  `condition clause — ${durableSteps} durable step(s), ${durableWithParsedIf} of them conditional (${durableWithRawIf} carry a raw \`if:\` line), ` +
+    `${durableCanonical} on the canonical \`${CANONICAL_PUBLISH_IF}\`; anything else is treated as unable to run`,
+);
 for (const p of printed) note(p);
+for (const w of warnings) {
+  console.log(`⚠   ${w}`);
+}
+if (warnings.length) {
+  console.log(
+    `⚠   ${warnings.length} mixed upload path(s) above are a WARNING for this increment only — build-platforms.yml is being restructured ` +
+      'in the same wave and this guard must not red a file this increment cannot edit. Run with `--fail-on-mixed-upload-paths` to see them ' +
+      'as failures today; delete the flag and make it unconditional once those uploads are split. [pipeline 9]R-4 / G3',
+  );
+} else {
+  note(
+    `limb 4 — no upload step mixes an extension glob with a bare directory. The clause is armed and matched nothing, which is the ` +
+      'outcome the split-uploads repair is aiming at; `--fail-on-mixed-upload-paths` can be made unconditional once that holds on every branch.',
+  );
+}
 if (servedNonWeb.length === 0) {
   note(
     `limb 3 — no SERVED non-web channel in ${REGISTER_REL}, so "a published release carries a checksum file" has no subject today. ` +

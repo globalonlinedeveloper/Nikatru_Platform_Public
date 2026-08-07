@@ -448,7 +448,34 @@ jobs:
             echo '```'
             echo '## Declared gaps in the operations register'
             echo '```'
-            node tooling/ci/assert-ops-register.mjs 2>&1 | grep -E '^(⬜|⚠)' || echo '(none printed)'
+            # 🔴 THIS READER USED TO BE ONE PIPED LINE AND IT LIED IN BOTH
+            # DIRECTIONS. `node … | grep -E '^(⬜|⚠)' || echo '(none printed)'`
+            # threw the guard's exit away (a pipeline reports its LAST stage, so
+            # the digest recorded grep's status, never the register's) AND the
+            # grep filtered out every failure line, which this guard writes as
+            # `✗ …`. A register in COVERAGE LOST therefore rendered in the weekly
+            # digest as the single line "(none printed)" — the most reassuring
+            # possible presentation of a red check. Repaired 2026-08-08 to match
+            # its two siblings above: capture output and status SEPARATELY, then
+            # echo the status.
+            #
+            # The status is captured on its own line, immediately after the
+            # assignment and before any other command runs. `$?` inside an
+            # argument list that contains a command substitution is the
+            # SUBSTITUTION's status, which is how a whole session's guard checks
+            # once read EXIT 0 while a guard was exiting 1 (CLAUDE.md).
+            #
+            # On a red register the WHOLE output is included, not a filtered
+            # slice: filtering is what hid the failure, and the one run where the
+            # digest is worth reading in full is the run where something broke.
+            out="$(node tooling/ci/assert-ops-register.mjs 2>&1)"
+            code=$?
+            if [ "$code" -eq 0 ]; then
+              printf '%s\n' "$out" | grep -E '^(⬜|⚠)' || echo '(none printed)'
+            else
+              printf '%s\n' "$out"
+            fi
+            echo "exit: $code"
             echo '```'
           } > "${RUNNER_TEMP}/digest-body.md"
           set -e
