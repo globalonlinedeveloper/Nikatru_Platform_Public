@@ -31,6 +31,27 @@
 //   M7  a second .html hand-added under sites/nikatru/apps/
 //         => FAIL "is a page this generator would never write"
 //
+// The limb-F suite at the foot of this file was added 2026-08-07 and its
+// mutations were run the same way, against the REAL tree, because the defect it
+// repairs is precisely that limb F could not be reached from a fixture at all:
+//
+//   M8   tooling/content_pipeline/examples/lingo-phrases/recipe.json deleted
+//          => COVERAGE LOST "the pack walk no longer finds 1 of its 1 canary
+//             pack id(s): lingo"  (restored; sha256 4d7b497d… re-verified)
+//   M9   packages/core/growth_probe/recipe.json added, pack_id "subly"
+//          => 🔔 TRIGGER FIRED for W-5, W-6 AND W-8 together, "2 committed pack
+//             id(s) [lingo, subly], 1 owned by a registry slug" — and W-4 stayed
+//             DEFERRED, which is what keeps the two measurements independent
+//   M10  THE SAME BYTES moved to apps/subly/build/web/recipe.json
+//          => back to DEFERRED, "1 committed pack id(s) [lingo]". M9 and M10
+//             differ only in the directory, so the `build` prune is provably
+//             load-bearing rather than decorative
+//   M11  a second live entry appended to sites/_shared/_data/apps.json and the
+//        generator re-run
+//          => 🔔 TRIGGER FIRED [12]W-4, "2 live registry entr(ies) of 2"
+//             (restored via regenerate; all five surface sha256s re-verified
+//             against the pre-mutation baseline, and `git status` clean)
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -98,6 +119,13 @@ function tree(entries, opts = {}) {
   writeFileSync(join(root, 'sites', 'nikatru', 'sitemap.xml'), opts.sitemap ?? SITEMAP_BASE);
   writeFileSync(join(root, 'sites', 'nikatru', 'index.html'), '<html><body>home</body></html>\n');
   if (opts.template !== false) writeFileSync(join(root, 'sites', 'nikatru', 'apps', '_template.html'), opts.template ?? TEMPLATE);
+  // Content packs, for limb F's trigger watcher. `at` is a repo-relative
+  // directory so a case can put the same pack somewhere the walk must PRUNE
+  // (build output, test fixtures) and prove the trigger stays quiet.
+  for (const { at, pack_id } of opts.packs ?? []) {
+    mkdirSync(join(root, ...at.split('/')), { recursive: true });
+    writeFileSync(join(root, ...at.split('/'), 'recipe.json'), JSON.stringify({ recipe_version: 1, pack_id }, null, 2));
+  }
   return root;
 }
 
@@ -608,12 +636,123 @@ describe('the real repository', () => {
     assert.match(r.out, /DEFERRED \[12\]W-8[\s\S]*?0 pack\(s\) owned by a registry slug/);
   });
 
-  test('a second live registry entry FLIPS W-4\'s trigger print — the watcher is not a constant', () => {
-    // The writable failing input for the trigger watcher: without this the four
-    // prints would be prose wearing a guard's clothes.
+  test('🔴 the pack-walk CANARY still reaches the pack it names — three deferrals rest on it', () => {
+    // The own-repo half of limb F's coverage. `0 owned by a registry slug` is the
+    // correct answer today AND the answer a walk that reaches nothing gives, so
+    // the only thing separating them is evidence that the walk still finds a pack
+    // it is known to be able to find. If this line stops saying `lingo`, W-5, W-6
+    // and W-8 are no longer being measured — they are merely being asserted.
+    const r = guard(REPO);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 committed pack id\(s\) \[lingo\]/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Limb F · THE DEFERRAL WATCHER FOR [12]W-4, W-5, W-6 and W-8.
+//
+// 🔴 WHY THIS SUITE EXISTS. The watcher shipped inside `if (SCANNING_OWN_REPO)`,
+// so on every fixture root — all of them temp directories — limb F emitted
+// NOTHING, and the `🔔 TRIGGER FIRED` branch had no writable failing input at
+// all. Measured 2026-08-07 before the fix: a fixture carrying two live registry
+// entries, which is verbatim W-4's trigger, produced no `W-4` substring anywhere
+// in the guard's output and no `TRIGGER FIRED` match.
+//
+// The test that stood here claimed the flip in its NAME ('a second live registry
+// entry FLIPS W-4's trigger print') and never ran the guard: it called
+// `planDiscovery` and asserted `live.length === 2` — a fact about the generator,
+// true whether or not the print exists. Four requirements were deferred on a
+// mechanism whose firing had never once been observed, which is the repository's
+// own recorded assert-seams-wired.mjs shape.
+//
+// So every case below runs the REAL guard and reads the REAL print, in both
+// directions: fired when the trigger's condition holds, deferred when it does
+// not. A watcher that can only print one of its two branches is a constant.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the deferred stage-12 trigger watcher', () => {
+  /** Every trigger line for `id`, as the guard actually printed it. */
+  const lineFor = (out, id) => out.split('\n').find((l) => l.includes(`[12]${id} —`)) ?? '';
+
+  test('🔴 TWO LIVE ENTRIES FLIP W-4 — the branch that was unreachable before', () => {
     const root = tree([SUBLY, { ...SUBLY, slug: 'lingo', name: 'Lingo' }]);
     generate(root);
-    const { live } = planDiscovery(root);
-    assert.equal(live.length, 2);
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    const w4 = lineFor(r.out, 'W-4');
+    assert.match(w4, /🔔 TRIGGER FIRED/);
+    assert.match(w4, /2 live registry entr\(ies\) of 2/);
+    assert.match(w4, /The condition this requirement was deferred behind is now TRUE — build it\./);
+  });
+
+  test('ONE live entry keeps W-4 DEFERRED — the watcher is not stuck on either branch', () => {
+    const root = tree([SUBLY, { ...SUBLY, slug: 'lingo', name: 'Lingo', status: 'preview' }]);
+    generate(root);
+    const w4 = lineFor(guard(root).out, 'W-4');
+    assert.match(w4, /DEFERRED/);
+    assert.doesNotMatch(w4, /TRIGGER FIRED/);
+    assert.match(w4, /1 live registry entr\(ies\) of 2/);
+  });
+
+  test('🔴 a pack a REGISTRY SLUG OWNS flips W-5, W-6 and W-8 together — they share one measurement', () => {
+    const root = tree([SUBLY], { packs: [{ at: 'packages/subly_content', pack_id: 'subly' }] });
+    generate(root);
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    for (const id of ['W-5', 'W-6', 'W-8']) {
+      assert.match(lineFor(r.out, id), /🔔 TRIGGER FIRED/, `${id} must fire on an owned pack`);
+    }
+    assert.match(lineFor(r.out, 'W-8'), /1 pack\(s\) owned by a registry slug/);
+    // ...and W-4 is INDEPENDENT: a pack is not a second live app. Collapsing the
+    // two measurements would make one requirement's trigger answer for another's.
+    assert.match(lineFor(r.out, 'W-4'), /DEFERRED/);
+  });
+
+  test('a pack NO registry slug owns leaves all three DEFERRED — this is the real tree\'s state', () => {
+    // `lingo` is committed and real; no app named `lingo` is in the registry. The
+    // guard must count the pack and still refuse to call the trigger fired.
+    const root = tree([SUBLY], { packs: [{ at: 'tooling/content_pipeline/examples/lingo-phrases', pack_id: 'lingo' }] });
+    generate(root);
+    const r = guard(root);
+    const w5 = lineFor(r.out, 'W-5');
+    assert.match(w5, /DEFERRED/);
+    assert.match(w5, /1 committed pack id\(s\) \[lingo\], 0 owned by a registry slug/);
+    assert.match(lineFor(r.out, 'W-8'), /DEFERRED/);
+  });
+
+  test('a pack under test/fixtures is NOT counted — it exists to prove the FORMAT', () => {
+    const root = tree([SUBLY], { packs: [{ at: 'packages/core/test/fixtures/pack/v1', pack_id: 'subly' }] });
+    generate(root);
+    const r = guard(root);
+    assert.match(lineFor(r.out, 'W-5'), /0 committed pack id\(s\) \[none\]/);
+    assert.match(lineFor(r.out, 'W-8'), /DEFERRED/);
+    assert.doesNotMatch(lineFor(r.out, 'W-8'), /TRIGGER FIRED/);
+  });
+
+  test('🔴 a pack under build/ is NOT counted — the walk reads the WORKING TREE', () => {
+    // Build output is not committed, but this walk is a directory scan: a
+    // developer who has run a build would otherwise measure a different tree than
+    // CI does, and a copied pack would fire a trigger the repository does not
+    // satisfy. `build` was missing from this walk's prune list while the pubspec
+    // walk twenty lines below it already had it.
+    const root = tree([SUBLY], { packs: [{ at: 'apps/subly/build/web', pack_id: 'subly' }] });
+    generate(root);
+    const r = guard(root);
+    assert.match(lineFor(r.out, 'W-5'), /0 committed pack id\(s\) \[none\]/);
+    assert.match(lineFor(r.out, 'W-8'), /DEFERRED/);
+    assert.doesNotMatch(lineFor(r.out, 'W-8'), /TRIGGER FIRED/);
+  });
+
+  test('all four lines are printed on any tree, and none of them fails the build', () => {
+    // [pipeline C-6]: "you shipped a second app" must never turn CI red. The
+    // watcher informs; it does not gate.
+    const root = tree([SUBLY, { ...SUBLY, slug: 'lingo', name: 'Lingo' }], {
+      packs: [{ at: 'packages/p', pack_id: 'subly' }],
+    });
+    generate(root);
+    const r = guard(root);
+    assert.equal(r.code, 0, 'every trigger fired and the guard must STILL exit 0');
+    for (const id of ['W-4', 'W-5', 'W-6', 'W-8']) {
+      assert.match(lineFor(r.out, id), /🔔 TRIGGER FIRED/, `${id} must be reported`);
+    }
   });
 });
