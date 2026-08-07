@@ -8,7 +8,7 @@
   "appstore-submission.test.mjs": 37,
   "assert-deploy-triggers-deploy.test.mjs": 11,
   "capability-register-seams.test.mjs": 27,
-  "capability-register.test.mjs": 18,
+  "capability-register.test.mjs": 29,
   "catalog-reachable.test.mjs": 9,
   "ceiling-budget.test.mjs": 50,
   "channel-claims.test.mjs": 45,
