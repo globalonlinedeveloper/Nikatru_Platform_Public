@@ -37,6 +37,10 @@ import 'package:flutter/material.dart';
 // SemanticsNode — the icon-label limb asserts on what a SCREEN READER receives,
 // not on a widget field a screen reader never sees.
 import 'package:flutter/semantics.dart';
+// [pipeline 10]D-8. MethodChannel — the update button is watched at the
+// PLATFORM BOUNDARY (`plugins.flutter.io/url_launcher`), because that is the
+// only place the URL the user is actually sent to can be observed.
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
@@ -49,6 +53,9 @@ import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/core/router.dart';
 import 'package:{{app_id.snakeCase()}}/features/firstrun/onboarding_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/home/home_screen.dart';
+// [pipeline 11]E-6. The paywall is the screen that emits the four money events,
+// so the funnel property drives THIS widget rather than the funnel object.
+import 'package:{{app_id.snakeCase()}}/features/monetization/paywall_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/settings/settings_screen.dart';
 // [pipeline T-8] The platform capability matrix, so the no-silent-channel loop
 // derives its expectation from the same source the widget reads.
@@ -164,6 +171,16 @@ _MemStore _onboardedStore([_MemStore? store]) {
 /// [pipeline C-6].
 class _FakeEventTransport implements core.EventTransport {
   final List<Map<String, Object?>> sent = <Map<String, Object?>>[];
+
+  /// The anon id of EVERY batch, not just the last — [pipeline 11]E-6.
+  ///
+  /// 🔴 `lastAnonId` alone cannot answer the question that requirement asks.
+  /// "The funnel shares one anon_id" is a statement about the events as a SET,
+  /// and a set that arrives in two batches carries two anon ids; keeping only
+  /// the last one collapses them and makes the assertion unfailable. Recording
+  /// each send is what lets a test flush BETWEEN the halves of the funnel and
+  /// still notice the id changing underneath it.
+  final List<String> anonIds = <String>[];
   String? lastAnonId;
   Map<String, Object?>? lastEnvelope;
 
@@ -175,6 +192,7 @@ class _FakeEventTransport implements core.EventTransport {
     required List<Map<String, Object?>> events,
   }) async {
     lastAnonId = anonId;
+    anonIds.add(anonId);
     lastEnvelope = envelope;
     sent.addAll(events);
     return const core.Result<void>.ok(null);
@@ -252,6 +270,19 @@ Future<void> _turnsAndSettleRoute(WidgetTester tester) async {
   await _turns(tester, 4);
 }
 
+/// Turn the loop AND fire the ZERO-DURATION timers Riverpod's scheduler uses.
+///
+/// 🔴 SAME TRAP AS THE ROUTE HELPER ABOVE, one layer down. `ref.invalidate`
+/// outside a frame schedules its refresh on `Timer(Duration.zero)`, and
+/// `tester.pump()` with no duration does not advance the fake clock — so the
+/// timer is still pending when the test ends and the framework fails it for a
+/// reason that has nothing to do with the property under test. Anything that
+/// invalidates a provider from the test body has to advance time.
+Future<void> _turnsAndDrain(WidgetTester tester) async {
+  await _turns(tester);
+  await tester.pump(const Duration(milliseconds: 1));
+}
+
 /// An in-memory [core.SecureStore] — the real one needs a platform channel a
 /// widget test has not got, which is exactly why `secureStoreProvider` sat in
 /// this guard's UNASSERTED list until the money rail gave it a reason to be
@@ -302,6 +333,40 @@ class _FakeEntitlements implements core.EntitlementTransport {
   }
 }
 
+/// The RESOLVED config document a test wants the CFG-1 chassis to have served.
+///
+/// One builder rather than a literal per container: `minSupportedVersion` and
+/// `updateUrl` are the two fields the force-update wall is made of, and a second
+/// hand-written copy of this object is how one of them ends up differing from
+/// the other for no reason anybody wrote down.
+core.AppConfig _servedConfig({
+  bool paywallEnabled = true,
+  String minSupportedVersion = '1.0.0',
+  String? updateUrl,
+}) => core.AppConfig(
+  appId: AppConfig.appId,
+  apiBaseUrl: AppConfig.apiBaseUrl,
+  features: const <String, bool>{},
+  paywall: core.PaywallConfig(
+    enabled: paywallEnabled,
+    extra: const <String, Object?>{
+      'offerings': <Object?>[
+        <String, Object?>{
+          'product_id': 'pro_monthly',
+          'amount_minor': 499,
+          'currency_code': 'USD',
+          'term': 'month',
+          'trial_days': 30,
+        },
+      ],
+    },
+  ),
+  contentPack: null,
+  copy: const <String, String>{},
+  minSupportedVersion: minSupportedVersion,
+  updateUrl: updateUrl,
+);
+
 ProviderContainer _moneyContainer({
   required _MemStore store,
   required _FakeEntitlements server,
@@ -316,31 +381,164 @@ ProviderContainer _moneyContainer({
     // born with it OFF — so the open path has to be opened deliberately, the
     // same shape `analyticsEnabledProvider` uses for the analytics rail.
     appConfigProvider.overrideWith(
-      (_) async => core.AppConfig(
-        appId: AppConfig.appId,
-        apiBaseUrl: AppConfig.apiBaseUrl,
-        features: const <String, bool>{},
-        paywall: core.PaywallConfig(
-          enabled: paywallEnabled,
-          extra: const <String, Object?>{
-            'offerings': <Object?>[
-              <String, Object?>{
-                'product_id': 'pro_monthly',
-                'amount_minor': 499,
-                'currency_code': 'USD',
-                'term': 'month',
-                'trial_days': 30,
-              },
-            ],
-          },
-        ),
-        contentPack: null,
-        copy: const <String, String>{},
-        minSupportedVersion: '1.0.0',
-      ),
+      (_) async => _servedConfig(paywallEnabled: paywallEnabled),
     ),
   ],
 );
+
+/// A rail that really opens a checkout — [pipeline 11]E-6.
+///
+/// 🔴 WHY A FAKE RAIL IS THE ONLY WAY TO SEE THE WHOLE FUNNEL. The shipped
+/// `HostedCheckoutRail` refuses with `railNotConfigured` today (no
+/// `checkout_url_template`, OWNER_QUEUE A-1), so against the real rail the
+/// paywall can only ever emit three of the four events — and `purchase_success`
+/// would be permanently unreachable, which is the fail-closed shape [pipeline
+/// C-6] exists to catch wearing a purchase button.
+///
+/// [refuse] flips the SECOND half of the funnel on, so one session can contain
+/// both a success and a failure without inventing a second user.
+class _FakeRail implements PurchaseRail {
+  _FakeRail({this.refuse = false});
+
+  bool refuse;
+  int startCalls = 0;
+
+  @override
+  List<Offering> get offerings => const <Offering>[
+    Offering(
+      productId: 'pro_monthly',
+      amountMinor: 499,
+      currencyCode: 'USD',
+      term: OfferingTerm.month,
+      trialDays: 30,
+    ),
+  ];
+
+  // Deliberately NOT tied to [refuse]: `canStartCheckout` is a CONFIGURATION
+  // answer the paywall asks before it draws a button, and a refusal at
+  // `startCheckout` is a RUNTIME one. Collapsing them would hide the button on
+  // the very path `purchase_failed` exists to measure.
+  @override
+  bool get canStartCheckout => true;
+
+  @override
+  Future<CheckoutStart> startCheckout(Offering offering) async {
+    startCalls++;
+    if (refuse) {
+      return const CheckoutRefused(
+        CheckoutRefusal.notSignedIn,
+        detail: 'no session',
+      );
+    }
+    return CheckoutOpened(
+      offering: offering,
+      url: Uri.parse('https://checkout.invalid/${offering.productId}'),
+    );
+  }
+
+  @override
+  Future<CancellationOutcome> requestCancellation() async =>
+      CancellationOutcome.noActivePlan;
+}
+
+/// The money rail AND the analytics rail, in one container — [pipeline 11]E-6.
+///
+/// Neither `_moneyContainer` nor `_analyticsContainer` can host this property on
+/// its own, and that is the point of the requirement: the funnel is the JOIN of
+/// the two, and every previous test drove one of them with the other stubbed out.
+ProviderContainer _funnelContainer({
+  required _MemStore store,
+  required _FakeEventTransport events,
+  required _FakeConsentTransport consent,
+  required _FakeRail rail,
+  required _FakeEntitlements server,
+}) => ProviderContainer(
+  overrides: <Override>[
+    keyValueStoreProvider.overrideWith((_) async => store),
+    secureStoreProvider.overrideWithValue(_MemSecureStore()),
+    // The REAL recorder, over a fake wire. Overriding `analyticsProvider`
+    // itself would assert that a fake collects what it was handed — and the
+    // session id, which is half this property, is minted by the recorder.
+    analyticsEnabledProvider.overrideWithValue(true),
+    eventTransportProvider.overrideWithValue(events),
+    consentTransportProvider.overrideWithValue(consent),
+    entitlementTransportProvider.overrideWithValue(server),
+    purchaseRailProvider.overrideWithValue(rail),
+    appConfigProvider.overrideWith((_) async => _servedConfig()),
+  ],
+);
+
+/// The paywall on its own MaterialApp — no router, because a route change is not
+/// part of this property and the unlocked state's "go home" button is the only
+/// thing that would need one.
+Widget _paywallHost(ProviderContainer c, Key key) => UncontrolledProviderScope(
+  container: c,
+  child: MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: PaywallScreen(key: key),
+  ),
+);
+
+/// 🔴 [pipeline 10]D-8 — THE URL THE CONFIG SERVES IN THIS PROPERTY'S TESTS, and
+/// it must never be `AppConfig.updateUrl`.
+///
+/// If the injected value equalled the compiled-in default, the assertion below
+/// would pass with the runtime resolution deleted — the whole clause satisfied
+/// by the fallback it exists to distinguish from. `assert-stamp-properties.mjs`
+/// parses this constant and fails the build if it ever equals the compiled-in
+/// default of ANY channel, so the trap cannot be re-set by a later edit.
+const String kProbeUpdateUrl = 'https://update.invalid/from-config';
+
+/// Every URL the app really handed to `url_launcher`, in order.
+///
+/// The platform channel, not a seam: `app.dart` calls `launchUrl` directly, and
+/// a test that stubbed a seam we invented for it would prove that our own stub
+/// was called. The handler is scoped to the running test and removed after it.
+///
+/// ⚠️ IT CANNOT PASS SILENTLY IF url_launcher RENAMES ITS CHANNEL. The
+/// assertions below require a URL to have ARRIVED, so a handler that never fires
+/// leaves the list empty and the test red — the opposite of the
+/// scanner-gone-blind failure this file's header is about.
+List<String> _captureLaunchedUrls() {
+  const MethodChannel channel = MethodChannel(
+    'plugins.flutter.io/url_launcher',
+  );
+  final List<String> launched = <String>[];
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, (MethodCall call) async {
+        if (call.method == 'launch') {
+          final Map<Object?, Object?> args =
+              call.arguments as Map<Object?, Object?>;
+          launched.add(args['url']! as String);
+        }
+        return true;
+      });
+  addTearDown(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null),
+  );
+  return launched;
+}
+
+/// A container whose running version is BELOW the served floor, so the
+/// force-update wall is up — [pipeline 10]D-8.
+///
+/// `packageVersionProvider` is overridden rather than driven: the real one reads
+/// a platform channel a widget test has not got and answers null by design,
+/// which makes the wall fail OPEN. That null is why nothing had ever proven the
+/// wall appears on a stamped app.
+ProviderContainer _forceUpdateContainer({required String? updateUrl}) =>
+    ProviderContainer(
+      overrides: <Override>[
+        keyValueStoreProvider.overrideWith((_) async => _onboardedStore()),
+        packageVersionProvider.overrideWith((_) async => '1.0.0'),
+        appConfigProvider.overrideWith(
+          (_) async =>
+              _servedConfig(minSupportedVersion: '9.9.9', updateUrl: updateUrl),
+        ),
+      ],
+    );
 
 /// Records what the review seam was actually asked to do — [pipeline C-13].
 ///
@@ -3309,6 +3507,309 @@ void main() {
       expect(core.AnalyticsLifecycle.bucketDaysSinceLast(7), '2_7');
       expect(core.AnalyticsLifecycle.bucketDaysSinceLast(30), '8_30');
       expect(core.AnalyticsLifecycle.bucketDaysSinceLast(400), '30_plus');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // [pipeline 11]E-6 — THE PURCHASE FUNNEL IS A SET, NOT FOUR CALLS.
+  //
+  // 🔴 WHAT WAS ALREADY TRUE, AND WHY IT WAS NOT ENOUGH. All four calls fire
+  // from the brick's own paywall and `assert-pseudonymity-firewall.mjs` resolves
+  // them by symbol — so "the four events exist" has been green for a while. What
+  // no test in this repository asserted is the thing a conversion rate is
+  // actually made of: that the four arrive TOGETHER, in ONE session, under ONE
+  // anon id. Four events each individually correct and scattered across three
+  // sessions describe three users who each did a third of a purchase, and the
+  // resulting funnel is not merely imprecise — it is a different shape, and it
+  // looks perfectly plausible.
+  //
+  // The four are asserted as a SET and never as a sequence: ordering was struck
+  // from this requirement deliberately. `purchase_failed` can precede
+  // `purchase_success` (a declined card, then a second attempt), and a test that
+  // demanded an order would go red on the most ordinary real purchase there is.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('property: money-funnel-emitted-as-a-set', () {
+    /// The denominator, the intent, and BOTH outcomes.
+    const Set<String> funnel = <String>{
+      'paywall_viewed',
+      'checkout_started',
+      'purchase_success',
+      'purchase_failed',
+    };
+
+    testWidgets(
+      'paywall → checkout → outcome emits all four, in ONE session, under ONE anon_id',
+      (WidgetTester tester) async {
+        final _MemStore store = _onboardedStore();
+        final _FakeEventTransport events = _FakeEventTransport();
+        final _FakeRail rail = _FakeRail();
+        final ProviderContainer c = _funnelContainer(
+          store: store,
+          events: events,
+          consent: _FakeConsentTransport(),
+          rail: rail,
+          // The server already sees the entitlement, so the bounded
+          // convergence wait ends `unlocked` on its first read and
+          // `purchase_success` becomes reachable at all.
+          server: _FakeEntitlements(pro: true),
+        );
+        addTearDown(c.dispose);
+
+        // Consent FIRST. The recorder discards without it — as it should — so a
+        // funnel measured before this line is a funnel of nothing.
+        await _decide(c, granted: true);
+        // Riverpod schedules its refresh on a zero-duration timer, and inside
+        // `testWidgets` that clock is FAKE — an unpumped one is still pending
+        // when the test ends and fails it for a reason unrelated to the funnel.
+        await tester.pump(const Duration(milliseconds: 1));
+        await c.read(appConfigProvider.future);
+        final core.Analytics analytics = await c.read(analyticsProvider.future);
+
+        // ── HALF ONE: a purchase that completes. ──────────────────────────
+        await tester.pumpWidget(
+          _paywallHost(c, const ValueKey<String>('funnel-success')),
+        );
+        await _turnsAndDrain(tester);
+        await tester.tap(find.byType(FilledButton));
+        await _turnsAndDrain(tester);
+        expect(
+          rail.startCalls,
+          1,
+          reason: 'the upgrade button must really reach the rail',
+        );
+
+        // FLUSHED BETWEEN THE HALVES, on purpose. One batch carries one anon
+        // id, so a single flush would make "they share an anon id" true by
+        // construction — an assertion that cannot fail. Two batches is the
+        // smallest shape in which the claim has teeth.
+        await analytics.flush();
+
+        // ── HALF TWO: the same session, an attempt that is refused. ───────
+        rail.refuse = true;
+        await tester.pumpWidget(
+          _paywallHost(c, const ValueKey<String>('funnel-refused')),
+        );
+        await _turnsAndDrain(tester);
+        await tester.tap(find.byType(FilledButton));
+        await _turnsAndDrain(tester);
+        await analytics.flush();
+
+        final Set<String> names = events.sent
+            .map((Map<String, Object?> e) => e['event']! as String)
+            .toSet();
+        expect(
+          names.intersection(funnel),
+          funnel,
+          reason:
+              'the funnel is only a funnel as a SET — a missing stage does not '
+              'make the rate imprecise, it makes it a rate for a different '
+              'question, and nothing downstream can tell',
+        );
+
+        final Set<Object?> sessions = events.sent
+            .where(
+              (Map<String, Object?> e) => funnel.contains(e['event'] as String),
+            )
+            .map((Map<String, Object?> e) => e['session_id'])
+            .toSet();
+        expect(
+          sessions,
+          hasLength(1),
+          reason:
+              'four events in more than one session describe more than one '
+              'user, and the conversion rate silently divides by the wrong '
+              'denominator',
+        );
+        expect(sessions.single, isA<String>());
+        expect(sessions.single, isNot(''));
+
+        expect(
+          events.anonIds.length,
+          greaterThan(1),
+          reason:
+              'the id check below is vacuous over a single batch — this is the '
+              'guard on the guard',
+        );
+        expect(
+          events.anonIds.toSet(),
+          hasLength(1),
+          reason:
+              'a funnel that changes identity mid-purchase cannot be joined',
+        );
+        expect(
+          events.anonIds.first,
+          store.data['nikatru.install_id'],
+          reason:
+              'the money funnel must ride the SAME pseudonymous id as every '
+              'other event — a second id makes the paying cohort unjoinable to '
+              'the rollout bucket, for every install already in the field',
+        );
+      },
+    );
+
+    testWidgets(
+      'the four carry ENUMERABLE params and never an account id [ADR 020]',
+      (WidgetTester tester) async {
+        final _FakeEventTransport events = _FakeEventTransport();
+        final ProviderContainer c = _funnelContainer(
+          store: _onboardedStore(),
+          events: events,
+          consent: _FakeConsentTransport(),
+          rail: _FakeRail(refuse: true),
+          server: _FakeEntitlements(),
+        );
+        addTearDown(c.dispose);
+
+        await _decide(c, granted: true);
+        // Riverpod schedules its refresh on a zero-duration timer, and inside
+        // `testWidgets` that clock is FAKE — an unpumped one is still pending
+        // when the test ends and fails it for a reason unrelated to the funnel.
+        await tester.pump(const Duration(milliseconds: 1));
+        await c.read(appConfigProvider.future);
+        final core.Analytics analytics = await c.read(analyticsProvider.future);
+
+        await tester.pumpWidget(
+          _paywallHost(c, const ValueKey<String>('funnel-params')),
+        );
+        await _turnsAndDrain(tester);
+        await tester.tap(find.byType(FilledButton));
+        await _turnsAndDrain(tester);
+        await analytics.flush();
+
+        // The REFUSAL REASON is an enum name, and the trigger is a short code:
+        // a raw platform error string here would put free text into D1, and
+        // occasionally an account identifier with it. The firewall guard
+        // enforces the absence of a `userId` PARAMETER; this asserts what the
+        // real screen actually put on the wire.
+        final Map<String, Object?> failed = events.sent.lastWhere(
+          (Map<String, Object?> e) => e['event'] == 'purchase_failed',
+        );
+        final Map<String, Object?> params =
+            (failed['params']! as Map<String, Object?>);
+        expect(params['reason'], CheckoutRefusal.notSignedIn.name);
+        final Map<String, Object?> viewed = events.sent.firstWhere(
+          (Map<String, Object?> e) => e['event'] == 'paywall_viewed',
+        );
+        expect(
+          (viewed['params']! as Map<String, Object?>)['trigger'],
+          PaywallTrigger.featureGate.code,
+        );
+      },
+    );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // [pipeline 10]D-8 — THE UPDATE BUTTON OPENS THE URL THE CONFIG RESOLVED.
+  //
+  // 🔴 WHY A COMPILED-IN DESTINATION MAKES THE KILL-SWITCH CIRCULAR (owner
+  // decision #19). The one thing the force-update wall must do in an emergency
+  // is send users somewhere else. With the destination frozen at build time,
+  // moving it means shipping the very build the wall exists to replace — and the
+  // installs that need the redirect most are exactly the ones that cannot
+  // receive it.
+  //
+  // The runtime half landed on both sides — `services/platform/src/types.ts`
+  // declares `update_url`, `config.ts` serves it, `app.dart` reads it with the
+  // define as the offline fallback — and NOTHING anywhere proved a resolved
+  // value ever reaches the button. It could not: the wall had never been raised
+  // on a stamped app in any test (`packageVersionProvider` answers null in a
+  // widget test, so the gate fails open), which is why `mustForceUpdateProvider`
+  // sat in this guard's UNASSERTED list as "the switch that was inert for 55
+  // builds".
+  //
+  // BOTH branches are asserted, and the pair is the property: a resolved value
+  // must WIN, and its absence must still leave the button somewhere to go.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('property: update-url-resolved-from-config', () {
+    testWidgets('the wall opens the CONFIG url, not the compiled-in default', (
+      WidgetTester tester,
+    ) async {
+      final List<String> launched = _captureLaunchedUrls();
+      final ProviderContainer c = _forceUpdateContainer(
+        updateUrl: kProbeUpdateUrl,
+      );
+      addTearDown(c.dispose);
+      await c.read(appConfigProvider.future);
+      await c.read(packageVersionProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      // The wall is UP. Without this the tap below would land on whatever the
+      // router happened to draw, and the test would be measuring the app.
+      expect(
+        find.text('Update required'),
+        findsOneWidget,
+        reason:
+            'the running version is below the served floor, so the gate must '
+            'block the app — a wall that never appears cannot be proven to '
+            'send anybody anywhere',
+      );
+
+      await tester.tap(find.text('Update now'));
+      await _turns(tester);
+
+      expect(
+        launched,
+        <String>[kProbeUpdateUrl],
+        reason:
+            'the button must open the RESOLVED url; opening the compiled-in '
+            'default is the circular kill-switch owner decision #19 removed',
+      );
+      // THE GUARD ON THIS ASSERTION. If the injected value ever equalled the
+      // compiled-in default, the expectation above would pass with the runtime
+      // resolution deleted — satisfied by the fallback it exists to tell apart.
+      // `assert-stamp-properties.mjs` holds the same invariant statically, per
+      // channel, so it cannot be re-broken by an edit to this file alone.
+      expect(
+        kProbeUpdateUrl,
+        isNot(AppConfig.updateUrl),
+        reason: 'an assertion that cannot fail is worse than none',
+      );
+    });
+
+    testWidgets(
+      'with NO served value the compiled-in default is the fallback',
+      (WidgetTester tester) async {
+        final List<String> launched = _captureLaunchedUrls();
+        // `update_url` is NULL in the served config today, and null is the
+        // finding rather than a placeholder: no non-store channel is served, so
+        // there is nowhere else to send anybody. The fallback is what keeps the
+        // button from being a dead control in that state.
+        final ProviderContainer c = _forceUpdateContainer(updateUrl: null);
+        addTearDown(c.dispose);
+        await c.read(appConfigProvider.future);
+        await c.read(packageVersionProvider.future);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+        );
+        await _turnsAndSettleRoute(tester);
+        await tester.tap(find.text('Update now'));
+        await _turns(tester);
+
+        expect(launched, <String>[AppConfig.updateUrl]);
+      },
+    );
+
+    test('an EMPTY served string is not a destination', () {
+      // The parse, at the seam it belongs to: `''` is a value the KV override
+      // document can hold, and a wall whose button opens the empty string is a
+      // button that does nothing while looking wired.
+      Map<String, Object?> body(Object? updateUrl) => <String, Object?>{
+        'app_id': AppConfig.appId,
+        'api_base_url': AppConfig.apiBaseUrl,
+        'min_supported_version': '1.0.0',
+        'update_url': updateUrl,
+      };
+      expect(core.AppConfig.fromJson(body('')).updateUrl, isNull);
+      expect(core.AppConfig.fromJson(body(null)).updateUrl, isNull);
+      expect(
+        core.AppConfig.fromJson(body(kProbeUpdateUrl)).updateUrl,
+        kProbeUpdateUrl,
+      );
     });
   });
 }
