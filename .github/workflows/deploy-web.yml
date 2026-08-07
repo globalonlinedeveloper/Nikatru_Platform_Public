@@ -1,8 +1,32 @@
 name: Deploy Web
 
-# Builds Subly web with the real Flutter SDK on GitHub's runners, then
-# uploads the built site to the EXISTING Cloudflare Pages project "subly"
-# via wrangler (Direct Upload) — so subly.nikatru.com stays put.
+# Builds EVERY app in the pub workspace for web with the real Flutter SDK on
+# GitHub's runners, then uploads each built site to its own Cloudflare Pages
+# project (Direct Upload) via wrangler.
+#
+# ── [10]D-2b · THE WEB DELIVERY PATH TAKES ANY APP ID FROM THE SPEC ──────────
+# 🔴 UNTIL 2026-08-07 THIS FILE NAMED ONE APP SIX TIMES ON THE EXECUTABLE PATH:
+# the `paths:` filter, `defaults.run.working-directory`, `--emit apps/subly`,
+# the launch smoke's bundle path, wrangler's `workingDirectory` and
+# `--project-name=`, the post-deploy smoke's URL and the deployment record's
+# environment. Shipping app #2's web build therefore meant COPYING THIS FILE and
+# editing eight lines — the per-app workflow authoring D-2b exists to abolish,
+# on the one lane that reaches users.
+#
+# Every one of those is now a matrix leg over
+# `assert-release-lane-generic.mjs --emit-apps` — the same emitter
+# `build-platforms.yml` and `e2e.yml` already iterate, and the same emitter that
+# GRADES this lane. One function, one file: this lane cannot drift from the
+# workspace without the guard's own reading drifting with it. A second pubspec
+# reader inlined here would be the copy that quietly stops reading what it
+# thinks it reads, which is this repository's most repeated failure.
+#
+# ⚠️ `${{ matrix.app }}` IS ONLY SAFE BECAUSE `strategy.matrix.app` IS DECLARED
+# BELOW. GitHub expands an UNDECLARED matrix context to the EMPTY STRING rather
+# than erroring, so a bare `apps/${{ matrix.app }}` with no matrix builds
+# `apps/` on every run while reading as fully generic. That exact stand-in is
+# what limb A′ of assert-release-lane-generic.mjs checks, and deleting the
+# `matrix:` block below is its recorded failing case.
 
 on:
   push:
@@ -18,11 +42,22 @@ on:
     # the list for the same reason one level up: it is the single declaration
     # the Flutter and wrangler pins below are held to.
     #
-    # The three tooling/ci scripts are here because the steps below EXECUTE them
-    # and none of their behaviour is visible in the source tree this filters on:
+    # `apps/**` rather than `apps/<id>/**` is [10]D-2b: the filter is the FIRST
+    # place a lane names one app, and a filter naming app #1 means app #2 ships
+    # only when somebody remembers to edit this line. A path filter is evaluated
+    # before any job exists, so it is the one field on the deploy path that
+    # cannot be a matrix expression — the generic form is the wildcard.
+    #
+    # The tooling/ci scripts are here because the steps below EXECUTE them and
+    # none of their behaviour is visible in the source tree this filters on:
+    # assert-release-lane-generic.mjs --emit-apps produces the MATRIX, so it
+    # decides which apps this lane ships at all;
     # assert-app-versioning.mjs --emit produces the release line that becomes
     # --build-name AND the APP_VERSION stamped on every analytics row;
     # assert-gate-passed.mjs decides whether the deploy happens at all;
+    # assert-catalog-reachable.mjs --emit-url resolves the app's published
+    # origin, which is both what the post-deploy smoke probes and what the
+    # deployment record names;
     # record-deployment.mjs writes the marker that answers "what is live". They
     # are listed INDIVIDUALLY rather than as tooling/ci/** on purpose — guard
     # work is frequent and unrelated to this artifact, and a filter that
@@ -33,15 +68,17 @@ on:
     # list from this file's own steps — so adding a step adds its path or fails
     # the build. A list nobody checks drifts back the moment a new input appears.
     paths:
-      - 'apps/subly/**'
+      - 'apps/**'
       - 'packages/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - 'tooling/versions.json'
       - 'tooling/ci/assert-gate-passed.mjs'
       - 'tooling/ci/assert-app-versioning.mjs'
+      - 'tooling/ci/assert-release-lane-generic.mjs'
+      - 'tooling/ci/assert-catalog-reachable.mjs'
       - 'tooling/ci/record-deployment.mjs'
-      # [pipeline 9]R-13's launch smoke. Listed for the same reason as the three
+      # [pipeline 9]R-13's launch smoke. Listed for the same reason as the ones
       # above — this lane EXECUTES it, and it is the one step that can stop a
       # publish. assert-deploy-triggers.mjs derives its requirement from
       # `tooling/ci/**` only, so this entry is deliberate rather than enforced:
@@ -55,24 +92,89 @@ on:
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
 
-concurrency:
-  group: deploy-web
-  cancel-in-progress: true
-
-# Least privilege: this job only needs to read the repo and read ci-gate's
-# verdict. It deploys via a Cloudflare token, not GITHUB_TOKEN. [pipeline F-5b]
+# Least privilege. It deploys via a Cloudflare token, not GITHUB_TOKEN. [pipeline F-5b]
+#
+# 🔴 SCOPED DOWN 2026-08-07, AND THE REASON IS THE [10]D-2b REFACTOR ITSELF.
+# This block used to carry `checks: read` and `deployments: write` too, which was
+# correct while this lane was ONE job: workflow-level and job-level were the same
+# grant. Splitting it into `prepare` + `deploy-web` silently widened both — a job
+# that only emits an app list inherited the right to write GitHub Deployments.
+# `zizmor` caught it as `excessive-permissions` (high confidence) on the first CI
+# run after the merge, and it is a real finding, not noise: `prepare` runs a node
+# script whose input is repository content, on a lane that holds
+# CLOUDFLARE_API_TOKEN.
+#
+# 📌 The generalisable point: SPLITTING A JOB WIDENS EVERY WORKFLOW-LEVEL GRANT,
+# and nothing about the diff looks like a permissions change. The grants now sit
+# on the job that uses them — `checks: read` for assert-gate-passed, and
+# `deployments: write` for record-deployment.mjs — so the next split cannot
+# repeat this.
 permissions:
   contents: read
-  checks: read
-  deployments: write
 
 jobs:
-  deploy-web:
-    name: Build & deploy Subly web to Cloudflare Pages
+  # ── which apps does this factory hold? ──────────────────────────────────────
+  # [10]D-2b, and identical to `prepare` in build-platforms.yml and e2e.yml on
+  # purpose — deliberately reading through the SAME emitter, because
+  # assert-release-lane-generic.mjs is the guard that grades all three lanes, so
+  # the set they iterate and the set they are graded against cannot diverge.
+  #
+  # It emits nothing on an empty workspace — it exits 1 — because a matrix of
+  # `[]` runs zero legs and REPORTS SUCCESS. On a lane that deploys, that shape
+  # is worse than a red build: it is a green tick over a production deploy that
+  # never happened, which is the exact absence assert-deploy-triggers.mjs was
+  # written against one level up.
+  prepare:
+    name: Derive the app set from the pub workspace
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.workspace.outputs.apps }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: The matrix comes from the workspace, never from this file
+        id: workspace
+        run: |
+          set -euo pipefail
+          apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
+          echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+          echo "Deploying web: ${apps}" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-web:
+    name: Build & deploy web to Cloudflare Pages
+    runs-on: ubuntu-24.04
+    needs: prepare
+    # The two grants the workflow level no longer makes, held by the only job
+    # that uses them: `checks: read` for assert-gate-passed.mjs (it reads
+    # ci-gate's verdict) and `deployments: write` for record-deployment.mjs.
+    # `contents: read` is restated because naming any permission here replaces
+    # the workflow-level set outright rather than adding to it.
+    permissions:
+      contents: read
+      checks: read
+      deployments: write
+    # `fail-fast: false` because each leg is an independent DELIVERY, not a
+    # stage of one: app #2 failing to build is no reason to cancel a deploy of
+    # app #1 that has already uploaded and is waiting to be smoked and recorded.
+    # With one app in the workspace this changes nothing.
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    # ⚠️ PER-APP, AND IT MOVED FROM THE WORKFLOW LEVEL TO GET THERE. A single
+    # workflow-level `group: deploy-web` puts every matrix leg in ONE group with
+    # `cancel-in-progress`, so app #2's leg would cancel app #1's mid-upload —
+    # a half-published Pages project with a green-ish log. The group has to
+    # carry the dimension the matrix iterates, and only a job-level
+    # `concurrency:` can read `matrix`.
+    concurrency:
+      group: deploy-web-${{ matrix.app }}
+      cancel-in-progress: true
     defaults:
       run:
-        working-directory: apps/subly
+        working-directory: apps/${{ matrix.app }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         # persist-credentials: false — actions/checkout otherwise writes GITHUB_TOKEN
@@ -103,19 +205,29 @@ jobs:
 
       - run: flutter pub get --enforce-lockfile
 
-      # The version is DERIVED, never typed. apps/subly/pubspec.yaml declares the
-      # release line (`major.minor`) — the part a human owns — and this step reads
-      # it with the SAME parser the guard uses, so the number that gets built and
-      # the number that gets asserted cannot disagree. Before this existed the
-      # workflow carried its own copy of "1.0.0", free to drift from pubspec.
+      # The version is DERIVED, never typed. `apps/<id>/pubspec.yaml` declares
+      # the release line (`major.minor`) — the part a human owns — and this step
+      # reads it with the SAME parser the guard uses, so the number that gets
+      # built and the number that gets asserted cannot disagree. Before this
+      # existed the workflow carried its own copy of "1.0.0", free to drift from
+      # pubspec.
       - name: Derive the release line from pubspec
         id: ver
         working-directory: .
-        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subly >> "$GITHUB_OUTPUT"
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
 
       # VERSIONING. `github.run_number` supplies BOTH the patch and the build
       # number, because it is the only monotonic value the lane has. Re-running a
       # run does not bump it, so the same commit rebuilds to the same version.
+      #
+      # ⚠️ IT IS PER-WORKFLOW-FILE AND SHARED ACROSS MATRIX LEGS. Every app
+      # deployed by one run therefore carries the same build number. That is
+      # correct for the two things it feeds — the kill-switch floor compares
+      # `major.minor.patch` per app against that app's own `min_supported_
+      # version`, and version.json is per Pages project — and it is why the
+      # post-deploy smoke below can join on it. It also means renaming this FILE
+      # restarts the counter at 1 for every app at once; see the note in
+      # assert-app-versioning.mjs before ever doing that.
       #
       # Why the PATCH and not just the build number: version_gate.dart:32 splits
       # the running version on `+` and compares only `major.minor.patch` against
@@ -143,12 +255,13 @@ jobs:
       # not tell the two artifacts apart. Every value passed here must resolve to
       # a row id in tooling/channel-register.json; assert-channel-register.mjs
       # fails the build on `webb`, which is the one failure mode a free-text
-      # string has.
+      # string has. It is the CHANNEL, not the app, so it is a literal here and
+      # correctly so: this whole file is the web channel.
       #
       # ⬜ `--pwa-strategy=none` is [ADR 023] (LOCKED 2026-07-31), not an
       # oversight: no service worker, no offline support, and the HTTP cache is
       # therefore the whole update mechanism on this channel — which is why
-      # apps/subly/web/_headers exists and why assert-web-cache-policy.mjs
+      # `apps/<id>/web/_headers` exists and why assert-web-cache-policy.mjs
       # asserts it. ADR 023 explicitly REJECTS guarding this flag in CI as
       # over-encoding; this citation is the consequence it did ask for.
       - name: Build web (release, no service worker)
@@ -199,26 +312,95 @@ jobs:
           node-version: 24
       - name: Launch the built bundle once, before it is published
         working-directory: .
-        run: node tooling/smoke/smoke-web-artifact.mjs apps/subly/build/web
+        run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
 
-      - name: Deploy to Cloudflare Pages (project subly)
+      # ── [10]D-2b limb (b) · THE PAGES PROJECT IS CREATED, NOT ASSUMED ────────
+      # 🔴 THE PREVIOUS VERSION OF THIS FILE SAID "uploads the built site to the
+      # EXISTING Cloudflare Pages project" — and that word was the whole gap.
+      # `wrangler pages deploy --project-name=<id>` against a project that does
+      # not exist fails at the API, so app #2's very first deploy died on a
+      # console step nothing in this repository named. A delivery path that
+      # "takes any app id" has to be able to run TWICE for a NEW id: once to
+      # make the target, once to fill it.
+      #
+      # ⚠️ DIRECT UPLOAD, NEVER GIT-CONNECTED, and this is an architectural cap
+      # rather than a preference: Cloudflare allows a limited number of
+      # Git-connected Pages projects per repository, and this monorepo already
+      # spends them on the static sites. A Git-connected project per app does
+      # not reach app #6. `pages project create` with no `--github`/`--gitlab`
+      # flag creates exactly a Direct Upload project, which is what the deploy
+      # step below uploads into.
+      #
+      # IDEMPOTENT BY CONSTRUCTION. `create` on an existing project answers with
+      # a "already exists" error, which on every run after the first is the
+      # CORRECT state and must not fail the job. Any OTHER non-zero exit —
+      # a bad token, a quota, an account id typo — still fails, so this is not a
+      # `continue-on-error` in disguise: the tolerated case is enumerated and
+      # everything else is red.
+      #
+      # ⚠️ THE APP ID GOES THROUGH `env:`, NOT INTO THE SCRIPT BODY. A
+      # `${{ }}` interpolated straight into a `run:` block is the template
+      # injection zizmor flags; the value is ours today, and the habit is what
+      # survives the day it is not.
+      #
+      # The wrangler version is READ FROM tooling/versions.json rather than
+      # written here. A second literal would be a second thing to drift, and
+      # assert-version-consistency.mjs only polices `wranglerVersion:` inputs —
+      # an `npx wrangler@<literal>` would sit outside its rules entirely, which
+      # is how production ended up on 3.90.0 while the repo declared 4.114.0.
+      - name: Ensure the Pages project exists (Direct Upload, idempotent)
+        working-directory: .
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APP: ${{ matrix.app }}
+        run: |
+          set -uo pipefail
+          ver="$(node -p "require('./tooling/versions.json').wrangler")"
+          out="$(npx --yes "wrangler@${ver}" pages project create "$APP" --production-branch=main 2>&1)"; code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -eq 0 ]; then echo "Created Direct Upload Pages project \"$APP\"."; exit 0; fi
+          if printf '%s' "$out" | grep -qiE 'already exists|8000007'; then echo "Pages project \"$APP\" already exists — nothing to create."; exit 0; fi
+          echo "::error title=Pages project::could not ensure the Direct Upload Pages project \"$APP\" exists (wrangler exit ${code})."
+          exit 1
+
+      # ── the published origin, RESOLVED from the catalogue ────────────────────
+      # `sites/_shared/_data/apps.json` is the stamp's own output ([3]S-7) and is
+      # already the SSoT `tooling/monitor-register.json` derives every watched
+      # hostname from (`_derivation.appCatalogue`). So it is where "where does
+      # app <id> live" is answered, and the emitter is the guard that ASSERTS
+      # those URLs answer — assert-catalog-reachable.mjs. Same discipline as the
+      # matrix above: the reader that grades the fact and the reader that uses it
+      # are one function in one file.
+      #
+      # It runs BEFORE the deploy on purpose. If the catalogue does not know this
+      # app's origin, the run must stop while nothing has shipped — resolving it
+      # afterwards would leave a published bundle that cannot be smoked and
+      # cannot be recorded, which is precisely the un-probed publish [14]O-7
+      # exists to end.
+      - name: Resolve this app's published origin from the catalogue
+        id: target
+        working-directory: .
+        run: node tooling/ci/assert-catalog-reachable.mjs --emit-url ${{ matrix.app }} >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           # PINNED 2026-07-28. Without this the action resolves wrangler from the
-          # package.json in workingDirectory — and apps/subly is a Flutter app with
-          # none, so it installed the version baked into the action's own bundle
+          # package.json in workingDirectory — and a Flutter app has none, so it
+          # installed the version baked into the action's own bundle
           # (3.90.0, live-proven in run 30292045671) while both Workers lock 4.114.0.
           # Must equal tooling/versions.json "wrangler"; assert-version-consistency
           # fails the build if it drifts, or if this line disappears. [pipeline F-2, F-11]
           wranglerVersion: '4.114.0'
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/subly
-          command: pages deploy build/web --project-name=subly --branch=main
+          workingDirectory: apps/${{ matrix.app }}
+          command: pages deploy build/web --project-name=${{ matrix.app }} --branch=main
 
       # ── [pipeline 14]O-7 · THE DEPLOY IS NOT TRUSTED UNTIL THE SITE AGREES ──
       # 🔴 BEFORE THIS STEP, THE LAST THING EVERY DEPLOY JOB DID WAS WRITE A
-      # CLAIM. `record-deployment.mjs` below records "subly-web is live at
+      # CLAIM. `record-deployment.mjs` below records "<app>-web is live at
       # <sha>" — and no workflow in this repository had ever performed a single
       # request against a surface it had just deployed. An upload that went to
       # the wrong project, shipped nothing, or was rolled back by the platform
@@ -245,14 +427,20 @@ jobs:
         working-directory: .
         run: >
           node tooling/ops/post-deploy-smoke.mjs
-          --url https://subly.nikatru.com/version.json
+          --url ${{ steps.target.outputs.site_url }}/version.json
           --field build_number
           --expect ${{ github.run_number }}
 
       # "What is live right now?" must be answerable without inference.
       # CLAUDE.md: never assert done/live/working from memory. [pipeline F-5b]
+      #
+      # `<app>-web` is the channel register's `deploymentEnvironment` template
+      # (`{app}-web`) expanded over this leg — the same expansion
+      # assert-publish-records.mjs performs to decide which environments a served
+      # channel's lane MUST record. The `-web` half is a literal because this
+      # file IS the web channel; the `{app}` half never is.
       - name: Record the deployed SHA
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/ci/record-deployment.mjs subly-web https://subly.nikatru.com
+        run: node tooling/ci/record-deployment.mjs ${{ matrix.app }}-web ${{ steps.target.outputs.site_url }}

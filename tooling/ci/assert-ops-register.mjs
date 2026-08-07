@@ -178,7 +178,7 @@ import { listDir } from './tree-walk.mjs';
 // The ONE workflow parser. Four copies of it drift in the way that reports
 // "clean" — which lines they can see — so [14]O-7's deploy-job derivation goes
 // through the same one assert-release-provenance and assert-no-secret-defines use.
-import { parseAllWorkflows } from './workflow-scan.mjs';
+import { parseAllWorkflows, RECORD_CALL, expandMatrixEnvironment } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
@@ -1796,11 +1796,47 @@ async function main() {
   // flat regex sees different text depending on which block style the step
   // happens to use — four copies of a workflow parser drift in exactly the way
   // that reports "clean".
+  //
+  // 🔴 THE ENVIRONMENT ARGUMENT CAN BE A MATRIX LEG, and this file's own copy of
+  // the call-site regex could not see one. [10]D-2b made deploy-web.yml a matrix
+  // over the workspace app set, so its record step reads
+  // `record-deployment.mjs ${{ matrix.app }}-web`, and `[A-Za-z0-9._-]+` matched
+  // NOTHING after the `\s+` there: `envs` came back empty, the `continue` below
+  // dropped the web deploy job entirely, and this limb's domain fell from FIVE
+  // deploy jobs to four while printing the smaller number as a pass. The house
+  // failure mode — a check that silently stopped checking — reproduced by a
+  // refactor that made the tree strictly better. The reader is now
+  // workflow-scan.mjs's `RECORD_CALL`, shared with assert-publish-records.mjs
+  // and deployment-record.test.mjs, which is where the three disagreeing copies
+  // are written up.
   const deployJobs = [];
+  // The app catalogue a matrix leg expands over — the same file
+  // assert-publish-records.mjs builds the REQUIRED environment set from, so the
+  // recorded environment and the required one are two readings of one list.
+  let appSlugs = [];
+  const catalogue = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+  if (existsSync(catalogue)) {
+    try {
+      const cat = JSON.parse(readFileSync(catalogue, 'utf8'));
+      if (Array.isArray(cat)) appSlugs = cat.map((a) => a?.slug).filter((s) => typeof s === 'string');
+    } catch { /* falls into the floor below */ }
+  }
+  const expandEnv = (raw) => {
+    const expanded = expandMatrixEnvironment(raw, appSlugs);
+    if (expanded.length === 0) {
+      coverageLost([
+        `a deploy job records \`${raw}\` and the app catalogue at sites/_shared/_data/apps.json yielded no slug.`,
+        'The environment cannot be expanded, so this limb would attribute the deploy to a literal `${{ … }}`',
+        'and never match an exemption or a register row — an unreadable domain reported as a clean one.',
+      ]);
+    }
+    return expanded;
+  };
   for (const wf of parseAllWorkflows(ROOT)) {
     for (const [jobName, job] of wf.jobs) {
       const text = (job.lines ?? []).map((l) => l.text ?? String(l)).join('\n');
-      const envs = [...text.matchAll(/record-deployment\.mjs\s+([A-Za-z0-9._-]+)/g)].map((m) => m[1]);
+      RECORD_CALL.lastIndex = 0;
+      const envs = [...text.matchAll(RECORD_CALL)].flatMap((m) => expandEnv(m[1]));
       if (envs.length === 0) continue;
       const smokes = (text.match(/post-deploy-smoke\.mjs/g) ?? []).length;
       for (const environment of new Set(envs)) {

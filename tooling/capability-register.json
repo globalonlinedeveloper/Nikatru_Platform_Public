@@ -324,6 +324,68 @@
       "detail": "A hosted checkout is an external URL, and opening one is a per-platform native call with real gaps -- which is why PurchaseCapabilities exists. It also has to be a package rather than app code for three requirements to be enforceable at all: assert-adapter-capabilities.mjs derives its domain from packages/ with a third-party dep, assert-no-seam-forks.mjs forbids a registered seam under apps/, and assert-no-price-literals.mjs needs the price to live behind a model. Leaving the adapter in apps/subly satisfied none of them while appearing to satisfy M-15 -- see [ADR 026]."
     }
   },
+  "demandGatedModules": {
+    "_why": [
+      "[13]T-12 -- THE DEMAND GATE. A capability the requirements describe in full, and that must NOT",
+      "be built until an app asks for it. The habit / streak / daily-goal mechanic is the first of",
+      "them: ONE chassis module, progress tied to content mastery and never to empty points, designed",
+      "for a habit-formation horizon of ~66 days, built once when the first app that needs it is being",
+      "built and inherited thereafter -- never per app.",
+      "",
+      "WHY THE DECLARATION LIVES HERE AND NOT IN THE BRICK'S `vars`. Both surfaces were considered and",
+      "the full reasoning is written at the head of the [13]T-12 section of",
+      "tooling/ci/assert-capability-register.mjs, beside the guard the choice has to serve. In short: a",
+      "brick var is consumed at STAMP time and leaves nothing on disk to quantify over, and apps/subly",
+      "was never stamped by this brick at all -- so a brick-var domain would exclude the only shipped",
+      "app. `consumerRoots` at the top of this file is already the machine-readable set of apps, each",
+      "verified against a real pubspec.",
+      "",
+      "FIELDS.",
+      "  id           the module's name. THE PRINTED LINE IS DERIVED FROM IT (`no consumer declares the",
+      "               <id> module`) rather than stored as prose, so the register cannot drift from the",
+      "               sentence the requirement demands.",
+      "  requirement  the pipeline id that owns it.",
+      "  capability   what it would be, in one sentence, so nobody has to go and look before deciding.",
+      "  declaredBy   THE DEMAND, and the whole point of the row. Consumer roots (apps, or the brick",
+      "               template every future app inherits from) that declare a need for the module.",
+      "               EMPTY IS THE NORMAL, CORRECT STATE, and it is printed dated on every run.",
+      "  module       what must then exist: the `owner` directory, the `package` name, and the",
+      "               `symbols` whose declaration anywhere in the tree means the module has been built.",
+      "  neverPerApp  the module may never be implemented inside apps/ or stamped per app by the brick.",
+      "               Its own limb, so an app-local rebuild fails whether or not demand was declared.",
+      "",
+      "BOTH DIRECTIONS FAIL THE BUILD. A module present with an empty `declaredBy` is a [2]C-2",
+      "violation -- a capability that is wired, guarded, green and useless. A non-empty `declaredBy`",
+      "with no module is the other direction, and the build stays red until the module exists as shared",
+      "code with a `capabilities` entry below that lists every declarer as a consumer.",
+      "",
+      "DELIBERATELY NOT ENFORCED YET. The requirement also denylists points / xp / coins / gems /",
+      "currency / score from the module's public API. The module does not exist, so that limb has an",
+      "EMPTY DOMAIN: there is no input to this tree that could make it fail, which by this repo's own",
+      "rule is an assertion worse than none -- it inflates apparent coverage while checking nothing. It",
+      "lands with the module's first line, not before."
+    ],
+    "modules": [
+      {
+        "id": "habit",
+        "requirement": "[13]T-12",
+        "capability": "The streak / daily-goal mechanic as a single chassis module: progress tied to content mastery, never to empty points, designed for a habit-formation horizon of ~66 days.",
+        "declaredBy": [],
+        "module": {
+          "owner": "packages/habit",
+          "package": "nikatru_habit",
+          "symbols": [
+            "HabitService",
+            "StreakService",
+            "StreakEngine",
+            "DailyGoalService"
+          ]
+        },
+        "neverPerApp": true,
+        "why": "Demand-gated because a habit mechanic bolted onto an app that does not need one is the exact shape [2]C-2 forbids: it costs a pubspec, an analysis_options, a workspace entry, a test harness and a CI surface forever, and delivers nothing. No app in this factory declares one today -- the notifications package already carries the reminder half, which is the only piece any shipped app has needed. The moment an app declares here, the module is built ONCE, shared, and inherited."
+      }
+    ]
+  },
   "capabilities": [
     {
       "id": "core",

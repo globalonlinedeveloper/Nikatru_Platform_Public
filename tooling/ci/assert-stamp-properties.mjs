@@ -117,7 +117,12 @@ const MONEY_FUNNEL = 'packages/purchases/lib/src/money_funnel.dart';
 // [pipeline 10]D-8. The two server-side halves of the update destination: the
 // wire contract that lets a config carry one, and the registry that serves it.
 const PLATFORM_TYPES = 'services/platform/src/types.ts';
-const PLATFORM_CONFIG = 'services/platform/src/config.ts';
+// [pipeline 4]B-2 — the served set is DATA now. `services/platform/src/config.ts`
+// no longer holds the registry (it derives it), so the two files below are what
+// "the registry that serves it" means: WHICH apps (the public catalogue the stamp
+// writes) × WHAT each is served (the value document, `defaults` + per-app).
+const PLATFORM_CATALOGUE = 'sites/_shared/_data/apps.json';
+const PLATFORM_CONFIG_DATA = 'services/platform/src/app-config-data.json';
 // …and the set of channels a binary can be built for. `update_url` is resolved
 // per app but SPENT per channel: each channel compiles its own `UPDATE_URL`
 // define (or inherits the brick's `defaultValue`), so "equals the compile-time
@@ -300,48 +305,18 @@ function checkLegalLinkSet() {
 // (`update_url: 'https://nikatru.com'`) turns it red.
 const CHANNEL_CONFIG_FLOOR = 1;
 
-/**
- * Comments out of a TS source, string literals KEPT.
- *
- * Hand-rolled rather than `stripDartComments` because this file is TypeScript:
- * it has BACKTICK template literals (`config:${appId}`), which that stripper
- * does not know and would walk straight through, and Dart's `r'…'` raw-string
- * rule would misread an identifier ending in `r` next to a quote. The strings
- * survive because the values being read ARE string literals.
- */
-function stripTsComments(src) {
-  let out = '';
-  for (let i = 0; i < src.length; ) {
-    const c = src[i];
-    const c2 = src[i + 1];
-    if (c === '/' && c2 === '/') {
-      while (i < src.length && src[i] !== '\n') { out += ' '; i++; }
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      out += '  '; i += 2;
-      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
-        out += src[i] === '\n' ? '\n' : ' '; i++;
-      }
-      out += '  '; i += 2;
-      continue;
-    }
-    if (c === "'" || c === '"' || c === '`') {
-      out += c; i++;
-      while (i < src.length) {
-        if (src[i] === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
-        out += src[i];
-        if (src[i] === c) { i++; break; }
-        // An unterminated quote cannot cross a line; a backtick can.
-        if (c !== '`' && src[i] === '\n') { i++; break; }
-        i++;
-      }
-      continue;
-    }
-    out += c; i++;
-  }
-  return out;
-}
+// ⚠️ A HAND-ROLLED `stripTsComments` LIVED HERE AND IS GONE — DELETED, NOT
+// PARKED. It existed for exactly one caller: the block below, which used to
+// regex `services/platform/src/config.ts` for the served `update_url` values.
+// [pipeline 4]B-2 made that set DATA, the block now `JSON.parse`s it, and a
+// 40-line TypeScript comment stripper with no caller is dead code that reads as
+// capability. This repo's own rule — mutation testing is how you find dead code,
+// and a limb you cannot write a failing input for is deleted rather than kept
+// "for safety" — applies to a guard's helpers as much as to its assertions.
+// The remaining TS read in this file (PLATFORM_TYPES, ~line 900) is a line-
+// anchored `^\s*update_url: string \| null;` over the interface and needs no
+// stripping: a commented-out declaration does not start a line with two spaces
+// and the field name.
 
 /** The literal `AppConfig.updateUrl` falls back to, or null if unparseable. */
 function compiledInUpdateUrl(brickConfigSrc) {
@@ -438,47 +413,70 @@ function checkUpdateDestinationIsRepointable() {
   }
 
   // ── (2) every value the config service serves ─────────────────────────────
-  let served;
+  //
+  // 🔴 PARSED, NOT GREPPED, AND THE SUBJECT MOVED ON 2026-08-07. This block used
+  // to slice `services/platform/src/config.ts` from the text `DEFAULT_CONFIGS`
+  // onwards and match `/^\s{2}(\w+):\s*\{/gm` for app bodies. [pipeline 4]B-2
+  // made the served app set DATA — the set now comes from the public catalogue
+  // and the values from `app-config-data.json` — so that regex matched zero apps
+  // and this guard went COVERAGE LOST on the first run after the refactor. It
+  // did exactly what it was built to do; the fix is to re-point it, not to
+  // loosen it.
+  //
+  // The domain is now the REAL served set rather than whatever a regex found in
+  // one file: every catalogue slug, with its update_url resolved the way the
+  // Worker resolves it (per-app entry, else `defaults`). That is strictly wider
+  // than before — an app onboarded by a catalogue row alone was previously
+  // invisible here.
+  let catalogue;
+  let data;
   try {
-    served = stripTsComments(readFileSync(join(repo, PLATFORM_CONFIG), 'utf8'));
+    catalogue = JSON.parse(readFileSync(join(repo, PLATFORM_CATALOGUE), 'utf8'));
+    data = JSON.parse(readFileSync(join(repo, PLATFORM_CONFIG_DATA), 'utf8'));
   } catch (e) {
-    fail(`COVERAGE LOST — ${PLATFORM_CONFIG} unreadable: ${e.message}`);
+    fail(`COVERAGE LOST — ${PLATFORM_CATALOGUE} / ${PLATFORM_CONFIG_DATA} unreadable or unparseable: ${e.message}`);
     return;
   }
-  const at = served.indexOf('DEFAULT_CONFIGS');
-  const registry = at === -1 ? '' : served.slice(at);
-  const apps = [...registry.matchAll(/^\s{2}(\w+):\s*\{/gm)];
+  const defaults = data && typeof data.defaults === 'object' && data.defaults !== null ? data.defaults : null;
+  const perApp = data && typeof data.apps === 'object' && data.apps !== null ? data.apps : {};
+  const apps = (Array.isArray(catalogue) ? catalogue : [])
+    .map((r) => (r && typeof r.slug === 'string' ? r.slug : null))
+    .filter((s) => s !== null);
+  if (defaults === null) {
+    fail(`COVERAGE LOST — ${PLATFORM_CONFIG_DATA} has no \`defaults\`, so no app's served value could be resolved.`);
+    return;
+  }
   if (apps.length < CHANNEL_CONFIG_FLOOR) {
     fail(
-      `COVERAGE LOST — parsed ${apps.length} app(s) out of ${PLATFORM_CONFIG} DEFAULT_CONFIGS, expected ` +
-        `>= ${CHANNEL_CONFIG_FLOOR}. A registry that parsed as empty makes every comparison below ` +
+      `COVERAGE LOST — parsed ${apps.length} app(s) out of ${PLATFORM_CATALOGUE}, expected ` +
+        `>= ${CHANNEL_CONFIG_FLOOR}. A served set that parsed as empty makes every comparison below ` +
         'vacuously true, which is the shape this guard exists to refuse.',
     );
     return;
   }
   let nullServed = 0;
   let compared = 0;
-  for (let i = 0; i < apps.length; i++) {
-    const body = registry.slice(
-      apps[i].index,
-      i + 1 < apps.length ? apps[i + 1].index : registry.length,
-    );
-    const m = body.match(/\bupdate_url:\s*(null|'([^']*)'|"([^"]*)")/);
-    if (!m) {
+  for (const appId of apps) {
+    const own = Object.prototype.hasOwnProperty.call(perApp, appId) ? perApp[appId] : null;
+    const hasOwnKey = own !== null && typeof own === 'object' && Object.prototype.hasOwnProperty.call(own, 'update_url');
+    const hasDefault = Object.prototype.hasOwnProperty.call(defaults, 'update_url');
+    if (!hasOwnKey && !hasDefault) {
       fail(
-        `[10]D-8: ${PLATFORM_CONFIG} serves app '${apps[i][1]}' with NO \`update_url\` key at all. The ` +
-          'force-update wall would fall back to the compiled-in destination with no way to repoint it, ' +
-          'which is the circular kill-switch owner decision #19 removed.',
+        `[10]D-8: ${PLATFORM_CONFIG_DATA} serves app '${appId}' with NO \`update_url\` key at all — ` +
+          'neither its own nor a default. The force-update wall would fall back to the compiled-in ' +
+          'destination with no way to repoint it, which is the circular kill-switch owner decision #19 ' +
+          'removed.',
       );
       continue;
     }
-    const value = m[2] ?? m[3] ?? null;
+    const raw = hasOwnKey ? own.update_url : defaults.update_url;
+    const value = typeof raw === 'string' ? raw : null;
     if (value === null) { nullServed++; continue; }
     for (const [id, base] of compiledByChannel) {
       compared++;
       if (value === base) {
         fail(
-          `[10]D-8(c): ${PLATFORM_CONFIG} serves '${apps[i][1]}' an update_url of '${value}', which is ` +
+          `[10]D-8(c): ${PLATFORM_CONFIG_DATA} serves '${appId}' an update_url of '${value}', which is ` +
             `EXACTLY what a '${id}' build already compiles in. Serving a value identical to the fallback ` +
             'means the wall opens the same place whether config resolved or not, so nothing — no test, ' +
             'no user, no incident — can tell the runtime path from a dead one.',

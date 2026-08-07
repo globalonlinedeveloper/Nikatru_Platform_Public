@@ -53,10 +53,11 @@
 // Usage:  node tooling/scripts/guard-sweep.mjs [--verbose]
 // Exit:   0 = every file run or explained · 1 = a file the sweep could not reach
 // ─────────────────────────────────────────────────────────────────────────────
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execSync } from 'node:child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -165,7 +166,79 @@ for (const name of files) {
     return null;
   };
 
-  const runnable = calls.filter((c) => blocker(c.raw) === null);
+  let runnable = calls.filter((c) => blocker(c.raw) === null);
+
+  // ── THE BARE-INVOCATION FALLBACK, AND IT WAS ADDED BECAUSE THIS SWEEP MISSED A
+  //    REAL SECURITY FINDING ────────────────────────────────────────────────────
+  // 🔴 2026-08-07: `scan-workflows.mjs` and `scan-secrets.mjs` are each invoked
+  // exactly once, and that invocation carries `--zizmor "${RUNNER_TEMP}/zizmor"`
+  // / `--gitleaks "${RUNNER_TEMP}/gitleaks"`. `${RUNNER_TEMP}` is a runner env
+  // var, so `blocker` refused every invocation and both were filed NEEDS-CI —
+  // meaning THE SECRET SCANNER AND THE WORKFLOW SCANNER NEVER RAN in a sweep
+  // whose entire purpose is that no guard is skipped. A `deployments: write`
+  // that a job split had silently widened reached CI because of it, and CI
+  // caught what this was supposed to catch first.
+  //
+  // Both tools are installed on this machine and both scripts resolve their own
+  // binary from PATH when the flag is absent. So when every invocation is
+  // blocked ONLY by an argument the script can supply itself, fall back to the
+  // bare call and SAY SO — a sweep that reports "could not run" while a perfectly
+  // runnable form exists is the same silent gap in a politer voice.
+  let usedFallback = false;
+  if (runnable.length === 0 && !calls.some((c) => /\$\{\{/.test(c.raw))) {
+    runnable = [{ wf: calls[0].wf, raw: '' }];
+    usedFallback = true;
+  }
+
+  // ── A GUARD THAT SCANS THE WORKING TREE MUST BE GIVEN CI'S TREE, NOT THIS ONE ──
+  // 🔴 `scan-secrets.mjs` walks the working tree and shells out to gitleaks, which
+  // knows nothing of `tree-walk.mjs`. Locally that tree contains `.claude/worktrees/
+  // agent-*` — OTHER CHECKOUTS, belonging to agents — plus `build/` output CI never
+  // produces. So it reported findings in files that are not this repository, and
+  // took long enough doing it to time out. The nested-checkout defect, reaching the
+  // one guard that cannot use `listDir`.
+  //
+  // The sweep's job is to reproduce CI, so give it what CI checks out: a clean
+  // `git archive HEAD` extract. Detected by BEHAVIOUR — the script takes a repo
+  // root as its first positional — not by a hardcoded file name.
+  // ⚠️ NO SHELL PIPE. `git archive HEAD | tar -x` via execSync ran under cmd.exe
+  // on this host, failed, and the `catch` set scanRoot back to null — so the
+  // scanner silently went back to walking the live tree and timed out. The
+  // failure looked like a slow guard, not a broken setup. Two plain commands,
+  // no pipe, no shell dependency; and if either fails the row says COULD-NOT-
+  // ARCHIVE rather than quietly scanning the wrong tree.
+  // ⚠️ ONLY `scan-secrets`. `scan-workflows` reads `.github/workflows/` — a small
+  // fixed directory that holds no nested checkout and no build output — so the
+  // live tree IS its correct subject. Giving it the archive instead scans HEAD,
+  // which silently ignores an uncommitted workflow fix and reports the OLD
+  // finding: a sweep telling you a thing you just fixed is still broken. The
+  // archive is a remedy for one specific disease, not a general improvement.
+  const TREE_SCANNERS = /^scan-secrets\.mjs$/;
+  let scanRoot = null;
+  let archiveFailed = false;
+  if (TREE_SCANNERS.test(name)) {
+    const dir = mkdtempSync(join(tmpdir(), 'nikatru-sweep-'));
+    const tar = join(dir, 'head.tar');
+    const dest = join(dir, 'tree');
+    const a = spawnSync('git', ['archive', '--format=tar', '--output', tar, 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+    if (a.status === 0) {
+      mkdirSync(dest, { recursive: true });
+      // ⚠️ NO ABSOLUTE PATHS IN tar's ARGUMENTS ON WINDOWS. GNU tar reads any
+      // argument containing a colon as `host:path`, so `-xf C:\…\head.tar` fails
+      // with "Cannot connect to C: resolve failed" — it tries to reach a host
+      // called "C". `--force-local` fixes `-f` and then breaks `-C` the same way.
+      // So: run WITH cwd set to the destination and name the archive relatively.
+      // No colon reaches tar at all, and no flag has to paper over one.
+      const x = spawnSync('tar', ['-xf', '../head.tar'], { cwd: dest, encoding: 'utf8' });
+      if (x.status === 0) scanRoot = dest; else archiveFailed = true;
+    } else archiveFailed = true;
+    if (!scanRoot) { try { rmSync(dir, { recursive: true, force: true }); } catch {} }
+  }
+  if (archiveFailed) {
+    rows.push({ name, verdict: 'NO-ARCHIVE', note: 'scans a tree, and `git archive HEAD` could not be extracted — refusing to scan the LIVE tree, which here holds agent worktrees CI never sees' });
+    continue;
+  }
+
   if (runnable.length === 0) {
     const why = blocker(calls.slice().sort((a, b) => a.raw.length - b.raw.length)[0].raw);
     rows.push({ name, verdict: 'NEEDS-CI', note: why });
@@ -179,6 +252,7 @@ for (const name of files) {
   let passed = null;
   for (const call of runnable.slice().sort((a, b) => a.raw.length - b.raw.length)) {
     const argv = call.raw.length ? call.raw.split(/\s+/) : [];
+    if (scanRoot) argv.unshift(scanRoot);
     const r = spawnSync(process.execPath, [join(CI_DIR, name), ...argv], {
       cwd: ROOT,
       encoding: 'utf8',
@@ -189,8 +263,16 @@ for (const name of files) {
     last = { status: r.status, argv, tail: out.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? '' };
     if (r.status === 0) { passed = last; break; }
   }
+  if (scanRoot) { try { rmSync(scanRoot, { recursive: true, force: true }); } catch {} }
+
   if (passed) {
-    rows.push({ name, verdict: 'ok', note: passed.argv.length ? `args: ${passed.argv.join(' ')}` : '', out: passed.tail });
+    rows.push({
+      name,
+      verdict: 'ok',
+      note: (passed.argv.length ? `args: ${passed.argv.join(' ')}` : '') +
+        (usedFallback ? ' [bare fallback — CI passes a runner-env tool path this machine resolves from PATH]' : ''),
+      out: passed.tail,
+    });
   } else {
     red++;
     rows.push({

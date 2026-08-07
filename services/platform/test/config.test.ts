@@ -2,11 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_CONFIGS,
   baseConfig,
+  buildRegistry,
   isKnownApp,
   isValidAppId,
   mergeConfig,
   resolveConfig,
 } from '../src/config';
+import catalogue from '../../../sites/_shared/_data/apps.json';
+import configData from '../src/app-config-data.json';
 
 describe('CFG-1 config resolution', () => {
   it('returns compiled defaults for a known app', () => {
@@ -117,15 +120,113 @@ describe('an inherited member of Object.prototype is not an app', () => {
   });
 });
 
-describe('APP_ID_PATTERN is an invariant on the REGISTRY, and it can fail', () => {
-  it('every registered app id is a well-formed app id', () => {
-    // 🔴 THE FAILING INPUT, so this is not another assertion nobody can break:
-    // add `'config:evil'` or `'My App'` as a key of DEFAULT_CONFIGS and this
-    // goes red. That is what keeps `config:${appId}` an unambiguous KV key —
-    // the route only ever composes it from a key of this object.
-    const ids = Object.keys(DEFAULT_CONFIGS);
-    expect(ids.length, 'COVERAGE LOST — the registry is empty, so this ranges over nothing').toBeGreaterThan(0);
-    for (const id of ids) expect(isValidAppId(id), `registered app id \`${id}\` is malformed`).toBe(true);
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 4]B-2 — ONBOARDING AN APP IS A DATA EDIT.
+//
+// The registry used to be an object literal in src/config.ts, so `GET
+// /config/lingo` answered 404 for a content pack that has been in this repo
+// since the pipeline shipped, and app #2 could not exist without a Worker source
+// edit. It is now built from the public catalogue (WHICH apps — the file
+// post_gen.dart already writes) × the value document (WHAT each is served).
+//
+// These tests drive `buildRegistry` with catalogues they wrote, which is the
+// only way to reach the interesting inputs: the committed catalogue has one row,
+// and every failure worth pinning is a SECOND row somebody has not stamped yet.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the served app set comes from the catalogue, not from this Worker', () => {
+  it('serves every app the public catalogue lists, and nothing else', () => {
+    const slugs = (catalogue as Array<{ slug: string }>).map((r) => r.slug);
+    expect(slugs.length, 'COVERAGE LOST — the catalogue is empty, so this ranges over nothing').toBeGreaterThan(0);
+    expect(Object.keys(DEFAULT_CONFIGS).sort()).toEqual([...slugs].sort());
+  });
+
+  it('an app the value document says NOTHING about is still served, in full', () => {
+    // 🔴 THE WHOLE REQUIREMENT, in one assertion. `lingo` is a real content pack
+    // (tooling/content_pipeline/examples/lingo-phrases/) and the app the live
+    // 404 was measured on. One catalogue row — no entry in app-config-data.json,
+    // no line of Worker source — and it resolves to a complete config.
+    const reg = buildRegistry(
+      [...(catalogue as unknown[]), { slug: 'lingo', name: 'Lingo', api: '' }],
+      configData,
+    );
+    expect(Object.keys(reg)).toContain('lingo');
+    const cfg = reg.lingo;
+    expect(cfg.app_id).toBe('lingo');
+    // No `api` host of its own ⇒ the SHARED platform Worker, which is exactly
+    // what pre_gen.dart compiles into a client-only stamp as its fallback.
+    expect(cfg.api_base_url).toBe(configData.sharedApiBaseUrl);
+    // Complete, not a stub: every key the Dart client parses is present.
+    for (const k of Object.keys(configData.defaults)) expect(Object.keys(cfg)).toContain(k);
+    expect(cfg.min_supported_version).toBe('1.0.0');
+    // And it inherits the portfolio default rather than another app's product
+    // data — subly's two SKUs must not follow it.
+    expect(cfg.paywall.offerings).toEqual([]);
+    expect(cfg.features).toEqual({});
+  });
+
+  it('an app WITH its own api host is served that host, versioned', () => {
+    const reg = buildRegistry([{ slug: 'withapi', api: 'https://api-withapi.nikatru.com' }], configData);
+    expect(reg.withapi.api_base_url).toBe('https://api-withapi.nikatru.com/v1');
+    // A trailing slash in the catalogue must not produce a double slash — the
+    // catalogue is a public document edited by hand as well as by the stamp.
+    const reg2 = buildRegistry([{ slug: 'withapi', api: 'https://api-withapi.nikatru.com/' }], configData);
+    expect(reg2.withapi.api_base_url).toBe('https://api-withapi.nikatru.com/v1');
+  });
+
+  it('subly is served BYTE-IDENTICALLY to the literal this replaced', () => {
+    // The refactor changed WHERE the set comes from, never what is served. The
+    // whole document is pinned, key ORDER included: these are the exact bytes a
+    // client caches for five minutes, and `toEqual` on a subset would not have
+    // caught the key reordering a spread introduces.
+    expect(JSON.stringify(baseConfig('subly'))).toBe(
+      '{"app_id":"subly","api_base_url":"https://api.nikatru.com/v1",' +
+        '"features":{"renewals":true,"budgets":true,"exports":true},"flags":{},' +
+        '"paywall":{"enabled":false,"offerings":[' +
+        '{"product_id":"pro_monthly","amount_minor":499,"currency_code":"USD","term":"month","trial_days":30},' +
+        '{"product_id":"pro_yearly","amount_minor":1999,"currency_code":"USD","term":"year","trial_days":30}]},' +
+        '"content_pack":null,"copy":{},"min_supported_version":"1.0.0","max_promos_per_week":0,' +
+        '"update_url":null}',
+    );
+  });
+});
+
+describe('APP_ID_PATTERN is a FILTER on the catalogue, and it can fail', () => {
+  it('a catalogue row whose slug is not an app id is DROPPED, never served', () => {
+    // 🔴 THE FAILING INPUT, and it is one line: delete the
+    // `if (!isValidAppId(slug)) continue;` in buildRegistry and this goes red.
+    //
+    // ⚠️ WHY THIS MOVED. It used to range over `Object.keys(DEFAULT_CONFIGS)`
+    // and assert every key was well formed — an invariant on a literal somebody
+    // typed by hand, whose failing input was "type a bad key". The registry is
+    // now built from JSON a mason HOOK writes, so a slug is parsed INPUT: the
+    // pattern is a runtime filter with real teeth, and `__proto__` is the reason
+    // it has to be. Without the filter, `out['__proto__'] = cfg` gives isKnownApp
+    // an own property to find and `GET /config/__proto__` serves it.
+    const reg = buildRegistry(
+      [
+        { slug: 'good', api: '' },
+        { slug: 'My App', api: '' }, // a space — the brick would never stamp it
+        { slug: 'config:evil', api: '' }, // would make the KV key ambiguous
+        { slug: '2fast', api: '' }, // leading digit
+        { slug: '__proto__', api: '' }, // the prototype-pollution row
+        { slug: 42 }, // not a string at all
+        null,
+      ],
+      configData,
+    );
+    expect(Object.keys(reg)).toEqual(['good']);
+    expect(Object.getPrototypeOf(reg)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).app_id).toBeUndefined();
+  });
+
+  it('every slug in the COMMITTED catalogue survives that filter', () => {
+    // The other direction: the filter above must not be silently eating a real
+    // app. `tooling/ci/assert-config-registry.mjs` fails the build on the same
+    // observation, because a drop nobody can see is the failure this repo pays
+    // for over and over.
+    for (const row of catalogue as Array<{ slug: string }>) {
+      expect(isValidAppId(row.slug), `catalogue slug \`${row.slug}\` is malformed`).toBe(true);
+    }
   });
 
   it('the grammar accepts what the brick stamps and rejects what it never would', () => {
