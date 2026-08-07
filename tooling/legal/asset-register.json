@@ -108,14 +108,7 @@
     "patterns": ["AboutListTile\\s*\\(", "showLicensePage\\s*\\(", "LicenseRegistry\\.addLicense\\s*\\("]
   },
 
-  "licenceSurfaceGaps": [
-    {
-      "app": "apps/subly",
-      "owningIncrement": "[8]INC-5",
-      "why": "apps/subly ships NO licences surface — no AboutListTile, no showLicensePage, no LicenseRegistry call anywhere under lib/. The brick has shipped one since it was written, so the one app actually published is the only app in the portfolio without it.",
-      "whyPrintedNotFailed": "Closing it means editing apps/subly/lib/features/settings/settings_screen.dart, which is [8]INC-5's primary file and shared with stages 2 and 3. Failing the build here would block every lane on a change this increment deliberately does not make. The guard prints it every run and flips to a PROMOTE ME notice the moment the surface lands, so the exemption cannot outlive its reason — and a NEW app with no surface still FAILS, because it is not on this list."
-    }
-  ],
+  "licenceSurfaceGaps": [],
 
   "assets": [
     {
