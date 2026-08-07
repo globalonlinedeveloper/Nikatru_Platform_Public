@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 
 import 'app.dart';
 import 'core/config/app_config.dart';
 import 'services/notifications/notification_service.dart';
+import 'state/providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +34,24 @@ Future<void> main() async {
     appRunner: () async {
       // Local notifications work on all six platforms (web falls back to a no-op).
       await NotificationService.instance.init();
+
+      // [13]T-9 THE INBOUND HALF, AND THE ORDER IS LOAD-BEARING.
+      //
+      // `FlutterLocalNotificationsPlugin()` is a process singleton (its
+      // constructor is a `factory` returning a static instance), so the fork
+      // above and the shared adapter below drive the SAME plugin, and the LAST
+      // `initialize` call is the one whose `onDidReceiveNotificationResponse`
+      // survives. The fork registers no tap callback; this one does. Initialise
+      // it second and every notification Subly posts — including the fork's own
+      // renewal reminders — becomes tappable. Swap the two lines and taps go
+      // silently nowhere, which is the state this increment ends.
+      //
+      // The settings are a superset, not a conflict: both pass the same
+      // launcher icon, the same Darwin defaults and the same Linux
+      // `defaultActionName`, so the second call adds the callback and changes
+      // nothing else. [2]C-3's de-forking removes the duplication entirely.
+      final core.NotificationService taps = createLocalNotificationService();
+      await taps.init();
 
       // Only initialize Supabase when real credentials are supplied via
       // --dart-define. Left unconfigured, the app runs in demo mode with a mock
@@ -65,7 +86,18 @@ Future<void> main() async {
         );
       }
 
-      runApp(const ProviderScope(child: SublyApp()));
+      runApp(
+        ProviderScope(
+          overrides: <Override>[
+            // The INITIALISED instance, not a fresh one — taps are delivered on
+            // this object's own stream, so overriding with anything else gives
+            // the app a stream that is silent forever. See
+            // notificationTapSourceProvider.
+            notificationTapSourceProvider.overrideWithValue(taps),
+          ],
+          child: const SublyApp(),
+        ),
+      );
     },
   );
 }

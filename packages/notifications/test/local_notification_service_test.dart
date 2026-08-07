@@ -15,8 +15,32 @@ class _FakePlugin implements NotificationPlugin {
   final List<tz.TZDateTime> scheduledFor = <tz.TZDateTime>[];
   bool permission = true;
 
+  /// The tap sink the service handed over at [initialize] — i.e. the
+  /// REGISTRATION itself, captured rather than assumed. Null means the service
+  /// never registered, which is exactly the defect [13]T-9 closes, so the tests
+  /// below assert on this being non-null rather than on a call-name string.
+  void Function(NotificationTap tap)? onTap;
+
   @override
-  Future<void> initialize() async => calls.add('initialize');
+  Future<void> initialize(void Function(NotificationTap tap) onTap) async {
+    calls.add('initialize');
+    this.onTap = onTap;
+  }
+
+  /// Fires a tap the way the OS would: through the callback the ADAPTER
+  /// registered. Throws rather than no-ops when nothing registered — a fake that
+  /// silently swallowed the tap would make the missing registration look like a
+  /// passing test, which is the failure mode this whole file exists under.
+  void simulateTap({int id = 7, String? payload}) {
+    final void Function(NotificationTap tap)? sink = onTap;
+    if (sink == null) {
+      throw StateError(
+        'no tap callback was registered — the service never handed the plugin '
+        'port a sink, so a real tap would reach nothing',
+      );
+    }
+    sink(NotificationTap(id: id, payload: payload));
+  }
 
   @override
   Future<bool> requestPermission() async {
@@ -121,6 +145,50 @@ void main() {
       expect(p.calls, containsAll(<String>['cancel:3', 'cancelAll']));
     });
 
+    // ── [13]T-9 THE INBOUND HALF ─────────────────────────────────────────────
+    // Everything above this line is OUTBOUND: show, schedule, cancel. All of it
+    // was green while `onDidReceiveNotificationResponse` appeared ZERO times in
+    // the tree and a tapped reminder opened nothing — the outbound tests cannot
+    // see the inbound gap, which is the entire reason it survived.
+    test('init hands the plugin port a tap sink', () async {
+      final _FakePlugin p = _FakePlugin();
+      expect(p.onTap, isNull);
+      await build(p, TargetPlatform.android).init();
+      expect(
+        p.onTap,
+        isNotNull,
+        reason: 'without this the adapter has nothing to register with '
+            'onDidReceiveNotificationResponse',
+      );
+    });
+
+    test('a plugin tap surfaces on notificationTaps()', () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = build(p, TargetPlatform.android);
+      await s.init();
+
+      final Future<NotificationTap> first = s.notificationTaps().first;
+      p.simulateTap(id: 42, payload: 'renewal');
+
+      final NotificationTap tap = await first;
+      expect(tap.id, 42);
+      expect(tap.kind, 'renewal');
+    });
+
+    test('notificationTaps() is broadcast — two listeners both get it',
+        () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = build(p, TargetPlatform.android);
+      await s.init();
+
+      final Future<NotificationTap> a = s.notificationTaps().first;
+      final Future<NotificationTap> b = s.notificationTaps().first;
+      p.simulateTap(id: 3);
+
+      expect((await a).id, 3);
+      expect((await b).id, 3);
+    });
+
     test('exposes canNotify + canSchedule capabilities', () {
       final LocalNotificationService s = build(
         _FakePlugin(),
@@ -144,12 +212,14 @@ void main() {
       expect(p.calls.any((String c) => c.startsWith('showNow')), isTrue);
     });
 
-    test('cancel still delegates (Linux can dismiss a shown notification)',
-        () async {
-      final _FakePlugin p = _FakePlugin();
-      await build(p, TargetPlatform.linux).cancel(9);
-      expect(p.calls, contains('cancel:9'));
-    });
+    test(
+      'cancel still delegates (Linux can dismiss a shown notification)',
+      () async {
+        final _FakePlugin p = _FakePlugin();
+        await build(p, TargetPlatform.linux).cancel(9);
+        expect(p.calls, contains('cancel:9'));
+      },
+    );
   });
 
   // On the pinned flutter_local_notifications 17.x both Web (no plugin) and
@@ -157,7 +227,9 @@ void main() {
   // degrade to a no-op rather than throw.
   group('fully unsupported (web + windows on 17.x)', () {
     Future<void> expectAllNoOp(
-        LocalNotificationService s, _FakePlugin p) async {
+      LocalNotificationService s,
+      _FakePlugin p,
+    ) async {
       await s.init();
       expect(await s.requestPermission(), isFalse);
       await s.showNow(title: 'a', body: 'b');
@@ -237,38 +309,36 @@ void main() {
     const Duration ist = Duration(hours: 5, minutes: 30);
 
     test(
-      'with NO resolver a 09:15 reminder fires at 09:15 DEVICE-local, '
-      'which is NOT 09:15 UTC',
-      () async {
-        final _FakePlugin p = _FakePlugin();
-        final LocalNotificationService s = LocalNotificationService(
-          plugin: p,
-          platform: TargetPlatform.android,
-          // No localTimezone at all — the exact wiring every consumer has.
-          deviceUtcOffset: () => ist,
-          // Read INSIDE the closure so it sees the location init() installed.
-          now: () => tz.TZDateTime(tz.local, 2026, 1, 1, 6, 0),
-        );
+        'with NO resolver a 09:15 reminder fires at 09:15 DEVICE-local, '
+        'which is NOT 09:15 UTC', () async {
+      final _FakePlugin p = _FakePlugin();
+      final LocalNotificationService s = LocalNotificationService(
+        plugin: p,
+        platform: TargetPlatform.android,
+        // No localTimezone at all — the exact wiring every consumer has.
+        deviceUtcOffset: () => ist,
+        // Read INSIDE the closure so it sees the location init() installed.
+        now: () => tz.TZDateTime(tz.local, 2026, 1, 1, 6, 0),
+      );
 
-        await s.init();
-        await s.scheduleDaily(reminder);
+      await s.init();
+      await s.scheduleDaily(reminder);
 
-        final tz.TZDateTime when = p.scheduledFor.single;
-        expect(
-          <int>[when.hour, when.minute],
-          <int>[9, 15],
-          reason: 'the wall clock the user reads must say 09:15',
-        );
-        // The assertion that fails against the old UTC default: the same
-        // instant expressed in UTC must be 5h30m EARLIER, not identical.
-        expect(
-          <int>[when.toUtc().hour, when.toUtc().minute],
-          <int>[3, 45],
-          reason: 'a 09:15 IST reminder is 03:45 UTC; if this reads 09:15 the '
-              'service is scheduling in UTC and firing 5h30m late',
-        );
-      },
-    );
+      final tz.TZDateTime when = p.scheduledFor.single;
+      expect(
+        <int>[when.hour, when.minute],
+        <int>[9, 15],
+        reason: 'the wall clock the user reads must say 09:15',
+      );
+      // The assertion that fails against the old UTC default: the same
+      // instant expressed in UTC must be 5h30m EARLIER, not identical.
+      expect(
+        <int>[when.toUtc().hour, when.toUtc().minute],
+        <int>[3, 45],
+        reason: 'a 09:15 IST reminder is 03:45 UTC; if this reads 09:15 the '
+            'service is scheduling in UTC and firing 5h30m late',
+      );
+    });
 
     test('a negative offset works too — the sign is not assumed', () {
       final tz.Location loc = deviceOffsetLocation(const Duration(hours: -8));
@@ -293,13 +363,13 @@ void main() {
       await s.scheduleDaily(reminder);
 
       expect(tz.local.name, 'Asia/Kolkata');
-      expect(<int>[
-        p.scheduledFor.single.toUtc().hour,
-        p.scheduledFor.single.toUtc().minute
-      ], <int>[
-        3,
-        45
-      ]);
+      expect(
+        <int>[
+          p.scheduledFor.single.toUtc().hour,
+          p.scheduledFor.single.toUtc().minute,
+        ],
+        <int>[3, 45],
+      );
     });
 
     test(

@@ -54,6 +54,15 @@ dependencies:
   # because a live app is the one place a crash report is worth anything.
   nikatru_telemetry:
     path: ../../packages/telemetry
+  # [13]T-9 The shared notifications adapter, taken for ONE reason: it is the
+  # only thing in the tree that registers a tap callback with the plugin, and
+  # without a tap Subly's renewal reminders wake the user and open nothing.
+  # Subly's frozen fork (lib/services/notifications/) keeps every SCHEDULING
+  # call it has; this supplies the inbound half it never had. Both wrap the same
+  # process-singleton `FlutterLocalNotificationsPlugin`, so there is one plugin
+  # and one registration — see the ordering note in lib/main.dart.
+  nikatru_notifications:
+    path: ../../packages/notifications
 
   # State management
   flutter_riverpod: ^2.5.0
