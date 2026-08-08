@@ -5,6 +5,7 @@ import '../../core/app_config.dart';
 import '../../core/router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../state/analytics_providers.dart';
 import '../shared/widgets.dart';
 
@@ -76,34 +77,45 @@ class _ConsentDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 🔴 EVERY STRING BELOW IS A REUSE OF AN EXISTING ARB KEY EXCEPT TWO, AND
+    // THE EXCEPTIONS ARE THE POINT.
+    //
+    //  · `consentPrivacyLive` is MINTED, and the arb's older `consentPrivacy`
+    //    is deliberately left alone. The two texts differ: `consentPrivacy`
+    //    stops at "…just a random code for this installation", while the words
+    //    THIS DIALOG HAS BEEN SHOWING also promise "You can change this any
+    //    time in Settings." Users consented under the live sentence, so
+    //    swapping it for the shorter arb value would silently retract a promise
+    //    — an owner/legal call, not a refactor. (WORKORDER §8 decision 2; the
+    //    owner still has to reconcile the two against privacy.html.)
+    //  · `consentReadPolicy` is minted because no link key existed.
+    //
+    // Everything else — title, body, both buttons — resolves to a value that is
+    // byte-identical to the literal it replaces, which is why the four tests
+    // that pin "Allow" / "No thanks" needed no edit.
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return AlertDialog(
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Text(
-        'Help improve ${AppConfig.appName}?',
+        l10n.consentTitle(AppConfig.appName),
         style: AppText.title.copyWith(fontSize: 19),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'We can record which features you use, so we can see what works and '
-            'fix what does not.',
-            style: AppText.body.copyWith(fontSize: 14),
-          ),
+          Text(l10n.consentBody, style: AppText.body.copyWith(fontSize: 14)),
           const SizedBox(height: 10),
           Text(
-            'No name, no email, no advertising ID and no IP address. Just a '
-            'random code for this installation. You can change this any time in '
-            'Settings.',
+            l10n.consentPrivacyLive,
             style: AppText.muted.copyWith(fontSize: 13),
           ),
           const SizedBox(height: 12),
           GestureDetector(
             onTap: () => openExternalUrl(AppConfig.privacyUrl),
             child: Text(
-              'Read the privacy policy',
+              l10n.consentReadPolicy,
               style: AppText.body.copyWith(
                 fontSize: 13,
                 color: AppColors.accent,
@@ -121,7 +133,7 @@ class _ConsentDialog extends StatelessWidget {
           children: <Widget>[
             Expanded(
               child: SoftButton(
-                label: 'No thanks',
+                label: l10n.consentDecline,
                 color: AppColors.ink,
                 onPressed: () => Navigator.of(context).pop(false),
               ),
@@ -129,7 +141,7 @@ class _ConsentDialog extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: SoftButton(
-                label: 'Allow',
+                label: l10n.consentAllow,
                 color: AppColors.accent,
                 onPressed: () => Navigator.of(context).pop(true),
               ),
