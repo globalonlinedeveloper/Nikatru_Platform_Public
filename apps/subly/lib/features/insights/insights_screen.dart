@@ -14,17 +14,55 @@ import '../../core/format/sub_math.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
+import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../cancel/cancel_sheet.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 
+/// The three neutrals this screen paints with, resolved for the current
+/// brightness.
+///
+/// 🔴 LIGHT IS THE LITERAL TOKEN, ON PURPOSE — the rule `cardDecoration` and
+/// `RowCard` carry (`features/shared/widgets.dart`): `apps/subly` is the frozen
+/// legacy rail-prover the owner eyeballs, so light stays byte-identical.
+/// `Theme.of(context).extension<AppThemeX>()` is NOT a substitute — under the
+/// seeded chassis theme its `muted`/`line` are `scheme.onSurfaceVariant`/
+/// `outlineVariant` in BOTH brightnesses, so reading it would repaint light.
+///
+/// 🔴 DARK IS THE DEFECT THIS FIXES. `AppText.title`/`.fig`/`.body` bake
+/// `AppColors.ink` (#141420), `AppText.muted` bakes `AppColors.muted`, and the
+/// unused-subscription rows are outlined in `AppColors.line` (#ECECF2) — a
+/// near-white hairline. On a dark scaffold the two card titles were
+/// near-invisible and the row outlines glared. The dark values are the same
+/// slots `buildAppTheme` maps these neutrals to (`ink: scheme.onSurface`,
+/// `divider: scheme.outlineVariant`) and `AppThemeX.fromScheme` maps `muted` to.
+///
+/// ⚠️ `calendar_screen.dart` and `budget_screen.dart` carry the identical
+/// helper: each P4 file-group increment has to stay independently compilable,
+/// and the hoist into `features/shared/` belongs to the campaign's closing
+/// cleanup alongside the deletion of `DueInfo.of`.
+({Color ink, Color muted, Color line}) _neutrals(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  if (theme.brightness == Brightness.light) {
+    return (ink: AppColors.ink, muted: AppColors.muted, line: AppColors.line);
+  }
+  final ColorScheme scheme = theme.colorScheme;
+  return (
+    ink: scheme.onSurface,
+    muted: scheme.onSurfaceVariant,
+    line: scheme.outlineVariant,
+  );
+}
+
 class InsightsScreen extends ConsumerWidget {
   const InsightsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
@@ -65,16 +103,19 @@ class InsightsScreen extends ConsumerWidget {
           AppSpacing.xl,
         ),
         children: <Widget>[
-          Text('Insights', style: AppText.title.copyWith(fontSize: 26)),
+          Text(
+            l10n.insightsTitle,
+            style: AppText.title.copyWith(fontSize: 26, color: neutral.ink),
+          ),
           const SizedBox(height: 4),
           Text(
-            'Where your money goes',
-            style: AppText.muted.copyWith(fontSize: 12),
+            l10n.insightsSubtitle,
+            style: AppText.muted.copyWith(fontSize: 12, color: neutral.muted),
           ),
           const SizedBox(height: 16),
-          _categoryCard(context, currency, cats, total),
+          _categoryCard(context, l10n, currency, cats, total),
           const SizedBox(height: 14),
-          _savingsCard(context, currency, unused, savings),
+          _savingsCard(context, l10n, currency, unused, savings),
         ],
       ),
     );
@@ -92,10 +133,12 @@ class InsightsScreen extends ConsumerWidget {
 
   Widget _categoryCard(
     BuildContext context,
+    AppLocalizations l10n,
     Currency currency,
     List<CategoryTotal> cats,
     double total,
   ) {
+    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
     final List<MapEntry<double, Color>> segments = <MapEntry<double, Color>>[
       for (int i = 0; i < cats.length; i++)
         MapEntry<double, Color>(
@@ -110,7 +153,12 @@ class InsightsScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('By category', style: AppText.title.copyWith(fontSize: 16)),
+          // `byCategory` is SHARED with `budget_screen.dart` — the same heading
+          // over the same breakdown, so one key rather than two that drift.
+          Text(
+            l10n.byCategory,
+            style: AppText.title.copyWith(fontSize: 16, color: neutral.ink),
+          ),
           const SizedBox(height: 14),
           Row(
             children: <Widget>[
@@ -125,11 +173,17 @@ class InsightsScreen extends ConsumerWidget {
                       children: <Widget>[
                         Text(
                           currency.fmt0(total),
-                          style: AppText.fig.copyWith(fontSize: 18),
+                          style: AppText.fig.copyWith(
+                            fontSize: 18,
+                            color: neutral.ink,
+                          ),
                         ),
                         Text(
-                          '/ mo',
-                          style: AppText.muted.copyWith(fontSize: 9),
+                          l10n.perMonthShort,
+                          style: AppText.muted.copyWith(
+                            fontSize: 9,
+                            color: neutral.muted,
+                          ),
                         ),
                       ],
                     ),
@@ -161,6 +215,7 @@ class InsightsScreen extends ConsumerWidget {
                                 style: AppText.body.copyWith(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 12,
+                                  color: neutral.ink,
                                 ),
                               ),
                             ),
@@ -168,7 +223,7 @@ class InsightsScreen extends ConsumerWidget {
                               currency.fmt0(cats[i].value),
                               style: AppText.fig.copyWith(
                                 fontSize: 12,
-                                color: AppColors.muted,
+                                color: neutral.muted,
                               ),
                             ),
                           ],
@@ -186,10 +241,12 @@ class InsightsScreen extends ConsumerWidget {
 
   Widget _savingsCard(
     BuildContext context,
+    AppLocalizations l10n,
     Currency currency,
     List<Subscription> unused,
     double savings,
   ) {
+    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: cardDecoration(context),
@@ -202,15 +259,25 @@ class InsightsScreen extends ConsumerWidget {
               // title beside an intrinsic pill overflows narrow cards.
               Expanded(
                 child: Text(
-                  'Savings opportunities',
-                  style: AppText.title.copyWith(fontSize: 16),
+                  l10n.savingsOpportunities,
+                  style: AppText.title.copyWith(
+                    fontSize: 16,
+                    color: neutral.ink,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
               Pill(
-                '${currency.fmt(savings)}/mo',
+                // A KEY, not an interpolation: `/mo` is an abbreviation of a
+                // word, and where it sits relative to the amount is the
+                // translator's call.
+                l10n.perMonthAmount(currency.fmt(savings)),
+                // The savings pill is a STATUS surface — green means "money you
+                // could keep" in either brightness — so both halves stay the
+                // literal tokens, the same call `AppThemeX.fromScheme` makes
+                // when it refuses to re-hue positive/warn/danger.
                 bg: const Color.fromRGBO(16, 185, 129, 0.12),
                 fg: AppColors.positive,
               ),
@@ -223,7 +290,10 @@ class InsightsScreen extends ConsumerWidget {
               child: Container(
                 padding: const EdgeInsets.all(11),
                 decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.line),
+                  // The row outline is a neutral, so it has to move with the
+                  // surface: `AppColors.line` (#ECECF2) is a near-white
+                  // hairline that GLARES on a dark card instead of receding.
+                  border: Border.all(color: neutral.line),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Row(
@@ -239,9 +309,13 @@ class InsightsScreen extends ConsumerWidget {
                             style: AppText.body.copyWith(
                               fontWeight: FontWeight.w700,
                               fontSize: 14,
+                              color: neutral.ink,
                             ),
                           ),
                           Text(
+                            // [DATA], not a key — `usageNote` is a field on the
+                            // subscription, so localizing it is the demo-data
+                            // decision the workorder records as out of scope.
                             s.usageNote,
                             style: const TextStyle(
                               fontFamily: 'Manrope',
@@ -256,7 +330,12 @@ class InsightsScreen extends ConsumerWidget {
                     SizedBox(
                       height: 36,
                       child: GradientButton(
-                        label: 'Cancel',
+                        // REUSES the shared `cancel` key. The label is painted
+                        // white on `AppColors.brandGradient` inside
+                        // `GradientButton`, which is correct in both
+                        // brightnesses — an on-gradient colour must not follow
+                        // the scheme, because the surface under it does not.
+                        label: l10n.cancel,
                         height: 36,
                         fontSize: 12,
                         onPressed: () => showCancelSheet(context, s),
@@ -267,7 +346,10 @@ class InsightsScreen extends ConsumerWidget {
               ),
             ),
           if (unused.isEmpty)
-            Text('Nothing flagged — nice.', style: AppText.muted),
+            Text(
+              l10n.insightsNothingFlagged,
+              style: AppText.muted.copyWith(color: neutral.muted),
+            ),
         ],
       ),
     );
