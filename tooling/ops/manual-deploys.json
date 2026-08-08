@@ -1,0 +1,22 @@
+{
+  "_readme": [
+    "Attested MANUAL deploys — the traceability record for a deploy that shipped outside its lane.",
+    "check-prod-provenance.mjs accepts an entry ONLY after validating it against two independent",
+    "machine records: the sha must be a real commit on this repository (GitHub API), and a GitHub",
+    "Deployment written by record-deployment.mjs must exist for that sha+environment. An entry that",
+    "fails either check FAILS the run — a bad attestation is worse than an unattributed row.",
+    "Every accepted entry prints on every run. This register exists because run numbers are never",
+    "reissued: a manual restore that reuses a failed run number is version-monotonic but",
+    "provenance-orphaned (learned 2026-08-08, the deploy-rail deadlock)."
+  ],
+  "deploys": [
+    {
+      "version": "1.0.132+efabfb5",
+      "sha": "efabfb54c49c83f92a521f6d0d2664f328c51f1a",
+      "environment": "subly-web",
+      "deployedAt": "2026-08-08T06:35:00Z",
+      "why": "deploy-web rail down since #185 (out=$(...) under bash -e dies before the already-exists tolerance); manual restore of merged main, full lane replica (version 132, artifact smoke, pages deploy, post-deploy smoke, GitHub Deployment record). Run 132 had failed, so the number resolves to no successful run — this attestation carries the traceability instead.",
+      "recordedBy": "agent session 2026-08-08, owner-directed incident response"
+    }
+  ]
+}

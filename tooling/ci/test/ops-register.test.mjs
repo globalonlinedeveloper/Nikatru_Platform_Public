@@ -1327,6 +1327,92 @@ describe('assert-ops-register — end to end, against the real repository', () =
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE DIGEST THAT READ THIS GUARD AND REPORTED THE OPPOSITE OF WHAT IT SAID.
+//
+// ops-watch.yml's `digest` job collects three readers into one weekly issue. Two
+// of them were written correctly; the third — this guard — was one piped line:
+//
+//     node tooling/ci/assert-ops-register.mjs 2>&1 | grep -E '^(⬜|⚠)' || echo '(none printed)'
+//
+// It was wrong twice, in the same direction:
+//   · A PIPELINE'S STATUS IS ITS LAST STAGE'S. The digest recorded grep's exit,
+//     never the guard's — the exact `$?`-after-a-pipe trap CLAUDE.md records
+//     costing three guard checks on 2026-08-05.
+//   · THE FILTER DROPPED EVERY FAILURE LINE. This guard writes problems as
+//     `✗ …` with indented detail; neither shape starts with ⬜ or ⚠. So a
+//     register in COVERAGE LOST rendered in the weekly digest as one line:
+//     "(none printed)" — the most reassuring possible presentation of a red check.
+//
+// MEASURED before the repair, with a stub reader that prints a `✗` line and
+// exits 1: the old form printed `exit: 0` and no failure line; the new form
+// printed the failure lines and `exit: 1`.
+//
+// The cases below are STRUCTURAL, against the real workflow, and that is a
+// deliberate limit: the defect is a shell property, and executing the fragment
+// would make this suite depend on `bash` being on PATH — which it is on the CI
+// runner and is not reliably on the owner's Windows host, so the test would fail
+// for the wrong reason on half the machines that run it. What they encode is
+// exactly the two halves above, each of which reddens if the piped form returns.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the weekly digest must report this guard\'s verdict, not grep\'s', () => {
+  const OPS_WATCH = resolve(CI_DIR, '..', '..', '.github', 'workflows', 'ops-watch.yml');
+  const yaml = () => readFileSync(OPS_WATCH, 'utf8');
+  /** The digest's collector step, comments removed, so prose about the old form
+   *  can never satisfy an assertion about the new one. */
+  const collector = () => {
+    const text = yaml();
+    const at = text.indexOf('- name: Collect what the readers say');
+    assert.ok(at > 0, 'the digest collector step must exist — this whole block is about it');
+    const end = text.indexOf('- name: Deliver it to one durable issue', at);
+    assert.ok(end > at, 'the collector must be followed by the delivery step');
+    return text
+      .slice(at, end)
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
+  };
+
+  test('the register reader is not piped — a pipeline reports its LAST stage, never the guard', () => {
+    const body = collector();
+    assert.match(body, /assert-ops-register\.mjs/, 'the digest must still read this guard');
+    for (const line of body.split('\n')) {
+      if (!line.includes('assert-ops-register.mjs')) continue;
+      assert.doesNotMatch(line, /\|/, `the reader is piped, so the digest records the pipe's status:\n${line}`);
+    }
+  });
+
+  test('the status is captured on its OWN line and echoed', () => {
+    const lines = collector().split('\n').map((l) => l.trim());
+    const at = lines.findIndex((l) => l.includes('assert-ops-register.mjs'));
+    assert.ok(at !== -1);
+    assert.match(lines[at], /^out="\$\(node tooling\/ci\/assert-ops-register\.mjs 2>&1\)"$/);
+    assert.equal(lines[at + 1], 'code=$?', '`$?` must be read before ANY other command runs, or it is that command\'s status');
+    assert.ok(
+      lines.slice(at).some((l) => /^echo "exit: \$code"$/.test(l)),
+      'the digest must print the guard\'s exit, or a red register is indistinguishable from a quiet week',
+    );
+  });
+
+  test('a NON-ZERO exit prints the guard\'s output unfiltered — the ⬜/⚠ filter drops every `✗` line', () => {
+    const body = collector();
+    // The filter may still run, but only on the branch where there is nothing to
+    // hide. On the failure branch the whole output has to survive.
+    assert.match(body, /if \[ "\$code" -eq 0 \]; then/);
+    const elseAt = body.indexOf('else');
+    assert.ok(elseAt > 0, 'there must be a failure branch at all');
+    const failureBranch = body.slice(elseAt, body.indexOf('fi', elseAt));
+    assert.match(failureBranch, /printf '%s\\n' "\$out"/);
+    assert.doesNotMatch(failureBranch, /grep/, 'filtering the failure branch is the defect, one level down');
+  });
+
+  test('the two sibling readers still report their own exits — the shape this one was repaired to match', () => {
+    const body = collector();
+    assert.match(body, /node tooling\/ops\/status\.mjs 2>&1\n\s*echo "exit: \$\?"/);
+    assert.match(body, /node tooling\/ops\/check-heartbeats\.mjs 2>&1\n\s*echo "exit: \$\?"/);
+  });
+});
+
 describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation can fail', () => {
   // This register deliberately holds no hostname rows: [11]E-9's
   // monitor-register.json owns that set, with a wider derivation. "Delegated" is

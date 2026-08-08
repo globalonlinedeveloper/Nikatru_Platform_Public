@@ -37,6 +37,41 @@
 // decision logic is genuinely exercised without network. It prints a loud banner
 // so its presence in a real CI log is unmistakable.
 //
+// ── 🔴 THE COVERAGE SELF-CHECK USED TO BE TWO GREPS, AND BOTH COULD BE FOOLED ─
+// Repaired 2026-08-08 after an audit, and both defects were proven by mutating
+// the real workflow before a line was touched.
+//
+//   · THE BUILD CLAUSE grepped comment-stripped YAML for `flutter build <x>`.
+//     Replacing every real build step with `run: echo "flutter build ios
+//     disabled"` returned null — PASS. The six-platform claim was being checked
+//     against a string, and a string is exactly what a disabled step still
+//     contains. It now reads the workflow through tooling/ci/workflow-scan.mjs
+//     (the one parser four guards share) and requires the COMMAND WORD of a real
+//     shell segment to be `flutter` with subcommand `build <target>`. An echo
+//     about a build is no longer a build.
+//   · THE TARGET LIST was a typed array — `['web','linux','apk',…]` — sitting
+//     next to a register that already declares every platform this factory
+//     claims. Two declarations of one fact, and the copy in the guard is the one
+//     that goes stale when a seventh platform is added. It is now DERIVED from
+//     the `platforms` of every row in tooling/channel-register.json, through a
+//     platform→build-target table that FAILS on a platform it does not know
+//     rather than skipping it.
+//   · THE AGGREGATOR CLAUSE read `needs:` with a WHOLE-FILE
+//     `/needs:\s*\[([^\]]+)\]/` — the first flow-form list anywhere in the file —
+//     and then asked whether a job name was a SUBSTRING of it. Two workflow
+//     comments in build-platforms.yml exist solely to warn the next editor about
+//     that fragility. A decoy flow-form list above the aggregator, with the
+//     aggregator itself stripped back to `needs: [gate, prepare]`, returned null
+//     — PASS. It now reads the aggregator's OWN parsed job body, and the
+//     aggregator is named by tooling/channel-register.json rather than typed here.
+//
+// RECORDED FAILING CASES (all three, in tooling/ci/test/platform-proof-fresh.test.mjs,
+// mutated from the REAL workflow and not from a hand-written fixture):
+//   1. every `flutter build <t>` rewritten to `echo "flutter build <t> disabled"` → red
+//   2. the `apple` job's two build steps deleted                                  → red
+//   3. a decoy `needs: [linux_web_android, windows, apple]` above an aggregator
+//      whose own needs list drops all three                                       → red
+//
 // LANE-BOUND: build-platforms.yml — this guard's SUBJECT is that one workflow's run history, not a
 // channel's artifact. There is exactly one 6-platform proof in this factory and build-platforms.yml IS
 // it; a second lane would not dilute this check, it would be a second proof needing its own freshness
@@ -47,20 +82,45 @@
 // Usage:  node tooling/ci/assert-platform-proof-fresh.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseWorkflow, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'build-platforms.yml';
+const WORKFLOW_REL = `${WORKFLOW_DIR}/${WORKFLOW}`;
+const REGISTER_REL = 'tooling/channel-register.json';
 const BRANCH = 'main';
 const MAX_AGE_DAYS = 14;
 const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
 
-// The six platforms the factory claims, as they appear in `flutter build <x>`.
-// `apk` is Android — it cannot build on the owner's Windows box (a socket-layer
-// fault, not Gradle), so CI is the ONLY place Android is ever compiled.
-const REQUIRED_BUILDS = ['web', 'linux', 'apk', 'windows', 'macos', 'ios'];
-const REQUIRED_JOBS = ['linux_web_android', 'windows', 'apple'];
+/**
+ * 🔴 THE PLATFORM SET IS NOT TYPED HERE — this is the TRANSLATION, not the list.
+ *
+ * WHICH platforms the factory claims comes from the `platforms` of every row in
+ * tooling/channel-register.json, which [9]R-5 already maintains and which
+ * assert-channel-register.mjs already polices. What that register cannot say is
+ * the SHELL COMMAND that compiles one, so this table maps a platform name to the
+ * `flutter build <target>` subcommands that count as having built it.
+ *
+ * A platform in the register with no row here is a COVERAGE LOST, never a skip:
+ * a seventh platform added to the register must arrive with the command that
+ * proves it, or this guard would silently certify five out of six as "all".
+ *
+ * `android` accepts EITHER target. `apk` is the sideloadable build proof and
+ * `appbundle` is the Play artifact; both compile the same Android target, and
+ * which of them a lane emits is assert-channel-register.mjs's question (it
+ * compares a row's artifactFormats against what its lane produces), not this
+ * one's. This guard asks only "did Android compile".
+ */
+export const PLATFORM_BUILD_TARGETS = new Map([
+  ['web', ['web']],
+  ['linux', ['linux']],
+  ['android', ['apk', 'appbundle']],
+  ['windows', ['windows']],
+  ['macos', ['macos']],
+  ['ios', ['ios']],
+]);
 
 // A hand-pressed run proves the workflow works. It does NOT prove the timer
 // works, and freshness is a claim about the timer. All five runs to date are
@@ -88,60 +148,224 @@ function flag(name) {
   return process.argv[i + 1] ?? null;
 }
 
-// Strip full-line comments before scanning YAML. A grep for '"r2_buckets"' once
-// matched the template comment explaining why there is no r2_buckets; the same
-// trap applies to a `# schedule:` line that documents a schedule nobody enabled.
-function stripComments(yaml) {
-  return yaml
-    .split('\n')
-    .filter((l) => !/^\s*#/.test(l))
-    .join('\n');
+/**
+ * Quoted string literals BLANKED before anything reads a command out of a shell
+ * line. `echo "flutter build ios disabled"` becomes `echo ""`, so the words
+ * survive in no position a command word can be read from — and a `;` or `&&`
+ * inside a quoted string can no longer split one command into two.
+ *
+ * This is the house rule ("strip comments AND string literals before scanning")
+ * applied to the exact defect it was written for: the previous version of this
+ * guard grepped the raw YAML and an echo satisfied it.
+ */
+export function blankStringLiterals(text) {
+  return String(text ?? '')
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+}
+
+/**
+ * Every `flutter build <target>` the workflow really RUNS, by target.
+ *
+ * STRUCTURAL, not textual. It walks the parsed jobs from workflow-scan.mjs —
+ * which folds `run: >` into one logical command and joins `run: |` lines with
+ * ` ; ` so neither shape can hide or merge a command — splits each into shell
+ * segments, and requires the segment's COMMAND WORD to be `flutter` and its
+ * subcommand to be `build`. Leading `VAR=value` assignments, `env` and `sudo`
+ * are stepped over because they precede a command word without being one.
+ *
+ * A `flutter build` inside an unquoted command substitution is deliberately NOT
+ * matched: that direction fails CLOSED (a missing target, a red guard), which is
+ * the safe way to be wrong here.
+ */
+export function flutterBuildTargets(wf) {
+  const found = new Map();
+  let runBlocks = 0;
+  for (const job of wf.jobs.values()) {
+    for (const line of job.logical) {
+      const m = line.text.match(/^\s*(?:-\s+)?run:\s*(\S.*)$/);
+      if (!m) continue;
+      runBlocks++;
+      for (const seg of shellSegments(blankStringLiterals(m[1]))) {
+        const tokens = seg.trim().split(/\s+/).filter(Boolean);
+        let i = 0;
+        while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i] === 'sudo' || tokens[i] === 'env')) i++;
+        const cmd = tokens[i];
+        if (cmd === undefined) continue;
+        if ((cmd.split('/').pop() ?? '').replace(/\.(exe|bat|cmd)$/i, '') !== 'flutter') continue;
+        if (tokens[i + 1] !== 'build') continue;
+        const target = tokens[i + 2];
+        if (!target || target.startsWith('-')) continue;
+        if (!found.has(target)) found.set(target, []);
+        found.get(target).push({ job: job.name, n: line.n });
+      }
+    }
+  }
+  return { found, runBlocks };
+}
+
+/** The platforms this factory claims, and the build targets that prove each. */
+export function requiredTargets(register) {
+  const platforms = new Set();
+  for (const c of register?.channels ?? []) {
+    for (const p of c?.platforms ?? []) if (typeof p === 'string' && p !== '') platforms.add(p);
+  }
+  const unmapped = [...platforms].filter((p) => !PLATFORM_BUILD_TARGETS.has(p)).sort();
+  const required = new Map();
+  for (const p of [...platforms].sort()) if (PLATFORM_BUILD_TARGETS.has(p)) required.set(p, PLATFORM_BUILD_TARGETS.get(p));
+  return { platforms: [...platforms].sort(), required, unmapped };
 }
 
 // COVERAGE SELF-CHECK. This guard reads a workflow by NAME over the network. If
 // that workflow is renamed or deleted the API returns an empty list, which is
 // indistinguishable from "never run" — and asserting on the cron additionally
 // catches the CAUSE rather than waiting 14 days for the SYMPTOM.
-export function assertWatchedWorkflowIntact(root = ROOT) {
-  const path = resolve(root, '.github/workflows', WORKFLOW);
+//
+// Returns `{ problem, summary }`. `problem` is a COVERAGE LOST sentence or null;
+// `summary` is the REQUIRED_COVERAGE line printed on a pass, so a green run says
+// WHAT it covered instead of only that it was happy.
+export function platformProofCoverage(root = ROOT) {
+  const lost = (problem) => ({ problem, summary: null });
+  const path = resolve(root, WORKFLOW_DIR, WORKFLOW);
   if (!existsSync(path)) {
-    return `COVERAGE LOST — ${WORKFLOW} does not exist. This guard is watching a workflow that is gone, so it can only ever report a stale proof for a build that no longer runs.`;
+    return lost(
+      `COVERAGE LOST — ${WORKFLOW} does not exist. This guard is watching a workflow that is gone, so it can only ever report a stale proof for a build that no longer runs.`,
+    );
   }
-  const yaml = stripComments(readFileSync(path, 'utf8'));
-  if (!/\n\s+schedule:/.test(yaml)) {
-    return `COVERAGE LOST — ${WORKFLOW} declares no 'schedule:' trigger. The freshness clause depends on it; without a timer the proof is guaranteed to go stale and this guard becomes a countdown, not a check.`;
+  const wf = parseWorkflow(root, WORKFLOW_REL);
+  if (!wf) return lost(`COVERAGE LOST — ${WORKFLOW} exists and could not be parsed, so every clause below would be asked of nothing.`);
+
+  // Comments are BLANKED by parseWorkflow, not deleted, so a `# schedule:` line
+  // documenting a schedule nobody enabled cannot satisfy the timer clause and
+  // reported line numbers still point into the real file.
+  const header = wf.lines
+    .slice(0, wf.jobsAt === null ? wf.lines.length : wf.jobsAt)
+    .map((l) => l.text)
+    .join('\n');
+  if (!/^\s+schedule:\s*$/m.test(header)) {
+    return lost(
+      `COVERAGE LOST — ${WORKFLOW} declares no 'schedule:' trigger. The freshness clause depends on it; without a timer the proof is guaranteed to go stale and this guard becomes a countdown, not a check.`,
+    );
   }
-  if (!/\n\s+-\s*cron:\s*['"]/.test(yaml)) {
-    return `COVERAGE LOST — ${WORKFLOW} has a 'schedule:' block with no cron entry.`;
+  if (!/^\s+-\s*cron:\s*['"]/m.test(header)) {
+    return lost(`COVERAGE LOST — ${WORKFLOW} has a 'schedule:' block with no cron entry.`);
   }
 
-  // ⚠️ THE ABOVE CHECKS THE TIMER, NOT THE WORK. Until 2026-07-27 this function
-  // stopped here: it asserted the file existed and carried a cron, and never
-  // looked at what the workflow BUILDS. Deleting every macOS and iOS build step
-  // returned null — pass. This is the only place anything compiles for macOS,
-  // iOS, Windows or Linux (main CI runs analyze/test, which compile no native
-  // target), so two of the six platforms could vanish from the factory's only
-  // compile proof with ci-gate green and F-4 reading VERIFIED throughout.
-  const missing = REQUIRED_BUILDS.filter((b) => !new RegExp(`flutter build ${b}\\b`).test(yaml));
+  // ── the platform set, DERIVED ──────────────────────────────────────────────
+  const registerAbs = join(root, REGISTER_REL);
+  if (!existsSync(registerAbs)) {
+    return lost(
+      `COVERAGE LOST — ${REGISTER_REL} does not exist under ${root}. The set of platforms this proof must cover is derived from it; ` +
+        'without it this guard would range over an empty platform set and certify a workflow that builds nothing.',
+    );
+  }
+  let register;
+  try {
+    register = JSON.parse(readFileSync(registerAbs, 'utf8'));
+  } catch (e) {
+    return lost(`COVERAGE LOST — ${REGISTER_REL} is not valid JSON (${e.message}), so the required platform set has no source.`);
+  }
+  const { platforms, required, unmapped } = requiredTargets(register);
+  if (platforms.length === 0) {
+    return lost(
+      `COVERAGE LOST — no row in ${REGISTER_REL} declares a \`platforms\` array, so "the factory claims N platforms" has no answer ` +
+        'and the build clause below would be satisfied by a workflow that compiles nothing.',
+    );
+  }
+  if (unmapped.length) {
+    return lost(
+      `COVERAGE LOST — ${REGISTER_REL} claims platform(s) this guard has no build command for: ${unmapped.join(', ')}. ` +
+        'Add them to PLATFORM_BUILD_TARGETS in this file with the `flutter build <target>` that proves them. Skipping an unknown ' +
+        'platform is how five out of six comes to read as "all".',
+    );
+  }
+
+  // ── ⚠️ THE TIMER IS NOT THE WORK ───────────────────────────────────────────
+  // Until 2026-07-27 this function stopped at the cron: it asserted the file
+  // existed and carried a timer, and never looked at what the workflow BUILDS.
+  // Deleting every macOS and iOS build step returned null — pass. This is the
+  // only place anything compiles for macOS, iOS, Windows or Linux (main CI runs
+  // analyze/test, which compile no native target), so two of six could vanish
+  // from the factory's only compile proof with ci-gate green throughout.
+  const { found, runBlocks } = flutterBuildTargets(wf);
+  if (runBlocks === 0) {
+    return lost(
+      `COVERAGE LOST — the run-block parse found ZERO \`run:\` commands in ${WORKFLOW}'s ${wf.jobs.size} job(s). ` +
+        'The structural scan has stopped reaching the file, and every build clause below would be answered over nothing.',
+    );
+  }
+  if (found.size === 0) {
+    return lost(
+      `COVERAGE LOST — ${runBlocks} run block(s) were read in ${WORKFLOW} and NONE of them is a \`flutter build\` command. ` +
+        'Either the workflow compiles nothing at all, or the command classifier has stopped matching — and both report the same clean tree.',
+    );
+  }
+  const missing = [...required].filter(([, targets]) => !targets.some((t) => found.has(t)));
   if (missing.length) {
-    return (
-      `COVERAGE LOST — ${WORKFLOW} no longer builds: ${missing.join(', ')}. ` +
-      'The factory claims six platforms and this workflow is the only thing that compiles them, ' +
-      'so a missing target means the claim is unproven rather than merely untested.'
+    return lost(
+      `COVERAGE LOST — ${WORKFLOW} no longer builds: ${missing.map(([p, t]) => `${p} (needs \`flutter build ${t.join('` or `')}\`)`).join(', ')}. ` +
+        `The factory claims ${platforms.length} platform(s) in ${REGISTER_REL} and this workflow is the only thing that compiles them, so a missing ` +
+        'target means the claim is unproven rather than merely untested. ' +
+        `Found instead: ${[...found.keys()].sort().join(', ') || '(nothing)'}.`,
     );
   }
 
+  // ── the aggregator, read from ITS OWN parsed job body ──────────────────────
   // A build job that exists but is not in the aggregator's `needs:` still runs
-  // and can still fail without failing the workflow — a green tick over a red job.
-  const needs = yaml.match(/needs:\s*\[([^\]]+)\]/)?.[1] ?? '';
-  const unwired = REQUIRED_JOBS.filter((j) => !needs.includes(j));
-  if (unwired.length) {
-    return (
-      `COVERAGE LOST — ${WORKFLOW}'s aggregator does not depend on: ${unwired.join(', ')}. ` +
-      'A build job outside the aggregator can fail while the workflow still reports success.'
+  // and can still fail without failing the workflow — a green tick over a red
+  // job. The aggregator is named by the register (assert-channel-register.mjs
+  // holds the same declaration) rather than typed here, and its dependencies
+  // come from workflow-scan.mjs's per-job parse — which handles the flow, block
+  // and scalar forms and strips quotes in all three. The previous whole-file
+  // regex read the FIRST flow list anywhere in the file, which two comments in
+  // build-platforms.yml exist solely to warn the next editor about.
+  const agg = register?.aggregatingJob;
+  if (!agg || typeof agg.workflow !== 'string' || typeof agg.job !== 'string') {
+    return lost(
+      `COVERAGE LOST — ${REGISTER_REL} declares no \`aggregatingJob\` {workflow, job}. The wiring clause has no subject, so every ` +
+        'build job in this workflow could sit outside the aggregate and fail without failing the run.',
     );
   }
-  return null;
+  if (agg.workflow !== WORKFLOW_REL) {
+    return lost(
+      `COVERAGE LOST — ${REGISTER_REL}'s aggregatingJob names ${agg.workflow}, and this guard's subject is ${WORKFLOW_REL}. ` +
+        "Two readings of 'which job aggregates the platform proof' have come apart, and this one would grade a job in another file.",
+    );
+  }
+  const aggregator = wf.jobs.get(agg.job);
+  if (!aggregator) {
+    return lost(
+      `COVERAGE LOST — ${REGISTER_REL} names ${agg.workflow}#${agg.job} as the aggregator and this parse did not resolve that job. ` +
+        'The wiring clause would then be computed against an empty `needs` list and report every build job unwired, or nothing at all.',
+    );
+  }
+  const buildJobs = [...new Set([...required.values()].flatMap((targets) => targets.flatMap((t) => (found.get(t) ?? []).map((h) => h.job))))].sort();
+  if (buildJobs.length === 0) {
+    return lost(`COVERAGE LOST — every required build was matched and none of them resolved to a job name; the job parse has stopped working.`);
+  }
+  const needs = new Set(aggregator.needs);
+  const unwired = buildJobs.filter((j) => !needs.has(j));
+  if (unwired.length) {
+    return lost(
+      `COVERAGE LOST — ${WORKFLOW}'s aggregator "${agg.job}" does not depend on: ${unwired.join(', ')}. ` +
+        `Its \`needs\` reads [${[...needs].join(', ') || '(empty)'}]. ` +
+        'A build job outside the aggregator can fail while the workflow still reports success.',
+    );
+  }
+
+  return {
+    problem: null,
+    summary:
+      `REQUIRED_COVERAGE — ${platforms.length} platform(s) from ${REGISTER_REL} {${platforms.join(' ')}} all built by a real ` +
+      `\`flutter build\` command in ${WORKFLOW} (targets found: ${[...found.keys()].sort().join(' ')}); ` +
+      `${buildJobs.length} build job(s) {${buildJobs.join(' ')}} all in aggregator "${agg.job}"'s needs`,
+  };
+}
+
+/** The predicate form: the COVERAGE LOST sentence, or null when the scan is
+ *  still reaching everything it claims. */
+export function assertWatchedWorkflowIntact(root = ROOT) {
+  return platformProofCoverage(root).problem;
 }
 
 // The decision, kept pure so it can be tested without network. This is where the
@@ -201,11 +425,12 @@ async function fetchRuns() {
 }
 
 async function main() {
-  const coverage = assertWatchedWorkflowIntact();
-  if (coverage) {
-    fail(coverage);
+  const coverage = platformProofCoverage();
+  if (coverage.problem) {
+    fail(coverage.problem);
     return;
   }
+  console.log(`ok  ${coverage.summary}`);
 
   const runsFile = flag('--runs-file');
   const nowFlag = flag('--now');

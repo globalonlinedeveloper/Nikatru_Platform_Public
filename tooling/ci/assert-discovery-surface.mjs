@@ -5,8 +5,15 @@
 //
 // [pipeline 12]W-9 (regenerate in CI and diff what is SERVED) · the enforcement
 // half of [12]W-1 (a landing per registry entry) and [12]W-2a/W-2c (the hub, at
-// one named URL — `https://nikatru.com/apps/`, recorded in
+// one named URL — `CANONICAL_HUB_URL`, recorded in
 // knowledge/decisions/026-canonical-hub-url.md).
+//
+// ⚠️ THAT URL IS IMPORTED, NEVER RETYPED. It used to be spelled out here in
+// prose and re-composed as `${ORIGIN}apps/` in the print below, and it is now
+// one exported constant in tooling/sites/generate-discovery.mjs — the module
+// that actually WRITES the page. [10]D-11 limb 3 in assert-catalog-reachable.mjs
+// imports the same constant to require a 200 from it, so a hub that moves takes
+// both its generator and its reachability probe with it in one edit.
 //
 // 🔴 WHY A DIFF AND NOT A BUILD STEP. `sites/nikatru` is deployed by Cloudflare's
 // own Git integration with NO build step, so the bytes in the repository are the
@@ -49,10 +56,11 @@ import { listDir } from './tree-walk.mjs';
 import {
   planDiscovery,
   APPS_DIR,
+  CANONICAL_HUB_URL,
   DEPLOY_ROOT,
   NOT_GENERATED,
+  RAIL_CONFIG,
   REGISTRY,
-  ORIGIN,
 } from '../sites/generate-discovery.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -110,6 +118,19 @@ const REQUIRED_TEMPLATE_TOKENS = [
  *  counted, for REQUIRED_TEMPLATE_TOKENS' reason: a count is a number somebody
  *  lowers, and a name says which one went. */
 const REQUIRED_PACK_IDS = ['lingo'];
+
+/** THE PRICE CANARY, and the third in this file for the third time the same
+ *  reason applies. Limb G below compares the price on a generated landing to the
+ *  price in `RAIL_CONFIG`, and the failure it CANNOT see by itself is a landing
+ *  that stopped carrying a price at all: an app with no offerings compares
+ *  nothing and reports the same `ok` line as an app whose prices match. That is
+ *  the state every landing was in before this existed, and it looked clean.
+ *
+ *  NAMED, not counted, and not derived from what the guard currently finds. If a
+ *  landing here was deliberately unpriced — the app taken off `live`, its
+ *  offerings removed from the rail config — say so by editing this list in the
+ *  same commit, naming what remains. */
+const REQUIRED_PRICED_LANDINGS = ['subly'];
 
 // ── the plan ─────────────────────────────────────────────────────────────────
 const { files, registry, live, problems: registryProblems } = planDiscovery(ROOT);
@@ -328,6 +349,117 @@ for (const [rel, expected] of served) {
 // test caught at the top of this file. The per-page complaint IS the coverage
 // signal, and it says which page.
 
+// ── G · THE PRICE ON THE PAGE IS THE PRICE IN THE RAIL CONFIG ───────────────
+// Limb A already fails a landing whose bytes differ from a fresh run, so this
+// limb is not a second drift check and must not read as one. What it owns is the
+// half limb A structurally cannot see: limb A compares the page to the
+// GENERATOR, and a generator that stopped emitting prices agrees with a page
+// that carries none. Both would be byte-identical and both would be wrong.
+//
+// So this reads the rail config INDEPENDENTLY and asserts the relationship the
+// generator claims to implement — every offering `services/platform/src/
+// app-config-data.json` declares for a live app appears on that app's SERVED
+// landing, by product id AND by rendered amount. The bytes on disk are the
+// subject, for limbs C and D's stated reason: Cloudflare serves this tree
+// directly, so what is committed is what a buyer is quoted.
+//
+// 🔴 A PRICE IS THE ONE THING ON THESE PAGES A STRANGER IS ASKED TO ACT ON.
+// [5]M-11 puts prices in the rail config precisely so the app cannot quote one
+// number while the checkout charges another; a marketing page that quotes a
+// third is the same defect with a payment processor's seller verification
+// reading it.
+//
+// 🔴🔴 THIS LIMB PARSES `RAIL_CONFIG` ITSELF AND DOES ITS OWN ARITHMETIC, AND
+// THE FIRST VERSION DID NOT — it imported the generator's `commerceFor()` to
+// compute the expected amount, which made it an assertion about the generator
+// agreeing with itself. MEASURED, not reasoned: `money()` was mutated to render
+// every price one dollar too high, the surfaces were regenerated, and this limb
+// printed `ok — 2 rendered price(s) equal what the config declares` over a page
+// quoting $5.99 against a config saying 499. Both sides had been computed by the
+// mutant. That is the recorded assert-seams-wired.mjs shape — a check aimed at
+// its subject's own declaration — and the ONLY thing that removes it is deriving
+// the expected value here, from the file, with arithmetic written here. Only the
+// PATH is imported, for CANONICAL_HUB_URL's reason: a file that moves must take
+// its readers with it in one edit.
+let offeringsCompared = 0;
+{
+  const railPath = abs(RAIL_CONFIG);
+  let rail = null;
+  if (existsSync(railPath)) {
+    try {
+      rail = JSON.parse(readFileSync(railPath, 'utf8'));
+    } catch {
+      rail = null; // an unparseable config is planDiscovery's complaint, pushed above
+    }
+  }
+  const landingsCompared = new Set();
+
+  /** `amount_minor` as the page must render its digits. Written HERE on purpose:
+   *  the point of this limb is that two artefacts agree, and two artefacts that
+   *  share a formatter are one artefact. The SYMBOL is not asserted — a currency
+   *  glyph is presentation, and the number is the claim. */
+  const digits = (minor) => (minor / 100).toFixed(2);
+
+  for (const app of registry) {
+    if (!app || typeof app.slug !== 'string' || app.status !== 'live') continue;
+    const rel = `${APPS_DIR}/${app.slug}.html`;
+    const html = served.get(rel);
+    if (html === undefined) continue; // limb A reported it MISSING, naming the file
+    const declared = rail?.apps?.[app.slug]?.paywall?.offerings;
+    for (const o of Array.isArray(declared) ? declared : []) {
+      if (typeof o?.product_id !== 'string' || !o.product_id || !Number.isInteger(o.amount_minor)) {
+        // A malformed offering is the GENERATOR's complaint (it refuses to price
+        // it and says so). Skipping it here keeps one fault to one message.
+        continue;
+      }
+      offeringsCompared++;
+      // 🔴 RECORDED BEFORE THE COMPARISONS, NOT AFTER THEM, AND THAT ORDERING IS
+      // A FIXED BUG. It was `pricedLandings.add()` at the FOOT of this loop, so a
+      // landing whose price merely DISAGREED with the config never got added —
+      // and `coverageLost()` calls `process.exit(1)` immediately, before the
+      // `problems` report. Measured: the wrong-price mutation below printed only
+      // "COVERAGE LOST — subly carries no priced offering", swallowing the exact
+      // message ("carries data-offering=pro_monthly but not the amount 4.99")
+      // that says what to fix. The canary's question is "is this limb comparing
+      // anything at all?", never "does it agree?" — agreement is what `problems`
+      // is for, and the two must not be able to shadow each other.
+      landingsCompared.add(app.slug);
+      const marker = `data-offering="${o.product_id}"`;
+      if (!html.includes(marker)) {
+        problems.push(
+          `${rel} does not carry ${marker}, and ${RAIL_CONFIG} declares that offering for a LIVE app. The ` +
+            'landing is the page nikatru.com/<app> resolves to — a released app whose own page is silent about ' +
+            'what it costs sends the reader to look for the number somewhere else, which is where a wrong one ' +
+            'gets typed.',
+        );
+        continue;
+      }
+      if (!html.includes(digits(o.amount_minor))) {
+        problems.push(
+          `${rel} carries ${marker} but not the amount ${digits(o.amount_minor)} that ${RAIL_CONFIG} declares for it (amount_minor ${o.amount_minor}). A page ` +
+            'quoting a price the rail does not charge is the exact failure [5]M-11 puts prices in the config to ' +
+            'prevent, one surface further out — and this one is read by buyers and by a merchant of record.',
+        );
+        continue;
+      }
+    }
+  }
+
+  if (SCANNING_OWN_REPO) {
+    const unpriced = REQUIRED_PRICED_LANDINGS.filter((slug) => !landingsCompared.has(slug));
+    if (unpriced.length) {
+      coverageLost([
+        `${unpriced.length} of ${REQUIRED_PRICED_LANDINGS.length} canary landing(s) carry no priced offering at all: ${unpriced.join(', ')}.`,
+        'This limb compares prices, so a landing with NO price compares nothing and reports exactly what a',
+        'correct one reports — the state every generated landing was in before it existed. Either the',
+        `generator stopped emitting the pricing block, or the app's offerings left ${RAIL_CONFIG}, or the entry`,
+        'is no longer `live`. If one of those was deliberate, update REQUIRED_PRICED_LANDINGS in this file in',
+        'the same commit, naming the landings that remain priced.',
+      ]);
+    }
+  }
+}
+
 // ── E · THE OWNER-RESERVED AND DEFERRED GAPS, PRINTED EVERY RUN ─────────────
 // Printed and never failed, for [pipeline C-6]'s reason: each resolution is
 // either an owner decision or a requirement whose trigger has not fired, and a
@@ -342,7 +474,7 @@ for (const [rel, expected] of served) {
     const linksHub = /href\s*=\s*["']\/apps\/["']/.test(raw);
     if (!linksHub) {
       prints.push(
-        `UNLINKED HUB (owner decision, [12]D-12): ${ORIGIN}apps/ is generated, indexable and in the sitemap, ` +
+        `UNLINKED HUB (owner decision, [12]D-12): ${CANONICAL_HUB_URL} is generated, indexable and in the sitemap, ` +
           `and ${DEPLOY_ROOT}/index.html does not link to it. LINKING IT IS THE ANNOUNCEMENT DECISION — the ` +
           'same one check-site-integrity.mjs refuses to take about the homepage APPS array, on the stated ' +
           'grounds that a soft launch is a legitimate state and no decision record answers it. This ' +
@@ -616,7 +748,8 @@ console.log(
   `ok  discovery surface — ${registry.length} registry entr(ies), ${live.length} live; ` +
     `${compared} generated file(s) match a fresh run of tooling/sites/generate-discovery.mjs; ` +
     `${onDisk.size} landing/hub page(s) under ${APPS_DIR} ≡ the registry, plus ${NOT_GENERATED} (not generated, noindex, served); ` +
-    `${slotsScanned} page(s) slot-scanned with the canary intact; ${ldChecked} JSON-LD block(s) carry no fabricated rating`,
+    `${slotsScanned} page(s) slot-scanned with the canary intact; ${ldChecked} JSON-LD block(s) carry no fabricated rating; ` +
+    `${offeringsCompared} rendered price(s) equal what ${RAIL_CONFIG} declares`,
 );
 
 if (prints.length) {

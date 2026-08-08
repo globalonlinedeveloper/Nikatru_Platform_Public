@@ -17,18 +17,45 @@
 // `sites/_shared/_site/**` is explicitly NOT an acceptable subject for any
 // assertion about these surfaces.
 //
-// ── WHAT IT REFUSES TO INVENT ────────────────────────────────────────────────
-// Everything on a generated page comes from the registry entry or is fixed
-// chrome. Specifically NOT emitted, each with its reason:
+// ── THE THREE SOURCES, AND WHY EACH ONE IS A FILE AND NOT PROSE HERE ─────────
+// Everything on a generated page comes from one of these or is fixed chrome:
 //
-//   · `offers` / any price. [OWNER_QUEUE D-1] locks $4.99/month and $19.99/year,
-//     but `sites/nikatru/apps/_template.html:76` says `"priceCurrency": "INR"`
-//     and the two cannot both be right. Which currency the Paddle listing
-//     actually charges is UNVERIFIED from this repository, and
-//     `tooling/ci/assert-no-price-literals.mjs` bans a price literal in shipping
-//     source for exactly the reason that a hardcoded price is consistent with
-//     itself forever. So no price is written here at all. The guard PRINTS the
-//     gap every run.
+//   1. `sites/_shared/_data/apps.json`             — name, tagline, url, platforms, status
+//   2. `services/platform/src/app-config-data.json` — `apps.<slug>.features` and
+//      `apps.<slug>.paywall` (the offerings AND the on/off switch)
+//   3. `apps/<slug>/store/<channel>/long-description.txt` — the listing lede
+//
+// 🔴 SOURCE 2 IS THE RAIL CONFIG THE APP ITSELF IS SERVED, and that is the whole
+// reason the price may be written here now when the header used to say it may
+// not. [5]M-11's rule is *prices come from the rail config, never from app
+// code*; `sites/nikatru/pricing.html` already extends it to the marketing
+// surface (PR #196 — "PRICES ARE COPIED FROM THE RAIL CONFIG, NOT INVENTED"),
+// and this generator reads the same bytes rather than a second copy of them. So
+// a landing cannot say $4.99 while the checkout charges something else: there is
+// exactly one number, in one file, and both surfaces are functions of it.
+//
+// The old objection is answered rather than ignored. It was that
+// `sites/nikatru/apps/_template.html:76` says `"priceCurrency": "INR"` while
+// [OWNER_QUEUE D-1] locks USD, "and the two cannot both be right". They are not
+// two sources: `_template.html` is the hand-written placeholder file that this
+// same directory's guard scans for UNFILLED SLOTS — `[0 or price]` sits four
+// lines from that INR — so it is a fill-in-the-blank sheet, not a claim about
+// what anything charges. The config says `"currency_code": "USD"`, per offering,
+// as data.
+//
+// ── WHAT IT STILL REFUSES TO INVENT ──────────────────────────────────────────
+//   · a JSON-LD `offers` block. The VISIBLE price is derived; the STRUCTURED one
+//     stays out, and `assert-discovery-surface.mjs` limb D fails the build for
+//     it. Google's SoftwareApplication rich result needs `offers.price` AND
+//     `aggregateRating|review` together, so emitting `offers` buys a rich result
+//     only alongside a rating this factory must never synthesise — it would put
+//     a fabricated field on the host that also serves the store-required legal
+//     pages. The honest half is the half that ships.
+//   · what a FREE tier contains once `paywall.enabled` is true. While the switch
+//     is off the app is free in full, and the page says exactly that because it
+//     is derivable. Flip the switch and the free tier's contents become a
+//     product decision nothing in this repository declares, so the free card
+//     stops being emitted rather than start describing a plan nobody wrote.
 //   · `aggregateRating`. Forbidden outright: synthesising one is the fastest
 //     route to a structured-data manual action on the host that also serves the
 //     store-required privacy/terms/refund/delete-account pages.
@@ -74,6 +101,39 @@ export const SITEMAP = `${DEPLOY_ROOT}/sitemap.xml`;
 export const LLMS = `${DEPLOY_ROOT}/llms.txt`;
 export const ORIGIN = 'https://nikatru.com/';
 
+/** 🔴 THE ONE PLACE A PRICE EXISTS IN THIS REPOSITORY. `services/platform/src/
+ *  config.ts` serves these bytes to the app, `tooling/ci/assert-purchase-path.mjs`
+ *  reads the same offerings for [5]M-8/T-11's term and trial bounds, and
+ *  `sites/nikatru/pricing.html`'s numbers were copied out of it. Read it; never
+ *  retype a number out of it. */
+export const RAIL_CONFIG = 'services/platform/src/app-config-data.json';
+
+/** The owner-written price list. The generated landing links to it with the
+ *  visiting app's id attached (`?app=<slug>`) and carries a SUMMARY, not a
+ *  second copy of the page — one full price list, at one URL, is what a payment
+ *  processor's verification and a buyer both want. Linked only when the file is
+ *  actually on this deploy root, because check-site-integrity.mjs fails a link
+ *  to a page the root does not ship, and rightly. */
+export const PRICING_PAGE = `${DEPLOY_ROOT}/pricing.html`;
+export const PRICING_HREF = '/pricing.html';
+
+/** 🔴 THE CANONICAL HUB URL, DECLARED EXACTLY ONCE IN THIS REPOSITORY.
+ *
+ *  [12]W-2a/W-2c name ONE hub URL (knowledge/decisions/026-canonical-hub-url.md)
+ *  and three things now depend on the same bytes: the `<link rel="canonical">`
+ *  and JSON-LD `url` this generator writes into the hub page, the UNLINKED HUB
+ *  print in assert-discovery-surface.mjs, and [10]D-11 limb 3 in
+ *  assert-catalog-reachable.mjs, which requires that URL to answer 200 in
+ *  production.
+ *
+ *  It is a CONSTANT rather than a second literal in each of those places for the
+ *  reason this repository keeps paying for: a hostname written twice is a
+ *  hostname that can be changed once. A reachability guard probing a URL the
+ *  generator no longer publishes would go on printing ok about a page nobody
+ *  serves — the exact shape of `sites/_shared/_site/**`, where a write looked
+ *  "consumed" for a month. Import it; do not retype it. */
+export const CANONICAL_HUB_URL = `${ORIGIN}apps/`;
+
 /** The one file under `sites/nikatru/apps/` that is NOT generated. It is served
  *  in production right now — `nikatru.com/apps/_template` resolves, because the
  *  directory sits inside the Cloudflare deploy root — and it is correctly
@@ -99,6 +159,64 @@ const PLATFORM_NAMES = new Map([
   ['linux', 'Linux'],
   ['web', 'Web'],
 ]);
+
+/** Registry feature flag → the two strings a reader sees. Same shape and same
+ *  reason as PLATFORM_NAMES: a flag this map has never heard of FAILS rather
+ *  than being title-cased onto a public page, because `"reminders_v2": true` is
+ *  an internal switch name and printing it is how a landing starts describing a
+ *  capability in words nobody chose. Teaching the map is a one-line change made
+ *  by whoever turned the flag on — the only moment anyone knows what it means.
+ *
+ *  The wording is deliberately APP-NEUTRAL ("Set a budget", not "across all your
+ *  subscriptions"): one template serves every app in the factory, and copy that
+ *  reads well for Subly is copy that lies about app #2. */
+const FEATURE_NAMES = new Map([
+  ['renewals', ['Renewal reminders', 'You are told what renews, and when, before you are charged.']],
+  ['budgets', ['Budgets', 'Set a budget and see where you stand against it.']],
+  ['exports', ['Export your data', 'Take what you entered with you, whenever you want.']],
+]);
+
+/** The billing periods the rail sells, in the vocabulary the config already
+ *  uses. `assert-purchase-path.mjs:271` maps the SAME three ids to day counts
+ *  for [5]M-8's revocation bound, so this is not a second vocabulary — it is the
+ *  human rendering of the one that exists. An unknown term FAILS: "term":
+ *  "quarter" rendered as "/ quarter" would be a billing-frequency claim made by
+ *  a fallback branch. */
+const TERM_NAMES = new Map([
+  ['month', { unit: 'month', heading: 'Monthly', renews: 'Renews every month until you cancel.' }],
+  ['year', { unit: 'year', heading: 'Yearly', renews: 'Renews every year until you cancel.' }],
+  ['one_time', { unit: null, heading: 'One-time', renews: 'A single payment. Nothing renews.' }],
+]);
+
+/** Currency code → symbol. Absent ⇒ the page prints the ISO CODE next to the
+ *  amount (`AUD 4.99`), which is correct and readable — never a guessed glyph,
+ *  and never a bare number whose currency the reader has to assume. Only the two
+ *  codes this repository actually carries are mapped: USD in the rail config,
+ *  INR in `_template.html`'s placeholder sheet. */
+const CURRENCY_SYMBOLS = new Map([
+  ['USD', '$'],
+  ['INR', '₹'],
+]);
+
+/** The store channels a listing lede may come from, in the order they are tried.
+ *  NAMED and ordered rather than "whichever the directory walk hits first": the
+ *  generated bytes must be a function of the tree, and a filesystem's ordering
+ *  is not one. */
+const STORE_CHANNELS = ['android-play', 'ios-appstore', 'linux-snap', 'macos-appstore', 'windows-store'];
+
+/** A store listing's section heading, recognised by SHAPE and not by keyword.
+ *  Both the real listing and the brick template write their sections as a line
+ *  with no lower-case letters (`WHAT IT DOES`, `PRIVACY`, `WHAT YOU GET`), and
+ *  matching the shape means the rule survives a section this generator has never
+ *  seen. A keyword list would silently pass the whole listing through the day
+ *  someone writes `HOW IT WORKS`. */
+const STORE_HEADING = /^[^a-z]*[A-Z][^a-z]*$/;
+
+/** How many leading paragraphs of a listing the landing shows. A BOUND, not a
+ *  parse: a listing with no heading at all would otherwise put its sign-off line
+ *  and a bare support URL into the About section. Two is what both the real
+ *  Subly listing and the brick template put before their first heading. */
+const STORE_LEDE_PARAGRAPHS = 2;
 
 const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -134,7 +252,10 @@ const STYLE = `<style>
   .stores{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
   .store{display:inline-flex;align-items:center;text-decoration:none;font-weight:700;font-size:14px;padding:11px 20px;border-radius:11px;background:linear-gradient(90deg,var(--primary),var(--teal));color:#fff;border:0}
   .store:hover{filter:brightness(1.08)}
+  .store.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.20)}
+  .store.ghost:hover{background:rgba(255,255,255,.16);filter:none}
   section{padding:56px 0}
+  section+section{padding-top:0}
   h2{font-size:24px;font-weight:800;color:var(--strong);letter-spacing:-.01em;margin-bottom:14px}
   p{margin-bottom:12px;font-size:16px}
   ul.feat{margin:0 0 12px 20px}
@@ -143,9 +264,17 @@ const STYLE = `<style>
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px}
   .card h3{font-size:19px;color:var(--strong);margin-bottom:6px}
   .card p{color:var(--muted);font-size:15px;margin-bottom:10px}
+  .card .amount{color:var(--strong);font-size:27px;font-weight:800;letter-spacing:-.02em;margin-bottom:2px}
+  .card .amount small{font-size:14.5px;font-weight:600;color:var(--muted);letter-spacing:0}
+  .trial{display:inline-block;background:var(--teal);color:#04231C;font-size:11px;font-weight:800;letter-spacing:.06em;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .note{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:16px 20px;color:var(--muted);font-size:15px;margin-top:16px}
+  .note p{margin:0;font-size:15px}
+  .note p+p{margin-top:8px}
   .privacy{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;margin-top:8px}
   .privacy b{color:var(--strong)}
   .privacy p{color:var(--muted);font-size:15px;margin:6px 0 0}
+  .privacy ul{margin:10px 0 0 20px}
+  .privacy li{color:var(--muted);font-size:15px;margin-bottom:6px}
   footer{background:#0B1220;color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px}
   footer a{color:#B6C2D9;text-decoration:none;margin:0 7px}
   footer a:hover{color:#fff}
@@ -195,7 +324,161 @@ function platformNames(app, problems) {
   return out;
 }
 
-function landingHtml(app, problems) {
+// ── source 2 · the rail config ───────────────────────────────────────────────
+
+/** Parse `RAIL_CONFIG` once per run, or null when this tree has no rail.
+ *
+ *  🔴 ABSENT IS NOT A PROBLEM; UNPARSEABLE IS. The generator's one REQUIRED
+ *  input is the registry — a tree carrying `sites/` and nothing else (every
+ *  guard fixture) must still generate — so a missing file degrades to a page
+ *  with no commerce sections. A file that is PRESENT and cannot be read is the
+ *  opposite case and it fails, because it is the one shape where the pricing
+ *  silently vanishes from a tree that has prices.
+ *
+ *  Neither branch is the real protection against the sections quietly going
+ *  away, and this comment must not be read as if it were: that is
+ *  `assert-discovery-surface.mjs` limb G, which requires the SERVED page to
+ *  carry a `data-offering` for every offering the config declares, and reports
+ *  COVERAGE LOST when it finds no offering at all to compare in this repository. */
+export function readRailConfig(repoRoot, problems) {
+  const p = join(repoRoot, ...RAIL_CONFIG.split('/'));
+  if (!existsSync(p)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(p, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (e) {
+    problems.push(
+      `${RAIL_CONFIG} exists but is not valid JSON — ${e.message}. It is the ONE place a price lives in this ` +
+        'repository, so an unreadable one takes the price off every generated landing while leaving the ' +
+        'pages themselves looking finished.',
+    );
+    return null;
+  }
+}
+
+const money = (amountMinor, code) => {
+  const amount = (amountMinor / 100).toFixed(2);
+  const symbol = CURRENCY_SYMBOLS.get(code);
+  return symbol ? `${symbol}${amount}` : `${code} ${amount}`;
+};
+
+/** Zero, in the same currency, without the minor units — there are none to show
+ *  and `$0.00` reads as a rounding, not as free. */
+const zero = (code) => {
+  const symbol = CURRENCY_SYMBOLS.get(code);
+  return symbol ? `${symbol}0` : `${code} 0`;
+};
+
+/**
+ * The commerce facts for one app: its enabled features, its offerings, and
+ * whether the paywall switch is on.
+ *
+ * An app with no key under `apps` is SERVED the defaults — `RAIL_CONFIG`'s own
+ * `_readme` says so — and the defaults declare no features and no offerings, so
+ * "absent" and "present but empty" render identically. Neither invents a plan.
+ *
+ * @returns {{features: {flag: string, title: string, blurb: string}[],
+ *            offerings: {id: string, amount: string, code: string, term: object, trialDays: number}[],
+ *            paywallEnabled: boolean}}
+ */
+export function commerceFor(rail, slug, problems) {
+  const empty = { features: [], offerings: [], paywallEnabled: false };
+  if (!rail) return empty;
+  const entry = rail.apps && typeof rail.apps === 'object' ? rail.apps[slug] : undefined;
+  const defaults = rail.defaults ?? {};
+  const flags = entry?.features ?? defaults.features ?? {};
+  const paywall = entry?.paywall ?? defaults.paywall ?? {};
+  const where = `${RAIL_CONFIG}: apps.${slug}`;
+
+  const features = [];
+  for (const [flag, on] of Object.entries(flags)) {
+    if (on !== true) continue;
+    const named = FEATURE_NAMES.get(flag);
+    if (named === undefined) {
+      problems.push(
+        `${where}.features enables ${JSON.stringify(flag)}, and this generator has no reader-facing name for ` +
+          'it. Add one to FEATURE_NAMES in tooling/sites/generate-discovery.mjs — the alternative is a public ' +
+          'page describing the product with an internal switch name, which is the same defect PLATFORM_NAMES ' +
+          'exists to prevent one field over.',
+      );
+      continue;
+    }
+    features.push({ flag, title: named[0], blurb: named[1] });
+  }
+
+  const offerings = [];
+  for (const o of Array.isArray(paywall.offerings) ? paywall.offerings : []) {
+    const id = typeof o?.product_id === 'string' && o.product_id ? o.product_id : null;
+    const code = typeof o?.currency_code === 'string' && o.currency_code ? o.currency_code : null;
+    const term = TERM_NAMES.get(o?.term);
+    const ok =
+      id !== null && code !== null && term !== undefined && Number.isInteger(o.amount_minor) && o.amount_minor >= 0;
+    if (!ok) {
+      problems.push(
+        `${where}.paywall.offerings carries an entry this generator will not put a price on: ` +
+          `${JSON.stringify({ product_id: o?.product_id, amount_minor: o?.amount_minor, currency_code: o?.currency_code, term: o?.term })}. ` +
+          'It needs a non-empty `product_id`, a non-empty `currency_code`, an integer `amount_minor` >= 0, and a ' +
+          `\`term\` among ${[...TERM_NAMES.keys()].join(', ')} (the same three assert-purchase-path.mjs maps to ` +
+          'day counts for [5]M-8). A rendered price is a number a stranger is asked to pay; there is no ' +
+          'best-effort branch for it.',
+      );
+      continue;
+    }
+    offerings.push({
+      id,
+      code,
+      amount: money(o.amount_minor, code),
+      term,
+      trialDays: Number.isInteger(o.trial_days) && o.trial_days > 0 ? o.trial_days : 0,
+    });
+  }
+  return { features, offerings, paywallEnabled: paywall.enabled === true };
+}
+
+// ── source 3 · the store listing lede ────────────────────────────────────────
+
+/**
+ * The opening paragraphs of an app's store listing — the copy that answers
+ * "what does this thing do" in the app's own published words, written once for
+ * a store reviewer and reused rather than rewritten for the web.
+ *
+ * ⚠️ NOTHING HERE SANITISES THE COPY, and that is deliberate. A listing that
+ * still carries a `[bracketed slot]` will land it on the page and
+ * `assert-discovery-surface.mjs` limb C fails the build naming the page — which
+ * is the correct outcome and one that already has a guard. A skip-if-bracketed
+ * branch here would swallow that signal and quietly publish a shorter page.
+ *
+ * @returns {{source: string, paragraphs: string[]}|null}
+ */
+export function storeLede(repoRoot, slug) {
+  for (const channel of STORE_CHANNELS) {
+    const rel = `apps/${slug}/store/${channel}/long-description.txt`;
+    const p = join(repoRoot, ...rel.split('/'));
+    if (!existsSync(p)) continue;
+    const paragraphs = [];
+    let current = [];
+    const flush = () => {
+      if (current.length) paragraphs.push(current.join(' '));
+      current = [];
+    };
+    for (const raw of readFileSync(p, 'utf8').split('\n')) {
+      const line = raw.trim();
+      if (STORE_HEADING.test(line)) break; // a section heading: the lede is over
+      if (line === '') {
+        flush();
+        if (paragraphs.length >= STORE_LEDE_PARAGRAPHS) break;
+        continue;
+      }
+      current.push(line);
+    }
+    flush();
+    const out = paragraphs.slice(0, STORE_LEDE_PARAGRAPHS).filter((s) => s !== '');
+    if (out.length) return { source: rel, paragraphs: out };
+  }
+  return null;
+}
+
+function landingHtml(app, ctx, problems) {
   const live = app.status === 'live';
   const url = `${ORIGIN}apps/${app.slug}.html`;
   const names = platformNames(app, problems);
@@ -229,18 +512,105 @@ function landingHtml(app, problems) {
 `
     : '';
 
-  const openButton =
-    live && typeof app.url === 'string' && app.url
-      ? `    <div class="stores">
-      <a class="store" href="${esc(app.url)}">Open ${esc(app.name)}</a>
+  // 🔴 EVERY DERIVED SECTION BELOW IS GATED ON `live`, AND THE GATE IS THE
+  // SAME ONE THE HUB AND llms.txt ALREADY USE. A page for an app that has not
+  // been released describes something a reader cannot get; a price on it is a
+  // promise to a stranger with no checkout behind it. Status changes what the
+  // page SAYS, never whether the page exists — the property the existing
+  // noindex/canonical/sitemap treatment already has, extended to the commerce
+  // half rather than given a second rule of its own.
+  const { features, offerings, paywallEnabled } = live
+    ? commerceFor(ctx.rail, app.slug, problems)
+    : { features: [], offerings: [], paywallEnabled: false };
+  const lede = live ? storeLede(ctx.repoRoot, app.slug) : null;
+
+  // The app id travels on the query string so the price list can attribute a
+  // checkout back to the landing it came from. `pricing.html` reads it, validates
+  // it, and stamps it; nothing here depends on that happening.
+  const pricingHref = `${PRICING_HREF}?app=${app.slug}`;
+  const pricingLink = offerings.length > 0 && ctx.pricingPage;
+
+  const buttons = [];
+  if (live && typeof app.url === 'string' && app.url) {
+    buttons.push(`<a class="store" href="${esc(app.url)}">Open ${esc(app.name)}</a>`);
+  }
+  if (pricingLink) buttons.push(`<a class="store ghost" href="${esc(pricingHref)}">See pricing</a>`);
+  const openButton = buttons.length
+    ? `    <div class="stores">
+${buttons.map((b) => `      ${b}`).join('\n')}
     </div>
 `
-      : '';
+    : '';
 
   const statusNote = live
     ? ''
     : `      <p>This app is not released yet. Its registry status is <b>${esc(app.status ?? 'unknown')}</b>, so this page is not indexed and there is nothing to open.</p>
 `;
+
+  // The tagline already sits under the <h1>. Repeating it as prose is only worth
+  // the line when there is nothing else to say about the app.
+  const ledeParagraphs = lede ? lede.paragraphs.map((t) => `      <p>${esc(t)}</p>\n`).join('') : '';
+  const studioLine = lede
+    ? `${esc(app.name)} is an app by Nikatru, an independent studio in Chennai, Tamil Nadu, India.`
+    : `${esc(app.name)} is an app by Nikatru, an independent studio in Chennai, Tamil Nadu, India. ${esc(app.tagline)}.`;
+
+  const featureSection = features.length
+    ? `
+  <section>
+    <div class="wrap">
+      <h2>What you get</h2>
+      <ul class="feat">
+${features.map((f) => `        <li><b>${esc(f.title)}.</b> ${esc(f.blurb)}</li>`).join('\n')}
+      </ul>
+    </div>
+  </section>
+`
+    : '';
+
+  // The free card exists only while the paywall switch is OFF, when "free" is a
+  // fact about the whole app rather than a description of a tier nobody wrote.
+  // See the header. The currency is the first offering's, because that is the
+  // currency the reader is about to see beside it.
+  //
+  // ⚠️ `offerings.length` IS PART OF THE CONDITION, NOT AN ACCIDENT OF THE CALLER.
+  // This string is built eagerly and only USED inside the pricing section, so
+  // relying on that section's own `offerings.length` guard left
+  // `offerings[0].code` dereferencing undefined. Found by emptying subly's
+  // `offerings` array in the rail config, which crashed the generator outright
+  // (TypeError, no page written) — a configuration a live app can be in the day
+  // its paywall entry is edited.
+  const freeCard = paywallEnabled || offerings.length === 0
+    ? ''
+    : `        <div class="card">
+          <h3>Free</h3>
+          <div class="amount">${zero(offerings[0].code)}</div>
+          <p>Paid plans are not open yet, so every part of ${esc(app.name)} is free to use today.</p>
+        </div>
+`;
+  const currencies = [...new Set(offerings.map((o) => o.code))];
+  const pricingSection = offerings.length
+    ? `
+  <section>
+    <div class="wrap">
+      <h2>Pricing</h2>
+      <div class="cards">
+${freeCard}${offerings
+        .map(
+          (o) => `        <div class="card" data-offering="${esc(o.id)}">
+          <h3>${esc(o.term.heading)}</h3>
+${o.trialDays ? `          <span class="trial">${o.trialDays}-DAY FREE TRIAL</span>\n` : ''}          <div class="amount">${o.amount}${o.term.unit ? ` <small>/ ${esc(o.term.unit)}</small>` : ''}</div>
+          <p>${esc(o.term.renews)}</p>
+        </div>`,
+        )
+        .join('\n')}
+      </div>
+      <div class="note">
+        <p>${currencies.length === 1 ? `Prices are shown in ${esc(currencies[0])}.` : `Prices are shown in ${esc(currencies.join(', '))}.`} Tax is added at checkout where your country requires it.</p>
+${paywallEnabled ? '' : `        <p>Paid checkout is not open yet. These are the plans ${esc(app.name)} will charge for; nothing can be bought today.</p>\n`}      </div>
+${pricingLink ? `      <p><a href="${esc(pricingHref)}">See the full price list</a></p>\n` : ''}    </div>
+  </section>
+`
+    : '';
 
   return `<!DOCTYPE html>
 ${BANNER}
@@ -275,13 +645,23 @@ ${openButton}  </div>
   <section>
     <div class="wrap">
       <h2>About ${esc(app.name)}</h2>
-      <p>${esc(app.name)} is an app by Nikatru, an independent studio in Chennai, Tamil Nadu, India. ${esc(app.tagline)}.</p>
+${ledeParagraphs}      <p>${studioLine}</p>
       <p>${platformSentence}</p>
-${statusNote}      <div class="privacy">
-        <b>Privacy</b>
-        <p>What ${esc(app.name)} collects, why, and how to have it deleted is set out in the
-        <a href="/privacy.html">Privacy Policy</a> and the
-        <a href="/delete-account.html">account deletion page</a>.</p>
+${statusNote}    </div>
+  </section>
+${featureSection}${pricingSection}
+  <section>
+    <div class="wrap">
+      <h2>Privacy, terms and refunds</h2>
+      <div class="privacy">
+        <b>The four pages that govern using and buying ${esc(app.name)}</b>
+        <p>These apply to every purchase, and they are the same documents a store reviewer opens.</p>
+        <ul>
+          <li><a href="/privacy.html">Privacy Policy</a> &mdash; what ${esc(app.name)} collects and why.</li>
+          <li><a href="/terms.html">Terms of Service</a> &mdash; who you are contracting with.</li>
+          <li><a href="/refund.html">Refund &amp; Cancellation Policy</a> &mdash; cancelling, and what is refundable.</li>
+          <li><a href="/delete-account.html">Delete your account</a> &mdash; how to have your data removed.</li>
+        </ul>
       </div>
     </div>
   </section>
@@ -294,7 +674,7 @@ ${FOOTER}
 }
 
 function hubHtml(liveApps) {
-  const url = `${ORIGIN}apps/`;
+  const url = CANONICAL_HUB_URL;
   const cards = liveApps.length
     ? `      <div class="cards">
 ${liveApps
@@ -547,9 +927,18 @@ export function planDiscovery(repoRoot) {
     usable.push(app);
   }
 
+  // The two sources beyond the registry, read ONCE for the whole run: the rail
+  // config every landing prices itself from, and whether this deploy root
+  // actually ships the price list a landing would otherwise link into a 404.
+  const ctx = {
+    repoRoot,
+    rail: readRailConfig(repoRoot, problems),
+    pricingPage: existsSync(join(repoRoot, ...PRICING_PAGE.split('/'))),
+  };
+
   const live = usable.filter((a) => a.status === 'live');
   for (const app of usable) {
-    files.set(`${APPS_DIR}/${app.slug}.html`, landingHtml(app, problems));
+    files.set(`${APPS_DIR}/${app.slug}.html`, landingHtml(app, ctx, problems));
   }
   files.set(`${APPS_DIR}/index.html`, hubHtml(live));
 

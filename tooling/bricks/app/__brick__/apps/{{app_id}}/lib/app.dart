@@ -221,13 +221,53 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
     super.dispose();
   }
 
+  // 🔴 FOUR STATES, AND `inactive` IS THE ONE THAT COVERS DESKTOP — [11]E-4a.
+  //
+  // Read off dart:ui's own documentation of the enum, not off habit:
+  //   · `paused`  — "This state is only entered on iOS and Android."
+  //   · `detached`— entered on iOS, Android and web.
+  //   · `hidden`  — on non-web desktop this means MINIMIZED or moved to a
+  //                 desktop that is no longer visible. Closing a window is not
+  //                 minimizing it.
+  //   · `inactive`— on non-web desktop, "an application that is not in the
+  //                 foreground, but still has visible windows".
+  // So on Windows, macOS and Linux the previous three-state set fired on exactly
+  // one path — minimize — and never on the way out of the app. `inactive` is the
+  // last edge a desktop app reliably reports before the process ends.
+  //
+  // ⚠️ THE MOBILE COST, MEASURED RATHER THAN WAVED AWAY. On iOS and Android
+  // `inactive` also fires on transient interruptions: the notification shade,
+  // the app switcher, a phone call, a system dialog, split screen. Two things
+  // bound what that costs:
+  //   1. `flush()` returns immediately on an empty queue, so an interruption
+  //      with nothing queued costs nothing at all — no request, no wakeup.
+  //   2. When there IS something queued, the worst case is one request per
+  //      event, which is the same ceiling `batchSize: 1` would have. Each event
+  //      still ships at most once; the sink dedups on `event_id` regardless.
+  // Against that: on mobile the framework synthesizes `inactive` → `hidden` →
+  // `paused` on every backgrounding, so for the ordinary background transition
+  // this does not ADD a request — it moves the same one earlier, before the OS
+  // has a chance to freeze the process mid-POST.
+  //
+  // Not gated behind a platform check on purpose. A `Platform.isWindows` branch
+  // in the chassis would buy a bounded saving on transient mobile interruptions
+  // at the price of a per-platform behaviour in the one file every stamped app
+  // inherits — the same trade `AnalyticsRecorder` records for refusing a
+  // connectivity probe: one behaviour on all six platforms, no plugin, no
+  // branch.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
       // Fire-and-forget: the framework will not wait, and a failed send just
       // leaves the batch queued for next launch.
+      //
+      // This is the BEST-EFFORT half of delivery, and it is not sufficient on
+      // its own — a page unload beats an unawaited POST, and a killed process
+      // reports nothing at all. The guarantee lives in core's
+      // `kFlushInterval` deadline; this only makes the common case earlier.
       ref.read(analyticsProvider).valueOrNull?.flush();
     }
   }
@@ -275,11 +315,16 @@ class _ConsentPrompt extends ConsumerWidget {
     return Positioned.fill(
       child: ColoredBox(
         color: Colors.black54,
+        // KEEPS `Center`, takes only the WIDTH from the chassis. This is a
+        // modal scrim over a dimmed app: sitting in the middle of the screen is
+        // the design, not an accident, so `ContentPane` (which pins to the top)
+        // would be the wrong primitive here. The 420 literal is gone either
+        // way — that was the copy, repeated in five other files.
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
               child: Material(
                 color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(20),

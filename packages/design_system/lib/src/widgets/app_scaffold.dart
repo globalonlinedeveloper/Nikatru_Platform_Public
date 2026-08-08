@@ -53,6 +53,47 @@ class AppBreakpoints {
   /// [kMaxBodyWidth]. A line of text 1400 px wide is unreadable, so "more
   /// pixels" stops meaning "wider content" somewhere, and this is where.
   static const double kMaxBodyWidth = 1280;
+
+  // ── CONTENT WIDTHS ─────────────────────────────────────────────────────────
+  //
+  // The four numbers above answer "WHICH NAVIGATION?". The three below answer a
+  // different question — "how wide may this CONTENT get?" — and they are here
+  // rather than in a second class because both are the same kind of decision:
+  // a width the chassis owns so that fifty apps do not each pick one.
+  //
+  // 🔴 WHY THEY EXIST AT ALL. `420` was hand-copied into SIX separate widgets
+  // (two design-system gates, the consent scrim, both auth screens, the
+  // paywall's `480`). Six copies is not a shared decision — it is six private
+  // ones that happen to agree today, and the first app that widens its sign-in
+  // form leaves the other five behind with nothing red to say so. A named
+  // constant makes the agreement checkable; a literal only makes it likely.
+
+  /// A single-column FORM or short blocking card: sign-in, sign-up, the consent
+  /// prompt, the update wall.
+  ///
+  /// 420 is roughly a phone's width plus its gutters, which is the point: a
+  /// form wider than this puts the label and its field so far apart that the
+  /// eye has to travel between them, and text inputs stop reading as a stack.
+  /// It is also the number this repo had already converged on six times over,
+  /// so adopting it changes no pixels — the change is that it is now ONE
+  /// number.
+  static const double form = 420;
+
+  /// A CARD or side panel that holds more than a form but is still a component
+  /// rather than a page: the paywall's plan list, a detail pane.
+  ///
+  /// 480 buys one more element per row than [form] (two buttons side by side,
+  /// a price beside its label) without becoming a page in its own right.
+  static const double pane = 480;
+
+  /// Continuous PROSE — legal copy, release notes, help text, onboarding body.
+  ///
+  /// The typographic rule of thumb is 45–75 characters per line before the eye
+  /// starts losing the line return; at this package's body size that lands near
+  /// 720. This is the same reasoning as [kMaxBodyWidth] applied one level down:
+  /// [kMaxBodyWidth] stops a whole PAGE sprawling, [reading] stops a PARAGRAPH
+  /// sprawling inside a page that is legitimately wide.
+  static const double reading = 720;
 }
 
 /// The five window classes, so callers (and tests) can name one rather than
@@ -84,6 +125,7 @@ class AppScaffold extends StatelessWidget {
     required this.body,
     this.title,
     this.floatingActionButton,
+    this.compactNavigationBar,
   }) : assert(destinations.length >= 2,
             'AppScaffold needs at least 2 destinations');
 
@@ -104,6 +146,27 @@ class AppScaffold extends StatelessWidget {
 
   /// Optional floating action button.
   final Widget? floatingActionButton;
+
+  /// Replaces the default bottom [NavigationBar] in the COMPACT window class,
+  /// and only there.
+  ///
+  /// 🔴 THIS IS THE SEAM, AND ITS NARROWNESS IS THE POINT. A branded app wants
+  /// its own bottom bar — a custom shape, a centre docked action, a badge the
+  /// chassis knows nothing about. Without a seam it has exactly two options:
+  /// accept the stock bar, or stop using [AppScaffold] and hand-roll the whole
+  /// adaptive shell. The second is what actually happens, and the app then owns
+  /// the breakpoints too — so it inherits the 640-instead-of-600 class of bug
+  /// privately, in a file nobody audits, fifty times over.
+  ///
+  /// So: the app supplies the compact BAR, the chassis keeps the DECISION about
+  /// when a bar is the right control at all. Rail and drawer stay chassis-owned
+  /// on purpose — they are the widths where the layout question is hard and the
+  /// branding payoff is smallest, and leaving them open would let an app render
+  /// a bottom bar at 1600px, which is the layout this class exists to prevent.
+  ///
+  /// Null (the default) keeps the stock [NavigationBar], so this costs nothing
+  /// to ignore.
+  final Widget? compactNavigationBar;
 
   @override
   Widget build(BuildContext context) {
@@ -136,18 +199,22 @@ class AppScaffold extends StatelessWidget {
       appBar: _appBar(),
       body: SafeArea(child: body),
       floatingActionButton: floatingActionButton,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onDestinationSelected,
-        destinations: <Widget>[
-          for (final AppDestination d in destinations)
-            NavigationDestination(
-              icon: Icon(d.icon),
-              selectedIcon: Icon(d.selectedIcon),
-              label: d.label,
-            ),
-        ],
-      ),
+      // The app's own bar when it supplied one — see [compactNavigationBar].
+      // Reached ONLY from here, so a custom bar cannot leak into the rail or
+      // drawer classes.
+      bottomNavigationBar: compactNavigationBar ??
+          NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: onDestinationSelected,
+            destinations: <Widget>[
+              for (final AppDestination d in destinations)
+                NavigationDestination(
+                  icon: Icon(d.icon),
+                  selectedIcon: Icon(d.selectedIcon),
+                  label: d.label,
+                ),
+            ],
+          ),
     );
   }
 

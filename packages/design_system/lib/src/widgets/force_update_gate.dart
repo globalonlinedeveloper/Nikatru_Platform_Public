@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_scaffold.dart' show AppBreakpoints;
 
 /// A blocking gate that replaces the app with an "update required" screen when
 /// [mustUpdate] is true, otherwise shows [child]. The force-update DECISION
@@ -39,9 +40,15 @@ class ForceUpdateGate extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
+        // KEEPS `Center`, and takes only the WIDTH from the chassis. This is
+        // one of the three shapes where vertical centring is the design rather
+        // than an accident: the screen is otherwise empty and the card is the
+        // only thing on it, so it belongs in the middle. A `ContentPane` here
+        // would pin an update wall to the top of a blank screen. The literal
+        // 420 is gone either way — that was the copy.
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(

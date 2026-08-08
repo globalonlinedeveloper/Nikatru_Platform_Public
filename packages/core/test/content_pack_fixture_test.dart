@@ -1,3 +1,13 @@
+// [pipeline K-15] VM-ONLY, AND IT NOW HAS TO SAY SO. This test reads a real
+// signed pack off DISK through `dart:io`, which no browser can do.
+// `workspace_gate` also runs `dart test -p chrome` over this package (for the
+// GPC web arm, which the VM cannot reach at all), and there an unannotated
+// dart:io test is a compile FAILURE rather than a skip. The annotation states
+// the platform this file was always about; it removes no coverage — `dart test`
+// defaults to the VM, so the VM lane still runs every case below.
+@TestOn('vm')
+library;
+
 import 'dart:convert';
 import 'dart:io';
 

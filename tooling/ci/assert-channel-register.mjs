@@ -44,12 +44,25 @@
 //   6. the AGGREGATING JOB's `needs` equals every other job in its workflow —
 //      the "never a partial set" half. Parsed structurally, comments stripped.
 //   7. disqualified channels name a LOCKED ADR that exists on disk
+//   6d. a `signing.*` block carrying a `notYetConfiguredSentinel` — a pinned
+//      certificate fingerprint or public key — is complete, dated and sourced.
+//      Every field still on the sentinel means NOT YET CONFIGURED: a SERVED row
+//      FAILS, a deferred row PRINTS. SOME fields real and some still sentinel
+//      FAILS either way, because a half-filled identity ships cleanly under the
+//      wrong name. Added 2026-08-08 with the windows-direct and linux-appimage
+//      pins, so that neither landed as a field nothing reads — the defect this
+//      register records catching on `uploadCertificate.alias`.
 //   8. [9]R-3 LIMB 2 — every `${{ secrets.X }}` a workflow names is DECLARED in
 //      the register, as signing material on a row or as non-signing with a
 //      reason. An undeclared name FAILS; a declared name no lane uses PRINTS.
 //      This was the open clause: until 2026-08-06 nothing in the tree read
 //      `signing.ciSecrets`, so the register documented the secrets without
 //      being an authority over them.
+//   8b. and every DECLARED signing secret carries a written `why`, the same
+//      requirement `ciSecretRegister.nonSigning` entries have always had. The
+//      partition had the rule on one side only, so for any row §9 cannot reach
+//      — every non-Android row — pasting a name into `signing.ciSecrets.names`
+//      silenced limb 2 with no reason recorded and nothing to review.
 //   9. [9]R-3 REGISTER ↔ GRADLE — the same declaration compared to the REAL
 //      `apps/*/android/app/build.gradle.kts`, which is where the signing
 //      identity is actually read. Section 8 compares the register to the
@@ -233,10 +246,17 @@ const isPinned = (k) => Object.hasOwn(versions, k) && typeof versions[k] === 'st
 
 const seenIds = new Set();
 const workflowCache = new Map();
+/** Where CI's committed manifest lives. Declared HERE, beside the parser that
+ *  reads it, because the `submission.recipeScript` check below names it and runs
+ *  hundreds of lines before section 8 — where this used to be declared. */
+const WORKFLOW_DIR = '.github/workflows';
 /** [10]D-10 limb (i): how many `submission` blocks were resolved all the way to
  *  a job that actually runs the named script. Zero, with blocks declared, means
  *  the resolution stopped reaching them — see the self-check after the loop. */
 let submissionsResolved = 0;
+/** The same accounting for `submission.recipeScript` — a packaging step that is
+ *  declared and actually invoked by a workflow. */
+let packagingResolved = 0;
 
 /** Parse a workflow's job names structurally. Comments are stripped first: this
  *  repo has shipped the "matched the prose describing the check" defect twice,
@@ -277,6 +297,30 @@ function workflow(rel) {
   }
   workflowCache.set(rel, parsed);
   return parsed;
+}
+
+/** Which tracked workflows actually invoke `scriptRel`, anywhere in any job.
+ *
+ *  Comments are blanked first, both full-line and trailing — the same reduction
+ *  `workflow()` above performs, and for the same reason this file has already
+ *  paid for twice: a commented-out step and a comment ABOUT a step read
+ *  identically to a bare text scan, so prose would satisfy the check. The match
+ *  is on the path as written, which is how every workflow in this repo invokes a
+ *  tooling script; a computed path would not be comparable to the register at
+ *  all, which is the same objection section 8 raises against `secrets[…]`. */
+function workflowsInvoking(scriptRel) {
+  const dir = abs(WORKFLOW_DIR);
+  if (!existsSync(dir)) return [];
+  const hits = [];
+  for (const entry of listDir(dir)) {
+    if (!/\.ya?ml$/.test(entry)) continue;
+    const rel = `${WORKFLOW_DIR}/${entry}`;
+    const raw = read(rel);
+    if (raw === null) continue;
+    const stripped = raw.replace(/^\s*#.*$/gm, '').replace(/\s#.*$/gm, '');
+    if (stripped.includes(scriptRel)) hits.push(rel);
+  }
+  return hits;
 }
 
 for (const c of channels) {
@@ -442,6 +486,41 @@ for (const c of channels) {
           `${where} names submission script "${script}", which does not exist. The register would keep pointing at a release path somebody deleted, and the first person to find out is the one submitting.`,
         );
       }
+      // ── an OPTIONAL packaging step, when a channel needs one before it can
+      //    submit anything at all ──────────────────────────────────────────────
+      // `script` is the submission verb; `recipeScript` is the packaging input
+      // that verb consumes, and it exists because the Snap channel's recipe is
+      // GENERATED rather than committed. It is checked in the same two ways —
+      // it must be there, and something must RUN it — but the workflow it has to
+      // be run by is deliberately NOT the submission one: the recipe is produced
+      // in the build lane beside the bundle it describes, and the upload happens
+      // somewhere else entirely. Requiring `sub.job` to invoke it would demand a
+      // wiring that would be wrong.
+      //
+      // 🔴 THE "SOMETHING RUNS IT" HALF IS THE POINT. Without it this field
+      // would be a way to SILENCE the orphan check below — declare the path,
+      // never call it, and a release script nothing exercises reads as wired.
+      // That is the failure this whole section exists to prevent, so the field
+      // that could reintroduce it carries the stronger of the two checks.
+      const recipeScript = sub.recipeScript;
+      if (recipeScript !== null && recipeScript !== undefined) {
+        if (typeof recipeScript !== 'string' || recipeScript.trim() === '') {
+          problems.push(`${where} declares a \`submission.recipeScript\` that is not a non-empty path.`);
+        } else if (!existsSync(join(ROOT, recipeScript))) {
+          problems.push(
+            `${where} names packaging script "${recipeScript}", which does not exist. The register would keep pointing at a release path somebody deleted, and the first person to find out is the one submitting.`,
+          );
+        } else {
+          const runners = workflowsInvoking(recipeScript);
+          if (runners.length === 0) {
+            problems.push(
+              `${where} names packaging script "${recipeScript}" and no workflow in ${WORKFLOW_DIR} invokes it. A packaging step nothing runs cannot fail a build, so the recipe it produces is never exercised and the submission path is wired to a script that has only ever run by hand.`,
+            );
+          } else {
+            packagingResolved++;
+          }
+        }
+      }
       if (typeof sub.workflow !== 'string' || typeof sub.job !== 'string') {
         problems.push(
           `${where} declares a \`submission\` with no {workflow, job}. "Resolves to a step in a workflow" is the half of limb (i) that stops a script from existing in a directory nobody runs.`,
@@ -557,8 +636,16 @@ for (const c of channels) {
 // apparent coverage — so it was re-pointed at something that can.
 const RELEASE_DIR = 'tooling/release';
 if (existsSync(join(ROOT, RELEASE_DIR))) {
+  // BOTH declared script fields. `recipeScript` is admitted here only because
+  // the block above holds it to a STRONGER standard than `script` — a workflow
+  // has to actually invoke it — so it cannot be used as a way to declare a path
+  // into silence. Admitting it on the strength of the declaration alone would
+  // turn this orphan check into an opt-out, which is precisely what it exists
+  // to refuse.
   const declaredScripts = new Set(
-    channels.map((c) => c.submission?.script).filter((s) => typeof s === 'string' && s.trim() !== ''),
+    channels
+      .flatMap((c) => [c.submission?.script, c.submission?.recipeScript])
+      .filter((s) => typeof s === 'string' && s.trim() !== ''),
   );
   for (const entry of listDir(join(ROOT, RELEASE_DIR))) {
     if (!entry.endsWith('.mjs')) continue;
@@ -571,6 +658,9 @@ if (existsSync(join(ROOT, RELEASE_DIR))) {
 }
 if (submissionsResolved > 0) {
   ok(`${submissionsResolved} submission path(s) resolve to a workflow job that runs the named script [10]D-10 limb (i)`);
+}
+if (packagingResolved > 0) {
+  ok(`${packagingResolved} packaging script(s) declared on a submission block and invoked by a workflow`);
 }
 
 // ── 3b. what the lane EMITS vs what the channel ACCEPTS ──────────────────────
@@ -1053,6 +1143,123 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
   }
 }
 
+// ── 6d. SIGNING-MATERIAL PINS: the fingerprint a row commits to ──────────────
+//
+// 🔴 WHY A PIN NEEDS A GUARD AT ALL, IN THIS REGISTER'S OWN WORDS. The Play row
+// pins its upload certificate's SHA-256 and says what that buys: "a secret
+// quietly swapped for a different-but-valid keystore — a copy-paste between
+// repositories, a half-applied rotation, a restore from the wrong backup —
+// passes every other check and fails AT THE STORE". The Windows-direct and
+// AppImage rows have the same exposure and worse recovery (a purchased
+// certificate cannot be reissued by a gatekeeper; an `own-signing-key` has no
+// gatekeeper at all), so on 2026-08-08 they acquired the same kind of pin.
+//
+// 🔴 AND WHY THE PIN NEEDS ITS OWN READER. This file already records what an
+// unread field costs: `uploadCertificate._aliasNote` describes the `alias` field
+// drifting to a stale value with NOTHING NOTICING, because the only consumer
+// (assert-artifact-signed.mjs) reads `.sha256` alone. "A value with no reader
+// drifts silently and its `asOf` date goes on looking fresh." Landing two more
+// unread fields would have been that defect, committed knowingly.
+//
+// SUBJECT SET, DERIVED NOT LISTED: every object under a row's `signing` that
+// carries a `notYetConfiguredSentinel`. A new pin block acquires these checks by
+// declaring a sentinel, which is the same field assert-store-metadata.mjs
+// already requires of `packageIdentity` and for the same reason — "without it
+// nothing can tell a Partner-Center placeholder from a real value".
+//
+// THE THREE STATES, and the middle one is the expensive one:
+//   · every value field still the sentinel → NOT YET CONFIGURED. A SERVED row
+//     FAILS (a channel cannot ship through an identity that does not exist); a
+//     deferred row PRINTS ([pipeline C-6] — the blocker is a purchase or a key
+//     ceremony, which is owner work, and failing would block every merge on it).
+//   · SOME fields real and some still the sentinel → FAILS in either state.
+//     `packageIdentity`'s own _why names this case: "the moment a real value
+//     lands on one side and not the other, it FAILS". A half-configured identity
+//     is the one that packages and ships cleanly under the wrong name.
+//   · no field on the sentinel → configured; counted and reported.
+{
+  /** Bookkeeping fields, not values. `alias` is here because the Play row's
+   *  `uploadCertificate` carries one and it names a keystore ENTRY rather than
+   *  identifying the certificate — treating it as a pinned value would demand a
+   *  sentinel for something whose authority is a repository secret. */
+  const PIN_META = new Set(['_why', 'notYetConfiguredSentinel', 'asOf', 'source', 'declaredIn', 'alias', 'algorithm']);
+  let pinBlocks = 0;
+  let pinsConfigured = 0;
+  for (const c of channels) {
+    const signing = c.signing;
+    if (signing === null || typeof signing !== 'object' || Array.isArray(signing)) continue;
+    for (const [blockName, block] of Object.entries(signing)) {
+      if (block === null || typeof block !== 'object' || Array.isArray(block)) continue;
+      if (!Object.hasOwn(block, 'notYetConfiguredSentinel')) continue;
+      pinBlocks++;
+      const at = `channel "${c.id ?? '(unnamed)'}" signing.${blockName}`;
+
+      const sentinel = block.notYetConfiguredSentinel;
+      if (typeof sentinel !== 'string' || sentinel.trim() === '') {
+        problems.push(
+          `${at} declares a \`notYetConfiguredSentinel\` that is not a non-empty string. Nothing can then tell a placeholder from a real fingerprint, so a placeholder validates as configured — which is how an artifact gets signed, shipped and trusted under an identity that does not exist.`,
+        );
+        continue;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(block.asOf ?? ''))) {
+        problems.push(
+          `${at} carries no \`asOf\` date. A pinned fingerprint is a claim about an external artefact — a certificate, a keypair — and an undated claim is one nobody can tell has gone stale. Same requirement \`accountStatus\` and the restore drills already carry.`,
+        );
+      }
+      if (typeof block.source !== 'string' || block.source.trim().length < 20) {
+        problems.push(
+          `${at} carries no \`source\`. Every pinned value in this tree names where it was read from — ceilings.json refuses a limit with no citation, the store metadata refuses a \`max\` with no \`source\` — because a value that arrived from nowhere cannot be re-derived when it is questioned, and this one is compared against a real signature.`,
+        );
+      }
+
+      const valueFields = Object.entries(block).filter(([k, v]) => !PIN_META.has(k) && typeof v === 'string');
+      if (valueFields.length === 0) {
+        problems.push(
+          `${at} declares a sentinel and NO value field for it to stand in for. An empty pin block satisfies every check below by having nothing to check — the empty-domain pass this whole guard exists to remove.`,
+        );
+        continue;
+      }
+      const onSentinel = valueFields.filter(([, v]) => v === sentinel);
+      if (onSentinel.length === valueFields.length) {
+        const fieldList = valueFields.map(([k]) => `\`${k}\``).join(', ');
+        const verb = valueFields.length === 1 ? 'still reads' : 'all still read';
+        const summary = `${at} is NOT YET CONFIGURED — ${fieldList} ${verb} "${sentinel}" (as of ${block.asOf ?? 'undated'})`;
+        if (c.served === true) {
+          problems.push(
+            `${summary}. The row is SERVED. A channel cannot publish through a signing identity that does not exist, so one of the two facts is wrong and the register cannot say which.`,
+          );
+        } else {
+          prints.push(
+            `SIGNING PIN NOT CONFIGURED: ${summary}. Owner-gated (a purchase or a key ceremony), so this prints rather than failing — but the day the row is served it becomes a build failure.`,
+          );
+        }
+      } else if (onSentinel.length > 0) {
+        problems.push(
+          `${at} is HALF CONFIGURED: ${onSentinel.map(([k]) => `\`${k}\``).join(', ')} still read the sentinel while ${valueFields.filter(([, v]) => v !== sentinel).map(([k]) => `\`${k}\``).join(', ')} carry real values. A partially-filled identity is the state that packages and ships cleanly under the wrong name — unrecoverable once published, which is why \`packageIdentity\` fails on it too rather than waiting for the second half.`,
+        );
+      } else {
+        pinsConfigured++;
+      }
+    }
+  }
+  // COVERAGE. Two rows in this repository declare a pin block; a tree with none
+  // means the blocks were deleted or the `signing.*` walk stopped reaching them,
+  // and either way every check above ranged over nothing and printed ok. Held to
+  // the real repo only — a fixture legitimately has none, and firing there would
+  // force every fixture to model signing pins to say anything about anything.
+  if (scanningRealRepo && pinBlocks === 0) {
+    coverageLost([
+      `no \`signing.*\` block in ${REGISTER} carries a \`notYetConfiguredSentinel\`.`,
+      'The pinned-signing-material check then has no subject: a placeholder would validate as a real',
+      'fingerprint, and the SERVED-row rule above could never fire. Two rows (windows-direct,',
+      'linux-appimage) declare one today; if a pin was retired, retire this check in the same change.',
+    ]);
+  }
+  if (pinBlocks > 0) {
+    ok(`${pinBlocks} pinned signing-material block(s), ${pinsConfigured} configured, ${pinBlocks - pinsConfigured} on their declared sentinel [9]R-3`);
+  }
+}
+
 // ── 7. disqualified channels ─────────────────────────────────────────────────
 // The ADR check is MODE-AWARE, and the mode is decided by the harness ROOT, not
 // by the individual file. `knowledge/` is gitignored, so in a CI checkout every
@@ -1179,7 +1386,12 @@ for (const s of register.nonChannelSigningIdentities ?? []) {
 // kept as the record of where the boundary was rather than deleted. [9]R-3 stays
 // PARTIAL for the Apple, Windows-direct and AppImage rows, which have no signing
 // identity and no lane to check at all (owner-gated, OWNER_QUEUE S-5).
-const WORKFLOW_DIR = '.github/workflows';
+//
+// (`WORKFLOW_DIR` is declared beside the `workflow()` parser near the top of this
+// file rather than here. It used to live on this line, and it was hoisted when
+// the `submission.recipeScript` check — hundreds of lines ABOVE this point —
+// needed to name the directory in its failure message. A `const` referenced
+// before its declaration is a ReferenceError at run time, not a lint warning.)
 
 /** REQUIRED_COVERAGE — the floor that stops this ranging over nothing.
  *
@@ -1275,6 +1487,62 @@ const collectSigning = (label, signing, hasLane) => {
       );
     }
     if (!signingSecrets.has(n)) signingSecrets.set(n, label);
+  }
+
+  // ── 8b. A WRITTEN REASON PER DECLARED SIGNING SECRET ──────────────────────
+  //
+  // 🔴 THE HOLE THE PARTITION HAD ON ONE SIDE ONLY. `ciSecretRegister.nonSigning`
+  // has required a `why` per entry since it was written, on its own stated
+  // ground: "without it the cheapest way to silence a [9]R-3 failure is to paste
+  // the name into this array, which converts a classification decision into a
+  // copy-paste and re-opens exactly the hole limb 2 closes." That argument is
+  // about the PARTITION, and a partition has two sides. The signing side had no
+  // such requirement — so for any row §9 does not reach (every non-Android row:
+  // Apple, Windows-direct, AppImage) the cheapest way to silence the SAME
+  // failure was to paste the name into `signing.ciSecrets.names` instead, with
+  // no reason recorded and nothing for a reviewer to disagree with.
+  //
+  // It is not symmetry for its own sake. §9 makes the Android row's list
+  // falsifiable by comparing it, name for name, to the build file that actually
+  // reads the values. The four rows added on 2026-08-08 have no build file to
+  // compare against — their lanes do not exist yet, which is the whole reason
+  // the names are being registered ahead of the seam — so a sentence a human
+  // wrote is the only check those declarations can carry. That makes this limb
+  // strongest exactly where the mechanical one is absent.
+  //
+  // FAILS RATHER THAN PRINTS, and that is not a C-6 violation: writing the
+  // reason is not owner-gated work. Nothing here waits on an Apple account or a
+  // certificate purchase — it waits on whoever added the name saying what it is.
+  //
+  // 20 characters is `nonSigning`'s own floor, reused deliberately rather than
+  // re-chosen: two thresholds for one property is the second declaration
+  // [pipeline F-2] exists to forbid, in miniature.
+  const whyMap = signing?.ciSecrets?.why;
+  if (whyMap === undefined || whyMap === null || typeof whyMap !== 'object' || Array.isArray(whyMap)) {
+    problems.push(
+      `${label} declares \`signing.ciSecrets.names\` and no \`signing.ciSecrets.why\` map. Every \`ciSecretRegister.nonSigning\` entry carries a written reason for exactly this: an unreasoned name is a copy-paste, not a classification, and pasting a name into \`names\` silences [9]R-3 limb 2 just as effectively as pasting it into \`nonSigning\` would.`,
+    );
+  } else {
+    for (const n of names) {
+      if (typeof n !== 'string' || n.trim() === '') continue; // already failed above
+      const w = whyMap[n];
+      if (typeof w !== 'string' || w.trim().length < 20) {
+        problems.push(
+          `${label} declares signing secret "${n}" with no \`signing.ciSecrets.why["${n}"]\` (a string of at least 20 characters). The register is [9]R-3's authority on which secrets carry a signing identity into CI; an entry nobody had to justify is one nobody reviewed.`,
+        );
+      }
+    }
+    // The converse. A reason for a name that is no longer declared is a stale
+    // justification sitting where a reviewer will read it as current — the same
+    // failure `$updateExemptions` catches from the other end ("a waiver
+    // outliving the thing it waived is how a list stops describing the tree").
+    for (const k of Object.keys(whyMap)) {
+      if (k.startsWith('_')) continue; // `_why` and friends are this file's prose namespace
+      if (names.includes(k)) continue;
+      problems.push(
+        `${label} records \`signing.ciSecrets.why["${k}"]\` and does not declare "${k}" in \`names\` (which lists ${names.join(', ') || 'nothing'}). A reason for a secret the row no longer names reads as a live classification and justifies nothing.`,
+      );
+    }
   }
 };
 for (const c of channels) collectSigning(`channel "${c.id ?? '(unnamed)'}"`, c.signing, c.lane != null);

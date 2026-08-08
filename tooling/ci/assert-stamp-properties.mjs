@@ -1238,7 +1238,8 @@ function stripDartComments(src, { blankStrings = false } = {}) {
 // property test; it is the only thing that reaches an app the property test
 // cannot, and it catches the exact defect that shipped.
 //
-// TWO LIMBS, because `main()` is not the whole launch path:
+// THREE LIMBS, because `main()` is not the whole launch path — and because
+// "never at launch" is only half of the requirement:
 //   A. REACHABILITY FROM `main()`. Transitive over FUNCTION/METHOD calls
 //      resolved inside the app's own `lib/`. Constructors (capitalised) are the
 //      BARRIER: `runApp(const ProviderScope(child: XApp()))` is where the widget
@@ -1249,6 +1250,35 @@ function stripDartComments(src, { blankStrings = false } = {}) {
 //      that limb A cannot see (the framework calls them, no call site does).
 //      `build` is deliberately NOT in the list — it legitimately contains the
 //      gesture closures the ask is supposed to live behind.
+//   C. 🔴 THE ENABLE PATH ASKS AT ALL. Added 2026-08-07. Limbs A and B and the
+//      brick's runtime `requestPermissionCalls == 0` are ALL absence assertions
+//      pointing the same way, so DELETING every call site made this property
+//      report greener than the real tree: 2 → 0 asks in apps/subly, every limb
+//      still ok, CI still green — and the app is then a notification channel
+//      that can never be turned on, because nothing ever asks. That is the
+//      *other* half of the same defect and it had no limb at all.
+//
+// ⚠️ A AND C PULL IN OPPOSITE DIRECTIONS, so the naive positive check — "the
+// symbol `requestPermissions` appears somewhere under lib/" — asserts NOTHING
+// NEW: the very call site limb A/B would fail on satisfies it, and so does the
+// ask's OWN DECLARATION plus its delegation to the plugin. Limb C is therefore
+// defined over the COMPLEMENT of the domain limbs A and B police:
+//
+//   D⁻ = bodies of every function limb A actually reached from `main()`
+//        ∪ bodies of `initState` / `didChangeDependencies`
+//   D⁺ = every other byte of `lib/`, MINUS the ask's own declarations (head
+//        included), because `requestPermissions() { … ios.requestPermissions(…) }`
+//        is the implementation, not a caller of it. That is precisely the trap
+//        `assert-seams-wired.mjs` fell into — matching a declaration and calling
+//        it a usage — and it is why limb C strips the declaration first.
+//
+// D⁻ ∩ D⁺ = ∅ BY CONSTRUCTION, so no single call site can satisfy both limbs:
+// move the only ask into an `initState` and A/B go red while C ALSO goes red for
+// want of an ask outside the launch path. Limb C is an over-approximation in the
+// same direction as limb A — it proves an ask exists somewhere no launch path
+// reaches, not that a user gesture reaches it. The gesture requirement itself is
+// carried by review and by the runtime property test; this limb closes the hole
+// where there is nothing left to review.
 //
 // EXEMPTIONS ARE NOT APPLIED HERE, on purpose. `EXEMPT_APPS` excuses an app from
 // carrying the inherited property TEST. It cannot excuse it from the boot path:
@@ -1259,8 +1289,19 @@ const BOOT_ROOT_LIB = 'lib';
 // self-check below, which reddens if this pattern stops recognising the real
 // implementation in packages/notifications — a scanner that silently matches
 // nothing is the failure this repo keeps re-learning.
-const PERMISSION_ASK_RE =
-  /\b(?:requestPermissions?|requestNotificationsPermission|requestExactAlarmsPermission|requestFullScreenIntentPermission)\s*\(/;
+// ONE list, two consumers: the ask matcher below and limb C's "this is the
+// declaration, not a caller" exclusion. Kept as one array on purpose — a second
+// hand-maintained copy of these names is a drift bug waiting to happen, and the
+// drift would silently *widen* limb C (a renamed ask would start counting its
+// own declaration as a caller and the limb would assert nothing).
+// Each entry is a regex fragment: `requestPermissions?` covers both spellings.
+const ASK_NAMES = [
+  'requestPermissions?',
+  'requestNotificationsPermission',
+  'requestExactAlarmsPermission',
+  'requestFullScreenIntentPermission',
+];
+const PERMISSION_ASK_RE = new RegExp(`\\b(?:${ASK_NAMES.join('|')})\\s*\\(`);
 const PERMISSION_ASK_PROBE = 'packages/notifications/lib/src/local_notification_service_io.dart';
 const UNGESTURED_HOOKS = ['initState', 'didChangeDependencies'];
 // Not a Dart parser: these are the words that appear as `word(` without being a
@@ -1290,8 +1331,8 @@ function matchDelim(src, open, o, c) {
  * `assert-seams-wired.mjs` shipped matching a function's own declaration and
  * stayed green with every real caller deleted.
  */
-function declarationBodies(src, name) {
-  const bodies = [];
+function declarationSpans(src, name) {
+  const spans = [];
   const re = new RegExp(`(?:^|[^\\w$.])${name}\\s*(?:<[^<>()]*>\\s*)?\\(`, 'g');
   for (const m of src.matchAll(re)) {
     const open = m.index + m[0].length - 1;
@@ -1300,15 +1341,25 @@ function declarationBodies(src, name) {
     const rest = src.slice(afterParams);
     const head = rest.match(/^\s*(?:(?:async|sync)\s*\*?\s*)?/)[0];
     const at = afterParams + head.length;
+    // `at` is where the BODY starts; `m.index` is one char before the declared
+    // NAME (or 0 at a line start). Limb C needs both: the body to say "an ask in
+    // here is a launch-path ask", the head to say "this occurrence of the name
+    // is the declaration itself, not a call to it".
     if (src[at] === '{') {
       const end = matchDelim(src, at, '{', '}');
-      if (end !== -1) bodies.push(src.slice(at, end));
+      if (end !== -1) spans.push({ head: m.index, start: at, end, text: src.slice(at, end) });
     } else if (src[at] === '=' && src[at + 1] === '>') {
-      const end = src.indexOf(';', at);
-      bodies.push(src.slice(at, end === -1 ? src.length : end));
+      const semi = src.indexOf(';', at);
+      const end = semi === -1 ? src.length : semi;
+      spans.push({ head: m.index, start: at, end, text: src.slice(at, end) });
     }
   }
-  return bodies;
+  return spans;
+}
+
+/** The bodies alone — limbs A and B only ever ask "does an ask appear in here". */
+function declarationBodies(src, name) {
+  return declarationSpans(src, name).map((s) => s.text);
 }
 
 /** Lower/underscore-initial callees in a body. Capitalised names are constructors
@@ -1391,7 +1442,42 @@ function auditBootPath(root) {
     }
   }
 
-  return { files: files.length, reached, sawMain, violations };
+  // Limb C — THE ENABLE PATH ASKS AT ALL. The complement of what A and B police;
+  // see D⁻/D⁺ in the header. Everything excluded here is excluded because some
+  // OTHER limb already owns it, which is what makes the two halves disjoint
+  // rather than merely different.
+  const askGlobalRe = new RegExp(PERMISSION_ASK_RE.source, 'g');
+  const enablePathAsks = [];
+  for (const f of files) {
+    const excluded = [];
+    // D⁻(A): every function the walk above actually reached from `main()`. An
+    // ask in one of these is limb A's violation, never limb C's evidence.
+    for (const name of seen) {
+      for (const s of declarationSpans(f.src, name)) excluded.push([s.start, s.end]);
+    }
+    // D⁻(B): the hooks the framework calls for you at first frame.
+    for (const hook of UNGESTURED_HOOKS) {
+      for (const s of declarationSpans(f.src, hook)) excluded.push([s.start, s.end]);
+    }
+    // NOT A CALLER. `head` and not `start`, so the declaration's own name token
+    // is excluded along with its body — otherwise `Future<bool>
+    // requestPermissions() async { … ?.requestPermissions(alert: true) … }`
+    // supplies THREE "callers" while nothing in the app calls it, and limb C
+    // stays green on a tree with every real call site deleted. That is the
+    // recorded assert-seams-wired.mjs defect, reproduced exactly.
+    for (const name of ASK_NAMES) {
+      for (const s of declarationSpans(f.src, name)) excluded.push([s.head, s.end]);
+    }
+    for (const m of f.src.matchAll(askGlobalRe)) {
+      if (excluded.some(([a, b]) => m.index >= a && m.index < b)) continue;
+      enablePathAsks.push({
+        file: `${root}/${f.rel}`,
+        line: f.src.slice(0, m.index).split('\n').length,
+      });
+    }
+  }
+
+  return { files: files.length, reached, sawMain, violations, enablePathAsks };
 }
 
 // ── THE ROOTS. The brick, plus every non-exempt app on the workspace list. ───
@@ -1644,6 +1730,27 @@ for (const root of bootRoots) {
       `[13]T-4 ${root} — launch path asks for no OS permission ` +
         `(${r.reached} function(s) reached from main() across ${r.files} lib file(s); ` +
         `${UNGESTURED_HOOKS.join('/')} clean)`,
+    );
+  }
+
+  // Limb C. Deliberately NOT nested under `if (!r.violations.length)`: a tree
+  // whose only ask sits on the launch path must read as TWO failures — one ask
+  // in the wrong place, and no ask in the right one — because deleting the
+  // offending line fixes exactly one of them.
+  if (!r.enablePathAsks.length) {
+    fail(
+      `[13]T-4 ${root}: THE ENABLE PATH NEVER ASKS — ${r.files} lib file(s) contain no call to the OS ` +
+        'permission ask outside the launch path, so every reminder-bearing switch in this app is a ' +
+        'channel the user can never turn on: the flag persists, the switch reads ON, and no notification ' +
+        'can ever be posted because the OS was never asked. The ask\'s own declaration and its delegation ' +
+        'to the plugin are NOT callers and do not satisfy this. Limbs A/B above go GREENER as this one ' +
+        'goes red — that opposition is the point: "never at launch" and "somewhere on the enable path" ' +
+        'are both required, and until this limb existed only the first was checked.',
+    );
+  } else {
+    ok(
+      `[13]T-4 ${root} — the enable path asks: ${r.enablePathAsks.length} call site(s) outside the ` +
+        `launch path (${r.enablePathAsks.map((a) => `${a.file}:${a.line}`).join(', ')})`,
     );
   }
 }

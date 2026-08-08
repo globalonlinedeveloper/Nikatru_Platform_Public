@@ -138,6 +138,27 @@ jobs:
     needs: gate
     outputs:
       apps: ${{ steps.workspace.outputs.apps }}
+      # ── the release line's build metadata, derived ONCE for the whole run ────
+      # [9]R-2. Every lane's APP_VERSION ends `+<short sha>`, because a version
+      # has to be ORDERED (the run number) *and* TRACEABLE (the commit), and one
+      # number cannot be both — a SHA identifies a build and can never rank two.
+      #
+      # ⚠️ IT IS DERIVED HERE, IN THE ONE JOB THAT RUNS ON UBUNTU, AND THAT IS
+      # THE POINT. `${GITHUB_SHA::7}` is bash parameter expansion. deploy-web.yml
+      # writes it inline because every step of that lane is bash; the `windows`
+      # job below runs pwsh, where the same characters are a syntax error, and
+      # `${{ github.sha }}` is the full 40 chars — 54 rendered, past the 32 the
+      # platform Worker stores app_version in (assert-app-versioning.mjs
+      # APP_VERSION_MAX). One derivation on the one shell that has the expansion,
+      # consumed by both platform jobs as an expression, is what makes the three
+      # lanes carry the SAME string rather than three spellings of it.
+      #
+      # The output is NAMED `GITHUB_SHA_SHORT` rather than `sha7`: assert-app-
+      # versioning.mjs asserts APP_VERSION's build metadata is derived from the
+      # commit by looking for `GITHUB_SHA` or `github.sha` in it, and a name that
+      # hides the provenance from the guard would be a version that reads as
+      # untraceable the day one of these rows flips to `served: true`.
+      GITHUB_SHA_SHORT: ${{ steps.workspace.outputs.GITHUB_SHA_SHORT }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -148,6 +169,7 @@ jobs:
           set -euo pipefail
           apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           echo "Building: ${apps}" >> "$GITHUB_STEP_SUMMARY"
 
   linux_web_android:
@@ -221,6 +243,23 @@ jobs:
       # root, not in the app directory.
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # ── [9]R-2 · THE RELEASE LINE, DERIVED, NEVER TYPED ─────────────────────
+      # The same step deploy-web.yml runs, reading the same pubspec with the same
+      # parser the guard uses — so the number that gets BUILT and the number that
+      # gets ASSERTED cannot disagree. Until this existed, this workflow had no
+      # release line at all, which is why the two notes below used to say a
+      # `--build-name` here would have to be a literal: a literal would be a
+      # second copy of the version, free to drift from pubspec, and that is the
+      # defect [9]R-2 exists for rather than a step toward fixing it.
+      #
+      # The step `id:` is load-bearing: assert-app-versioning.mjs finds the emit
+      # line, walks back for an `id:`, and then requires `steps.<id>.outputs.
+      # release_line` to appear somewhere in the file — a lane that derives the
+      # version and then versions itself from somewhere else is the shape it
+      # exists to catch.
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
       # ── every artifact this job produces carries the crash sink ─────────────
       # [pipeline 11]E-7. TelemetryBootstrap falls back to a NoOp client when the
       # DSN is empty — correct behaviour, and INDISTINGUISHABLE FROM WORKING. So
@@ -238,22 +277,127 @@ jobs:
       # and it is why the guard checks the DEFINE rather than a non-empty value:
       # a check on the value could only ever run where the secret exists.
       #
-      # ⬜ RELEASE ATTRIBUTION IS NOT SUPPLIED HERE and that is recorded, not
-      # overlooked: `release: 'subly@${AppConfig.appVersion}'` (apps/subly/lib/
-      # main.dart:25) needs an APP_VERSION this workflow has no release line to
-      # derive one from. Crashes from these artifacts therefore reach GlitchTip
-      # attributed to the default version until [9]R-2 gives every lane a release
-      # id. A sink with a weak release string still beats no sink.
+      # ✅ RELEASE ATTRIBUTION IS SUPPLIED FROM HERE ON — [9]R-2, closed 2026-08-08.
+      # This note used to read "⬜ RELEASE ATTRIBUTION IS NOT SUPPLIED HERE",
+      # because `release: 'subly@${AppConfig.appVersion}'` (apps/subly/lib/
+      # main.dart:25) needs an APP_VERSION and this workflow had no release line
+      # to derive one from — so every crash from every artifact it produced
+      # reached GlitchTip under the compiled-in default. The `ver` step above is
+      # that release line, and each STORE-lane build below now carries it.
+      #
+      # ⬜ THE WEB BUILD IN THIS JOB IS THE ONE EXCEPTION, and it is deliberate.
+      # It uploads nothing (see the `path:` list at the end of this job) and it
+      # is not the web CHANNEL — deploy-web.yml is, and it stamps its own
+      # APP_VERSION and `RELEASE_CHANNEL=web`. Stamping a channel here would put
+      # a second lane's identity on an artifact nobody receives. What this build
+      # proves is that web COMPILES, which needs no release id.
       - name: Build web
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build web --release
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # ⬜ `RELEASE_CHANNEL=linux-appimage` IS THE CLOSEST TRUE ANSWER, NOT AN
+      # EXACT ONE, and it is written down rather than left to be inferred. What
+      # this step produces is a DESKTOP BUNDLE, and no `.AppImage` is packaged
+      # anywhere in this repository today: `linux-appimage` is `kind: direct`,
+      # `served: false`, and its `lane` is null. The stamp says which
+      # distribution channel this binary is FOR — and for a Linux desktop build
+      # from this factory the register names exactly one direct download channel.
+      # The alternative is the compiled-in default `dev`, which makes a crash
+      # from a released Linux bundle indistinguishable from one on a developer's
+      # laptop, and that is the defect the define exists to remove. When an
+      # AppImage lane lands it inherits this row and this line unchanged; if a
+      # different Linux channel ever ships first, this value moves with it.
+      #
+      # No `--build-number`: it is Play's versionCode and nothing else reads it,
+      # and adding it here would put a monotonic counter on a lane no store
+      # consumes. APP_VERSION — the string version_gate.dart and every analytics
+      # row actually read — is identical to the store lanes'.
       - name: Build linux
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build linux --release
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
+          --dart-define=RELEASE_CHANNEL=linux-appimage
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # ── the linux-appimage channel's SIGNING KEY ─────────────────────────────
+      # The Linux half of the pair `android-signing.mjs` forms for Play, wired in
+      # the same shape and for the same reason. The `linux-appimage` row of
+      # tooling/channel-register.json has declared `APPIMAGE_SIGNING_KEY_B64`
+      # since PR #202 and a tree-wide grep for that name returned THE REGISTER
+      # AND NOTHING ELSE — a correct declaration with no consumer, which is the
+      # Android state of 2026-08-04 exactly, and on the Android side it meant
+      # every .aab this factory produced was debug-signed while every
+      # configuration check stayed green.
+      #
+      # ⬜ NO .AppImage IS PACKAGED IN THIS REPOSITORY TODAY, and this step says
+      # that out loud rather than implying otherwise. What it decides is the
+      # POSTURE: with the secret absent it exports `unsigned-build-proof` and
+      # PRINTS the gap in capitals (the row wants a detached Ed25519 signature
+      # and no key has been generated); with the secret supplied it materialises
+      # the key, self-verifies a sign/verify round trip, and exports
+      # `release-signed`. Wiring it before the packaging step exists is the
+      # point — the day an AppImage is packaged, the key already arrives through
+      # a path somebody reviewed rather than one added in the release commit.
+      #
+      # Key material is written to $RUNNER_TEMP, never the workspace, for the
+      # reason recorded on the Android key step below: every `upload-artifact`
+      # path in this file is workspace-relative and this repo is PUBLIC, so a
+      # private key inside the tree is one broad `path:` away from publication.
+      - name: Prepare the AppImage signing key
+        env:
+          APPIMAGE_SIGNING_KEY_B64: ${{ secrets.APPIMAGE_SIGNING_KEY_B64 }}
+        run: node tooling/ci/appimage-signing.mjs --app ${{ matrix.app }}
+      # ── the snapcraft recipe, DERIVED from the bundle just built ─────────────
+      # [pipeline D-10] / [ADR 015] §3. `tooling/release/submit-snap.mjs` §4 has
+      # printed "NO SNAPCRAFT RECIPE — nothing in this repo can build a .snap
+      # today" on every run since it was written, and nothing could fail on it.
+      #
+      # The recipe is GENERATED rather than committed because a committed one is
+      # a SECOND COPY of five facts that already have one home each — the snap
+      # name, the summary, the description, the licence and the Linux binary
+      # identity — and a second copy is the copy that goes stale. [10]D-5's whole
+      # claim is "the listing lives in the repo and the dashboard is a copy of
+      # it"; a hand-written snapcraft.yaml would make the recipe a third party to
+      # that agreement, free to disagree with both.
+      #
+      # `--version` is the SAME string the linux build above carries, from the
+      # same `ver` step. The Snap Store orders revisions by it, and a recipe
+      # versioned differently from the binary it packages is two release lines
+      # wearing one name.
+      #
+      # ⬜ NO .snap IS BUILT HERE AND snapcraft IS NOT INSTALLED — on this runner
+      # or on the owner's box. That is the honest boundary of this increment:
+      # what a machine without snapcraft can prove is that the recipe is
+      # DERIVABLE from the tree and structurally what the Snap Store needs.
+      # Packing a real .snap (snapcraft in LXD/multipass, then `snapcraft
+      # upload`) is the follow-up, and it belongs with OWNER_QUEUE A-6 — the
+      # global name claim — rather than here.
+      - name: Generate the snapcraft recipe
+        run: >
+          node tooling/release/generate-snapcraft.mjs
+          --app ${{ matrix.app }}
+          --bundle apps/${{ matrix.app }}/build/linux/x64/release/bundle
+          --out "$RUNNER_TEMP/snapcraft-${{ matrix.app }}"
+          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+      # A GENERATOR THAT HAS STOPPED READING THE TREE STILL WRITES A FILE. It
+      # writes a shorter one, or one carrying its own idea of the values, and
+      # with no committed recipe to diff against and no snapcraft anywhere to
+      # reject the result, nothing downstream could tell. So the file that was
+      # just emitted is read back and graded: it parses, its `name` is the one
+      # apps/*/store/linux-snap/snap-name.txt claims, it carries no absolute host
+      # paths, `confinement` is `strict` (`classic` needs a manual store review
+      # nobody has argued for), and `stage-packages` EQUALS the apt list the
+      # "Linux build deps" step above installs — a retyped list, a list truncated
+      # at the first line continuation, and a workflow that grew a package the
+      # recipe did not are one failure: the snap builds and the app does not
+      # start.
+      - name: The generated recipe is complete and still derived from the tree
+        run: >
+          node tooling/ci/assert-snapcraft-generable.mjs
+          --emitted "$RUNNER_TEMP/snapcraft-${{ matrix.app }}/snap/snapcraft.yaml"
+          --app ${{ matrix.app }}
       # ── the Android UPLOAD KEY ───────────────────────────────────────────────
       # 🔴 THIS STEP IS THE FIX FOR THE DEFECT THAT WOULD HAVE FAILED THE FIRST
       # PLAY SUBMISSION. apps/subly/android/app/build.gradle.kts has read a real
@@ -321,13 +465,23 @@ jobs:
       # the required set from `isBackendLive` itself and grades every build step a
       # `kind: store` row declares, so a fourth requirement added to that getter
       # cannot silently escape any store lane.
+      #
+      # ⬜ NO `--build-number` ON THE .apk, ON PURPOSE. That flag is Play's
+      # versionCode and the .apk is never uploaded to Play, so the only thing it
+      # would change is a number nothing reads. What MUST match the bundle is
+      # APP_VERSION — the string version_gate.dart compares and every analytics
+      # row carries — and it does, character for character, because both come
+      # from the same `ver` step and the same run number.
       - name: Build android (apk — sideloadable build proof)
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build apk --release
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
+          --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── the android-play channel's artifact ─────────────────────────────────
       # THIS JOB IS THE `lane` OF tooling/channel-register.json's `android-play`
@@ -357,21 +511,30 @@ jobs:
       # to be offset past the old file's high-water mark in the same commit.
       # Recorded in tooling/ci/assert-app-versioning.mjs beside MAX_RUN_DIGITS.
       #
-      # ⬜ NO `--build-name` HERE, deliberately. That is the number
-      # version_gate.dart compares, it must be DERIVED from pubspec by
-      # assert-app-versioning.mjs --emit, and this workflow has no release-line
-      # step. Adding a literal would be a second copy of the version free to
-      # drift from pubspec — the exact defect [9]R-2 exists for. The row is
-      # `served: false`, the guard PRINTS that exemption on every run, and the
-      # emit step lands with the lane, not before it.
+      # ✅ `--build-name` IS HERE NOW — [9]R-2, closed 2026-08-08. This note used
+      # to read "⬜ NO `--build-name` HERE, deliberately", and its reasoning was
+      # right for the tree it was written against: `--build-name` is the number
+      # version_gate.dart compares, a literal would be a second copy of pubspec's
+      # version free to drift from it, and this workflow had no release-line step
+      # to derive one from. It has one now — `ver`, above — so the value is
+      # DERIVED by the same script and the same parser that assert it, and the
+      # objection the note recorded does not apply to a derived value.
+      #
+      # The version core here is the same string as APP_VERSION's, on purpose:
+      # the number Play shows and the number the kill-switch compares must be one
+      # number. `--build-number` is UNCHANGED and must stay that way — see the
+      # versionCode note above.
       - name: Build android (aab — the Google Play artifact)
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build appbundle --release
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
           --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
+          --dart-define=RELEASE_CHANNEL=android-play
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── READ THE SIGNATURE OUT OF THE BUNDLE, not out of the config ──────────
       # The step above says what was ARRANGED. This one says what HAPPENED, and
@@ -396,6 +559,25 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-signed.mjs
           apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+      # ── 🔴 THE UPLOAD BELOW CANNOT TELL YOU WHAT IT IS CARRYING ─────────────
+      # `if-no-files-found: error` fails the step when the WHOLE `path:` set
+      # matches nothing. The set below is a union of two globs and a DIRECTORY,
+      # so the directory alone satisfies it: the .aab could be absent, the .apk
+      # could be absent, both could be zero bytes, and the upload is green, the
+      # job is green, and the artifact downloads with a hole in it. Every guard
+      # in this repository that reads this file reads its TEXT — and the text
+      # still names all three paths, which is exactly why none of them caught it.
+      #
+      # This step asserts each path ON ITS OWN, on the runner, against the disk,
+      # AFTER the builds and BEFORE the upload — the only position where the
+      # answer is a fact rather than a promise. The extensions it expects are
+      # derived from tooling/channel-register.json through the same
+      # `installableExtensions()` the release lane stages with, so a channel that
+      # gains a format gains an assertion here or the guard reports COVERAGE LOST.
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform linux_web_android
       # 🔴 THE POSTURE IS IN THE ARTIFACT NAME, and that is the "labelled, not
       # indistinguishable" half of the fix. A downloaded `subly-linux-web-android`
       # said nothing about whether its .aab could be uploaded anywhere; a
@@ -435,6 +617,54 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # ── [9]R-2 · the same derivation as the Android lane, same script ────────
+      # ⚠️ `shell: bash` ON THIS STEP AND ONLY THIS STEP. This runner's default
+      # shell is pwsh, and `>> "$GITHUB_OUTPUT"` is bash syntax — in PowerShell
+      # `$GITHUB_OUTPUT` is an unset variable, so the redirect writes the emitted
+      # lines to a file called nothing and `steps.ver.outputs.release_line`
+      # resolves to the empty string. The build would then take `--build-name=
+      # .<run>`, which is a version with no release line and NO ERROR ANYWHERE.
+      #
+      # The step runs `node` and nothing else. `node` is a real .exe on PATH, so
+      # Git Bash resolves it exactly as pwsh does — no flutter, no Gradle, no
+      # msix, nothing whose Windows path handling is worth arguing about. The
+      # build steps below stay on the default shell for the same reason.
+      - name: Derive the release line from pubspec
+        id: ver
+        shell: bash
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # ── the windows-direct channel's CODE-SIGNING CERTIFICATE ───────────────
+      # The Windows half of the pair `android-signing.mjs` forms for Play, wired
+      # in exactly the same shape: a step that ARRANGES the credential, exports a
+      # POSTURE, and leaves reading the signature back out of the binary to a
+      # separate check. The `windows-direct` row of
+      # tooling/channel-register.json has declared WINDOWS_CODESIGN_PFX_BASE64
+      # and WINDOWS_CODESIGN_PFX_PASSWORD since PR #202 with no consumer anywhere
+      # in the tree — the same silence that let every .aab this factory produced
+      # be debug-signed for weeks while every configuration check stayed green.
+      #
+      # ⚠️ IT ARMS THE DIRECT-DOWNLOAD CHANNEL, NOT THE STORE ONE, and the two
+      # must not be conflated. `windows-store` is `keyKind: "none"` — Microsoft
+      # re-signs what it accepts, `msix_config` sets `store: true`, and the .msix
+      # packaged below is deliberately unsigned. What Microsoft Store Policies
+      # §10.2.9 needs a trusted-root certificate for is the DIRECT download, and
+      # that is the row this step reads.
+      #
+      # ⬜ NO CERTIFICATE HAS BEEN PURCHASED (the row's pin is a sentinel that
+      # cannot be mistaken for a thumbprint), so every run today exports
+      # `unsigned-build-proof` and PRINTS the gap in capitals. Wiring it before
+      # the purchase is the point: the day the .pfx arrives it flows through a
+      # path that already exists and has already been reviewed, instead of being
+      # written in the same commit as the first release.
+      #
+      # Key material goes to $RUNNER_TEMP for the reason recorded on the Android
+      # key step in the job above — this repo is PUBLIC and its artifacts are
+      # downloadable by anyone.
+      - name: Prepare the Windows code-signing certificate
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: node tooling/ci/windows-signing.mjs --app ${{ matrix.app }}
       # [pipeline 11]E-7, and this job is the lane of the `windows-store` row.
       # ⚠️ WINDOWS GETS THE DART LAYER ONLY. sentry_flutter's Windows support is
       # the Dart error handler; a native crash in the C++ runner or in a plugin's
@@ -448,8 +678,15 @@ jobs:
       # Store rejects a submission whose version is not higher than the last
       # accepted one. `dart run msix:create` reads what `flutter build` produced,
       # so the number has to arrive here rather than at packaging time.
-      # No `--build-name` — see the note on the appbundle step for why a literal
-      # would be a second copy of pubspec's version.
+      #
+      # ✅ `--build-name` IS HERE NOW — [9]R-2, closed 2026-08-08. The note that
+      # used to sit on this line said "No `--build-name` — see the note on the
+      # appbundle step for why a literal would be a second copy of pubspec's
+      # version", and that was correct while the only option was a literal. The
+      # `ver` step above derives it from pubspec with the guard's own parser, so
+      # the Store version and the version version_gate.dart compares are the same
+      # string arrived at the same way.
+      #
       # The backend defines, for the reason recorded on the android apk step
       # above: this job is the `windows-store` row's declared LANE, the .msix
       # below is packaged from exactly these binaries, and without them the
@@ -458,10 +695,13 @@ jobs:
         working-directory: apps/${{ matrix.app }}
         run: >
           flutter build windows --release
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
           --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
+          --dart-define=RELEASE_CHANNEL=windows-store
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── the windows-store channel's artifact ────────────────────────────────
       # THIS JOB IS THE `lane` OF tooling/channel-register.json's `windows-store`
@@ -498,6 +738,23 @@ jobs:
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/${{ matrix.app }}
         run: dart run msix:create
+      # ── 🔴 THIS IS THE LANE THE UNION TRAP WAS FOUND ON ─────────────────────
+      # The upload below sets `if-no-files-found: error` and it does NOT do what
+      # that name suggests on a multi-path set: it fails only when the WHOLE set
+      # matches nothing. `…/runner/Release` is a directory and `flutter build
+      # windows` has already made it, so the .msix glob matching NOTHING is
+      # accepted — silently, on the only Microsoft Store package this factory
+      # produces, on the lane the `windows-store` row points at. `msix:create`
+      # writing no file, `output_path` moving in an app's pubspec, or the whole
+      # step being deleted all land in exactly the same green.
+      #
+      # This step asks the disk instead, before the upload, and names the path
+      # that is missing. Its recorded failing case is that exact tree: Release/
+      # populated, .msix deleted (tooling/ci/test/artifact-shape.test.mjs).
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform windows
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.app }}-windows
@@ -552,15 +809,93 @@ jobs:
       # fixes #188060.
       - name: Patch the SDK for flutter/flutter#188060 (macOS AOT abort)
         run: python3 tooling/ci/patch-flutter-macos-aot.py "$FLUTTER_ROOT"
+      # ── the APPLE DISTRIBUTION IDENTITY, arranged before anything is built ───
+      # The macOS/iOS half of the pair `android-signing.mjs` forms for Play.
+      # PR #202 declared four Apple secrets on the `ios-appstore` and
+      # `macos-appstore` rows of tooling/channel-register.json; a tree-wide grep
+      # for APPLE_DIST_CERT_P12_BASE64 on 2026-08-08 returned THE REGISTER AND
+      # NOTHING ELSE. That is the Android state of 2026-08-04 exactly, and the
+      # Apple version of the silence is worse in one respect: the iOS build below
+      # passes `--no-codesign`, so this lane's UNSIGNED-ness is real and correct
+      # today, and the day somebody removes that flag there would be nothing
+      # anywhere to notice the secrets were never wired.
+      #
+      # All four supplied → a per-run keychain, the decoded provisioning
+      # profiles and an ExportOptions.plist, posture `release-signed`. None
+      # supplied → posture `unsigned-build-proof` with the gap PRINTED in
+      # capitals and named (Apple Developer account, OWNER_QUEUE A-4). SOME
+      # supplied → FAIL, on every lane: three of four is an artifact nobody can
+      # explain, and Apple's version of "correctly signed but wrong identity" is
+      # rejected at upload, after the account is spent.
+      #
+      # ⚠️ THERE IS NO "this is a release" FLAG HERE, ON PURPOSE. The script
+      # derives that from GITHUB_REF and from the submission workflow the
+      # register declares, for the reason recorded on the Android key step:
+      # deleting a YAML line must not be able to turn a release lane back into a
+      # build proof.
+      - name: Prepare the Apple distribution identity
+        env:
+          APPLE_DIST_CERT_P12_BASE64: ${{ secrets.APPLE_DIST_CERT_P12_BASE64 }}
+          APPLE_DIST_CERT_PASSWORD: ${{ secrets.APPLE_DIST_CERT_PASSWORD }}
+          APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: node tooling/ci/apple-signing.mjs --app ${{ matrix.app }}
       - name: Build macos
         working-directory: apps/${{ matrix.app }}
         run: flutter build macos --release
+      # ── READ THE SIGNATURE OUT OF THE BUNDLE, not out of the config ──────────
+      # The step above says what was ARRANGED. This one says what HAPPENED, and
+      # the Android pair is two files for exactly this reason: a step that
+      # arranges a credential and then reports its own success is the "green
+      # means ran" failure with extra stages. `codesign -dvv` is run against the
+      # .app that was just produced and the verdict is the PARSED output, never
+      # the exit status — the Android guard shipped after discovering `keytool`
+      # exits 0 on an unsigned archive.
+      #
+      # It fails when the posture says `release-signed` and the bundle is
+      # unsigned or AD-HOC (a real, locally-valid signature with no identity and
+      # no team behind it — the Apple equivalent of the Android debug key, and
+      # the reason a check that merely asked "is it signed" would have passed the
+      # defect), when the leaf is a development or Developer-ID certificate
+      # rather than a distribution one, when the team is not the one the register
+      # pins, and — in the other direction — when an identity reached an
+      # `unsigned-build-proof` build through a path this lane never arranged.
+      #
+      # ⚠️ THE .app AND NOT AN .ipa. `flutter build ios --no-codesign` below
+      # produces no .ipa at all, and `codesign` could not read one anyway: it is
+      # a ZIP, and pointing this guard at one would report UNSIGNED for a
+      # correctly signed app. Such a path is REFUSED BY NAME rather than read as
+      # unsigned — "the tool cannot read this" and "this file is not signed" must
+      # never share an exit code. The iOS half of this lane closes when something
+      # produces an artifact, not when somebody edits this line away.
+      - name: The macOS bundle is signed by the identity this lane intended
+        run: >
+          node tooling/ci/assert-artifact-signed-apple.mjs
+          apps/${{ matrix.app }}/build/macos/Build/Products/Release/*.app
       # --no-codesign: this proves the code COMPILES for iOS without needing an
       # Apple Developer account or provisioning profile. Signing is a separate,
       # owner-gated step and must not block build verification.
       - name: Build ios (no codesign)
         working-directory: apps/${{ matrix.app }}
         run: flutter build ios --release --no-codesign
+      # ── the same question, asked of the one artifact this lane uploads ───────
+      # This job's `path:` is a SINGLE directory, so `if-no-files-found: error`
+      # is not being fooled by a union here — but a `Release/` holding a .plist
+      # and no .app satisfies it just as happily, and a macOS .app is a DIRECTORY
+      # whose size on disk says nothing about whether it can launch. The guard
+      # checks that a `*.app` bundle exists and has contents.
+      #
+      # ⬜ IT ASSERTS NOTHING ABOUT iOS, and the guard PRINTS that gap on every
+      # run of this lane rather than passing over it. `flutter build ios
+      # --no-codesign` produces an unsigned .app and no `.ipa`, and no step
+      # uploads it; the `ios-appstore` row accepts ".ipa" and has no lane at all.
+      # An assertion over an artifact that does not exist could never fail, which
+      # would add apparent coverage and no coverage. The gap closes when a lane
+      # produces something — not when somebody edits the line away.
+      - name: Every artifact this lane claims exists, and is not empty
+        run: >
+          node tooling/ci/assert-artifact-shape.mjs
+          --app ${{ matrix.app }} --platform apple
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.app }}-macos
