@@ -19,17 +19,52 @@
 // runs. An env var that swapped in a fake would be a switch capable of silencing
 // the guard in production, which is a worse defect than the one it tests.
 //
+// ═════════════════════════════════════════════════════════════════════════════
+// [pipeline 10]D-11 LIMBS 2 AND 3 — AND WHY THEIR CASES ARE UNIT TESTS.
+//
+// The two new limbs probe FIXED hosts: a random `wc-<hex>` name under the
+// wildcard apex, and the canonical hub URL. Neither can be made to fail from a
+// fixture — nothing here can delete a DNS record or make nikatru.com/apps/
+// return 404 — so a spawn test could only ever exercise their PASSING path,
+// which is the "it has only ever run against valid input" defect F-10 exists to
+// stop. So the DECISION is a pure function (`wildcardVerdict`, `hubVerdict`),
+// exported and fed every branch below, while the spawn tests keep proving the
+// wiring end to end.
+//
+// ⚠️ THE LIMBS ARE DELIBERATELY NOT ACTIVE IN THE FIXTURE RUNS ABOVE, and that
+// is asserted rather than assumed: `surfaceIsOurs` gates them, and a fixture
+// root in a temp directory is not the tree those two constants describe. Two
+// cases pin it in BOTH directions — true for the repository root CI actually
+// scans, false for a fixture — because a gate that silently reads false
+// everywhere would turn both limbs off in CI and print nothing at all. The
+// fixture run also asserts the skip is PRINTED.
+//
+// REAL-TREE RUN (2026-08-08, this worktree, `node tooling/ci/assert-catalog-reachable.mjs`):
+//   ok  wildcard DNS answers — https://wc-3cc38997.nikatru.com/ returned HTTP 522
+//   ok  canonical hub answers — https://nikatru.com/apps/ returned 200
+// Both limb lines present, exit 0.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
+import {
+  HUB_URL,
+  WILDCARD_APEX,
+  hubVerdict,
+  nonceUrl,
+  surfaceIsOurs,
+  wildcardVerdict,
+} from '../assert-catalog-reachable.mjs';
+import { CANONICAL_HUB_URL, ORIGIN } from '../../sites/generate-discovery.mjs';
+import { stripSourceComments } from '../text-reductions.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-catalog-reachable.mjs');
@@ -180,5 +215,191 @@ describe('assert-catalog-reachable', () => {
     assert.equal(code, 1);
     assert.match(out, /offline — marked `live` but .* could not be reached at all/);
     assert.match(out, /So this is the app, not the network/);
+  });
+
+  // ── [10]D-11 · the limbs are OFF for a fixture root, and SAY SO ────────────
+  // The one end-to-end fact a fixture can establish about limbs 2 and 3: that
+  // pointing this guard at somebody else's tree does not silently assert this
+  // repository's DNS against it — and that the skip appears in the log of the
+  // run that took it, because a limb that stops running while CI stays green is
+  // the defect this whole directory exists to prevent.
+  test('a fixture root does NOT probe the D-11 limbs, and PRINTS that it did not', NET, async () => {
+    const { code, out } = await run(tree([entry('alpha', '/ok')]));
+    assert.equal(code, 0, out);
+    assert.match(out, /limbs 2 \(wildcard\) and 3 \(canonical hub\) NOT probed/);
+    assert.match(out, /CI passes no root, so CI always probes them/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 10]D-11 LIMB 2 — the wildcard is asserted, not assumed.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-catalog-reachable — [10]D-11 limb 2 (wildcard)', () => {
+  // The production case, and the one that reads backwards until you hold it
+  // next to limb 1: a 522 is a FAILURE for a named app and a PASS here. The name
+  // is random, so answering AT ALL is the proof.
+  test('ANY HTTP status from a name nobody registered proves the wildcard answers', () => {
+    for (const status of [522, 404, 200]) {
+      const v = wildcardVerdict({
+        url: `https://wc-deadbeef.${WILDCARD_APEX}/`,
+        verdict: { status },
+        othersAnswered: true,
+      });
+      assert.equal(v.ok, true, `HTTP ${status} should settle limb 2`);
+      assert.match(v.line, new RegExp(`^ok {2}wildcard DNS answers`));
+      assert.match(v.line, new RegExp(`returned HTTP ${status}`));
+    }
+  });
+
+  // 🔴 THE DEFECT D-11 EXISTS FOR. Deleting the wildcard record leaves every
+  // catalogue hostname NXDOMAIN, and limb 1 alone reads that as "the runner is
+  // offline". This limb must name the RECORD, not the network.
+  test('FAILS — naming the DNS record class — when the nonce is unreachable while others answered', () => {
+    const v = wildcardVerdict({
+      url: `https://wc-deadbeef.${WILDCARD_APEX}/`,
+      verdict: { transport: 'ENOTFOUND' },
+      othersAnswered: true,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.coverageLost, false);
+    const text = v.lines.join('\n');
+    assert.match(text, /THE WILDCARD DNS RECORD IS GONE/);
+    assert.match(text, /ENOTFOUND/);
+    assert.match(text, /PROXIED WILDCARD CNAME/);
+    assert.match(text, new RegExp(`\\*\\.${WILDCARD_APEX.replace(/\./g, '\\.')}`));
+  });
+
+  // The honesty case, matching limb 1's existing convention exactly: with
+  // nothing answering anywhere, "the record is gone" and "this runner has no
+  // network" are the same observation, so neither is claimed.
+  test('COVERAGE LOST — and no DNS claim — when nothing in the run answered', () => {
+    const v = wildcardVerdict({
+      url: `https://wc-deadbeef.${WILDCARD_APEX}/`,
+      verdict: { transport: 'EAI_AGAIN' },
+      othersAnswered: false,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.coverageLost, true);
+    const text = v.lines.join('\n');
+    assert.match(text, /COVERAGE LOST/);
+    assert.ok(!/RECORD IS GONE/.test(text), 'must not name a cause it cannot observe');
+  });
+
+  // FRESH is load-bearing: a fixed nonce could be created as a real record (or
+  // cached) and would then answer for a reason unrelated to the wildcard — a
+  // probe that has quietly stopped testing its subject.
+  test('the nonce is fresh every call and sits under the apex derived from the hub URL', () => {
+    const a = nonceUrl();
+    const b = nonceUrl();
+    assert.notEqual(a, b);
+    for (const u of [a, b]) {
+      const parsed = new URL(u);
+      assert.match(parsed.hostname, /^wc-[0-9a-f]{8}\./);
+      assert.equal(parsed.hostname.endsWith(`.${WILDCARD_APEX}`), true, u);
+      assert.equal(parsed.protocol, new URL(HUB_URL).protocol);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 10]D-11 LIMB 3 — the canonical hub answers.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-catalog-reachable — [10]D-11 limb 3 (canonical hub)', () => {
+  test('PASSES on 200 and names the hub URL', () => {
+    const v = hubVerdict({ url: HUB_URL, verdict: { ok: true, status: 200 }, othersAnswered: true });
+    assert.equal(v.ok, true);
+    assert.match(v.line, /^ok {2}canonical hub answers/);
+    assert.ok(v.line.includes(HUB_URL), v.line);
+  });
+
+  // [12]W-9 diffs the committed BYTES of that page and would still be green:
+  // a file being right says nothing about the host serving it.
+  test('FAILS on any non-200 answer, naming the status', () => {
+    for (const status of [404, 522, 500, 301]) {
+      const v = hubVerdict({ url: HUB_URL, verdict: { status }, othersAnswered: true });
+      assert.equal(v.ok, false, `HTTP ${status} must not pass limb 3`);
+      assert.equal(v.coverageLost, false);
+      assert.match(v.lines.join('\n'), new RegExp(`returned HTTP ${status}`));
+    }
+  });
+
+  // `redirect: 'follow'` means /apps (no slash) → 308 → 200 arrives here as a
+  // plain 200. It still answers, so it passes — but WHERE it landed must be in
+  // the line rather than swallowed, or a hub quietly moved elsewhere reads
+  // identically to one serving from its canonical address.
+  test('a 200 reached through a redirect passes AND names the final URL', () => {
+    const finalUrl = `${HUB_URL}index.html`;
+    const v = hubVerdict({
+      url: HUB_URL,
+      verdict: { ok: true, status: 200, redirected: true, finalUrl },
+      othersAnswered: true,
+    });
+    assert.equal(v.ok, true);
+    assert.match(v.line, /after a redirect to/);
+    assert.ok(v.line.includes(finalUrl), v.line);
+  });
+
+  test('a transport error FAILS when others answered and is COVERAGE LOST when nothing did', () => {
+    const down = hubVerdict({ url: HUB_URL, verdict: { transport: 'ECONNREFUSED' }, othersAnswered: true });
+    assert.equal(down.ok, false);
+    assert.equal(down.coverageLost, false);
+    assert.match(down.lines.join('\n'), /So this is the hub, not the network/);
+
+    const dark = hubVerdict({ url: HUB_URL, verdict: { transport: 'ECONNREFUSED' }, othersAnswered: false });
+    assert.equal(dark.ok, false);
+    assert.equal(dark.coverageLost, true);
+    assert.match(dark.lines.join('\n'), /COVERAGE LOST/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE DERIVATION ITSELF. Two guards and one generator now talk about the same
+// URL, and the only thing keeping them talking about the SAME url is an import.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-catalog-reachable — the hub URL is derived, never retyped', () => {
+  test('HUB_URL is the generator\'s own CANONICAL_HUB_URL', () => {
+    assert.equal(HUB_URL, CANONICAL_HUB_URL);
+    assert.equal(CANONICAL_HUB_URL, `${ORIGIN}apps/`);
+    assert.equal(WILDCARD_APEX, new URL(CANONICAL_HUB_URL).hostname);
+  });
+
+  // 🔴 THE COUPLING TEST, and it has a real failing input: paste the hostname
+  // back into the guard as a literal and this goes red. Equality alone could
+  // not catch that — a hardcoded copy of today's value is equal to today's
+  // value, and only diverges on the day somebody moves the hub, which is
+  // precisely the day nobody is watching. Comments are stripped (the file's
+  // header discusses the apex at length) with the same reduction nine other
+  // guards use, so PROSE CANNOT SATISFY OR BREAK THIS CHECK.
+  test('the guard\'s CODE carries no hostname literal — only the import', () => {
+    const src = readFileSync(join(CI_DIR, 'assert-catalog-reachable.mjs'), 'utf8');
+    const code = stripSourceComments(src, '.mjs');
+    assert.ok(
+      src.includes(WILDCARD_APEX),
+      'sanity: the file must mention the apex SOMEWHERE (its header does), or this test proves nothing',
+    );
+    assert.equal(
+      code.includes(WILDCARD_APEX),
+      false,
+      `the apex appears as a literal in executable code; it must come from CANONICAL_HUB_URL. ` +
+        `Offending line(s): ${code
+          .split('\n')
+          .map((l, i) => [l, i + 1])
+          .filter(([l]) => l.includes(WILDCARD_APEX))
+          .map(([, n]) => n)
+          .join(', ')}`,
+    );
+    assert.match(code, /import \{ CANONICAL_HUB_URL \} from '\.\.\/sites\/generate-discovery\.mjs'/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE GATE. Both limbs run only against this repository's own tree, so the gate
+// is pinned in BOTH directions — a gate stuck on `false` turns them off in CI
+// and prints nothing, which is exactly the silence this repo keeps paying for.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-catalog-reachable — the D-11 limbs are gated on our own tree', () => {
+  test('TRUE for the repository root CI scans, FALSE for a fixture root', () => {
+    assert.equal(surfaceIsOurs(resolve(CI_DIR, '..', '..')), true, 'CI passes no root, so this is the CI case');
+    assert.equal(surfaceIsOurs(TMP), false, 'a temp fixture tree is not the tree the hub URL describes');
   });
 });

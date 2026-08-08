@@ -232,6 +232,11 @@ analyticsProvider = FutureProvider<core.Analytics>((ref) async {
       'app_version': AppConfig.appVersion,
     },
   );
+  // 🔴 Same wiring as the brick's ([11]E-4a): the recorder owns a flush deadline
+  // now, and this provider is rebuilt on every consent decision. Without this
+  // the discarded recorder's timer outlives it. See the brick's copy for the
+  // full reasoning — this app and the brick must not drift on it.
+  ref.onDispose(recorder.dispose);
   await recorder.hydrate();
   return recorder;
 });

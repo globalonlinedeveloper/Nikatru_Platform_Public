@@ -74,6 +74,23 @@ export const SITEMAP = `${DEPLOY_ROOT}/sitemap.xml`;
 export const LLMS = `${DEPLOY_ROOT}/llms.txt`;
 export const ORIGIN = 'https://nikatru.com/';
 
+/** 🔴 THE CANONICAL HUB URL, DECLARED EXACTLY ONCE IN THIS REPOSITORY.
+ *
+ *  [12]W-2a/W-2c name ONE hub URL (knowledge/decisions/026-canonical-hub-url.md)
+ *  and three things now depend on the same bytes: the `<link rel="canonical">`
+ *  and JSON-LD `url` this generator writes into the hub page, the UNLINKED HUB
+ *  print in assert-discovery-surface.mjs, and [10]D-11 limb 3 in
+ *  assert-catalog-reachable.mjs, which requires that URL to answer 200 in
+ *  production.
+ *
+ *  It is a CONSTANT rather than a second literal in each of those places for the
+ *  reason this repository keeps paying for: a hostname written twice is a
+ *  hostname that can be changed once. A reachability guard probing a URL the
+ *  generator no longer publishes would go on printing ok about a page nobody
+ *  serves — the exact shape of `sites/_shared/_site/**`, where a write looked
+ *  "consumed" for a month. Import it; do not retype it. */
+export const CANONICAL_HUB_URL = `${ORIGIN}apps/`;
+
 /** The one file under `sites/nikatru/apps/` that is NOT generated. It is served
  *  in production right now — `nikatru.com/apps/_template` resolves, because the
  *  directory sits inside the Cloudflare deploy root — and it is correctly
@@ -294,7 +311,7 @@ ${FOOTER}
 }
 
 function hubHtml(liveApps) {
-  const url = `${ORIGIN}apps/`;
+  const url = CANONICAL_HUB_URL;
   const cards = liveApps.length
     ? `      <div class="cards">
 ${liveApps
