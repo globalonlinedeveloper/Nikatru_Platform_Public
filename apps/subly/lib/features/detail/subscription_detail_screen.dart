@@ -163,6 +163,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                     children: <Widget>[
                       Expanded(
                         child: _miniCard(
+                          context,
                           'PRICE',
                           currency.fmt(s.price),
                           s.cycle == BillingCycle.yearly
@@ -173,6 +174,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _miniCard(
+                          context,
                           'NEXT CHARGE',
                           '${_shortMon(s.nextRenewal.month)} ${s.nextRenewal.day}',
                           due.label,
@@ -184,7 +186,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: cardDecoration(radius: 18),
+                    decoration: cardDecoration(context, radius: 18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
@@ -334,10 +336,16 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _miniCard(String label, String value, String sub, {Color? valueSub}) {
+  Widget _miniCard(
+    BuildContext context,
+    String label,
+    String value,
+    String sub, {
+    Color? valueSub,
+  }) {
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: cardDecoration(radius: 18),
+      decoration: cardDecoration(context, radius: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

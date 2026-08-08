@@ -72,7 +72,7 @@ class InsightsScreen extends ConsumerWidget {
             style: AppText.muted.copyWith(fontSize: 12),
           ),
           const SizedBox(height: 16),
-          _categoryCard(currency, cats, total),
+          _categoryCard(context, currency, cats, total),
           const SizedBox(height: 14),
           _savingsCard(context, currency, unused, savings),
         ],
@@ -91,6 +91,7 @@ class InsightsScreen extends ConsumerWidget {
   // held. When real history exists, a trend can come back and be true.
 
   Widget _categoryCard(
+    BuildContext context,
     Currency currency,
     List<CategoryTotal> cats,
     double total,
@@ -105,7 +106,7 @@ class InsightsScreen extends ConsumerWidget {
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: cardDecoration(),
+      decoration: cardDecoration(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -191,7 +192,7 @@ class InsightsScreen extends ConsumerWidget {
   ) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: cardDecoration(),
+      decoration: cardDecoration(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

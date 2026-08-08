@@ -135,7 +135,7 @@ class CalendarScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: cardDecoration(),
+            decoration: cardDecoration(context),
             child: Column(
               children: <Widget>[
                 Row(
@@ -255,7 +255,7 @@ class CalendarScreen extends ConsumerWidget {
   ) {
     final DueInfo due = DueInfo.of(s, now);
     return Container(
-      decoration: cardDecoration(radius: 18),
+      decoration: cardDecoration(context, radius: 18),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
