@@ -914,6 +914,21 @@ jobs:
       - name: The Data safety and content-rating declarations still describe the code
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-play-declarations.mjs
+      # A sworn declaration may not regress toward the template it was stamped
+      # from. Both files sit in the Subly re-stamp's EXCLUDE-verbatim bucket by a
+      # decision no guard enforced (knowledge/plans/subly-restamp-P22-lock.md
+      # §1.3), and the step above catches only the WHOLESALE swap. Mutation-
+      # measured 2026-08-08: eleven PARTIAL regressions were exit 0 there —
+      # nulling `dataSecurity.encryptedInTransit.answer`, deleting or emptying
+      # `resolved`, replacing every `basis` with the word "stamped", collapsing
+      # `_readme` back to the template's prose, dropping content-rating's rating
+      # authorities and its named human-owned obligations. This step owns the
+      # duller question that turned out to be unowned: is it still an ANSWERED
+      # declaration at all. It also asserts the INVERSE on the brick — the
+      # template must STAY blank, or app #2 swears to app #1's code. [ADR 037 P2.7]
+      - name: The sworn store declarations have not regressed toward the stamp
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-sworn-store-files.mjs
       # [pipeline D-10] limb (i)'s script, exercised on EVERY push rather than
       # only when somebody dispatches submit-windows-store.yml. A release script
       # nobody runs rots exactly like a guard nobody feeds bad input to: it would
@@ -1182,6 +1197,17 @@ jobs:
       - name: Fail-closed seams have a real on-switch
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-seams-wired.mjs
+      # …and consent must be WITHDRAWABLE, not only grantable. The step above
+      # asks whether the analytics seam is DEAD, and the first-run prompt answers
+      # that on its own — so deleting the Settings row leaves it at exit 0 while
+      # the only place a user can turn analytics OFF disappears. Measured against
+      # f90c546 on 2026-08-08, and no test covers it either:
+      # consent_withdrawal_test.dart pumps its own harness widget at :59, never
+      # the real screen. DPDP §6(3) requires withdrawal to be as easy as consent
+      # and privacy.html promises it happens in Settings. [ADR 037 P2.7]
+      - name: Analytics consent can be WITHDRAWN, not only given
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-consent-withdrawal-surface.mjs
       # A capability with no declared home is how THREE notification
       # implementations got written — nobody set out to write three, there was
       # just no place to look that would have said one already existed. And a

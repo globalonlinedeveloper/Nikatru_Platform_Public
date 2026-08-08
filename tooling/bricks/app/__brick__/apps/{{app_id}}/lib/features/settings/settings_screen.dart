@@ -177,6 +177,47 @@ class SettingsScreen extends ConsumerWidget {
             ),
             const Divider(),
 
+            // ── PRIVACY ──────────────────────────────────────────────────────
+            // 🔴 THE DPDP §6(3) WITHDRAWAL PATH, AND THE CHASSIS SHIPPED WITHOUT
+            // IT. Until [ADR 037 P2.7] the only caller of `recordAnalyticsConsent`
+            // in a stamped app was the FIRST-RUN PROMPT in app.dart — shown once,
+            // never again — so consent was a one-way door in every app the factory
+            // stamps. assert-seams-wired.mjs stayed green throughout: it asks
+            // whether the seam is DEAD, not whether it is REVERSIBLE, and the
+            // prompt answers that question. Withdrawal must be as easy as
+            // granting, and privacy.html promises it happens here.
+            //
+            // The value is WATCHED, not read: this row is the one place the state
+            // changes, and a snapshot read leaves the switch showing the old
+            // answer after the user has just flipped it — the same defect the
+            // profile tile's comment above records.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                l10n.privacy,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.insights_outlined),
+              title: Text(l10n.usageStatistics),
+              subtitle: Text(
+                ref.watch(analyticsConsentProvider) ==
+                        core.ConsentStatus.granted
+                    ? l10n.usageStatisticsOn
+                    : l10n.usageStatisticsOff,
+              ),
+              value:
+                  ref.watch(analyticsConsentProvider) ==
+                  core.ConsentStatus.granted,
+              // Not awaited, for the same reason app.dart's `_answer` is not: the
+              // decision applies in memory immediately and the upload is
+              // best-effort, so blocking the switch on a network round trip would
+              // make a withdrawal feel like a broken control.
+              onChanged: (bool on) => recordAnalyticsConsent(ref, granted: on),
+            ),
+            const Divider(),
+
             // ── SUBSCRIPTION ([pipeline 5]M-6 · M-9) ──────────────────────────
             //
             // 🔴 THE TWO ENTRY POINTS SIT SIDE BY SIDE ON PURPOSE. ROSCA's rule
