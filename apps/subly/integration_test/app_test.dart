@@ -373,11 +373,93 @@ void main() {
     return true;
   }
 
+  /// Boots the real app, and hands back the one global it mutates.
+  ///
+  /// 🔴 `app.main()` CALLS `AppErrorScreen.install()` (`main.dart:65`), WHICH
+  /// SETS `ErrorWidget.builder` — AND flutter_test FAILS ANY TEST THAT LEAVES IT
+  /// SET. Measured in `flutter_test/src/binding.dart:_runTestBody`: the builder
+  /// is snapshotted before the body, and `_verifyErrorWidgetBuilderUnset` is
+  /// called immediately after it — BEFORE any `tearDown`, so `addTearDown` is
+  /// too late to repair it. On 2026-08-08 this failed the first test with
+  /// `The value of ErrorWidget.builder was changed by the test.` AFTER its body
+  /// had passed and all four of its screenshots had been taken.
+  ///
+  /// 🔑 THE SAME SOURCE LINE EXPLAINS WHY THE OTHER TWO TESTS DID NOT REPORT IT:
+  /// that whole verification block sits under `if (_pendingExceptionDetails ==
+  /// null)`, so a test that has already failed is never checked. Restoring on
+  /// the LAST line of a body is therefore exactly right — an early failure skips
+  /// the restore and skips the check with it, and the real failure is what gets
+  /// reported.
+  ///
+  /// The snapshot is taken per test rather than once for the suite: if one body
+  /// fails before restoring, a suite-wide "pristine" value would no longer match
+  /// the NEXT test's snapshot, and that test would fail this check on someone
+  /// else's bug.
+  Future<VoidCallback> launchApp(WidgetTester tester) async {
+    final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;
+    await app.main();
+    await pumpFor(tester, const Duration(seconds: 3));
+    return () => ErrorWidget.builder = builderBeforeTest;
+  }
+
+  /// Moves past first-run onboarding IF it is showing, and says whether it was.
+  ///
+  /// 🔴 CONDITIONAL SINCE 2026-08-08, AND THE THING THAT CHANGED IS THE APP, NOT
+  /// THIS SUITE'S TASTE. Three tests each call `app.main()` and every one of
+  /// them used to land on the carousel, so all three tapped Skip unconditionally
+  /// and `router.dart:60` still records that assumption in a comment. That
+  /// worked for one reason only: **onboarding-seen was not persisted anywhere.**
+  /// Measured against the last green nightly (`efabfb54`, 2026-08-08 04:30 UTC):
+  /// `providers.dart` contained no `nikatru.onboarding_seen` key and no
+  /// `OnboardingSeenController` at all, so a second `app.main()` in the same
+  /// browser could not remember the first one.
+  ///
+  /// The P2.6 chassis merge added that controller — correctly, with a comment
+  /// explaining that never showing onboarding is worse than showing it twice —
+  /// and it writes to the browser's key-value store, which survives every
+  /// relaunch inside ONE `flutter drive` session. So the moment the consent fix
+  /// let the first test actually complete its walk, the flag was written, and
+  /// tests two and three relaunched straight past the carousel into
+  /// `Found 0 widgets with text "Skip"`. The suite had been depending on a bug.
+  ///
+  /// ⚠️ THIS WEAKENS NOTHING ABOUT WHERE THE APP LANDS. The router sends an
+  /// already-onboarded signed-out user `/onboarding → /home → /login`, so every
+  /// caller still asserts the SAME destination afterwards; only the question
+  /// "was the carousel in the way" became conditional. The unconditional
+  /// first-run proof lives in the first test, which is the one launch that is
+  /// genuinely a first run — and it is now an explicit `isTrue`, where before it
+  /// was an incidental tap that happened not to throw.
+  Future<bool> skipOnboardingIfShown(WidgetTester tester) async {
+    if (find.text('Skip').evaluate().isEmpty) return false;
+    expectNothingCoveringTheApp('the onboarding screen');
+    await shot('01-onboarding');
+    await tester.tap(find.text('Skip'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    return true;
+  }
+
+  /// The login screen, waited for rather than assumed — then asserted.
+  ///
+  /// Polls first because the route change is asynchronous and this is reached
+  /// from two different starting points now (straight off the carousel, or off
+  /// the router's `/onboarding → /home → /login` bounce for a returning user),
+  /// then makes the SAME hard assertion as before. Strictly stronger than the
+  /// fixed pump it replaces: nothing is accepted that was not accepted before.
+  Future<void> expectLandedOnLogin(WidgetTester tester, String after) async {
+    expect(
+      await waitFor(tester, find.text('Welcome back')),
+      isTrue,
+      reason:
+          'The app did not reach the login screen after $after. On screen: '
+          '${onScreen(tester)}',
+    );
+    expect(find.text('Welcome back'), findsOneWidget);
+  }
+
   testWidgets('login rejects empty + invalid credentials with clear messages', (
     WidgetTester tester,
   ) async {
-    await app.main();
-    await pumpFor(tester, const Duration(seconds: 3));
+    final VoidCallback restoreGlobals = await launchApp(tester);
 
     // First launch of the run: the consent gate MUST ask. If this ever goes
     // false the DPDP prompt has stopped appearing and the analytics rail is
@@ -393,10 +475,20 @@ void main() {
           'and nothing else in the suite would notice.',
     );
 
-    expectNothingCoveringTheApp('the onboarding screen');
-    await tester.tap(find.text('Skip'));
-    await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.text('Welcome back'), findsOneWidget);
+    // THE ONE LAUNCH THAT IS GENUINELY A FIRST RUN, so this is the one place
+    // the carousel is REQUIRED rather than tolerated. If it is ever absent here,
+    // a stranger is being dropped into the app with no introduction — leg 1 of
+    // the golden path — and that must fail loudly rather than be skipped past.
+    expect(
+      await skipOnboardingIfShown(tester),
+      isTrue,
+      reason:
+          'The FIRST launch of the run did not land on first-run onboarding. '
+          'Either the router no longer starts at /onboarding, or the '
+          'onboarding-seen flag survived from a previous run in the browser '
+          'store. On screen: ${onScreen(tester)}',
+    );
+    await expectLandedOnLogin(tester, 'Skip on the first run');
 
     // Fields must start EMPTY — no demo credentials shipped to users.
     expect(find.text('alex@example.com'), findsNothing);
@@ -430,6 +522,7 @@ void main() {
     );
     expect(find.text('Welcome back'), findsOneWidget);
     await shot('00c-invalid-credentials');
+    restoreGlobals();
   });
 
   testWidgets('visits every page, creates a subscription, reads it back', (
@@ -448,8 +541,7 @@ void main() {
         .currentIndex;
 
     // ── Boot ───────────────────────────────────────────────────────────────
-    await app.main();
-    await pumpFor(tester, const Duration(seconds: 3));
+    final VoidCallback restoreGlobals = await launchApp(tester);
 
     // The first test already answered consent and the decision is persisted, so
     // this normally finds nothing. Called anyway so that reordering the tests,
@@ -458,19 +550,19 @@ void main() {
     // which is the only one that launches with an undecided store.
     await answerConsentIfPrompted(tester, timeout: const Duration(seconds: 4));
 
-    // ── 01 Onboarding ────────────────────────────────────────────────────────
-    expectNothingCoveringTheApp('the onboarding screen');
-    expect(
-      find.text('Skip'),
-      findsOneWidget,
-      reason: 'App did not land on the onboarding screen',
-    );
-    await shot('01-onboarding');
-    await tester.tap(find.text('Skip'));
-    await pumpFor(tester, const Duration(seconds: 2));
+    // ── 01 Onboarding, IF this launch still gets it ──────────────────────────
+    // Not asserted here, and not because the carousel stopped mattering: the
+    // first test already answered it, and answering it PERSISTS. The proof that
+    // a stranger meets onboarding is unconditional in that test, where the
+    // launch really is a first run. Asserting it again here would only assert
+    // that the flag failed to save.
+    await skipOnboardingIfShown(tester);
 
     // ── 02 Login ─────────────────────────────────────────────────────────────
-    expect(find.text('Welcome back'), findsOneWidget);
+    // Reached either straight off the carousel or, for a returning user, via the
+    // router's `/onboarding → /home → /login` bounce. Same destination, same
+    // assertion, both ways.
+    await expectLandedOnLogin(tester, 'the boot for the full-walk test');
     await shot('02-login');
     await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
     await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
@@ -498,7 +590,21 @@ void main() {
     await shot('04-home');
 
     // ── 05 Calendar ──────────────────────────────────────────────────────────
-    await tester.tap(find.text('Calendar'));
+    // 🔴 TAPPED BY ICON, NOT BY LABEL, AND ONLY THIS ONE OF THE FIVE.
+    // P4·L3 gave home's "Upcoming renewals" section a `calendarLink` whose value
+    // is the bare word "Calendar" — the old literal was 'Calendar →' and the arb
+    // key drops the baked arrow, because a left-to-right glyph inside copy is
+    // wrong in every RTL locale (it is an `Icons.arrow_forward` now, which
+    // mirrors itself). The nav pill's second tab is `navCalendar`, also
+    // "Calendar". Both render on /home, so `find.text('Calendar')` matches TWO
+    // widgets here and `tester.tap` throws on an ambiguous finder.
+    //
+    // `Icons.calendar_month_rounded` is used in exactly one place in the app
+    // (`app_shell.dart`'s tab spec), so it is the unambiguous handle. The other
+    // four labels are untouched: no screen renders "Home", "Insights", "Budget"
+    // or "More" alongside its tab. Pinned by
+    // `test/l10n_group_home_test.dart` → '"Calendar" is now ambiguous on /home'.
+    await tester.tap(find.byIcon(Icons.calendar_month_rounded));
     await pumpFor(tester, const Duration(seconds: 2));
     expect(shellIndex(), 1);
     expect(find.byType(CalendarScreen), findsWidgets);
@@ -727,6 +833,7 @@ void main() {
           'inside the router authFlow, so the redirect will not rescue the user',
     );
     await shot('17-signed-out');
+    restoreGlobals();
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -785,30 +892,21 @@ void main() {
     }
 
     // ── Boot + sign in as the sacrificial user ───────────────────────────────
-    await app.main();
-    await pumpFor(tester, const Duration(seconds: 3));
+    final VoidCallback restoreGlobals = await launchApp(tester);
     // Consent was answered and persisted by the first test; called anyway so a
     // cleared store cannot wedge this run behind a modal barrier.
     await answerConsentIfPrompted(tester, timeout: const Duration(seconds: 4));
 
-    expectNothingCoveringTheApp('the onboarding screen');
-    await tester.tap(find.text('Skip'));
-    await pumpFor(tester, const Duration(seconds: 2));
+    // Third boot of the run, so the carousel is normally already behind us —
+    // and it is tolerated either way. Same reasoning as the second test.
+    await skipOnboardingIfShown(tester);
 
     // POLLED, not a fixed pump then a hard expect. This is the third full boot
-    // of the run and the route change after Skip is asynchronous; a 2s window
-    // that happens to be enough twice is not a proof that it is enough. The
-    // message names the two states this can be in, because "Found 0 widgets
-    // with text Welcome back" reads identically whether the tap was swallowed
-    // (see expectNothingCoveringTheApp above) or the redirect is merely slow.
-    expect(
-      await waitFor(tester, find.text('Welcome back')),
-      isTrue,
-      reason:
-          'The delete-leg walk never reached the login screen after Skip. '
-          'Either the tap was swallowed by something covering onboarding, or '
-          'the router has not settled. On screen: ${onScreen(tester)}',
-    );
+    // of the run and the route change is asynchronous; a 2s window that happens
+    // to be enough twice is not a proof that it is enough. `Found 0 widgets
+    // with text Welcome back` reads identically whether a tap was swallowed
+    // (see expectNothingCoveringTheApp) or the redirect is merely slow.
+    await expectLandedOnLogin(tester, 'the boot for the delete-leg walk');
     await tester.enterText(find.byKey(E2EKeys.loginEmail), deleteEmail);
     await tester.enterText(find.byKey(E2EKeys.loginPassword), deletePassword);
     await pumpFor(tester, const Duration(milliseconds: 500));
@@ -964,5 +1062,6 @@ void main() {
     // Whether subly_db and the identity record are ACTUALLY empty is asserted by
     // `tooling/e2e/verify_purged.mjs` in the step after this one — server-side,
     // through the D1 HTTP API and the GoTrue admin API, with no app in the loop.
+    restoreGlobals();
   });
 }

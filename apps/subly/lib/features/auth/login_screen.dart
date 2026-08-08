@@ -2,13 +2,82 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ContentPane;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
+
+/// The six neutral colours this screen paints with, resolved for the current
+/// brightness.
+///
+/// 🔴 LIGHT IS THE LITERAL TOKEN, NOT `scheme.<slot>`, AND THAT IS THE WHOLE
+/// SHAPE OF THIS FUNCTION — the same rule `cardDecoration` and `RowCard` are
+/// written to (read `features/shared/widgets.dart:19-57` first). `apps/subly` is
+/// the frozen legacy rail-prover the owner eyeballs, so light must come out
+/// byte-identical to the twelve `AppColors.*` references this replaces; a
+/// "tidy-up" to `scheme.surface` in the light arm would repaint the login screen
+/// while every assertion comparing scheme-to-scheme kept passing.
+///
+/// 🔴 AND THE DARK ARM IS NOT COSMETIC. `app.dart` supplies a `darkTheme`, so
+/// every user on a dark-mode OS lands here — and with the tokens hardcoded that
+/// meant `AppColors.bg` (#F4F4F8, near-white) behind `AppColors.ink` (#141420,
+/// near-black) inside dark chassis chrome. Not "slightly off": a white sheet in
+/// a dark app, and, had only the surfaces been fixed, near-black headings on a
+/// near-black scaffold. Both halves move together or neither is worth doing,
+/// which is why [ink] and [muted] are in here beside the surfaces rather than
+/// left to `AppText`'s const styles.
+///
+/// [AppText.title], [AppText.body], [AppText.muted] and [AppText.label] each
+/// bake `AppColors.ink` / `AppColors.muted` into a `const TextStyle` in
+/// `packages/design_system`, so the only place a screen can correct them is at
+/// the call site, with `copyWith`. In LIGHT the value copied in is the value
+/// that was already there.
+typedef _Tones = ({
+  Color bg,
+  Color surface,
+  Color line,
+  Color ink,
+  Color muted,
+  Color accent,
+  Color danger,
+});
+
+_Tones _tones(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  if (theme.brightness == Brightness.light) {
+    return (
+      bg: AppColors.bg,
+      surface: AppColors.surface,
+      line: AppColors.line,
+      ink: AppColors.ink,
+      muted: AppColors.muted,
+      accent: AppColors.accent,
+      danger: AppColors.danger,
+    );
+  }
+  final ColorScheme scheme = theme.colorScheme;
+  return (
+    // The scaffold is `scheme.surface` because that is exactly what
+    // `buildAppTheme` sets `scaffoldBackgroundColor` to — the screen agreeing
+    // with the theme rather than inventing a second answer.
+    bg: scheme.surface,
+    // `surfaceContainerHighest` is the slot `cardDecoration` and `RowCard`
+    // already chose: the lightest container step, so a field or a card lifts off
+    // the scaffold by the widest margin the scheme offers.
+    surface: scheme.surfaceContainerHighest,
+    line: scheme.outlineVariant,
+    ink: scheme.onSurface,
+    muted: scheme.onSurfaceVariant,
+    accent: scheme.primary,
+    danger: scheme.error,
+  );
+}
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -31,13 +100,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final String email = _email.text.trim();
     if (email.isEmpty || _password.text.isEmpty) {
-      _snack('Enter your email and password.');
+      _snack(l10n.authEnterBoth);
       return;
     }
     if (!email.contains('@') || !email.contains('.')) {
-      _snack('Enter a valid email address.');
+      _snack(l10n.authInvalidEmail);
       return;
     }
     setState(() => _loading = true);
@@ -77,172 +147,250 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _snack(Object e) {
     if (!mounted) return;
+    // Read INSIDE the mounted check, not at the call site: this runs from a
+    // `catch` after an await, and `AppLocalizations.of` on a disposed element
+    // throws where the old string literal simply could not.
+    final AppLocalizations l10n = AppLocalizations.of(context);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(_friendlyMessage(e))));
+    ).showSnackBar(SnackBar(content: Text(_friendlyMessage(l10n, e))));
   }
 
   /// Maps raw auth/network errors onto short, human messages so users never see
   /// a stack-tracey exception (e.g. Supabase's invalid_credentials).
-  String _friendlyMessage(Object e) {
+  ///
+  /// The `raw` it matches on is the SERVER's English — Supabase's error codes
+  /// are not localized and must not be, or the matching stops working. Only the
+  /// message handed back to the user comes from the arb.
+  String _friendlyMessage(AppLocalizations l10n, Object e) {
     if (e is String) return e;
     final String raw = e.toString().toLowerCase();
     if (raw.contains('invalid_credentials') || raw.contains('invalid login')) {
-      return 'Incorrect email or password.';
+      return l10n.authIncorrect;
     }
     if (raw.contains('already registered') ||
         raw.contains('already been registered') ||
         raw.contains('user_already_exists')) {
-      return 'That email is already registered — try signing in.';
+      return l10n.authAlreadyRegistered;
     }
     if (raw.contains('weak_password') || raw.contains('password should be')) {
-      return 'Password must be at least 6 characters.';
+      // 🔴 THE COPY CHANGED HERE, ON PURPOSE (WORKORDER §8 decision 3). This
+      // said "Password must be at least 6 characters." — the 6 was GoTrue's
+      // server default leaking into our words, while `signUpTitle`'s own screen
+      // enforces 8 client-side and says so via `passwordTooShort` ("Use at
+      // least 8 characters."). Two numbers for one rule is a bug in the copy,
+      // and the shipped one was the wrong number.
+      // 👤 Flagged for the polish list: THIS screen's sign-up toggle has no
+      // client-side 8-check at all, so it can still reach the server with 6.
+      return l10n.passwordTooShort;
     }
     if (raw.contains('email_not_confirmed') || raw.contains('not confirmed')) {
-      return 'Please confirm your email, then sign in.';
+      return l10n.authConfirmEmail;
     }
     if (raw.contains('rate limit') || raw.contains('over_email_send')) {
-      return 'Too many attempts — please wait a moment and try again.';
+      return l10n.authRateLimited;
     }
     if (raw.contains('socketexception') ||
         raw.contains('failed host lookup') ||
         raw.contains('connection') ||
         raw.contains('network')) {
-      return 'Network error — check your connection and try again.';
+      return l10n.authNetworkError;
     }
-    return 'Something went wrong. Please try again.';
+    return l10n.authUnknownError;
   }
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final _Tones t = _tones(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: t.bg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(28, 40, 28, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: AppColors.brandGradient,
-                  borderRadius: BorderRadius.circular(16),
+          // 🔴 THE FORM CAP, and this is the screen the argument for it is
+          // easiest to see on: an email field, a password field and a button,
+          // stretched edge to edge across a 1280 px window. `ContentPane.form`
+          // (420) is the same idiom `features/auth/sign_in_screen.dart:78`
+          // already uses, and the same 420 that was hand-written six times
+          // before the chassis owned it.
+          //
+          // ⚠️ THE PADDING STAYS ON THE SCROLL VIEW, OUTSIDE THE CAP — matching
+          // sign_in_screen, not the onboarding twin. So the cap engages at
+          // 420 + 56 = 476 px, well below a tablet, and the width measured
+          // inside the pane is `min(surface - 56, 420)`.
+          //
+          // ⚠️ topCenter, NOT `Center`: `_AccountDeletionNotice` appears and
+          // disappears above the fields and the error SnackBar changes nothing
+          // vertically, but the sign-in/sign-up toggle changes the column's
+          // height on every tap — vertically centred, that would slide the two
+          // fields under the user's finger mid-form. `ContentPane` refuses to.
+          child: ContentPane.form(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Container(
+                  width: 52,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    // Brand, not neutral: the gradient and the glyph on it are
+                    // the same in both brightnesses. An on-gradient white stays
+                    // white — `scheme.onPrimary` would be a dark glyph on a
+                    // dark-mode primary, i.e. the mark disappearing into itself.
+                    gradient: AppColors.brandGradient,
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                  ),
+                  child: const Text(
+                    '◈',
+                    style: TextStyle(fontSize: 24, color: Colors.white),
+                  ),
                 ),
-                child: const Text(
-                  '◈',
-                  style: TextStyle(fontSize: 24, color: Colors.white),
+                const SizedBox(height: 22),
+                // 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE.
+                //
+                // `deleteAccount()` signs out whichever way the request went, so
+                // the router lands the user HERE — and takes the settings screen,
+                // its dialog and any SnackBar with it. Measured, not assumed: the
+                // router-driven test in test/delete_account_test.dart found ZERO
+                // result widgets after the redirect settled. So the message that
+                // matters most (502: your data is gone and your login still
+                // works) was the one message nobody ever saw. [ADR 027]
+                const _AccountDeletionNotice(),
+                Text(
+                  _signUp ? l10n.signUpTitle : l10n.welcomeBack,
+                  style: AppText.title.copyWith(fontSize: 34, color: t.ink),
                 ),
-              ),
-              const SizedBox(height: 22),
-              // 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE.
-              //
-              // `deleteAccount()` signs out whichever way the request went, so
-              // the router lands the user HERE — and takes the settings screen,
-              // its dialog and any SnackBar with it. Measured, not assumed: the
-              // router-driven test in test/delete_account_test.dart found ZERO
-              // result widgets after the redirect settled. So the message that
-              // matters most (502: your data is gone and your login still
-              // works) was the one message nobody ever saw. [ADR 027]
-              const _AccountDeletionNotice(),
-              Text(
-                _signUp ? 'Create account' : 'Welcome back',
-                style: AppText.title.copyWith(fontSize: 34),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _signUp
-                    ? 'Start tracking every subscription in one place.'
-                    : 'Sign in to keep your money in check.',
-                style: AppText.muted.copyWith(fontSize: 15),
-              ),
-              const SizedBox(height: 28),
-              _field(
-                'EMAIL',
-                _email,
-                TextInputType.emailAddress,
-                fieldKey: E2EKeys.loginEmail,
-                hint: 'you@email.com',
-              ),
-              const SizedBox(height: 14),
-              _field(
-                'PASSWORD',
-                _password,
-                TextInputType.text,
-                obscure: true,
-                fieldKey: E2EKeys.loginPassword,
-                hint: 'Your password',
-              ),
-              if (!_signUp)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () async {
-                      await ref
-                          .read(authRepositoryProvider)
-                          .sendPasswordReset(_email.text.trim());
-                      _snack('Password reset sent (demo).');
-                    },
+                const SizedBox(height: 6),
+                Text(
+                  _signUp ? l10n.signUpSubtitle : l10n.signInSubtitle,
+                  style: AppText.muted.copyWith(fontSize: 15, color: t.muted),
+                ),
+                const SizedBox(height: 28),
+                // The field labels are the arb's `email` / `password` PUT INTO
+                // CAPITALS BY THE LAYOUT, not two more keys shouting in the arb.
+                // A translator should never have to decide whether Tamil has an
+                // upper case (it does not — `toUpperCase()` is a no-op on Tamil
+                // script, which is the correct rendering, and it would be frozen
+                // wrong if the capitals lived in the value).
+                _field(
+                  l10n.email.toUpperCase(),
+                  _email,
+                  TextInputType.emailAddress,
+                  fieldKey: E2EKeys.loginEmail,
+                  hint: l10n.emailHint,
+                ),
+                const SizedBox(height: 14),
+                _field(
+                  l10n.password.toUpperCase(),
+                  _password,
+                  TextInputType.text,
+                  obscure: true,
+                  fieldKey: E2EKeys.loginPassword,
+                  hint: l10n.passwordHint,
+                ),
+                if (!_signUp)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () async {
+                        await ref
+                            .read(authRepositoryProvider)
+                            .sendPasswordReset(_email.text.trim());
+                        // 🔴 THE "(demo)" LEAK IS GONE. This said "Password
+                        // reset sent (demo)." — a build-mode detail shown to a
+                        // user, and a claim the app cannot make: it does not
+                        // know whether that address has an account, and saying
+                        // so either way is an account-enumeration oracle.
+                        // `resetSent` is the existing key that says neither.
+                        _snack(l10n.resetSent);
+                      },
+                      child: Text(
+                        l10n.forgotPasswordShort,
+                        style: AppText.body.copyWith(
+                          color: t.accent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                GradientButton(
+                  key: E2EKeys.loginSubmit,
+                  label: _loading
+                      ? l10n.pleaseWait
+                      : (_signUp ? l10n.signUp : l10n.signIn),
+                  onPressed: _loading ? null : _submit,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: <Widget>[
+                    Expanded(child: Divider(color: t.line)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        l10n.orDivider,
+                        style: TextStyle(color: t.muted),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: t.line)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // ⚠️ THE TWO-SPACE GUTTER IS GONE, and it could not survive
+                // translation: the literal was '  Continue with Apple', and
+                // `SoftButton` CENTRES its label, so the spaces were only ever a
+                // ~4 px optical nudge left over from a design that had a glyph
+                // in front of the words. Leading whitespace inside an arb value
+                // is invisible in review, is the first thing a translator drops,
+                // and would therefore render differently per locale for no
+                // stated reason. The reused key is the chassis's plain
+                // `continueWithApple`.
+                //
+                // 👤 `SoftButton` ITSELF IS STILL LIGHT-ONLY — it hardcodes
+                // `AppColors.surface` + `AppColors.line` in
+                // `features/shared/widgets.dart`, which this increment does not
+                // own. So this control stays a white pill in dark mode, and
+                // `AppColors.ink` is the RIGHT foreground for it: passing
+                // `t.ink` would put near-white text on that white pill.
+                SoftButton(
+                  label: l10n.continueWithApple,
+                  onPressed: _loading ? null : _apple,
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _signUp = !_signUp),
+                    // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
+                    // This was two `TextSpan`s — "New here? " + "Create account"
+                    // — which is a concatenation wearing a rich-text costume: it
+                    // fixes English word order, and in a language that puts the
+                    // verb last the "link" half would have to move to the front
+                    // of the sentence. `newHerePrompt` / `haveAccountPrompt`
+                    // each carry the complete line, so the translator controls
+                    // the order.
+                    //
+                    // ⚠️ The whole line is the tap target either way — the
+                    // `GestureDetector` above always was the button, and the
+                    // second span was never independently tappable (no
+                    // `TapGestureRecognizer`), so nothing about the interaction
+                    // changed. What is lost is the accent colouring of the last
+                    // two words; a per-locale substring hunt to restore it would
+                    // be exactly the fixed-word-order assumption this removes.
                     child: Text(
-                      'Forgot password?',
-                      style: AppText.body.copyWith(
-                        color: AppColors.accent,
-                        fontWeight: FontWeight.w700,
+                      _signUp ? l10n.haveAccountPrompt : l10n.newHerePrompt,
+                      textAlign: TextAlign.center,
+                      style: AppText.muted.copyWith(
+                        fontSize: 14,
+                        color: t.muted,
                       ),
                     ),
                   ),
                 ),
-              const SizedBox(height: 12),
-              GradientButton(
-                key: E2EKeys.loginSubmit,
-                label: _loading
-                    ? 'Please wait…'
-                    : (_signUp ? 'Create account' : 'Sign in'),
-                onPressed: _loading ? null : _submit,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: const <Widget>[
-                  Expanded(child: Divider(color: AppColors.line)),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('or', style: TextStyle(color: AppColors.muted)),
-                  ),
-                  Expanded(child: Divider(color: AppColors.line)),
-                ],
-              ),
-              const SizedBox(height: 20),
-              SoftButton(
-                label: '  Continue with Apple',
-                onPressed: _loading ? null : _apple,
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: GestureDetector(
-                  onTap: () => setState(() => _signUp = !_signUp),
-                  child: Text.rich(
-                    TextSpan(
-                      text: _signUp ? 'Have an account? ' : 'New here? ',
-                      style: AppText.muted.copyWith(fontSize: 14),
-                      children: <InlineSpan>[
-                        TextSpan(
-                          text: _signUp ? 'Sign in' : 'Create account',
-                          style: const TextStyle(
-                            fontFamily: 'Manrope',
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.accent,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-              const Center(child: PoweredByNikatru()),
-            ],
+                const SizedBox(height: 30),
+                const Center(child: PoweredByNikatru()),
+              ],
+            ),
           ),
         ),
       ),
@@ -257,33 +405,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     Key? fieldKey,
     String? hint,
   }) {
+    final _Tones t = _tones(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(label, style: AppText.label),
+        Text(label, style: AppText.label.copyWith(color: t.muted)),
         const SizedBox(height: 7),
         TextField(
           key: fieldKey,
           controller: c,
           obscureText: obscure,
           keyboardType: type,
-          style: AppText.body.copyWith(fontWeight: FontWeight.w600),
+          style: AppText.body.copyWith(
+            fontWeight: FontWeight.w600,
+            color: t.ink,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: AppText.muted.copyWith(fontWeight: FontWeight.w500),
+            hintStyle: AppText.muted.copyWith(
+              fontWeight: FontWeight.w500,
+              color: t.muted,
+            ),
             filled: true,
-            fillColor: AppColors.surface,
+            fillColor: t.surface,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 15,
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppColors.line),
+              borderSide: BorderSide(color: t.line),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+              borderSide: BorderSide(color: t.accent, width: 1.5),
             ),
           ),
         ),
@@ -303,6 +458,8 @@ class _AccountDeletionNotice extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final _Tones t = _tones(context);
     final core.AccountDeletionOutcome? outcome = ref.watch(
       lastAccountDeletionOutcomeProvider,
     );
@@ -312,32 +469,37 @@ class _AccountDeletionNotice extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: t.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: outcome.accountIsGone ? AppColors.line : AppColors.danger,
-        ),
+        // The FAILED case keeps its danger edge in both brightnesses; only the
+        // token it resolves through changes.
+        border: Border.all(color: outcome.accountIsGone ? t.line : t.danger),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            outcome.accountIsGone ? 'Account deleted' : 'Not deleted',
-            style: AppText.body.copyWith(fontWeight: FontWeight.w800),
+            outcome.accountIsGone
+                ? l10n.deleteAccountResultGone
+                : l10n.deleteAccountResultNotDeleted,
+            style: AppText.body.copyWith(
+              fontWeight: FontWeight.w800,
+              color: t.ink,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             outcome.plainMessage,
             key: const Key('accountDeletionNoticeText'),
-            style: AppText.muted.copyWith(fontSize: 13),
+            style: AppText.muted.copyWith(fontSize: 13, color: t.muted),
           ),
           if (!outcome.accountIsGone) ...<Widget>[
             const SizedBox(height: 6),
             // No turnaround time and no retention period: the published page
             // states none, and an app inventing one commits us to it.
             Text(
-              'Email ${AppConfig.supportEmail} and we will finish it.',
-              style: AppText.muted.copyWith(fontSize: 13),
+              l10n.deleteAccountEmailRoute(AppConfig.supportEmail),
+              style: AppText.muted.copyWith(fontSize: 13, color: t.muted),
             ),
           ],
           Align(
@@ -346,7 +508,7 @@ class _AccountDeletionNotice extends ConsumerWidget {
               onPressed: () =>
                   ref.read(lastAccountDeletionOutcomeProvider.notifier).state =
                       null,
-              child: const Text('Dismiss'),
+              child: Text(l10n.dismiss),
             ),
           ),
         ],

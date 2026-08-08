@@ -78,6 +78,7 @@ class _HomeDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final Currency currency = ref.watch(currencyProvider);
     final core.AuthUser? user = ref.watch(authRepositoryProvider).currentUser;
     // The `unused` setting was declared in settings_controller.dart and read
@@ -139,7 +140,7 @@ class _HomeDashboard extends ConsumerWidget {
           AppSpacing.xl,
         ),
         children: <Widget>[
-          _header(context, user),
+          _header(context, l10n, user),
           const SizedBox(height: 18),
           ...ref
               .watch(subscriptionsControllerProvider)
@@ -150,16 +151,26 @@ class _HomeDashboard extends ConsumerWidget {
                     child: Center(child: CircularProgressIndicator()),
                   ),
                 ],
+                // ⚠️ `couldNotLoad` INTERPOLATES THE RAW EXCEPTION, and the arb
+                // key preserves that verbatim rather than quietly improving it.
+                // Leaking a stack-adjacent string at a user is a real defect
+                // (WORKORDER §1 flags it), but it is a COPY decision and this is
+                // an l10n increment: changing what the sentence says here would
+                // hide the leak behind a translation commit instead of fixing it
+                // where it can be reviewed.
                 error: (Object e, _) => <Widget>[
                   Padding(
                     padding: const EdgeInsets.only(top: 48),
                     child: Center(
-                      child: Text('Could not load: $e', style: AppText.muted),
+                      child: Text(
+                        l10n.couldNotLoad('$e'),
+                        style: AppText.muted,
+                      ),
                     ),
                   ),
                 ],
                 data: (List<Subscription> subs) =>
-                    _dashboard(context, currency, subs, now, showUnused),
+                    _dashboard(context, l10n, currency, subs, now, showUnused),
               ),
         ],
       ),
@@ -168,8 +179,11 @@ class _HomeDashboard extends ConsumerWidget {
 
   /// Greeting, account name, notifications and the avatar shortcut. Independent
   /// of the subscription list — see MERGE CHANGE 1.
-  Widget _header(BuildContext context, core.AuthUser? user) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
+  Widget _header(
+    BuildContext context,
+    AppLocalizations l10n,
+    core.AuthUser? user,
+  ) {
     return Row(
       children: <Widget>[
         Expanded(
@@ -177,7 +191,7 @@ class _HomeDashboard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                _greeting(DateTime.now()),
+                _greeting(l10n, DateTime.now()),
                 style: AppText.muted.copyWith(fontSize: 12),
               ),
               // 🔀 MERGE CHANGE 4 of 4 — THE SIGNED-OUT FALLBACK IS NOW THE
@@ -210,8 +224,9 @@ class _HomeDashboard extends ConsumerWidget {
         // source, and inventing one inside a merge increment is how a merge
         // stops being reviewable. Named in MANIFEST.md · OPEN QUESTION 4.
         _circleButton(
+          context: context,
           icon: Icons.notifications_none_rounded,
-          semanticLabel: AppLocalizations.of(context).notifications,
+          semanticLabel: l10n.notifications,
           dot: true,
           onTap: () => context.push('/notifications'),
         ),
@@ -250,6 +265,7 @@ class _HomeDashboard extends ConsumerWidget {
   /// above can stay outside the async boundary.
   List<Widget> _dashboard(
     BuildContext context,
+    AppLocalizations l10n,
     Currency currency,
     List<Subscription> subs,
     DateTime now,
@@ -264,6 +280,7 @@ class _HomeDashboard extends ConsumerWidget {
 
     return <Widget>[
       _heroCard(
+        l10n,
         currency,
         total,
         subs.length,
@@ -293,9 +310,13 @@ class _HomeDashboard extends ConsumerWidget {
               ),
             ),
           ),
-          title: '${unused.length} marked unused',
+          // PLURAL — one of the app's first three. `markedUnusedCount` carries
+          // the whole clause in each arm, so a language that inflects the noun
+          // (Tamil: திட்டம் → திட்டங்கள்) is translating a sentence rather than
+          // gluing a number onto a fixed word.
+          title: l10n.markedUnusedCount(unused.length),
           subtitle: Text(
-            'Cancel to save ${currency.fmt(savings)}/mo',
+            l10n.cancelToSave(currency.fmt(savings)),
             style: AppText.muted.copyWith(fontSize: 12),
           ),
           trailing: const Icon(
@@ -305,27 +326,46 @@ class _HomeDashboard extends ConsumerWidget {
           ),
         ),
       SectionHeader(
-        'Upcoming renewals',
+        l10n.upcomingRenewals,
+        // 🔴 THE ARROW LEFT THE STRING, and that is the point of the key rather
+        // than a side effect. The literal was `'Calendar →'` — a LEFT-TO-RIGHT
+        // glyph baked into copy, so every RTL locale would have rendered a
+        // "forward" arrow pointing back the way the reader came, and every
+        // translator would have had to remember to flip a character. It is now
+        // an `Icons.arrow_forward`, which Flutter declares with
+        // `matchTextDirection: true` and therefore mirrors itself; the arb key
+        // (`calendarLink`) carries the word alone.
         trailing: GestureDetector(
           onTap: () => context.go('/calendar'),
-          child: Text(
-            'Calendar →',
-            style: AppText.body.copyWith(
-              color: AppColors.accent,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                l10n.calendarLink,
+                style: AppText.body.copyWith(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 3),
+              const Icon(
+                Icons.arrow_forward,
+                color: AppColors.accent,
+                size: 13,
+              ),
+            ],
           ),
         ),
       ),
       ...upcoming.map(
         (Subscription s) => Padding(
           padding: const EdgeInsets.only(bottom: 9),
-          child: _subTile(context, currency, s, now, showDue: true),
+          child: _subTile(context, l10n, currency, s, now, showDue: true),
         ),
       ),
       SectionHeader(
-        'All subscriptions',
+        l10n.allSubscriptions,
         trailing: Text(
           '${subs.length}',
           style: AppText.muted.copyWith(fontSize: 12),
@@ -334,13 +374,30 @@ class _HomeDashboard extends ConsumerWidget {
       ...all.map(
         (Subscription s) => Padding(
           padding: const EdgeInsets.only(bottom: 9),
-          child: _subTile(context, currency, s, now, showDue: false),
+          child: _subTile(context, l10n, currency, s, now, showDue: false),
         ),
       ),
     ];
   }
 
+  /// 🔴 THE HERO IS THE ONE SURFACE ON THIS SCREEN THAT IS ALREADY DARK IN BOTH
+  /// BRIGHTNESSES, so the six `Colors.white` / `rgba(255,255,255,…)` values in
+  /// this method and in [_statBox] STAY. They are not the light-hardcoded defect
+  /// `cardDecoration` and `RowCard` carried.
+  ///
+  /// The ground here is [AppColors.heroGradient] — `heroA/B/C`, three fixed
+  /// near-black purples — and it is a BRAND asset, not a themed surface: it
+  /// renders identically under `theme` and `darkTheme` because it is a constant
+  /// gradient, not a scheme slot. White is therefore the correct foreground in
+  /// both modes, and swapping it for `scheme.onSurface` would put near-black
+  /// text on a near-black card in LIGHT mode — the same defect this campaign is
+  /// removing, introduced in the opposite direction.
+  ///
+  /// `test/dark_group_home_test.dart` pins that in both brightnesses, because
+  /// "migrate every hardcoded colour" is exactly the tidy-up that would break it
+  /// and nothing else would notice.
   Widget _heroCard(
+    AppLocalizations l10n,
     Currency currency,
     double total,
     int count,
@@ -365,7 +422,7 @@ class _HomeDashboard extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'MONTHLY SPEND',
+            l10n.monthlySpend,
             style: AppText.label.copyWith(
               color: const Color.fromRGBO(255, 255, 255, 0.7),
             ),
@@ -387,13 +444,18 @@ class _HomeDashboard extends ConsumerWidget {
             spacing: 7,
             runSpacing: 7,
             children: <Widget>[
+              // PLURAL. English collapses ("1 active" / "2 active") so the arms
+              // read the same here — which is precisely why the key has to be a
+              // plural rather than an interpolation: Tamil and every other
+              // language that inflects gets the arms it needs, and English's
+              // coincidence stops being the shape the app is built on.
               Pill(
-                '$count active',
+                l10n.activeCount(count),
                 bg: const Color.fromRGBO(255, 255, 255, 0.13),
                 fg: Colors.white,
               ),
               Pill(
-                '${currency.fmt0(total * 12)} / yr',
+                l10n.perYearTotal(currency.fmt0(total * 12)),
                 bg: const Color.fromRGBO(255, 255, 255, 0.13),
                 fg: Colors.white,
               ),
@@ -402,7 +464,7 @@ class _HomeDashboard extends ConsumerWidget {
           const SizedBox(height: 18),
           Row(
             children: <Widget>[
-              _statBox('DUE IN 7 DAYS', currency.fmt(dueSoon), Colors.white),
+              _statBox(l10n.dueIn7Days, currency.fmt(dueSoon), Colors.white),
               const SizedBox(width: 12),
               // Was 'VS LAST MONTH', computed as `total - 174`. 174 was the last
               // element of the fabricated six-month trend array in insights, so this
@@ -410,7 +472,7 @@ class _HomeDashboard extends ConsumerWidget {
               // also hardcoded a '+', so it reported an increase every single month.
               // The app stores no history, so no month-over-month figure can be
               // honest. Replaced with a 30-day horizon, which is derived.
-              _statBox('DUE IN 30 DAYS', currency.fmt(due30), Colors.white),
+              _statBox(l10n.dueIn30Days, currency.fmt(due30), Colors.white),
             ],
           ),
         ],
@@ -451,18 +513,23 @@ class _HomeDashboard extends ConsumerWidget {
 
   Widget _subTile(
     BuildContext context,
+    AppLocalizations l10n,
     Currency currency,
     Subscription s,
     DateTime now, {
     required bool showDue,
   }) {
-    final DueInfo due = DueInfo.of(s, now);
+    // [L1] `DueInfo.localized`, not `DueInfo.of` — this is one of the three call
+    // sites the retained English-only factory is waiting on, and it also picks up
+    // the shipped plural bug on the way: `of` returned "In 1 days" from both its
+    // live branches.
+    final DueInfo due = DueInfo.localized(l10n, s, now);
     final Color dot = s.unused
         ? AppColors.warn
         : (s.usedPct > 60 ? AppColors.positive : const Color(0xFFC9C9D2));
     final String usage = s.unused
-        ? 'Rarely used'
-        : (s.usedPct > 60 ? 'Active' : 'Occasional');
+        ? l10n.usageRarelyUsed
+        : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional);
 
     return RowCard(
       onTap: () => context.push('/sub/${s.id}'),
@@ -491,7 +558,7 @@ class _HomeDashboard extends ConsumerWidget {
                   style: AppText.fig.copyWith(fontSize: 16),
                 ),
                 Text(
-                  s.cycle == BillingCycle.yearly ? 'per year' : 'per month',
+                  s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
                   style: AppText.muted.copyWith(fontSize: 10),
                 ),
               ],
@@ -503,12 +570,41 @@ class _HomeDashboard extends ConsumerWidget {
     );
   }
 
+  /// The bell and (via the same shape) any future header control.
+  ///
+  /// 🔴 THIS IS THE HOME SCREEN'S ONE REAL DARK DEFECT, and unlike the hero it
+  /// is the [cardDecoration] / [RowCard] defect exactly: a `AppColors.surface`
+  /// fill is `0xFFFFFFFF`, so on a dark scaffold this was a WHITE 48px square
+  /// with near-black `AppColors.ink` iconography inside it — the brightest thing
+  /// on the screen, sitting next to a hero that is already dark.
+  ///
+  /// Same rule as its two siblings, so the three read as one decision:
+  ///   · LIGHT is byte-identical — the literal `surface` / `line` / `ink`,
+  ///     pinned against the literals in `test/dark_group_home_test.dart`.
+  ///   · DARK derives from the scheme: `surfaceContainerHighest` (the slot
+  ///     `cardDecoration` and `RowCard` already use, so the header control and
+  ///     the rows below it are the same material), an `outlineVariant` hairline,
+  ///     and `onSurface` for the glyph.
+  ///
+  /// The unread dot's ring follows the FILL rather than staying white: the ring
+  /// exists to punch the dot out of whatever it sits on, so a white ring on a
+  /// dark button is the same bug one size down.
   Widget _circleButton({
+    required BuildContext context,
     required IconData icon,
     required String semanticLabel,
     bool dot = false,
     VoidCallback? onTap,
   }) {
+    final ThemeData theme = Theme.of(context);
+    final bool isLight = theme.brightness == Brightness.light;
+    final ColorScheme scheme = theme.colorScheme;
+    final Color fill = isLight
+        ? AppColors.surface
+        : scheme.surfaceContainerHighest;
+    final Color edge = isLight ? AppColors.line : scheme.outlineVariant;
+    final Color glyph = isLight ? AppColors.ink : scheme.onSurface;
+
     // 48px, not 44: the chassis floor for an icon-only tap target, asserted
     // route-wide by chassis_properties_test. The Semantics wrapper is what a
     // screen reader announces — an icon-only control without one is unusable.
@@ -523,11 +619,11 @@ class _HomeDashboard extends ConsumerWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: fill,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.line),
+                border: Border.all(color: edge),
               ),
-              child: Icon(icon, color: AppColors.ink, size: 20),
+              child: Icon(icon, color: glyph, size: 20),
             ),
             if (dot)
               Positioned(
@@ -539,7 +635,7 @@ class _HomeDashboard extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color: AppColors.warn,
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.surface, width: 2),
+                    border: Border.all(color: fill, width: 2),
                   ),
                 ),
               ),
@@ -549,10 +645,17 @@ class _HomeDashboard extends ConsumerWidget {
     );
   }
 
-  String _greeting(DateTime now) {
-    if (now.hour < 12) return 'Good morning';
-    if (now.hour < 18) return 'Good afternoon';
-    return 'Good evening';
+  /// The time-of-day greeting.
+  ///
+  /// ⚠️ THE BOUNDARIES STAY IN DART, and only the words move to the arb. A
+  /// locale that divides the day differently needs a different RULE, not a
+  /// different string, so encoding 12/18 as translatable copy would look like
+  /// localisation while changing nothing. Named here so the next reader does not
+  /// mistake the omission for an oversight.
+  String _greeting(AppLocalizations l10n, DateTime now) {
+    if (now.hour < 12) return l10n.greetingMorning;
+    if (now.hour < 18) return l10n.greetingAfternoon;
+    return l10n.greetingEvening;
   }
 }
 
