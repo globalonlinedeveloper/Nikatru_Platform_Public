@@ -4,6 +4,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
+import '../../l10n/app_localizations.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/widgets.dart';
 
@@ -26,19 +27,55 @@ class AppShell extends StatelessWidget {
 
   final StatefulNavigationShell navigationShell;
 
-  static const List<_TabSpec> _tabs = <_TabSpec>[
-    _TabSpec(Icons.home_rounded, 'Home'),
-    _TabSpec(Icons.calendar_month_rounded, 'Calendar'),
-    _TabSpec(Icons.insights_rounded, 'Insights'),
-    _TabSpec(Icons.account_balance_wallet_rounded, 'Budget'),
-    _TabSpec(Icons.menu_rounded, 'More'),
+  /// Test seams for the two halves of the compact nav chrome.
+  ///
+  /// Both are reachable ONLY through the real router (a
+  /// [StatefulNavigationShell] cannot be constructed standalone), so a test has
+  /// to find them inside a fully-pumped app — and by TYPE they are ambiguous:
+  /// the demo-data banner is also a `Container(color:)`, i.e. a second
+  /// `ColoredBox` under this same widget, and the pill's own tab tiles are
+  /// nearer `DecoratedBox` ancestors than the pill is. `.first` / `.last` would
+  /// resolve correctly today and silently pick the wrong widget the day either
+  /// is reordered — a colour assertion that passes against the wrong box.
+  ///
+  /// Same reasoning `width_harness.dart`'s [inPaneOf] records for multi-pane
+  /// screens: when a type finder is ambiguous, the widget says which one it is
+  /// rather than the test guessing.
+  static const Key navStripKey = Key('shell-nav-strip');
+  static const Key navPillKey = Key('shell-nav-pill');
+
+  /// ⚠️ STRUCTURAL CHANGE, NAMED BECAUSE IT IS THE ONE THING IN THIS FILE A
+  /// REVIEWER CANNOT SEE FROM THE DIFF ALONE: this was
+  /// `static const List<_TabSpec> _tabs`, a compile-time constant carrying five
+  /// English labels. A label that comes from the arb is a value of the
+  /// [AppLocalizations] the surrounding [Localizations] resolved, so it cannot
+  /// exist before `build`. The list is therefore built per frame.
+  ///
+  /// That is a real cost and it is small: five records, once per shell rebuild,
+  /// on a widget that already rebuilds whenever the branch index changes. The
+  /// alternative — keeping the const list and localising only at the render
+  /// sites — would leave the LABELS untranslated in `destinations:`, which is
+  /// what the rail, the drawer and every screen reader read from.
+  ///
+  /// The icons stay hardcoded on purpose: an icon is not copy.
+  List<_TabSpec> _tabs(AppLocalizations l10n) => <_TabSpec>[
+    _TabSpec(Icons.home_rounded, l10n.navHome),
+    _TabSpec(Icons.calendar_month_rounded, l10n.navCalendar),
+    _TabSpec(Icons.insights_rounded, l10n.navInsights),
+    _TabSpec(Icons.account_balance_wallet_rounded, l10n.navBudget),
+    _TabSpec(Icons.menu_rounded, l10n.navMore),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final List<_TabSpec> tabs = _tabs(l10n);
+    final ThemeData theme = Theme.of(context);
+    final bool isLight = theme.brightness == Brightness.light;
+    final ColorScheme scheme = theme.colorScheme;
     return AppScaffold(
       destinations: <AppDestination>[
-        for (final _TabSpec t in _tabs)
+        for (final _TabSpec t in tabs)
           AppDestination(icon: t.icon, label: t.label),
       ],
       selectedIndex: navigationShell.currentIndex,
@@ -71,10 +108,10 @@ class AppShell extends StatelessWidget {
                     vertical: 6,
                   ),
                   color: AppColors.warn,
-                  child: const Text(
-                    'Demo data - sample subscriptions, not your account',
+                  child: Text(
+                    l10n.demoDataBanner,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -88,9 +125,11 @@ class AppShell extends StatelessWidget {
       floatingActionButton: Material(
         color: Colors.transparent,
         // Tooltip is what a screen reader announces for this icon-only FAB —
-        // the same mechanism IconButton uses internally.
+        // the same mechanism IconButton uses internally. It REUSES the sheet's
+        // own title key: the control and the surface it opens must not be able
+        // to drift into two different words for one action.
         child: Tooltip(
-          message: 'Add subscription',
+          message: l10n.addSubscriptionTitle,
           child: InkWell(
             key: E2EKeys.fabAdd,
             borderRadius: BorderRadius.circular(18),
@@ -115,29 +154,63 @@ class AppShell extends StatelessWidget {
           ),
         ),
       ),
-      // The floating pill, unchanged in look, now delivered through the seam:
-      // it renders ONLY in the compact window class. The ColoredBox paints the
-      // reserved nav strip in Subly's background so the pill keeps floating on
-      // the same colour it floated on when it was a Positioned overlay.
+      // The floating pill, delivered through the seam: it renders ONLY in the
+      // compact window class. The ColoredBox paints the reserved nav strip in the
+      // page background so the pill keeps floating on the same colour it floated
+      // on when it was a Positioned overlay.
+      //
+      // 🔴 W0's OTHER NAMED DEFERRED SIBLING, AND THE WORST-PLACED ONE OF THE
+      // THREE. `cardDecoration` (17 sites) and `RowCard` (3) are each visible on
+      // some screens; this strip is visible on EVERY tab of the app at every
+      // compact width, and all three of its colours were light-hardcoded:
+      //
+      //   · the strip:  `AppColors.bg`  = 0xFFF4F4F8 — a near-white band pinned
+      //                 under a dark scaffold, i.e. a bright bar across the
+      //                 bottom of every dark-mode screen.
+      //   · the pill:   `rgba(255,255,255,.9)` over it, with a
+      //                 `rgba(255,255,255,.6)` rim — white on white on dark.
+      //   · the lift:   `kCardShadow`, two BLACK alphas, which on a dark ground
+      //                 paints nothing at all (the same argument
+      //                 `cardDecoration` records).
+      //
+      // The branch follows its two siblings exactly, so the three read as one
+      // decision rather than three tastes:
+      //   · LIGHT IS BYTE-IDENTICAL — the same four literals, in the same
+      //     places. `test/dark_group_home_test.dart` pins them AS LITERALS, so
+      //     "tidying" the light branch to scheme slots goes red instead of
+      //     silently repainting the one surface the owner sees on every screen.
+      //   · DARK derives: the strip becomes `scheme.surface`, which is exactly
+      //     what `buildAppTheme` sets `scaffoldBackgroundColor` to — so the strip
+      //     disappears into the page, which is what `AppColors.bg` was doing in
+      //     light and what makes the pill read as floating rather than as sitting
+      //     in a tray. The pill becomes `surfaceContainerHighest` (the slot the
+      //     cards and rows already use) with an `outlineVariant` rim, and the
+      //     shadow is DROPPED rather than dimmed for show.
       compactNavigationBar: ColoredBox(
-        color: AppColors.bg,
+        key: navStripKey,
+        color: isLight ? AppColors.bg : scheme.surface,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
           child: Container(
+            key: navPillKey,
             height: 66,
             padding: const EdgeInsets.symmetric(horizontal: 6),
             decoration: BoxDecoration(
-              color: const Color.fromRGBO(255, 255, 255, 0.9),
+              color: isLight
+                  ? const Color.fromRGBO(255, 255, 255, 0.9)
+                  : scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(22),
-              boxShadow: kCardShadow,
+              boxShadow: isLight ? kCardShadow : null,
               border: Border.all(
-                color: const Color.fromRGBO(255, 255, 255, 0.6),
+                color: isLight
+                    ? const Color.fromRGBO(255, 255, 255, 0.6)
+                    : scheme.outlineVariant,
               ),
             ),
             child: Row(
               children: List<Widget>.generate(
-                _tabs.length,
-                (int i) => _tab(context, i, _tabs[i].icon, _tabs[i].label),
+                tabs.length,
+                (int i) => _tab(context, i, tabs[i].icon, tabs[i].label),
               ),
             ),
           ),
@@ -147,8 +220,20 @@ class AppShell extends StatelessWidget {
   }
 
   Widget _tab(BuildContext context, int index, IconData icon, String label) {
+    final ThemeData theme = Theme.of(context);
     final bool selected = navigationShell.currentIndex == index;
-    final Color color = selected ? AppColors.accent : AppColors.muted;
+    // The SELECTED colour stays `AppColors.accent` in both brightnesses: it is
+    // the brand mark, it is what tells the user which tab they are on, and it
+    // reads on both grounds. The UNSELECTED one cannot stay: `AppColors.muted`
+    // is 0xFF73737F, a mid-grey chosen against white — on the dark pill it is
+    // barely separable from the fill, so four of the five tabs would be labels
+    // you have to hunt for. `onSurfaceVariant` is the scheme's own answer to
+    // "secondary text on this surface".
+    final Color color = selected
+        ? AppColors.accent
+        : (theme.brightness == Brightness.light
+              ? AppColors.muted
+              : theme.colorScheme.onSurfaceVariant);
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(15),

@@ -498,7 +498,21 @@ void main() {
     await shot('04-home');
 
     // ── 05 Calendar ──────────────────────────────────────────────────────────
-    await tester.tap(find.text('Calendar'));
+    // 🔴 TAPPED BY ICON, NOT BY LABEL, AND ONLY THIS ONE OF THE FIVE.
+    // P4·L3 gave home's "Upcoming renewals" section a `calendarLink` whose value
+    // is the bare word "Calendar" — the old literal was 'Calendar →' and the arb
+    // key drops the baked arrow, because a left-to-right glyph inside copy is
+    // wrong in every RTL locale (it is an `Icons.arrow_forward` now, which
+    // mirrors itself). The nav pill's second tab is `navCalendar`, also
+    // "Calendar". Both render on /home, so `find.text('Calendar')` matches TWO
+    // widgets here and `tester.tap` throws on an ambiguous finder.
+    //
+    // `Icons.calendar_month_rounded` is used in exactly one place in the app
+    // (`app_shell.dart`'s tab spec), so it is the unambiguous handle. The other
+    // four labels are untouched: no screen renders "Home", "Insights", "Budget"
+    // or "More" alongside its tab. Pinned by
+    // `test/l10n_group_home_test.dart` → '"Calendar" is now ambiguous on /home'.
+    await tester.tap(find.byIcon(Icons.calendar_month_rounded));
     await pumpFor(tester, const Duration(seconds: 2));
     expect(shellIndex(), 1);
     expect(find.byType(CalendarScreen), findsWidgets);
