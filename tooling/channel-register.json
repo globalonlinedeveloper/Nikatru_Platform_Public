@@ -1338,7 +1338,22 @@
           "sha256": "CODE-SIGNING-CERT-NOT-PURCHASED",
           "subject": "CODE-SIGNING-CERT-NOT-PURCHASED",
           "asOf": "2026-08-08",
-          "source": "To be transcribed from the issued certificate with `Get-PfxCertificate <file> | Format-List Subject,Thumbprint` (or `certutil -dump`) on the day OWNER_QUEUE's code-signing purchase completes. Microsoft Store Policies v7.19 §10.2.9 is the requirement that makes the certificate necessary at all: for non-gaming direct download 'the binary and all of its Portable Executable (PE) files must be digitally signed with a code signing certificate that chains up to a certificate issued by a Certificate Authority (CA) that is part of the Microsoft Trusted Root Program'."
+          "_sourceCorrection": [
+            "🔴 THIS LINE USED TO RECOMMEND `Get-PfxCertificate <file> | Format-List Subject,Thumbprint`, AND",
+            "FOLLOWING IT WOULD HAVE FILLED A FIELD NAMED `sha256` WITH A SHA-1. PowerShell's `Thumbprint`",
+            "property on an X509Certificate2 is the SHA-1 hash — 40 hex characters — and this field is",
+            "compared against the `SHA256 hash:` line `signtool verify /pa /v` prints for the leaf. A SHA-1",
+            "here can never match, so the FIRST REAL RELEASE BUILD would have failed with a message about the",
+            "artifact instead of about this line. tooling/ci/windows-signing.mjs already carries a `sha1`",
+            "branch in `classifyPin` naming this exact instruction as the cause; the instruction is now",
+            "corrected rather than left as the thing the guard has to apologise for.",
+            "",
+            "WHAT A SHA-256 THUMBPRINT IS, so any command can be checked against the definition rather than",
+            "trusted: the SHA-256 digest of the certificate's DER encoding. Hashing the DER-encoded public",
+            "certificate file therefore IS the thumbprint — which is why the file-hash commands below are",
+            "exact and not an approximation."
+          ],
+          "source": "To be transcribed from the issued certificate on the day OWNER_QUEUE's code-signing purchase completes. From the DER-encoded public certificate: `certutil -hashfile <cert.cer> SHA256`, or `(Get-FileHash -Algorithm SHA256 <cert.cer>).Hash`. From a .pfx, export the public half first and hash that — in PowerShell 5.1: `$c = Get-PfxCertificate <file>.pfx; [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($c.RawData)).Replace('-','')`. ⚠️ NOT `Format-List Thumbprint` and NOT `certutil -dump`'s `Cert Hash(sha1)`: both emit SHA-1 (40 hex), and this field is compared against the 64-hex `SHA256 hash:` that `signtool verify /pa /v` prints for the leaf. `subject` comes from the same certificate's `Subject` line. Microsoft Store Policies v7.19 §10.2.9 is the requirement that makes the certificate necessary at all: for non-gaming direct download 'the binary and all of its Portable Executable (PE) files must be digitally signed with a code signing certificate that chains up to a certificate issued by a Certificate Authority (CA) that is part of the Microsoft Trusted Root Program'."
         },
         "ciSecrets": {
           "_why": [
@@ -1435,7 +1450,26 @@
           "⚠️ THE OWNER-GATED STEP HERE IS NOT AN ACCOUNT, IT IS A NAME. `snapcraft register <name>`",
           "claims a GLOBAL namespace, one per app, and it is the whole of OWNER_QUEUE A-6."
         ],
+        "_whyRecipeScript": [
+          "🔴 THE STEP THAT HAS TO HAPPEN BEFORE `snapcraft upload` HAS ANYTHING TO UPLOAD, and until",
+          "2026-08-08 it did not exist in any form: `submit-snap.mjs` §4 printed \"NO SNAPCRAFT RECIPE —",
+          "nothing in this repo can build a .snap today\" on every single run, and no build could fail on it.",
+          "",
+          "IT IS A SECOND SCRIPT ON ONE ROW, NOT A SECOND SUBMISSION PATH. `script` is the submission verb;",
+          "`recipeScript` is the packaging input that verb consumes. They are separated rather than folded",
+          "together because the recipe is produced in the BUILD lane, beside the Linux bundle it describes",
+          "(build-platforms.yml's linux_web_android job), while the upload happens in submit-snap.yml — two",
+          "workflows, two moments, one channel.",
+          "",
+          "⚠️ THE RECIPE IS GENERATED, NEVER COMMITTED, and that is what makes this field necessary rather",
+          "than decorative. A committed snapcraft.yaml would be a SECOND COPY of the snap name, the summary,",
+          "the description, the licence and the Linux binary identity — five facts that already have one home",
+          "each — and a second copy is the copy that goes stale. Deriving it removes that problem and",
+          "introduces one this register cannot see on its own: a generator that has stopped reading the tree",
+          "still writes a file. tooling/ci/assert-snapcraft-generable.mjs is what notices, on every CI run."
+        ],
         "script": "tooling/release/submit-snap.mjs",
+        "recipeScript": "tooling/release/generate-snapcraft.mjs",
         "workflow": ".github/workflows/submit-snap.yml",
         "job": "dry-run",
         "runbook": "company/runbooks/store-submission-snap.md"

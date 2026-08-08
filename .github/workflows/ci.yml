@@ -799,6 +799,34 @@ jobs:
       - name: Every declared store channel has a complete, spec-derived listing
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-store-metadata.mjs
+      # The same listing, asked the ONE question a store metadata check cannot:
+      # can it be turned into something the store will actually take? The Linux
+      # store row had no answer at all until now —
+      # `tooling/release/submit-snap.mjs` §4 printed "NO SNAPCRAFT RECIPE —
+      # nothing in this repo can build a .snap today" on every run, and nothing
+      # could fail on it.
+      #
+      # 🔴 THIS GUARD RUNS THE GENERATOR FOR REAL, once per (Linux store row ×
+      # app), against a fixture bundle, and then reads the emitted YAML back. The
+      # recipe is DERIVED rather than committed — a committed one would be a
+      # second copy of five facts that already have one home each, and a second
+      # copy is the copy that goes stale — which removes the stale-copy problem
+      # and introduces a new one: A GENERATOR THAT HAS STOPPED READING THE TREE
+      # STILL WRITES A FILE. There is no committed recipe to diff against, and
+      # `snapcraft` is installed on no machine this repository runs on, so
+      # nothing else in the tree would ever notice.
+      #
+      # The limb with teeth is `stage-packages` EQUALLING build-platforms.yml's
+      # apt list, both read through the one workflow parser: a retyped list, a
+      # list truncated at the first shell line continuation, and a workflow that
+      # grew a package the recipe did not are one failure — the snap builds and
+      # the app does not start.
+      #
+      # ⚠️ CONFIGURATION ONLY, and its passing line says so: snapcraft is never
+      # run here and no .snap is built. [pipeline D-10 / 10]D-5
+      - name: Every Linux store channel can produce a complete snapcraft recipe
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-snapcraft-generable.mjs
       # The listing GRAPHICS, which Google requires to publish a listing AT ALL
       # and which had no repo representation until 2026-08-04. The listing text
       # has had a guard on every field for months and the two sworn declarations
