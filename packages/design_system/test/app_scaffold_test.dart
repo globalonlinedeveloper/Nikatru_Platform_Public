@@ -116,6 +116,68 @@ void main() {
     });
   });
 
+  // ── The compact-only branding seam ────────────────────────────────────────
+  //
+  // ⚠️ THE SURFACE IS PINNED IN EVERY ONE OF THESE. `flutter_test`'s default
+  // 800×600 resolves to `medium` — a RAIL — so a test that forgot to pin would
+  // be asserting about the wrong window class entirely, and "the custom bar is
+  // absent" would pass without the seam being scoped at all.
+  group('compactNavigationBar replaces the bar in COMPACT only', () {
+    const Key brandBar = Key('brand-bar');
+
+    Widget branded({int index = 0}) => MaterialApp(
+          home: AppScaffold(
+            destinations: destinations,
+            selectedIndex: index,
+            onDestinationSelected: (_) {},
+            body: const Center(child: Text('BODY')),
+            compactNavigationBar: const SizedBox(
+              key: brandBar,
+              height: 64,
+              child: Center(child: Text('BRAND')),
+            ),
+          ),
+        );
+
+    testWidgets('375 (compact) shows the app’s bar and NOT the stock one',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(375, 812), branded());
+      expect(find.byKey(brandBar), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing,
+          reason: 'it REPLACES the stock bar; two bottom bars is not a seam');
+      expect(find.text('BODY'), findsOneWidget);
+    });
+
+    testWidgets('768 (medium) shows the rail and NOT the app’s bar',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(768, 1024), branded());
+      expect(
+        find.byKey(brandBar),
+        findsNothing,
+        reason: 'rail and drawer stay chassis-owned — an app that could put a '
+            'bottom bar at 768 (or 1600) would be re-introducing the exact '
+            'layout the five window classes exist to prevent',
+      );
+      expect(find.byType(NavigationRail), findsOneWidget);
+    });
+
+    testWidgets('1600 (extra-large) shows the drawer and NOT the app’s bar',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(1600, 900), branded());
+      expect(find.byKey(brandBar), findsNothing);
+      expect(find.byType(NavigationDrawer), findsOneWidget);
+    });
+
+    testWidgets('omitting it keeps the stock NavigationBar',
+        (WidgetTester tester) async {
+      // The default must cost nothing to ignore, or every existing caller is a
+      // silent behaviour change.
+      await pumpAt(tester, const Size(375, 812), harness());
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byKey(brandBar), findsNothing);
+    });
+  });
+
   testWidgets('tapping a destination reports its index',
       (WidgetTester tester) async {
     int? tapped;

@@ -246,10 +246,17 @@ const isPinned = (k) => Object.hasOwn(versions, k) && typeof versions[k] === 'st
 
 const seenIds = new Set();
 const workflowCache = new Map();
+/** Where CI's committed manifest lives. Declared HERE, beside the parser that
+ *  reads it, because the `submission.recipeScript` check below names it and runs
+ *  hundreds of lines before section 8 — where this used to be declared. */
+const WORKFLOW_DIR = '.github/workflows';
 /** [10]D-10 limb (i): how many `submission` blocks were resolved all the way to
  *  a job that actually runs the named script. Zero, with blocks declared, means
  *  the resolution stopped reaching them — see the self-check after the loop. */
 let submissionsResolved = 0;
+/** The same accounting for `submission.recipeScript` — a packaging step that is
+ *  declared and actually invoked by a workflow. */
+let packagingResolved = 0;
 
 /** Parse a workflow's job names structurally. Comments are stripped first: this
  *  repo has shipped the "matched the prose describing the check" defect twice,
@@ -290,6 +297,30 @@ function workflow(rel) {
   }
   workflowCache.set(rel, parsed);
   return parsed;
+}
+
+/** Which tracked workflows actually invoke `scriptRel`, anywhere in any job.
+ *
+ *  Comments are blanked first, both full-line and trailing — the same reduction
+ *  `workflow()` above performs, and for the same reason this file has already
+ *  paid for twice: a commented-out step and a comment ABOUT a step read
+ *  identically to a bare text scan, so prose would satisfy the check. The match
+ *  is on the path as written, which is how every workflow in this repo invokes a
+ *  tooling script; a computed path would not be comparable to the register at
+ *  all, which is the same objection section 8 raises against `secrets[…]`. */
+function workflowsInvoking(scriptRel) {
+  const dir = abs(WORKFLOW_DIR);
+  if (!existsSync(dir)) return [];
+  const hits = [];
+  for (const entry of listDir(dir)) {
+    if (!/\.ya?ml$/.test(entry)) continue;
+    const rel = `${WORKFLOW_DIR}/${entry}`;
+    const raw = read(rel);
+    if (raw === null) continue;
+    const stripped = raw.replace(/^\s*#.*$/gm, '').replace(/\s#.*$/gm, '');
+    if (stripped.includes(scriptRel)) hits.push(rel);
+  }
+  return hits;
 }
 
 for (const c of channels) {
@@ -455,6 +486,41 @@ for (const c of channels) {
           `${where} names submission script "${script}", which does not exist. The register would keep pointing at a release path somebody deleted, and the first person to find out is the one submitting.`,
         );
       }
+      // ── an OPTIONAL packaging step, when a channel needs one before it can
+      //    submit anything at all ──────────────────────────────────────────────
+      // `script` is the submission verb; `recipeScript` is the packaging input
+      // that verb consumes, and it exists because the Snap channel's recipe is
+      // GENERATED rather than committed. It is checked in the same two ways —
+      // it must be there, and something must RUN it — but the workflow it has to
+      // be run by is deliberately NOT the submission one: the recipe is produced
+      // in the build lane beside the bundle it describes, and the upload happens
+      // somewhere else entirely. Requiring `sub.job` to invoke it would demand a
+      // wiring that would be wrong.
+      //
+      // 🔴 THE "SOMETHING RUNS IT" HALF IS THE POINT. Without it this field
+      // would be a way to SILENCE the orphan check below — declare the path,
+      // never call it, and a release script nothing exercises reads as wired.
+      // That is the failure this whole section exists to prevent, so the field
+      // that could reintroduce it carries the stronger of the two checks.
+      const recipeScript = sub.recipeScript;
+      if (recipeScript !== null && recipeScript !== undefined) {
+        if (typeof recipeScript !== 'string' || recipeScript.trim() === '') {
+          problems.push(`${where} declares a \`submission.recipeScript\` that is not a non-empty path.`);
+        } else if (!existsSync(join(ROOT, recipeScript))) {
+          problems.push(
+            `${where} names packaging script "${recipeScript}", which does not exist. The register would keep pointing at a release path somebody deleted, and the first person to find out is the one submitting.`,
+          );
+        } else {
+          const runners = workflowsInvoking(recipeScript);
+          if (runners.length === 0) {
+            problems.push(
+              `${where} names packaging script "${recipeScript}" and no workflow in ${WORKFLOW_DIR} invokes it. A packaging step nothing runs cannot fail a build, so the recipe it produces is never exercised and the submission path is wired to a script that has only ever run by hand.`,
+            );
+          } else {
+            packagingResolved++;
+          }
+        }
+      }
       if (typeof sub.workflow !== 'string' || typeof sub.job !== 'string') {
         problems.push(
           `${where} declares a \`submission\` with no {workflow, job}. "Resolves to a step in a workflow" is the half of limb (i) that stops a script from existing in a directory nobody runs.`,
@@ -570,8 +636,16 @@ for (const c of channels) {
 // apparent coverage — so it was re-pointed at something that can.
 const RELEASE_DIR = 'tooling/release';
 if (existsSync(join(ROOT, RELEASE_DIR))) {
+  // BOTH declared script fields. `recipeScript` is admitted here only because
+  // the block above holds it to a STRONGER standard than `script` — a workflow
+  // has to actually invoke it — so it cannot be used as a way to declare a path
+  // into silence. Admitting it on the strength of the declaration alone would
+  // turn this orphan check into an opt-out, which is precisely what it exists
+  // to refuse.
   const declaredScripts = new Set(
-    channels.map((c) => c.submission?.script).filter((s) => typeof s === 'string' && s.trim() !== ''),
+    channels
+      .flatMap((c) => [c.submission?.script, c.submission?.recipeScript])
+      .filter((s) => typeof s === 'string' && s.trim() !== ''),
   );
   for (const entry of listDir(join(ROOT, RELEASE_DIR))) {
     if (!entry.endsWith('.mjs')) continue;
@@ -584,6 +658,9 @@ if (existsSync(join(ROOT, RELEASE_DIR))) {
 }
 if (submissionsResolved > 0) {
   ok(`${submissionsResolved} submission path(s) resolve to a workflow job that runs the named script [10]D-10 limb (i)`);
+}
+if (packagingResolved > 0) {
+  ok(`${packagingResolved} packaging script(s) declared on a submission block and invoked by a workflow`);
 }
 
 // ── 3b. what the lane EMITS vs what the channel ACCEPTS ──────────────────────
@@ -1309,7 +1386,12 @@ for (const s of register.nonChannelSigningIdentities ?? []) {
 // kept as the record of where the boundary was rather than deleted. [9]R-3 stays
 // PARTIAL for the Apple, Windows-direct and AppImage rows, which have no signing
 // identity and no lane to check at all (owner-gated, OWNER_QUEUE S-5).
-const WORKFLOW_DIR = '.github/workflows';
+//
+// (`WORKFLOW_DIR` is declared beside the `workflow()` parser near the top of this
+// file rather than here. It used to live on this line, and it was hoisted when
+// the `submission.recipeScript` check — hundreds of lines ABOVE this point —
+// needed to name the directory in its failure message. A `const` referenced
+// before its declaration is a ReferenceError at run time, not a lint warning.)
 
 /** REQUIRED_COVERAGE — the floor that stops this ranging over nothing.
  *
