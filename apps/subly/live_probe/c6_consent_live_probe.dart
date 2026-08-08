@@ -20,7 +20,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_api_client/nikatru_api_client.dart';
-import 'package:subly/state/analytics_funnel.dart';
 import 'package:subly/state/analytics_providers.dart';
 
 const String kProbePlatformBase = 'https://platform.nikatru.com';
@@ -82,8 +81,14 @@ void main() {
       );
       await recorder.hydrate();
 
-      // 3. The real launch funnel — first_launch + app_open, as app.dart fires it.
-      await AnalyticsFunnel(analytics: recorder, store: store).onLaunch();
+      // 3. The real launch lifecycle — first_launch + app_open + return_visit,
+      // as app.dart fires it since P2.6a: the chassis core.AnalyticsLifecycle
+      // (same storage keys the old AnalyticsFunnel.onLaunch used, so this probe
+      // exercises exactly the path production installs take).
+      await core.AnalyticsLifecycle(
+        analytics: recorder,
+        store: store,
+      ).onLaunch();
       await recorder.flush();
 
       // ignore: avoid_print

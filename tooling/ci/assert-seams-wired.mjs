@@ -386,7 +386,16 @@ const EXCLUSIVE_TRIGGERS = [
     // (review_prompter.dart), the NoOp override and the concrete @override all
     // contain the bare name.
     re: /\.requestReview\(/,
-    allowed: [`${BRICK_APP}/lib/state/providers.dart`],
+    // apps/subly joined 2026-08-08 with productization P2.6a ([ADR 037]): the
+    // re-stamp lands the SAME spine file in the first in-repo stamped app, so
+    // the singleton becomes one-per-tree — the brick's copy and each stamped
+    // app's copy of that exact file. Any OTHER file calling it is still the
+    // failure this trigger exists for. Every future in-repo stamped app
+    // repeats this line; a call site outside a providers spine never gets one.
+    allowed: [
+      `${BRICK_APP}/lib/state/providers.dart`,
+      'apps/subly/lib/state/providers.dart',
+    ],
     why:
       'ReviewPromptController.maybeAsk is the only thing allowed to ask, because the decision belongs to ' +
       'ReviewGate and nothing else can know whether the quota is worth spending. iOS discards requests past ' +
@@ -400,7 +409,14 @@ for (const t of EXCLUSIVE_TRIGGERS) {
   // is what a narrower scan would hide.
   const found = hits(t.re, undefined, undefined);
   const extra = found.filter((f) => !t.allowed.includes(f));
-  const missing = t.allowed.filter((a) => !found.includes(a));
+  // An allowed file that EXISTS but no longer calls is a moved caller — fail.
+  // An allowed file that does not exist at all is a tree without that stamped
+  // app (every fixture, and any checkout before an app is stamped in-repo):
+  // the allowlist names where the call is PERMITTED, not trees it is owed to.
+  // The at-least-one clause below still refuses a tree with zero callers.
+  const missing = t.allowed.filter(
+    (a) => !found.includes(a) && existsSync(join(repo, a)),
+  );
   if (found.length === 0) {
     // The at-least-one half. Without it, deleting the only caller turns this
     // check GREEN — an "at most one" rule is satisfied by zero, which is the
@@ -421,7 +437,10 @@ for (const t of EXCLUSIVE_TRIGGERS) {
         'genuinely wanted, it belongs behind the same gate, not beside it.',
     );
   } else {
-    ok(`${t.id} — exactly one caller (${found[0]}), which is the bound this seam needs`);
+    ok(
+      `${t.id} — every caller is a permitted spine (${found.join(', ')}); ` +
+        'nothing outside the allowlist asks, which is the bound this seam needs',
+    );
   }
 }
 

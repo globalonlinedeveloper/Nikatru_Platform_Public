@@ -6,6 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/core/router.dart';
 import 'package:subly/features/consent/consent_prompt.dart';
 import 'package:subly/state/analytics_providers.dart';
+import 'package:subly/state/providers.dart';
 
 /// [pipeline C-6] THE OPEN-PATH WIDGET TEST.
 ///
@@ -46,6 +47,7 @@ Widget _app({required core.KeyValueStore store, bool live = true}) {
   );
   return ProviderScope(
     overrides: <Override>[
+          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
       backendLiveProvider.overrideWithValue(live),
       keyValueStoreProvider.overrideWith((ref) async => store),
     ],
@@ -59,6 +61,15 @@ Widget _app({required core.KeyValueStore store, bool live = true}) {
 
 Future<core.ConsentStatus> _persistedStatus(core.KeyValueStore store) =>
     core.ConsentController(store: store).hydrate(core.ConsentPurpose.analytics);
+
+/// P2.6a: the union router's onboarding gate DECLINES TO DECIDE while the
+/// seen-flag is still hydrating (null) and sends seen=false to /onboarding —
+/// so a router test that never answers the question stalls before its first
+/// real frame. Predicted by the re-stamp red-team pass, observed here.
+class _OnboardingSeen extends OnboardingSeenController {
+  @override
+  bool? build() => true;
+}
 
 void main() {
   testWidgets(

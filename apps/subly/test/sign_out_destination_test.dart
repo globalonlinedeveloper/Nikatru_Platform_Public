@@ -7,7 +7,6 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/core/router.dart';
 import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/onboarding/onboarding_screen.dart';
-import 'package:subly/state/analytics_providers.dart';
 import 'package:subly/state/providers.dart';
 
 /// WHERE A SIGNED-OUT USER LANDS, ASSERTED AFTER EVERYTHING SETTLES.
@@ -110,6 +109,15 @@ class _RaceyAuth implements core.AuthRepository {
       currentUser!;
 }
 
+/// P2.6a: the union router's onboarding gate DECLINES TO DECIDE while the
+/// seen-flag is still hydrating (null) and sends seen=false to /onboarding —
+/// so a router test that never answers the question stalls before its first
+/// real frame. Predicted by the re-stamp red-team pass, observed here.
+class _OnboardingSeen extends OnboardingSeenController {
+  @override
+  bool? build() => true;
+}
+
 void main() {
   testWidgets(
     '🔴 SIGN-OUT LANDS ON THE LOGIN SCREEN, NOT THE ONBOARDING CAROUSEL',
@@ -123,6 +131,7 @@ void main() {
       final _RaceyAuth auth = _RaceyAuth();
       final ProviderContainer container = ProviderContainer(
         overrides: <Override>[
+          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
           authRepositoryProvider.overrideWithValue(auth),
           keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
@@ -186,6 +195,7 @@ void main() {
         final _RaceyAuth auth = _RaceyAuth(logoutLatency: latency);
         final ProviderContainer container = ProviderContainer(
           overrides: <Override>[
+          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
             authRepositoryProvider.overrideWithValue(auth),
             keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
             analyticsConsentProvider.overrideWithValue(

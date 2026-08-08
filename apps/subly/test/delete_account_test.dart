@@ -9,7 +9,6 @@ import 'package:subly/core/router.dart';
 import 'package:subly/data/auth/mock_auth_repository.dart';
 import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';
-import 'package:subly/state/analytics_providers.dart';
 import 'package:subly/state/providers.dart';
 
 /// THE STORE-MANDATED DELETION PATH, AND THE PART THAT IS EASY TO GET WRONG.
@@ -137,6 +136,7 @@ Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
         authRepositoryProvider.overrideWithValue(auth),
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
@@ -163,6 +163,15 @@ Future<void> _openDialog(WidgetTester tester, String password) async {
 String _resultText(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('deleteAccountResult'))).data!;
 
+/// P2.6a: the union router's onboarding gate DECLINES TO DECIDE while the
+/// seen-flag is still hydrating (null) and sends seen=false to /onboarding —
+/// so a router test that never answers the question stalls before its first
+/// real frame. Predicted by the re-stamp red-team pass, observed here.
+class _OnboardingSeen extends OnboardingSeenController {
+  @override
+  bool? build() => true;
+}
+
 void main() {
   testWidgets(
     '🔴 THE OUTCOME SURVIVES THE SIGN-OUT REDIRECT — driven through the REAL router',
@@ -182,6 +191,7 @@ void main() {
       final _FakeAuth auth = _FakeAuth(deleteStatus: 502);
       final ProviderContainer container = ProviderContainer(
         overrides: <Override>[
+          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
           authRepositoryProvider.overrideWithValue(auth),
           keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),

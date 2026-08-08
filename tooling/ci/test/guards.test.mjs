@@ -1855,10 +1855,25 @@ Future<void> main() async {
   //      entitlement `fetch` call on the real brick: both now caught, both green
   //      before.
   //   4. the caller renamed to requestReviewLater()             → caught
-  test('review_prompt — exactly one caller passes, and the guard says so', () => {
+  test('review_prompt — a permitted caller passes, and the guard names it', () => {
+    // P2.6a widened `allowed` to per-spine-file (brick + each in-repo stamped
+    // app), so the ok-line stopped claiming "exactly one caller" — the bound is
+    // now "every caller is a permitted spine, at least one exists". This test
+    // asserts the message that carries that bound; the two tests below still
+    // prove both failure directions (extra caller / permitted-but-silent).
     const { code, out } = run('assert-seams-wired.mjs', { cwd: build('seams-review-ok') });
     assert.equal(code, 0, out);
-    assert.match(out, /review_prompt — exactly one caller/);
+    assert.match(out, /review_prompt — every caller is a permitted spine/);
+  });
+
+  test('review_prompt — an allowed file that does not EXIST is not a moved caller', () => {
+    // The fixture tree has no apps/subly at all, while the real guard's
+    // allowlist names apps/subly/lib/state/providers.dart. Before P2.6a's fix
+    // this exact shape failed as "no longer calls it" — an allowlist entry for
+    // a stamped app must be inert in trees where that app is not stamped.
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: build('seams-review-ok') });
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /no longer calls it/);
   });
 
   test('FAILS on a SECOND caller — the one prompt the app gets, spent elsewhere', () => {

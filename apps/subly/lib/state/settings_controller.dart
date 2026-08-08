@@ -6,7 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../core/format/currency.dart';
 import 'analytics_providers.dart';
-import 'providers.dart' show notificationServiceProvider;
+import 'providers.dart' show sublyNotificationServiceProvider;
 
 /// Where the settings live on disk — the same [core.KeyValueStore] seam the
 /// consent decision and the install id use ([ADR 005]). Namespaced like
@@ -136,7 +136,7 @@ class SettingsController extends Notifier<SettingsState> {
     //
     // Off is never an ask: turning a feature OFF cannot be a reason to prompt.
     if (on && _reminderBearing.contains(key)) {
-      await ref.read(notificationServiceProvider).requestPermissions();
+      await ref.read(sublyNotificationServiceProvider).requestPermissions();
     }
   }
 

@@ -101,7 +101,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
       if (ReminderPlan.from(
         ref.read(settingsControllerProvider).prefs,
       ).syncRenewals) {
-        await ref.read(notificationServiceProvider).requestPermissions();
+        await ref.read(sublyNotificationServiceProvider).requestPermissions();
       }
     }
   }
@@ -118,7 +118,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
 
   void _syncReminders(List<Subscription> subs) {
     final SettingsState settings = ref.read(settingsControllerProvider);
-    final NotificationService notifier = ref.read(notificationServiceProvider);
+    final NotificationService notifier = ref.read(sublyNotificationServiceProvider);
     final ReminderPlan plan = ReminderPlan.from(settings.prefs);
 
     // Fire-and-forget; NotificationService is a no-op on web.

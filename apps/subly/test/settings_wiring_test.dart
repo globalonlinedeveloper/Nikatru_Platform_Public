@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/data/models/subscription.dart';
 import 'package:subly/services/notifications/notification_service.dart';
-import 'package:subly/state/analytics_providers.dart';
 import 'package:subly/state/providers.dart';
 import 'package:subly/state/settings_controller.dart';
 import 'package:subly/state/subscriptions_controller.dart';
@@ -68,7 +67,7 @@ ProviderContainer _container(
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((ref) async => store),
-      notificationServiceProvider.overrideWithValue(notifier),
+      sublyNotificationServiceProvider.overrideWithValue(notifier),
     ],
   );
   addTearDown(c.dispose);

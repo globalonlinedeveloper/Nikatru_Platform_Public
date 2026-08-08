@@ -8,7 +8,6 @@ import 'package:subly/data/subscriptions/subscription_repository.dart';
 import 'package:subly/features/add/add_subscription_sheet.dart';
 import 'package:subly/features/cancel/cancel_sheet.dart';
 import 'package:subly/services/notifications/notification_service.dart';
-import 'package:subly/state/analytics_providers.dart';
 import 'package:subly/state/providers.dart';
 
 /// THE SHEETS HAD NO FAILURE PATH AT ALL.
@@ -77,7 +76,7 @@ Widget _app(void Function(BuildContext) open) {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
-      notificationServiceProvider.overrideWithValue(_SilentNotifications()),
+      sublyNotificationServiceProvider.overrideWithValue(_SilentNotifications()),
     ],
     child: MaterialApp(
       home: Scaffold(
