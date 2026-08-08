@@ -39,9 +39,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// 🔴 THESE ARE `sublyOnboarding*`, NOT the chassis `onboarding1Title` FAMILY,
   /// and the distinction is load-bearing. The chassis keys carry the STAMPED
   /// app's generic first run ("Welcome" / "A quick tour, and then you are
-  /// done"), which `features/firstrun/onboarding_screen.dart` renders; these
-  /// three carry Subly's own pitch. Overwriting the chassis keys with Subly's
-  /// words would rewrite the first run of every app the factory stamps.
+  /// done"), which the brick's own `features/firstrun/onboarding_screen.dart`
+  /// renders; these three carry Subly's own pitch. Overwriting the chassis keys
+  /// with Subly's words would rewrite the first run of every app the factory
+  /// stamps. (Subly's unrouted copy of that twin was deleted 2026-08-09 — the
+  /// keys stay distinct because the CHASSIS still renders them.)
   ///
   /// ⚠️ THE EMBEDDED `\n` IS GONE ON PURPOSE (WORKORDER §1). A hard break placed
   /// for an English phrase lands mid-word in a language whose translation is
@@ -121,9 +123,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             // slide body ran 1220 px lines — about 200 characters against the
             // 45–75 the eye can track — and the Skip/Next row stretched from
             // one edge of the display to the other. Same defect and same fix as
-            // the stamped twin (`features/firstrun/onboarding_screen.dart:138`):
-            // `.reading` (720), because this is continuous PROSE and
-            // [AppBreakpoints.reading] is the constant that says so.
+            // the chassis carousel in the brick: `.reading` (720), because this
+            // is continuous PROSE and [AppBreakpoints.reading] is the constant
+            // that says so. Subly's unrouted copy of that twin was deleted
+            // 2026-08-09 — this is the screen the router shows, so this is the
+            // one the cap has to be on.
             //
             // ⚠️ THE PADDING MOVED INSIDE THE CAP, which is what `ContentPane`'s
             // own `padding` is for. That keeps every width below 720 rendering
@@ -299,22 +303,43 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       },
                     ),
                   ),
-                  Row(
-                    children: List<Widget>.generate(_slideCount, (int i) {
-                      final bool active = i == _page;
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.only(right: 6),
-                        width: active ? 24 : 7,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
-                          color: active
-                              ? Colors.white
-                              : const Color.fromRGBO(255, 255, 255, 0.3),
-                        ),
-                      );
-                    }),
+                  // 🔴 THE DOTS ENCODE POSITION IN PIXEL WIDTH AND NOTHING ELSE.
+                  // Three `AnimatedContainer`s — 24 px wide when active, 7 when
+                  // not — with no text anywhere: the semantics tree for this row
+                  // is EMPTY, so a reader on a swipeable carousel is given no
+                  // way to know it is on slide 2 of 3, or that there are three.
+                  // The `PageView` above is swipeable but is not announced as
+                  // paged either, so this row is the only place the position can
+                  // come from.
+                  //
+                  // One `Semantics` over the ROW, not one per dot: the fact is
+                  // "2 of 3", which is a property of the group. Three labelled
+                  // dots would be three stops saying almost the same thing.
+                  Semantics(
+                    // `container: true` for the reason the calendar header and
+                    // the insights donut record: a label-only annotation with
+                    // no conflicting sibling is ABSORBED upward, which here
+                    // would glue "Page 2 of 3" onto the slide copy above it
+                    // instead of being a position you can go and check.
+                    container: true,
+                    label: l10n.a11yPageIndicator(_page + 1, _slideCount),
+                    child: Row(
+                      children: List<Widget>.generate(_slideCount, (int i) {
+                        final bool active = i == _page;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.only(right: 6),
+                          width: active ? 24 : 7,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: active
+                                ? Colors.white
+                                : const Color.fromRGBO(255, 255, 255, 0.3),
+                          ),
+                        );
+                      }),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   Row(

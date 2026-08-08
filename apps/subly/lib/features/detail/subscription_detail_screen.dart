@@ -138,24 +138,34 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    Container(
-                      width: 56,
-                      height: 56,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        color: const Color.fromRGBO(255, 255, 255, 0.14),
-                        border: Border.all(
-                          color: const Color.fromRGBO(255, 255, 255, 0.2),
+                    // ⚠️ DECORATIVE, and the rule is [GlyphTile]'s — read that
+                    // class doc; this hero square is the same mark hand-rolled
+                    // at 56 px because it sits on the gradient rather than on a
+                    // card. `s.glyph` is a two-letter abbreviation of `s.name`,
+                    // and `s.name` is the 30 pt title twelve pixels below it, so
+                    // announcing both makes every detail screen open with "SP,
+                    // Spotify". The tile is not a control and carries nothing
+                    // the title does not.
+                    ExcludeSemantics(
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          color: const Color.fromRGBO(255, 255, 255, 0.14),
+                          border: Border.all(
+                            color: const Color.fromRGBO(255, 255, 255, 0.2),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        s.glyph,
-                        style: const TextStyle(
-                          fontFamily: 'Space Grotesk',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: Colors.white,
+                        child: Text(
+                          s.glyph,
+                          style: const TextStyle(
+                            fontFamily: 'Space Grotesk',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),

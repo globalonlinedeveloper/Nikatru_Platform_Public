@@ -237,22 +237,38 @@ class _HomeDashboard extends ConsumerWidget {
         // conventional one (top-right, where a user looks for their account) and
         // it is the only one that shows WHICH account is signed in. Removing
         // either leaves a real user group without the affordance it looks for.
-        GestureDetector(
-          onTap: () => context.go('/settings'),
-          child: Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: AppColors.brandGradient,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(
-              user?.initial ?? 'A',
-              style: const TextStyle(
-                fontFamily: 'Manrope',
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
+        // 🔴 ITS ONLY VISIBLE CONTENT IS ONE LETTER. `user?.initial ?? 'A'` is
+        // the account initial, so a screen reader announced this control as
+        // "R" — a letter, with no role and no destination. That is the worst of
+        // the three states an unlabelled control can be in: not silent (which at
+        // least reads as "unknown"), but confidently wrong.
+        //
+        // `excludeSemantics` drops the letter rather than appending to it: the
+        // initial is a visual shorthand for "your account", and hearing the
+        // shorthand AND its expansion ("Account and settings R") is the stutter
+        // [GlyphTile] records. Which account is signed in is already announced
+        // by the greeting and the display name to the left of this row.
+        Semantics(
+          button: true,
+          label: l10n.a11yAccountSettings,
+          excludeSemantics: true,
+          child: GestureDetector(
+            onTap: () => context.go('/settings'),
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: AppColors.brandGradient,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                user?.initial ?? 'A',
+                style: const TextStyle(
+                  fontFamily: 'Manrope',
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -335,26 +351,36 @@ class _HomeDashboard extends ConsumerWidget {
         // an `Icons.arrow_forward`, which Flutter declares with
         // `matchTextDirection: true` and therefore mirrors itself; the arb key
         // (`calendarLink`) carries the word alone.
-        trailing: GestureDetector(
-          onTap: () => context.go('/calendar'),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                l10n.calendarLink,
-                style: AppText.body.copyWith(
-                  color: AppColors.accent,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
+        // The word is already there, so this needs the ROLE and not a label:
+        // merged, the node reads "Calendar, button" instead of "Calendar" as
+        // prose sitting beside a heading. The arrow contributes nothing — an
+        // `Icon` with no `semanticLabel` is silent — which is correct: it is the
+        // same direction the word already implies.
+        trailing: MergeSemantics(
+          child: Semantics(
+            button: true,
+            child: GestureDetector(
+              onTap: () => context.go('/calendar'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    l10n.calendarLink,
+                    style: AppText.body.copyWith(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  const Icon(
+                    Icons.arrow_forward,
+                    color: AppColors.accent,
+                    size: 13,
+                  ),
+                ],
               ),
-              const SizedBox(width: 3),
-              const Icon(
-                Icons.arrow_forward,
-                color: AppColors.accent,
-                size: 13,
-              ),
-            ],
+            ),
           ),
         ),
       ),

@@ -134,39 +134,84 @@ class BudgetScreen extends ConsumerWidget {
                 SizedBox(
                   width: 168,
                   height: 168,
-                  child: CustomPaint(
-                    painter: RingPainter(
-                      progress: pct,
-                      color: over ? AppColors.danger : AppColors.accent,
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            // NOT an arb key — a NUMBER. `NumberFormat`
-                            // .percentPattern carries the locale's own
-                            // convention, including where the sign goes (some
-                            // locales lead with it) and which digits are used;
-                            // `'${…}%'` hardcoded the English answer to both.
-                            // The pattern is `#,##0%`, i.e. zero fraction
-                            // digits, so `en` still renders "83%".
+                  // 🔴 THE ARC IS A `CustomPaint`, SO IT ANNOUNCES NOTHING, and
+                  // what it was hiding here is worse than on the insights donut:
+                  // `pct` is CLAMPED to 1 four statements up, so a user £400
+                  // over budget hears "100%" — a figure that is true of being
+                  // exactly on budget too. The overspend exists ONLY in the
+                  // colour (danger red) and in the two words underneath. Colour
+                  // is not a channel a screen reader has.
+                  //
+                  // So the label carries the two REAL figures — `total` and
+                  // `budgetVal`, the same pair `pct` was computed from — and the
+                  // over/under distinction comes from a whole second key rather
+                  // than a clause glued in front of the first. `overBudget` /
+                  // `ofBudget` are the visible words and could have been
+                  // interpolated; two complete sentences is the rule this
+                  // codebase already records (`newHerePrompt`, `poweredByLine`),
+                  // because where the clause SITS in the sentence is the
+                  // translator's call and a prefix takes that away.
+                  //
+                  // `excludeSemantics` for the same reason as the donut: the
+                  // centre `Text`s are the percent and that same over/of word,
+                  // both of which the label now states in context.
+                  //
+                  // `container: true` for the reason `insights_screen.dart`
+                  // records against its donut: an absorbed annotation glues the
+                  // ring's sentence to the three stat boxes below it and the
+                  // chart stops being something a reader can land on.
+                  child: Semantics(
+                    container: true,
+                    label: over
+                        ? l10n.a11yBudgetRingOver(
+                            currency.fmt(total),
+                            currency.fmt0(budgetVal),
                             NumberFormat.percentPattern(
                               l10n.localeName,
                             ).format(pct),
-                            style: AppText.fig.copyWith(
-                              fontSize: 34,
-                              color: over ? AppColors.danger : neutral.ink,
-                            ),
+                          )
+                        : l10n.a11yBudgetRing(
+                            currency.fmt(total),
+                            currency.fmt0(budgetVal),
+                            NumberFormat.percentPattern(
+                              l10n.localeName,
+                            ).format(pct),
                           ),
-                          Text(
-                            over ? l10n.overBudget : l10n.ofBudget,
-                            style: AppText.muted.copyWith(
-                              fontSize: 10,
-                              color: neutral.muted,
+                    excludeSemantics: true,
+                    child: CustomPaint(
+                      painter: RingPainter(
+                        progress: pct,
+                        color: over ? AppColors.danger : AppColors.accent,
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Text(
+                              // NOT an arb key — a NUMBER. `NumberFormat`
+                              // .percentPattern carries the locale's own
+                              // convention, including where the sign goes (some
+                              // locales lead with it) and which digits are used;
+                              // `'${…}%'` hardcoded the English answer to both.
+                              // The pattern is `#,##0%`, i.e. zero fraction
+                              // digits, so `en` still renders "83%".
+                              NumberFormat.percentPattern(
+                                l10n.localeName,
+                              ).format(pct),
+                              style: AppText.fig.copyWith(
+                                fontSize: 34,
+                                color: over ? AppColors.danger : neutral.ink,
+                              ),
                             ),
-                          ),
-                        ],
+                            Text(
+                              over ? l10n.overBudget : l10n.ofBudget,
+                              style: AppText.muted.copyWith(
+                                fontSize: 10,
+                                color: neutral.muted,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

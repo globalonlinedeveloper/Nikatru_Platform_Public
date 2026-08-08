@@ -57,6 +57,27 @@ BoxDecoration cardDecoration(BuildContext context, {double radius = 24}) {
 }
 
 /// Rounded gradient-tinted glyph square used for every subscription.
+///
+/// 🔴 THE GLYPH IS DECORATIVE BY DEFAULT, AND THAT IS THE A11Y FIX RATHER THAN
+/// AN OMISSION. [glyph] is a two- or three-letter mark ("N", "SP", "CG") derived
+/// from the subscription's name, and every place this tile is used it sits
+/// BESIDE that name as text — [RowCard]'s title on home and scan, the row label
+/// on insights. So a screen reader that reads the tile reads a meaningless token
+/// immediately before the real one: "N, Netflix, ₹649". Excluding it removes a
+/// stutter that no sighted user ever experiences and loses nothing, because the
+/// tile carries no information the row does not already say in words.
+///
+/// [semanticLabel] is the escape hatch for the opposite case — a tile standing
+/// ALONE, with no adjacent text — where the mark IS the only identifier and must
+/// be announced as the thing it stands for rather than as its letters. No
+/// product call site needs it today (every current one is accompanied), so it is
+/// exercised directly by `test/a11y_semantics_test.dart` instead of by a screen;
+/// an untested optional parameter is the dead-seam shape this repo keeps
+/// removing.
+///
+/// [statusColor] is deliberately NOT announced either: the dot encodes the
+/// usage tier, and `home_screen.dart`'s `_subTile` only paints it on the branch
+/// whose subtitle already spells that tier out in words.
 class GlyphTile extends StatelessWidget {
   const GlyphTile({
     super.key,
@@ -64,6 +85,7 @@ class GlyphTile extends StatelessWidget {
     this.size = 44,
     this.fontSize = 12,
     this.statusColor,
+    this.semanticLabel,
   });
 
   final String glyph;
@@ -71,8 +93,23 @@ class GlyphTile extends StatelessWidget {
   final double fontSize;
   final Color? statusColor;
 
+  /// What a screen reader should announce INSTEAD of the glyph. Null (the
+  /// default) makes the tile decorative — see the class doc.
+  final String? semanticLabel;
+
   @override
   Widget build(BuildContext context) {
+    final String? label = semanticLabel;
+    final Widget tile = _tile();
+    // Both branches drop the glyph itself; they differ only in what replaces
+    // it. `excludeSemantics` rather than a sibling `ExcludeSemantics` so the
+    // label cannot end up concatenated with the token it exists to replace.
+    return label == null
+        ? ExcludeSemantics(child: tile)
+        : Semantics(label: label, excludeSemantics: true, child: tile);
+  }
+
+  Widget _tile() {
     return Stack(
       clipBehavior: Clip.none,
       children: <Widget>[
@@ -200,7 +237,7 @@ class RowCard extends StatelessWidget {
     final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
 
-    return Container(
+    final Widget card = Container(
       decoration: isLight
           ? BoxDecoration(
               borderRadius: BorderRadius.circular(18),
@@ -219,6 +256,31 @@ class RowCard extends StatelessWidget {
           child: Padding(padding: EdgeInsets.all(padding), child: row),
         ),
       ),
+    );
+
+    // 🔴 `InkWell` GIVES A TAP ACTION AND NOT A BUTTON. That distinction is the
+    // whole defect on this widget: `InkResponse` wraps its child in
+    // `Semantics(onTap: …)`, so the row is activatable — but it carries no
+    // `isButton` flag, which is what TalkBack and VoiceOver read to say "button"
+    // and what tells a switch/keyboard user this is a control at all. Every
+    // subscription row in the app is a RowCard, so the app's single commonest
+    // control announced as prose you happen to be able to double-tap. Material's
+    // own buttons set the flag explicitly (`ButtonStyleButton` does, which is
+    // why [SoftButton] needs nothing here); a bare InkWell does not.
+    //
+    // ⚠️ AND `MergeSemantics` IS THE OTHER HALF, not tidiness. Without it the
+    // row is three or four sibling nodes — title, subtitle, trailing figure —
+    // and the flag sits on a parent the reader steps past on its way to them, so
+    // a user swipes four times through fragments to hear one row. Merged, the
+    // row is one node: "Netflix ₹649 a month, button". The children keep their
+    // own text, so nothing is re-stated in Dart and nothing can drift.
+    //
+    // ⚠️ `button:` IS CONDITIONAL because [onTap] is nullable and RowCard is
+    // used inertly (a plain list row with nothing behind it). Announcing
+    // "button" for a row that does nothing when activated is the same lie one
+    // size down.
+    return MergeSemantics(
+      child: Semantics(button: onTap != null, child: card),
     );
   }
 }
@@ -264,6 +326,17 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
+/// A read-only status chip (the savings figure on insights, the two hero counts
+/// on home).
+///
+/// ✅ NO `Semantics` WRAPPER, AND THAT IS THE FINDING RATHER THAN AN OVERSIGHT.
+/// It is not interactive — no `onTap`, no gesture, nothing to activate — so
+/// `button: true` here would announce a control that does not exist, and a
+/// `label:` would be the same string the [Text] below already contributes, read
+/// twice. The chip's whole content is that text, which a screen reader reads
+/// today with no help from this file. `test/a11y_semantics_test.dart` pins that:
+/// the insights savings pill's own value IS reachable in the semantics tree and
+/// carries NO button flag.
 class Pill extends StatelessWidget {
   const Pill(this.text, {super.key, required this.bg, required this.fg});
   final String text;
@@ -349,27 +422,41 @@ class GradientButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isLight = Theme.of(context).brightness == Brightness.light;
-    return SizedBox(
-      height: height,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: AppColors.brandGradient,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: isLight ? kBrandGlow : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: onPressed,
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Manrope',
-                  fontWeight: FontWeight.w700,
-                  fontSize: fontSize,
-                  color: Colors.white,
+    // 🔴 SAME DEFECT AS [RowCard]'s, ON THE APP'S PRIMARY CTA. This is an
+    // `InkWell`, not a `ButtonStyleButton`, so it has a tap action and no
+    // `isButton` flag and no enabled state — "Sign in", "Add subscription",
+    // "Cancel" and "Go to dashboard" all announced as plain text. `enabled:` is
+    // carried too because this button really is disabled mid-flight (scan holds
+    // `onPressed: null` until the scan finishes, the add sheet while saving),
+    // and a disabled control that still announces as actionable sends somebody
+    // tapping at nothing.
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        enabled: onPressed != null,
+        child: SizedBox(
+          height: height,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: AppColors.brandGradient,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: isLight ? kBrandGlow : null,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: onPressed,
+                child: Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontWeight: FontWeight.w700,
+                      fontSize: fontSize,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -399,6 +486,16 @@ class GradientButton extends StatelessWidget {
 ///   · label  → `scheme.onSurface`
 /// LIGHT keeps the three literals exactly, pinned in
 /// `test/shared_primitives_test.dart`.
+///
+/// ✅ NO `Semantics` WRAPPER HERE EITHER, AND FOR THE OPPOSITE REASON TO [Pill]:
+/// it is interactive and it is ALREADY ANNOUNCED. This is an [OutlinedButton],
+/// i.e. a `ButtonStyleButton`, which wraps itself in
+/// `Semantics(container: true, button: true, enabled: …)` — the very thing
+/// [GradientButton] and [RowCard] had to be given by hand because they are bare
+/// `InkWell`s. Adding a second wrapper would nest a duplicate button node inside
+/// Material's own. `test/a11y_semantics_test.dart` asserts the flag is there
+/// rather than asserting that this file put it there, so the day Material stops
+/// providing it the test goes red instead of the app going silent.
 ///
 /// ⚠️ [color] BECAME NULLABLE, AND THE DEFAULT IS THE ONLY THING THAT MOVED.
 /// It used to default to `AppColors.ink`, which is a light literal baked into
@@ -572,16 +669,27 @@ class _LegalLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => openExternalUrl(url),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: 'Manrope',
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-          color: color,
-          decoration: TextDecoration.underline,
+    // `link: true`, NOT `button: true`. This leaves the app: `openExternalUrl`
+    // hands the URL to the platform browser. Screen readers announce the two
+    // differently on purpose, and the difference is exactly the one a user
+    // wants before activating something on a phone — "link" warns you that you
+    // are about to be taken out of the app. A bare `GestureDetector` around a
+    // `Text` carries neither today; it is prose you can happen to tap.
+    return MergeSemantics(
+      child: Semantics(
+        link: true,
+        child: GestureDetector(
+          onTap: () => openExternalUrl(url),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Manrope',
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              color: color,
+              decoration: TextDecoration.underline,
+            ),
+          ),
         ),
       ),
     );

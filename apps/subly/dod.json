@@ -109,9 +109,9 @@
       "name": "finish onboarding",
       "primaryAction": "the last onboarding step records the choice and first run does not come back",
       "test": "finishing it moves the user on, and it does not come back",
-      "effect": "lib/features/firstrun/onboarding_screen.dart:onboardingSeenProvider",
+      "effect": "lib/features/onboarding/onboarding_screen.dart:onboardingSeenProvider",
       "mutation": {
-        "symbol": "lib/features/firstrun/onboarding_screen.dart:onboardingSeenProvider",
+        "symbol": "lib/features/onboarding/onboarding_screen.dart:onboardingSeenProvider",
         "observedRed": "finishing it moves the user on, and it does not come back",
         "date": "2026-08-08"
       }
