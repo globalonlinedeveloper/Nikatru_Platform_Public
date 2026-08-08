@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 
 const List<BoxShadow> kCardShadow = <BoxShadow>[
   BoxShadow(color: Color(0x0A141420), blurRadius: 5, offset: Offset(0, 2)),
@@ -181,13 +182,36 @@ class RowCard extends StatelessWidget {
       ],
     );
 
+    // 🔴 THE SAME DEFECT AND THE SAME FIX AS [cardDecoration] — read its doc
+    // comment first; this is its deferred sibling, named in W0's report.
+    //
+    // RowCard cannot simply CALL cardDecoration: the fill has to live on the
+    // [Material] so the InkWell splash clips to it, while the shadow/border
+    // lives on the Container outside it. So the branch is spelled out, but the
+    // rule is identical and the two must move together.
+    //   · LIGHT is byte-identical to the pre-dark widget: the literal
+    //     [AppColors.surface] + [kCardShadow]. Pinned against the literal in
+    //     `test/shared_primitives_test.dart` so "tidying" it to `scheme.surface`
+    //     goes red rather than repainting every row the owner eyeballs.
+    //   · DARK fills from `scheme.surfaceContainerHighest` and swaps the shadow
+    //     for an `outlineVariant` hairline. kCardShadow is two BLACK alphas, so
+    //     on a dark scaffold a row carrying only a shadow has no edge at all.
+    final ThemeData theme = Theme.of(context);
+    final bool isLight = theme.brightness == Brightness.light;
+    final ColorScheme scheme = theme.colorScheme;
+
     return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: kCardShadow,
-      ),
+      decoration: isLight
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: kCardShadow,
+            )
+          : BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
       child: Material(
-        color: AppColors.surface,
+        color: isLight ? AppColors.surface : scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -393,6 +417,13 @@ class PoweredByNikatru extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 🔴 `poweredByLine` IS A PLACEHOLDER KEY, NOT A CONCATENATION, and the
+    // Tamil value is why: it reads "{company} வழங்கும் {app}" — the two names
+    // swap places. Interpolating `'$appName by $companyName'` and translating
+    // only the word "by" would have produced word salad in every language whose
+    // order differs from English. The names themselves stay untranslated; they
+    // come from [AppConfig] so every portfolio app inherits the line.
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final Color faint = onDark
         ? const Color.fromRGBO(255, 255, 255, 0.6)
         : AppColors.muted;
@@ -402,7 +433,7 @@ class PoweredByNikatru extends StatelessWidget {
         NikatruWordmark(onDark: onDark),
         const SizedBox(height: 8),
         Text(
-          '${AppConfig.appName} by ${AppConfig.companyName}',
+          l10n.poweredByLine(AppConfig.appName, AppConfig.companyName),
           style: AppText.muted.copyWith(fontSize: 12, color: faint),
         ),
         if (showLinks) ...<Widget>[
@@ -414,11 +445,14 @@ class PoweredByNikatru extends StatelessWidget {
             alignment: WrapAlignment.center,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              _LegalLink('Privacy', AppConfig.privacyUrl, faint),
+              // The SHORT forms, deliberately not the chassis `privacyPolicy` /
+              // `termsOfService` keys: three of these plus two dots share one
+              // line, so the values differ from the long-form ones by design.
+              _LegalLink(l10n.linkPrivacyShort, AppConfig.privacyUrl, faint),
               _LegalDot(faint),
-              _LegalLink('Terms', AppConfig.termsUrl, faint),
+              _LegalLink(l10n.linkTermsShort, AppConfig.termsUrl, faint),
               _LegalDot(faint),
-              _LegalLink('Refund', AppConfig.refundUrl, faint),
+              _LegalLink(l10n.linkRefundShort, AppConfig.refundUrl, faint),
             ],
           ),
         ],
