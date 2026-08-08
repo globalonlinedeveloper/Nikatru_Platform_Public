@@ -26,6 +26,39 @@ class DailyReminder {
   final int minute;
 }
 
+/// A notification the user TAPPED — the inbound half of the seam.
+///
+/// Pure Dart on purpose: this is what crosses the facade, so no plugin type
+/// (`NotificationResponse` and friends) may appear in it or in
+/// [NotificationService]. The `flutter_local_notifications` types stay inside
+/// `packages/notifications`'s `_io` adapter, which maps them to this.
+class NotificationTap {
+  const NotificationTap({required this.id, this.payload});
+
+  /// The id the notification was posted/scheduled under — the same [DailyReminder.id]
+  /// the caller chose, so a tap can be traced back to the reminder that caused it.
+  final int id;
+
+  /// Whatever the poster attached, or null. Free-form and UNTRUSTED: it comes
+  /// back through the OS, so treat it as input rather than as state.
+  final String? payload;
+
+  /// The ENUMERABLE code an analytics funnel may log.
+  ///
+  /// 🔴 NOT the raw [payload]. `notification_opened{kind}` lands in D1, and a
+  /// raw payload is free text there — the exact defect
+  /// `AnalyticsFunnel.onPurchaseFailed` documents for its `reason`. Anything
+  /// that is not a short `[a-z0-9_]` token collapses to `other`.
+  String get kind {
+    final String? p = payload;
+    if (p == null || p.isEmpty || p.length > 32) return 'other';
+    return RegExp(r'^[a-z0-9_]+$').hasMatch(p) ? p : 'other';
+  }
+
+  @override
+  String toString() => 'NotificationTap(id: $id, kind: $kind)';
+}
+
 /// Seam for local notifications. Impls schedule via the OS, and **not every
 /// platform supports every operation** — the concrete impl reports its own
 /// capability matrix and no-ops what it can't do so a caller never crashes (e.g.
@@ -51,6 +84,20 @@ abstract interface class NotificationService {
 
   /// Cancel every scheduled notification.
   Future<void> cancelAll();
+
+  /// Taps on notifications this impl posted — the INBOUND half, without which
+  /// a scheduled reminder can wake the user and open nothing.
+  ///
+  /// Broadcast and idempotent: call it as often as you like, you get the same
+  /// stream. Emits only after [init] (that is where the impl registers with the
+  /// OS), and never emits on a platform that cannot notify — a caller must
+  /// tolerate a stream that stays silent forever rather than await a first event.
+  ///
+  /// A METHOD rather than a getter, deliberately: `tooling/ci/assert-capability-register.mjs`
+  /// verifies a declared seam method by finding its DECLARATION, and its
+  /// `declaresMethod` regex requires a paren. A getter here would be listed in
+  /// the register and checked by nothing — this repo's own recurring failure.
+  Stream<NotificationTap> notificationTaps();
 }
 
 /// A do-nothing [NotificationService] — the safe default before a real impl is
@@ -76,4 +123,10 @@ class NoOpNotificationService implements NotificationService {
 
   @override
   Future<void> cancelAll() async {}
+
+  /// Never emits — there is no platform under this impl to tap. `const` so the
+  /// whole class stays const-constructible.
+  @override
+  Stream<NotificationTap> notificationTaps() =>
+      const Stream<NotificationTap>.empty();
 }

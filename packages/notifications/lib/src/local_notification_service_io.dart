@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:nikatru_core/nikatru_core.dart';
@@ -21,7 +23,12 @@ typedef TZDateTimeNow = tz.TZDateTime Function();
 /// channels — the concrete adapter below is thin glue that `analyze` covers.
 @visibleForTesting
 abstract interface class NotificationPlugin {
-  Future<void> initialize();
+  /// [onTap] is the INBOUND channel and is required, not optional: the plugin
+  /// only accepts a tap callback at initialize time, so an `initialize()` that
+  /// cannot be handed one is an adapter that can never deliver a tap. Making it
+  /// a parameter is what stops the registration being quietly droppable —
+  /// remove it and this port stops compiling, rather than going silently deaf.
+  Future<void> initialize(void Function(NotificationTap tap) onTap);
   Future<bool> requestPermission();
   Future<void> showNow(int id, String title, String body);
   Future<void> scheduleDaily(
@@ -66,6 +73,19 @@ class LocalNotificationService implements NotificationService {
   final DeviceUtcOffset _deviceUtcOffset;
   bool _initialized = false;
 
+  /// BROADCAST, and created eagerly rather than on first listen.
+  ///
+  /// Broadcast because a tap is an event several places may want (a router that
+  /// opens the reminder AND a funnel that records it), and a single-subscription
+  /// stream would let whichever subscribed first silently starve the other.
+  /// Eager because [init] registers the OS callback and a tap can arrive before
+  /// anyone has subscribed — a lazily-built controller would drop it.
+  ///
+  /// Never closed: this service lives as long as the process. Broadcast
+  /// controllers hold no buffer, so an unlistened one costs nothing.
+  final StreamController<NotificationTap> _taps =
+      StreamController<NotificationTap>.broadcast();
+
   /// Fixed id bucket for immediate notifications (kept clear of caller-chosen
   /// small reminder ids); each `showNow` replaces the previous immediate one.
   static const int _immediateId = 0x7f000000;
@@ -82,10 +102,23 @@ class LocalNotificationService implements NotificationService {
     tz_data.initializeTimeZones();
     tz.setLocalLocation(await _resolveLocation());
     if (_caps.canNotify) {
-      await _plugin.initialize();
+      // 🔴 THE INBOUND HALF. Handing `_taps.add` to the port here is the whole
+      // registration: the adapter below turns it into the plugin's
+      // `onDidReceiveNotificationResponse`. Without this argument the service
+      // still shows and schedules perfectly — and every notification it posts
+      // opens nothing when tapped, with no test red and no error anywhere.
+      await _plugin.initialize(_taps.add);
     }
     _initialized = true;
   }
+
+  /// The taps, as a broadcast stream. See [NotificationService.notificationTaps].
+  ///
+  /// Silent (rather than absent) where `canNotify` is false: [init] skips the
+  /// registration there, so no tap can ever arrive and callers need no
+  /// platform check of their own.
+  @override
+  Stream<NotificationTap> notificationTaps() => _taps.stream;
 
   @override
   Future<bool> requestPermission() async {
@@ -225,14 +258,22 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
   );
 
   @override
-  Future<void> initialize() async {
+  Future<void> initialize(void Function(NotificationTap tap) onTap) async {
     const InitializationSettings settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
       macOS: DarwinInitializationSettings(),
       linux: LinuxInitializationSettings(defaultActionName: 'Open'),
     );
-    await _fln.initialize(settings);
+    await _fln.initialize(
+      settings,
+      // The ONLY place a `flutter_local_notifications` type touches a tap. The
+      // plugin's `NotificationResponse` stops here and a pure-Dart
+      // `NotificationTap` continues, so `packages/core` — and every consumer
+      // above it, on all six platforms — never sees the plugin's types.
+      onDidReceiveNotificationResponse: (NotificationResponse r) =>
+          onTap(NotificationTap(id: r.id ?? -1, payload: r.payload)),
+    );
   }
 
   @override

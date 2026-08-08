@@ -872,7 +872,11 @@
       "go_router": { "introduces": [], "why": "Navigation. No I/O." },
       "dio": { "introduces": [], "why": "HTTP client. A transport, not a collector — what travels over it is declared by the api_client entry above." },
       "supabase_flutter": { "introduces": ["Email address", "User IDs"], "why": "The identity SDK. Sends the email and password to Supabase GoTrue and returns the session. Inert under demo, where MockAuthRepository is selected instead." },
-      "flutter_local_notifications": { "introduces": [], "why": "Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions." },
+      "nikatru_notifications": {
+      "introduces": [],
+      "why": "First-party wrapper (packages/notifications) over the flutter_local_notifications + timezone pair already declared below — [13]T-9 routes the retention-touch attribution through it so a tap is attributable to its reminder. It schedules LOCAL notifications only: no new permission, no network, no data category beyond what its two wrapped deps (both already in this surface) declare. Added 2026-08-08 with PR #195 under [ADR 036]."
+    },
+    "flutter_local_notifications": { "introduces": [], "why": "Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions." },
       "timezone": { "introduces": [], "why": "Local timezone database for scheduling the reminders above. Offline data, no I/O." },
       "intl": { "introduces": [], "why": "Number formatting. Subly's entire use is one NumberFormat in lib/core/format/currency.dart." },
       "cupertino_icons": { "introduces": [], "why": "An icon font." },

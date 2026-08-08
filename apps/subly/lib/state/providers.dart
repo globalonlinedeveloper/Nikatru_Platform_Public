@@ -169,6 +169,24 @@ final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
 final Provider<NotificationService> notificationServiceProvider =
     Provider<NotificationService>((ref) => NotificationService.instance);
 
+/// [13]T-9 — the shared seam, present here for the INBOUND half only.
+///
+/// The fork above still owns every outbound call Subly makes (renewal reminders,
+/// the weekly digest). This is the tap channel it has never had, and it is the
+/// shared `packages/notifications` adapter rather than a second fork method
+/// precisely so there is one registration in the tree, not two.
+///
+/// 🔴 MUST BE OVERRIDDEN IN `main.dart` WITH THE INSTANCE THAT WAS `init()`ED.
+/// The tap callback is registered by `init()` and delivered on that instance's
+/// own stream, so a second, uninitialised instance built here would expose a
+/// stream that is silent forever — working code, no error, no tap. The default
+/// below is therefore the NO-OP, never a live-looking service: in a test or a
+/// demo build that never overrides it, a silent stream is the honest answer.
+final Provider<core.NotificationService> notificationTapSourceProvider =
+    Provider<core.NotificationService>(
+      (ref) => const core.NoOpNotificationService(),
+    );
+
 // ── `purchasesServiceProvider` WAS HERE, AND IT IS GONE ON PURPOSE ──────────
 // [pipeline 5]M-11/M-13/M-15, [ADR 026]. `lib/services/purchases/` held a
 // RevenueCat-shaped stub: a `PurchasesService` whose `purchase()` returned

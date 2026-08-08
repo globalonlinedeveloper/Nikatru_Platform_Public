@@ -8,6 +8,7 @@ import 'core/theme/app_theme.dart';
 import 'features/consent/consent_prompt.dart';
 import 'state/analytics_funnel.dart';
 import 'state/analytics_providers.dart';
+import 'state/notification_tap_observer.dart';
 import 'state/providers.dart';
 
 class SublyApp extends ConsumerStatefulWidget {
@@ -19,6 +20,16 @@ class SublyApp extends ConsumerStatefulWidget {
 
 class _SublyAppState extends ConsumerState<SublyApp> {
   bool _launchLogged = false;
+
+  /// [13]T-9 — the tap→`notification_opened` subscription, held so it can be
+  /// cancelled. Null until consent is granted and the funnel has resolved.
+  NotificationTapObserver? _taps;
+
+  @override
+  void dispose() {
+    _taps?.stop();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +58,20 @@ class _SublyAppState extends ConsumerState<SublyApp> {
       if (funnel != null) {
         _launchLogged = true;
         funnel.onLaunch();
+
+        // [13]T-9. Same consent gate, same reason: `notification_opened` is an
+        // observation about a person and must not be recorded before they have
+        // said yes. Started here rather than in `main()` because the funnel is
+        // what a tap has to reach, and the funnel resolves asynchronously —
+        // subscribing earlier would mean holding taps for an object that does
+        // not exist yet.
+        //
+        // `start()` is idempotent and this branch is one-shot on `_launchLogged`,
+        // so a rebuild cannot stack subscriptions and double-log a tap.
+        (_taps ??= NotificationTapObserver(
+          service: ref.read(notificationTapSourceProvider),
+          funnel: funnel,
+        )).start();
       }
     }
 
