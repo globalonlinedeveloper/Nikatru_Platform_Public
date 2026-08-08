@@ -42,6 +42,10 @@ import 'package:url_launcher/url_launcher.dart';
 // `contactUrl` member (measured: live `:109` has it, stamp has privacy/terms/
 // refund only), and the Help & support row below needs it.
 import '../../core/app_config.dart';
+// The delete-account dialog's widget keys live in E2EKeys — one declaration the
+// live integration suite and `test/delete_account_test.dart` both resolve
+// against. The VALUES are unchanged from the literals that were here.
+import '../../core/e2e_keys.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 // `auth_repository.dart` is the F0-4 re-export shim: `AuthRepository`,
@@ -650,6 +654,14 @@ class SettingsScreen extends ConsumerWidget {
                 null) ...<Widget>[
               const SizedBox(height: 10),
               SoftButton(
+                // 🔑 KEYED, and not for tidiness. This button's label IS
+                // `l10n.deleteAccount`, and so is the destructive button inside
+                // the dialog it opens — so `find.text('Delete account')` matches
+                // one widget before the tap and TWO after it. The live E2E has
+                // to tell them apart at exactly that moment, and a finder that
+                // silently resolves to `.first` would tap whichever the tree
+                // happened to order first. [pipeline N-6 leg 6]
+                key: E2EKeys.settingsDeleteAccount,
                 label: l10n.deleteAccount,
                 color: AppColors.danger,
                 onPressed: () => _confirmDelete(context, ref, l10n),
@@ -1045,15 +1057,21 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
 /// very screen that owns it. The one message a user must not miss is the one
 /// saying their data is gone and their login is not.
 ///
-/// 🔑 FOUR KEYS, ALL DRIVEN BY `test/delete_account_test.dart`. Renaming any of
-/// them silently disarms the test that protects this flow:
-///   · `deleteAccountPassword`    — the password field (`:157`, `:207`)
+/// 🔑 FOUR KEYS, DRIVEN BY `test/delete_account_test.dart` AND — since
+/// [pipeline N-6 leg 6] — BY THE LIVE `integration_test/app_test.dart` TOO.
+/// Renaming any of them silently disarms both:
+///   · `deleteAccountPassword`    — the password field
 ///   · `deleteAccountConfirm`     — the destructive button, inert until typed
-///                                  (`:211`, `:296`, `:325`, `:357`, `:374`,
-///                                  `:412`, `:435`)
-///   · `deleteAccountResult`      — the outcome sentence (`:164`)
-///   · `deleteAccountResultTitle` — "Account deleted" / "Not deleted" (`:531`
-///                                  of the live screen; asserted by text)
+///   · `deleteAccountResult`      — the outcome sentence
+///   · `deleteAccountResultTitle` — "Account deleted" / "Not deleted"
+///
+/// ⚠️ THEY ARE NOW DECLARED IN `core/e2e_keys.dart` AND THEIR VALUES DID NOT
+/// CHANGE. `Key` compares by value, so the eleven literal
+/// `const Key('deleteAccountConfirm')` finders in the widget test still resolve
+/// to these widgets — the hoist gives the two suites ONE declaration to share
+/// without renaming a live test contract. The line numbers this comment used to
+/// carry are gone on purpose: they were pointers into a file other people edit,
+/// and nothing recomputed them.
 class _DeleteAccountDialog extends StatefulWidget {
   const _DeleteAccountDialog({
     required this.l10n,
@@ -1119,7 +1137,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           Text(l10n.deleteAccountReauthHint, style: AppText.muted),
           const SizedBox(height: 8),
           TextField(
-            key: const Key('deleteAccountPassword'),
+            key: E2EKeys.deleteAccountPassword,
             controller: widget.password,
             obscureText: true,
             enabled: !_busy,
@@ -1136,7 +1154,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           child: Text(l10n.cancel),
         ),
         FilledButton(
-          key: const Key('deleteAccountConfirm'),
+          key: E2EKeys.deleteAccountConfirm,
           style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
           onPressed: (_busy || widget.password.text.isEmpty) ? null : _run,
           child: Text(_busy ? l10n.deletingEllipsis : l10n.deleteAccount),
@@ -1159,7 +1177,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
         outcome.accountIsGone
             ? l10n.deleteAccountResultGone
             : l10n.deleteAccountResultNotDeleted,
-        key: const Key('deleteAccountResultTitle'),
+        key: E2EKeys.deleteAccountResultTitle,
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1167,7 +1185,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
         children: <Widget>[
           Text(
             outcome.plainMessage,
-            key: const Key('deleteAccountResult'),
+            key: E2EKeys.deleteAccountResult,
             style: AppText.body,
           ),
           // 🔴 THE EMAIL ROUTE ON EVERY FAILURE, INCLUDING reauthFailed — and

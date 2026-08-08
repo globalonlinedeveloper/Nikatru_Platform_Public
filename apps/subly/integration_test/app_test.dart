@@ -40,6 +40,19 @@ void main() {
   const String email = String.fromEnvironment('E2E_EMAIL');
   const String password = String.fromEnvironment('E2E_PASSWORD');
 
+  // 🔴 A SECOND, SEPARATE THROWAWAY USER, AND IT HAS TO BE SEPARATE.
+  //
+  // The delete leg destroys the account it signs in with. The first user's
+  // subscription row is the subject of `tooling/e2e/verify_row.mjs`, which runs
+  // AFTER the whole drive and asserts `COUNT(*) >= 1` — so deleting that account
+  // from inside the app would turn leg 2's server-side proof red for the exact
+  // reason leg 6 passed. Two users keep the two claims independent: one account
+  // survives the run to prove the write landed, one is erased to prove the
+  // erasure reaches. e2e.yml provisions both from the same
+  // `tooling/e2e/provision_user.mjs`. [pipeline N-6 leg 6]
+  const String deleteEmail = String.fromEnvironment('E2E_DELETE_EMAIL');
+  const String deletePassword = String.fromEnvironment('E2E_DELETE_PASSWORD');
+
   // The app animates forever in places (scan progress ring/timer, loaders), so
   // pumpAndSettle() would hang. Advance a fixed wall-clock slice instead — this
   // still lets real network futures resolve on the live binding.
@@ -612,5 +625,229 @@ void main() {
           'inside the router authFlow, so the redirect will not rescue the user',
     );
     await shot('17-signed-out');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEG 6 OF N-6's GOLDEN PATH — "account delete purges".
+  //
+  // 🔴 WHAT THIS PROVES THAT NOTHING ELSE DID. `test/delete_account_test.dart`
+  // already drives this dialog on every push, and it proves the CLIENT half
+  // against a fake repository: the button reauths, calls the seam, and shows the
+  // outcome the seam returned. It cannot prove that the seam reaches anything —
+  // the whole [ADR 027] defect was a call chain whose terminal branch was an
+  // unconditional refusal, with every widget assertion green.
+  //
+  // This test is the other half, and it is the only place the two meet:
+  //
+  //   in-app tap  →  DELETE {platform}/v1/account  (service-role precondition,
+  //                  platform_db swept, RELAY to subly-api's own
+  //                  DELETE /v1/account, identity deleted LAST)
+  //                                                          ↓
+  //   the app is told "Account deleted"                      ↓
+  //   tooling/e2e/verify_purged.mjs re-reads live D1 AND the GoTrue admin API
+  //
+  // The app's word for it is checked HERE; whether the word was true is checked
+  // by the workflow step, because a client can only ever report what it was
+  // told. "Deleted" from a server that deleted nothing is the one failure a user
+  // can never detect for themselves — which is why the leg's proof is split
+  // across the two and neither half is allowed to stand alone.
+  //
+  // ⚠️ THE ROW IS CREATED FIRST, DELIBERATELY. Erasing an account that owns no
+  // rows is a purge that cannot fail: every count is already zero, and
+  // verify_purged.mjs would report "nothing left" over a user who never had
+  // anything. So this walk writes a subscription through the live Worker and
+  // reads it back off Home BEFORE deleting — the same round-trip leg 2 uses —
+  // so the "0 rows" the verifier finds afterwards is a state the run itself put
+  // there and then removed.
+  // ═══════════════════════════════════════════════════════════════════════════
+  testWidgets('deletes the account from inside the app, and lands signed out', (
+    WidgetTester tester,
+  ) async {
+    expect(
+      deleteEmail,
+      isNotEmpty,
+      reason:
+          'E2E_DELETE_EMAIL dart-define missing — e2e.yml must provision a '
+          'SECOND throwaway user for the leg that destroys one',
+    );
+    expect(deletePassword, isNotEmpty, reason: 'E2E_DELETE_PASSWORD missing');
+
+    /// The sentence the login screen's deletion notice is carrying, if any.
+    /// `findsNothing` on the notice reads the same whether the deletion failed,
+    /// the redirect never happened, or the app is still sitting on the dialog —
+    /// three different fixes, so print what is actually there.
+    String noticeText() {
+      final Finder f = find.byKey(const Key('accountDeletionNoticeText'));
+      if (f.evaluate().isEmpty) return '(no deletion notice on screen)';
+      return tester.widget<Text>(f.first).data ?? '(notice with no text)';
+    }
+
+    // ── Boot + sign in as the sacrificial user ───────────────────────────────
+    await app.main();
+    await pumpFor(tester, const Duration(seconds: 3));
+    // Consent was answered and persisted by the first test; called anyway so a
+    // cleared store cannot wedge this run behind a modal barrier.
+    await answerConsentIfPrompted(tester, timeout: const Duration(seconds: 4));
+
+    expectNothingCoveringTheApp('the onboarding screen');
+    await tester.tap(find.text('Skip'));
+    await pumpFor(tester, const Duration(seconds: 2));
+
+    expect(find.text('Welcome back'), findsOneWidget);
+    await tester.enterText(find.byKey(E2EKeys.loginEmail), deleteEmail);
+    await tester.enterText(find.byKey(E2EKeys.loginPassword), deletePassword);
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(E2EKeys.loginSubmit));
+    await pumpFor(tester, const Duration(seconds: 10));
+
+    expect(
+      find.text('Go to dashboard'),
+      findsOneWidget,
+      reason:
+          'Scan never finished for the delete-leg user — sign-in likely failed. '
+          'On screen: ${onScreen(tester)}',
+    );
+    await tester.tap(find.text('Go to dashboard'));
+    await pumpFor(tester, const Duration(seconds: 4));
+
+    // ── 18 Give the account something to lose ────────────────────────────────
+    final String doomed = 'E2E Doomed ${DateTime.now().millisecondsSinceEpoch}';
+    await tester.tap(find.byKey(E2EKeys.fabAdd));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.enterText(find.byKey(E2EKeys.addName), doomed);
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '3.21');
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(E2EKeys.addSubmit));
+    await pumpFor(tester, const Duration(seconds: 8));
+    final Finder doomedFinder = find.text(doomed);
+    await tester.scrollUntilVisible(
+      doomedFinder.first,
+      160,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 40,
+    );
+    expect(
+      doomedFinder,
+      findsWidgets,
+      reason:
+          'The subscription the deletion is supposed to erase never round-'
+          'tripped through D1, so a later "0 rows" would prove nothing',
+    );
+    await shot('18-doomed-subscription');
+
+    // ── 19 Settings → Delete account ─────────────────────────────────────────
+    await tester.tap(find.text('More'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(SettingsScreen), findsWidgets);
+    final Finder deleteButton = find.byKey(E2EKeys.settingsDeleteAccount);
+    await tester.scrollUntilVisible(
+      deleteButton,
+      200,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 25,
+    );
+    await shot('19a-delete-control');
+    // The floating navigation bar in app_shell.dart sits OVER the bottom ~86px
+    // of this scroll view, and "Delete account" is the last control in it — the
+    // exact geometry that swallowed two nights of "Log out" taps. Never a bare
+    // tester.tap() here.
+    await tapWhenHittable(
+      tester,
+      deleteButton,
+      'Delete account',
+      scrollable: find.byType(Scrollable).first,
+    );
+    await pumpFor(tester, const Duration(seconds: 2));
+
+    expect(
+      find.byKey(E2EKeys.deleteAccountPassword),
+      findsOneWidget,
+      reason:
+          'The delete-account confirmation never opened. On screen: '
+          '${onScreen(tester)}',
+    );
+    // The destructive button is INERT until a password is typed — asserted
+    // before typing, so a dialog that had quietly dropped that guard would be
+    // caught here rather than by a user on a borrowed phone.
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(E2EKeys.deleteAccountConfirm))
+          .onPressed,
+      isNull,
+      reason:
+          'The irreversible button was enabled with an empty password field — '
+          'a stray tap is then enough to destroy an account',
+    );
+    await shot('19b-delete-dialog');
+
+    await tester.enterText(
+      find.byKey(E2EKeys.deleteAccountPassword),
+      deletePassword,
+    );
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(E2EKeys.deleteAccountConfirm));
+
+    // ── 20 The real round-trip: reauth → DELETE → identity gone → sign-out ────
+    // Three network hops before the router moves, so this is the longest wait in
+    // the suite. Polled rather than fixed: the notice is parked in a provider
+    // and rendered by the LOGIN screen, so it survives the redirect that carries
+    // the dialog away — it does not auto-dismiss and cannot be raced.
+    expect(
+      await waitFor(
+        tester,
+        find.byKey(E2EKeys.accountDeletionNotice),
+        timeout: const Duration(seconds: 40),
+      ),
+      isTrue,
+      reason:
+          'No account-deletion outcome ever reached the login screen. Either '
+          'the request is still in flight, or the app never left the dialog. '
+          'On screen: ${onScreen(tester)}',
+    );
+    await pumpFor(tester, const Duration(seconds: 2));
+    await shot('20-account-deleted');
+
+    // THE ASSERTION THE WHOLE LEG IS FOR. `AccountDeletionOutcome.accountIsGone`
+    // is false for every refusal — 501 (nothing deleted), 502 (rows gone, login
+    // alive), couldNotReach, reauthFailed — and each of those renders "Not
+    // deleted" here instead. So this distinguishes "the server did it" from "the
+    // app asked", which is the distinction [ADR 027] exists for.
+    expect(
+      find.text('Account deleted'),
+      findsWidgets,
+      reason:
+          'The app did NOT report the account as gone. Its own words: '
+          '"${noticeText()}". A "Not deleted" here means the deployed erasure '
+          'route refused (501 = unconfigured/no APP_ERASURE_ENDPOINTS, 502 = '
+          'the subly-api relay or the identity delete failed) — check the '
+          'services/platform Worker logs for this run, not this test.',
+    );
+
+    // …and the user really is signed out, on the login screen, and STAYS there.
+    // Same second-look as leg 2's sign-out: waitFor returns on the first
+    // matching frame, which a transit frame satisfies.
+    expect(find.text('Welcome back'), findsOneWidget);
+    await pumpFor(tester, const Duration(seconds: 3));
+    expect(
+      find.text('Welcome back'),
+      findsOneWidget,
+      reason:
+          'The deletion reached the login screen but did not STAY there — '
+          'something navigated away after the redirect',
+    );
+    expect(
+      find.text('Skip'),
+      findsNothing,
+      reason:
+          'Deletion landed in the first-run onboarding carousel. /onboarding is '
+          'inside the router authFlow, so the redirect will not rescue the user',
+    );
+    await shot('21-signed-out-after-delete');
+
+    // ⬜ WHAT THIS TEST CANNOT SEE, STATED. Everything above is the app's own
+    // account of what happened, and a client can only report what it was told.
+    // Whether subly_db and the identity record are ACTUALLY empty is asserted by
+    // `tooling/e2e/verify_purged.mjs` in the step after this one — server-side,
+    // through the D1 HTTP API and the GoTrue admin API, with no app in the loop.
   });
 }

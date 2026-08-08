@@ -148,6 +148,24 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
 
+      # 🔴 A SECOND USER, BECAUSE LEG 6 DESTROYS THE ONE IT SIGNS IN WITH.
+      # [pipeline N-6] leg 6 is "account delete purges", and the only honest way
+      # to prove it is to let the app really delete a real account. That cannot
+      # be the user above: `verify_row.mjs` asserts `COUNT(*) >= 1` for that id
+      # AFTER the drive, so erasing it would turn leg 2's server-side proof red
+      # for the exact reason leg 6 passed — one suite, two claims, and they must
+      # not be able to falsify each other.
+      #
+      # Same script, no arguments: `provision_user.mjs` writes `email`,
+      # `password` and `user_id` to $GITHUB_OUTPUT, and step outputs are
+      # per-step, so this `id:` is the whole separation. It needs no new secret.
+      - name: Provision the throwaway user the delete leg destroys
+        id: delete_user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+
       - name: Run integration tests (headless Chrome)
         id: drive
         working-directory: apps/${{ matrix.app }}
@@ -157,6 +175,8 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          E2E_DELETE_EMAIL: ${{ steps.delete_user.outputs.email }}
+          E2E_DELETE_PASSWORD: ${{ steps.delete_user.outputs.password }}
         run: |
           set -euo pipefail
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
@@ -180,7 +200,9 @@ jobs:
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=API_BASE_URL="$API_BASE_URL" \
             --dart-define=E2E_EMAIL="$E2E_EMAIL" \
-            --dart-define=E2E_PASSWORD="$E2E_PASSWORD" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
+            --dart-define=E2E_PASSWORD="$E2E_PASSWORD" \
+            --dart-define=E2E_DELETE_EMAIL="$E2E_DELETE_EMAIL" \
+            --dart-define=E2E_DELETE_PASSWORD="$E2E_DELETE_PASSWORD" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
           kill "$CHROMEDRIVER_PID" || true
 
       # WHAT BROKE, ON THE RUN PAGE — not on line 370 of a 549-line log.
@@ -252,6 +274,34 @@ jobs:
           SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
         run: node tooling/e2e/verify_row.mjs
 
+      # ── LEG 6's SERVER-SIDE HALF ────────────────────────────────────────────
+      # The suite above tapped Delete account inside the running app and asserted
+      # the app said "Account deleted". That is the app's own account of what
+      # happened, and a server that deleted nothing and answered `{ ok: true }`
+      # produces the identical green screen — the one failure a user can never
+      # detect and never recover from. So the claim is re-read here, server-side,
+      # with no app in the loop: the identity must be unresolvable through the
+      # GoTrue admin API, and every schema-derived user-owned table in subly_db
+      # must hold zero rows for it.
+      #
+      # BEFORE the purge below, necessarily. `purge.mjs` would delete exactly the
+      # rows this step exists to find, so running it first would make the audit
+      # pass on a deletion that never happened.
+      #
+      # NOT `if: always()` — a run that failed earlier never reached the delete
+      # walk, and auditing a purge nobody performed reports a failure whose cause
+      # is somewhere else entirely. The teardown below is what keeps prod clean
+      # on that path.
+      - name: Verify the in-app deletion really purged (leg 6)
+        env:
+          E2E_DELETE_USER_ID: ${{ steps.delete_user.outputs.user_id }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
+        run: node tooling/e2e/verify_purged.mjs
+
       # `steps.user.outcome != 'skipped'` = "provisioning was ATTEMPTED", which is
       # the honest trigger for both cleanup steps: it is true when the run got far
       # enough to touch production (including when provisioning itself failed
@@ -276,6 +326,25 @@ jobs:
         if: always() && steps.user.outcome != 'skipped'
         env:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/purge.mjs
+
+      # The delete-leg user gets the SAME teardown, and it is not redundant with
+      # the app having deleted it. The deletion is the last thing the suite does,
+      # so every earlier failure — a broken sign-in, a red assertion, a cancelled
+      # run — leaves that account and its rows live in production. On the happy
+      # path this is a no-op that reports `0 row(s)` and HTTP 404; on every other
+      # path it is the only thing that cleans up. `purge.mjs` already tolerated
+      # both (the D1 deletes are unconditional, 404 has always been forgiven), so
+      # nothing was loosened to make this safe.
+      - name: Purge the delete-leg user too (already gone on a green run)
+        if: always() && steps.delete_user.outcome != 'skipped'
+        env:
+          E2E_USER_ID: ${{ steps.delete_user.outputs.user_id }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
