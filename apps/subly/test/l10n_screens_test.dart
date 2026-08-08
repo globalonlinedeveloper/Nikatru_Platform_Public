@@ -163,10 +163,11 @@ void main() {
       }
 
       // DECISION 2 — a NEW family, not an overwrite. `onboarding1Title` is the
-      // chassis key every stamped app's first run renders
-      // (features/firstrun/onboarding_screen.dart). Had Subly's pitch been
-      // written into it, every app the factory produces would introduce itself
-      // with Subly's words.
+      // chassis key every stamped app's first run renders — the brick's
+      // `features/firstrun/onboarding_screen.dart`, not anything in this app
+      // (Subly's unrouted copy of that twin was deleted 2026-08-09). Had
+      // Subly's pitch been written into it, every app the factory produces
+      // would introduce itself with Subly's words.
       expect(en.onboarding1Title, 'Welcome');
       expect(en.sublyOnboarding1Title, isNot(en.onboarding1Title));
       expect(ta.sublyOnboarding1Title, isNot(ta.onboarding1Title));
