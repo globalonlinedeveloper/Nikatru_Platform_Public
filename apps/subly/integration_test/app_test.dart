@@ -125,57 +125,80 @@ void main() {
   ///
   /// So: keep scrolling while the control is occluded, and if it can never be
   /// reached, SAY WHAT IS ON TOP OF IT rather than blaming the button.
+  /// 🔴 HOISTED OUT OF [tapWhenHittable] ON 2026-08-08 SO THE DETECTOR CAN USE
+  /// IT TOO. These two closures were the only shape-independent knowledge this
+  /// suite had about "is the app actually reachable", and they were locked
+  /// inside the tapper — so `expectNothingCoveringTheApp`, the guard written
+  /// for precisely this failure, went on asking a question about a widget TYPE.
+  /// See the note on that function.
+  /// ⚠️ TESTER-FREE ON PURPOSE. `expectNothingCoveringTheApp` takes only a
+  /// `String`, and its two call sites are REGISTER ANCHORS
+  /// (`tooling/e2e-leg-register.json`, leg `anonymous`) that must stay
+  /// byte-identical — so adding a `WidgetTester` parameter to reach the hit test
+  /// would have meant editing the very lines that prove leg 1. The geometry is
+  /// therefore taken from the render tree directly, and the view id from the
+  /// target's own `BuildContext` (a `Finder`'s element IS one) rather than from
+  /// `tester.view`.
+  HitTestResult hitTestAtCentreOf(Finder finder) {
+    final Element element = finder.evaluate().first;
+    final RenderBox box = element.renderObject! as RenderBox;
+    final HitTestResult result = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(
+      result,
+      box.localToGlobal(box.size.center(Offset.zero)),
+      View.of(element).viewId,
+    );
+    return result;
+  }
+
+  List<String> occluders(Finder finder) {
+    if (finder.evaluate().isEmpty) {
+      return <String>['(the control is not in the tree)'];
+    }
+    return hitTestAtCentreOf(finder).path
+        .map((HitTestEntry e) => e.target.runtimeType.toString())
+        .take(6)
+        .toList();
+  }
+
+  /// Would a `tester.tap()` aimed at [finder] actually land ON it?
+  ///
+  /// `tester.tap()` aims at the finder's centre and delivers a real pointer
+  /// event there. If anything is painted over that point the event goes to the
+  /// thing on top — SILENTLY. This is the only check in the suite that does not
+  /// need to know what that thing IS.
+  bool reaches(Finder finder) {
+    if (finder.evaluate().isEmpty) return false;
+    final RenderObject target = finder.evaluate().first.renderObject!;
+    return hitTestAtCentreOf(
+      finder,
+    ).path.any((HitTestEntry e) => identical(e.target, target));
+  }
+
   Future<void> tapWhenHittable(
     WidgetTester tester,
     Finder finder,
     String what, {
     Finder? scrollable,
   }) async {
-    List<String> occluders() {
-      if (finder.evaluate().isEmpty) {
-        return <String>['(the control is not in the tree)'];
-      }
-      final HitTestResult result = HitTestResult();
-      WidgetsBinding.instance.hitTestInView(
-        result,
-        tester.getCenter(finder),
-        tester.view.viewId,
-      );
-      return result.path
-          .map((HitTestEntry e) => e.target.runtimeType.toString())
-          .take(6)
-          .toList();
-    }
-
-    bool reaches() {
-      if (finder.evaluate().isEmpty) return false;
-      final RenderObject target = tester.renderObject(finder);
-      final HitTestResult result = HitTestResult();
-      WidgetsBinding.instance.hitTestInView(
-        result,
-        tester.getCenter(finder),
-        tester.view.viewId,
-      );
-      return result.path.any((HitTestEntry e) => identical(e.target, target));
-    }
-
     // A control resting under the floating bar only needs the list driven a
     // little further — the scroll views carry enough bottom padding (108px on
     // Settings) to clear it, so this terminates on a real layout.
-    if (!reaches() && scrollable != null) {
-      for (int i = 0; i < 15 && !reaches(); i++) {
+    if (!reaches(finder) && scrollable != null) {
+      for (int i = 0; i < 15 && !reaches(finder); i++) {
         await tester.drag(scrollable, const Offset(0, -120));
         await pumpFor(tester, const Duration(milliseconds: 250));
       }
     }
 
     expect(
-      reaches(),
+      reaches(finder),
       isTrue,
       reason:
           'A tap aimed at "$what" would NOT reach it — something is drawn on '
           'top of its centre point, and the tap would go there instead, '
-          'silently. At that point the hit test finds: ${occluders().join(' → ')}. '
+          'silently. At that point the hit test finds: '
+          '${occluders(finder).join(' → ')}. '
           'The usual cause is the floating navigation bar or FAB in '
           'app_shell.dart: they are Positioned siblings ABOVE the branch '
           'content in a Stack, so the bottom ~86px of any scroll view is inside '
@@ -203,39 +226,106 @@ void main() {
     return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
   }
 
-  /// 🔴 THE FAILURE THIS SUITE MUST NAME OUT LOUD.
+  /// 🔴 THE FAILURE THIS SUITE MUST NAME OUT LOUD — AND THE SECOND TIME IT GOT
+  /// THROUGH, BECAUSE THIS FUNCTION WAS ASKING ABOUT A WIDGET TYPE.
   ///
-  /// A modal route installs a `ModalBarrier` over everything below it, so a
-  /// `tester.tap()` aimed at a widget behind it hits the barrier and SILENTLY
-  /// DOES NOTHING — no exception, no warning. The test then fails several lines
-  /// later on whatever the tap was supposed to produce, naming the wrong thing.
+  /// A modal covering the app swallows every `tester.tap()` aimed beneath it —
+  /// no exception, no warning. The test then fails several lines later on
+  /// whatever the tap was supposed to produce, naming the wrong thing.
   ///
-  /// That is exactly how the nightly died for six consecutive nights from
-  /// 2026-07-27: the DPDP consent dialog (added 2026-07-26, `ConsentGate`) came
-  /// up over onboarding, `tap('Skip')` was swallowed, and both tests reported
-  /// `Found 0 widgets with text "Welcome back"` — a login-screen error for a
-  /// dialog problem. Assert the absence of the modal HERE, where the message can
-  /// say what is actually wrong.
+  /// 🔬 2026-07-27, THE FIRST TIME. The DPDP consent prompt (`ConsentGate`) came
+  /// up over onboarding as a `showDialog` ROUTE, `tap('Skip')` was swallowed,
+  /// and both tests reported `Found 0 widgets with text "Welcome back"` — a
+  /// login-screen error for a dialog problem. This function was written then,
+  /// and it asked `find.byType(Dialog)`.
+  ///
+  /// 🔬 2026-08-08, THE SECOND TIME — IDENTICAL SYMPTOM, AND THIS GUARD PASSED
+  /// THROUGH IT. The P2.6 chassis merge replaced that route dialog with the
+  /// stamped `_ConsentPrompt` in `app.dart`, whose own comment states the
+  /// change: *"Rendered INLINE rather than via showDialog"* — a `Positioned.fill`
+  /// + opaque `ColoredBox` scrim inside the `MaterialApp.builder` Stack. It is
+  /// not a route and it is not a `Dialog`, so `find.byType(Dialog)` matched
+  /// NOTHING while the prompt sat on screen absorbing taps. All three tests
+  /// failed with `Found 0 widgets with text "Welcome back"`, the run's only
+  /// screenshot (`01-onboarding`) shows the prompt in the middle of the
+  /// onboarding screen, and this assertion — the one written for exactly this —
+  /// reported clean one line earlier.
+  ///
+  /// 🔑 SO IT NO LONGER ASKS WHAT THE MODAL IS. The limb that matters is a HIT
+  /// TEST: if the control this suite is about to tap cannot be reached, the app
+  /// is covered, whatever is doing the covering. That is shape-independent, and
+  /// it is the only one of the three below that needed no edit when the modal
+  /// changed type. The other two limbs stay because they can NAME the two known
+  /// shapes, which turns a hit-test path into a diagnosis.
+  ///
+  /// ⚠️ It names `Skip` because both call sites pass 'the onboarding screen' and
+  /// the next act at each is `tap(find.text('Skip'))`. That is honest coupling,
+  /// not a generic function pretending to be general.
   void expectNothingCoveringTheApp(String where) {
+    final Finder skip = find.text('Skip');
+    final Finder consentDecline = find.text('No thanks');
+
+    // Limb 1 — a route modal (the 2026-07-27 shape).
     expect(
       find.byType(Dialog),
       findsNothing,
       reason:
-          'A modal dialog is on screen at $where. Its barrier swallows every '
-          'tap aimed at the app beneath it — silently — so the next failure '
-          'would blame whatever that tap was meant to do. If a new first-run '
-          'modal was added to the app, this suite has to answer it (see '
+          'A modal dialog ROUTE is on screen at $where. Its ModalBarrier '
+          'swallows every tap aimed at the app beneath it — silently — so the '
+          'next failure would blame whatever that tap was meant to do. If a new '
+          'first-run modal was added, this suite has to answer it (see '
           'answerConsentIfPrompted).',
     );
+
+    // Limb 2 — the stamped inline scrim (the 2026-08-08 shape).
+    expect(
+      consentDecline,
+      findsNothing,
+      reason:
+          'The analytics-consent prompt is STILL ON SCREEN at $where. It is not '
+          'a route and not a Dialog — app.dart renders it inline as a '
+          'Positioned.fill + opaque ColoredBox over the whole app — so it '
+          'absorbs the tap on Skip and the app never leaves onboarding. '
+          'answerConsentIfPrompted was supposed to have answered it.',
+    );
+
+    // Limb 3 — THE ONE THAT DOES NOT NEED TO KNOW THE SHAPE.
+    if (skip.evaluate().isNotEmpty) {
+      expect(
+        reaches(skip),
+        isTrue,
+        reason:
+            'Something is covering the app at $where: a tap aimed at "Skip" '
+            'would NOT reach it, so it would be swallowed silently and the next '
+            'assertion would blame the login screen. The hit test at that point '
+            'finds: ${occluders(skip).join(' → ')}.',
+      );
+    }
   }
 
-  /// Answers the DPDP analytics-consent dialog if it is up, and reports whether
+  /// Answers the DPDP analytics-consent prompt if it is up, and reports whether
   /// it was.
+  ///
+  /// 🔴 IT LOOKS FOR THE ANSWER CONTROL, NOT FOR A WIDGET TYPE — CORRECTED
+  /// 2026-08-08 AFTER THIS EXACT MISTAKE COST A WHOLE RUN. This polled
+  /// `find.byType(Dialog)`, which was right while the prompt was a `showDialog`
+  /// route. The P2.6 chassis merge replaced it with the stamped `_ConsentPrompt`
+  /// in `app.dart` — inline, by its own comment *"Rendered INLINE rather than
+  /// via showDialog"*, because that gate sits in `MaterialApp.builder`, ABOVE
+  /// the router's Navigator, where `showDialog` has no Navigator to push onto.
+  /// A `Positioned.fill` + opaque `ColoredBox` is not a `Dialog`, so this
+  /// returned false for ten seconds with the prompt plainly on screen, the
+  /// first test failed its "the prompt never appeared" assertion, and the other
+  /// two had their `tap('Skip')` eaten by the scrim.
+  ///
+  /// The decline control is the right thing to key on: it is the affordance the
+  /// suite actually uses, it exists in BOTH shapes, and it survives the widget
+  /// tree being restyled — which is precisely what happened.
   ///
   /// The prompt opens over whatever screen is showing the first time a LIVE
   /// build launches with no decision on disk — which is precisely this suite,
-  /// and only this suite: `ConsentGate` keys off `backendLiveProvider`, so no
-  /// demo build and no widget test ever takes this branch.
+  /// and only this suite: the gate keys off `backendLiveProvider`, so no demo
+  /// build and no widget test ever takes this branch.
   ///
   /// Answering it is not a workaround. The prompt is a real first-run screen and
   /// this is the only automated proof it appears at all. **"No thanks" on
@@ -252,21 +342,33 @@ void main() {
     WidgetTester tester, {
     Duration timeout = const Duration(seconds: 10),
   }) async {
-    final Finder dialog = find.byType(Dialog);
-    if (!await waitFor(tester, dialog, timeout: timeout)) return false;
+    final Finder decline = find.text('No thanks');
+    if (!await waitFor(tester, decline, timeout: timeout)) return false;
+    // Still checked, but as a SECOND opinion rather than as the detector: the
+    // prompt this suite knows carries both answers, side by side and equally
+    // weighted (which is itself the DPDP dark-pattern rule the app is keeping).
     expect(
-      find.text('No thanks'),
-      findsOneWidget,
+      find.text('Allow'),
+      findsWidgets,
       reason:
-          'A modal came up on first launch but it is not the consent prompt — '
-          'this suite only knows how to answer that one.',
+          'Something offering "No thanks" came up on first launch, but it does '
+          'not also offer "Allow" — that is not the consent prompt, and this '
+          'suite only knows how to answer that one.',
     );
     await shot('00-consent');
-    await tester.tap(find.text('No thanks'));
+    // 🔴 tapWhenHittable, NOT tester.tap. This control is the ONE thing on
+    // screen that must be reachable at this moment, and if some later change
+    // puts anything over it the run must say "the tap on No thanks would not
+    // land" — not spend ten more seconds and then report that the prompt never
+    // closed.
+    await tapWhenHittable(tester, decline.first, 'No thanks');
     expect(
-      await waitGone(tester, dialog),
+      await waitGone(tester, decline),
       isTrue,
-      reason: 'The consent dialog did not close after "No thanks" was tapped',
+      reason:
+          'The consent prompt did not close after "No thanks" was tapped. It is '
+          'an inline scrim over the whole app (app.dart `_ConsentPrompt`), so '
+          'until it goes every tap beneath it is swallowed silently.',
     );
     return true;
   }
@@ -693,7 +795,20 @@ void main() {
     await tester.tap(find.text('Skip'));
     await pumpFor(tester, const Duration(seconds: 2));
 
-    expect(find.text('Welcome back'), findsOneWidget);
+    // POLLED, not a fixed pump then a hard expect. This is the third full boot
+    // of the run and the route change after Skip is asynchronous; a 2s window
+    // that happens to be enough twice is not a proof that it is enough. The
+    // message names the two states this can be in, because "Found 0 widgets
+    // with text Welcome back" reads identically whether the tap was swallowed
+    // (see expectNothingCoveringTheApp above) or the redirect is merely slow.
+    expect(
+      await waitFor(tester, find.text('Welcome back')),
+      isTrue,
+      reason:
+          'The delete-leg walk never reached the login screen after Skip. '
+          'Either the tap was swallowed by something covering onboarding, or '
+          'the router has not settled. On screen: ${onScreen(tester)}',
+    );
     await tester.enterText(find.byKey(E2EKeys.loginEmail), deleteEmail);
     await tester.enterText(find.byKey(E2EKeys.loginPassword), deletePassword);
     await pumpFor(tester, const Duration(milliseconds: 500));

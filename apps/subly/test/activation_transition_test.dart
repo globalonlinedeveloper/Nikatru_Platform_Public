@@ -82,11 +82,16 @@ class _FakeRepository implements SubscriptionRepository {
 class _SilentNotifications extends NotificationService {
   _SilentNotifications() : super.forTesting();
   @override
-  Future<void> syncAll(List<Subscription> subs, {int daysBefore = 2}) async {}
+  Future<void> syncAll(
+    List<Subscription> subs, {
+    required ReminderCopy copy,
+    int daysBefore = 2,
+  }) async {}
   @override
   Future<void> cancelAll() async {}
   @override
   Future<void> scheduleWeeklyDigest({
+    required ReminderCopy copy,
     required int count,
     required String formattedTotal,
   }) async {}
@@ -111,10 +116,11 @@ Subscription _draft() => Subscription(
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(repo),
-      sublyNotificationServiceProvider.overrideWithValue(_SilentNotifications()),
+      sublyNotificationServiceProvider.overrideWithValue(
+        _SilentNotifications(),
+      ),
       analyticsFunnelProvider.overrideWith(
-        (Ref ref) async =>
-            AnalyticsFunnel(analytics: analytics),
+        (Ref ref) async => AnalyticsFunnel(analytics: analytics),
       ),
     ],
   );
