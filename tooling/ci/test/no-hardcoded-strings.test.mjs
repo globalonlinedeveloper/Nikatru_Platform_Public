@@ -31,6 +31,8 @@
 //      (measured, `git show HEAD:` + splice); the new one exits 1 on the
 //      declaration identity. Both canary floors — 22 and 58 — still cleared it,
 //      which is exactly why a floor could never have caught this.
+//      (Re-measured 2026-08-08 with one canary left: the fixture still clears
+//      the floor at 32 with the family gone, and the mutation is still caught.)
 //   7. the labelling regex made unmatchable but LEFT IN THE LIST → caught by the
 //      per-family evidence check, in BOTH canaries.
 //   8. a matcher family ADDED with no fixture evidence → caught twice over.
@@ -46,6 +48,23 @@
 // fixture, because a fixture I wrote encodes the same misunderstanding as the
 // guard I wrote — this repo has already shipped a guard whose six fixture tests
 // all passed against a broken version.
+//
+// ── 2026-08-08 · THE apps/subly CANARY IS RETIRED (P4 L0) ───────────────────
+// The guard's second canary was the product tree `apps/subly/lib`, and its own
+// entry named the increment that would remove it: Subly's l10n retrofit, which
+// is the change this edit ships with. Three cases below changed rather than
+// vanished, because "the tree is no longer a canary" is itself a claim that
+// needs a failing input:
+//   · the two-canary output assertion became a ONE-canary assertion that also
+//     requires apps/subly to be absent from the output entirely;
+//   · "FAILS when the apps/subly canary stops looking dirty" became "PASSES when
+//     apps/subly/lib is clean" — RED BY IMPROVEMENT was the whole failure mode
+//     being removed, so the input that used to fail must now pass, and against
+//     the pre-retirement guard this case fails;
+//   · "a family missing from ONE canary while the other still has it" has no
+//     second canary to describe, and became the REAL-REPO measurement that the
+//     surviving fixture clears the floor on its own.
+// Deleting them instead would have left the retirement asserted by nothing.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,15 +107,16 @@ class HomeScreen extends StatelessWidget {
 
 /**
  * A canary tree needs to be KNOWN dirty, at or above the floor of 20 — the real
- * fixture holds 31 and apps/subly 71. A fixture below the floor would fail for
- * the wrong reason, and one with NO dirty tree would let broken matchers look
- * clean, which is the exact failure the canary exists to catch.
+ * fixture holds 32 (23 `Text(…)` + 9 labelling), measured 2026-08-08. A fixture
+ * below the floor would fail for the wrong reason, and one with NO dirty tree
+ * would let broken matchers look clean, which is the exact failure the canary
+ * exists to catch.
  *
  * 🔴 DIRTY IN EVERY WAY THE GUARD MATCHES, not only the commonest one
- * (2026-08-01). The guard requires each matcher FAMILY to show its own
- * evidence, because 58 of apps/subly's 71 hits are `Text(…)` — so deleting the
- * labelling-parameter matcher outright still cleared the total floor by a wide
- * margin and printed "matchers verified". A tree dirty in only one way would
+ * (2026-08-01). The guard requires each matcher FAMILY to show its own evidence,
+ * because 23 of the fixture's 32 hits are `Text(…)` — so deleting the
+ * labelling-parameter matcher outright still clears the total floor by a wide
+ * margin and prints "matchers verified". A tree dirty in only one way would
  * encode exactly that blind spot; `labelled` is the second family's evidence.
  */
 function dirtyTree(n = 25, labelled = 4) {
@@ -131,9 +151,14 @@ class Q extends StatelessWidget {
 /** The declaration the guard holds its own matcher list against. */
 const FAMILIES = '# comments and blanks are ignored\n\nText(…)\na labelling parameter\n';
 
+// ⚠️ NO `subly` PARAMETER, since 2026-08-08. `tree()` used to plant a dirty
+// `apps/subly/lib/legacy_screen.dart` in every fixture root because the guard
+// required one; it now scans no product tree at all, and leaving the parameter
+// would have every case below feeding the guard a directory it never opens —
+// input that looks like coverage and is not. The one case that still needs an
+// `apps/subly` tree writes it itself, in the open.
 function tree({
   brick = CLEAN_BRICK,
-  subly = dirtyTree(),
   fixture = dirtyTree(),
   quiet = QUIET,
   families = FAMILIES,
@@ -142,7 +167,6 @@ function tree({
   const root = join(TMP, `r${seq++}`);
   const files = {};
   if (!omitBrick) files[`${BRICK}/features/home/home_screen.dart`] = brick;
-  if (subly !== null) files['apps/subly/lib/legacy_screen.dart'] = subly;
   if (fixture !== null) files[`${FIXTURE}/dirty/legacy_screen.dart`] = fixture;
   if (quiet !== null) files[`${FIXTURE}/quiet/not_user_facing.dart`] = quiet;
   if (families !== null) files[`${FIXTURE}/expected-families.txt`] = families;
@@ -216,10 +240,15 @@ describe('assert-no-hardcoded-strings', () => {
     assert.match(out, /exemptions still exempt/);
   });
 
-  test('checks BOTH canary trees, not just the first one it finds', () => {
+  // The canary list is down to one entry, and "one" is a claim with two halves:
+  // the surviving canary reports, and the retired one is GONE rather than
+  // quietly still being read. Asserting only the first half would pass against a
+  // guard that still scanned apps/subly and merely stopped printing about it.
+  test('reports the fixture canary and no longer touches any product tree', () => {
     const { out } = run(tree());
     assert.match(out, new RegExp(`known-dirty tree: \\d+ literal\\(s\\) found in ${FIXTURE}/dirty`));
-    assert.match(out, /known-dirty tree: \d+ literal\(s\) found in apps\/subly\/lib/);
+    assert.equal([...out.matchAll(/known-dirty tree:/g)].length, 1, out);
+    assert.doesNotMatch(out, /apps\/subly/, 'a retired canary is still named in the output');
   });
 
   describe('a string shown to a person must come from l10n', () => {
@@ -352,12 +381,20 @@ const b = Text('Hardcoded right after a URL');
       assert.match(out, new RegExp(`COVERAGE LOST — the canary tree ${FIXTURE}/dirty does not exist`));
     });
 
-    // The second canary is a real product tree and is checked in its own right,
-    // so its retirement has to be a deliberate edit rather than a side effect.
-    test('FAILS when the apps/subly canary stops looking dirty', () => {
-      const { code, out } = run(tree({ subly: '// all the legacy strings were removed\n' }));
-      assert.equal(code, 1);
-      assert.match(out, /COVERAGE LOST — the matchers found only 0 hardcoded string\(s\) in apps\/subly\/lib/);
+    // 🔴 RED BY IMPROVEMENT, AS A TEST CASE. This exact input — a product tree
+    // that somebody has just cleaned — used to fail the build with
+    // `COVERAGE LOST … 0 hardcoded string(s) in apps/subly/lib`, which is a guard
+    // punishing the work it exists to encourage. It must now pass, and it fails
+    // against the pre-retirement guard, so it is a real negative test of the
+    // retirement rather than a restatement of it.
+    test('PASSES once apps/subly/lib is cleaned — the retrofit must not turn this red', () => {
+      const root = tree();
+      const p = join(root, 'apps/subly/lib/legacy_screen.dart');
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, `${CLEAN_BRICK}\n// every literal here now comes from l10n\n`);
+      const { code, out } = run(root);
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /apps\/subly/);
     });
 
     test('FAILS when the brick tree it protects is gone', () => {
@@ -366,36 +403,40 @@ const b = Text('Hardcoded right after a URL');
       assert.match(out, /COVERAGE LOST/);
     });
 
-    // 🔴 THE TOTAL FLOOR CANNOT SEE HALF THE MATCHERS DIE. apps/subly yields 58
-    // `Text(…)` hits against 13 labelling-parameter hits, so losing the second
-    // family entirely still clears MIN_CANARY by more than 2×. The dirty tree
-    // here is dirty in ONE way only — a well-above-floor 30 `Text(…)` literals
-    // and no labelled ones — which is precisely the shape a total count calls
-    // healthy.
+    // 🔴 THE TOTAL FLOOR CANNOT SEE HALF THE MATCHERS DIE. The fixture yields 23
+    // `Text(…)` hits against 9 labelling-parameter hits, so losing the second
+    // family entirely still clears MIN_CANARY. The dirty tree here is dirty in
+    // ONE way only — a well-above-floor 30 `Text(…)` literals and no labelled
+    // ones — which is precisely the shape a total count calls healthy.
     test('FAILS when one matcher family has no evidence, though the total is high', () => {
-      const { code, out } = run(tree({ fixture: dirtyTree(30, 0), subly: dirtyTree(30, 0) }));
+      const { code, out } = run(tree({ fixture: dirtyTree(30, 0) }));
       assert.equal(code, 1, 'a 30-hit total hid a family that matched nothing');
       assert.match(out, /COVERAGE LOST — the "a labelling parameter" matcher found NOTHING/);
       // …and the enforcement half still said "clean", which is the point.
       assert.match(out, /the brick template shows no hardcoded user-facing strings/);
     });
 
-    // Each canary is judged on its OWN evidence. Pooling the roots would let one
-    // die while the other carried the sum — the same blindness a total count has
-    // across families, one level up.
-    test('FAILS on a family missing from ONE canary while the other still has it', () => {
-      const { code, out } = run(tree({ fixture: dirtyTree(30, 0), subly: dirtyTree(25, 5) }));
-      assert.equal(code, 1, 'the healthy canary covered for the sick one');
-      assert.match(out, new RegExp(`the "a labelling parameter" matcher found NOTHING in ${FIXTURE}/dirty`));
+    // 🔴 THE MEASUREMENT THE RETIREMENT RESTS ON, taken against the REAL repo
+    // rather than asserted in a comment. Dropping the second canary is only safe
+    // if the surviving one carries the floor and BOTH families on its own — the
+    // pooled-canary blindness this suite already tests for, one level up. A
+    // fixture cannot answer this: it would just report whatever this file wrote.
+    test('the real fixture is the only canary, and clears the floor by itself', () => {
+      const { code, out } = run(REPO, guardCopy((s) => `${s}\n// unmutated; run against the real tree\n`));
+      assert.equal(code, 0, out);
+      const cleared = [...out.matchAll(/known-dirty tree: (\d+) literal/g)].map((m) => Number(m[1]));
+      assert.equal(cleared.length, 1, `exactly one canary should report: ${out}`);
+      assert.ok(cleared[0] >= 20, `the sole canary is under the floor at ${cleared[0]}`);
+      assert.doesNotMatch(out, /COVERAGE LOST/);
     });
 
     // The floor is deliberately left FAR below the measured total and must not
     // be re-pinned to it — a floor tuned to today's measurement is the stale
     // floor PR #85 removed from assert-guard-coverage. This proves the headroom
-    // is real: a tree well under the real 71, but over the floor and dirty in
+    // is real: a tree well under the real 32, but over the floor and dirty in
     // both ways, is still a valid canary.
     test('passes on a dirty tree well below the measured total but above the floor', () => {
-      const { code, out } = run(tree({ fixture: dirtyTree(18, 3), subly: dirtyTree(18, 3) }));
+      const { code, out } = run(tree({ fixture: dirtyTree(18, 3) }));
       assert.equal(code, 0, out);
       assert.match(out, /known-dirty tree: 21 literal/);
     });
@@ -422,19 +463,27 @@ const b = Text('Hardcoded right after a URL');
     });
 
     // 🔴 THE REAL-TREE MUTATION, and the reason this whole limb exists. Deleting
-    // a matcher family clears every floor — measured on the real repo at the time
-    // this was written: 22 fixture hits and 58 subly hits, both far above 20 —
-    // and the per-family loop cannot see it, because it iterates over the list
-    // that shrank. Before this change the same mutation exited 0.
+    // a matcher family clears every floor — measured on the real repo when this
+    // was written: 22 fixture hits and 58 subly hits, both far above 20 — and the
+    // per-family loop cannot see it, because it iterates over the list that
+    // shrank. Before this change the same mutation exited 0.
+    //
+    // ⚠️ The count below is 1, not 2, since the apps/subly canary was retired
+    // (2026-08-08). That is not a weakened assertion: it is the claim that the
+    // SURVIVING canary still clears the floor with a whole matcher family gone,
+    // which is precisely why a floor cannot be the thing catching this. Re-run on
+    // the real tree the day it changed — the fixture reported 23 with the
+    // labelling family spliced out, comfortably over 20, and the guard still
+    // exited 1 on the declaration identity.
     test('FAILS on the REAL repo when a matcher family is deleted from the guard', () => {
       const { code, out } = run(REPO, guardCopy(deleteLabellingMatcher));
       assert.equal(code, 1, 'a deleted matcher family passed against the real tree');
       assert.match(out, /declares evidence for the "a labelling parameter" family and NO MATCHER PROVIDES IT/);
-      // The floors did NOT catch it — that is the whole point, so it is asserted
-      // rather than left as a claim in a comment. Both canaries still cleared
-      // MIN_CANARY with a whole matcher family gone, and both still printed ok.
+      // The floor did NOT catch it — that is the whole point, so it is asserted
+      // rather than left as a claim in a comment. The canary still cleared
+      // MIN_CANARY with a whole matcher family gone, and still printed ok.
       const cleared = [...out.matchAll(/known-dirty tree: (\d+) literal/g)].map((m) => Number(m[1]));
-      assert.equal(cleared.length, 2, `both canaries should still have reported: ${out}`);
+      assert.equal(cleared.length, 1, `the surviving canary should still have reported: ${out}`);
       for (const n of cleared) assert.ok(n >= 20, `a floor of 20 would have caught this at ${n}`);
     });
 

@@ -4,3 +4,18 @@ output-dir: lib/l10n
 output-localization-file: app_localizations.dart
 output-class: AppLocalizations
 nullable-getter: false
+
+# 🔴 gen-l10n FALLS BACK TO ENGLISH FOR A MISSING KEY, SILENTLY, and that is the
+# hole this line half-closes. A key added to `app_en.arb` and forgotten in
+# `app_ta.arb` does not fail the build, does not warn at runtime and does not
+# show up in a screenshot taken by someone who reads English: the Tamil user just
+# gets an English sentence in the middle of a Tamil screen. Nothing in this repo
+# asserted otherwise until P4 L0.
+#
+# This writes the missing keys to a file instead of printing them into build
+# noise nobody reads. It is DIAGNOSTIC, not a gate — gen-l10n still exits 0 with
+# untranslated messages — so the actual enforcement is
+# `test/l10n_parity_test.dart`, which fails the suite and NAMES the keys. Both,
+# deliberately: the test says a key is missing, this file says WHICH, in the one
+# format a translator can be handed.
+untranslated-messages-file: l10n-untranslated.json
