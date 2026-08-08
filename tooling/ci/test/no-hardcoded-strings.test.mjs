@@ -19,20 +19,46 @@
 // WHY A CANARY AT ALL: the brick is clean, so every enforcement assertion passes
 // over an EMPTY result set — indistinguishable from a scanner that has stopped
 // matching. This stage already shipped three checks that ranged over nothing, so
-// the matchers are proven against a tree known to be full of violations
-// (apps/subly), which is excluded from enforcement precisely because it is.
+// the matchers are proven against trees known to be full of violations.
+//
+// ── 2026-08-08 · SEVEN MORE MUTATIONS, ALL AGAINST THE REAL TREE ────────────
+// The canary moved off `apps/subly/lib` and onto a fixture this guard owns
+// (`tooling/ci/test/fixtures/dirty-strings`), because Subly's l10n retrofit was
+// about to clean the canary and turn the guard RED BY IMPROVEMENT. Everything
+// added in that change was mutation-proven on the real repository, not on a
+// fixture written by the same hand as the guard:
+//   6. the labelling matcher DELETED from the list → the old guard exited 0
+//      (measured, `git show HEAD:` + splice); the new one exits 1 on the
+//      declaration identity. Both canary floors — 22 and 58 — still cleared it,
+//      which is exactly why a floor could never have caught this.
+//   7. the labelling regex made unmatchable but LEFT IN THE LIST → caught by the
+//      per-family evidence check, in BOTH canaries.
+//   8. a matcher family ADDED with no fixture evidence → caught twice over.
+//   9. the fixture's `dirty/` directory removed → COVERAGE LOST.
+//  10. the fixture's `dirty/` emptied of literals (the retrofit shape) → COVERAGE
+//      LOST, not a pass.
+//  11. `expected-families.txt` deleted → COVERAGE LOST.
+//  12. the hex-colour exemption deleted → the quiet fixture's `#6459F5` starts
+//      counting and is named.
+//  13. one exemption's near miss removed from `quiet/` → COVERAGE LOST naming
+//      the exemption that no longer has an input reaching it.
+// Cases 6 and 7 are re-run below AGAINST THE REAL REPOSITORY rather than a
+// fixture, because a fixture I wrote encodes the same misunderstanding as the
+// guard I wrote — this repo has already shipped a guard whose six fixture tests
+// all passed against a broken version.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-no-hardcoded-strings.mjs');
 
 let TMP;
@@ -42,6 +68,7 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 let seq = 0;
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
+const FIXTURE = 'tooling/ci/test/fixtures/dirty-strings';
 
 // A clean brick: every visible string comes from l10n.
 const CLEAN_BRICK = `
@@ -60,30 +87,65 @@ class HomeScreen extends StatelessWidget {
 `;
 
 /**
- * The canary needs a tree KNOWN to be dirty, at or above the floor of 20 — the
- * real apps/subly holds 59. A fixture below the floor would fail for the wrong
- * reason, and one with NO dirty tree would let broken matchers look clean, which
- * is the exact failure the canary exists to catch.
+ * A canary tree needs to be KNOWN dirty, at or above the floor of 20 — the real
+ * fixture holds 31 and apps/subly 71. A fixture below the floor would fail for
+ * the wrong reason, and one with NO dirty tree would let broken matchers look
+ * clean, which is the exact failure the canary exists to catch.
  *
  * 🔴 DIRTY IN EVERY WAY THE GUARD MATCHES, not only the commonest one
- * (2026-08-01). The guard now requires each matcher FAMILY to show its own
- * evidence, because ~47 of apps/subly's 59 hits are `Text(…)` — so deleting the
+ * (2026-08-01). The guard requires each matcher FAMILY to show its own
+ * evidence, because 58 of apps/subly's 71 hits are `Text(…)` — so deleting the
  * labelling-parameter matcher outright still cleared the total floor by a wide
- * margin and printed "matchers verified". A fixture dirty in only one way would
+ * margin and printed "matchers verified". A tree dirty in only one way would
  * encode exactly that blind spot; `labelled` is the second family's evidence.
  */
-function dirtySubly(n = 25, labelled = 4) {
+function dirtyTree(n = 25, labelled = 4) {
   let s = 'class S extends StatelessWidget {\n  Widget build(BuildContext c) {\n    return Column(children: [\n';
   for (let i = 0; i < n; i++) s += `      Text('Legacy label number ${i}'),\n`;
   for (let i = 0; i < labelled; i++) s += `      AppTile(label: 'Legacy tile number ${i}'),\n`;
   return `${s}    ]);\n  }\n}\n`;
 }
 
-function tree({ brick = CLEAN_BRICK, subly = dirtySubly(), omitBrick = false } = {}) {
+/**
+ * The quiet half of the fixture: ONE near miss per NOT_USER_FACING exemption, in
+ * positions the matchers do look at. The guard asserts both directions over it —
+ * every exemption must be reached by something here, and nothing here may count
+ * — so a tree missing one line is a genuinely different input, not noise.
+ */
+const QUIET = `
+class Q extends StatelessWidget {
+  Widget build(BuildContext c) {
+    return Column(children: [
+      Text(''),
+      Text('analytics_opt_in'),
+      Text('PLATFORM_BASE_URL'),
+      Text('#6459F5'),
+      Text('https://nikatru.com/privacy'),
+      Text('{{app_id}}'),
+      Text(' — '),
+    ]);
+  }
+}
+`;
+
+/** The declaration the guard holds its own matcher list against. */
+const FAMILIES = '# comments and blanks are ignored\n\nText(…)\na labelling parameter\n';
+
+function tree({
+  brick = CLEAN_BRICK,
+  subly = dirtyTree(),
+  fixture = dirtyTree(),
+  quiet = QUIET,
+  families = FAMILIES,
+  omitBrick = false,
+} = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
   if (!omitBrick) files[`${BRICK}/features/home/home_screen.dart`] = brick;
-  files['apps/subly/lib/legacy_screen.dart'] = subly;
+  if (subly !== null) files['apps/subly/lib/legacy_screen.dart'] = subly;
+  if (fixture !== null) files[`${FIXTURE}/dirty/legacy_screen.dart`] = fixture;
+  if (quiet !== null) files[`${FIXTURE}/quiet/not_user_facing.dart`] = quiet;
+  if (families !== null) files[`${FIXTURE}/expected-families.txt`] = families;
   for (const [f, body] of Object.entries(files)) {
     const p = join(root, f);
     mkdirSync(dirname(p), { recursive: true });
@@ -92,17 +154,72 @@ function tree({ brick = CLEAN_BRICK, subly = dirtySubly(), omitBrick = false } =
   return root;
 }
 
-const run = (cwd) => {
-  const r = spawnSync(process.execPath, [GUARD], { cwd, encoding: 'utf8' });
+const run = (cwd, guard = GUARD) => {
+  const r = spawnSync(process.execPath, [guard], { cwd, encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
+};
+
+/**
+ * A RUNNABLE COPY OF THE REAL GUARD, optionally mutated, to be pointed at the
+ * REAL repository.
+ *
+ * ⚠️ This is the lesson from `assert-seams-wired.mjs`, which shipped with a
+ * caller check that matched the function's own declaration: ALL SIX of its
+ * fixture tests passed against the broken version, and only breaking the actual
+ * repo exposed it. A fixture written by the same hand as the guard encodes the
+ * same misunderstanding.
+ *
+ * The guard's shared modules are copied alongside it — DERIVED from the import
+ * statements and followed transitively, not named here. A hand-written list of
+ * "the files to copy" goes stale the moment the guard imports one more, and it
+ * goes stale as MODULE_NOT_FOUND, which reads exactly like the mutation working.
+ */
+function guardCopy(mutate = (s) => s) {
+  const dir = join(TMP, `g${seq++}`);
+  mkdirSync(dir, { recursive: true });
+  const src = readFileSync(GUARD, 'utf8');
+  const copied = new Set();
+  for (const queue = [src]; queue.length > 0; ) {
+    for (const m of queue.pop().matchAll(/from\s*['"]\.\/([A-Za-z0-9._-]+\.mjs)['"]/g)) {
+      if (copied.has(m[1])) continue;
+      copied.add(m[1]);
+      copyFileSync(join(CI_DIR, m[1]), join(dir, m[1]));
+      queue.push(readFileSync(join(CI_DIR, m[1]), 'utf8'));
+    }
+  }
+  assert.ok(copied.size > 0, 'the guard imports nothing relative any more; re-check this helper');
+  const out = mutate(src);
+  assert.notEqual(out, src, 'the mutation changed nothing, so the test below would prove nothing');
+  const p = join(dir, 'assert-no-hardcoded-strings.mjs');
+  writeFileSync(p, out);
+  return p;
+}
+
+/** Delete a whole matcher family from the list — the mutation NEITHER the floor
+ *  NOR the per-family loop can see, because the loop iterates over the list that
+ *  shrank. */
+const deleteLabellingMatcher = (src) => {
+  const lines = src.split('\n');
+  const i = lines.findIndex((l) => l.includes("what: 'a labelling parameter'"));
+  assert.notEqual(i, -1, 'the labelling matcher moved; re-point this mutation');
+  lines.splice(i, 1);
+  return lines.join('\n');
 };
 
 describe('assert-no-hardcoded-strings', () => {
   test('passes when the brick reads everything from l10n', () => {
     const { code, out } = run(tree());
-    assert.equal(code, 0);
+    assert.equal(code, 0, out);
     assert.match(out, /the brick template shows no hardcoded user-facing strings/);
     assert.match(out, /matchers verified against a known-dirty tree/);
+    assert.match(out, /matcher families are exactly those/);
+    assert.match(out, /exemptions still exempt/);
+  });
+
+  test('checks BOTH canary trees, not just the first one it finds', () => {
+    const { out } = run(tree());
+    assert.match(out, new RegExp(`known-dirty tree: \\d+ literal\\(s\\) found in ${FIXTURE}/dirty`));
+    assert.match(out, /known-dirty tree: \d+ literal\(s\) found in apps\/subly\/lib/);
   });
 
   describe('a string shown to a person must come from l10n', () => {
@@ -176,6 +293,13 @@ describe('assert-no-hardcoded-strings', () => {
       assert.equal(code, 0);
     });
 
+    test('stays quiet on a literal inside a BLOCK comment', () => {
+      const { code } = run(tree({
+        brick: `${CLEAN_BRICK}\n/* an example: Text('Hardcoded thing') */\n`,
+      }));
+      assert.equal(code, 0);
+    });
+
     // Generated localisations are the OUTPUT of l10n, not a breach of it.
     test('stays quiet on the generated app_localizations file', () => {
       const root = tree();
@@ -186,14 +310,54 @@ describe('assert-no-hardcoded-strings', () => {
     });
   });
 
-  // ── The canary. Without it a broken matcher prints "clean" and passes. ─────
-  describe('the matchers are proven to still match', () => {
-    test('FAILS when the known-dirty tree stops looking dirty', () => {
-      const { code, out } = run(tree({ subly: '// all the legacy strings were removed\n' }));
+  // 🔴 THE FALSE NEGATIVE THE CANARY FIXTURE FOUND ON ITS FIRST RUN (2026-08-08).
+  // Comments used to be stripped with a hand-rolled `/\/\/.*$/gm`, which is not
+  // string-aware: an ordinary user-facing sentence CONTAINING `//` was cut at
+  // the slashes, and the matcher then ran on to the next quote in the file and
+  // consumed the FOLLOWING literal as part of one long match. A hardcoded string
+  // sitting after a URL was invisible to a guard whose whole job is to have no
+  // false negatives. Both literals below must be reported BY NAME; under the old
+  // stripper the second one was not reported at all.
+  describe('a `//` inside a string does not blind the scanner', () => {
+    const WITH_URL = `${CLEAN_BRICK}
+const a = Text('Visit https://nikatru.com for help');
+const b = Text('Hardcoded right after a URL');
+`;
+
+    test('reports the sentence containing the URL', () => {
+      const { code, out } = run(tree({ brick: WITH_URL }));
       assert.equal(code, 1);
-      assert.match(out, /COVERAGE LOST — the matchers found only 0 hardcoded string\(s\)/);
+      assert.match(out, /"Visit https:\/\/nikatru\.com for help"/);
+    });
+
+    test('still reports the literal that FOLLOWS it', () => {
+      const { out } = run(tree({ brick: WITH_URL }));
+      assert.match(out, /"Hardcoded right after a URL"/);
+    });
+  });
+
+  // ── The canaries. Without them a broken matcher prints "clean" and passes. ──
+  describe('the matchers are proven to still match', () => {
+    test('FAILS when the fixture canary stops looking dirty', () => {
+      const { code, out } = run(tree({ fixture: '// all the fixture strings were removed\n' }));
+      assert.equal(code, 1);
+      assert.match(out, new RegExp(`COVERAGE LOST — the matchers found only 0 hardcoded string\\(s\\) in ${FIXTURE}/dirty`));
       // …and the enforcement half still said "clean", which is the point.
       assert.match(out, /the brick template shows no hardcoded user-facing strings/);
+    });
+
+    test('FAILS when the fixture canary is deleted outright', () => {
+      const { code, out } = run(tree({ fixture: null }));
+      assert.equal(code, 1);
+      assert.match(out, new RegExp(`COVERAGE LOST — the canary tree ${FIXTURE}/dirty does not exist`));
+    });
+
+    // The second canary is a real product tree and is checked in its own right,
+    // so its retirement has to be a deliberate edit rather than a side effect.
+    test('FAILS when the apps/subly canary stops looking dirty', () => {
+      const { code, out } = run(tree({ subly: '// all the legacy strings were removed\n' }));
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — the matchers found only 0 hardcoded string\(s\) in apps\/subly\/lib/);
     });
 
     test('FAILS when the brick tree it protects is gone', () => {
@@ -202,29 +366,122 @@ describe('assert-no-hardcoded-strings', () => {
       assert.match(out, /COVERAGE LOST/);
     });
 
-    // 🔴 THE TOTAL FLOOR CANNOT SEE HALF THE MATCHERS DIE. apps/subly yields ~47
-    // `Text(…)` hits against ~12 labelling-parameter hits, so losing the second
+    // 🔴 THE TOTAL FLOOR CANNOT SEE HALF THE MATCHERS DIE. apps/subly yields 58
+    // `Text(…)` hits against 13 labelling-parameter hits, so losing the second
     // family entirely still clears MIN_CANARY by more than 2×. The dirty tree
     // here is dirty in ONE way only — a well-above-floor 30 `Text(…)` literals
     // and no labelled ones — which is precisely the shape a total count calls
     // healthy.
     test('FAILS when one matcher family has no evidence, though the total is high', () => {
-      const { code, out } = run(tree({ subly: dirtySubly(30, 0) }));
+      const { code, out } = run(tree({ fixture: dirtyTree(30, 0), subly: dirtyTree(30, 0) }));
       assert.equal(code, 1, 'a 30-hit total hid a family that matched nothing');
       assert.match(out, /COVERAGE LOST — the "a labelling parameter" matcher found NOTHING/);
       // …and the enforcement half still said "clean", which is the point.
       assert.match(out, /the brick template shows no hardcoded user-facing strings/);
     });
 
+    // Each canary is judged on its OWN evidence. Pooling the roots would let one
+    // die while the other carried the sum — the same blindness a total count has
+    // across families, one level up.
+    test('FAILS on a family missing from ONE canary while the other still has it', () => {
+      const { code, out } = run(tree({ fixture: dirtyTree(30, 0), subly: dirtyTree(25, 5) }));
+      assert.equal(code, 1, 'the healthy canary covered for the sick one');
+      assert.match(out, new RegExp(`the "a labelling parameter" matcher found NOTHING in ${FIXTURE}/dirty`));
+    });
+
     // The floor is deliberately left FAR below the measured total and must not
     // be re-pinned to it — a floor tuned to today's measurement is the stale
     // floor PR #85 removed from assert-guard-coverage. This proves the headroom
-    // is real: a tree well under the real 59, but over the floor and dirty in
+    // is real: a tree well under the real 71, but over the floor and dirty in
     // both ways, is still a valid canary.
     test('passes on a dirty tree well below the measured total but above the floor', () => {
-      const { code, out } = run(tree({ subly: dirtySubly(18, 3) }));
+      const { code, out } = run(tree({ fixture: dirtyTree(18, 3), subly: dirtyTree(18, 3) }));
       assert.equal(code, 0, out);
-      assert.match(out, /matchers verified against a known-dirty tree: 21 literal/);
+      assert.match(out, /known-dirty tree: 21 literal/);
     });
+  });
+
+  // ── The declaration identity: the only limb that can see a DELETED family. ──
+  describe('the matcher list is held against a declaration outside it', () => {
+    test('FAILS when the declaration is missing', () => {
+      const { code, out } = run(tree({ families: null }));
+      assert.equal(code, 1);
+      assert.match(out, new RegExp(`COVERAGE LOST — ${FIXTURE}/expected-families.txt does not exist`));
+    });
+
+    test('FAILS when the declaration is emptied rather than deleted', () => {
+      const { code, out } = run(tree({ families: '# everything below was removed\n' }));
+      assert.equal(code, 1, 'an empty declaration is satisfied by any matcher list at all');
+      assert.match(out, /declares no families/);
+    });
+
+    test('FAILS when the declaration names a family no matcher provides', () => {
+      const { code, out } = run(tree({ families: `${FAMILIES}a family nobody implements\n` }));
+      assert.equal(code, 1);
+      assert.match(out, /declares evidence for the "a family nobody implements" family and NO MATCHER PROVIDES IT/);
+    });
+
+    // 🔴 THE REAL-TREE MUTATION, and the reason this whole limb exists. Deleting
+    // a matcher family clears every floor — measured on the real repo at the time
+    // this was written: 22 fixture hits and 58 subly hits, both far above 20 —
+    // and the per-family loop cannot see it, because it iterates over the list
+    // that shrank. Before this change the same mutation exited 0.
+    test('FAILS on the REAL repo when a matcher family is deleted from the guard', () => {
+      const { code, out } = run(REPO, guardCopy(deleteLabellingMatcher));
+      assert.equal(code, 1, 'a deleted matcher family passed against the real tree');
+      assert.match(out, /declares evidence for the "a labelling parameter" family and NO MATCHER PROVIDES IT/);
+      // The floors did NOT catch it — that is the whole point, so it is asserted
+      // rather than left as a claim in a comment. Both canaries still cleared
+      // MIN_CANARY with a whole matcher family gone, and both still printed ok.
+      const cleared = [...out.matchAll(/known-dirty tree: (\d+) literal/g)].map((m) => Number(m[1]));
+      assert.equal(cleared.length, 2, `both canaries should still have reported: ${out}`);
+      for (const n of cleared) assert.ok(n >= 20, `a floor of 20 would have caught this at ${n}`);
+    });
+
+    // …and the control. Without it, "the mutated copy exits 1" could just mean
+    // the copying is broken.
+    test('an UNMUTATED copy of the guard passes against the REAL repo', () => {
+      const copy = guardCopy((s) => `${s}\n// a comment, so this counts as a mutation and nothing else\n`);
+      const { code, out } = run(REPO, copy);
+      assert.equal(code, 0, out);
+    });
+  });
+
+  // ── The exemptions are load-bearing, so they are asserted in both directions.
+  describe('the NOT_USER_FACING exemptions are proven, not assumed', () => {
+    test('FAILS when the quiet fixture is missing', () => {
+      const { code, out } = run(tree({ quiet: null }));
+      assert.equal(code, 1);
+      assert.match(out, new RegExp(`COVERAGE LOST — ${FIXTURE}/quiet does not exist`));
+    });
+
+    test('FAILS when the quiet fixture holds nothing the matchers even look at', () => {
+      const { code, out } = run(tree({ quiet: 'const x = 1;\n' }));
+      assert.equal(code, 1, '"zero enforced hits" is also true of an empty tree');
+      assert.match(out, /holds no literal in any position the matchers look at/);
+    });
+
+    test('FAILS when a literal in the quiet fixture starts counting', () => {
+      const { code, out } = run(tree({ quiet: `${QUIET}\nconst oops = Text('Now this is prose');\n` }));
+      assert.equal(code, 1, 'an exemption was narrowed and nothing said so');
+      assert.match(out, /is in the QUIET fixture and now counts as user-facing: "Now this is prose"/);
+    });
+
+    // Drop one line and the exemption it was the only input for has nothing
+    // reaching it — so it could be silently wrong, or silently dead.
+    for (const [what, line] of [
+      ['the mustache token', "      Text('{{app_id}}'),\n"],
+      ['the hex colour', "      Text('#6459F5'),\n"],
+      ['the CONSTANT_KEY', "      Text('PLATFORM_BASE_URL'),\n"],
+      ['the snake_case key', "      Text('analytics_opt_in'),\n"],
+    ]) {
+      test(`FAILS when ${what} exemption loses its near miss`, () => {
+        const quiet = QUIET.replace(line, '');
+        assert.notEqual(quiet, QUIET, 'the near-miss line moved; re-point this case');
+        const { code, out } = run(tree({ quiet }));
+        assert.equal(code, 1, `${what} exemption had no input reaching it and nothing said so`);
+        assert.match(out, /has no near miss in/);
+      });
+    }
   });
 });
