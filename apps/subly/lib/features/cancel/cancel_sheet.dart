@@ -12,6 +12,23 @@ import '../shared/widgets.dart';
 Future<void> showCancelSheet(BuildContext context, Subscription sub) {
   return showModalBottomSheet<void>(
     context: context,
+    // 🔴 THE SHEET HAS TWO CALLERS ON DIFFERENT NAVIGATOR LEVELS, and without
+    // this they mount on different navigators. `insights_screen.dart` calls
+    // from inside a shell BRANCH navigator, so the modal scrim covered only the
+    // branch — AppShell's floating pill is a later `Stack` child and drew OVER
+    // the scrim, and under the chassis rail/drawer the same call would dim only
+    // the body pane beside the rail. `subscription_detail_screen.dart` calls
+    // from the ROOT and scrims the whole window. One destructive confirmation
+    // that dims different amounts of the app depending on where it was opened
+    // from is not a style difference: the scrim is what says "answer this
+    // first", and a nav bar left live above it is a way out of the question.
+    //
+    // Pinning it to the root unifies both. The dismiss paths are unaffected —
+    // `Navigator.of(context)` inside the sheet resolves from the SHEET's own
+    // route context, which is now the root route, so 'Keep it' and 'Done' still
+    // pop exactly the sheet. That is asserted, not argued: see the two
+    // mount-level cases in `test/width_cancel_sheet_test.dart`.
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     builder: (_) => _CancelSheet(sub: sub),
   );
