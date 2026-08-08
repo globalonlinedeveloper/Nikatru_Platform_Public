@@ -63,6 +63,17 @@ dependencies:
   # and one registration — see the ordering note in lib/main.dart.
   nikatru_notifications:
     path: ../../packages/notifications
+  # [pipeline 5]M-13 THE MONEY RAIL IS INHERITED, NOT REBUILT PER APP. Arrived
+  # with productization P2.4b ([ADR 037] re-stamp; the freeze that kept it out
+  # dissolved under [ADR 036]). Client rail ONLY — offerings, entitlement state,
+  # convergence ([5]M-8); purchase EXECUTION never happens in the app: checkout
+  # is the apex web page ([ADR 038]), so no billing SDK and no payment
+  # instrument ever enters this codebase. First caller lands with the chassis
+  # money surfaces (P2.6a); the paywall flip is Phase 4. The Play data-safety
+  # Purchase-history row moved WITH this line in the same commit — its tells
+  # name this package, by design (assert-play-declarations).
+  nikatru_purchases:
+    path: ../../packages/purchases
 
   # State management
   flutter_riverpod: ^2.5.0
@@ -109,12 +120,15 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # 🪦 THE REVENUECAT LINE THAT USED TO SIT HERE IS GONE — [ADR 026], [ADR 004].
-  # RevenueCat is an aggregator over Apple/Google in-app purchase, and native IAP
-  # is deferred by 39-CHASSIS §4 cut 5; the merchant of record is locked to
-  # Paddle / Lemon Squeezy. The client rail lives in `packages/purchases` and is
-  # inherited by every stamped app. Subly stays frozen and simply has no purchase
-  # path, which is honest — it had none before either, it just looked like it did.
+  # 🪦 THE REVENUECAT LINE THAT USED TO SIT HERE IS GONE — [ADR 026], [ADR 004],
+  # and it STAYS gone: RevenueCat is an aggregator over Apple/Google in-app
+  # purchase, native IAP is deferred by 39-CHASSIS §4 cut 5, and the merchant of
+  # record is locked to Paddle / Lemon Squeezy. What CHANGED (P2.4b, [ADR 037]):
+  # the sentence that used to end this comment — "Subly stays frozen and simply
+  # has no purchase path" — expired with the freeze ([ADR 036]). The client rail
+  # (`nikatru_purchases`, declared above) is now a dependency; checkout remains
+  # off-device on the apex web page ([ADR 038]), which is the opposite of what
+  # the RevenueCat line would have meant.
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.

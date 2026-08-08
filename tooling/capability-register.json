@@ -678,9 +678,10 @@
         "CancellationTransport"
       ],
       "consumers": [
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+        "tooling/bricks/app/__brick__/apps/{{app_id}}",
+        "apps/subly"
       ],
-      "note": "⬜ THE RAIL IS BUILT AND CANNOT YET TAKE MONEY, and the gap is one signup. `RailConfig.checkoutUrlTemplate` is ABSENT because the merchant of record's hosted-checkout URL shape is an UNVERIFIED vendor fact and no seller account exists to check it against (OWNER_QUEUE A-1, PENDING). With it absent `canCheckout` is false and the paywall says purchases are unavailable, which is true. Deliberately NOT given to apps/subly, which 39-CHASSIS cut 1 froze — see [ADR 026] for why its RevenueCat stub was deleted rather than moved.",
+      "note": "⬜ THE RAIL IS BUILT AND CANNOT YET TAKE MONEY, and the gap is one signup. `RailConfig.checkoutUrlTemplate` is ABSENT because the merchant of record's hosted-checkout URL shape is an UNVERIFIED vendor fact and no seller account exists to check it against (OWNER_QUEUE A-1, PENDING). With it absent `canCheckout` is false and the paywall says purchases are unavailable, which is true. apps/subly became a consumer 2026-08-08 with productization P2.4b ([ADR 037]; the [ADR 036] freeze dissolution retired the sentence that used to stand here — 'deliberately NOT given to apps/subly, which 39-CHASSIS cut 1 froze'). Zero call sites until the chassis money surfaces land (P2.6a); [ADR 026]'s reasoning for deleting the RevenueCat stub rather than moving it is unchanged.",
       "capabilityMatrix": {
         "file": "packages/purchases/lib/src/purchase_capabilities.dart",
         "symbol": "PurchaseCapabilities",

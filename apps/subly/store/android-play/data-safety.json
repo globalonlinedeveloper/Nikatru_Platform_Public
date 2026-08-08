@@ -397,17 +397,27 @@
       "ephemeral": false, "required": null, "purposes": [],
       "tells": { "androidPermissions": [], "dartPackages": ["in_app_purchase", "purchases_flutter", "flutter_stripe", "razorpay_flutter", "square_in_app_payments"], "iosUsageDescriptionKeys": [] },
       "evidence": [], "inventoryRows": [],
-      "basis": "🔴 NO CARD, BANK OR ACCOUNT NUMBER IS STORED ANYWHERE, and that is already an asserted claim rather than a belief: tooling/legal/policy-claims.json carries it and assert-policy-claims.mjs checks it against every migration in the tree. subly_db.payment_history holds a date and an amount the USER recorded against their own subscription — a record OF payments, not a payment instrument. Subly also has no purchase path at all: packages/purchases is deliberately not a dependency, and the RevenueCat line was removed with a tombstone at apps/subly/pubspec.yaml:92-97."
+      "basis": "🔴 NO CARD, BANK OR ACCOUNT NUMBER IS STORED ANYWHERE, and that is already an asserted claim rather than a belief: tooling/legal/policy-claims.json carries it and assert-policy-claims.mjs checks it against every migration in the tree. subly_db.payment_history holds a date and an amount the USER recorded against their own subscription — a record OF payments, not a payment instrument. Since P2.4b (2026-08-08) Subly DOES carry the first-party client rail (nikatru_purchases — see the Purchase-history row below, flipped in the same commit), but that changes nothing in THIS row: the rail reads entitlement state and contains no checkout — payment happens on the apex web page ([ADR 038]) in a browser, so no payment instrument ever enters or transits the app. The RevenueCat tombstone (apps/subly/pubspec.yaml:123-131, updated with the same commit) records why no billing aggregator will reintroduce one."
     },
     {
       "category": "Financial info",
       "type": "Purchase history",
-      "collected": { "demo": false, "backend-live": false },
+      "collected": { "demo": false, "backend-live": true },
       "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["com.android.vending.BILLING"], "dartPackages": ["in_app_purchase", "purchases_flutter", "nikatru_purchases"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
-      "basis": "Subly sells nothing. There is no in-app purchase, no Play Billing dependency and no paywall consumer — packages/design_system PaywallGate has no call site in this app, and the four money analytics events have zero callers here. The purchases this app knows about are the ones the USER TYPES IN about other companies' services, which is user-generated content, not this app's purchase history."
+      "ephemeral": false, "required": false, "purposes": ["App functionality"],
+      "clientAbsence": {
+        "claim": "Purchase EXECUTION never happens on the device. There is no Play Billing, no billing SDK and no payment form in this codebase — checkout is the apex web page ([ADR 038]) in a browser, and what the app itself does is READ entitlement state (the subscription this account holds) from the platform Worker via nikatru_purchases over the declared api_client transports. If any tell below appeared, that sentence would be false: collection would become on-device purchase execution, `shared` would need rework (a billing SDK is a third party), and the User-payment-info row above would very likely flip too.",
+        "androidPermissions": ["com.android.vending.BILLING"],
+        "dartPackages": ["in_app_purchase", "purchases_flutter", "flutter_stripe", "razorpay_flutter", "square_in_app_payments"],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [
+        "packages/purchases/lib/src/purchase_rail.dart",
+        "packages/purchases/lib/src/entitlement_convergence.dart",
+        "services/platform/src/routes/entitlements.ts"
+      ],
+      "inventoryRows": ["table:platform_db.entitlements"],
+      "basis": "FLIPPED (backend-live only) 2026-08-08 with productization P2.4b, in the SAME commit that made nikatru_purchases a dependency — this row's tells named that package in advance precisely so the dep and the answer could never move separately (the 2026-08-0x sentence 'packages/purchases is deliberately not a dependency' expired with the [ADR 036] freeze dissolution). What backend-live collection means here: the app fetches this account's entitlement/subscription state from platform_db.entitlements — a record OF this app's own subscription, keyed to the User ID, used to unlock features (App functionality; required false because the free tier works signed-out). At the time of the flip the package has ZERO call sites (first caller: the chassis money surfaces, P2.6a; paywall flip: Phase 4), so this column leads the code by design rather than trailing it. And it is the column that COUNTS: assert-play-declarations derives the lane posture from build-platforms.yml as backend-live (its own output, this same commit), so this flip DOES change what the console form would say — deliberately, in the only safe direction (a label may over-state collection; under-stating is the enforcement case), and the submission itself stays owner-gated at A-3. The purchases the USER TYPES IN about other companies' services remain user-generated content, declared elsewhere — that half of the old basis survives."
     },
     {
       "category": "Financial info",
@@ -815,11 +825,10 @@
     ],
     "register": "tooling/legal/data-inventory.json",
     "notFromThisApp": {
-      "table:platform_db.entitlements": "Written by a merchant-of-record or RevenueCat webhook arriving server-to-server, never by anything this app transmits. Subly has no purchase path at all — packages/purchases is deliberately not a dependency — so no Subly build can cause a row here.",
       "table:platform_db.provider_notifications": "The verbatim payment notification a provider POSTs to services/platform. It holds the buyer's name and email because that is what the provider sent; nothing leaves the device to produce it. No seller account exists (OWNER_QUEUE A-1) so nothing writes to it today.",
       "table:platform_db.provider_accounts": "Derived server-side from a provider notification. Same reasoning as provider_notifications.",
       "table:platform_db.unclaimed_payments": "Written when a payment arrives that cannot be attributed. Server-to-server from the provider; not transmitted by this app.",
-      "table:platform_db.cancellation_requests": "Written by POST /v1/plan/cancel on the shared platform Worker. Subly has no purchase path and therefore no cancel surface — the route exists for the portfolio, not for this app. If a Subly build ever gains one, this exclusion becomes false and must move into an answer row.",
+      "table:platform_db.cancellation_requests": "Written by POST /v1/plan/cancel on the shared platform Worker. Subly has no cancel SURFACE — nothing in this app calls that route (the manage-plan screen that will arrives with P2.6a; nikatru_purchases became a dependency in P2.4b but has zero call sites). When the surface lands, this exclusion becomes false and must move into an answer row — the same rule that already moved table:platform_db.entitlements into the Purchase-history row with P2.4b.",
       "kv:nikatru-signups": "The nikatru.com launch-notification list, written by sites/nikatru/functions/api/subscribe.js from a form on the website. Not reachable from any app build."
     },
     "notInRegister": [
@@ -882,6 +891,7 @@
       "cupertino_icons": { "introduces": [], "why": "An icon font." },
       "url_launcher": { "introduces": [], "why": "Hands four hardcoded nikatru.com legal URLs to the system browser. The app receives nothing back and learns nothing about what the browser does." },
       "package_info_plus": { "introduces": [], "why": "Reads the app's OWN version and build number from the OS package manager — input to the CFG-1 force-update kill-switch comparison. No personal data, no network. Added 2026-08-08 with productization P2.4a under [ADR 037]." },
+      "nikatru_purchases": { "introduces": [], "why": "First-party client rail (packages/purchases) for the money rail: offerings, entitlement state and convergence ([5]M-8), fetched over the api_client/dio transports already declared above and keyed to the authenticated account — so its data categories (User IDs, the entitlement read now declared under Financial info > Purchase history) are carried by entries and answer rows, not new here, hence introduces []. It contains NO checkout: purchase execution happens on the apex web page ([ADR 038]) in a browser, and no billing SDK or payment instrument exists in this codebase (see the Purchase-history row's clientAbsence). Zero call sites at the time of writing — the first caller lands with the chassis money surfaces (P2.6a) and the paywall flip is Phase 4. Added 2026-08-08 with productization P2.4b under [ADR 037]; the Purchase-history answer row moved in the same commit because that row's tells named this package in advance, exactly so the two could never move separately." },
       "flutter_localizations": { "introduces": [], "why": "The SDK localization package driving gen-l10n from lib/l10n/*.arb. Offline string tables, no I/O. Added 2026-08-08 with productization P2.4a under [ADR 037]." }
     }
   }
