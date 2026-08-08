@@ -8,132 +8,24 @@
 // no red pixel and no error line. It is only visible to a MEASUREMENT, which is
 // what this file is.
 //
-// 🔴 WHY THE ASSERTION IS ON `constraints`, NOT ON `size`.
-// A `Column` of centred text SHRINK-WRAPS: at 1280 px unconstrained it reports
-// the width of its longest line — about 260 px for the chassis's default
-// onboarding copy — so `getSize(...).width <= 720` would PASS with the cap
-// deleted, and go on passing until somebody shipped a longer sentence. The
-// property under test is what width the content was OFFERED, and that is the
-// child's incoming `BoxConstraints.maxWidth`. It is the same number whatever
-// the copy says, so this file cannot be quietly disarmed by editing an .arb.
-//
-// ⚠️ EVERY CASE PINS THE SURFACE — `tester.binding.setSurfaceSize` with an
-// `addTearDown(null)`, which is the chassis idiom (see
-// `packages/design_system/test/content_pane_test.dart`). flutter_test's default
-// surface is 800×600, and 800 resolves to `medium`, i.e. a RAIL — so an
-// unpinned width test measures a layout nobody asked about. Never leave a case
-// unpinned here.
-//
-// ⚠️ AND THE DESKTOP CASE FOR A `kMaxBodyWidth` SCREEN IS 1920, NOT 1280.
-// The default `ContentPane` cap IS 1280, so `contentWidth <= 1280` measured on
-// a 1280 px surface is true whether or not the pane is there — an assertion
-// that cannot fail, which this repo treats as worse than no assertion at all.
-// The 1280 case below is kept because it is the ordinary desktop window and it
-// pins the no-op behaviour; the case that can actually go red is 1920.
+// 📐 THE RIG LIVES IN `test/support/width_harness.dart`, and its header is the
+// primary record for the three rules every case here obeys: the assertion is on
+// incoming `constraints`, never on `size` (a shrink-wrapping `Column` would make
+// a size assertion pass with the cap deleted); every case PINS the surface,
+// because flutter_test's default 800×600 resolves to a rail nobody asked about;
+// and the distinguishing surface for a `kMaxBodyWidth` screen is 1920, not 1280
+// — at 1280 the assertion is true whether or not the pane is there.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subly/features/firstrun/onboarding_screen.dart';
 import 'package:subly/features/monetization/manage_plan_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';
-import 'package:subly/l10n/app_localizations.dart';
-import 'package:subly/state/providers.dart';
 
-/// In-memory storage seam — `PrefsKeyValueStore` needs a platform channel that
-/// does not exist in a widget test. Same shape as `chassis_properties_test`'s.
-class _MemStore implements core.KeyValueStore {
-  final Map<String, String> data = <String, String>{};
-  @override
-  Future<bool> containsKey(String key) async => data.containsKey(key);
-  @override
-  Future<String?> read(String key) async => data[key];
-  @override
-  Future<void> remove(String key) async => data.remove(key);
-  @override
-  Future<void> write(String key, String value) async => data[key] = value;
-}
-
-/// The phone, the small tablet and the ordinary desktop window. Named so a
-/// failure says WHICH window class was being measured rather than a bare pair
-/// of numbers.
-const Size kPhone = Size(375, 812);
-const Size kTablet = Size(768, 1024);
-const Size kDesktop = Size(1280, 900);
-
-/// Wider than every cap in [AppBreakpoints], so a screen capped at
-/// [AppBreakpoints.kMaxBodyWidth] has a surface its cap can be distinguished
-/// from. See the header.
-const Size kWide = Size(1920, 1080);
+import 'support/width_harness.dart';
 
 void main() {
-  ProviderContainer container() => ProviderContainer(
-    overrides: <Override>[
-      keyValueStoreProvider.overrideWith((_) async => _MemStore()),
-    ],
-  );
-
-  /// One screen, on its own `MaterialApp`. No router: none of these three
-  /// properties is about navigation, and a router would drag the redirect
-  /// guards in with it.
-  Widget host(ProviderContainer c, Widget screen) => UncontrolledProviderScope(
-    container: c,
-    child: MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: screen,
-    ),
-  );
-
-  Future<void> pumpAt(WidgetTester tester, Size size, Widget screen) async {
-    await tester.binding.setSurfaceSize(size);
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final ProviderContainer c = container();
-    addTearDown(c.dispose);
-    await tester.pumpWidget(host(c, screen));
-    // Several provider futures resolve in sequence; `pumpAndSettle` would be a
-    // lie about why we are waiting.
-    for (int i = 0; i < 12; i++) {
-      await tester.pump();
-    }
-  }
-
-  /// The width the widget found by [of] was OFFERED — its incoming
-  /// `BoxConstraints.maxWidth`. See the header for why this and not `getSize`.
-  double offeredWidth(WidgetTester tester, Finder of) {
-    final RenderBox box = tester.renderObject<RenderBox>(of);
-    return (box.constraints).maxWidth;
-  }
-
-  /// The screen's own content box, found THROUGH the pane rather than by a
-  /// global type search — so a second `ListView` appearing elsewhere on the
-  /// screen cannot silently become the thing being measured.
-  ///
-  /// ⚠️ THE `findsWidgets` CHECK IS THE ERROR MESSAGE, not an extra assertion.
-  /// Scoping through `ContentPane` means the whole-pane-deleted case reaches
-  /// `.first` on an empty iterable and dies with `Bad state: No element` — red,
-  /// correctly, but pointing at `Iterable.first` in the framework rather than
-  /// at the screen. Verified against the real tree: stripping the pane out of
-  /// the onboarding screen produced exactly that. This turns the commonest
-  /// regression into a sentence that names it.
-  Finder inPane(Type contentType) {
-    expect(
-      find.byType(ContentPane),
-      findsWidgets,
-      reason:
-          'this screen has no ContentPane at all, so there is no width cap to '
-          'measure — it was removed rather than mis-set',
-    );
-    return find
-        .descendant(
-          of: find.byType(ContentPane),
-          matching: find.byType(contentType),
-        )
-        .first;
-  }
-
   // ── ONBOARDING · ContentPane.reading (720) ─────────────────────────────────
   //
   // The cap that can fail at 1280 without any help: 720 < 1280, so the ordinary
@@ -218,7 +110,7 @@ void main() {
       );
     });
 
-    // 🔴 THE CASE THAT CAN ACTUALLY GO RED — see the file header.
+    // 🔴 THE CASE THAT CAN ACTUALLY GO RED — see the harness header.
     testWidgets('at 1920 the list stops at AppBreakpoints.kMaxBodyWidth', (
       WidgetTester tester,
     ) async {
