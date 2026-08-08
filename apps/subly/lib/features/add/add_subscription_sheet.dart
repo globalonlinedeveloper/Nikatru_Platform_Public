@@ -13,6 +13,11 @@ Future<void> showAddSubscriptionSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    // The only caller is AppShell's FAB, whose context sits ABOVE the branch
+    // navigators — so this sheet already mounted on the root navigator, by
+    // accident of who happened to call it. Stating it makes the root-level
+    // mount a property of the sheet rather than of its caller.
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     builder: (_) => const _AddSheet(),
   );
@@ -117,55 +122,76 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
               const SizedBox(height: 14),
               Text('POPULAR', style: AppText.label),
               const SizedBox(height: 9),
-              GridView.count(
-                crossAxisCount: 4,
+              // 🔴 THE COLUMN COUNT IS DERIVED, NOT DECLARED. This was
+              // `GridView.count(crossAxisCount: 4)` — four columns is a PHONE
+              // decision, and the sheet is not phone-only: M3 caps a modal
+              // sheet at 640, so from a small tablet upward the same four
+              // columns split 604 px of content into 144 px tiles. These are
+              // glyph chips drawn at 78 px on a phone; at 144 they render at
+              // nearly double size and push the POPULAR block to ~361 px of
+              // sheet height before the form starts.
+              //
+              // `maxCrossAxisExtent: 96` keeps the tile chip-sized at every
+              // width and lets the count follow: at 375 the content is 339 →
+              // ceil(339 / (96 + 9)) = 4 columns of exactly 78 px, so the
+              // PHONE RENDERING IS PIXEL-IDENTICAL TO WHAT SHIPPED — that is
+              // the property, and any extent in (84.75, 113] preserves it. At
+              // 640 the content is 604 → 6 columns of 93.2.
+              //
+              // Contrast the calendar grid, where `crossAxisCount: 7` is
+              // SEMANTIC (days of the week) and must stay fixed.
+              // `width_add_sheet_test.dart` pins 96 and both endpoints.
+              GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 9,
-                crossAxisSpacing: 9,
-                childAspectRatio: 0.82,
-                children: DemoData.popular
-                    .map(
-                      (List<String> p) => GestureDetector(
-                        onTap: () => _name.text = p[0],
-                        child: Column(
-                          children: <Widget>[
-                            Expanded(
-                              child: Container(
-                                width: double.infinity,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(13),
-                                  gradient: const LinearGradient(
-                                    colors: <Color>[
-                                      Color.fromRGBO(100, 89, 245, 0.13),
-                                      Color.fromRGBO(155, 107, 255, 0.13),
-                                    ],
-                                  ),
-                                ),
-                                child: Text(
-                                  p[1],
-                                  style: const TextStyle(
-                                    fontFamily: 'Space Grotesk',
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                    color: AppColors.accent,
-                                  ),
-                                ),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 96,
+                  mainAxisSpacing: 9,
+                  crossAxisSpacing: 9,
+                  childAspectRatio: 0.82,
+                ),
+                itemCount: DemoData.popular.length,
+                itemBuilder: (BuildContext context, int i) {
+                  final List<String> p = DemoData.popular[i];
+                  return GestureDetector(
+                    onTap: () => _name.text = p[0],
+                    child: Column(
+                      children: <Widget>[
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(13),
+                              gradient: const LinearGradient(
+                                colors: <Color>[
+                                  Color.fromRGBO(100, 89, 245, 0.13),
+                                  Color.fromRGBO(155, 107, 255, 0.13),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 5),
-                            Text(
-                              p[0],
-                              style: AppText.muted.copyWith(fontSize: 10),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Text(
+                              p[1],
+                              style: const TextStyle(
+                                fontFamily: 'Space Grotesk',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: AppColors.accent,
+                              ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    )
-                    .toList(),
+                        const SizedBox(height: 5),
+                        Text(
+                          p[0],
+                          style: AppText.muted.copyWith(fontSize: 10),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 16),
               Text('NAME', style: AppText.label),
