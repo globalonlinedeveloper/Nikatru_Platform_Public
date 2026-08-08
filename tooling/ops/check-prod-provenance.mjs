@@ -306,7 +306,10 @@ async function main() {
   // checker was the alternative nobody should ever take.
   const attested = [];
   const attViolations = [];
-  {
+  // Fixture mode (--runs-file) cannot reach either witness, so the register is
+  // SKIPPED there rather than half-validated — the fixture banner above already
+  // makes that mode unmistakable in any log. Live runs always validate.
+  if (!runsFile) {
     const regPath = join(ROOT, 'tooling/ops/manual-deploys.json');
     if (existsSync(regPath)) {
       const reg = JSON.parse(readFileSync(regPath, 'utf8'));
