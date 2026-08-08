@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
@@ -128,28 +129,33 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.paywallTitle)),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            shrinkWrap: true,
-            children: <Widget>[
-              Icon(
-                Icons.workspace_premium_outlined,
-                size: 56,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                l10n.paywallHeadline,
-                style: theme.textTheme.headlineSmall,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              ..._body(l10n, rail, theme),
-            ],
-          ),
+      // 🔴 THE `Center` IS GONE, AND THIS IS THE SCREEN THAT NAMES THE BUG.
+      // `_body` returns a DIFFERENT NUMBER OF WIDGETS per `_PaywallPhase` —
+      // choosing, opening, pending, unlocked, refused — so the ListView's
+      // extent changes every time the phase does. Under a `Center`, that
+      // re-centres the whole scroller: press "Buy" and the plan list you were
+      // looking at slides, for a reason the user did not cause. Pinned to the
+      // top it stays where it was and only the new rows appear. `.pane` is the
+      // 480 this file used to hold privately.
+      body: ContentPane.pane(
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          shrinkWrap: true,
+          children: <Widget>[
+            Icon(
+              Icons.workspace_premium_outlined,
+              size: 56,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              l10n.paywallHeadline,
+              style: theme.textTheme.headlineSmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ..._body(l10n, rail, theme),
+          ],
         ),
       ),
     );
