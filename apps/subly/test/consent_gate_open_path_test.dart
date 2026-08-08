@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/core/router.dart';
+import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/features/consent/consent_prompt.dart';
 import 'package:subly/state/analytics_providers.dart';
 import 'package:subly/state/providers.dart';
@@ -52,6 +53,10 @@ Widget _app({required core.KeyValueStore store, bool live = true}) {
       keyValueStoreProvider.overrideWith((ref) async => store),
     ],
     child: MaterialApp.router(
+      // P2.6b: home reads l10n now; a host without delegates throws on the
+      // first frame that renders it (nullable-getter: false).
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) =>
           ConsentGate(child: child ?? const SizedBox.shrink()),

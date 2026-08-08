@@ -30,7 +30,6 @@ class MockAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 250));
     _user = _demoUser(email);
     _controller.add(_user);
     return _user!;
@@ -44,7 +43,6 @@ class MockAuthRepository implements AuthRepository {
 
   @override
   Future<void> signInWithApple() async {
-    await Future<void>.delayed(const Duration(milliseconds: 250));
     _user = _demoUser('alex@example.com');
     _controller.add(_user);
   }

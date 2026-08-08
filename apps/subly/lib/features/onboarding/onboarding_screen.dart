@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../state/providers.dart';
 import '../shared/widgets.dart';
 
-class OnboardingScreen extends StatefulWidget {
+class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final PageController _controller = PageController();
   int _page = 0;
 
@@ -31,7 +34,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ],
   ];
 
-  static const List<String> _tiles = <String>['NFX', 'SPT', 'GPT', 'DIS', 'YTB', 'ADB'];
+  static const List<String> _tiles = <String>[
+    'NFX',
+    'SPT',
+    'GPT',
+    'DIS',
+    'YTB',
+    'ADB',
+  ];
 
   @override
   void dispose() {
@@ -42,20 +52,48 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _next() {
     if (_page < _slides.length - 1) {
       _controller.nextPage(
-          duration: const Duration(milliseconds: 320), curve: Curves.easeOut);
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOut,
+      );
     } else {
-      context.go('/login');
+      _finish();
     }
+  }
+
+  /// P2.6b: finishing onboarding must RECORD the fact, or the union router's
+  /// gate sends the user straight back — the once-ever property the chassis
+  /// test asserts. In memory first (the redirect reads it synchronously),
+  /// then persisted by the controller.
+  Future<void> _finish() async {
+    await ref.read(onboardingSeenProvider.notifier).set(true);
+    if (!mounted) return;
+    context.go('/login');
+  }
+
+  /// [O3] An override REPLACES designed copy; designed copy is the FALLBACK —
+  /// never the raw key. Empty/blank overrides fall through too.
+  String _copy(core.AppConfig? cfg, String key, String fallback) {
+    final String? override = cfg?.copy[key];
+    return (override == null || override.trim().isEmpty) ? fallback : override;
   }
 
   @override
   Widget build(BuildContext context) {
+    final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
     return Scaffold(
       backgroundColor: AppColors.onboardBg,
       body: Stack(
         children: <Widget>[
-          const Positioned(top: -30, right: -40, child: _Blob(220, AppColors.accent)),
-          const Positioned(bottom: 160, left: -50, child: _Blob(200, AppColors.accent2)),
+          const Positioned(
+            top: -30,
+            right: -40,
+            child: _Blob(220, AppColors.accent),
+          ),
+          const Positioned(
+            bottom: 160,
+            left: -50,
+            child: _Blob(200, AppColors.accent2),
+          ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(30, 40, 30, 30),
@@ -67,61 +105,140 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       itemCount: _slides.length,
                       onPageChanged: (int i) => setState(() => _page = i),
                       itemBuilder: (BuildContext context, int i) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            Container(
-                              width: 58,
-                              height: 58,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
-                                color: const Color.fromRGBO(255, 255, 255, 0.1),
-                                border: Border.all(
-                                    color: const Color.fromRGBO(255, 255, 255, 0.18)),
-                              ),
-                              child: const Text('◈',
-                                  style: TextStyle(fontSize: 26, color: Colors.white)),
-                            ),
-                            const SizedBox(height: 30),
-                            Text(_slides[i][0],
-                                style: AppText.display
-                                    .copyWith(fontSize: 40, color: Colors.white)),
-                            const SizedBox(height: 16),
-                            Text(_slides[i][1],
-                                style: const TextStyle(
-                                    fontFamily: 'Manrope',
-                                    fontSize: 16,
-                                    height: 1.6,
-                                    color: Color.fromRGBO(255, 255, 255, 0.68))),
-                            const SizedBox(height: 30),
-                            Wrap(
-                              spacing: 9,
-                              runSpacing: 9,
-                              children: _tiles
-                                  .map((String t) => Container(
-                                        width: 46,
-                                        height: 46,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(13),
-                                          color: const Color.fromRGBO(255, 255, 255, 0.08),
-                                          border: Border.all(
+                        // P2.6b: scale-safe per the chassis text-scaling
+                        // invariant (clamped 1.0–2.0 at the app root). At 1.0
+                        // the ConstrainedBox minHeight makes the Column fill
+                        // the page, so the centring renders pixel-identical;
+                        // at 2.0 the content grows past the viewport and
+                        // SCROLLS instead of overflowing (measured: 359px
+                        // over in an 800x600 pump). PageView pans on the
+                        // horizontal axis, this scroll view on the vertical —
+                        // no gesture conflict.
+                        return LayoutBuilder(
+                          builder:
+                              (BuildContext context, BoxConstraints viewport) {
+                                return SingleChildScrollView(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth: viewport.maxWidth,
+                                      minHeight: viewport.maxHeight,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: <Widget>[
+                                        Container(
+                                          width: 58,
+                                          height: 58,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
+                                            color: const Color.fromRGBO(
+                                              255,
+                                              255,
+                                              255,
+                                              0.1,
+                                            ),
+                                            border: Border.all(
                                               color: const Color.fromRGBO(
-                                                  255, 255, 255, 0.14)),
+                                                255,
+                                                255,
+                                                255,
+                                                0.18,
+                                              ),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '◈',
+                                            style: TextStyle(
+                                              fontSize: 26,
+                                              color: Colors.white,
+                                            ),
+                                          ),
                                         ),
-                                        child: Text(t,
-                                            style: const TextStyle(
-                                                fontFamily: 'Space Grotesk',
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 12,
-                                                color: Color.fromRGBO(
-                                                    255, 255, 255, 0.9))),
-                                      ))
-                                  .toList(),
-                            ),
-                          ],
+                                        const SizedBox(height: 30),
+                                        Text(
+                                          _copy(cfg, 'onboarding.${i + 1}.title', _slides[i][0]),
+                                          style: AppText.display.copyWith(
+                                            fontSize: 40,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          _copy(cfg, 'onboarding.${i + 1}.body', _slides[i][1]),
+                                          style: const TextStyle(
+                                            fontFamily: 'Manrope',
+                                            fontSize: 16,
+                                            height: 1.6,
+                                            color: Color.fromRGBO(
+                                              255,
+                                              255,
+                                              255,
+                                              0.68,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 30),
+                                        Wrap(
+                                          spacing: 9,
+                                          runSpacing: 9,
+                                          children: _tiles
+                                              .map(
+                                                (String t) => Container(
+                                                  width: 46,
+                                                  height: 46,
+                                                  alignment: Alignment.center,
+                                                  decoration: BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          13,
+                                                        ),
+                                                    color: const Color.fromRGBO(
+                                                      255,
+                                                      255,
+                                                      255,
+                                                      0.08,
+                                                    ),
+                                                    border: Border.all(
+                                                      color:
+                                                          const Color.fromRGBO(
+                                                            255,
+                                                            255,
+                                                            255,
+                                                            0.14,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    t,
+                                                    style: const TextStyle(
+                                                      fontFamily:
+                                                          'Space Grotesk',
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      fontSize: 12,
+                                                      color: Color.fromRGBO(
+                                                        255,
+                                                        255,
+                                                        255,
+                                                        0.9,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
                         );
                       },
                     ),
@@ -147,17 +264,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   Row(
                     children: <Widget>[
                       TextButton(
-                        onPressed: () => context.go('/login'),
+                        onPressed: _finish,
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.white,
-                          backgroundColor: const Color.fromRGBO(255, 255, 255, 0.08),
-                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                          backgroundColor: const Color.fromRGBO(
+                            255,
+                            255,
+                            255,
+                            0.08,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 16,
+                          ),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
-                        child: const Text('Skip',
-                            style: TextStyle(
-                                fontFamily: 'Manrope', fontWeight: FontWeight.w700)),
+                        child: const Text(
+                          'Skip',
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -167,19 +297,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             backgroundColor: AppColors.accent,
                             padding: const EdgeInsets.symmetric(vertical: 17),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
-                          child: Text(_page < _slides.length - 1 ? 'Next' : 'Get started',
-                              style: const TextStyle(
-                                  fontFamily: 'Manrope',
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16)),
+                          child: Text(
+                            _page < _slides.length - 1 ? 'Next' : 'Get started',
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 18),
-                  const Center(child: NikatruWordmark(onDark: true, height: 18)),
+                  const Center(
+                    child: NikatruWordmark(onDark: true, height: 18),
+                  ),
                 ],
               ),
             ),

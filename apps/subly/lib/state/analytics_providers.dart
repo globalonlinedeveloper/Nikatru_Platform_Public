@@ -108,11 +108,27 @@ final Provider<bool> consentDecidedProvider = Provider<bool>((ref) {
 
 /// Ships the consent artifact to the append-only server record.
 ///
+/// The analytics ON switch — converged here in P2.6b exactly as the spine's
+/// P2.6a comments scheduled ('the two converge when chassis_properties_test
+/// lands'). A compile-time AppConfig read here made every container override
+/// inert: the property suite could never open the rail, so seven of its cases
+/// asserted against a NoOpAnalytics nothing could replace. Overridable-by-design.
+final Provider<bool> analyticsEnabledProvider = Provider<bool>(
+  (ref) => AppConfig.isBackendLive,
+);
+
+/// Ships event batches. A provider so the property test can watch a REAL event
+/// arrive rather than assert that a fake returns what it was told to return.
+final Provider<core.EventTransport> eventTransportProvider =
+    Provider<core.EventTransport>(
+      (ref) => DioEventTransport(platformBaseUrl: AppConfig.platformBaseUrl),
+    );
+
 /// Discards in demo/test builds, so a widget test never reaches the network and
 /// an app with no backend configured is not broken by having a consent UI.
 final Provider<core.ConsentTransport> consentTransportProvider =
     Provider<core.ConsentTransport>((ref) {
-      if (!AppConfig.isBackendLive) {
+      if (!ref.watch(analyticsEnabledProvider)) {
         return const core.DiscardingConsentTransport();
       }
       return DioConsentTransport(platformBaseUrl: AppConfig.platformBaseUrl);
@@ -215,7 +231,7 @@ String _platformName() {
 /// until consent is granted, so this provider being non-noop is NOT consent.
 final FutureProvider<core.Analytics>
 analyticsProvider = FutureProvider<core.Analytics>((ref) async {
-  if (!AppConfig.isBackendLive) return const core.NoOpAnalytics();
+  if (!ref.watch(analyticsEnabledProvider)) return const core.NoOpAnalytics();
   final core.KeyValueStore kv = await ref.watch(keyValueStoreProvider.future);
   final String anonId = await ref.watch(installIdProvider.future);
   final core.ConsentController consent = await ref.watch(
@@ -224,7 +240,7 @@ analyticsProvider = FutureProvider<core.Analytics>((ref) async {
   final core.AnalyticsRecorder recorder = core.AnalyticsRecorder(
     appId: AppConfig.appId,
     anonId: anonId,
-    transport: DioEventTransport(platformBaseUrl: AppConfig.platformBaseUrl),
+    transport: ref.watch(eventTransportProvider),
     consent: consent,
     queueStore: kv,
     envelope: <String, Object?>{

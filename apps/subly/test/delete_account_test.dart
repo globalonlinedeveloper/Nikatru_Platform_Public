@@ -9,6 +9,7 @@ import 'package:subly/core/router.dart';
 import 'package:subly/data/auth/mock_auth_repository.dart';
 import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';
+import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/state/providers.dart';
 
 /// THE STORE-MANDATED DELETION PATH, AND THE PART THAT IS EASY TO GET WRONG.
@@ -136,12 +137,18 @@ Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
-          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+        onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
         authRepositoryProvider.overrideWithValue(auth),
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
       ],
-      child: const MaterialApp(home: Scaffold(body: SettingsScreen())),
+      // P2.6b: the merged screen reads l10n and l10n.yaml sets
+      // nullable-getter:false — a host without delegates throws on first pump.
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: SettingsScreen()),
+      ),
     ),
   );
   // pumpAndSettle, never a bare pump(): the settings controller hydrates from
@@ -203,6 +210,8 @@ void main() {
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp.router(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             routerConfig: container.read(routerProvider),
           ),
         ),
@@ -350,7 +359,12 @@ void main() {
     // with Apple" has no password here. The message must say so rather than
     // insisting the password was wrong, and the email route must be on screen.
     expect(_resultText(tester), contains('Apple'));
-    expect(find.textContaining('support@nikatru.com'), findsOneWidget);
+    // The full fallback SENTENCE, not the bare address (P2.6b): the merged
+    // settings screen also shows support@nikatru.com in its Contact-support
+    // row's subtitle, so the address alone now legitimately appears twice.
+    // The property is unchanged — the dialog offers the email route — and the
+    // sentence is the dialog's own, so the finder stays unique.
+    expect(find.textContaining('and we will finish it'), findsOneWidget);
     expect(find.text('Account deleted'), findsNothing);
   });
 

@@ -36,11 +36,11 @@
   "@deleteAccountSubtitle": {
     "description": "Explains what the delete-account entry does."
   },
-  "deleteAccountConfirmTitle": "Delete account?",
+  "deleteAccountConfirmTitle": "Delete your account?",
   "@deleteAccountConfirmTitle": {
     "description": "Title of the irreversible delete-account confirmation dialog."
   },
-  "deleteAccountConfirmBody": "This permanently deletes your account and all its data. This cannot be undone.",
+  "deleteAccountConfirmBody": "This cannot be undone. Deleting removes your sign-in, so the same email and password will no longer work.",
   "@deleteAccountConfirmBody": {
     "description": "Body of the delete-account confirmation. Must state that the action cannot be undone."
   },
@@ -76,13 +76,19 @@
   "@welcomeTo": {
     "description": "Home screen greeting.",
     "placeholders": {
-      "appName": { "type": "String" }
+      "appName": {
+        "type": "String"
+      }
     }
   },
   "consentTitle": "Help improve {appName}?",
   "@consentTitle": {
     "description": "Consent prompt heading.",
-    "placeholders": { "appName": { "type": "String" } }
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
   },
   "consentBody": "We can record which features you use, so we can see what works and fix what does not.",
   "@consentBody": {
@@ -93,16 +99,22 @@
     "description": "States exactly what is NOT collected. Must stay accurate to the privacy policy."
   },
   "navHome": "Home",
-  "@navHome": { "description": "Primary navigation destination." },
+  "@navHome": {
+    "description": "Primary navigation destination."
+  },
   "navExplore": "Explore",
-  "@navExplore": { "description": "Secondary navigation destination." },
+  "@navExplore": {
+    "description": "Secondary navigation destination."
+  },
   "navSettings": "Settings",
-  "@navSettings": { "description": "Settings navigation destination." },
+  "@navSettings": {
+    "description": "Settings navigation destination."
+  },
   "deleteAccountPassword": "Password",
   "@deleteAccountPassword": {
     "description": "Re-authentication field before an irreversible account deletion."
   },
-  "deleteAccountReauthHint": "Confirm your password to continue.",
+  "deleteAccountReauthHint": "Enter your password to confirm it is you.",
   "@deleteAccountReauthHint": {
     "description": "Explains why a password is required to delete the account."
   },
@@ -151,149 +163,420 @@
     "description": "Retries the action that failed."
   },
   "signInTitle": "Sign in",
-  "@signInTitle": { "description": "Title of the sign-in screen." },
+  "@signInTitle": {
+    "description": "Title of the sign-in screen."
+  },
   "signUpTitle": "Create account",
-  "@signUpTitle": { "description": "Title of the sign-up screen." },
+  "@signUpTitle": {
+    "description": "Title of the sign-up screen."
+  },
   "email": "Email",
-  "@email": { "description": "Email field label." },
+  "@email": {
+    "description": "Email field label."
+  },
   "password": "Password",
-  "@password": { "description": "Password field label." },
+  "@password": {
+    "description": "Password field label."
+  },
   "signIn": "Sign in",
-  "@signIn": { "description": "Submits the sign-in form." },
+  "@signIn": {
+    "description": "Submits the sign-in form."
+  },
   "signUp": "Create account",
-  "@signUp": { "description": "Submits the sign-up form." },
+  "@signUp": {
+    "description": "Submits the sign-up form."
+  },
   "forgotPassword": "Forgot your password?",
-  "@forgotPassword": { "description": "Sends a password-reset email." },
+  "@forgotPassword": {
+    "description": "Sends a password-reset email."
+  },
   "resetSent": "If that address has an account, a reset link is on its way.",
-  "@resetSent": { "description": "Deliberately does NOT confirm whether the account exists — that would let anyone test which emails are registered." },
+  "@resetSent": {
+    "description": "Deliberately does NOT confirm whether the account exists — that would let anyone test which emails are registered."
+  },
   "emailRequired": "Enter your email address first.",
-  "@emailRequired": { "description": "Shown when a password reset is requested with an empty email field." },
+  "@emailRequired": {
+    "description": "Shown when a password reset is requested with an empty email field."
+  },
   "passwordTooShort": "Use at least 8 characters.",
-  "@passwordTooShort": { "description": "Client-side length check before sending a sign-up." },
+  "@passwordTooShort": {
+    "description": "Client-side length check before sending a sign-up."
+  },
   "needAccount": "Need an account? Create one",
-  "@needAccount": { "description": "Link from sign-in to sign-up." },
+  "@needAccount": {
+    "description": "Link from sign-in to sign-up."
+  },
   "haveAccount": "Already have an account? Sign in",
-  "@haveAccount": { "description": "Link from sign-up to sign-in." },
+  "@haveAccount": {
+    "description": "Link from sign-up to sign-in."
+  },
   "continueWithApple": "Continue with Apple",
-  "@continueWithApple": { "description": "OAuth sign-in. Shown only where the platform can complete a redirect." },
+  "@continueWithApple": {
+    "description": "OAuth sign-in. Shown only where the platform can complete a redirect."
+  },
   "signOut": "Sign out",
-  "@signOut": { "description": "Ends the session on this device." },
+  "@signOut": {
+    "description": "Ends the session on this device."
+  },
   "notifications": "Notifications",
-  "@notifications": { "description": "Settings section for reminders." },
+  "@notifications": {
+    "description": "Settings section for reminders."
+  },
   "remindersEnabled": "Reminders",
-  "@remindersEnabled": { "description": "Toggle for scheduled reminders." },
+  "@remindersEnabled": {
+    "description": "Toggle for scheduled reminders."
+  },
   "remindersUnavailable": "Reminders are not available on this platform.",
-  "@remindersUnavailable": { "description": "Shown INSTEAD of the toggle where the platform cannot schedule — a switch that silently does nothing is worse than an honest sentence." },
+  "@remindersUnavailable": {
+    "description": "Shown INSTEAD of the toggle where the platform cannot schedule — a switch that silently does nothing is worse than an honest sentence."
+  },
   "permissionPrimingTitle": "Allow reminders?",
-  "@permissionPrimingTitle": { "description": "Heading of the pre-permission explanation." },
+  "@permissionPrimingTitle": {
+    "description": "Heading of the pre-permission explanation."
+  },
   "permissionPrimingBody": "We will ask your device for permission to send reminders. You can change this at any time in Settings.",
-  "@permissionPrimingBody": { "description": "Explains WHY before the OS prompt appears. The OS prompt can only be shown once on most platforms, so a refusal there is effectively permanent." },
+  "@permissionPrimingBody": {
+    "description": "Explains WHY before the OS prompt appears. The OS prompt can only be shown once on most platforms, so a refusal there is effectively permanent."
+  },
   "reminderTitle": "Time for today",
-  "@reminderTitle": { "description": "Title of the scheduled daily notification itself — the text the OS shows on the lock screen, NOT a settings label. Deliberately app-neutral: a stamped app should replace it with its own hook." },
+  "@reminderTitle": {
+    "description": "Title of the scheduled daily notification itself — the text the OS shows on the lock screen, NOT a settings label. Deliberately app-neutral: a stamped app should replace it with its own hook."
+  },
   "reminderBody": "A minute now keeps your streak going.",
-  "@reminderBody": { "description": "Body of the scheduled daily notification. Kept short — most platforms truncate a collapsed notification to roughly one line." },
+  "@reminderBody": {
+    "description": "Body of the scheduled daily notification. Kept short — most platforms truncate a collapsed notification to roughly one line."
+  },
   "catchUpTitle": "Your reminder was due",
-  "@catchUpTitle": { "description": "Heading of the IN-APP catch-up nudge, shown on platforms whose OS cannot schedule a repeating notification (Web, Windows, Linux). It appears the next time the app is opened after the reminder's moment has passed — there is no background work to lean on." },
+  "@catchUpTitle": {
+    "description": "Heading of the IN-APP catch-up nudge, shown on platforms whose OS cannot schedule a repeating notification (Web, Windows, Linux). It appears the next time the app is opened after the reminder's moment has passed — there is no background work to lean on."
+  },
   "catchUpBody": "This device cannot deliver scheduled reminders, so here it is now.",
-  "@catchUpBody": { "description": "Says PLAINLY why the reminder arrives inside the app instead of from the system. A vague banner would read as a bug." },
+  "@catchUpBody": {
+    "description": "Says PLAINLY why the reminder arrives inside the app instead of from the system. A vague banner would read as a bug."
+  },
   "catchUpDismiss": "Got it",
-  "@catchUpDismiss": { "description": "Dismisses the catch-up nudge for this occurrence. It never re-appears for the same day's reminder." },
+  "@catchUpDismiss": {
+    "description": "Dismisses the catch-up nudge for this occurrence. It never re-appears for the same day's reminder."
+  },
   "notNow": "Not now",
-  "@notNow": { "description": "Declines the priming dialog WITHOUT spending the one OS prompt." },
+  "@notNow": {
+    "description": "Declines the priming dialog WITHOUT spending the one OS prompt."
+  },
   "continueLabel": "Continue",
-  "@continueLabel": { "description": "Proceeds to the OS permission prompt." },
+  "@continueLabel": {
+    "description": "Proceeds to the OS permission prompt."
+  },
   "legal": "Legal",
-  "@legal": { "description": "Settings section for the policy documents." },
+  "@legal": {
+    "description": "Settings section for the policy documents."
+  },
   "privacyPolicy": "Privacy policy",
-  "@privacyPolicy": { "description": "Opens the privacy policy. Both stores require it to be reachable in-app." },
+  "@privacyPolicy": {
+    "description": "Opens the privacy policy. Both stores require it to be reachable in-app."
+  },
   "termsOfService": "Terms of service",
-  "@termsOfService": { "description": "Opens the terms of service." },
+  "@termsOfService": {
+    "description": "Opens the terms of service."
+  },
   "refundPolicy": "Refund policy",
-  "@refundPolicy": { "description": "Opens the refund policy. [pipeline 8]K-6 — the third published legal page; the in-app set must equal the published set." },
+  "@refundPolicy": {
+    "description": "Opens the refund policy. [pipeline 8]K-6 — the third published legal page; the in-app set must equal the published set."
+  },
   "language": "Language",
-  "@language": { "description": "Settings section for the app language." },
+  "@language": {
+    "description": "Settings section for the app language."
+  },
   "languageSystem": "System",
-  "@languageSystem": { "description": "Follow the device language." },
+  "@languageSystem": {
+    "description": "Follow the device language."
+  },
   "languageEnglish": "English",
-  "@languageEnglish": { "description": "Language names are shown in their OWN language, so a speaker can find theirs without reading the current one." },
+  "@languageEnglish": {
+    "description": "Language names are shown in their OWN language, so a speaker can find theirs without reading the current one."
+  },
   "languageTamil": "தமிழ்",
-  "@languageTamil": { "description": "Tamil, written in Tamil — see languageEnglish." },
+  "@languageTamil": {
+    "description": "Tamil, written in Tamil — see languageEnglish."
+  },
   "profile": "Profile",
-  "@profile": { "description": "Settings section for the user's own account details." },
+  "@profile": {
+    "description": "Settings section for the user's own account details."
+  },
   "displayName": "Display name",
-  "@displayName": { "description": "The name shown to the user in the app. Editable." },
+  "@displayName": {
+    "description": "The name shown to the user in the app. Editable."
+  },
   "displayNameNotSet": "No name set",
-  "@displayNameNotSet": { "description": "Shown in place of the display name when the user has not chosen one. An empty line would read as a rendering fault." },
+  "@displayNameNotSet": {
+    "description": "Shown in place of the display name when the user has not chosen one. An empty line would read as a rendering fault."
+  },
   "editProfile": "Edit profile",
-  "@editProfile": { "description": "Title of the dialog for changing the display name." },
+  "@editProfile": {
+    "description": "Title of the dialog for changing the display name."
+  },
   "save": "Save",
-  "@save": { "description": "Commits an edit." },
+  "@save": {
+    "description": "Commits an edit."
+  },
   "profileUpdateFailed": "Could not save your name. Nothing was changed.",
-  "@profileUpdateFailed": { "description": "Shown when the profile update fails. Must state plainly that nothing changed: 'saved' on a failed write is a lie the user only discovers at their next launch." },
+  "@profileUpdateFailed": {
+    "description": "Shown when the profile update fails. Must state plainly that nothing changed: 'saved' on a failed write is a lie the user only discovers at their next launch."
+  },
   "onboarding1Title": "Welcome",
-  "@onboarding1Title": { "description": "First onboarding page heading. Overridable per app via AppConfig.copy['onboarding.1.title'] — this is the CHASSIS DEFAULT, shown by a freshly stamped app that has overridden nothing, so it must not promise a feature the chassis does not have." },
+  "@onboarding1Title": {
+    "description": "First onboarding page heading. Overridable per app via AppConfig.copy['onboarding.1.title'] — this is the CHASSIS DEFAULT, shown by a freshly stamped app that has overridden nothing, so it must not promise a feature the chassis does not have."
+  },
   "onboarding1Body": "A quick tour, and then you are done.",
-  "@onboarding1Body": { "description": "First onboarding page body. See onboarding1Title." },
+  "@onboarding1Body": {
+    "description": "First onboarding page body. See onboarding1Title."
+  },
   "onboarding2Title": "Yours, on every device",
-  "@onboarding2Title": { "description": "Second onboarding page heading. Overridable via AppConfig.copy['onboarding.2.title']." },
+  "@onboarding2Title": {
+    "description": "Second onboarding page heading. Overridable via AppConfig.copy['onboarding.2.title']."
+  },
   "onboarding2Body": "Sign in and your settings follow you.",
-  "@onboarding2Body": { "description": "Second onboarding page body." },
+  "@onboarding2Body": {
+    "description": "Second onboarding page body."
+  },
   "onboarding3Title": "You are in control",
-  "@onboarding3Title": { "description": "Third onboarding page heading. Overridable via AppConfig.copy['onboarding.3.title']." },
+  "@onboarding3Title": {
+    "description": "Third onboarding page heading. Overridable via AppConfig.copy['onboarding.3.title']."
+  },
   "onboarding3Body": "Change your mind at any time in Settings.",
-  "@onboarding3Body": { "description": "Third onboarding page body. Deliberately points at Settings, which every stamped app really has." },
+  "@onboarding3Body": {
+    "description": "Third onboarding page body. Deliberately points at Settings, which every stamped app really has."
+  },
   "onboardingSkip": "Skip",
-  "@onboardingSkip": { "description": "Leaves onboarding immediately. Present on EVERY page: onboarding a user cannot leave is a wall, not an introduction." },
+  "@onboardingSkip": {
+    "description": "Leaves onboarding immediately. Present on EVERY page: onboarding a user cannot leave is a wall, not an introduction."
+  },
   "onboardingNext": "Next",
-  "@onboardingNext": { "description": "Advances to the next onboarding page." },
+  "@onboardingNext": {
+    "description": "Advances to the next onboarding page."
+  },
   "onboardingStart": "Get started",
-  "@onboardingStart": { "description": "Finishes onboarding on the last page." },
+  "@onboardingStart": {
+    "description": "Finishes onboarding on the last page."
+  },
   "plan": "Subscription",
-  "@plan": { "description": "Settings section for the money rail. Upgrade and Manage sit side by side so cancelling is never buried deeper than subscribing (ROSCA)." },
+  "@plan": {
+    "description": "Settings section for the money rail. Upgrade and Manage sit side by side so cancelling is never buried deeper than subscribing (ROSCA)."
+  },
   "paywallTitle": "Upgrade",
-  "@paywallTitle": { "description": "App-bar title of the paywall screen." },
+  "@paywallTitle": {
+    "description": "App-bar title of the paywall screen."
+  },
   "paywallHeadline": "Unlock the full experience",
-  "@paywallHeadline": { "description": "Paywall heading, also used as the in-place PaywallGate title. CHASSIS DEFAULT — a freshly stamped app that has overridden nothing shows this, so it must not promise a feature the chassis does not have." },
+  "@paywallHeadline": {
+    "description": "Paywall heading, also used as the in-place PaywallGate title. CHASSIS DEFAULT — a freshly stamped app that has overridden nothing shows this, so it must not promise a feature the chassis does not have."
+  },
   "paywallGateMessage": "This part of the app is included with a subscription.",
-  "@paywallGateMessage": { "description": "Shown in place of a gated surface. States a fact, never a countdown or a discount — the chassis knows neither." },
+  "@paywallGateMessage": {
+    "description": "Shown in place of a gated surface. States a fact, never a countdown or a discount — the chassis knows neither."
+  },
   "paywallUpgrade": "Upgrade",
-  "@paywallUpgrade": { "description": "The call to action that opens the checkout." },
+  "@paywallUpgrade": {
+    "description": "The call to action that opens the checkout."
+  },
   "paywallOpening": "Opening the secure checkout in your browser…",
-  "@paywallOpening": { "description": "Shown while the hosted checkout is being handed to the platform. Names the BROWSER deliberately: the page opens outside the app, and a user who is not told that reads the app-switch as a crash." },
+  "@paywallOpening": {
+    "description": "Shown while the hosted checkout is being handed to the platform. Names the BROWSER deliberately: the page opens outside the app, and a user who is not told that reads the app-switch as a crash."
+  },
   "paywallPending": "Your payment is being confirmed. This can take a moment — nothing more is needed from you.",
-  "@paywallPending": { "description": "🔴 MUST NEVER READ AS A FAILURE. The user may well have paid; the merchant of record's notification simply has not reached our server yet. Saying 'purchase failed' here tells a paying customer their money vanished. WORDING IS A HUMAN DECISION — a green CI lane proves the mechanism, not this sentence." },
+  "@paywallPending": {
+    "description": "🔴 MUST NEVER READ AS A FAILURE. The user may well have paid; the merchant of record's notification simply has not reached our server yet. Saying 'purchase failed' here tells a paying customer their money vanished. WORDING IS A HUMAN DECISION — a green CI lane proves the mechanism, not this sentence."
+  },
   "paywallCheckAgain": "Check again",
-  "@paywallCheckAgain": { "description": "Re-reads the entitlement from the server. Present because the automatic wait is BOUNDED — five attempts over about a minute — and a user whose purchase lands after that needs something to press other than the back button." },
+  "@paywallCheckAgain": {
+    "description": "Re-reads the entitlement from the server. Present because the automatic wait is BOUNDED — five attempts over about a minute — and a user whose purchase lands after that needs something to press other than the back button."
+  },
   "paywallUnlocked": "You are all set. Thank you.",
-  "@paywallUnlocked": { "description": "Shown only after the SERVER confirms the entitlement, never on the checkout's return." },
+  "@paywallUnlocked": {
+    "description": "Shown only after the SERVER confirms the entitlement, never on the checkout's return."
+  },
   "paywallUnavailable": "Purchases are not available here.",
-  "@paywallUnavailable": { "description": "Shown when the rail is unconfigured, or when the store this build ships through forbids an external checkout. The specific reason is shown beneath it — a refusal with no reason is indistinguishable from a broken button." },
+  "@paywallUnavailable": {
+    "description": "Shown when the rail is unconfigured, or when the store this build ships through forbids an external checkout. The specific reason is shown beneath it — a refusal with no reason is indistinguishable from a broken button."
+  },
   "paywallTerm": "Billed per {term}",
-  "@paywallTerm": { "description": "The billing period, from the rail config. NOT a price — the price is formatted from the rail's own amount and currency and is never typed into the app.", "placeholders": { "term": { "type": "String" } } },
+  "@paywallTerm": {
+    "description": "The billing period, from the rail config. NOT a price — the price is formatted from the rail's own amount and currency and is never typed into the app.",
+    "placeholders": {
+      "term": {
+        "type": "String"
+      }
+    }
+  },
   "paywallTermWithTrial": "Billed per {term}, after a {days}-day free trial",
-  "@paywallTermWithTrial": { "description": "As paywallTerm, with the trial length from the rail config.", "placeholders": { "term": { "type": "String" }, "days": { "type": "int" } } },
+  "@paywallTermWithTrial": {
+    "description": "As paywallTerm, with the trial length from the rail config.",
+    "placeholders": {
+      "term": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
   "managePlanTitle": "Manage subscription",
-  "@managePlanTitle": { "description": "App-bar title of the manage screen, and the settings entry that opens it." },
+  "@managePlanTitle": {
+    "description": "App-bar title of the manage screen, and the settings entry that opens it."
+  },
   "planActive": "Your subscription is active",
-  "@planActive": { "description": "Reflects the SERVER's entitlement answer, not a local flag." },
+  "@planActive": {
+    "description": "Reflects the SERVER's entitlement answer, not a local flag."
+  },
   "planInactive": "You do not have an active subscription",
-  "@planInactive": { "description": "See subscriptionActive." },
+  "@planInactive": {
+    "description": "See subscriptionActive."
+  },
   "restorePurchases": "Restore purchases",
-  "@restorePurchases": { "description": "Re-reads the entitlement from the server. On this rail the entitlement is a server row keyed to the account, so signing in IS the restore — but Apple guideline 3.1.1 makes an explicit control mandatory the day a native IAP rail ships, and its absence is a documented rejection cause." },
+  "@restorePurchases": {
+    "description": "Re-reads the entitlement from the server. On this rail the entitlement is a server row keyed to the account, so signing in IS the restore — but Apple guideline 3.1.1 makes an explicit control mandatory the day a native IAP rail ships, and its absence is a documented rejection cause."
+  },
   "restorePurchasesHint": "Signed in on a new device? This re-checks your subscription.",
-  "@restorePurchasesHint": { "description": "Explains what the control does in terms of the user's situation rather than the mechanism." },
+  "@restorePurchasesHint": {
+    "description": "Explains what the control does in terms of the user's situation rather than the mechanism."
+  },
   "cancelPlan": "Cancel subscription",
-  "@cancelPlan": { "description": "Starts the cancellation. One tap from Manage, which is one tap from Settings — the same depth as Upgrade (ROSCA)." },
+  "@cancelPlan": {
+    "description": "Starts the cancellation. One tap from Manage, which is one tap from Settings — the same depth as Upgrade (ROSCA)."
+  },
   "keepPlan": "Keep it",
-  "@keepPlan": { "description": "Dismisses the cancellation confirmation." },
+  "@keepPlan": {
+    "description": "Dismisses the cancellation confirmation."
+  },
   "cancelPlanConfirm": "This will end your subscription. You can subscribe again at any time.",
-  "@cancelPlanConfirm": { "description": "The confirmation body. States what happens and that it is reversible; makes no retention offer, because a cancel flow that bargains is the pattern ROSCA exists to stop." },
+  "@cancelPlanConfirm": {
+    "description": "The confirmation body. States what happens and that it is reversible; makes no retention offer, because a cancel flow that bargains is the pattern ROSCA exists to stop."
+  },
   "cancelRecorded": "We have recorded your cancellation and passed it on. Your access continues until the end of the period you have paid for.",
-  "@cancelRecorded": { "description": "🔴 THE HONEST SENTENCE FOR THE STATE THAT IS REAL TODAY. Our server recorded the request; the merchant of record has not yet confirmed it. Saying 'cancelled' here would be the app asserting an outcome it has no evidence for, while the billing continues." },
+  "@cancelRecorded": {
+    "description": "🔴 THE HONEST SENTENCE FOR THE STATE THAT IS REAL TODAY. Our server recorded the request; the merchant of record has not yet confirmed it. Saying 'cancelled' here would be the app asserting an outcome it has no evidence for, while the billing continues."
+  },
   "cancelExecuted": "Your subscription has been cancelled.",
-  "@cancelExecuted": { "description": "Said ONLY when the merchant of record confirms. Distinct from cancelRecorded on purpose." },
+  "@cancelExecuted": {
+    "description": "Said ONLY when the merchant of record confirms. Distinct from cancelRecorded on purpose."
+  },
   "cancelNoPlan": "There is no active subscription on this account.",
-  "@cancelNoPlan": { "description": "The server found nothing to cancel." },
+  "@cancelNoPlan": {
+    "description": "The server found nothing to cancel."
+  },
   "cancelFailed": "We could not cancel your subscription. Nothing has changed — please try again.",
-  "@cancelFailed": { "description": "States plainly that nothing changed. A cancellation that silently did not happen is the worst outcome this screen has, and it must never be reported as success." }
+  "@cancelFailed": {
+    "description": "States plainly that nothing changed. A cancellation that silently did not happen is the worst outcome this screen has, and it must never be reported as success."
+  },
+  "currency": "Currency",
+  "@currency": {
+    "description": "Section heading above the currency-symbol selector. Rendered upper-cased by the screen; store it in title case."
+  },
+  "preferences": "Preferences",
+  "@preferences": {
+    "description": "Section heading above the three notification/behaviour preference toggles."
+  },
+  "privacy": "Privacy",
+  "@privacy": {
+    "description": "Section heading above the analytics-consent withdrawal row."
+  },
+  "prefRenewalAlerts": "Renewal alerts",
+  "@prefRenewalAlerts": {
+    "description": "Preference toggle: notify the user before a subscription renews."
+  },
+  "prefRenewalAlertsDesc": "Notify 2 days before charge",
+  "@prefRenewalAlertsDesc": {
+    "description": "Sub-label for the renewal-alerts toggle. The 2 days is the notification service's daysBefore default."
+  },
+  "prefUnusedPlans": "Unused plans",
+  "@prefUnusedPlans": {
+    "description": "Preference toggle: surface subscriptions the user does not appear to use. Read by home_screen.dart via prefs['unused']."
+  },
+  "prefUnusedPlansDesc": "Flag subscriptions you don’t use",
+  "@prefUnusedPlansDesc": {
+    "description": "Sub-label for the unused-plans toggle. Note the typographic apostrophe (U+2019), matching the live literal byte for byte."
+  },
+  "prefWeeklyDigest": "Weekly digest",
+  "@prefWeeklyDigest": {
+    "description": "Preference toggle: a weekly summary notification."
+  },
+  "prefWeeklyDigestDesc": "Sunday spending summary",
+  "@prefWeeklyDigestDesc": {
+    "description": "Sub-label for the weekly-digest toggle."
+  },
+  "usageStatistics": "Usage statistics",
+  "@usageStatistics": {
+    "description": "The DPDP §6(3) consent-withdrawal row. privacy.html promises this switch exists in Settings, so the label must stay findable."
+  },
+  "usageStatisticsOn": "On — helping us improve the app",
+  "@usageStatisticsOn": {
+    "description": "Sub-label shown when analytics consent is granted."
+  },
+  "usageStatisticsOff": "Off — nothing is being collected",
+  "@usageStatisticsOff": {
+    "description": "Sub-label shown when analytics consent is not granted. Says what is NOT happening, because that is the claim the user is relying on."
+  },
+  "connectedAccounts": "Connected accounts",
+  "@connectedAccounts": {
+    "description": "Placeholder row for future account linking. Currently inert — see the OPEN QUESTION in MANIFEST.md."
+  },
+  "exportDataCsv": "Export data (CSV)",
+  "@exportDataCsv": {
+    "description": "Data-export row. data-safety.json declares that export exists; deleting this row makes that declaration false."
+  },
+  "helpAndSupport": "Help & support",
+  "@helpAndSupport": {
+    "description": "Opens the published contact page in a browser. Distinct from contactSupport, which is the mailto route."
+  },
+  "openSourceLicences": "Open-source licences",
+  "@openSourceLicences": {
+    "description": "One-tap route to Flutter's LicensePage. [pipeline 8]K-11. British spelling, matching the live literal."
+  },
+  "logOut": "Log out",
+  "@logOut": {
+    "description": "Subly's sign-out label. NOT the chassis `signOut` (\"Sign out\") — test/sign_out_destination_test.dart:145 taps find.text('Log out')."
+  },
+  "deletingEllipsis": "Deleting…",
+  "@deletingEllipsis": {
+    "description": "The delete button's label while the request is in flight. Horizontal ellipsis U+2026, not three dots."
+  },
+  "deleteAccountResultGone": "Account deleted",
+  "@deleteAccountResultGone": {
+    "description": "Result-dialog title when the account really is gone. delete_account_test.dart asserts find.text('Account deleted') both positively and negatively — the value must not change."
+  },
+  "deleteAccountResultNotDeleted": "Not deleted",
+  "@deleteAccountResultNotDeleted": {
+    "description": "Result-dialog title for every outcome that is not `deleted`. delete_account_test.dart:378 asserts find.text('Not deleted')."
+  },
+  "deleteAccountEmailRoute": "Email {email} and we will finish it.",
+  "@deleteAccountEmailRoute": {
+    "description": "Shown under every FAILED deletion, including a failed re-auth: an account created with Continue with Apple has no password here, so the in-app path cannot confirm it. No turnaround time is stated because delete-account.html publishes none.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "support@nikatru.com"
+      }
+    }
+  },
+  "close": "Close",
+  "@close": {
+    "description": "Dismisses the deletion-result dialog."
+  },
+  "versionFooter": "{appName} v{version} · © 2026 {company}",
+  "@versionFooter": {
+    "description": "The footer under the Nikatru lockup. The version is the RUNNING version from package_info_plus, not the compiled-in constant — the live line read a hardcoded 'v1.0'.",
+    "placeholders": {
+      "appName": {
+        "type": "String",
+        "example": "Subly"
+      },
+      "version": {
+        "type": "String",
+        "example": "1.0.0"
+      },
+      "company": {
+        "type": "String",
+        "example": "Nikatru"
+      }
+    }
+  }
 }
