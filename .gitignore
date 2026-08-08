@@ -152,3 +152,11 @@ mason-lock.json
 **/windows/flutter/ephemeral/
 **/linux/flutter/ephemeral/
 **/macos/Flutter/ephemeral/
+
+# gen-l10n OUTPUT (2026-08-08, P2.3). `flutter: generate: true` + l10n.yaml
+# regenerate these on every `pub get`, and the files ship blanket
+# `ignore_for_file: type=lint` headers — assert-no-gate-weakening walks
+# `git ls-files` precisely so machine-generated suppressions stay outside its
+# domain, which makes UNTRACKED the designed state for them. Factory-wide
+# pattern: every stamped app produces the same triplet.
+apps/*/lib/l10n/app_localizations*.dart
