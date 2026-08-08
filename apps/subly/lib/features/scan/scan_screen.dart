@@ -130,21 +130,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       body: SafeArea(
         // `.reading` (720) and NOT the default 1280 cap. This is first-run flow
         // content, and its only sibling in that role — onboarding — is already
-        // `ContentPane.reading` (`firstrun/onboarding_screen.dart`, asserted at
-        // that cap by `test/responsive_width_test.dart`). Left uncapped at 1280
-        // the results gradient hero is a wall-to-wall banner, and the default
-        // `kMaxBodyWidth` would still hand it 1246 px of one; 720 keeps the
-        // first thing a new user ever sees proportionate to what it says.
+        // `ContentPane.reading` (`onboarding/onboarding_screen.dart`, asserted
+        // at that cap by `test/width_onboarding_test.dart`). Left uncapped at
+        // 1280 the results gradient hero is a wall-to-wall banner, and the
+        // default `kMaxBodyWidth` would still hand it 1246 px of one; 720 keeps
+        // the first thing a new user ever sees proportionate to what it says.
         //
-        // ⚠️ THAT PRECEDENT IS THINNER THAN IT LOOKS, so it is not the whole
-        // argument. There are TWO `OnboardingScreen` classes with the same
-        // name: `firstrun/onboarding_screen.dart` (has the pane, and is what
-        // `responsive_width_test.dart` imports and measures) and
-        // `onboarding/onboarding_screen.dart` (has NO pane, and is the one
-        // `router.dart:45` actually builds for `/onboarding`). The cap is
-        // asserted on the twin the user never reaches. `/scan` below is on the
-        // live path — `router.dart:143` builds THIS file — so the width test
-        // for this screen measures the screen that ships.
+        // ⚠️ THAT PRECEDENT USED TO BE THINNER THAN IT LOOKED, and the note is
+        // kept because the shape recurs. Subly carried TWO `OnboardingScreen`
+        // classes with the same name: an unrouted `firstrun/` twin that HAD the
+        // pane and was the one `responsive_width_test.dart` measured, and the
+        // routed `onboarding/` screen that had NO pane and is what
+        // `router.dart` actually builds for `/onboarding`. So the cap was
+        // asserted on the twin the user never reaches. Fixed 2026-08-09: the
+        // routed screen got the pane, the twin was deleted from this app, and
+        // the measurement moved with the routing. `/scan` below was always on
+        // the live path — `router.dart` builds THIS file — so the width test
+        // for this screen has always measured the screen that ships.
         //
         // The `Padding(24)` this replaces moved INTO the pane, which is the
         // same box it always was: `ContentPane` applies its inset INSIDE the

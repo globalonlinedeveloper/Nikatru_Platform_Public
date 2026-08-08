@@ -39,9 +39,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// 🔴 THESE ARE `sublyOnboarding*`, NOT the chassis `onboarding1Title` FAMILY,
   /// and the distinction is load-bearing. The chassis keys carry the STAMPED
   /// app's generic first run ("Welcome" / "A quick tour, and then you are
-  /// done"), which `features/firstrun/onboarding_screen.dart` renders; these
-  /// three carry Subly's own pitch. Overwriting the chassis keys with Subly's
-  /// words would rewrite the first run of every app the factory stamps.
+  /// done"), which the brick's own `features/firstrun/onboarding_screen.dart`
+  /// renders; these three carry Subly's own pitch. Overwriting the chassis keys
+  /// with Subly's words would rewrite the first run of every app the factory
+  /// stamps. (Subly's unrouted copy of that twin was deleted 2026-08-09 — the
+  /// keys stay distinct because the CHASSIS still renders them.)
   ///
   /// ⚠️ THE EMBEDDED `\n` IS GONE ON PURPOSE (WORKORDER §1). A hard break placed
   /// for an English phrase lands mid-word in a language whose translation is
@@ -121,9 +123,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             // slide body ran 1220 px lines — about 200 characters against the
             // 45–75 the eye can track — and the Skip/Next row stretched from
             // one edge of the display to the other. Same defect and same fix as
-            // the stamped twin (`features/firstrun/onboarding_screen.dart:138`):
-            // `.reading` (720), because this is continuous PROSE and
-            // [AppBreakpoints.reading] is the constant that says so.
+            // the chassis carousel in the brick: `.reading` (720), because this
+            // is continuous PROSE and [AppBreakpoints.reading] is the constant
+            // that says so. Subly's unrouted copy of that twin was deleted
+            // 2026-08-09 — this is the screen the router shows, so this is the
+            // one the cap has to be on.
             //
             // ⚠️ THE PADDING MOVED INSIDE THE CAP, which is what `ContentPane`'s
             // own `padding` is for. That keeps every width below 720 rendering
