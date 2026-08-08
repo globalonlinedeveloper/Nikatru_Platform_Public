@@ -2476,6 +2476,26 @@ group('property: no-silent-channel', () {
   });
   testWidgets('yy2', (t) async {});
 });
+// [13]T-9 The INBOUND half. The push through the fake seam below is an ANCHOR,
+// not decoration: the real-classes limb of this property drives the adapter
+// directly and stays perfectly green with the gate deleted from app.dart, so
+// the limb that pushes a tap through the STAMPED APP ROOT is the only one that
+// can tell an app which observes taps from one that merely could.
+//
+// ⚠️ THE ANCHOR TEXT APPEARS EXACTLY ONCE IN THIS FIXTURE, and that is
+// deliberate rather than incidental: this guard reads its anchor sources RAW, so
+// a comment that quoted the line would satisfy the anchor by itself — and the
+// mutation case that removes it would replace the quote and leave the real call
+// standing. Measured: written that way first, the case passed with the limb
+// intact. The [pipeline F-10] prose-vs-structure lesson, one level down.
+group('property: notification-tap-observed', () {
+  test('zz1', () {});
+  test('zz2', () {});
+  testWidgets('zz3', (t) async {
+    notes.taps.add(core.NotificationTap(id: 7, payload: 'reminder'));
+    expect(events.sent, isNotEmpty);
+  });
+});
 group('property: account-deletion-works', () {
   test('aa', () {});
   test('bb', () {});
@@ -2591,7 +2611,13 @@ return MaterialApp.router(
     maxScaleFactor: 2.0,
     child: ForceUpdateGate(
       onUpdate: () => _openUpdate(updateUrl),
-      child: AnalyticsGate(child: child ?? const SizedBox.shrink()),
+      child: AnalyticsGate(
+        // [13]T-9 The MOUNT. \`class _NotificationTapGate\` would match with the
+        // gate deleted from the tree it is supposed to be in — the
+        // declaration-vs-caller trap this file keeps encoding — so the anchor is
+        // the placement, not the declaration.
+        child: _NotificationTapGate(child: child ?? const SizedBox.shrink()),
+      ),
     ),
   ),
 );
@@ -2600,6 +2626,21 @@ return MaterialApp.router(
 // branch. The declaration lives in providers.dart and takes a WidgetRef, so it
 // cannot satisfy this anchor — the declaration-vs-caller trap, again.
 logLaunchLifecycle(ref);
+
+// [13]T-9 …and the gate must really BUILD the observer over the notification
+// seam. A gate that only forwards its child is a mount with nothing behind it:
+// it satisfies the anchor above and observes exactly nothing.
+class _NotificationTapGateState extends ConsumerState<_NotificationTapGate> {
+  Future<void> _observe() async {
+    final core.Analytics analytics = await ref.read(analyticsProvider.future);
+    final NotificationTapObserver observer = NotificationTapObserver(
+      service: ref.read(notificationServiceProvider),
+      analytics: analytics,
+    );
+    _taps = observer;
+    observer.start();
+  }
+}
 `;
   // [pipeline C-14] The window-class anchors live in the design system, so the
   // fixture carries that file too — Material's exact 600 boundary and all FIVE
@@ -2898,10 +2939,20 @@ messenger.showSnackBar(SnackBar(content: Text(
   // died at launch on an uninitialised `Supabase.instance` and — in the one app
   // that did initialise — wrote its refresh token in plaintext.
   const BRICK_MAIN = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart';
+  // [13]T-9 THE SINGLE-INSTANCE OVERRIDE, and it is in main.dart because that is
+  // the only place early enough. `init()` is what registers the plugin's tap
+  // callback, and taps arrive on THAT instance's own stream — so the default
+  // provider body (`createLocalNotificationService()`) builds a second,
+  // uninitialised adapter whose `notificationTaps()` is silent for the life of
+  // the process. Nothing about that looks wrong: it compiles, it schedules, and
+  // every outbound test stays green.
   const goodMain = `
 Future<void> main() async {
   await TelemetryBootstrap.init(config, appRunner: () async {
     AppErrorScreen.install();
+    final core.NotificationService notifications =
+        createLocalNotificationService();
+    await notifications.init();
     if (AppConfig.isBackendLive) {
       await initNikatruAuth(
         url: AppConfig.supabaseUrl,
@@ -2909,8 +2960,47 @@ Future<void> main() async {
         secureStore: FlutterSecureStore(),
       );
     }
-    runApp(const ProviderScope(child: ProbeApp()));
+    runApp(
+      ProviderScope(
+        overrides: <Override>[
+          notificationServiceProvider.overrideWithValue(notifications),
+        ],
+        child: const ProbeApp(),
+      ),
+    );
   });
+}
+`;
+
+  // [13]T-9 THE SUBSCRIPTION ITSELF — one file, and the whole inbound half.
+  //
+  // 🔴 THE GAP THIS FIXTURE STANDS FOR. The tap loop was wired into apps/subly
+  // and nowhere else, so the template carried the entire OUTBOUND rail (schedule,
+  // re-arm on boot, cancel, the platform matrix, the toggle) with NO subscriber
+  // to `notificationTaps()` anywhere. Every stamped app could wake a user at
+  // 09:00 and learn nothing when they tapped it — and nothing went red, because
+  // a tap delivered to no listener is indistinguishable from no tap at all.
+  //
+  // BOTH lines are anchors: the `listen(` is the wire, and `kEvent` is the
+  // taxonomy NAME. An observer that subscribes and then logs an app-invented
+  // event name is a rail that collects rows no funnel is built on.
+  const TAP_OBSERVER = `${BRICK}/lib/state/notification_tap_observer.dart`;
+  const goodTapObserver = `
+class NotificationTapObserver {
+  static const String kEvent = 'notification_opened';
+
+  void start() {
+    if (_sub != null) return;
+    _sub = _service.notificationTaps().listen(
+      (core.NotificationTap tap) => _log(tap.kind),
+      onError: (Object _) {},
+      cancelOnError: false,
+    );
+  }
+
+  Future<void> _log(String kind) async {
+    await _analytics.log(kEvent, params: <String, Object?>{'kind': kind});
+  }
 }
 `;
 
@@ -3289,13 +3379,18 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
     const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
+    // [13]T-9 Omittable on its own, because "the observer file is not there at
+    // all" is a DIFFERENT input from "it is there and no longer subscribes" —
+    // the guard reports the first as an unreadable anchor and the second as a
+    // missing implementation, and only one case each proves both messages exist.
+    if (!omitTapObserver) files[TAP_OBSERVER] = tapObserver;
     return fixture(name, files);
   };
 
@@ -3649,6 +3744,141 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     assert.match(out, /android-play \(kind=store, served=true, deferral=none\)/);
   });
 
+  // ── [13]T-9 · A NOTIFICATION TAP IS OBSERVABLE END TO END ──────────────────
+  //
+  // THE SENTENCE: *"A stamped app records `notification_opened` when a user taps
+  // one of its reminders."* The observation that makes it FALSE: tapping a
+  // reminder on a freshly stamped app records nothing, ever.
+  //
+  // 🔴 WHAT THIS PROPERTY IS A RESPONSE TO. The tap loop was wired into
+  // apps/subly and STOPPED THERE. The template carried the entire outbound rail
+  // — schedule, re-arm on boot, cancel, the platform matrix, the settings toggle
+  // — and had no subscriber to `notificationTaps()` anywhere, so app #2 through
+  // #50 were born able to wake a user at 09:00 and unable to notice they
+  // answered. Nothing went red, because a tap delivered to no listener is
+  // indistinguishable from no tap at all.
+  //
+  // ⚠️ AND `assert-capability-register.mjs` COULD NOT SAY SO: its emitter for
+  // that surface is pinned to `apps/subly/lib/state/analytics_funnel.dart` — a
+  // real file with a real caller — so the register stayed green about a
+  // capability the template did not have. A guard pointed at one app cannot
+  // answer a question about the factory. That is why every anchor here is
+  // APP-RELATIVE and re-checked for each stamped root.
+  //
+  // Every case below was FIRST run as a mutation of a REAL app stamped from the
+  // edited brick (`flutter analyze` clean on each — no case is a compile error
+  // masquerading as a catch), and the split is the point:
+  //   · gate UNMOUNTED in app.dart        → 13 of 14 tests still PASS. The
+  //     real-classes limb drives the adapter directly and cannot see it.
+  //   · `observer.start()` deleted        → same 13/14. Same reason.
+  //   · event name drifted to
+  //     `notification_tapped`             → 5/14, both limbs red.
+  // The first two are exactly why the `notes.taps.add(` anchor exists: without
+  // the stamped-app limb, a template whose gate is missing has a fully green
+  // property test.
+  test('passes when the tap loop is mounted, wired and named', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-t9-ok') });
+    assert.equal(code, 0, out);
+    assert.match(out, /notification-tap-observed' asserted and implemented \(6 anchors\)/);
+  });
+
+  test('FAILS when the tap gate is declared but never MOUNTED', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-unmounted', {
+        app: goodApp.replace(
+          'child: _NotificationTapGate(child: child ?? const SizedBox.shrink()),',
+          'child: child ?? const SizedBox.shrink(),',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /'notification-tap-observed' is asserted but its IMPLEMENTATION is gone/);
+    assert.match(out, /must MOUNT the tap gate/);
+  });
+
+  // The gate is mounted and forwards its child — a wrapper that observes
+  // nothing. It satisfies the mount anchor above perfectly.
+  test('FAILS when the mounted gate never CONSTRUCTS the observer', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-hollow-gate', {
+        app: goodApp.replace('service: ref.read(notificationServiceProvider),', ''),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a gate that only forwards its child is a mount with nothing behind it/);
+  });
+
+  // 🔴 THE FAMILY THE WHOLE PROPERTY IS NAMED AFTER: an observer subscribed to a
+  // stream that is not the seam's. It compiles, it listens, it is silent for the
+  // life of the process — the same shape as `main.dart` handing the tree a
+  // second, uninitialised adapter.
+  test('FAILS when the observer subscribes to something other than the seam', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-wrong-stream', {
+        tapObserver: goodTapObserver.replace(
+          '_service.notificationTaps().listen(',
+          '_ownTaps.stream.listen(',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the observer must SUBSCRIBE/);
+  });
+
+  test('FAILS when the emitted event name drifts off the taxonomy', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-event-name', {
+        tapObserver: goodTapObserver.replace(
+          "kEvent = 'notification_opened'",
+          "kEvent = 'notification_tapped'",
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /must be `notification_opened`/);
+  });
+
+  // main.dart's override is the difference between the tree holding the adapter
+  // that registered with the OS and the tree holding a fresh one whose stream is
+  // silent forever. NOTHING at runtime distinguishes them.
+  test('FAILS when main.dart drops the single-instance override', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-no-override', {
+        brickMain: goodMain.replace(
+          'notificationServiceProvider.overrideWithValue(notifications),',
+          '',
+        ),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /must hand the tree the adapter it INITIALISED/);
+  });
+
+  // The property test reduced to its unit chain. This is the mutation that
+  // matters most, because it is the one a green `flutter test` cannot see: with
+  // the stamped-app limb gone, deleting the gate from app.dart leaves the whole
+  // property passing.
+  test('FAILS when the property drops its stamped-app limb', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-unit-only', {
+        propTest: goodTest.replace('notes.taps.add(', 'plugin.simulateTap('),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /must push a tap through the STAMPED APP ROOT/);
+  });
+
+  test('FAILS when the observer file is not there at all', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-no-observer', { omitTapObserver: true }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /property 'notification-tap-observed': .*notification_tap_observer\.dart could not be read/);
+  });
+
+  // (The per-app limb of this property lives with the other stamped-app cases
+  // below, where `stampedApp` and `WS_WITH_PROBE` are defined.)
+
   // ── [pipeline 13]T-4 · THE BOOT PATH NEVER SPENDS THE OS PERMISSION ASK ────
   //
   // THE SENTENCE: *"Notification permission is never requested on the launch
@@ -3975,6 +4205,11 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     [`${dir}/lib/features/home/home_screen.dart`]: over.home ?? goodHome,
     [`${dir}/lib/core/router.dart`]: over.router ?? goodRouter,
     [`${dir}/lib/main.dart`]: over.brickMain ?? goodMain,
+    // [13]T-9. App-relative for the same reason as the paywall entry below: the
+    // tap loop is stamped INTO each app, so any one app can sever its own
+    // subscription — or drop main.dart's single-instance override — without
+    // touching the brick, and be a stamped app whose reminders open nothing.
+    [`${dir}/lib/state/notification_tap_observer.dart`]: over.tapObserver ?? goodTapObserver,
     [`${dir}/lib/features/firstrun/onboarding_screen.dart`]: over.onboarding ?? goodOnboarding,
     // [pipeline 11]E-6. App-relative on purpose: every stamped app carries its
     // OWN paywall, so any one of them can drop a stage from the funnel without
@@ -4031,6 +4266,28 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     });
     assert.equal(code, 1);
     assert.match(out, /apps\/probe: property 'account-deletion-works' is asserted but its IMPLEMENTATION is gone/);
+  });
+
+  // [13]T-9's per-app limb. The tap loop is stamped INTO each app — the observer,
+  // the gate and main.dart's single-instance override are all app-relative — so
+  // one app can sever its own subscription while the brick stays perfect, and be
+  // a shipped app whose reminders open nothing. Anchoring this property only at
+  // the brick would have been the exact hole clause 7 closed for the property
+  // test itself.
+  test('FAILS naming the app when its copy severs the tap loop', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-t9-app', {
+        workspace: WS_WITH_PROBE,
+        extra: stampedApp('apps/probe', {
+          tapObserver: goodTapObserver.replace(
+            '_service.notificationTaps().listen(',
+            '_ownTaps.stream.listen(',
+          ),
+        }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /apps\/probe: property 'notification-tap-observed' is asserted but its IMPLEMENTATION is gone/);
   });
 
   // apps/subly is the frozen legacy rail-prover (39-CHASSIS §4 cut 1): it

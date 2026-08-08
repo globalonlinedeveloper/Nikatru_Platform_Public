@@ -90,6 +90,10 @@ const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 /** App-relative: resolved under the brick AND under every stamped app. */
 const PROP_TEST = 'test/chassis_properties_test.dart';
 const APP_ROOT = 'lib/app.dart';
+// [13]T-9. The subscription itself, app-relative: every stamped app carries its
+// own copy, and this one file is enough to make the tap loop silent again
+// without a single test going red. (`MAIN` is already declared above.)
+const TAP_OBSERVER = 'lib/state/notification_tap_observer.dart';
 const PROVIDERS = 'lib/state/providers.dart';
 const SETTINGS = 'lib/features/settings/settings_screen.dart';
 const ROUTER = 'lib/core/router.dart';
@@ -870,6 +874,49 @@ const REQUIRED_COVERAGE = [
       'parameter); the widget\'s own kIsWeb read is not. Closing it needs `isWeb` as an injectable seam ' +
       'value — a [2]C-1/C-7 edit. Declared 2026-08-03.',
     why: 'a reminder the platform cannot schedule and the app never mentions is a switch that reads ON over a device that says nothing, on three of six platforms',
+  },
+  {
+    // ── [13]T-9 · THE TAP LOOP, IN THE TEMPLATE ─────────────────────────────
+    //
+    // 🔴 THE MEASURED GAP. The tap loop was wired into `apps/subly` and stopped
+    // there. The brick carried the whole OUTBOUND rail — `notificationService
+    // Provider`, `applyReminderChoice`, `resyncOnStart`, the platform matrix,
+    // the settings toggle — and had NO subscriber to `notificationTaps()`
+    // anywhere. So app #2 through #50 were born able to wake a user at 09:00 and
+    // unable to notice they answered, and `notification_opened` had zero
+    // emitters in every app but one.
+    //
+    // ⚠️ AND `assert-capability-register.mjs` COULD NOT SAY SO: its `emitter`
+    // for this surface is pinned to `apps/subly/lib/state/analytics_funnel.dart`
+    // (a real file, a real caller), so the register stayed green about a
+    // capability the template did not have. A guard pointed at one app cannot
+    // answer a question about the factory — which is why this anchor set is
+    // app-relative and therefore re-checked for every stamped app.
+    //
+    // FIVE anchors across FOUR files, because each one alone leaves the other
+    // three looking healthy while the loop is dead:
+    //   · the MOUNT in app.dart — the gate widget existing but unplaced is the
+    //     dead-control shape, and `class _NotificationTapGate` would match it;
+    //   · the CONSTRUCTION in app.dart — the mount with an empty gate is a
+    //     wrapper that forwards its child;
+    //   · the SUBSCRIPTION in the observer — the only line that makes the OS
+    //     stream reach anything;
+    //   · the single-instance OVERRIDE in main.dart — without it the tree gets a
+    //     second, uninitialised adapter whose stream is silent forever;
+    //   · the widget limb of the property test — the unit chain passes with the
+    //     gate deleted from app.dart, so the limb that pushes a real tap through
+    //     the stamped app root is the one that cannot be faked.
+    key: 'notification-tap-observed',
+    group: /group\(\s*'property: notification-tap-observed'/,
+    sources: [
+      { file: APP_ROOT, re: /child:\s*_NotificationTapGate\(/, what: 'app.dart must MOUNT the tap gate — a widget declared and never placed leaves the tap stream with no subscriber, which is indistinguishable from no tap at all' },
+      { file: APP_ROOT, re: /NotificationTapObserver\(\s*\n?\s*service:/, what: 'the gate must really CONSTRUCT the observer over the notification seam; a gate that only forwards its child is a mount with nothing behind it' },
+      { file: TAP_OBSERVER, re: /notificationTaps\(\)\.listen\(/, what: 'the observer must SUBSCRIBE — this single line is the entire inbound half, and without it the adapter delivers taps to nobody' },
+      { file: TAP_OBSERVER, re: /kEvent\s*=\s*'notification_opened'/, what: 'the emitted event must be `notification_opened` — the taxonomy name the funnel is built on, not an app-invented one' },
+      { file: MAIN, re: /notificationServiceProvider\.overrideWithValue\(\s*\n?\s*notifications,?\s*\n?\s*\)/, what: 'main.dart must hand the tree the adapter it INITIALISED — the default provider body builds a second instance whose tap stream is silent forever, and nothing about that looks wrong' },
+      { file: PROP_TEST, re: /notes\.taps\.add\(/, what: 'the property must push a tap through the STAMPED APP ROOT — the real-classes limb stays green with the gate deleted from app.dart, so only this limb can tell an app that observes taps from one that merely could' },
+    ],
+    why: 'a reminder that opens nothing when tapped is a dead feature reporting healthy, and it is the half of the notification seam a stamped app could not have',
   },
   {
     key: 'locale-actually-switches',

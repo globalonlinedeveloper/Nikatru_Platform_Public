@@ -60,8 +60,20 @@ import 'package:{{app_id.snakeCase()}}/features/settings/settings_screen.dart';
 // [pipeline T-8] The platform capability matrix, so the no-silent-channel loop
 // derives its expectation from the same source the widget reads.
 import 'package:nikatru_notifications/nikatru_notifications.dart';
+// [13]T-9 THE REAL ADAPTER AND ITS TEST SEAM, and `src/` is not a shortcut: the
+// barrel exports the FACTORY (`createLocalNotificationService`) because that is
+// all an app should reach for, while the class and its `NotificationPlugin` port
+// are what let a test drive the real registration without a platform channel.
+// Importing the factory instead would test nothing — it hands back an object
+// whose plugin cannot be substituted, so `init()` would reach the OS and the tap
+// could never be simulated. The alternative, a fake `core.NotificationService`,
+// is used by the SECOND limb below; on its own it would prove the observer
+// works over a stream this repo wrote and say nothing about the adapter that
+// has to fill it.
+import 'package:nikatru_notifications/src/local_notification_service_io.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:{{app_id.snakeCase()}}/state/money_providers.dart';
+import 'package:{{app_id.snakeCase()}}/state/notification_tap_observer.dart';
 import 'package:{{app_id.snakeCase()}}/state/providers.dart';
 
 /// In-memory store: `PrefsKeyValueStore` needs a platform channel that does not
@@ -109,6 +121,14 @@ class _FakeNotifications implements core.NotificationService {
   /// [13]T-9 — the tap channel, as a controller a test can push through, so a
   /// stamped app's own tests can drive the inbound half rather than only the
   /// outbound one.
+  ///
+  /// 🔴 IT HAD NO CONSUMER UNTIL THE `notification-tap-observed` PROPERTY
+  /// LANDED, and that is worth recording rather than quietly fixing: a fake
+  /// exposing a channel nothing reads is capability-shaped scaffolding, and it
+  /// reads exactly like coverage while proving nothing. The widget limb of that
+  /// property pushes a tap through this controller and asserts
+  /// `notification_opened` reaches the wire, which is what makes it a seam
+  /// rather than a field.
   final StreamController<core.NotificationTap> taps =
       StreamController<core.NotificationTap>.broadcast();
 
@@ -231,12 +251,19 @@ ProviderContainer _analyticsContainer({
   required _FakeEventTransport events,
   required _FakeConsentTransport consent,
   bool enabled = true,
+  core.NotificationService? notifications,
 }) => ProviderContainer(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
     analyticsEnabledProvider.overrideWithValue(enabled),
     eventTransportProvider.overrideWithValue(events),
     consentTransportProvider.overrideWithValue(consent),
+    // [13]T-9. Same reason as `_container`'s: the real service reaches a
+    // platform channel a widget test has not got — and this is also the seam the
+    // tap property pushes through, because `main.dart` overrides exactly this
+    // provider with the one adapter it initialised.
+    if (notifications != null)
+      notificationServiceProvider.overrideWithValue(notifications),
   ],
 );
 
@@ -3607,6 +3634,259 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // [13]T-9 — A NOTIFICATION TAP IS OBSERVABLE END TO END, IN A STAMPED APP.
+  //
+  // 🔴 WHAT WAS BROKEN, MEASURED. The tap loop was wired into `apps/subly` and
+  // nowhere else. The template carried the whole OUTBOUND rail — schedule,
+  // re-arm on boot, cancel, the platform matrix, the settings toggle — and had
+  // NO subscriber to `core.NotificationService.notificationTaps()` anywhere.
+  // So every app this factory stamps could wake a user at 09:00 and learn
+  // nothing at all when they tapped it, and `notification_opened` had zero
+  // emitters in every app but one.
+  //
+  // NOTHING WENT RED, and nothing could: a tap delivered to no listener is
+  // indistinguishable from no tap at all. That is the "fail-closed seam with no
+  // proven open path" shape this repo has now shipped five times.
+  //
+  // TWO LIMBS, and they fail for different reasons on purpose:
+  //   1. THE CHAIN — the REAL `LocalNotificationService` over a fake plugin, the
+  //      REAL `NotificationTapObserver`, a recording sink. Delete the tap sink
+  //      from the adapter's `initialize` call and limb 1 goes red while every
+  //      outbound test in the tree stays green, which is exactly how the gap
+  //      survived in the first place.
+  //   2. THE MOUNT — the stamped app root, its consent gate, its real recorder
+  //      and its real transport. Delete `_NotificationTapGate` from app.dart and
+  //      limb 1 stays perfectly green: the chain is intact and nothing in the
+  //      app is holding it. Limb 2 is the only assertion that can tell an app
+  //      that OBSERVES taps from an app that merely COULD.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('property: notification-tap-observed', () {
+    ({
+      _FakeTapPlugin plugin,
+      _RecordingAnalytics analytics,
+      LocalNotificationService service,
+      NotificationTapObserver observer,
+    })
+    chain({TargetPlatform platform = TargetPlatform.android}) {
+      final _FakeTapPlugin plugin = _FakeTapPlugin();
+      final _RecordingAnalytics analytics = _RecordingAnalytics();
+      final LocalNotificationService service = LocalNotificationService(
+        plugin: plugin,
+        platform: platform,
+        // Pinned so `init()` cannot depend on the machine the suite runs on.
+        localTimezone: () async => 'UTC',
+      );
+      return (
+        plugin: plugin,
+        analytics: analytics,
+        service: service,
+        observer: NotificationTapObserver(
+          service: service,
+          analytics: analytics,
+        ),
+      );
+    }
+
+    test(
+      'init REGISTERS a tap callback with the plugin — the whole gap',
+      () async {
+        final w = chain();
+        expect(
+          w.plugin.onTap,
+          isNull,
+          reason: 'nothing may be registered before init()',
+        );
+
+        await w.service.init();
+
+        expect(
+          w.plugin.onTap,
+          isNotNull,
+          reason:
+              'init() must hand the plugin port a tap sink, or a tap the OS '
+              'delivers reaches no Dart code at all',
+        );
+      },
+    );
+
+    test('a simulated tap arrives as notification_opened{kind}', () async {
+      final w = chain();
+      await w.service.init();
+      w.observer.start();
+
+      w.plugin.simulateTap(id: 7, payload: 'reminder');
+      // The tap crosses a Stream and the emitter awaits its sink, so let both
+      // microtask hops run before asserting.
+      await Future<void>.delayed(Duration.zero);
+
+      expect(w.analytics.logged.length, 1);
+      expect(w.analytics.logged.single.event, 'notification_opened');
+      expect(w.analytics.logged.single.params, <String, Object?>{
+        'kind': 'reminder',
+      });
+    });
+
+    test('nothing is logged until the observer is started', () async {
+      final w = chain();
+      await w.service.init();
+
+      w.plugin.simulateTap(payload: 'reminder');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        w.analytics.logged,
+        isEmpty,
+        reason:
+            'the listener is consent-gated in app.dart; a tap before that '
+            'decision must not be recorded',
+      );
+    });
+
+    test('start() is idempotent — a rebuild cannot double-log a tap', () async {
+      final w = chain();
+      await w.service.init();
+      w.observer
+        ..start()
+        ..start()
+        ..start();
+
+      w.plugin.simulateTap(payload: 'reminder');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(w.analytics.logged.length, 1);
+    });
+
+    test('stop() ends the listener', () async {
+      final w = chain();
+      await w.service.init();
+      w.observer.start();
+      expect(w.observer.isListening, isTrue);
+
+      await w.observer.stop();
+      expect(w.observer.isListening, isFalse);
+
+      w.plugin.simulateTap(payload: 'reminder');
+      await Future<void>.delayed(Duration.zero);
+      expect(w.analytics.logged, isEmpty);
+    });
+
+    // `notification_opened{kind}` is a D1 column. The payload round-trips
+    // through the OS and is attacker-influencable on some platforms, so what
+    // reaches the column must be an ENUMERABLE code and never free text. The
+    // sanitiser lives at the seam (core's `NotificationTap.kind`); these pin the
+    // stamped app to it rather than to a caller that could forget.
+    for (final ({String? payload, String expected}) c
+        in <({String? payload, String expected})>[
+          (payload: 'reminder', expected: 'reminder'),
+          (payload: null, expected: 'other'),
+          (payload: '', expected: 'other'),
+          (payload: 'Reminder', expected: 'other'), // uppercase is not a code
+          (payload: 'a b', expected: 'other'), // whitespace is not a code
+          (payload: '{"sql":"drop"}', expected: 'other'),
+          (payload: 'x' * 33, expected: 'other'), // over the length cap
+        ]) {
+      test('payload ${c.payload == null ? 'null' : '"${c.payload}"'} '
+          '→ kind "${c.expected}"', () async {
+        final w = chain();
+        await w.service.init();
+        w.observer.start();
+
+        w.plugin.simulateTap(payload: c.payload);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(w.analytics.logged.single.params!['kind'], c.expected);
+      });
+    }
+
+    test(
+      'on a platform that cannot notify, init registers nothing and the stream '
+      'stays silent',
+      () async {
+        // Windows on the pinned flutter_local_notifications 17.x. The stream
+        // must EXIST and be silent rather than be absent, so no caller needs a
+        // platform check of its own.
+        final w = chain(platform: TargetPlatform.windows);
+        await w.service.init();
+        w.observer.start();
+
+        expect(w.plugin.initializeCalls, 0);
+        expect(w.plugin.onTap, isNull);
+        expect(
+          w.service.notificationTaps(),
+          isA<Stream<core.NotificationTap>>(),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(w.analytics.logged, isEmpty);
+      },
+    );
+
+    // ── LIMB 2 · THE MOUNT ────────────────────────────────────────────────
+    testWidgets(
+      'the stamped app OBSERVES a tap — consent-gated, onto the real wire',
+      (WidgetTester tester) async {
+        final _FakeEventTransport events = _FakeEventTransport();
+        final _FakeNotifications notes = _FakeNotifications();
+        final ProviderContainer container = _analyticsContainer(
+          store: _onboardedStore(),
+          events: events,
+          consent: _FakeConsentTransport(),
+          notifications: notes,
+        );
+        addTearDown(container.dispose);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const {{app_id.pascalCase()}}App(),
+          ),
+        );
+        await _turns(tester, 24);
+
+        Future<List<Map<String, Object?>>> tapAndRead(String payload) async {
+          notes.taps.add(core.NotificationTap(id: 7, payload: payload));
+          await _turns(tester, 12);
+          await (await container.read(analyticsProvider.future)).flush();
+          return events.sent
+              .where(
+                (Map<String, Object?> e) => e['event'] == 'notification_opened',
+              )
+              .toList();
+        }
+
+        // BEFORE the answer. `notification_opened` is an observation about a
+        // person; recording it while the prompt is still on screen is collecting
+        // without permission, and it is the failure a bare "does the event
+        // arrive" assertion would never see.
+        expect(find.text('Allow'), findsOneWidget);
+        expect(
+          await tapAndRead('reminder'),
+          isEmpty,
+          reason:
+              'a tap recorded before consent is data collected without '
+              'permission, and no later decision can un-collect it',
+        );
+
+        await tester.tap(find.text('Allow'));
+        await _turns(tester, 24);
+
+        final List<Map<String, Object?>> opened = await tapAndRead('reminder');
+        expect(
+          opened,
+          hasLength(1),
+          reason:
+              'with consent granted a tap must reach the wire — this is the '
+              'assertion that goes red if _NotificationTapGate is not mounted '
+              'in app.dart, and the ONLY one in the tree that can',
+        );
+        expect(
+          (opened.single['params']! as Map<String, Object?>)['kind'],
+          'reminder',
+        );
+      },
+    );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // [pipeline 11]E-6 — THE PURCHASE FUNNEL IS A SET, NOT FOUR CALLS.
   //
   // 🔴 WHAT WAS ALREADY TRUE, AND WHY IT WAS NOT ENOUGH. All four calls fire
@@ -3915,13 +4195,83 @@ void main() {
 class _RecordingAnalytics implements core.Analytics {
   final List<String> events = <String>[];
 
+  /// [13]T-9 — the PARAMS too, not only the names. `notification_opened` is
+  /// worthless without its `kind`, and an assertion on the name alone would pass
+  /// against an emitter that shipped the raw OS payload into a D1 column.
+  final List<({String event, Map<String, Object?>? params})> logged =
+      <({String event, Map<String, Object?>? params})>[];
+
   @override
-  Future<void> log(String event, {Map<String, Object?>? params}) async =>
-      events.add(event);
+  Future<void> log(String event, {Map<String, Object?>? params}) async {
+    events.add(event);
+    logged.add((event: event, params: params));
+  }
 
   @override
   Future<void> flush() async {}
 
   @override
-  Future<void> purge() async => events.clear();
+  Future<void> purge() async {
+    events.clear();
+    logged.clear();
+  }
+}
+
+/// [13]T-9 — the notification PLUGIN, faked at the one place that matters: it
+/// keeps whatever tap sink the service handed over at `initialize`, and refuses
+/// to invent one.
+///
+/// This is the seam `LocalNotificationService` exposes for exactly this purpose,
+/// so the limb below drives the REAL adapter — the real platform guard, the real
+/// broadcast controller, the real `NotificationTap.kind` sanitiser — with only
+/// the vendor plugin replaced.
+class _FakeTapPlugin implements NotificationPlugin {
+  void Function(core.NotificationTap tap)? onTap;
+  int initializeCalls = 0;
+
+  @override
+  Future<void> initialize(void Function(core.NotificationTap tap) onTap) async {
+    initializeCalls++;
+    this.onTap = onTap;
+  }
+
+  /// 🔴 THROWS rather than no-ops when nothing registered. A fake that silently
+  /// swallowed the tap would let a missing registration pass as a green test —
+  /// the precise failure this property is a response to.
+  void simulateTap({int id = 7, String? payload}) {
+    final void Function(core.NotificationTap tap)? sink = onTap;
+    if (sink == null) {
+      throw StateError(
+        'the service registered NO tap callback, so a real tap reaches nothing',
+      );
+    }
+    sink(core.NotificationTap(id: id, payload: payload));
+  }
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> showNow(int id, String title, String body) async {}
+
+  /// ⚠️ `Object when`, not `tz.TZDateTime`. A supertype is a legal override and
+  /// it is the deliberate one here: naming the timezone type would make every
+  /// stamped app declare a dependency on `timezone`, a vendor
+  /// `packages/notifications` exists to wrap — the exact bypass
+  /// `assert-package-boundaries.mjs` polices. Nothing in this property looks at
+  /// the schedule, so the type is not load-bearing; the dependency would have
+  /// been.
+  @override
+  Future<void> scheduleDaily(
+    int id,
+    String title,
+    String body,
+    Object when,
+  ) async {}
+
+  @override
+  Future<void> cancel(int id) async {}
+
+  @override
+  Future<void> cancelAll() async {}
 }

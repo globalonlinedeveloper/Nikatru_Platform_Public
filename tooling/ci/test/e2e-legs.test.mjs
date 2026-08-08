@@ -14,7 +14,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -65,25 +65,29 @@ function withTree(mutate, fn) {
 }
 
 describe('the real tree', () => {
-  test('passes, and reports the honest 2-of-6', () => {
+  test('passes, and reports the honest 3-of-6', () => {
     withTree(
       () => {},
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /2 of 6 golden-path leg\(s\) claimed asserted and 2 proven/);
+        assert.match(r.stdout, /3 of 6 golden-path leg\(s\) claimed asserted and 3 proven/);
         assert.match(r.stdout, /equality holds/);
       },
     );
   });
 
-  test('the four uncovered legs PRINT — a gap nobody sees is a gap nobody closes', () => {
+  test('the three uncovered legs PRINT — a gap nobody sees is a gap nobody closes', () => {
     withTree(
       () => {},
       (r) => {
-        assert.match(r.stdout, /4 of 6 golden-path leg\(s\) are NOT proven/);
-        for (const id of ['purchase-sandbox', 'entitlement-flip', 'feature-unlock', 'account-delete-purges']) {
+        assert.match(r.stdout, /3 of 6 golden-path leg\(s\) are NOT proven/);
+        for (const id of ['purchase-sandbox', 'entitlement-flip', 'feature-unlock']) {
           assert.match(r.stdout, new RegExp(id));
         }
+        // …and the leg that SHIPPED on 2026-08-08 is no longer among them. This
+        // half of the assertion is the one that would have caught a promotion
+        // that edited the status and left the leg uncovered.
+        assert.doesNotMatch(r.stdout, /· account-delete-purges/);
       },
     );
   });
@@ -148,6 +152,53 @@ describe('the equality — a claim the suite does not carry', () => {
     );
   });
 
+  test('🔴 REMOVING THE DELETE CONTROL FROM THE SUITE TURNS LEG 6 RED', () => {
+    // The mutation that matters for the leg promoted on 2026-08-08. The register
+    // says the nightly walks an in-app account deletion; delete the key that
+    // finds the control and the register is claiming a walk the suite no longer
+    // takes. Same direction as the onboarding case above, on the newest claim —
+    // which is the one nobody has watched break yet.
+    withTree(
+      (root) => {
+        const p = join(root, SUITE);
+        writeFileSync(
+          p,
+          readFileSync(p, 'utf8').replaceAll('E2EKeys.settingsDeleteAccount', 'E2EKeys.somethingElse'),
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`account-delete-purges` claims to be asserted/);
+        assert.match(r.stderr, /settingsDeleteAccount/);
+      },
+    );
+  });
+
+  test('🔴 AN ANCHOR THE REGISTER INVENTS, THAT IS NOT IN THE SUITE, IS REJECTED', () => {
+    // The other side of the same equality, mutated from the REGISTER rather than
+    // from the suite: a leg marked asserted whose anchor string simply is not in
+    // the test source. Without this, "asserted" could be bought by writing a
+    // convincing-looking anchor for a test nobody wrote — which is precisely the
+    // "the record names an E2E" acceptance N-6 already had and that could not
+    // fail.
+    withTree(
+      (root) => {
+        const reg = readReg(root);
+        reg.legs.find((l) => l.id === 'account-delete-purges').anchors = [
+          "shot('20-account-deleted')",
+          'E2EKeys.aKeyNobodyEverWrote',
+        ];
+        writeReg(root, reg);
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`account-delete-purges` claims to be asserted/);
+        assert.match(r.stderr, /1 of its 2 anchor\(s\)/);
+        assert.match(r.stderr, /aKeyNobodyEverWrote/);
+      },
+    );
+  });
+
   test('an asserted leg with NO anchors is rejected, not counted', () => {
     withTree(
       (root) => {
@@ -184,56 +235,70 @@ describe('a blocked leg`s excuse is itself checked', () => {
     );
   });
 
-  // 🔄 RESTATED 2026-08-04, THE SECOND TIME THIS GUARD KILLED ITS OWN EXCUSE.
-  // v1 was "apps/subly has no delete-account call site" ([ADR 027] shipped the
-  // control). v2 was "no deployed route erases apps/subly own database", read as
-  // two facts about services/ — and BOTH went false on 2026-08-04:
-  // services/subly-api ships DELETE /v1/account behind an asymmetric-only
-  // boundary, and the shared route relays to it before deleting the identity.
-  // The guard failed the build for it, exactly as designed, and the excuse was
-  // replaced rather than edited. What still blocks the LEG is that nothing in the
-  // nightly walks it — so the predicate now reads the E2E SURFACE, and the day a
-  // step there names `/v1/account` this excuse dies too.
-  test('🔴 A DELETE STEP IN THE INTEGRATION SUITE KILLS THE DELETE-LEG EXCUSE', () => {
-    withTree(
-      (root) => {
-        const p = join(root, SUITE);
-        writeFileSync(p, `${readFileSync(p, 'utf8')}
-// step
-final erase = '/v1/account';
-`);
-      },
-      (r) => {
-        assert.equal(r.status, 1);
-        assert.match(r.stderr, /`account-delete-purges` claims to be blocked/);
-        assert.match(r.stderr, /has SHIPPED/);
-      },
-    );
+  // 🔄 THE DELETE LEG'S EXCUSE HAS DIED THREE TIMES, AND THE THIRD DEATH IS THE
+  // LEG SHIPPING.
+  //   v1 "apps/subly has no delete-account call site" — [ADR 027] shipped the control.
+  //   v2 "no deployed route erases apps/subly own database" — services/subly-api
+  //      shipped DELETE /v1/account and the shared route began relaying to it.
+  //   v3 "no e2e step exercises the erasure route against the deployed API" —
+  //      2026-08-08: app_test.dart deletes a real account from inside the running
+  //      app and tooling/e2e/verify_purged.mjs re-reads both stores afterwards.
+  //
+  // So the leg is `asserted` now and the v3 predicate is not consulted on a
+  // passing run. The tests below keep it honest anyway, because the register is
+  // one edit away from consulting it again — and a shipped leg quietly demoted
+  // back to "blocked" is the regression these three catch.
+  //
+  // ⚠️ EVERY ONE OF THEM DEMOTES THE LEG FIRST. A test that asserted exit 0
+  // against the register as it stands would be asserting nothing about this
+  // predicate at all, which is the assertion-that-cannot-fail this repo deletes.
+
+  /** Put leg 6 back on its dead excuse — the shape of a bad-faith (or careless)
+   *  demotion, and the only input under which the v3 predicate still runs. */
+  const demoteDeleteLeg = (root) => {
+    const reg = readReg(root);
+    const leg = reg.legs.find((l) => l.id === 'account-delete-purges');
+    leg.status = 'blocked';
+    leg.blockedBy = '[7] no e2e step exercises the erasure route against the deployed API';
+    delete leg.anchors;
+    writeReg(root, reg);
+  };
+
+  /** Turn every REAL mention of the erasure route in the E2E surface into a
+   *  comment, and prove the mutation actually hit something. Without the count
+   *  assertion this helper would silently become a no-op the day the route is
+   *  spelled differently, and the two tests using it would pass over an
+   *  unmutated tree — the fixture-that-encodes-the-same-belief failure. */
+  const commentOutTheRoute = (root) => {
+    let hits = 0;
+    const files = [join(root, SUITE), ...readdirSync(join(root, E2E_HARNESS)).map((f) => join(root, E2E_HARNESS, f))];
+    for (const p of files) {
+      if (!/\.(mjs|js|ts|dart)$/.test(p)) continue;
+      const src = readFileSync(p, 'utf8');
+      if (!src.includes('/v1/account')) continue;
+      hits += 1;
+      writeFileSync(p, `${src.replaceAll('/v1/account', '/v1/redacted')}\n// DELETE /v1/account\n`);
+    }
+    assert.ok(hits > 0, 'no file in the E2E surface named /v1/account — this mutation tested nothing');
+  };
+
+  test('🔴 THE DEAD EXCUSE CANNOT BE PUT BACK — demoting the leg fails the build', () => {
+    withTree(demoteDeleteLeg, (r) => {
+      assert.equal(r.status, 1, 'a shipped leg was demoted back onto a dead excuse and the build stayed green');
+      assert.match(r.stderr, /`account-delete-purges` claims to be blocked/);
+      assert.match(r.stderr, /has SHIPPED/);
+    });
   });
 
-  test('🔴 A DELETE STEP IN THE tooling/e2e HARNESS KILLS IT TOO', () => {
+  test('a COMMENT mentioning the route does not resurrect the excuse', () => {
+    // The comment-strip trap, fourth occurrence in this repo. With the real call
+    // removed and only prose about it left, the excuse IS true again — so the
+    // guard must accept the demotion. If it did not, a harness that merely
+    // NARRATES an erasure step would read as one that performs it.
     withTree(
       (root) => {
-        writeFileSync(join(root, E2E_HARNESS, 'erase_user.mjs'), "await fetch(api + '/v1/account');\n");
-      },
-      (r) => {
-        assert.equal(r.status, 1);
-        assert.match(r.stderr, /`account-delete-purges` claims to be blocked/);
-        assert.match(r.stderr, /has SHIPPED/);
-      },
-    );
-  });
-
-  test('a COMMENT mentioning the route does not kill the excuse', () => {
-    // The comment-strip trap, fourth occurrence in this repo. A harness file that
-    // NARRATES what it does not yet do would otherwise be read as evidence that
-    // it does — and the excuse would die while the leg stayed unproven.
-    withTree(
-      (root) => {
-        writeFileSync(
-          join(root, E2E_HARNESS, 'notes.mjs'),
-          '// TODO: one day call DELETE /v1/account here and re-read subly_db\n',
-        );
+        demoteDeleteLeg(root);
+        commentOutTheRoute(root);
       },
       (r) => {
         assert.equal(r.status, 0, r.stderr);
@@ -246,8 +311,30 @@ final erase = '/v1/account';
     // A guard that fired on any new file would be noise, and noise is what gets a
     // guard switched off.
     withTree(
-      (root) => writeFileSync(join(root, E2E_HARNESS, 'unrelated.mjs'), 'export default 1;\n'),
+      (root) => {
+        demoteDeleteLeg(root);
+        commentOutTheRoute(root);
+        writeFileSync(join(root, E2E_HARNESS, 'unrelated.mjs'), 'export default 1;\n');
+      },
       (r) => assert.equal(r.status, 0, r.stderr),
+    );
+  });
+
+  test('🔴 A DELETE STEP ANYWHERE IN THE HARNESS KILLS IT AGAIN', () => {
+    // …and one real call site is enough, from any file in the surface. This is
+    // the v3 predicate's positive direction, re-proved on top of the neutralised
+    // tree so it cannot pass on the route that is already there.
+    withTree(
+      (root) => {
+        demoteDeleteLeg(root);
+        commentOutTheRoute(root);
+        writeFileSync(join(root, E2E_HARNESS, 'erase_user.mjs'), "await fetch(api + '/v1/account');\n");
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`account-delete-purges` claims to be blocked/);
+        assert.match(r.stderr, /has SHIPPED/);
+      },
     );
   });
 

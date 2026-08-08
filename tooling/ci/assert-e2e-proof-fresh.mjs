@@ -128,16 +128,27 @@ const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
  *  fires.
  *
  *  Each entry is an expression that must survive in the comment-stripped
- *  workflow. They are the three things that make a green e2e.yml run mean "the
+ *  workflow. They are the four things that make a green e2e.yml run mean "the
  *  golden path was walked against production":
  *    · `flutter drive`                        — the suite is actually driven
  *    · the integration target                 — and it is THE named E2E, not some other target
  *    · tooling/e2e/verify_row.mjs             — and the write really reached live D1
- *  Without the third, a green run proves the UI moved and proves nothing landed. */
+ *    · tooling/e2e/verify_purged.mjs          — and the ERASURE really emptied both stores
+ *  Without the third, a green run proves the UI moved and proves nothing landed.
+ *
+ *  🔴 THE FOURTH WAS ADDED 2026-08-08 WITH leg 6, AND IT GUARDS THE ONE CLAIM
+ *  THE SUITE CANNOT MAKE FOR ITSELF. tooling/e2e-leg-register.json now marks
+ *  `account-delete-purges` asserted, and its anchors resolve in app_test.dart —
+ *  which proves the app SAID "Account deleted". A server that erased nothing and
+ *  answered `{ ok: true }` produces the identical screen and the identical green
+ *  anchors, so deleting this step from the workflow would leave the register
+ *  claiming a leg nothing checks, with assert-e2e-legs.mjs entirely satisfied.
+ *  That is precisely the overclaim N-6 was failing on, one layer further out. */
 export const REQUIRED_WORK = [
   'flutter drive',
   'integration_test/app_test.dart',
   'tooling/e2e/verify_row.mjs',
+  'tooling/e2e/verify_purged.mjs',
 ];
 
 function fail(msg) {
