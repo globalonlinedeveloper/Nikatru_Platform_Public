@@ -2095,7 +2095,18 @@ void main() {
         );
       }
       // …and the real default is what appeared instead.
-      expect(find.text('Every subscription,\none clean board'), findsOneWidget);
+      //
+      // ⚠️ THE HARD LINE BREAK IS GONE FROM THIS VALUE (P4 L6, 2026-08-09). It
+      // read 'Every subscription,\none clean board' while the copy was a Dart
+      // literal; the arb key `sublyOnboarding1Title` that replaced it is
+      // 'Every subscription, one clean board', because a break positioned for
+      // an English phrase lands mid-clause in any translation of a different
+      // length (WORKORDER §1). The literal stays a LITERAL here rather than
+      // becoming `l10n.sublyOnboarding1Title`: the property under test is that a
+      // real sentence reached the user instead of the raw config key, and
+      // comparing the screen against the same getter the screen calls would
+      // pass with both of them wrong.
+      expect(find.text('Every subscription, one clean board'), findsOneWidget);
     });
 
     testWidgets('finishing it moves the user on, and it does not come back', (
@@ -2189,8 +2200,17 @@ void main() {
       await _turnsAndSettleRoute(tester);
 
       expect(find.text('Track your spend'), findsOneWidget);
+      // 🔴 RETARGETED WITH THE COPY, AND THAT IS THE WHOLE POINT OF TOUCHING IT.
+      // This is a `findsNothing` against an EXACT string, so the moment the
+      // designed default stopped containing a `\n` this assertion started
+      // passing for the wrong reason — it would find nothing whether the
+      // override worked or not, and a broken override would ship green. A
+      // negative assertion has to be re-pointed at the new value every time the
+      // value moves, or it quietly stops being an assertion. Verified by
+      // running it against the pre-fix screen: with the override path removed
+      // this case goes red, which it did not while the stale string was here.
       expect(
-        find.text('Every subscription,\none clean board'),
+        find.text('Every subscription, one clean board'),
         findsNothing,
         reason:
             'the override was ignored, so every app in the portfolio would '
