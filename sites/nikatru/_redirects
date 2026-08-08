@@ -1,0 +1,6 @@
+# Apex app paths — owner decision 2026-08-08: nikatru.com/<app> is the permanent
+# public address for an app's commerce/product surface, so Paddle domain approval
+# is a one-time act on the apex, never a per-app submission. The path serves the
+# hub's per-app page today; the checkout increment (behind OD-6.1) upgrades it.
+/subly /apps/subly.html 301
+/subly/ /apps/subly.html 301

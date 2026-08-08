@@ -204,6 +204,35 @@ const submitWorkflow = ({ jobRunsScript = true } = {}) =>
     '',
   ].join('\n');
 
+/** `submission.recipeScript`'s fixture — the PACKAGING half of a submission
+ *  path. It lives in a workflow of its own on purpose: the real one is produced
+ *  in the BUILD lane, beside the bundle it describes, while the upload happens
+ *  in the submission workflow, and a fixture that ran both from one file could
+ *  not tell "some workflow invokes it" from "the submission job invokes it".
+ *
+ *  `invoked:false` keeps the file but replaces the call with a COMMENT naming
+ *  it. That is the decoy this repo has already shipped twice: a bare text scan
+ *  reads its own documentation as an invocation, so a commented-out packaging
+ *  step would report as wired. */
+const RECIPE_SCRIPT = 'tooling/release/generate-thing.mjs';
+const PACKAGE_WORKFLOW = '.github/workflows/package-thing.yml';
+const packageWorkflow = ({ invoked = true } = {}) =>
+  [
+    'name: Package',
+    'on:',
+    '  workflow_dispatch:',
+    'jobs:',
+    '  package:',
+    '    runs-on: ubuntu-24.04',
+    '    steps:',
+    invoked ? `      - run: node ${RECIPE_SCRIPT} --app subly` : `      # - run: node ${RECIPE_SCRIPT} --app subly`,
+    invoked ? '' : '      - run: echo nothing',
+    '',
+  ]
+    .filter((l) => l !== '')
+    .join('\n')
+    .concat('\n');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 9's fixtures — the register's Android signing declaration vs the REAL
 // build file. Off by default (`withAndroid`), so the ~50 cases above keep their
@@ -363,6 +392,11 @@ function tree({
   submissionScriptOnDisk = true,
   submissionWorkflowOnDisk = true,
   jobRunsScript = true,
+  // The PACKAGING half of a submission block. Off by default for the same
+  // reason `withSubmission` is: every existing case keeps its exact output.
+  withRecipeScript = false,
+  recipeScriptOnDisk = true,
+  recipeScriptInvoked = true,
   // Extra files written into the fixture root, for cases that need a real ADR
   // on disk beside the harness marker.
   extraFiles = {},
@@ -408,6 +442,7 @@ function tree({
       job: 'dry-run',
       runbook: 'company/runbooks/store-submission-thing.md',
     };
+    if (withRecipeScript) register.channels[1].submission.recipeScript = RECIPE_SCRIPT;
   }
   // Pushed BEFORE `mutate` so the existing knob can break section 9's row the
   // same way it breaks every other one — one mutation, one attributable failure.
@@ -439,6 +474,10 @@ function tree({
   if (withSubmission) {
     if (submissionScriptOnDisk) write(SUBMIT_SCRIPT, '// the submission path\n');
     if (submissionWorkflowOnDisk) write(SUBMIT_WORKFLOW, submitWorkflow({ jobRunsScript }));
+    if (withRecipeScript) {
+      if (recipeScriptOnDisk) write(RECIPE_SCRIPT, '// the packaging path\n');
+      write(PACKAGE_WORKFLOW, packageWorkflow({ invoked: recipeScriptInvoked }));
+    }
   }
   for (const [rel, body] of Object.entries(extraFiles)) write(rel, body);
   if (!omitRegister) {
@@ -1023,6 +1062,43 @@ describe('assert-channel-register — the lane\'s output vs the formats its chan
   test('a declared script is NOT reported as an orphan', () => {
     const { out } = run(tree({ withSubmission: true }));
     assert.doesNotMatch(out, /is a release script that NO channel row names/);
+  });
+
+  // ── `submission.recipeScript` — the PACKAGING half ────────────────────────
+  // A channel whose artifact has to be BUILT from a generated recipe before the
+  // submission verb has anything to upload. It is admitted to the orphan check's
+  // declared set, so it could have become a way to declare a release script into
+  // silence: name the path, never call it, and the orphan check stops
+  // complaining while nothing exercises the script. It is therefore held to a
+  // STRONGER standard than `script` — a workflow must actually invoke it — and
+  // these four cases are that standard's recorded failing input.
+  test('PASSES and counts the packaging step when it is declared, on disk and invoked', () => {
+    const { code, out } = run(tree({ withSubmission: true, withRecipeScript: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 packaging script\(s\) declared on a submission block and invoked by a workflow/);
+  });
+
+  test('FAILS when the packaging script is not on disk', () => {
+    const { code, out } = run(tree({ withSubmission: true, withRecipeScript: true, recipeScriptOnDisk: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names packaging script "tooling\/release\/generate-thing\.mjs", which does not exist/);
+  });
+
+  // 🔴 THE CASE THAT STOPS THIS FIELD BEING AN OPT-OUT. The script exists, it is
+  // declared, and the orphan check is therefore satisfied — and nothing runs it.
+  test('FAILS when the packaging script is declared and no workflow invokes it', () => {
+    const { code, out } = run(tree({ withSubmission: true, withRecipeScript: true, recipeScriptInvoked: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /and no workflow in \.github\/workflows invokes it/);
+    // ...and specifically NOT as an orphan: the declaration did its job and the
+    // stronger check is what caught it. Two messages for one defect would leave
+    // the reader guessing which limb is load-bearing.
+    assert.doesNotMatch(out, /generate-thing\.mjs is a release script that NO channel row names/);
+  });
+
+  test('a COMMENTED-OUT invocation does not count — the workflow scan strips prose', () => {
+    const { out } = run(tree({ withSubmission: true, withRecipeScript: true, recipeScriptInvoked: false }));
+    assert.doesNotMatch(out, /1 packaging script\(s\) declared/);
   });
 
   test('reads the format gap from an upload-artifact path glob, not only the build verb', () => {

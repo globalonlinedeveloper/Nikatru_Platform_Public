@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 
+import 'content_pane.dart';
+
 /// The app-neutral system screens — [pipeline C-13].
 ///
 /// These are the screens that are identical in all fifty apps: nothing here
@@ -85,49 +87,54 @@ class AppErrorScreen extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return Material(
       color: theme.colorScheme.surface,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                Icons.error_outline,
-                size: 48,
-                color: theme.colorScheme.error,
-              ),
+      // Was UNCONSTRAINED and vertically centred. Both were wrong here, and the
+      // second is the one that could actually break the screen: [details] is a
+      // stack trace, it is shown in debug, and a `Center`ed `Column` that grows
+      // past the viewport overflows — an error screen that renders the yellow
+      // overflow stripe is the failure this widget exists to replace. Top
+      // alignment cannot overflow upward, and the cap stops the message running
+      // 1600 px edge to edge on a desktop.
+      child: ContentPane.form(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: theme.textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            // Debug only — see [details].
+            if (details != null && !kReleaseMode) ...<Widget>[
               const SizedBox(height: 16),
               Text(
-                title,
-                style: theme.textTheme.titleLarge,
+                details!,
+                style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                style: theme.textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              // Debug only — see [details].
-              if (details != null && !kReleaseMode) ...<Widget>[
-                const SizedBox(height: 16),
-                Text(
-                  details!,
-                  style: theme.textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                  maxLines: 6,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-              if (onRetry != null) ...<Widget>[
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: onRetry,
-                  child: Text(retryLabel ?? 'Retry'),
-                ),
-              ],
             ],
-          ),
+            if (onRetry != null) ...<Widget>[
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: onRetry,
+                child: Text(retryLabel ?? 'Retry'),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -163,27 +170,28 @@ class NotFoundScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(title, style: theme.textTheme.headlineSmall),
+      // Also previously unconstrained. [attemptedLocation] is a URL the user
+      // typed, so it can be arbitrarily long — with no cap it set the width of
+      // the whole screen.
+      body: ContentPane.form(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(title, style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            if (attemptedLocation != null) ...<Widget>[
               const SizedBox(height: 8),
-              Text(
-                message,
-                style: theme.textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              if (attemptedLocation != null) ...<Widget>[
-                const SizedBox(height: 8),
-                Text(attemptedLocation!, style: theme.textTheme.bodySmall),
-              ],
-              const SizedBox(height: 24),
-              FilledButton(onPressed: onGoHome, child: Text(goHomeLabel)),
+              Text(attemptedLocation!, style: theme.textTheme.bodySmall),
             ],
-          ),
+            const SizedBox(height: 24),
+            FilledButton(onPressed: onGoHome, child: Text(goHomeLabel)),
+          ],
         ),
       ),
     );

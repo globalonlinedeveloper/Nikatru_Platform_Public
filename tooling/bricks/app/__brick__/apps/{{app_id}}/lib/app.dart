@@ -315,11 +315,16 @@ class _ConsentPrompt extends ConsumerWidget {
     return Positioned.fill(
       child: ColoredBox(
         color: Colors.black54,
+        // KEEPS `Center`, takes only the WIDTH from the chassis. This is a
+        // modal scrim over a dimmed app: sitting in the middle of the screen is
+        // the design, not an accident, so `ContentPane` (which pins to the top)
+        // would be the wrong primitive here. The 420 literal is gone either
+        // way — that was the copy, repeated in five other files.
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
               child: Material(
                 color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(20),
