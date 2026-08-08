@@ -5111,3 +5111,195 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-responsive-coverage', () => {
+  const LIB = 'apps/subly/lib';
+  const ROUTER = `${LIB}/core/router.dart`;
+  const TEST = 'apps/subly/test';
+
+  // 🔴 THE FIXTURE MIRRORS THE SHAPE OF THE REAL TREE, NOT A MINIATURE OF IT.
+  // The guard carries a REQUIRED_COVERAGE floor of 16 surfaces and 14 width test
+  // files, so a three-screen fixture would fail every case for a reason that has
+  // nothing to do with the behaviour under test — and a case that passes for the
+  // wrong reason is the same defect as one that cannot fail. Same reason the
+  // check-migrations and assert-stamp-properties fixtures above are full-size.
+  const N = 14;
+  const ids = Array.from({ length: N }, (_, i) => i + 1);
+  const screenFile = (i, dir = `s${i}`) => `${LIB}/features/${dir}/s${i}_screen.dart`;
+  const screenSrc = (i) => `class S${i}Screen extends StatelessWidget {\n  const S${i}Screen({super.key});\n}\n`;
+  const sheetFile = (n) => `${LIB}/features/${n}/${n}_sheet.dart`;
+  const sheetSrc = (fn) =>
+    `Future<void> ${fn}(BuildContext context) {\n  return showModalBottomSheet<void>(context: context, builder: (_) => const SizedBox());\n}\n`;
+
+  /** A test file that imports feature paths and pumps the named subjects. */
+  const testSrc = (imports, uses) =>
+    `${imports.map((p) => `import 'package:subly/${p}';`).join('\n')}\n\nvoid main() {\n` +
+    `${uses.map((u) => `  testWidgets('at 1920', (t) async { await pumpAt(t, kWide, ${u}); });`).join('\n')}\n}\n`;
+
+  /** The router. `extra` adds routes; `shell`/`error` model the two non-panes. */
+  const routerSrc = ({ screens = ids, extra = '', shell = true, error = true, wrapped = [] } = {}) => {
+    const imports = screens.map((i) => `import '../features/s${i}/s${i}_screen.dart';`).join('\n');
+    const plain = screens
+      .filter((i) => !wrapped.includes(i))
+      .map((i) => `    GoRoute(path: '/s${i}', builder: (_, __) => const S${i}Screen()),`)
+      .join('\n');
+    const gatedRoutes = wrapped
+      .map((i) => `    GoRoute(path: '/s${i}', builder: (_, __) => const _Gated${i}()),`)
+      .join('\n');
+    const gatedClasses = wrapped
+      .map(
+        (i) =>
+          `class _Gated${i} extends ConsumerWidget {\n  const _Gated${i}();\n  @override\n  Widget build(BuildContext context, WidgetRef ref) {\n    return PaywallGate(locked: false, child: const S${i}Screen());\n  }\n}\n`,
+      )
+      .join('\n');
+    return (
+      `${imports}\n\nfinal Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {\n  return GoRouter(\n` +
+      (error ? `    errorBuilder: (BuildContext c, GoRouterState s) => NotFoundScreen(title: 'x'),\n` : '') +
+      `    routes: <RouteBase>[\n      GoRoute(path: '/', redirect: (_, __) => '/s1'),\n${plain}\n${gatedRoutes}\n${extra}\n` +
+      (shell
+        ? `      StatefulShellRoute.indexedStack(\n        builder: (_, __, StatefulNavigationShell n) => AppShell(navigationShell: n),\n        branches: <StatefulShellBranch>[],\n      ),\n`
+        : '') +
+      `    ],\n  );\n});\n\n${gatedClasses}`
+    );
+  };
+
+  /** The whole app tree: N screens, 2 sheets, and 14 width tests covering all 16. */
+  const build = (name, over = {}, routerOpts = {}) => {
+    const files = {
+      [ROUTER]: routerSrc(routerOpts),
+      [sheetFile('add')]: sheetSrc('showAddSheet'),
+      [sheetFile('cancel')]: sheetSrc('showCancelSheet'),
+    };
+    for (const i of ids) files[screenFile(i)] = screenSrc(i);
+    // 12 single-subject files + one two-subject file + one sheets file = 14.
+    for (const i of ids.slice(0, 12)) {
+      files[`${TEST}/width_s${i}_test.dart`] = testSrc([`features/s${i}/s${i}_screen.dart`], [`const S${i}Screen()`]);
+    }
+    files[`${TEST}/responsive_width_test.dart`] = testSrc(
+      [`features/s13/s13_screen.dart`, `features/s14/s14_screen.dart`],
+      ['const S13Screen()', 'const S14Screen()'],
+    );
+    files[`${TEST}/width_sheets_test.dart`] = testSrc(
+      ['features/add/add_sheet.dart', 'features/cancel/cancel_sheet.dart'],
+      ['showAddSheet(context)', 'showCancelSheet(context)'],
+    );
+    return fixture(name, { ...files, ...over });
+  };
+
+  test('PASSES when the routed set and the measured set are EQUAL', () => {
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
+    assert.equal(code, 0);
+    assert.match(out, /16 surface\(s\) routed, 16 measured/);
+    assert.match(out, /the two sets are EQUAL/);
+  });
+
+  test('PRINTS its exclusions with reasons on a PASSING run, never silently', () => {
+    // The whole point of an exclusion being printed: a green run still shows
+    // what was left out, so it can be re-argued by anyone reading the log. An
+    // unmet clause that produces no output is this corpus's named defect.
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-excl') });
+    assert.equal(code, 0);
+    assert.match(out, /DELIBERATELY OUTSIDE the domain/);
+    assert.match(out, /AppShell — is the shell CHROME/);
+    assert.match(out, /NotFoundScreen — is the errorBuilder surface/);
+    assert.match(out, /REDIRECT-ONLY/);
+  });
+
+  test('FAILS naming the SCREEN when a routed screen has no width test', () => {
+    // A 15th routed screen with no test. The floor is untouched (17 >= 16) and
+    // the test-file count is untouched, so the ONLY failure is the uncovered one.
+    const dir = build(
+      'rc-uncovered',
+      { [screenFile(15)]: screenSrc(15) },
+      { screens: [...ids, 15] },
+    );
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /UNCOVERED SURFACE — `S15Screen`/);
+  });
+
+  test('FAILS naming the SUBJECT when a width test measures an unrouted twin', () => {
+    // 🔴 THE TWIN, VERBATIM. `features/firstrun/s1_screen.dart` declares a class
+    // called `S1Screen` — the SAME NAME as the routed one — and a width test
+    // pumps it. A guard comparing bare class names would find `S1Screen` in both
+    // sets and report clean, writing the exact bug it exists to catch into its
+    // own answer. Keying by `<file>#<Symbol>` is what makes this red.
+    const dir = build('rc-twin', {
+      [screenFile(1, 'firstrun')]: screenSrc(1),
+      [`${TEST}/width_twin_test.dart`]: testSrc(['features/firstrun/s1_screen.dart'], ['const S1Screen()']),
+    });
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /DEAD COVERAGE — width_twin_test\.dart measures `S1Screen`/);
+    assert.match(out, /features\/firstrun\/s1_screen\.dart/);
+    // …and the routed original is still covered, so the ONLY complaint is the twin.
+    assert.doesNotMatch(out, /UNCOVERED SURFACE/);
+  });
+
+  test('COVERAGE LOST when the router is gone — the routed set parses EMPTY', () => {
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-norouter', { [ROUTER]: null }) });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /router\.dart does not exist/);
+  });
+
+  test('COVERAGE LOST when no width test is found — the covered set parses EMPTY', () => {
+    // Every width test removed. Without this limb the equality check would say
+    // "no dead coverage" and mean nothing by it.
+    const over = { [`${TEST}/responsive_width_test.dart`]: null, [`${TEST}/width_sheets_test.dart`]: null };
+    for (const i of ids.slice(0, 12)) over[`${TEST}/width_s${i}_test.dart`] = null;
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-notests', over) });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — the COVERED set parsed EMPTY/);
+  });
+
+  test('FAILS when a route builds something this guard cannot classify', () => {
+    // Not a feature surface and not one of the two argued non-panes. The map is
+    // a statement about known non-panes, NOT an allowlist screens can join, so
+    // the honest answer to "what is this?" is to stop the build.
+    const dir = build('rc-unknown', {}, { extra: `      GoRoute(path: '/x', builder: (_, __) => const MysteryPane()),` });
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /`MysteryPane` is built by a route/);
+  });
+
+  test('FAILS when NOT_A_PANE excuses something the router no longer builds', () => {
+    // The exclusion map's own self-check: an exception for something that is not
+    // there reports judgement over nothing.
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-staleexcl', {}, { shell: false }) });
+    assert.equal(code, 1);
+    assert.match(out, /`AppShell` is excluded in NOT_A_PANE but no route/);
+  });
+
+  test('resolves a router-local wrapper to the SCREEN it gates, not to the wrapper', () => {
+    // `_Gated3` is a gate declared in the router; the pane is `S3Screen`. The
+    // covering test pumps the screen, so a guard that stopped at the wrapper
+    // would report `_Gated3` uncovered on a tree that is fully measured.
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-wrapper', {}, { wrapped: [3] }) });
+    assert.equal(code, 0);
+    assert.doesNotMatch(out, /_Gated3/);
+  });
+
+  test('FAILS when a router-local wrapper gates NO feature surface', () => {
+    const dir = build('rc-wrapper-empty', {}, { wrapped: [] });
+    // A wrapper that builds only design-system widgets: routed, and nothing
+    // measurable can be pointed at.
+    //
+    // 🔴 THE REPLACEMENT IS ASSERTED. The first draft of this case used the
+    // wrong indentation, so `.replace` matched nothing and returned the string
+    // unchanged — the fixture then asserted a failure on a tree it had never
+    // mutated, and read as "the guard does not catch this". A silent no-op
+    // mutation is indistinguishable from a guard that missed it.
+    const before = readFileSync(join(dir, ROUTER), 'utf8');
+    const routed = `GoRoute(path: '/s4', builder: (_, __) => const S4Screen()),`;
+    assert.ok(before.includes(routed), 'fixture anchor moved — the mutation would be a no-op');
+    const src = before
+      .replace(routed, `GoRoute(path: '/s4', builder: (_, __) => const _Hollow()),`)
+      .concat(`\nclass _Hollow extends StatelessWidget {\n  const _Hollow();\n  @override\n  Widget build(BuildContext context) {\n    return const SizedBox();\n  }\n}\n`);
+    writeFileSync(join(dir, ROUTER), src);
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /`_Hollow` is a route builder declared inside/);
+  });
+});
