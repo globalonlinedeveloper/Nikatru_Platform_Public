@@ -1,0 +1,25 @@
+# THE MATCHER FAMILIES THIS FIXTURE CARRIES EVIDENCE FOR.
+#
+# One family name per line, matching the `what` field of an entry in
+# assert-no-hardcoded-strings.mjs's SHOWN_TO_A_PERSON list. Blank lines and
+# `#` lines are ignored.
+#
+# 🔴 WHY THIS FILE EXISTS, AND WHY IT IS NOT A CONSTANT IN THE GUARD.
+# The guard's per-family evidence check iterates over SHOWN_TO_A_PERSON, so it
+# can catch a family whose regex has STOPPED MATCHING — but it is structurally
+# blind to a family DELETED from the list, because the loop then never asks
+# about it. The total floor is blind too (58 of apps/subly's 71 hits are
+# `Text(…)`, so losing the labelling family outright still clears 20 by a wide
+# margin). Deleting a matcher was therefore invisible to both limbs.
+#
+# So the set is declared HERE, outside the file being audited, and the guard
+# asserts an IDENTITY in both directions:
+#   · a name here that no matcher provides  → a family was DELETED  → FAIL
+#   · a matcher not named here              → a family was ADDED with no
+#                                             evidence earned            → FAIL
+# Neither direction can be satisfied by editing one file: a genuine change to
+# the matcher list has to come with the fixture that proves the new list works.
+# Same reason the test-coverage ratchet lives in a committed manifest rather
+# than as a constant inside assert-guard-coverage.mjs.
+Text(…)
+a labelling parameter
