@@ -37,7 +37,11 @@ class _RecordingNotificationService extends NotificationService {
   final List<String> calls = <String>[];
 
   @override
-  Future<void> syncAll(List<Subscription> subs, {int daysBefore = 2}) async {
+  Future<void> syncAll(
+    List<Subscription> subs, {
+    required ReminderCopy copy,
+    int daysBefore = 2,
+  }) async {
     calls.add('syncAll');
   }
 
@@ -48,6 +52,7 @@ class _RecordingNotificationService extends NotificationService {
 
   @override
   Future<void> scheduleWeeklyDigest({
+    required ReminderCopy copy,
     required int count,
     required String formattedTotal,
   }) async {
