@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_scaffold.dart' show AppBreakpoints;
 
 /// Gates a premium surface behind an upgrade wall. When [locked] the widget
 /// shows an upsell screen (with an [onUpgrade] call-to-action) instead of
@@ -36,9 +37,13 @@ class PaywallGate extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!locked) return child;
     final ThemeData theme = Theme.of(context);
+    // KEEPS `Center` for the same reason as ForceUpdateGate: this replaces a
+    // premium surface wholesale, so it is the only thing in its slot and reads
+    // as a card, not a page. Width comes from the chassis; the vertical
+    // decision stays local and deliberate.
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+        constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(

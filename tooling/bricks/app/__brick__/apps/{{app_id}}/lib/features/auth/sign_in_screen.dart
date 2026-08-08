@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
@@ -65,63 +66,65 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.signInTitle)),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const <String>[AutofillHints.email],
-                  decoration: InputDecoration(labelText: l10n.email),
-                ),
+      // 🔴 THE OUTER `Center` IS GONE ON PURPOSE, and this screen is the exact
+      // case that motivates it: `_error` appears BELOW the password field, so a
+      // vertically-centred form slides every field upward by half the error's
+      // height the instant the user gets their password wrong — moving the
+      // field they are about to correct, out from under the cursor. Top
+      // alignment cannot do that. `ContentPane` also carries the 420 the
+      // chassis owns, instead of a sixth private copy of it.
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ContentPane.form(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const <String>[AutofillHints.email],
+                decoration: InputDecoration(labelText: l10n.email),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                autofillHints: const <String>[AutofillHints.password],
+                decoration: InputDecoration(labelText: l10n.password),
+                onSubmitted: (_) => _signIn(auth),
+              ),
+              if (_error != null) ...<Widget>[
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  obscureText: true,
-                  autofillHints: const <String>[AutofillHints.password],
-                  decoration: InputDecoration(labelText: l10n.password),
-                  onSubmitted: (_) => _signIn(auth),
-                ),
-                if (_error != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _busy ? null : () => _signIn(auth),
-                  child: Text(l10n.signIn),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _busy ? null : () => _forgot(auth, l10n),
-                  child: Text(l10n.forgotPassword),
-                ),
-                // Only where the platform can actually complete a redirect.
-                if (caps.oauthRedirect) ...<Widget>[
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: _busy ? null : () => _run(auth.signInWithApple),
-                    child: Text(l10n.continueWithApple),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: _busy ? null : () => context.go('/sign-up'),
-                  child: Text(l10n.needAccount),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
-            ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: _busy ? null : () => _signIn(auth),
+                child: Text(l10n.signIn),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _busy ? null : () => _forgot(auth, l10n),
+                child: Text(l10n.forgotPassword),
+              ),
+              // Only where the platform can actually complete a redirect.
+              if (caps.oauthRedirect) ...<Widget>[
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _busy ? null : () => _run(auth.signInWithApple),
+                  child: Text(l10n.continueWithApple),
+                ),
+              ],
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: _busy ? null : () => context.go('/sign-up'),
+                child: Text(l10n.needAccount),
+              ),
+            ],
           ),
         ),
       ),
