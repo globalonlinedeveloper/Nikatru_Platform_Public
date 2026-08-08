@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ContentPane;
 
 import '../../core/format/currency.dart';
 import '../../core/format/sub_math.dart';
@@ -76,19 +78,51 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
-            const <Subscription>[];
+        const <Subscription>[];
     final double total = SubMath.totalMonthly(subs);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        // `.reading` (720) and NOT the default 1280 cap. This is first-run flow
+        // content, and its only sibling in that role — onboarding — is already
+        // `ContentPane.reading` (`firstrun/onboarding_screen.dart`, asserted at
+        // that cap by `test/responsive_width_test.dart`). Left uncapped at 1280
+        // the results gradient hero is a wall-to-wall banner, and the default
+        // `kMaxBodyWidth` would still hand it 1246 px of one; 720 keeps the
+        // first thing a new user ever sees proportionate to what it says.
+        //
+        // ⚠️ THAT PRECEDENT IS THINNER THAN IT LOOKS, so it is not the whole
+        // argument. There are TWO `OnboardingScreen` classes with the same
+        // name: `firstrun/onboarding_screen.dart` (has the pane, and is what
+        // `responsive_width_test.dart` imports and measures) and
+        // `onboarding/onboarding_screen.dart` (has NO pane, and is the one
+        // `router.dart:45` actually builds for `/onboarding`). The cap is
+        // asserted on the twin the user never reaches. `/scan` below is on the
+        // live path — `router.dart:143` builds THIS file — so the width test
+        // for this screen measures the screen that ships.
+        //
+        // The `Padding(24)` this replaces moved INTO the pane, which is the
+        // same box it always was: `ContentPane` applies its inset INSIDE the
+        // cap (`content_pane.dart:43-46`), so at any width below 720 — every
+        // phone, every split pane — this renders pixel-identical to before.
+        //
+        // ⚠️ THE COLUMN HAS AN `Expanded` CHILD AND THAT IS SAFE HERE. Flex
+        // needs bounded height, and `content_pane.dart:52-54` warns that the
+        // pane's `Align` SHRINK-WRAPS in an unbounded-height parent (a scroll
+        // view, a sliver). This is not that: the pane sits directly in the
+        // `Scaffold` body, which hands down a bounded height, so the `Align`
+        // passes it on and the flex resolves. Moving this pane inside a
+        // `SingleChildScrollView` later would break the `Expanded`, not the cap.
+        child: ContentPane.reading(
+          padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(_done ? 'All set' : 'Setting up your board',
-                  style: AppText.title.copyWith(fontSize: 28)),
+              Text(
+                _done ? 'All set' : 'Setting up your board',
+                style: AppText.title.copyWith(fontSize: 28),
+              ),
               const SizedBox(height: 6),
               Text(
                 _done
@@ -97,7 +131,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 style: AppText.muted.copyWith(fontSize: 14),
               ),
               const SizedBox(height: 8),
-              Expanded(child: _done ? _results(currency, subs, total) : _scanning()),
+              Expanded(
+                child: _done ? _results(currency, subs, total) : _scanning(),
+              ),
               const SizedBox(height: 12),
               GradientButton(
                 label: _done ? 'Go to dashboard' : 'Scanning…',
@@ -116,6 +152,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     // to the 158px ring and sat hard against the left edge. mainAxisAlignment only
     // centred it vertically, which is why it looked half-right: centred down the
     // page, pinned to the left across it. Center() takes the full available width.
+    //
+    // THE PANE DID NOT REPLACE THIS, and that is deliberate. `ContentPane`
+    // aligns to topCenter precisely because a PAGE must not re-centre as its
+    // height changes — but `content_pane.dart:36-41` reserves explicit
+    // vertical centring for the one shape that should sit in the middle of an
+    // otherwise dead screen, and a short blocking progress state is that shape.
+    // The pane caps the width; this Center places it down the page. Folding one
+    // into the other would re-make the half-right layout described above.
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -125,9 +169,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             height: 158,
             child: CustomPaint(
               painter: RingPainter(
-                  progress: _pct / 100, color: AppColors.accent, stroke: 14),
+                progress: _pct / 100,
+                color: AppColors.accent,
+                stroke: 14,
+              ),
               child: Center(
-                child: Text('$_pct%', style: AppText.fig.copyWith(fontSize: 34)),
+                child: Text(
+                  '$_pct%',
+                  style: AppText.fig.copyWith(fontSize: 34),
+                ),
               ),
             ),
           ),
@@ -145,7 +195,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Text(_status, style: AppText.muted.copyWith(fontWeight: FontWeight.w600)),
+          Text(
+            _status,
+            style: AppText.muted.copyWith(fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
@@ -165,18 +218,26 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text('YOUR SUBSCRIPTIONS',
-                  style: AppText.label.copyWith(
-                      color: const Color.fromRGBO(255, 255, 255, 0.85))),
+              Text(
+                'YOUR SUBSCRIPTIONS',
+                style: AppText.label.copyWith(
+                  color: const Color.fromRGBO(255, 255, 255, 0.85),
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('${subs.length} subscriptions',
-                  style: AppText.fig.copyWith(fontSize: 34, color: Colors.white)),
-              Text('${currency.fmt(total)} / month',
-                  style: const TextStyle(
-                      fontFamily: 'Manrope',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: Color.fromRGBO(255, 255, 255, 0.92))),
+              Text(
+                '${subs.length} subscriptions',
+                style: AppText.fig.copyWith(fontSize: 34, color: Colors.white),
+              ),
+              Text(
+                '${currency.fmt(total)} / month',
+                style: const TextStyle(
+                  fontFamily: 'Manrope',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: Color.fromRGBO(255, 255, 255, 0.92),
+                ),
+              ),
             ],
           ),
         ),
@@ -190,9 +251,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 padding: 11,
                 leading: GlyphTile(glyph: s.glyph, size: 38, fontSize: 11),
                 title: s.name,
-                subtitle: Text(s.category, style: AppText.muted.copyWith(fontSize: 12)),
-                trailing: Text(currency.fmt(s.monthlyPrice),
-                    style: AppText.fig.copyWith(fontSize: 15)),
+                subtitle: Text(
+                  s.category,
+                  style: AppText.muted.copyWith(fontSize: 12),
+                ),
+                trailing: Text(
+                  currency.fmt(s.monthlyPrice),
+                  style: AppText.fig.copyWith(fontSize: 15),
+                ),
               );
             },
           ),
