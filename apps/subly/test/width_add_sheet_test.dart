@@ -40,6 +40,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:subly/core/theme/app_theme.dart';
 import 'package:subly/data/seed/demo_data.dart';
 import 'package:subly/features/add/add_subscription_sheet.dart';
+import 'package:subly/l10n/app_localizations.dart';
 
 import 'support/width_harness.dart';
 
@@ -52,10 +53,20 @@ import 'support/width_harness.dart';
 /// 640 cap is an M3 default, and the claim under test is that THIS APP's theme
 /// leaves it in place — a bare `MaterialApp` would prove it about a theme the
 /// app does not ship.
+///
+/// 🔴 THE DELEGATES ARE LOAD-BEARING FOR A GEOMETRY TEST, which is the part that
+/// is easy to get wrong. `l10n.yaml` sets `nullable-getter: false`, so the
+/// generated `AppLocalizations.of(context)` ends in a null assertion — the sheet
+/// now reads its title from the arb, so under a bare `MaterialApp` it throws
+/// before it lays anything out, and every measurement below becomes a
+/// `Bad state` rather than a width. See `sheet_failure_surface_test.dart`, which
+/// carries the same two lines for the same reason.
 Widget _host() {
   return ProviderScope(
     overrides: defaultWidthOverrides(),
     child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: buildAppTheme(seed: const Color(0xFF6459F5)),
       home: Scaffold(
         body: Builder(

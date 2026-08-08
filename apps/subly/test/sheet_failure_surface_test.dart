@@ -7,6 +7,7 @@ import 'package:subly/data/models/subscription.dart';
 import 'package:subly/data/subscriptions/subscription_repository.dart';
 import 'package:subly/features/add/add_subscription_sheet.dart';
 import 'package:subly/features/cancel/cancel_sheet.dart';
+import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/services/notifications/notification_service.dart';
 import 'package:subly/state/providers.dart';
 
@@ -85,7 +86,23 @@ Widget _app(void Function(BuildContext) open) {
         _SilentNotifications(),
       ),
     ],
+    // 🔴 THE DELEGATES ARE NOT DECORATION — WITHOUT THEM THIS HOST THROWS.
+    // `l10n.yaml` sets `nullable-getter: false`, so the generated
+    // `AppLocalizations.of(context)` ends in a null assertion: the first line of
+    // either sheet's `build` that reads a string dies with a
+    // `Null check operator used on a null value` the instant it mounts under a
+    // bare `MaterialApp`. That failure looks nothing like a missing delegate —
+    // it points at the sheet — which is why it is called out here rather than
+    // left to be rediscovered.
+    //
+    // Nothing else in this file changed for l10n. Every assertion below still
+    // reads the same English literal it did before the sheets moved to the arb,
+    // and that is the point: the arb VALUES were minted from the shipped copy,
+    // so this file is the review gate on that claim. A value that drifted would
+    // show up here as a red line naming the string, not as a silent repaint.
     child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
         body: Builder(
           builder: (BuildContext context) => Center(
