@@ -13,6 +13,13 @@
     "says it means — and until this register existed, nothing anywhere wrote that number down. A",
     "criterion whose right-hand side is undefined cannot reject anything.",
     "",
+    "🔄 THREE OF SIX SINCE 2026-08-08. `account-delete-purges` moved to `asserted`: the suite now",
+    "declares THREE tests and the third walks the erasure end to end against the deployed API. The two",
+    "sentences above are left as written because they are a dated measurement, not a status line — the",
+    "count that is checked is the one assert-e2e-legs.mjs computes on every run, and a prose number",
+    "edited by hand is the second copy that drifts. The three legs still blocked are the money rail's,",
+    "and they share one live blocker.",
+    "",
     "🔴 THE RULE THAT MAKES THIS FILE MEAN ANYTHING: A LEG IS 'asserted' ONLY IF THE SUITE PROVES IT.",
     "Every `asserted` leg carries `anchors` — expressions that must appear in the E2E's",
     "COMMENT-STRIPPED source. tooling/ci/assert-e2e-legs.mjs resolves each one; a leg that claims to be",
@@ -99,9 +106,38 @@
     {
       "id": "account-delete-purges",
       "asks": "deleting the account from inside the app really erases the user and its rows",
-      "status": "blocked",
-      "blockedBy": "[7] no e2e step exercises the erasure route against the deployed API",
-      "declaredOn": "2026-08-04"
+      "status": "asserted",
+      "declaredOn": "2026-08-08",
+      "_why": [
+        "PROMOTED 2026-08-08, and the excuse it replaced is the THIRD this leg has killed — which is the",
+        "design working three times. v1 'apps/subly has no delete-account call site' died when [ADR 027]",
+        "shipped the control. v2 'no deployed route erases apps/subly own database' died when",
+        "services/subly-api shipped DELETE /v1/account and the shared route began relaying to it. v3 'no",
+        "e2e step exercises the erasure route against the deployed API' dies here, because there is now a",
+        "step: integration_test/app_test.dart's third test signs in as a SECOND throwaway user, writes a",
+        "subscription through the live Worker, deletes the account from inside the running app, and lands",
+        "on the login screen — and tooling/e2e/verify_purged.mjs then re-reads live D1 and the GoTrue",
+        "admin API server-side.",
+        "",
+        "🔴 THE ANCHORS BELOW COVER THE CLIENT HALF ONLY, AND THAT IS STATED RATHER THAN GLOSSED. They",
+        "resolve in the suite, which is all this guard can read. A client can only report what it was",
+        "told, so 'the app said Account deleted' is not 'the rows are gone' — the server-side half is",
+        "tooling/e2e/verify_purged.mjs, wired into e2e.yml between the D1 read-back and the teardown, and",
+        "it is held in place by assert-e2e-proof-fresh.mjs's REQUIRED_WORK rather than by this file.",
+        "Splitting the proof is deliberate; claiming the whole leg from four string matches would be the",
+        "overclaim N-6 already had.",
+        "",
+        "⚠️ A SECOND THROWAWAY USER IS LOAD-BEARING, NOT TIDINESS. The delete walk destroys the account it",
+        "signs in with, and verify_row.mjs asserts COUNT(*) >= 1 for the FIRST user after the drive. One",
+        "user would mean leg 6 could only pass by turning leg 2 red."
+      ],
+      "anchors": [
+        "E2EKeys.settingsDeleteAccount",
+        "E2EKeys.deleteAccountConfirm",
+        "E2EKeys.accountDeletionNotice",
+        "find.text('Account deleted')",
+        "shot('20-account-deleted')"
+      ]
     }
   ]
 }

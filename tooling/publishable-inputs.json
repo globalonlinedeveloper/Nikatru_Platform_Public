@@ -76,6 +76,14 @@
     "E2E_PASSWORD": {
       "reason": "🔴 THE ENTRY THAT MATTERS MOST, AND ITS REASON IS ENTIRELY ABOUT SCOPE. This is a real password for a real Supabase account, and it is acceptable ONLY because it is generated per run for a throwaway user, is passed to a build that is never published, and is purged at `e2e.yml`'s teardown. There is no reading under which this value may be compiled into a shipped artifact.",
       "residual": "If the purge ever fails — a cancelled run, a runner killed mid-job, a Supabase outage during teardown — a live account's password sits in the build logs and the process table of a public repository's workflow. It is scoped to one throwaway user with no data, but it is a working credential and it does not expire on its own. Writing that down is most of this entry's value: the day somebody reuses this define on a lane that publishes, the reason above is what makes the mistake obvious."
+    },
+    "E2E_DELETE_EMAIL": {
+      "reason": "🔴 NOT A PUBLISHED VALUE, and it is a SECOND throwaway address rather than a reuse of E2E_EMAIL for a reason that is not cosmetic: golden-path leg 6 (`account delete purges`) makes the app really delete the account it signs in with, and the first user's row is what `tooling/e2e/verify_row.mjs` asserts still exists after the drive. Same scope as E2E_EMAIL in every other respect — created by tooling/e2e/provision_user.mjs at the start of the run, reaches only e2e.yml's `flutter drive` debug build served to a headless Chrome on the runner, and nothing that carries it is uploaded, deployed or published.",
+      "residual": "Identical to E2E_EMAIL's, with one difference in the happy case: this account is normally destroyed by the app itself mid-run, so the window in which it exists is shorter. On a run that fails before the delete walk it is a stale account like any other, and tooling/e2e/purge.mjs is what removes it."
+    },
+    "E2E_DELETE_PASSWORD": {
+      "reason": "🔴 A REAL PASSWORD FOR A REAL SUPABASE ACCOUNT, on exactly the terms E2E_PASSWORD is accepted on and no wider: generated per run for a throwaway user, passed to a build that is never published, and purged at e2e.yml's teardown. It is passed twice inside the app — once to sign in, once to RE-AUTHENTICATE at the delete-account dialog, which refuses to enable its destructive button until a password has been typed. There is no reading under which this value may be compiled into a shipped artifact.",
+      "residual": "Same as E2E_PASSWORD's: if the teardown ever fails, a working credential for a live account sits in the build logs of a public repository's workflow, and it does not expire on its own. It is scoped to one throwaway user whose only data is the single subscription the run itself created."
     }
   }
 }

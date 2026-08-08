@@ -195,6 +195,10 @@ const NO_NEGATIVE_TEST_NEEDED = new Map([
     'tooling/e2e/purge.mjs',
     'is the e2e harness teardown, run nightly by e2e.yml against the live project; a fixture cannot model the thing it exists to clean up.',
   ],
+  [
+    'tooling/e2e/verify_purged.mjs',
+    'is the e2e harness assertion for golden-path leg 6, run nightly by e2e.yml: it re-reads live D1 and the live GoTrue admin API AFTER the app has deleted a real account from inside the running build. A fixture would have to model a deletion that already happened, i.e. encode the very belief the file exists to check — the assert-seams-wired failure shape, where all six fixtures passed against a broken guard. Its negative case is the live one: the run it audits is the only place a server that answered `{ ok: true }` while deleting nothing can be caught.',
+  ],
 ]);
 
 const problems = [];

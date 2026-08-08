@@ -308,7 +308,7 @@ class _AccountDeletionNotice extends ConsumerWidget {
     );
     if (outcome == null) return const SizedBox.shrink();
     return Container(
-      key: const Key('accountDeletionNotice'),
+      key: E2EKeys.accountDeletionNotice,
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(

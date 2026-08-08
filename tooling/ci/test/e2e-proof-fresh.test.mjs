@@ -314,29 +314,44 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
     );
   });
 
-  test('dropping the live-D1 verification is COVERAGE LOST', () => {
-    // Without it a green run proves the UI moved and proves nothing landed.
+  test('dropping ANY harness verification step is COVERAGE LOST', () => {
+    // Without the live-D1 read-back a green run proves the UI moved and proves
+    // nothing landed; without the erasure audit it proves the app SAID an
+    // account was deleted. Both are `tooling/e2e/…` entries in REQUIRED_WORK.
     //
-    // ⚠️ The path is taken from REQUIRED_WORK rather than written out, and that
+    // 🔄 THIS ITERATES REQUIRED_WORK INSTEAD OF INDEXING IT. It used to read
+    // `REQUIRED_WORK[2]` — one hand-picked index — so when a fourth entry was
+    // added on 2026-08-08 the new step was in the guard and covered by nothing,
+    // and the suite would have gone on reporting the same reassuring green. A
+    // hand-picked index is a floor with one rung; a filter over the list means a
+    // FUTURE entry acquires this test by existing.
+    //
+    // ⚠️ The paths are taken from REQUIRED_WORK rather than written out, and that
     // is not style. assert-guard-coverage.mjs counts a workflow-invoked script
     // outside tooling/ci as "covered" when its BASENAME appears anywhere in an
-    // executable line of the suite — a weak proxy its own header admits to. That
-    // script is deliberately listed in NO_NEGATIVE_TEST_NEEDED because the live
-    // nightly exercises it and no fixture can; spelling its name here would flip
-    // it to "covered" on the strength of this string alone and quietly retire an
-    // honest exemption. Inflating apparent coverage is the one thing this repo
-    // deletes on sight.
-    const verifyStep = REQUIRED_WORK[2];
-    withRoot(
-      (s) => s.split(verifyStep).join('true'),
-      (v) => assert.ok(v && v.includes(verifyStep), `expected COVERAGE LOST naming ${verifyStep}, got: ${v}`),
+    // executable line of the suite — a weak proxy its own header admits to. Those
+    // scripts are deliberately listed in NO_NEGATIVE_TEST_NEEDED because the live
+    // nightly exercises them and no fixture can; spelling their names here would
+    // flip them to "covered" on the strength of these strings alone and quietly
+    // retire an honest exemption. Inflating apparent coverage is the one thing
+    // this repo deletes on sight.
+    const harnessSteps = REQUIRED_WORK.filter((w) => w.startsWith('tooling/e2e/'));
+    assert.ok(
+      harnessSteps.length >= 2,
+      `REQUIRED_WORK names ${harnessSteps.length} harness step(s); this test would be checking almost nothing`,
     );
+    for (const verifyStep of harnessSteps) {
+      withRoot(
+        (s) => s.split(verifyStep).join('true'),
+        (v) => assert.ok(v && v.includes(verifyStep), `expected COVERAGE LOST naming ${verifyStep}, got: ${v}`),
+      );
+    }
   });
 
   test('🔴 the work check reads the BODY, never the prose describing it', () => {
     // The r2_buckets trap: a scan satisfied by the COMMENT explaining the thing
-    // rather than by the thing. Here the three work strings are deleted from
-    // every real step and re-stated in a comment, with the schedule left intact.
+    // rather than by the thing. Here EVERY work string is deleted from every real
+    // step and re-stated in a comment, with the schedule left intact.
     //
     // ⚠️ THIS TEST WAS WRONG WHEN FIRST WRITTEN, and that is recorded here rather
     // than quietly patched. It originally stripped EVERY non-comment line, which
@@ -353,7 +368,7 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
           .split('\n')
           .filter((l) => /^\s*#/.test(l) || !REQUIRED_WORK.some((w) => l.includes(w)))
           .join('\n');
-        // Built from REQUIRED_WORK, so the prose names all three exactly — and
+        // Built from REQUIRED_WORK, so the prose names them all exactly — and
         // so this file never spells the harness path out (see the note on the
         // live-D1 test below).
         return [`# This workflow used to run: ${REQUIRED_WORK.join(' , ')}`, body].join('\n');

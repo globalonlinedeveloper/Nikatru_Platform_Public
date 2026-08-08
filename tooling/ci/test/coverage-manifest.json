@@ -33,7 +33,7 @@
   "desktop-runner-identity.test.mjs": 16,
   "discovery-surface.test.mjs": 68,
   "dod-sync.test.mjs": 20,
-  "e2e-legs.test.mjs": 26,
+  "e2e-legs.test.mjs": 28,
   "e2e-proof-fresh.test.mjs": 30,
   "entitlement-contract.test.mjs": 22,
   "erasure-reach.test.mjs": 21,

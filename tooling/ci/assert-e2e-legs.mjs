@@ -116,18 +116,28 @@ const BLOCKERS_STILL_REAL = {
   //     subly_db rows in tooling/legal/data-inventory.json are `purge`, and
   //     tooling/ci/assert-erasure-reach.mjs keeps them that way.
   //
-  // WHAT STILL BLOCKS THE LEG IS NOW ONLY THE PROOF, AND IT IS SMALLER THAN THE
-  // SERVER GAP EVER WAS. The leg asks that deleting from inside the app "really
-  // erases the user and its rows" — a claim only a LIVE run can make. Nothing in
-  // the nightly walks it: neither the integration suite nor the harness under
-  // tooling/e2e/ so much as mentions the erasure route, so there is no step to
-  // sign in, delete, and re-read subly_db against the deployed Workers. Writing
-  // that step is the fix, and the day any of those files names `/v1/account`
-  // this predicate goes false and the excuse dies the way the last two did.
+  //   · v3 read "[7] no e2e step exercises the erasure route against the
+  //     deployed API", predicate `nothing in the E2E surface names /v1/account`.
+  //     IT WENT FALSE ON 2026-08-08 AND THE LEG WAS PROMOTED RATHER THAN
+  //     RE-EXCUSED: app_test.dart's third test deletes a real account from
+  //     inside the running app, and tooling/e2e/verify_purged.mjs re-reads live
+  //     D1 and the GoTrue admin API afterwards. Three excuses, three deaths, and
+  //     the third one is the leg actually shipping.
   //
-  // ⚠️ NOT "the routes are not deployed yet", although that is also true today.
-  // A deploy is not readable from this tree, so it could never be re-evaluated —
-  // and an excuse that cannot go false is the thing this table exists to refuse.
+  // 🔴 THE PREDICATE IS KEPT, AND IT IS NOT DEAD. No leg names it today, so it
+  // is not consulted on a passing run — but it is one register edit away from
+  // being consulted again, and that is exactly the input that must fail: marking
+  // `account-delete-purges` blocked by this sentence, while the erasure step is
+  // still in the tree, is how a shipped leg would be quietly demoted back to a
+  // gap. `e2e-legs.test.mjs` mutates the real tree that way and requires a red
+  // build. Deleting the entry instead would make that demotion pass with a
+  // "blocker with no predicate" message about a sentence, rather than with the
+  // truth, which is that the excuse is dead.
+  //
+  // ⚠️ NOT "the routes are not deployed yet", although that was also true when
+  // this was written. A deploy is not readable from this tree, so it could never
+  // be re-evaluated — and an excuse that cannot go false is the thing this table
+  // exists to refuse.
   '[7] no e2e step exercises the erasure route against the deployed API': (src) =>
     !/\/v1\/account/.test(src.e2eSurface),
 };
