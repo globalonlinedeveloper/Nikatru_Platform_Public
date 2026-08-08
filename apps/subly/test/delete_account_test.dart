@@ -4,6 +4,10 @@ import 'dart:io' show SocketException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+// `show` only: this package also exports a `SupabaseAuthRepository`, and so
+// does Subly's own data layer — an unnarrowed import makes that name ambiguous.
+import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
+    show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/core/router.dart';
 import 'package:subly/data/auth/mock_auth_repository.dart';
@@ -258,16 +262,41 @@ void main() {
   // A plain `test`, not `testWidgets`: there is no widget here, and inside
   // testWidgets' FakeAsync zone a real future only advances when something
   // pumps — so this stalled for the full ten-minute timeout before it was moved.
-  test('DEMO MODE MUST NOT CLAIM A DELETION — the mock refuses', () async {
-    // `build-platforms.yml` builds every non-web artifact WITHOUT the identity
-    // dart-defines, so those runs use MockAuthRepository. It used to sign out and
-    // return normally, which this dialog would render as "Your account has been
-    // deleted" — while the same email and password sign straight back in,
-    // because the mock accepts anything.
-    final MockAuthRepository mock = MockAuthRepository();
-    await mock.signInWithEmail(email: 'a@b.test', password: 'anything');
+  test('DEMO MODE MUST NOT CLAIM A DELETION — the repository THE APP RESOLVES '
+      'refuses', () async {
+    // 🔴 RESOLVED THROUGH `authRepositoryProvider`, NEVER CONSTRUCTED BY
+    // HAND, AND THAT IS THE ENTIRE POINT OF THIS TEST.
+    //
+    // It used to do `MockAuthRepository()` directly. That class is the
+    // legacy demo repository and the app STOPPED BUILDING IT at P2.6a, when
+    // the provider was re-pointed at the chassis `InMemoryAuthRepository` —
+    // whose `deleteAccount` returned normally. So this test went on proving a
+    // refusal from a class nothing resolves, while the shipping demo build
+    // rendered "Your account has been deleted." and the same credentials
+    // signed straight back in. A guard aimed at a class the app no longer
+    // constructs is a guard that has silently stopped guarding.
+    //
+    // `build-platforms.yml` builds every non-web artifact WITHOUT the
+    // identity dart-defines, so `AppConfig.isBackendLive` is false and this
+    // container resolves exactly what those artifacts run on.
+    final ProviderContainer c = ProviderContainer();
+    addTearDown(c.dispose);
+    final core.AuthRepository auth = c.read(authRepositoryProvider);
+
+    // The container really IS in demo posture — otherwise the refusal below
+    // could be coming from somewhere else entirely.
+    expect(
+      auth,
+      isA<InMemoryAuthRepository>(),
+      reason:
+          'a test with no identity dart-defines must resolve the demo '
+          'repository — if this changes, re-point the assertion, do not '
+          'delete it',
+    );
+
+    await auth.signInWithEmail(email: 'a@b.test', password: 'anything');
     await expectLater(
-      mock.deleteAccount(),
+      auth.deleteAccount(),
       throwsA(
         isA<core.AccountDeletionFailure>().having(
           (core.AccountDeletionFailure f) => f.outcome,
@@ -275,9 +304,103 @@ void main() {
           core.AccountDeletionOutcome.notConfigured,
         ),
       ),
-      reason: 'only a real 2xx may ever produce `deleted`',
+      reason:
+          'only a real 2xx from DELETE /v1/account may ever produce '
+          '`deleted` — [ADR 027]',
     );
-    expect(mock.currentUser, isNull, reason: 'it still signs out');
+    expect(auth.currentUser, isNull, reason: 'it still signs out');
+
+    // …and the sentence the screen would show says nothing was deleted. This
+    // is the string the user reads, which is the thing that can be false.
+    expect(
+      core.AccountDeletionOutcome.notConfigured.plainMessage,
+      contains('Nothing was deleted'),
+    );
+  });
+
+  // The legacy demo repository the app no longer builds. Kept under test
+  // because it is still exported and still compiles — but the assertion that
+  // matters is the one ABOVE, which drives whatever the provider resolves.
+  test(
+    'MockAuthRepository — the retired demo repository — also refuses',
+    () async {
+      final MockAuthRepository mock = MockAuthRepository();
+      await mock.signInWithEmail(email: 'a@b.test', password: 'anything');
+      await expectLater(
+        mock.deleteAccount(),
+        throwsA(
+          isA<core.AccountDeletionFailure>().having(
+            (core.AccountDeletionFailure f) => f.outcome,
+            'outcome',
+            core.AccountDeletionOutcome.notConfigured,
+          ),
+        ),
+        reason: 'only a real 2xx may ever produce `deleted`',
+      );
+      expect(mock.currentUser, isNull, reason: 'it still signs out');
+    },
+  );
+
+  testWidgets('🔴 THE DEMO BUILD, END TO END — the REAL screen on the REAL demo '
+      'repository says NOTHING WAS DELETED', (WidgetTester tester) async {
+    // Every other widget test in this file overrides `authRepositoryProvider`
+    // with `_FakeAuth`, so none of them can see what the SHIPPING demo build
+    // does. This one overrides everything EXCEPT auth, so the repository under
+    // the screen is whatever the app itself resolves with no identity
+    // dart-defines — the posture of every non-web artifact
+    // `build-platforms.yml` produces.
+    tester.view.physicalSize = const Size(1200, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Override>[
+        onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+        keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
+        analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final core.AuthRepository auth = container.read(authRepositoryProvider);
+    expect(auth, isA<InMemoryAuthRepository>());
+    // The demo repository accepts any non-empty pair — which is exactly why
+    // claiming a deletion here would be false: the same credentials sign
+    // straight back in.
+    await auth.signInWithEmail(email: 'a@b.test', password: 'anything');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: SettingsScreen()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openDialog(tester, 'anything');
+    await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+    await tester.pumpAndSettle();
+
+    final String said = _resultText(tester);
+    expect(
+      find.text('Account deleted'),
+      findsNothing,
+      reason:
+          'the demo build has no server account to delete and re-accepts the '
+          'same credentials — announcing a deletion here is the lie [ADR 027] '
+          'exists to prevent',
+    );
+    expect(said, contains('Nothing was deleted'));
+    expect(said, isNot(contains('has been deleted')));
+    expect(auth.currentUser, isNull, reason: 'the seam signs out regardless');
+    // …and the credentials really do still work, which is the fact that makes
+    // the success sentence false rather than merely optimistic.
+    await auth.signInWithEmail(email: 'a@b.test', password: 'anything');
+    expect(auth.currentUser, isNotNull);
   });
 
   testWidgets('a signed-in user is offered the control; a signed-out one is not', (

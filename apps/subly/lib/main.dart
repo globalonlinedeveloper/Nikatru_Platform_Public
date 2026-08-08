@@ -1,18 +1,6 @@
-// ═════════════════════════════════════════════════════════════════════════════
-// P2.6a DRAFT — apps/subly/lib/main.dart
-//
-// The stamped init sequence with the live [13]T-9 tap-observer registration
-// intact. Not applied, not committed. See ../MANIFEST.md and ./boot-order.md.
-//
-// 🔢 The crash-sink define counts are stated and re-measured in ../MANIFEST.md
-// §"Decision D-6" rather than here, so that counting them in the SHIPPING body
-// is not thrown off by a header that talks about them. Post-merge expectation:
-//   grep -c "String.fromEnvironment(" apps/subly/lib/main.dart   → 2
-//   grep -c "GLITCHTIP" apps/subly/lib/main.dart                 → 2
-//
-// 🔴 DELETE THIS HEADER BLOCK WHEN INTEGRATING. It is draft scaffolding; the
-// live file must open on its imports.
-// ═════════════════════════════════════════════════════════════════════════════
+// Subly's entry point: the stamped chassis init sequence, with the live [13]T-9
+// tap-observer registration kept intact. The ORDER of everything inside
+// `appRunner` is load-bearing — each step below says why.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
@@ -46,10 +34,10 @@ Future<void> main() async {
   // and a frozen 0.1.0, which every stamped app then reported to the ONE shared
   // GlitchTip project as though the crash were the probe's.
   //
-  // P2.6a: this replaces the live `'subly@${AppConfig.appVersion}'`
-  // interpolation with the composed constant. The emitted STRING is identical
-  // (stamped AppConfig.appId == 'subly'); what changes is that it can no longer
-  // drift from the id when this app is re-stamped or cloned.
+  // It used to interpolate `'subly@${AppConfig.appVersion}'` here. The emitted
+  // STRING is identical (AppConfig.appId == 'subly'); what the composed constant
+  // buys is that it can no longer drift from the id when this app is re-stamped
+  // or cloned.
   const TelemetryConfig telemetry = TelemetryConfig(
     dsn: String.fromEnvironment('GLITCHTIP_DSN'),
     release: AppConfig.telemetryRelease,
@@ -121,14 +109,16 @@ Future<void> main() async {
       // `package:supabase_flutter` directly either — assert-package-boundaries
       // fails the build for it — so this is also the only legal path.
       //
-      // ⚠️ P2.6a CHANGES THE PREDICATE, AND IT IS NOT COSMETIC. The live line
-      // read `AppConfig.isSupabaseConfigured` (Supabase defines only); the
-      // stamped `AppConfig.isBackendLive` also requires the per-app API host to
-      // have been pointed away from its placeholder. Post-merge that is the
-      // right gate, because the merged `authRepositoryProvider` is itself gated
-      // on `isBackendLive` — under the live predicate a Supabase-only build
-      // would initialise the SDK for a repository that never uses it. See
-      // MANIFEST OQ-3 for the interaction with P2.5's api-base override.
+      // 🔴 THE PREDICATE IS `isBackendLive`, AND IT IS THE SAME ONE
+      // `authRepositoryProvider` SELECTS ON. That is the whole point of naming
+      // it here: this `if` decides whether the Supabase SDK is initialised, and
+      // that provider decides whether anything USES it. While the two disagreed
+      // — this line on `isBackendLive`, the provider on `isSupabaseConfigured`
+      // alone — a build carrying the Supabase defines but no API_BASE_URL
+      // resolved a live `SupabaseAuthRepository` against an uninitialised SDK
+      // and died at launch on `Supabase.instance`, because the router reads that
+      // provider through `refreshListenable` while it is being built. One
+      // decision, one predicate: `isSupabaseConfigured && isApiConfigured`.
       if (AppConfig.isBackendLive) {
         await initNikatruAuth(
           url: AppConfig.supabaseUrl,

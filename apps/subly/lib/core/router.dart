@@ -1,30 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// DRAFT — P2.5 ROUTER DEDUP · THE UNION TARGET (end state)
+// SUBLY'S ROUTER — the single one. P2.5 de-duplicated the live
+// `lib/core/router/app_router.dart` and the stamped router into this file, at
+// the STAMP's path (anchored by tooling/ci/assert-stamp-properties.mjs
+// `const ROUTER = 'lib/core/router.dart'`; Subly is EXEMPT_APPS today and
+// Phase 5 drops that exemption). `lib/core/router/` no longer exists.
 //
-// Destination path: apps/subly/lib/core/router.dart
-//   (the STAMP's path — anchored by tooling/ci/assert-stamp-properties.mjs:95
-//    `const ROUTER = 'lib/core/router.dart'`. Subly survives today only via
-//    EXEMPT_APPS at :109, and Phase 5 drops exactly that exemption.)
-//
-// Replaces: apps/subly/lib/core/router/app_router.dart  (directory then dies)
-//
-// 🔴 THIS FILE DOES NOT COMPILE UNTIL P2.6a. It is the DESTINATION, not the
-//    next commit. Three symbols it needs live in the 1467-line providers spine
-//    that P2.6a merges — measured, see MANIFEST.md §4:
-//      · routerRefreshProvider    (stamped providers.dart:1456 — absent live)
-//      · onboardingSeenProvider   (stamped providers.dart:1438 — absent live)
-//      · authCapabilitiesProvider (used by sign_in_screen.dart — absent live)
-//    For the increment that CAN land at P2.5, use router.P2.5-landable.dart.
-//
-// Route inventory (union — nothing live lost, every stamped route reachable):
-//   LIVE-ONLY : /onboarding /login /scan /notifications /sub/:id
+// Route inventory (the union — nothing live was lost, every stamped route is
+// reachable):
+//   FROM LIVE : /onboarding /login /scan /notifications /sub/:id
 //               /home /calendar /insights /budget /settings   (shell)
-//   STAMP-ONLY: / /sign-in /sign-up /paywall /manage-plan  + errorBuilder
+//   FROM STAMP: / /sign-in /sign-up /paywall /manage-plan  + errorBuilder
 //   COLLISIONS: /onboarding (live screen wins) · /settings (live shell
 //               placement wins) · / (stamp entry kept as a redirect to /home)
 // ═══════════════════════════════════════════════════════════════════════════
-
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -229,30 +217,6 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-
-/// Bridges a [Stream] (auth changes) to a [Listenable] go_router can refresh on.
-///
-/// ⚠️ RETAINED DELIBERATELY even though the union's `refreshListenable` is now
-/// `routerRefreshProvider`. This class is part of `app_router.dart`'s public
-/// surface; deleting it in the same commit that moves the file mixes a
-/// relocation with an API removal. Retire it in P2.6a once the spine's
-/// AuthRefreshNotifier provably covers the auth-change case — and only after
-/// confirming no test constructs it. (Measured today: zero references outside
-/// its declaring file.)
-class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    notifyListeners();
-    _sub = stream.asBroadcastStream().listen((_) => notifyListeners());
-  }
-
-  late final StreamSubscription<dynamic> _sub;
-
-  @override
-  void dispose() {
-    _sub.cancel();
-    super.dispose();
-  }
-}
 
 /// The INSIGHTS branch behind the chassis [PaywallGate] — [pipeline 5]M-5's
 /// open path, moved here in P2.6b when VARIANT B took the AppScaffold out of

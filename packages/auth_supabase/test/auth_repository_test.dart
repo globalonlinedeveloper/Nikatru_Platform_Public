@@ -89,19 +89,45 @@ void main() {
     });
 
     group('deleteAccount', () {
-      test('signs out and records that the request happened', () async {
-        await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
-        await auth.deleteAccount();
-        expect(auth.deletionRequested, isTrue);
-        expect(auth.currentUser, isNull);
-        expect(await auth.currentAccessToken(), isNull);
-      });
+      // 🔴 [ADR 027] IT MUST NOT RETURN NORMALLY. A normal return is what the
+      // Delete-account control renders as "Your account has been deleted.
+      // Signing in with the same email and password will not work any more." —
+      // while `signInWithEmail` above accepts any non-empty pair and signs the
+      // same user straight back in. Only a real 2xx from `DELETE /v1/account`
+      // may ever produce `deleted`.
+      test(
+        'records the request, signs out, and then REFUSES — it never claims a '
+        'deletion',
+        () async {
+          await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+          await expectLater(
+            auth.deleteAccount(),
+            throwsA(
+              isA<core.AccountDeletionFailure>().having(
+                (core.AccountDeletionFailure f) => f.outcome,
+                'outcome',
+                core.AccountDeletionOutcome.notConfigured,
+              ),
+            ),
+            reason:
+                'a demo build that reports a deletion is lying to the user — '
+                '[ADR 027]',
+          );
+          // The request still REACHED the seam: the dead-button shape and the
+          // lying-button shape are different defects, and both are asserted.
+          expect(auth.deletionRequested, isTrue);
+          expect(auth.currentUser, isNull);
+          expect(await auth.currentAccessToken(), isNull);
+        },
+      );
 
       test('refuses when nobody is signed in', () async {
         await expectLater(
           auth.deleteAccount(),
           throwsA(isA<core.AuthFailure>()),
         );
+        // …and it did not record a request it never made.
+        expect(auth.deletionRequested, isFalse);
       });
     });
   });

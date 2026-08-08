@@ -1,20 +1,7 @@
-// ═════════════════════════════════════════════════════════════════════════════
-// P2.6a DRAFT — apps/subly/lib/app.dart
-//
-// The stamped chassis spine wrapped AROUND the live Subly shell. Not applied,
-// not committed: this is the reviewed draft the integrating session edits into
-// place. See ../MANIFEST.md and ./boot-order.md for the per-decision evidence.
-//
-// PRECONDITIONS (this file does not compile before all four are true):
-//   1. P2.4a — `flutter_localizations` + `generate: true`      ✅ merged (#212)
-//   2. P2.3  — `lib/l10n/{l10n.yaml,app_en.arb,app_ta.arb}`    ⬜ pending
-//              → `lib/l10n/app_localizations.dart` is GENERATED, never carried
-//   3. P2.5  — `lib/core/router.dart` (stamped path wins) and
-//              `lib/core/app_config.dart` (stamped path wins)  ⬜ pending
-//   4. P2.6a — the merged `lib/state/providers.dart`, which must ALSO absorb
-//              `lib/state/analytics_providers.dart` (14 importers) or every
-//              name below is an ambiguous import.                ⬜ this rung
-// ═════════════════════════════════════════════════════════════════════════════
+// Subly's root widget: the stamped chassis spine — localisation,
+// `ForceUpdateGate` (the CFG-1 kill-switch), `AnalyticsGate` (consent prompt +
+// launch funnel) and the notification-tap observer — wrapped AROUND the live
+// Subly shell, which `routerProvider` drives.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
