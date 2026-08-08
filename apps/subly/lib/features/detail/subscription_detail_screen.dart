@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/format/currency.dart';
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/models/subscription.dart';
 import '../../state/providers.dart';
@@ -61,11 +60,30 @@ class SubscriptionDetailScreen extends ConsumerWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          // 🔴 THE SPLIT: the gradient stays FULL-BLEED, its CONTENT is capped.
+          //
+          // Capping the gradient itself would leave a 1280 px painted block
+          // floating in the middle of the page background on a wide display —
+          // a hero that reads as a mis-sized image rather than a header. So the
+          // `Container` keeps taking the whole surface (the enclosing `Column`
+          // is `stretch`), and a `ContentPane` INSIDE it caps the back button,
+          // the glyph tile and the title at the same `kMaxBodyWidth` the body
+          // `ListView` below uses.
+          //
+          // ⚠️ THE 18/18 INSET IS INSIDE THE CAP, not outside it, and that is
+          // the whole point of the pane split. `ContentPane` applies `padding`
+          // within `maxWidth`, exactly as the `ListView` below applies its own
+          // padding within the pane — so at 1920 both content boxes start at
+          // the same x and the title lines up with the mini-cards. Hoisting
+          // this `Padding` outside the pane would shift the header 18 px left
+          // of the body and nothing would go red.
           Container(
+            key: const Key('detail-hero-gradient'),
             decoration: const BoxDecoration(gradient: AppColors.heroGradient),
             child: SafeArea(
               bottom: false,
-              child: Padding(
+              child: ContentPane(
+                key: const Key('detail-header-pane'),
                 padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,130 +143,145 @@ class SubscriptionDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
+          // The body is a PAGE (mini-cards, a meter, a history list), so it
+          // takes the default `kMaxBodyWidth` cap — the same one settings and
+          // home record. `.pane` (480) was considered and rejected: this is a
+          // full route pushed over the shell, not a side panel, and 480 would
+          // make it dramatically narrower than the screen that pushed it.
+          //
+          // The `ListView` keeps its OWN padding rather than handing it to the
+          // pane: a scroll view's padding scrolls with the content and supplies
+          // the bottom run-off, and moving it out would clip rows at the inset
+          // edge instead.
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: _miniCard(
-                        'PRICE',
-                        currency.fmt(s.price),
-                        s.cycle == BillingCycle.yearly
-                            ? 'per year'
-                            : 'per month',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _miniCard(
-                        'NEXT CHARGE',
-                        '${_shortMon(s.nextRenewal.month)} ${s.nextRenewal.day}',
-                        due.label,
-                        valueSub: due.color,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: cardDecoration(radius: 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            child: ContentPane(
+              key: const Key('detail-body-pane'),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                children: <Widget>[
+                  Row(
                     children: <Widget>[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          Text(
-                            'Usage this month',
-                            style: AppText.body.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                          ),
-                          Text(
-                            s.unused ? 'Rarely used' : 'Active',
-                            style: TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              color: s.unused
-                                  ? AppColors.warn
-                                  : AppColors.positive,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: s.usedPct / 100,
-                          minHeight: 8,
-                          backgroundColor: AppColors.line,
-                          color: s.unused ? AppColors.warn : AppColors.positive,
+                      Expanded(
+                        child: _miniCard(
+                          'PRICE',
+                          currency.fmt(s.price),
+                          s.cycle == BillingCycle.yearly
+                              ? 'per year'
+                              : 'per month',
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        s.usageNote,
-                        style: AppText.muted.copyWith(fontSize: 12),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _miniCard(
+                          'NEXT CHARGE',
+                          '${_shortMon(s.nextRenewal.month)} ${s.nextRenewal.day}',
+                          due.label,
+                          valueSub: due.color,
+                        ),
                       ),
                     ],
                   ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(2, 18, 2, 10),
-                  child: Text(
-                    'Payment history',
-                    style: TextStyle(
-                      fontFamily: 'Space Grotesk',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: AppColors.ink,
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: cardDecoration(radius: 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            Text(
+                              'Usage this month',
+                              style: AppText.body.copyWith(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              s.unused ? 'Rarely used' : 'Active',
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                color: s.unused
+                                    ? AppColors.warn
+                                    : AppColors.positive,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: s.usedPct / 100,
+                            minHeight: 8,
+                            backgroundColor: AppColors.line,
+                            color: s.unused
+                                ? AppColors.warn
+                                : AppColors.positive,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          s.usageNote,
+                          style: AppText.muted.copyWith(fontSize: 12),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                _history(ref, currency, s.id),
-                const SizedBox(height: 20),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: SoftButton(
-                        label: 'Edit plan',
-                        onPressed: () => context.pop(),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(2, 18, 2, 10),
+                    child: Text(
+                      'Payment history',
+                      style: TextStyle(
+                        fontFamily: 'Space Grotesk',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: AppColors.ink,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: SizedBox(
-                        height: 50,
-                        child: FilledButton(
-                          onPressed: () async {
-                            await showCancelSheet(context, s);
-                            if (context.mounted) context.pop();
-                          },
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.danger,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                  ),
+                  _history(ref, currency, s.id),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: SoftButton(
+                          label: 'Edit plan',
+                          onPressed: () => context.pop(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: SizedBox(
+                          height: 50,
+                          child: FilledButton(
+                            onPressed: () async {
+                              await showCancelSheet(context, s);
+                              if (context.mounted) context.pop();
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.danger,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
                             ),
-                          ),
-                          child: const Text(
-                            'Cancel plan',
-                            style: TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w700,
+                            child: const Text(
+                              'Cancel plan',
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
