@@ -880,7 +880,9 @@
       "timezone": { "introduces": [], "why": "Local timezone database for scheduling the reminders above. Offline data, no I/O." },
       "intl": { "introduces": [], "why": "Number formatting. Subly's entire use is one NumberFormat in lib/core/format/currency.dart." },
       "cupertino_icons": { "introduces": [], "why": "An icon font." },
-      "url_launcher": { "introduces": [], "why": "Hands four hardcoded nikatru.com legal URLs to the system browser. The app receives nothing back and learns nothing about what the browser does." }
+      "url_launcher": { "introduces": [], "why": "Hands four hardcoded nikatru.com legal URLs to the system browser. The app receives nothing back and learns nothing about what the browser does." },
+      "package_info_plus": { "introduces": [], "why": "Reads the app's OWN version and build number from the OS package manager — input to the CFG-1 force-update kill-switch comparison. No personal data, no network. Added 2026-08-08 with productization P2.4a under [ADR 037]." },
+      "flutter_localizations": { "introduces": [], "why": "The SDK localization package driving gen-l10n from lib/l10n/*.arb. Offline string tables, no I/O. Added 2026-08-08 with productization P2.4a under [ADR 037]." }
     }
   }
 }
