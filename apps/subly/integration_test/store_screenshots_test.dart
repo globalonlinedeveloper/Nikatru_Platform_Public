@@ -60,7 +60,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:subly/core/config/app_config.dart';
+import 'package:subly/core/app_config.dart';
 import 'package:subly/core/e2e_keys.dart';
 import 'package:subly/data/auth/auth_models.dart';
 import 'package:subly/features/budget/budget_screen.dart';

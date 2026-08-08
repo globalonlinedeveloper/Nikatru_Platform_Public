@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-import '../../core/config/app_config.dart';
+import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';

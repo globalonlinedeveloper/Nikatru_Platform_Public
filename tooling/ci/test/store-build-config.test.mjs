@@ -52,6 +52,16 @@ class AppConfig {
 
 const ALL = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL'];
 
+/** The two layouts an app_config lives in, in the register order — the SAME
+ *  declaration assert-store-metadata.mjs reads. apps/subly kept
+ *  `lib/core/config/app_config.dart`; the brick stamps `lib/core/app_config.dart`.
+ *  The guard used to hard-code the first, which made a de-duplicated app
+ *  COVERAGE LOST while being perfectly correct. */
+const APP_CONFIG_PATHS = [
+  'apps/{app}/lib/core/config/app_config.dart',
+  'apps/{app}/lib/core/app_config.dart',
+];
+
 const buildStep = (target, defines) => `      - name: Build ${target}
         run: >
           flutter build ${target} --release
@@ -60,6 +70,8 @@ ${defines.map((d) => `          --dart-define=${d}=\${{ secrets.${d} }}`).join('
 
 function makeRoot({
   config = CONFIG,
+  configLayout = 'live',
+  appConfigPaths = APP_CONFIG_PATHS,
   defines = ALL,
   target = 'appbundle',
   platforms = ['android'],
@@ -75,12 +87,23 @@ function makeRoot({
   mkdirSync(join(root, 'apps', 'subly', 'lib', 'core', 'config'), { recursive: true });
 
   writeFileSync(join(root, 'sites', '_shared', '_data', 'apps.json'), JSON.stringify([{ slug: 'subly' }]));
-  if (config !== null) writeFileSync(join(root, 'apps', 'subly', 'lib', 'core', 'config', 'app_config.dart'), config);
+  if (config !== null) {
+    const rel = configLayout === 'stamp'
+      ? join('apps', 'subly', 'lib', 'core', 'app_config.dart')
+      : join('apps', 'subly', 'lib', 'core', 'config', 'app_config.dart');
+    writeFileSync(join(root, rel), config);
+  }
 
   const row = { id: 'android-play', kind, platforms, artifactFormats: ['.aab'] };
   if (lane) row.lane = lane;
   if (submission) row.submission = submission;
-  writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({ channels: [row] }));
+  // `storeMetadataContract.appConfigPaths` is where BOTH this guard and
+  // assert-store-metadata.mjs learn the layouts. A fixture that omits it
+  // would exercise a fallback the real register never takes.
+  writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({
+    channels: [row],
+    storeMetadataContract: { appConfigPaths },
+  }));
 
   writeFileSync(
     join(root, '.github', 'workflows', 'build.yml'),
@@ -220,6 +243,24 @@ describe('assert-store-build-config — coverage self-checks', () => {
     const r = run(makeRoot({ config: null }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /COVERAGE LOST/);
+  });
+
+  // 🔴 THE NEGATIVE TEST FOR THE 2026-08-08 LAYOUT FIX ([ADR 037] P2.5).
+  // Before it the lookup was the single hard-coded
+  // `apps/<slug>/lib/core/config/app_config.dart`, and THIS EXACT ROOT exited 1
+  // with "not one app_config.dart was read" — a correct tree failing a guard
+  // that had memorised the layout the app was moving off. Remove the stamped
+  // entry from APP_CONFIG_PATHS and this goes red again, which is the point.
+  test('the STAMPED layout is found too — a de-duplicated app is not COVERAGE LOST', () => {
+    const r = run(makeRoot({ configLayout: 'stamp' }));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /isBackendLive/);
+  });
+
+  test('COVERAGE LOST when the register declares no app_config layout at all', () => {
+    const r = run(makeRoot({ appConfigPaths: [] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /appConfigPaths is missing, empty/);
   });
 
   test('COVERAGE LOST when isBackendLive is renamed — the requirement would be EMPTY', () => {

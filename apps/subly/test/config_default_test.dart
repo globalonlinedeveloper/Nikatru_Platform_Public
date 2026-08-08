@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:subly/core/config/app_config.dart';
+import 'package:subly/core/app_config.dart';
 import 'package:subly/state/providers.dart';
 
 /// [pipeline C-10] The CFG-1 bundled-default contract, MOVED HERE FROM

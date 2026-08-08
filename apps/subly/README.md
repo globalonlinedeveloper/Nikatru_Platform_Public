@@ -16,12 +16,12 @@ flutter run                # demo mode (mock auth + seed data)
 The backend is live. Copy the example config to the gitignored real file and run against it:
 
 ```bash
-cp config/subly.live.example.json config/subly.live.json   # already filled for Subly
-flutter run --dart-define-from-file=config/subly.live.json
+cp config/defaults.example.json config/defaults.json   # already filled for Subly
+flutter run --dart-define-from-file=config/defaults.json
 # any target: -d chrome | -d windows | -d macos | -d linux | <device>
 ```
 
-`config/subly.live.json` (gitignored) carries the live values:
+`config/defaults.json` (gitignored) carries the live values:
 
 | Key | Value |
 |---|---|
@@ -29,10 +29,26 @@ flutter run --dart-define-from-file=config/subly.live.json
 | `SUPABASE_ANON_KEY` | the project **publishable** key (`sb_publishable_…`) |
 | `API_BASE_URL` | `https://api.nikatru.com` (Cloudflare Worker custom domain; `subly-api.rajasekarjavaee.workers.dev` still works as a fallback) |
 
+🔴 **THE KEYS ARE `--dart-define` NAMES, NOT THE CFG-1 WIRE NAMES.** The chassis file this pair is
+named after (`config/defaults.json` in a freshly stamped app) ships snake keys — `app_id`,
+`api_base_url` — because it was drafted as a runtime-config document, and **nothing in any app reads
+it**. `--dart-define-from-file` maps each JSON key to a define of exactly that name, so a file of
+snake keys supplies `api_base_url` while `AppConfig` reads `API_BASE_URL`, and the app boots in
+**demo mode looking configured**. Measured 2026-08-08 with a real `flutter test
+--dart-define-from-file`: snake file ⇒ `API_BASE_URL=<UNSET>`. [ADR 037] P2.5 therefore adopted the
+chassis **names** and kept Subly's **keys**.
+
 When both Supabase and the API are set, `AppConfig.isBackendLive` is true and the app uses
 real Supabase Auth + the live Worker/D1 instead of the mock+seed demo path. Values are passed
 at build time only — nothing is committed. (Legacy anon JWT also works in the `SUPABASE_ANON_KEY`
 slot if a pinned SDK rejects the publishable format.)
+
+⚠️ **`AppConfig._phApiBase` is a SENTINEL, not the host.** It stays
+`https://subly-api.YOUR_SUBDOMAIN.workers.dev`. `isApiConfigured` is `apiBaseUrl != _phApiBase`, so
+writing the real `https://api.nikatru.com` into the constant makes that comparison false for exactly
+the builds that pass the correct value — production would resolve `SeedApiClient()` and
+`NoOpAnalytics`. `assert-store-build-config.mjs` cannot catch it; it checks that the define is
+passed, and prints on every run that it cannot see values.
 
 ## Architecture (layers)
 
@@ -40,7 +56,7 @@ slot if a pinned SDK rejects the publishable format.)
 lib/
 ├── main.dart · app.dart              app entry (+ conditional Supabase.initialize)
 ├── core/
-│   ├── config/app_config.dart        per-app identity + --dart-define config (no secrets)
+│   ├── app_config.dart               per-app identity + --dart-define config (moved P2.5, [ADR 037])
 │   ├── theme/                        colors + text styles from the design
 │   ├── format/                       Currency (with demo FX) + SubMath derivations
 │   └── router.dart                   go_router: onboarding→login→scan→shell + overlays (moved P2.5, [ADR 037])

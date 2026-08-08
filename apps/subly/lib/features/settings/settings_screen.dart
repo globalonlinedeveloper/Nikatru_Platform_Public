@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-import '../../core/config/app_config.dart';
+import '../../core/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 // `auth_repository.dart` is the F0-4 re-export shim: it carries AuthRepository

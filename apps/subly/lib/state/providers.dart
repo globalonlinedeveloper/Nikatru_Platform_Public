@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-import '../core/config/app_config.dart';
+import '../core/app_config.dart';
 import '../data/api/api_client.dart';
 import '../data/api/dio_api_client.dart';
 import '../data/api/seed_api_client.dart';
