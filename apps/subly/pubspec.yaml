@@ -98,6 +98,17 @@ dependencies:
   # Open external URLs (nikatru.com legal pages + company site) on all 6 platforms.
   url_launcher: ^6.3.0
 
+  # Running app version — drives the CFG-1 force-update kill-switch. Union item
+  # (P2.4a): the chassis config/consent spine landing in P2.3/P2.6 reads it.
+  package_info_plus: ^8.0.0
+
+  # Localization — flutter_localizations + intl drive gen-l10n from lib/l10n/*.arb
+  # (`generate: true` below; l10n.yaml + the .arb files land with P2.3). The intl
+  # bound above already spans the 0.20.2 this SDK package hard-pins — that is
+  # exactly what the [pipeline S-4] widening was for.
+  flutter_localizations:
+    sdk: flutter
+
   # 🪦 THE REVENUECAT LINE THAT USED TO SIT HERE IS GONE — [ADR 026], [ADR 004].
   # RevenueCat is an aggregator over Apple/Google in-app purchase, and native IAP
   # is deferred by 39-CHASSIS §4 cut 5; the merchant of record is locked to
@@ -138,8 +149,19 @@ dev_dependencies:
   # Configured by the `msix_config:` block at the bottom of this file.
   msix: ^3.18.0
 
+  # TEST-ONLY (union item, P2.4a). The chassis `content-pack-consumed` test
+  # (chassis_properties_test.dart, carried to P2.6a) builds a pack whose
+  # `content_hash` is genuinely correct, so the loader's own integrity check
+  # runs for real instead of being handed a hash it cannot refuse.
+  crypto: ^3.0.0
+
 flutter:
   uses-material-design: true
+
+  # gen-l10n switch (union item, P2.4a). Inert until l10n.yaml + lib/l10n/*.arb
+  # arrive with P2.3 — verified: `flutter pub get` + the full gate pass with the
+  # flag on and no l10n.yaml present.
+  generate: true
 
   # Nikatru co-branding lockups (light + dark) and icon, used by NikatruWordmark.
   assets:
