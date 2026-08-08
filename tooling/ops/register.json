@@ -398,8 +398,9 @@
         "github",
         "cloudflare"
       ],
-      "source": "unverified",
-      "unverifiedWhy": "The reader has never run against the live D1 table. Its verdicts, its token parser and all three exit codes are exercised end-to-end in tooling/ci/test/analytics-liveness.test.mjs (28 cases, including the process-level exit codes), and the writer's tokens in services/platform/test/analytics-liveness.test.ts — but a fixture is not the production row, and this repository has shipped a guard whose six fixture tests passed against a version that could not fail. Flip to `verified` only with a dated observation of a real run: the expected first result is EXIT 1, because consents>0 with events=0 is the live state."
+      "source": "verified",
+      "verifiedOn": "2026-08-08",
+      "verifiedHow": "The full arc, observed live the day the row was written — and it began with EXACTLY the predicted first result. (1) EXIT 1 on true silence: ops-watch dispatch run 31243278611, the judge step red on the production row `consents=1 events=0` — reach proven, arrivals zero. (2) The CAUSE was fixed, never the alarm: the sender repair (#203) deployed, the owner's real browser sessions delivered the first 22 production events, and the reader's first live GREEN printed 'the rail produced events=22 in the last 24h (consents=3)' against the 06:45:16Z heartbeat. (3) The scheduled run 31247642857 (event=schedule, 08:05Z) carries the step green. All three exit codes have now fired against live D1 — 2 on missing credentials during setup, 1 on true silence, 0 on true delivery."
     },
     {
       "id": "duty.workflow.ci.yml",
