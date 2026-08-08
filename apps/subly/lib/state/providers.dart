@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SUBLY STATE SPINE — P2.6a MERGE DRAFT ([ADR 037] productization, re-stamp).
+// SUBLY STATE SPINE ([ADR 037] productization, re-stamp).
 //
 // 🔴 READ THIS BEFORE EDITING. This file is the CHASSIS SPINE (the brick's
-// `lib/state/providers.dart`, 1467 lines) with Subly's own app state merged
-// UNDER it — not over it. The rule the merge follows, in one line:
+// `lib/state/providers.dart`) with Subly's own app state merged UNDER it — not
+// over it. The rule the merge followed, in one line:
 //
 //     the chassis owns the plumbing; Subly owns its product.
 //
@@ -39,9 +39,8 @@
 //     `reminder-intent-persisted` property — a mapping `apps/subly` is exempt
 //     from today (`EXEMPT_APPS`, :104) and will NOT be after Phase 5.
 //
-// ⚠️ ASSUMES P2.5 HAS LANDED. This file imports `../core/app_config.dart` (the
-// de-duplicated union), not `../core/config/app_config.dart`. See MANIFEST.md
-// §5 for the exact `AppConfig` members it requires.
+// ⚠️ THE CONFIG IMPORT IS `../core/app_config.dart` — the de-duplicated union
+// at the STAMP's path. `../core/config/app_config.dart` no longer exists.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -83,7 +82,10 @@ import '../core/app_config.dart';
 import '../data/api/api_client.dart';
 import '../data/api/dio_api_client.dart';
 import '../data/api/seed_api_client.dart';
-import '../data/auth/auth_models.dart';
+// `auth_models.dart` (AuthUser/AuthSession/AuthFailure) is deliberately NOT
+// imported: `auth_repository.dart` is the F0-4 shim that already re-exports all
+// three from `packages/core`, so a second import is a second path to one
+// declaration and the analyzer reports it.
 import '../data/auth/auth_repository.dart';
 import '../data/auth/supabase_auth_repository.dart';
 import '../data/subscriptions/subscription_repository.dart';
@@ -515,9 +517,22 @@ String analyticsPlatformName() {
 /// `ref.read` INSIDE the closure, never at build time: the REST client's token
 /// provider reads THIS provider, so resolving it out here would be a cycle.
 /// Deletion happens long after both exist.
+///
+/// 🔴 THE PREDICATE IS `isBackendLive`, AND IT MUST MATCH `main.dart`'S.
+/// `main.dart` gates `initNikatruAuth` — the call that initialises the Supabase
+/// SDK before the first frame — on `AppConfig.isBackendLive`. This provider used
+/// to select on `isSupabaseConfigured` alone, so a build carrying SUPABASE_URL /
+/// SUPABASE_ANON_KEY but no API_BASE_URL resolved a LIVE `SupabaseAuthRepository`
+/// against an SDK nobody had initialised. The router reads this provider through
+/// `refreshListenable` while it is being built, so that build died at LAUNCH on
+/// `Supabase.instance` — AssertionError in debug, LateInitializationError in
+/// release — before a screen rendered, and no widget test could see it because
+/// widget tests take no `--dart-define`s. Two predicates for one decision is the
+/// bug; there is now one, and `isBackendLive` is it
+/// (`isSupabaseConfigured && isApiConfigured`).
 final Provider<AuthRepository> authRepositoryProvider =
     Provider<AuthRepository>(
-      (ref) => AppConfig.isSupabaseConfigured
+      (ref) => AppConfig.isBackendLive
           ? SupabaseAuthRepository(
               requestServerDeletion: () =>
                   requestAccountDeletion(ref.read(platformRestClientProvider)),
@@ -598,18 +613,6 @@ Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
 /// Ask before promising the user something the platform cannot deliver.
 final Provider<AuthCapabilities> authCapabilitiesProvider =
     Provider<AuthCapabilities>((ref) => AuthCapabilities.current());
-
-/// Reactive auth stream (drives sign-in UI; the live router uses its own
-/// refresh bridge, `GoRouterRefreshStream`).
-///
-/// ⚠️ ZERO CONSUMERS, MEASURED at f90c546 — and [authUserProvider] below is
-/// strictly better (it seeds with the current snapshot, so a screen built while
-/// already signed in does not sit on `AsyncLoading` forever). Kept verbatim by
-/// the P2.6a rule that no live provider disappears inside a merge; its deletion
-/// is a one-line follow-up once the router de-dup settles. MANIFEST.md §7.
-final StreamProvider<AuthUser?> authStateProvider = StreamProvider<AuthUser?>(
-  (ref) => ref.watch(authRepositoryProvider).authStateChanges(),
-);
 
 /// The signed-in user as a STREAM, so a screen showing their details updates
 /// when those details change.
@@ -1339,11 +1342,12 @@ class _Bump extends ChangeNotifier {
 /// first version listened only to auth, so the onboarding flag could resolve and
 /// the router would never look again.
 ///
-/// ⚠️ Subly's live `core/router/app_router.dart` still uses its own
-/// `GoRouterRefreshStream` and does not read this. The two converge in P2.5's
-/// router de-duplication, which keeps the STAMPED `lib/core/router.dart` because
-/// `tooling/ci/assert-stamp-properties.mjs:94-95` anchors that path and Phase 5
-/// drops the `apps/subly` exemption that hides it today.
+/// This IS what the live router listens to: `lib/core/router.dart` passes it to
+/// `refreshListenable` (anchored verbatim by
+/// `tooling/ci/assert-stamp-properties.mjs`). The old `core/router/app_router.dart`
+/// and its private `GoRouterRefreshStream` bridge are gone — P2.5 de-duplicated
+/// the two routers onto the STAMPED `lib/core/router.dart` path, and the bridge
+/// class was retired once this provider provably covered the auth-change case.
 final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
   final _Bump onboarding = _Bump();
   // 🔄 `(bool? _, bool? _)` — TWO wildcards, not `_`/`__`. The brick template
