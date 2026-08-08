@@ -106,6 +106,15 @@ class _FakeNotifications implements core.NotificationService {
   @override
   Future<void> showNow({required String title, required String body}) async {}
 
+  /// [13]T-9 — the tap channel, as a controller a test can push through, so a
+  /// stamped app's own tests can drive the inbound half rather than only the
+  /// outbound one.
+  final StreamController<core.NotificationTap> taps =
+      StreamController<core.NotificationTap>.broadcast();
+
+  @override
+  Stream<core.NotificationTap> notificationTaps() => taps.stream;
+
   int requestPermissionCalls = 0;
 
   @override

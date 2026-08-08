@@ -438,33 +438,10 @@
             "showNow",
             "scheduleDaily",
             "cancel",
-            "cancelAll"
+            "cancelAll",
+            "notificationTaps"
           ],
-          "missingMethods": [
-            {
-              "surface": "notification tap / open",
-              "decision": "00-RECONCILIATION-DECISIONS.md PART 2.2 item 12 — \"NotificationService tap surface: stage 2, named seam method in C-1's register\"",
-              "why": "The seam can schedule and cancel but has no way to DELIVER a tap back to the app, so a scheduled reminder cannot open anything. The analytics half already exists and is stranded: AnalyticsFunnel.onNotificationOpened(String kind) at apps/subly/lib/state/analytics_funnel.dart can RECORD a tap that nothing can report. A reminder nobody can act on is the dead-feature shape C-6 exists to catch.",
-              "fixOwner": "[2]C-3's de-forking increment, per the decision",
-              "closedIf": [
-                {
-                  "file": "packages/core/lib/src/notifications/notification_service.dart",
-                  "pattern": "Stream<|onNotificationOpened|onNotificationTap|notificationTaps|setTapHandler",
-                  "meaning": "the seam itself grew a subscribable tap surface, so this entry is a STALE WAIVER -- remove it and wire the loop"
-                },
-                {
-                  "file": "packages/notifications/lib/src/local_notification_service_io.dart",
-                  "pattern": "onDidReceiveNotificationResponse|onDidReceiveBackgroundNotificationResponse",
-                  "meaning": "the adapter registered a tap callback with the plugin, so a tap CAN reach Dart -- this entry no longer describes the tree"
-                }
-              ],
-              "strandedEmitter": {
-                "file": "apps/subly/lib/state/analytics_funnel.dart",
-                "call": "onNotificationOpened(",
-                "why": "The half that already exists. `notification_opened` sits in the v1 event set and has ZERO emitters, because nothing can tell the app a reminder was tapped. If this method gains a caller the gap was closed by some other route and this entry is describing a tree that no longer exists."
-              }
-            }
-          ]
+          "_closedGap": "[13]T-9, 2026-08-07. This seam CARRIED a `missingMethods` waiver for the notification tap / open surface. It is closed, so the waiver is gone -- leaving it would have been the stale waiver its own `closedIf` clauses existed to catch, and both of them now match: the seam declares `notificationTaps()` and the adapter registers `onDidReceiveNotificationResponse`. The protection did not go with it. `SEAMS_OWING_A_DECLARED_GAP` in tooling/ci/assert-capability-register.mjs required this seam to keep DECLARING the gap; `WIRED_SURFACES_THAT_MAY_NOT_REGRESS` in the same file now requires it to keep the gap CLOSED -- seam method, adapter registration and a live emitter, each failing the build on its own. Strictly stronger: the old list could only notice the waiver being deleted, the new one notices the feature being deleted."
         },
         {
           "file": "packages/core/lib/src/review/review_prompter.dart",
@@ -644,9 +621,10 @@
         "NotificationService"
       ],
       "consumers": [
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+        "tooling/bricks/app/__brick__/apps/{{app_id}}",
+        "apps/subly"
       ],
-      "note": "Deliberately NOT given to apps/subly, which 39-CHASSIS cut 1 froze as a legacy rail-prover. That freeze is why the FLN 17.x pin stays there.",
+      "note": "The FLN 17.x pin stays because 39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. ⚠️ DATED DECLARED EXCEPTION (2026-08-07, [13]T-9) to that cut, the third one and the same shape as the two already standing (nikatru_telemetry per [pipeline C-2], nikatru_auth_supabase per [G-43]): apps/subly now consumes this package for the INBOUND half only. This adapter is the one place in the tree that registers `onDidReceiveNotificationResponse`, so without it a tapped Subly renewal reminder opens nothing and `notification_opened` stays unemittable. Subly's frozen fork keeps every scheduling call it has and gains no chassis feature; `FlutterLocalNotificationsPlugin()` is a process singleton, so the two wrap ONE plugin and there is ONE registration -- see the ordering note in apps/subly/lib/main.dart. [2]C-3's de-forking removes the duplication.",
       "violations": [
         {
           "path": "apps/subly/lib/services/notifications/notification_service.dart",

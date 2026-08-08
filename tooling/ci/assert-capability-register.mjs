@@ -233,13 +233,64 @@ for (const dir of onDisk) {
 // a derivation cannot see, which is why the gap needed declaring in the first
 // place.
 const SEAMS_OWING_A_DECLARED_GAP = [
+  // 🔴 EMPTY, AND THAT IS NOT THE LIST BEING SWITCHED OFF.
+  //
+  // It held exactly one row — `NotificationService` owing a /tap/i gap — and
+  // [13]T-9 CLOSED that gap on 2026-08-07, which is the one condition under
+  // which a row here is supposed to leave: the register's own `closedIf`
+  // clauses both match now (the seam declares `notificationTaps()`, the adapter
+  // registers `onDidReceiveNotificationResponse`), so keeping the waiver would
+  // have failed this guard as the stale waiver it had become.
+  //
+  // The protection did not leave with it. A closed gap needs the OPPOSITE
+  // check — not "is the absence still declared" but "is the feature still
+  // there" — and that is WIRED_SURFACES_THAT_MAY_NOT_REGRESS below, which is
+  // strictly stronger: this list could only notice a WAIVER being deleted; that
+  // one notices the FEATURE being deleted. Both directions of the same
+  // question, and the tree is only ever in one of the two states.
+  //
+  // The machinery stays because the next declared gap goes here, and because an
+  // empty list is still exercised: the fixtures in
+  // tooling/ci/test/capability-register-seams.test.mjs drive it with synthetic
+  // rows, so the code path is covered whether or not this tree owes anything.
+];
+
+// ── [13]T-9 · A CLOSED GAP MAY NOT QUIETLY RE-OPEN ───────────────────────────
+//
+// The mirror image of the list above, and the reason this file did not simply
+// get one row shorter. `notification_opened` was unemittable for months and
+// NOTHING WENT RED, because a seam that refuses to deliver a tap is
+// indistinguishable from a seam nobody tapped — this repo's "fail-closed seam
+// with no proven open path" shape. Having paid to close it, the three links of
+// the chain are now pinned INDEPENDENTLY, because each one can be removed on its
+// own while the other two keep the tree looking wired:
+//
+//   `seamMethod`      — delete it from the seam and every consumer loses the
+//                       surface. Caught by the `methods` check above too; named
+//                       here so the chain is one readable thing.
+//   `adapterPattern`  — the REGISTRATION. Delete `onDidReceiveNotificationResponse`
+//                       from the adapter and the seam still compiles, every
+//                       outbound test stays green, and no tap ever reaches Dart
+//                       again. This is the mutation the increment was proven
+//                       against, and this line is what makes it loud.
+//   `emitter`         — the far end. If `onNotificationOpened(` loses its last
+//                       caller the tap is delivered and then dropped on the
+//                       floor, which is the original defect wearing a new hat.
+//
+// Same REQUIRED_COVERAGE idiom and the same reason for living in the .mjs rather
+// than in the register: a requirement stored in the file it protects is
+// removable by one edit to one file.
+const WIRED_SURFACES_THAT_MAY_NOT_REGRESS = [
   {
-    symbol: 'NotificationService',
-    surface: /tap/i,
+    label: 'notification tap / open ([13]T-9)',
+    seamSymbol: 'NotificationService',
+    seamMethod: 'notificationTaps',
+    adapter: 'packages/notifications/lib/src/local_notification_service_io.dart',
+    adapterPattern: /onDidReceiveNotificationResponse|onDidReceiveBackgroundNotificationResponse/,
+    emitter: { file: 'apps/subly/lib/state/analytics_funnel.dart', call: 'onNotificationOpened(' },
     why:
-      'the seam can schedule and cancel and has no way to deliver a tap back to the app, so a ' +
-      'scheduled reminder cannot open anything and `notification_opened` has zero emitters. ' +
-      'Closing it is [2]C-3\'s seam extension; until then the gap is declared, not forgotten.',
+      'a scheduled reminder that opens nothing when tapped is a dead feature that reports healthy, and ' +
+      'the `notification_opened` event goes back to zero emitters with no test red anywhere.',
   },
 ];
 
@@ -253,6 +304,9 @@ const PIPELINE_ID = /\[(?:[1-9]|1[0-4])\][A-Z]-\d+/;
 let missingMethodEntries = 0;
 const declaredGapSurfaces = new Map(); // seam symbol -> [surface strings]
 const gapPrints = [];
+/** One line per closed-and-pinned surface, printed for the same reason the gaps
+ *  are: "nothing to report" and "reached nothing" print identically otherwise. */
+const wiredPrints = [];
 
 /** Every .dart file under the trees a caller could live in — apps, the shared
  *  packages and the brick template. Memoised; `dartFilesUnder` is a hoisted
@@ -458,6 +512,77 @@ for (const owed of SCANNING_OWN_REPO ? SEAMS_OWING_A_DECLARED_GAP : []) {
         'Deleting the entry does not close the gap — it only stops anyone hearing about it, which is the ' +
         'exact reason this check exists.',
     );
+  }
+}
+
+// ── [13]T-9 · the closed gap, pinned link by link ────────────────────────────
+//
+// Own-repo only, same split as the list above: the guard fixtures are synthetic
+// registers whose trees have no notifications adapter to point at.
+for (const w of SCANNING_OWN_REPO ? WIRED_SURFACES_THAT_MAY_NOT_REGRESS : []) {
+  // link 1 — the seam still declares the surface. Checked against the register
+  // AND the source, because a `methods` entry that was quietly deleted takes the
+  // section-3 check with it: the loop above can only verify methods it is told
+  // about, so a deletion there is silent by construction.
+  const owning = capabilities.find((c) => (c.seams ?? []).some((s) => s.symbol === w.seamSymbol));
+  const seam = (owning?.seams ?? []).find((s) => s.symbol === w.seamSymbol);
+  if (!seam) {
+    problems.push(
+      `COVERAGE LOST — ${w.label}: the register declares no seam \`${w.seamSymbol}\`, so its wired ` +
+        'surface cannot even be looked for. Re-point this list or remove the seam deliberately.',
+    );
+  } else if (!(seam.methods ?? []).includes(w.seamMethod)) {
+    problems.push(
+      `${w.label} — the register no longer lists \`${w.seamMethod}\` among \`${w.seamSymbol}\`'s methods. ` +
+        `${w.why} Un-declaring the surface is how it stops being checked.`,
+    );
+  } else {
+    const body = classBody(stripDart(readFileSync(join(ROOT, seam.file), 'utf8')), w.seamSymbol);
+    if (body === null || !declaresMethod(body, w.seamMethod)) {
+      problems.push(
+        `${w.label} — \`${w.seamSymbol}\` no longer declares \`${w.seamMethod}\` in \`${seam.file}\`. ${w.why}`,
+      );
+    }
+  }
+
+  // link 2 — THE REGISTRATION. Stripped first, for the reason every scan in this
+  // file is: the adapter's doc comments discuss the callback by name at length,
+  // so a raw-text match would report the registration present in a tree where
+  // only the prose describing it survived.
+  const adapterPath = join(ROOT, w.adapter);
+  if (!existsSync(adapterPath)) {
+    problems.push(
+      `COVERAGE LOST — ${w.label}: the adapter \`${w.adapter}\` does not exist, so the registration ` +
+        'check is unfalsifiable. The file moved; re-point this list.',
+    );
+  } else if (!w.adapterPattern.test(stripDart(readFileSync(adapterPath, 'utf8')))) {
+    problems.push(
+      `${w.label} — \`${w.adapter}\` no longer matches ${w.adapterPattern}. THE REGISTRATION IS GONE: ` +
+        `the seam still compiles and every outbound test still passes, and no tap reaches Dart. ${w.why}`,
+    );
+  }
+
+  // link 3 — the far end still has a caller. `allDartFiles()` includes tests on
+  // purpose (see its doc), so this asks "does a route exist", not "does
+  // production use it"; assert-seams-wired.mjs owns the stricter question.
+  const declaring = posix.normalize(w.emitter.file.replace(/\\/g, '/'));
+  if (!existsSync(join(ROOT, declaring))) {
+    problems.push(`COVERAGE LOST — ${w.label}: emitter file \`${w.emitter.file}\` does not exist.`);
+  } else {
+    const callers = allDartFiles().filter(
+      (rel) => rel !== declaring && stripDart(readFileSync(join(ROOT, rel), 'utf8')).includes(w.emitter.call),
+    );
+    if (callers.length === 0) {
+      problems.push(
+        `${w.label} — \`${w.emitter.call}\` is back to ZERO callers tree-wide. The tap is delivered and ` +
+          `then dropped, which is the original defect in a new costume. ${w.why}`,
+      );
+    } else {
+      wiredPrints.push(
+        `${w.label} — seam method \`${w.seamMethod}\`, registration in \`${w.adapter}\`, ` +
+          `${callers.length} emitter(s) of \`${w.emitter.call.replace(/\($/, '')}\`.`,
+      );
+    }
   }
 }
 
@@ -884,6 +1009,9 @@ for (const cap of capabilities) {
 // because closing it is a seam extension owned by another stage — and a guard
 // that blocks all CI on work this branch may not do is one somebody switches off.
 for (const g of gapPrints) console.log(`⬜ ${g}`);
+// The closed ones, printed too. A surface this list protects is invisible while
+// it holds, and an invisible check is one nobody notices has been re-pointed.
+for (const w of wiredPrints) console.log(`✅ ${w}`);
 
 const seamCount = seamSymbols.size;
 console.log(
@@ -897,7 +1025,9 @@ console.log(
 // array looked exactly like a healthy one.
 console.log(
   `    ${missingMethodEntries} declared missing-surface gap(s), each with a pipeline owner and the evidence ` +
-    `that would close it; ${SEAMS_OWING_A_DECLARED_GAP.length} seam(s) may not have theirs deleted`,
+    `that would close it; ${SEAMS_OWING_A_DECLARED_GAP.length} seam(s) may not have theirs deleted, ` +
+    `${WIRED_SURFACES_THAT_MAY_NOT_REGRESS.length} closed surface(s) pinned link-by-link ` +
+    `(${wiredPrints.length} verified)`,
 );
 // The demand gate's own counts, for the same reason the line above prints a
 // COUNT: its correct state is "nothing found", which is indistinguishable from a
