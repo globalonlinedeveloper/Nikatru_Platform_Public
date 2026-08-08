@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// `show ContentPane` and not a bare import: `core/theme/app_theme.dart` and
+// `app_colors.dart` below are re-export shims for this same package, so an
+// unrestricted import makes both of them redundant and the analyzer says so
+// (two `unnecessary_import` infos — the pair `settings_screen.dart` still
+// carries). `ContentPane` is the one symbol this file needs that the shims do
+// not re-export.
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ContentPane;
 
 import '../../core/format/currency.dart';
 import '../../core/format/sub_math.dart';
@@ -26,20 +34,49 @@ class InsightsScreen extends ConsumerWidget {
     final List<Subscription> unused = SubMath.unused(subs);
     final double savings = SubMath.savings(subs);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 58, 18, 108),
-      children: <Widget>[
-        Text('Insights', style: AppText.title.copyWith(fontSize: 26)),
-        const SizedBox(height: 4),
-        Text(
-          'Where your money goes',
-          style: AppText.muted.copyWith(fontSize: 12),
+    return ContentPane(
+      // P3 PORT — THE WIDTH DECISION THIS SCREEN NEVER HAD.
+      //
+      // Same defect and same fix as home's `ContentPane`. `AppScaffold` caps the
+      // body at `kMaxBodyWidth` only in its EXTRA-LARGE class (>=1600), so
+      // between 1200 and 1599 both cards grew to the full window — a 1550 px
+      // savings row with a glyph at one edge and a Cancel button at the other.
+      // Nothing overflows and nothing clips, so no existing assertion could
+      // fail. `ContentPane`'s DEFAULT cap IS `kMaxBodyWidth`, the same ceiling
+      // `AppScaffold` applies above 1600, so this makes the two agree instead of
+      // agreeing only past 1600. Default rather than `.reading`/`.pane`: two
+      // cards on a scrolling page is home's and settings' shape, and a narrower
+      // cap here would make insights the odd page out for no stated reason.
+      //
+      // ✅ POLICED by `test/width_insights_test.dart` — the 1920 case is the one
+      // that goes red if this wrapper is deleted.
+      child: ListView(
+        // P3 PORT — PADDING RE-BASED FOR THE CHASSIS SHELL (home's precedent).
+        // Live was `fromLTRB(18, 58, 18, 108)`. Both odd numbers paid for the
+        // old shell: 58 cleared a status bar under a `Scaffold` with no app bar,
+        // 108 cleared `AppShell`'s floating pill bar plus its FAB. The chassis
+        // wraps the body in a `SafeArea` and puts navigation in
+        // `bottomNavigationBar`, so both insets would now be paid twice.
+        // 18 is `AppSpacing.gutterCompact`, the chassis's own page gutter.
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.gutterCompact,
+          AppSpacing.gutterCompact,
+          AppSpacing.gutterCompact,
+          AppSpacing.xl,
         ),
-        const SizedBox(height: 16),
-        _categoryCard(currency, cats, total),
-        const SizedBox(height: 14),
-        _savingsCard(context, currency, unused, savings),
-      ],
+        children: <Widget>[
+          Text('Insights', style: AppText.title.copyWith(fontSize: 26)),
+          const SizedBox(height: 4),
+          Text(
+            'Where your money goes',
+            style: AppText.muted.copyWith(fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+          _categoryCard(currency, cats, total),
+          const SizedBox(height: 14),
+          _savingsCard(context, currency, unused, savings),
+        ],
+      ),
     );
   }
 
