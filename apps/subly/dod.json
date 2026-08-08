@@ -29,19 +29,58 @@
     "outside the app cannot be re-dated against the app's own history. Account deletion is covered",
     "instead by the chassis property `account-deletion-works`, which carries six anchors of its own.",
     "A row whose mutation nobody watched is exactly the 'proven once in a terminal' claim this field",
-    "exists to replace."
+    "exists to replace.",
+    "",
+    "🔄 2026-08-08 — THE EIGHT SUBLY PRODUCT ROWS BELOW WERE RUN AGAINST apps/subly ITSELF, not",
+    "against a mason stamp: they are THIS app's features (home · calendar · insights · budget · scan ·",
+    "detail · add-sheet · cancel-sheet), so a stamp has nothing to say about them. Same discipline as",
+    "the six chassis rows above — each mutation was applied to the real tree, `flutter analyze` was",
+    "run and stayed at the tree's standing 29 infos with ZERO errors and ZERO warnings (so the red is",
+    "an ASSERTION and not a compile error), the named test was observed red through its own `expect`,",
+    "and the file was restored. The `sign out` row's date moved for the same reason its clause exists:",
+    "lib/core/router.dart changed after 2026-08-02, so the record described code that had moved.",
+    "",
+    "⚠️ THIS RECORD IS NOT YET GRADED. assert-app-dod.mjs EXEMPTs `apps/subly` by name",
+    "(39-CHASSIS §4 cut 1), so nothing below can fail a build today. Two things are true at once and",
+    "the flip has to handle both in ONE commit: sites/_shared/_data/apps.json already advertises this",
+    "app as `\"status\": \"live\"`, so dropping the exemption while this file still says `stamped` turns",
+    "the lifecycle anchor red on the first push — which is the anchor working, not a defect."
   ],
   "app": "subly",
   "status": "stamped",
   "items": {
-    "A": { "claim": "held", "note": "the chassis ships the screen set; assert-screen-set.mjs holds the 22-screen register with anchors" },
-    "B": { "claim": "pending", "note": "human — the four-states verdict per data screen, recorded in humanReview" },
-    "C": { "claim": "held", "note": "property ui-invariants-inherited pins the five Material window classes at 600/840/1200/1600 on the pure resolver AND pumps AppScaffold across the 600 boundary (rail at 768, bar at 375); responsive_width_test.dart measures the three ContentPane-capped screens at 375/768/1280(/1920)" },
-    "D": { "claim": "held", "note": "properties theme-triplet-supplied + theme-mode-persisted, both limbs anchored (write AND read-back)" },
-    "E": { "claim": "held", "note": "assert-no-hardcoded-strings.mjs; the chassis ships a second locale so the seam is really exercised" },
-    "F": { "claim": "held", "note": "the mechanical WCAG limbs — text-scale clamp, 48px targets, non-empty icon labels" },
-    "G": { "claim": "held", "note": "the stamp generates this app's OWN icons; assert-stamp-brand-assets.mjs compares against the live SDK's stock assets" },
-    "H": { "claim": "held", "note": "the app_brick lane resolves, analyzes and tests this app on every push; the feature rows below carry the effect anchors" }
+    "A": {
+      "claim": "held",
+      "note": "SUBLY'S OWN ROUTES, not the chassis register: tooling/screen-register.json holds 23 chassis screens and ZERO apps/subly anchors, so it is not this app's evidence. What is: lib/core/router.dart declares 15 GoRoutes, and chassis_properties_test.dart's 'every tap target on every declared route is at least 48px' VISITS every one of them plus the errorBuilder and asserts visited.length == routes.paths.length + errorBuilder — a RELATIONSHIP, so the only way to shrink the domain is to delete a route from the router itself"
+    },
+    "B": {
+      "claim": "pending",
+      "note": "human — the four-states verdict per data screen, recorded in humanReview. WHAT THE REVIEWER WILL FIND, so the verdict is not a surprise: home is the only data screen with three distinct branches (subscriptionsControllerProvider.when → spinner / 'Could not load: $e' / dashboard). calendar, insights and detail all collapse loading AND error into `valueOrNull ?? const []`, so a FAILED fetch renders as the empty state ('No renewals this month.' · 'Nothing flagged — nice.' · 'Subscription not found') and is indistinguishable from having no data. budget renders a bare Center(CircularProgressIndicator) with no error branch at all. No screen distinguishes offline from error. The sheets are the exception and were fixed: sheet_failure_surface_test.dart drives both failure paths"
+    },
+    "C": {
+      "claim": "held",
+      "note": "assert-stamp-properties.mjs EXEMPTs apps/subly by name (EXEMPT_APPS), so the five-class pin runs HERE, in this app's own suite: chassis_properties_test.dart's 'five window classes, at Material 600/840/1200/1600' on the pure resolver, and 'the scaffold really switches control at the 600 boundary' pumping AppScaffold across it. Per-screen width is now measured on the ROUTED SET, not three screens: responsive_width_test.dart (onboarding · settings · manage-plan) plus seven per-screen suites — width_calendar · width_budget · width_insights · width_scan · width_detail · width_add_sheet · width_cancel_sheet — at 375/768/1280(/1920), each with a stated falsifiable case. ⬜ ONE GAP: HomeScreen's ContentPane has no width group (home_screen.dart's own comment says so), so that one wrapper can still be deleted with every test green"
+    },
+    "D": {
+      "claim": "held",
+      "note": "both limbs run in this app's own suite: 'the app supplies theme, darkTheme AND themeMode' + 'light and dark are genuinely different schemes' (the triplet), and 'a choice is written to storage' + 'a stored choice SURVIVES a restart' + 'NULL means follow the device, and is the default' (the write AND the read-back — a choice saved and never restored looks exactly like no persistence). PLUS the limb the chassis property does not own: dark_card_surface_test.dart pins cardDecoration, the single decoration behind 17 call sites across five screens, in BOTH brightnesses — light asserted against the literal token so a 'tidy-up' to scheme.surface cannot pass, dark asserted against the scheme. Negative-tested 2026-08-08 by reverting the decoration"
+    },
+    "E": {
+      "claim": "held",
+      "note": "⚠️ READ THIS ONE BEFORE THE FLIP — THE MECHANICAL HALF DOES NOT REACH THIS APP. assert-no-hardcoded-strings.mjs enforces the BRICK TEMPLATE only; apps/subly/lib was in its CANARY list (a tree kept because it was known-DIRTY, 59 hits) and was removed on 2026-08-08, so no guard counts literals here. This app's screens still carry user-facing English in code — 'Budget & goals', 'Renewal calendar', 'Insights', 'All set', 'Confirm cancel', 'No renewals this month.' among them. WHAT IS REAL: two locales genuinely ship and are genuinely exercised — l10n_parity_test.dart asserts key parity in BOTH directions, placeholder parity in both directions (no dropped and no invented placeholder) and that the plural key really pluralizes, and 'the running app renders the chosen locale' + 'the same key yields DIFFERENT text in each locale' drive the seam"
+    },
+    "F": {
+      "claim": "held",
+      "note": "the three mechanical WCAG limbs run in this app's own suite, over this app's own routes: 'text scaling is clamped to 1.0–2.0 at the app root' (read INSIDE the app below the clamp, not off the dispatcher), 'every tap target on every declared route is at least 48px' (all 15 GoRoutes + the errorBuilder, with a non-empty-domain floor so a pump that rendered nothing cannot report clean), and 'every icon-only control carries a screen-reader label'. The manual screen-reader pass stays a recorded cut (no Apple device) — a11y debt, not a gate"
+    },
+    "G": {
+      "claim": "held",
+      "note": "assert-launcher-icons.mjs DOES cover this app — it walks apps/, and apps/subly is the one app in the tree with native platforms. Measured on this repo: 33 native icons compared against stock resolved by RUNNING `flutter create` with the live SDK (never pinned hashes, so the comparison cannot go stale), 21 iOS icons checked for the ITMS-90717 alpha channel, 1 adaptive-icon manifest, and 5 Linux packaging artefacts RE-DERIVED from this app's own 1024 master and compared as decoded pixels — that last limb is satisfied only by Subly's own mark, where 'not identical to Flutter's' is satisfied by a blank square. ⬜ assert-stamp-brand-assets.mjs runs as `apps/probe` only, so the seed-colour limb is NOT asserted for this app"
+    },
+    "H": {
+      "claim": "held",
+      "note": "the `app_brick` lane proves this for a freshly STAMPED app, not for this one. What covers apps/subly is the `workspace_gate` lane: `melos run analyze` + `melos run test` across every workspace member in ONE resolution, and apps/subly is the workspace's only app member — so this app analyzes clean and runs its own suite on every push, in a job inside ci-gate's `needs:`. Measured 2026-08-08 on this tree: `flutter analyze` = 29 issues, all `info`, zero errors and zero warnings; `flutter test` = 245 passed. The per-feature effect proof is the `features` block below"
+    }
   },
   "features": [
     {
@@ -61,9 +100,9 @@
       "test": "signing out puts the user back on the form",
       "effect": "lib/core/router.dart:refreshListenable",
       "mutation": {
-        "symbol": "lib/core/router.dart:refreshListenable",
+        "symbol": "lib/core/router.dart:refreshListenable: ref.watch(routerRefreshProvider)",
         "observedRed": "signing out puts the user back on the form",
-        "date": "2026-08-02"
+        "date": "2026-08-08"
       }
     },
     {
@@ -107,6 +146,94 @@
       "mutation": {
         "symbol": "lib/app.dart:brightness: Brightness.dark",
         "observedRed": "light and dark are genuinely different schemes",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "home",
+      "primaryAction": "the app lands on the dashboard and its header renders the product, with the localised welcome as the signed-out fallback",
+      "test": "home body renders the product with the welcome fallback",
+      "effect": "lib/features/home/home_screen.dart:welcomeTo",
+      "mutation": {
+        "symbol": "lib/features/home/home_screen.dart:l10n.welcomeTo(AppConfig.appName)",
+        "observedRed": "home body renders the product with the welcome fallback",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "calendar",
+      "primaryAction": "the renewal calendar draws a real month grid whose day cells stay the designed size at every window width",
+      "test": "at 1280 a day cell is 44 px tall, not ~170",
+      "effect": "lib/features/calendar/calendar_screen.dart:mainAxisExtent",
+      "mutation": {
+        "symbol": "lib/features/calendar/calendar_screen.dart:mainAxisExtent: 44",
+        "observedRed": "at 1280 a day cell is 44 px tall, not ~170",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "insights",
+      "primaryAction": "insights works out which subscriptions are unused and offers a real Cancel on each of them",
+      "test": "at 375 the cap is a no-op and the donut row still fits",
+      "effect": "lib/features/insights/insights_screen.dart:SubMath.unused",
+      "mutation": {
+        "symbol": "lib/features/insights/insights_screen.dart:SubMath.unused(subs)",
+        "observedRed": "at 375 the cap is a no-op and the donut row still fits",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "budget",
+      "primaryAction": "the budget screen resolves the budget through the repository and renders the ring plus a bar per category, rather than sitting on its spinner",
+      "test": "at 1920 the list stops at AppBreakpoints.kMaxBodyWidth",
+      "effect": "lib/features/budget/budget_screen.dart:budgetProvider",
+      "mutation": {
+        "symbol": "lib/features/budget/budget_screen.dart:budgetProvider",
+        "observedRed": "at 1920 the list stops at AppBreakpoints.kMaxBodyWidth",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "scan",
+      "primaryAction": "first-run setup finishes its steps and hands the user the list of what it actually found",
+      "test": "at 1280 the RESULTS hero is capped too",
+      "effect": "lib/features/scan/scan_screen.dart:_done",
+      "mutation": {
+        "symbol": "lib/features/scan/scan_screen.dart:setState(() => _done = true)",
+        "observedRed": "at 1280 the RESULTS hero is capped too",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "detail",
+      "primaryAction": "opening a subscription resolves THAT subscription and renders its own header, not a not-found page",
+      "test": "at 1920 the header pane caps its content at kMaxBodyWidth",
+      "effect": "lib/features/detail/subscription_detail_screen.dart:detail-header-pane",
+      "mutation": {
+        "symbol": "lib/features/detail/subscription_detail_screen.dart:s.id == id",
+        "observedRed": "at 1920 the header pane caps its content at kMaxBodyWidth",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "add subscription",
+      "primaryAction": "the add sheet drives the repository, and a failed save re-arms the button and says so instead of stranding it on 'Adding…'",
+      "test": "add sheet: a failed save re-arms the button and says so",
+      "effect": "lib/features/add/add_subscription_sheet.dart:_save",
+      "mutation": {
+        "symbol": "lib/features/add/add_subscription_sheet.dart:_save catch → setState(() => _saving = false)",
+        "observedRed": "add sheet: a failed save re-arms the button and says so",
+        "date": "2026-08-08"
+      }
+    },
+    {
+      "name": "cancel subscription",
+      "primaryAction": "confirming a cancel drives the repository, and a failed cancel never shows the congratulation step",
+      "test": "cancel sheet: a failed cancel never claims success",
+      "effect": "lib/features/cancel/cancel_sheet.dart:_confirm",
+      "mutation": {
+        "symbol": "lib/features/cancel/cancel_sheet.dart:_confirm catch → _step stays 0",
+        "observedRed": "cancel sheet: a failed cancel never claims success",
         "date": "2026-08-08"
       }
     }
