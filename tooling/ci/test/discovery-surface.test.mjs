@@ -52,6 +52,39 @@
 //             (restored via regenerate; all five surface sha256s re-verified
 //             against the pre-mutation baseline, and `git status` clean)
 //
+// The limb-G suite (the price on the page vs the price in the rail config) was
+// added the same way, and its first mutation is the reason the limb reads
+// `services/platform/src/app-config-data.json` itself instead of importing the
+// generator's `commerceFor()`:
+//
+//   M12  tooling/sites/generate-discovery.mjs `money()` renders every amount one
+//        dollar high; surfaces regenerated
+//          => the FIRST version of limb G printed `ok  … 2 rendered price(s)
+//             equal what the config declares` over a page quoting $5.99 against
+//             a config saying 499 — because both sides had been computed by the
+//             mutant. After the limb was rewritten to parse the config and do its
+//             own arithmetic: FAIL "carries data-offering=pro_monthly but not the
+//             amount 4.99", one message per offering.
+//        🔴 M12 ALSO EXPOSED A SHADOWING BUG in the canary: the "priced landing"
+//             set was recorded AFTER the comparisons, so a DISAGREEING price
+//             counted as an unpriced landing and `coverageLost()` — which calls
+//             process.exit(1) — fired first and swallowed the amount message. The
+//             set is now recorded before the comparisons: the canary asks whether
+//             anything is being compared, never whether it agrees.
+//   M13  the pricing section suppressed in the generator (`offerings.length` ->
+//        `false`); surfaces regenerated, so limb A's drift diff is GREEN
+//          => FAIL "does not carry data-offering=pro_monthly" (and pro_yearly) —
+//             the case limb A structurally cannot see, since a generator that
+//             emits no price agrees with a page that carries none
+//   M14  subly's `offerings` array emptied in the rail config
+//          => first CRASHED the generator (TypeError: cannot read 'code' of
+//             undefined — the free card dereferenced offerings[0] eagerly and
+//             wrote no page at all). Fixed, then re-run: page renders with no
+//             pricing section, and COVERAGE LOST "1 of 1 canary landing(s) carry
+//             no priced offering at all: subly" — the writable failing input
+//             REQUIRED_PRICED_LANDINGS needed. (Config restored from a byte copy
+//             and `git status` re-verified clean.)
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -126,8 +159,36 @@ function tree(entries, opts = {}) {
     mkdirSync(join(root, ...at.split('/')), { recursive: true });
     writeFileSync(join(root, ...at.split('/'), 'recipe.json'), JSON.stringify({ recipe_version: 1, pack_id }, null, 2));
   }
+  // The rail config — the ONE place a price lives. Written only when a case asks
+  // for it, because a tree with no rail is the state every guard fixture was in
+  // before commerce existed and the generator must still produce a page there.
+  if (opts.rail !== undefined) {
+    mkdirSync(join(root, 'services', 'platform', 'src'), { recursive: true });
+    writeFileSync(
+      join(root, 'services', 'platform', 'src', 'app-config-data.json'),
+      typeof opts.rail === 'string' ? opts.rail : `${JSON.stringify(opts.rail, null, 2)}\n`,
+    );
+  }
+  // Store listings, keyed by slug exactly as the brick stamps them.
+  for (const [slug, text] of Object.entries(opts.store ?? {})) {
+    const dir = join(root, 'apps', slug, 'store', 'android-play');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'long-description.txt'), text);
+  }
+  if (opts.pricingPage) writeFileSync(join(root, 'sites', 'nikatru', 'pricing.html'), '<html><body><h1>Pricing</h1></body></html>\n');
   return root;
 }
+
+/** A rail config shaped like the real one: `defaults` plus a per-app key. */
+const rail = (apps) => ({
+  defaults: { features: {}, paywall: { enabled: false, offerings: [] } },
+  apps,
+});
+
+const SUBLY_OFFERINGS = [
+  { product_id: 'pro_monthly', amount_minor: 499, currency_code: 'USD', term: 'month', trial_days: 30 },
+  { product_id: 'pro_yearly', amount_minor: 1999, currency_code: 'USD', term: 'year', trial_days: 30 },
+];
 
 /** Run the real generator over a fixture root, exactly as the owner would. */
 function generate(root) {
@@ -315,6 +376,193 @@ describe('the generator', () => {
     const llms = readFileSync(p(root, 'llms.txt'), 'utf8');
     assert.match(llms, /- Subly —/);
     assert.doesNotMatch(llms, /Lingo|lingo\.nikatru\.com/);
+  });
+
+  test('a live landing prices itself from the RAIL CONFIG, and the guard compares the two', () => {
+    const root = tree([SUBLY], {
+      rail: rail({ subly: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }),
+      pricingPage: true,
+    });
+    assert.equal(generate(root).code, 0);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    assert.match(html, /data-offering="pro_monthly"/);
+    assert.match(html, /\$4\.99 <small>\/ month<\/small>/);
+    assert.match(html, /data-offering="pro_yearly"/);
+    assert.match(html, /\$19\.99 <small>\/ year<\/small>/);
+    assert.match(html, /30-DAY FREE TRIAL/);
+    assert.equal(guard(root).code, 0);
+  });
+
+  test('🔴 A RENDERED PRICE THAT DISAGREES WITH THE CONFIG FAILS — the limb the drift diff cannot supply', () => {
+    // Limb A compares the page to the GENERATOR, so a generator that quotes the
+    // wrong number agrees with the page it wrote. Only a second, independent read
+    // of the config can see it. Proven on the real tree too: `money()` mutated to
+    // add a dollar printed `ok` from the first version of that limb, because it
+    // imported the generator's own formatter to compute what it expected.
+    const root = tree([SUBLY], {
+      rail: rail({ subly: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }),
+    });
+    generate(root);
+    const page = p(root, 'apps', 'subly.html');
+    writeFileSync(page, readFileSync(page, 'utf8').replace('$4.99', '$3.99'));
+    const r = guard(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /but not the amount 4\.99/);
+  });
+
+  test('a declared offering with NO card on the page fails, naming the product id', () => {
+    const root = tree([SUBLY], {
+      rail: rail({ subly: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }),
+    });
+    generate(root);
+    const page = p(root, 'apps', 'subly.html');
+    writeFileSync(page, readFileSync(page, 'utf8').replace('data-offering="pro_yearly"', 'data-card="yearly"'));
+    const r = guard(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /does not carry data-offering="pro_yearly"/);
+  });
+
+  test('🔴 PRICES ON THE PAGE, STILL NO `offers` IN THE JSON-LD — the honest half is the half that ships', () => {
+    // Google's SoftwareApplication rich result wants offers.price AND
+    // aggregateRating|review together, so emitting `offers` buys a rich result
+    // only next to a rating this factory must never synthesise. The guard's limb D
+    // fails the build for it; this asserts the generator does not hand it one.
+    const root = tree([SUBLY], {
+      rail: rail({ subly: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }),
+    });
+    generate(root);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    const ld = JSON.parse(html.match(/<script type="application\/ld\+json">\n([\s\S]*?)\n<\/script>/)[1]);
+    assert.equal('offers' in ld, false);
+    assert.equal('aggregateRating' in ld, false);
+    assert.match(html, /\$4\.99/); // …and the price really is on the page
+  });
+
+  test('the FREE card is a fact about the paywall switch, not a tier description — it goes when the switch flips', () => {
+    const off = tree([SUBLY], { rail: rail({ subly: { paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }) });
+    generate(off);
+    const free = readFileSync(p(off, 'apps', 'subly.html'), 'utf8');
+    assert.match(free, /<h3>Free<\/h3>/);
+    assert.match(free, /Paid checkout is not open yet/);
+
+    const on = tree([SUBLY], { rail: rail({ subly: { paywall: { enabled: true, offerings: SUBLY_OFFERINGS } } }) });
+    generate(on);
+    const paid = readFileSync(p(on, 'apps', 'subly.html'), 'utf8');
+    assert.doesNotMatch(paid, /<h3>Free<\/h3>/);
+    assert.doesNotMatch(paid, /Paid checkout is not open yet/);
+    assert.match(paid, /\$4\.99/);
+    assert.equal(guard(on).code, 0);
+  });
+
+  test('🔴 an EMPTY offerings array renders a page instead of crashing the generator', () => {
+    // Found by mutation, not by reading: the free card dereferenced
+    // `offerings[0].code` eagerly, so emptying a live app's offerings threw a
+    // TypeError and wrote NO page at all. That is a state a live app is in the
+    // moment someone edits its paywall entry.
+    const root = tree([SUBLY], { rail: rail({ subly: { paywall: { enabled: false, offerings: [] } } }) });
+    assert.equal(generate(root).code, 0);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    assert.doesNotMatch(html, /data-offering/);
+    assert.doesNotMatch(html, /<h2>Pricing<\/h2>/);
+    assert.equal(guard(root).code, 0);
+  });
+
+  test('a feature flag with no reader-facing name FAILS rather than title-casing an internal switch', () => {
+    const root = tree([SUBLY], { rail: rail({ subly: { features: { renewals: true, reminders_v2: true } } }) });
+    const r = generate(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /no reader-facing name/);
+    assert.match(r.out, /reminders_v2/);
+  });
+
+  test('a `term` outside the config vocabulary FAILS rather than inventing a billing frequency', () => {
+    const root = tree([SUBLY], {
+      rail: rail({
+        subly: { paywall: { enabled: false, offerings: [{ product_id: 'x', amount_minor: 100, currency_code: 'USD', term: 'quarter' }] } },
+      }),
+    });
+    const r = generate(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /will not put a price on/);
+  });
+
+  test('enabled features render, disabled ones do not', () => {
+    const root = tree([SUBLY], { rail: rail({ subly: { features: { renewals: true, budgets: false, exports: true } } }) });
+    generate(root);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    assert.match(html, /Renewal reminders/);
+    assert.match(html, /Export your data/);
+    assert.doesNotMatch(html, /<b>Budgets\.<\/b>/);
+  });
+
+  test('the store listing lede reaches the page and STOPS at the first section heading', () => {
+    const root = tree([SUBLY], {
+      store: {
+        subly: 'One list of everything you pay for.\n\nAdd each service once and it does the arithmetic.\n\nWHAT IT DOES\n- a bullet nobody asked this page for\n\nPRIVACY\nNot here either.\n',
+      },
+    });
+    generate(root);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    assert.match(html, /One list of everything you pay for\./);
+    assert.match(html, /Add each service once and it does the arithmetic\./);
+    assert.doesNotMatch(html, /WHAT IT DOES|a bullet nobody asked|Not here either/);
+    assert.equal(guard(root).code, 0);
+  });
+
+  test('a listing with no heading at all is BOUNDED, not poured onto the page', () => {
+    const root = tree([SUBLY], { store: { subly: 'One.\n\nTwo.\n\nThree.\n\nFour.\n' } });
+    generate(root);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    assert.match(html, /<p>One\.<\/p>/);
+    assert.match(html, /<p>Two\.<\/p>/);
+    assert.doesNotMatch(html, /<p>Three\.<\/p>/);
+  });
+
+  test('a NON-live entry gets no price, no features and no lede — status changes what the page SAYS', () => {
+    const root = tree([{ ...SUBLY, status: 'preview' }], {
+      rail: rail({ subly: { features: { renewals: true }, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }),
+      store: { subly: 'A lede that must not appear.\n' },
+      pricingPage: true,
+    });
+    generate(root);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    assert.doesNotMatch(html, /data-offering|\$4\.99|Renewal reminders|A lede that must not appear/);
+    assert.match(html, /not released yet/);
+    assert.equal(guard(root).code, 0);
+  });
+
+  test('🔴 `See pricing` is linked ONLY when the deploy root actually ships pricing.html', () => {
+    // check-site-integrity.mjs fails a link to a page the root does not serve,
+    // and rightly: the alternative is a button that 404s from the one page a
+    // payment processor's verification opens.
+    const withPage = tree([SUBLY], {
+      rail: rail({ subly: { paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }),
+      pricingPage: true,
+    });
+    generate(withPage);
+    assert.match(readFileSync(p(withPage, 'apps', 'subly.html'), 'utf8'), /href="\/pricing\.html\?app=subly"/);
+
+    const without = tree([SUBLY], { rail: rail({ subly: { paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }) });
+    generate(without);
+    const html = readFileSync(p(without, 'apps', 'subly.html'), 'utf8');
+    assert.doesNotMatch(html, /pricing\.html/);
+    assert.match(html, /\$4\.99/); // the summary still renders; only the link is withheld
+  });
+
+  test('an unparseable rail config FAILS — absent is a tree with no prices, present-and-broken is a tree that lost them', () => {
+    const root = tree([SUBLY], { rail: '{ not json' });
+    const r = generate(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /is not valid JSON/);
+  });
+
+  test('the four legal pages are linked from every landing, generated or not', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
+    for (const page of ['/privacy.html', '/terms.html', '/refund.html', '/delete-account.html']) {
+      assert.ok(html.includes(`href="${page}"`), `the landing must link ${page}`);
+    }
   });
 
   test('a renamed ## Apps heading FAILS rather than silently returning the catalogue to hand maintenance', () => {

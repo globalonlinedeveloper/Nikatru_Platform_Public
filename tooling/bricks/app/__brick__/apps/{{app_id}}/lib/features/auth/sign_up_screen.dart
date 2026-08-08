@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
@@ -61,50 +62,48 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.signUpTitle)),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const <String>[AutofillHints.email],
-                  decoration: InputDecoration(labelText: l10n.email),
-                ),
+      // Same shape and same reasoning as SignInScreen: the error line lands
+      // under the fields, so vertical centring makes the form move at exactly
+      // the wrong moment. Width comes from the chassis.
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ContentPane.form(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const <String>[AutofillHints.email],
+                decoration: InputDecoration(labelText: l10n.email),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                autofillHints: const <String>[AutofillHints.newPassword],
+                decoration: InputDecoration(labelText: l10n.password),
+                onSubmitted: (_) => _signUp(auth, l10n),
+              ),
+              if (_error != null) ...<Widget>[
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  obscureText: true,
-                  autofillHints: const <String>[AutofillHints.newPassword],
-                  decoration: InputDecoration(labelText: l10n.password),
-                  onSubmitted: (_) => _signUp(auth, l10n),
-                ),
-                if (_error != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _busy ? null : () => _signUp(auth, l10n),
-                  child: Text(l10n.signUp),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: _busy ? null : () => context.go('/sign-in'),
-                  child: Text(l10n.haveAccount),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
-            ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: _busy ? null : () => _signUp(auth, l10n),
+                child: Text(l10n.signUp),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: _busy ? null : () => context.go('/sign-in'),
+                child: Text(l10n.haveAccount),
+              ),
+            ],
           ),
         ),
       ),

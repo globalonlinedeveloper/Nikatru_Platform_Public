@@ -321,6 +321,83 @@ jobs:
           --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${{ needs.prepare.outputs.GITHUB_SHA_SHORT }}
           --dart-define=RELEASE_CHANNEL=linux-appimage
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # ── the linux-appimage channel's SIGNING KEY ─────────────────────────────
+      # The Linux half of the pair `android-signing.mjs` forms for Play, wired in
+      # the same shape and for the same reason. The `linux-appimage` row of
+      # tooling/channel-register.json has declared `APPIMAGE_SIGNING_KEY_B64`
+      # since PR #202 and a tree-wide grep for that name returned THE REGISTER
+      # AND NOTHING ELSE — a correct declaration with no consumer, which is the
+      # Android state of 2026-08-04 exactly, and on the Android side it meant
+      # every .aab this factory produced was debug-signed while every
+      # configuration check stayed green.
+      #
+      # ⬜ NO .AppImage IS PACKAGED IN THIS REPOSITORY TODAY, and this step says
+      # that out loud rather than implying otherwise. What it decides is the
+      # POSTURE: with the secret absent it exports `unsigned-build-proof` and
+      # PRINTS the gap in capitals (the row wants a detached Ed25519 signature
+      # and no key has been generated); with the secret supplied it materialises
+      # the key, self-verifies a sign/verify round trip, and exports
+      # `release-signed`. Wiring it before the packaging step exists is the
+      # point — the day an AppImage is packaged, the key already arrives through
+      # a path somebody reviewed rather than one added in the release commit.
+      #
+      # Key material is written to $RUNNER_TEMP, never the workspace, for the
+      # reason recorded on the Android key step below: every `upload-artifact`
+      # path in this file is workspace-relative and this repo is PUBLIC, so a
+      # private key inside the tree is one broad `path:` away from publication.
+      - name: Prepare the AppImage signing key
+        env:
+          APPIMAGE_SIGNING_KEY_B64: ${{ secrets.APPIMAGE_SIGNING_KEY_B64 }}
+        run: node tooling/ci/appimage-signing.mjs --app ${{ matrix.app }}
+      # ── the snapcraft recipe, DERIVED from the bundle just built ─────────────
+      # [pipeline D-10] / [ADR 015] §3. `tooling/release/submit-snap.mjs` §4 has
+      # printed "NO SNAPCRAFT RECIPE — nothing in this repo can build a .snap
+      # today" on every run since it was written, and nothing could fail on it.
+      #
+      # The recipe is GENERATED rather than committed because a committed one is
+      # a SECOND COPY of five facts that already have one home each — the snap
+      # name, the summary, the description, the licence and the Linux binary
+      # identity — and a second copy is the copy that goes stale. [10]D-5's whole
+      # claim is "the listing lives in the repo and the dashboard is a copy of
+      # it"; a hand-written snapcraft.yaml would make the recipe a third party to
+      # that agreement, free to disagree with both.
+      #
+      # `--version` is the SAME string the linux build above carries, from the
+      # same `ver` step. The Snap Store orders revisions by it, and a recipe
+      # versioned differently from the binary it packages is two release lines
+      # wearing one name.
+      #
+      # ⬜ NO .snap IS BUILT HERE AND snapcraft IS NOT INSTALLED — on this runner
+      # or on the owner's box. That is the honest boundary of this increment:
+      # what a machine without snapcraft can prove is that the recipe is
+      # DERIVABLE from the tree and structurally what the Snap Store needs.
+      # Packing a real .snap (snapcraft in LXD/multipass, then `snapcraft
+      # upload`) is the follow-up, and it belongs with OWNER_QUEUE A-6 — the
+      # global name claim — rather than here.
+      - name: Generate the snapcraft recipe
+        run: >
+          node tooling/release/generate-snapcraft.mjs
+          --app ${{ matrix.app }}
+          --bundle apps/${{ matrix.app }}/build/linux/x64/release/bundle
+          --out "$RUNNER_TEMP/snapcraft-${{ matrix.app }}"
+          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+      # A GENERATOR THAT HAS STOPPED READING THE TREE STILL WRITES A FILE. It
+      # writes a shorter one, or one carrying its own idea of the values, and
+      # with no committed recipe to diff against and no snapcraft anywhere to
+      # reject the result, nothing downstream could tell. So the file that was
+      # just emitted is read back and graded: it parses, its `name` is the one
+      # apps/*/store/linux-snap/snap-name.txt claims, it carries no absolute host
+      # paths, `confinement` is `strict` (`classic` needs a manual store review
+      # nobody has argued for), and `stage-packages` EQUALS the apt list the
+      # "Linux build deps" step above installs — a retyped list, a list truncated
+      # at the first line continuation, and a workflow that grew a package the
+      # recipe did not are one failure: the snap builds and the app does not
+      # start.
+      - name: The generated recipe is complete and still derived from the tree
+        run: >
+          node tooling/ci/assert-snapcraft-generable.mjs
+          --emitted "$RUNNER_TEMP/snapcraft-${{ matrix.app }}/snap/snapcraft.yaml"
+          --app ${{ matrix.app }}
       # ── the Android UPLOAD KEY ───────────────────────────────────────────────
       # 🔴 THIS STEP IS THE FIX FOR THE DEFECT THAT WOULD HAVE FAILED THE FIRST
       # PLAY SUBMISSION. apps/subly/android/app/build.gradle.kts has read a real
@@ -556,6 +633,38 @@ jobs:
         id: ver
         shell: bash
         run: node tooling/ci/assert-app-versioning.mjs --emit apps/${{ matrix.app }} >> "$GITHUB_OUTPUT"
+      # ── the windows-direct channel's CODE-SIGNING CERTIFICATE ───────────────
+      # The Windows half of the pair `android-signing.mjs` forms for Play, wired
+      # in exactly the same shape: a step that ARRANGES the credential, exports a
+      # POSTURE, and leaves reading the signature back out of the binary to a
+      # separate check. The `windows-direct` row of
+      # tooling/channel-register.json has declared WINDOWS_CODESIGN_PFX_BASE64
+      # and WINDOWS_CODESIGN_PFX_PASSWORD since PR #202 with no consumer anywhere
+      # in the tree — the same silence that let every .aab this factory produced
+      # be debug-signed for weeks while every configuration check stayed green.
+      #
+      # ⚠️ IT ARMS THE DIRECT-DOWNLOAD CHANNEL, NOT THE STORE ONE, and the two
+      # must not be conflated. `windows-store` is `keyKind: "none"` — Microsoft
+      # re-signs what it accepts, `msix_config` sets `store: true`, and the .msix
+      # packaged below is deliberately unsigned. What Microsoft Store Policies
+      # §10.2.9 needs a trusted-root certificate for is the DIRECT download, and
+      # that is the row this step reads.
+      #
+      # ⬜ NO CERTIFICATE HAS BEEN PURCHASED (the row's pin is a sentinel that
+      # cannot be mistaken for a thumbprint), so every run today exports
+      # `unsigned-build-proof` and PRINTS the gap in capitals. Wiring it before
+      # the purchase is the point: the day the .pfx arrives it flows through a
+      # path that already exists and has already been reviewed, instead of being
+      # written in the same commit as the first release.
+      #
+      # Key material goes to $RUNNER_TEMP for the reason recorded on the Android
+      # key step in the job above — this repo is PUBLIC and its artifacts are
+      # downloadable by anyone.
+      - name: Prepare the Windows code-signing certificate
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: node tooling/ci/windows-signing.mjs --app ${{ matrix.app }}
       # [pipeline 11]E-7, and this job is the lane of the `windows-store` row.
       # ⚠️ WINDOWS GETS THE DART LAYER ONLY. sentry_flutter's Windows support is
       # the Dart error handler; a native crash in the C++ runner or in a plugin's
@@ -700,9 +809,69 @@ jobs:
       # fixes #188060.
       - name: Patch the SDK for flutter/flutter#188060 (macOS AOT abort)
         run: python3 tooling/ci/patch-flutter-macos-aot.py "$FLUTTER_ROOT"
+      # ── the APPLE DISTRIBUTION IDENTITY, arranged before anything is built ───
+      # The macOS/iOS half of the pair `android-signing.mjs` forms for Play.
+      # PR #202 declared four Apple secrets on the `ios-appstore` and
+      # `macos-appstore` rows of tooling/channel-register.json; a tree-wide grep
+      # for APPLE_DIST_CERT_P12_BASE64 on 2026-08-08 returned THE REGISTER AND
+      # NOTHING ELSE. That is the Android state of 2026-08-04 exactly, and the
+      # Apple version of the silence is worse in one respect: the iOS build below
+      # passes `--no-codesign`, so this lane's UNSIGNED-ness is real and correct
+      # today, and the day somebody removes that flag there would be nothing
+      # anywhere to notice the secrets were never wired.
+      #
+      # All four supplied → a per-run keychain, the decoded provisioning
+      # profiles and an ExportOptions.plist, posture `release-signed`. None
+      # supplied → posture `unsigned-build-proof` with the gap PRINTED in
+      # capitals and named (Apple Developer account, OWNER_QUEUE A-4). SOME
+      # supplied → FAIL, on every lane: three of four is an artifact nobody can
+      # explain, and Apple's version of "correctly signed but wrong identity" is
+      # rejected at upload, after the account is spent.
+      #
+      # ⚠️ THERE IS NO "this is a release" FLAG HERE, ON PURPOSE. The script
+      # derives that from GITHUB_REF and from the submission workflow the
+      # register declares, for the reason recorded on the Android key step:
+      # deleting a YAML line must not be able to turn a release lane back into a
+      # build proof.
+      - name: Prepare the Apple distribution identity
+        env:
+          APPLE_DIST_CERT_P12_BASE64: ${{ secrets.APPLE_DIST_CERT_P12_BASE64 }}
+          APPLE_DIST_CERT_PASSWORD: ${{ secrets.APPLE_DIST_CERT_PASSWORD }}
+          APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: node tooling/ci/apple-signing.mjs --app ${{ matrix.app }}
       - name: Build macos
         working-directory: apps/${{ matrix.app }}
         run: flutter build macos --release
+      # ── READ THE SIGNATURE OUT OF THE BUNDLE, not out of the config ──────────
+      # The step above says what was ARRANGED. This one says what HAPPENED, and
+      # the Android pair is two files for exactly this reason: a step that
+      # arranges a credential and then reports its own success is the "green
+      # means ran" failure with extra stages. `codesign -dvv` is run against the
+      # .app that was just produced and the verdict is the PARSED output, never
+      # the exit status — the Android guard shipped after discovering `keytool`
+      # exits 0 on an unsigned archive.
+      #
+      # It fails when the posture says `release-signed` and the bundle is
+      # unsigned or AD-HOC (a real, locally-valid signature with no identity and
+      # no team behind it — the Apple equivalent of the Android debug key, and
+      # the reason a check that merely asked "is it signed" would have passed the
+      # defect), when the leaf is a development or Developer-ID certificate
+      # rather than a distribution one, when the team is not the one the register
+      # pins, and — in the other direction — when an identity reached an
+      # `unsigned-build-proof` build through a path this lane never arranged.
+      #
+      # ⚠️ THE .app AND NOT AN .ipa. `flutter build ios --no-codesign` below
+      # produces no .ipa at all, and `codesign` could not read one anyway: it is
+      # a ZIP, and pointing this guard at one would report UNSIGNED for a
+      # correctly signed app. Such a path is REFUSED BY NAME rather than read as
+      # unsigned — "the tool cannot read this" and "this file is not signed" must
+      # never share an exit code. The iOS half of this lane closes when something
+      # produces an artifact, not when somebody edits this line away.
+      - name: The macOS bundle is signed by the identity this lane intended
+        run: >
+          node tooling/ci/assert-artifact-signed-apple.mjs
+          apps/${{ matrix.app }}/build/macos/Build/Products/Release/*.app
       # --no-codesign: this proves the code COMPILES for iOS without needing an
       # Apple Developer account or provisioning profile. Signing is a separate,
       # owner-gated step and must not block build verification.

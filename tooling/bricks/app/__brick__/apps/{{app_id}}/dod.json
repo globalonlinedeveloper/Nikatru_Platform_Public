@@ -52,7 +52,7 @@
       "mutation": {
         "symbol": "lib/features/auth/sign_in_screen.dart:signInWithEmail",
         "observedRed": "signing in through the FORM moves the user off it",
-        "date": "2026-08-02"
+        "date": "2026-08-08"
       }
     },
     {
