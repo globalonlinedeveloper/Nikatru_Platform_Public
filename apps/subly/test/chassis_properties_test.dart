@@ -1760,7 +1760,8 @@ void main() {
 
   group('property: account-deletion-works', () {
     test(
-      'deleting really goes through the seam, and signs the user out',
+      'deleting really goes through the seam, signs the user out — and in demo '
+      'mode REFUSES rather than claiming success',
       () async {
         final ProviderContainer c = _container(_MemStore());
         addTearDown(c.dispose);
@@ -1768,14 +1769,32 @@ void main() {
         await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
         expect(auth.currentUser, isNotNull);
 
-        await auth.deleteAccount();
+        // 🔴 [ADR 027] THE DEMO SEAM MUST NOT RETURN NORMALLY. A normal return
+        // is what the Delete-account control renders as "Your account has been
+        // deleted…", while this repository's `signInWithEmail` accepts any
+        // non-empty pair and signs the same user straight back in. Only a real
+        // 2xx from `DELETE /v1/account` may ever produce `deleted`.
+        await expectLater(
+          auth.deleteAccount(),
+          throwsA(
+            isA<core.AccountDeletionFailure>().having(
+              (core.AccountDeletionFailure f) => f.outcome,
+              'outcome',
+              core.AccountDeletionOutcome.notConfigured,
+            ),
+          ),
+          reason:
+              'a demo build that reports a deletion tells the user something '
+              'that is false twice over — [ADR 027]',
+        );
 
         expect(
           (auth as InMemoryAuthRepository).deletionRequested,
           isTrue,
           reason:
               'the request never reached the seam — this is the dead-button '
-              'shape the property exists to catch',
+              'shape the property exists to catch, and it is a DIFFERENT defect '
+              'from the lying-button shape asserted just above',
         );
         expect(
           auth.currentUser,

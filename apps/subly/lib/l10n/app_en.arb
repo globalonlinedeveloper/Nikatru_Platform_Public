@@ -578,5 +578,675 @@
         "example": "Nikatru"
       }
     }
+  },
+  "addSubscriptionFailed": "Could not add that subscription — check your connection and try again.",
+  "@addSubscriptionFailed": {
+    "description": "Consumed by add_subscription_sheet.dart:80. The SnackBar shown when the add fails. The sheet stays up so the typed draft survives, so this must read as a retryable failure rather than a dismissal."
+  },
+  "addSubscriptionTitle": "Add subscription",
+  "@addSubscriptionTitle": {
+    "description": "Consumed by add_subscription_sheet.dart:119,251. Also the shell FAB's Tooltip (app_shell.dart:93) and the submit button's idle label — one string, three positions. Pinned by test/sheet_failure_surface_test.dart:136, integration_test/app_test.dart:438, integration_test/store_screenshots_test.dart:76 — the value must not change without moving those."
+  },
+  "addPopularHeading": "POPULAR",
+  "@addPopularHeading": {
+    "description": "Consumed by add_subscription_sheet.dart:123. Section label above the popular-service chips. Rendered upper-cased by AppText.label; stored as the live literal."
+  },
+  "fieldLabelName": "NAME",
+  "@fieldLabelName": {
+    "description": "Consumed by add_subscription_sheet.dart:197."
+  },
+  "fieldLabelPrice": "PRICE",
+  "@fieldLabelPrice": {
+    "description": "Consumed by add_subscription_sheet.dart:208. SHARED with subscription_detail_screen.dart:166 (the mini-card label)."
+  },
+  "fieldLabelCycle": "CYCLE",
+  "@fieldLabelCycle": {
+    "description": "Consumed by add_subscription_sheet.dart:226."
+  },
+  "addNameHint": "e.g. Hulu",
+  "@addNameHint": {
+    "description": "Consumed by add_subscription_sheet.dart:199. Hint text in the name field. The example service name is a brand and is not translated."
+  },
+  "cycleMonthly": "Monthly",
+  "@cycleMonthly": {
+    "description": "Consumed by add_subscription_sheet.dart:230."
+  },
+  "cycleYearly": "Yearly",
+  "@cycleYearly": {
+    "description": "Consumed by add_subscription_sheet.dart:232."
+  },
+  "addingEllipsis": "Adding…",
+  "@addingEllipsis": {
+    "description": "Consumed by add_subscription_sheet.dart:251. The submit button while the add is in flight. Horizontal ellipsis U+2026, not three dots. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
+  },
+  "cancelSubscriptionFailed": "Could not cancel just now — check your connection and try again.",
+  "@cancelSubscriptionFailed": {
+    "description": "Consumed by cancel_sheet.dart:89. Must never advance the sheet: step 1 congratulates the user on savings from a cancellation that did not happen."
+  },
+  "cancelSubscriptionTitle": "Cancel {name}?",
+  "@cancelSubscriptionTitle": {
+    "description": "Consumed by cancel_sheet.dart:128.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "cancelledHeading": "Cancelled",
+  "@cancelledHeading": {
+    "description": "Consumed by cancel_sheet.dart:206. The step-2 heading in Subly's own cancel sheet. Deliberately NOT the chassis `cancelExecuted` (\"Your subscription has been cancelled.\"), which is the money rail's merchant-confirmed sentence and says something this screen has no evidence for. Pinned by test/sheet_failure_surface_test.dart:168, test/width_cancel_sheet_test.dart:186, integration_test/app_test.dart:487 — the value must not change without moving those."
+  },
+  "done": "Done",
+  "@done": {
+    "description": "Consumed by cancel_sheet.dart:229. Pinned by test/width_cancel_sheet_test.dart:258, integration_test/app_test.dart:491 — the value must not change without moving those."
+  },
+  "cancelStep1Body": "You’ll save {monthly}/mo · {yearly}/yr. Access continues until {date}.",
+  "@cancelStep1Body": {
+    "description": "Consumed by cancel_sheet.dart:137-147. ONE key, not the three TextSpans the live sheet concatenates: Tamil puts the date clause in a different position, and a sentence assembled from fragments cannot be reordered by a translator. {date} is formatted by DateFormat.MMMMd, never typed.",
+    "placeholders": {
+      "monthly": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "yearly": {
+        "type": "String",
+        "example": "₹5,988"
+      },
+      "date": {
+        "type": "String",
+        "example": "12 August"
+      }
+    }
+  },
+  "cancelStep2Body": "You’re now saving {monthly}/mo. Nicely done.",
+  "@cancelStep2Body": {
+    "description": "Consumed by cancel_sheet.dart:212-220. See cancelStep1Body on why this is one key.",
+    "placeholders": {
+      "monthly": {
+        "type": "String",
+        "example": "₹499"
+      }
+    }
+  },
+  "cancellingEllipsis": "Cancelling…",
+  "@cancellingEllipsis": {
+    "description": "Consumed by cancel_sheet.dart:175. Pinned by test/sheet_failure_surface_test.dart:18 — the value must not change without moving those."
+  },
+  "confirmCancel": "Confirm cancel",
+  "@confirmCancel": {
+    "description": "Consumed by cancel_sheet.dart:175. Pinned by test/sheet_failure_surface_test.dart:160, test/width_cancel_sheet_test.dart:138, integration_test/app_test.dart:483 — the value must not change without moving those."
+  },
+  "budgetTitle": "Budget & goals",
+  "@budgetTitle": {
+    "description": "Consumed by budget_screen.dart:87."
+  },
+  "overBudget": "over budget",
+  "@overBudget": {
+    "description": "Consumed by budget_screen.dart:119. Sits under the percentage in the ring. Half of a pair with ofBudget — the ring shows one or the other."
+  },
+  "ofBudget": "of budget",
+  "@ofBudget": {
+    "description": "Consumed by budget_screen.dart:119. See overBudget."
+  },
+  "statSpent": "Spent",
+  "@statSpent": {
+    "description": "Consumed by budget_screen.dart:131."
+  },
+  "statLeft": "Left",
+  "@statLeft": {
+    "description": "Consumed by budget_screen.dart:134."
+  },
+  "statBudget": "Budget",
+  "@statBudget": {
+    "description": "Consumed by budget_screen.dart:137. Pinned by integration_test/app_test.dart:400, integration_test/store_screenshots_test.dart:310 — the value must not change without moving those."
+  },
+  "byCategory": "By category",
+  "@byCategory": {
+    "description": "Consumed by budget_screen.dart:143. SHARED with insights_screen.dart:112 — the same heading over the same breakdown."
+  },
+  "calendarTitle": "Renewal calendar",
+  "@calendarTitle": {
+    "description": "Consumed by calendar_screen.dart:129."
+  },
+  "calendarSubtitle": "{month} · {amount} renewing",
+  "@calendarSubtitle": {
+    "description": "Consumed by calendar_screen.dart:132. {month} carries month AND year, formatted by DateFormat.yMMMM — the live line indexed a hardcoded English month table.",
+    "placeholders": {
+      "month": {
+        "type": "String",
+        "example": "August 2026"
+      },
+      "amount": {
+        "type": "String",
+        "example": "₹2,340"
+      }
+    }
+  },
+  "calendarEmpty": "No renewals this month.",
+  "@calendarEmpty": {
+    "description": "Consumed by calendar_screen.dart:243."
+  },
+  "calendarByDate": "By date",
+  "@calendarByDate": {
+    "description": "Consumed by calendar_screen.dart:233."
+  },
+  "subscriptionNotFound": "Subscription not found",
+  "@subscriptionNotFound": {
+    "description": "Consumed by subscription_detail_screen.dart:52. The detail route's own empty state. NOT the chassis `notFoundTitle` (\"Page not found\") — the route resolved; the record did not."
+  },
+  "usageThisMonth": "Usage this month",
+  "@usageThisMonth": {
+    "description": "Consumed by subscription_detail_screen.dart:195."
+  },
+  "paymentHistory": "Payment history",
+  "@paymentHistory": {
+    "description": "Consumed by subscription_detail_screen.dart:237."
+  },
+  "cancelPlanButton": "Cancel plan",
+  "@cancelPlanButton": {
+    "description": "Consumed by subscription_detail_screen.dart:272. MINTED rather than reusing the chassis `cancelPlan` (\"Cancel subscription\"), which is the money rail's label: reusing it would change shipped copy on this screen. De-duplicating the two is Phase-5 polish, recorded in the P4 work order §8 decision 1. Pinned by integration_test/app_test.dart:476 — the value must not change without moving those."
+  },
+  "noPaymentsYet": "No payments yet.",
+  "@noPaymentsYet": {
+    "description": "Consumed by subscription_detail_screen.dart:299."
+  },
+  "editPlan": "Edit plan",
+  "@editPlan": {
+    "description": "Consumed by subscription_detail_screen.dart:252."
+  },
+  "nextChargeLabel": "NEXT CHARGE",
+  "@nextChargeLabel": {
+    "description": "Consumed by subscription_detail_screen.dart:176."
+  },
+  "perYear": "per year",
+  "@perYear": {
+    "description": "Consumed by subscription_detail_screen.dart:169. SHARED with home_screen.dart:494 — the per-cycle caption under a price."
+  },
+  "perMonth": "per month",
+  "@perMonth": {
+    "description": "Consumed by subscription_detail_screen.dart:170. See perYear."
+  },
+  "usageRarelyUsed": "Rarely used",
+  "@usageRarelyUsed": {
+    "description": "Consumed by subscription_detail_screen.dart:202. SHARED with home_screen.dart:463. One of three usage bands with usageActive and usageOccasional."
+  },
+  "usageActive": "Active",
+  "@usageActive": {
+    "description": "Consumed by subscription_detail_screen.dart:202. See usageRarelyUsed."
+  },
+  "back": "Back",
+  "@back": {
+    "description": "Consumed by subscription_detail_screen.dart:97. The semanticLabel of the hero's icon-only back control. An icon-only button without one is unusable under a screen reader."
+  },
+  "moreOptions": "More options",
+  "@moreOptions": {
+    "description": "Consumed by subscription_detail_screen.dart:99. See back."
+  },
+  "insightsTitle": "Insights",
+  "@insightsTitle": {
+    "description": "Consumed by insights_screen.dart:68. Pinned by test/chassis_properties_test.dart:3384, integration_test/app_test.dart:393, integration_test/store_screenshots_test.dart:301 — the value must not change without moving those."
+  },
+  "insightsSubtitle": "Where your money goes",
+  "@insightsSubtitle": {
+    "description": "Consumed by insights_screen.dart:71."
+  },
+  "perMonthShort": "/ mo",
+  "@perMonthShort": {
+    "description": "Consumed by insights_screen.dart:130. The caption under the donut total. Short because it renders at 9 pt inside a 126 px ring."
+  },
+  "savingsOpportunities": "Savings opportunities",
+  "@savingsOpportunities": {
+    "description": "Consumed by insights_screen.dart:204."
+  },
+  "insightsNothingFlagged": "Nothing flagged — nice.",
+  "@insightsNothingFlagged": {
+    "description": "Consumed by insights_screen.dart:269. Pinned by test/width_insights_test.dart:68 — the value must not change without moving those."
+  },
+  "perMonthAmount": "{amount}/mo",
+  "@perMonthAmount": {
+    "description": "Consumed by insights_screen.dart:212. The savings Pill beside the card title.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹499"
+      }
+    }
+  },
+  "scanResultsHeading": "YOUR SUBSCRIPTIONS",
+  "@scanResultsHeading": {
+    "description": "Consumed by scan_screen.dart:222. Pinned by test/width_scan_test.dart:124 — the value must not change without moving those."
+  },
+  "subscriptionCount": "{count, plural, =1{1 subscription} other{{count} subscriptions}}",
+  "@subscriptionCount": {
+    "description": "Consumed by scan_screen.dart:229. PLURAL. The live line read `${subs.length} subscriptions`, which says \"1 subscriptions\" for a single plan.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "perMonthTotal": "{amount} / month",
+  "@perMonthTotal": {
+    "description": "Consumed by scan_screen.dart:233.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹2,340"
+      }
+    }
+  },
+  "scanStep1": "Preparing your board",
+  "@scanStep1": {
+    "description": "Consumed by scan_screen.dart:40. One of the five progress captions the scan cycles through."
+  },
+  "scanStep2": "Loading your subscriptions",
+  "@scanStep2": {
+    "description": "Consumed by scan_screen.dart:41. See scanStep1."
+  },
+  "scanStep3": "Building your renewal calendar",
+  "@scanStep3": {
+    "description": "Consumed by scan_screen.dart:42. See scanStep1."
+  },
+  "scanStep4": "Working out your totals",
+  "@scanStep4": {
+    "description": "Consumed by scan_screen.dart:43. See scanStep1."
+  },
+  "scanStep5": "Finalising",
+  "@scanStep5": {
+    "description": "Consumed by scan_screen.dart:44. See scanStep1. British spelling, matching the live literal."
+  },
+  "scanStatusInitial": "Setting things up",
+  "@scanStatusInitial": {
+    "description": "Consumed by scan_screen.dart:50. The status before the first timer tick, so it is on screen for 560 ms of every first run."
+  },
+  "scanDoneTitle": "All set",
+  "@scanDoneTitle": {
+    "description": "Consumed by scan_screen.dart:123. Pinned by test/width_scan_test.dart:27 — the value must not change without moving those."
+  },
+  "scanBusyTitle": "Setting up your board",
+  "@scanBusyTitle": {
+    "description": "Consumed by scan_screen.dart:123."
+  },
+  "scanDoneSubtitle": "Your subscriptions. Add or edit any time.",
+  "@scanDoneSubtitle": {
+    "description": "Consumed by scan_screen.dart:129."
+  },
+  "scanBusySubtitle": "This only takes a moment.",
+  "@scanBusySubtitle": {
+    "description": "Consumed by scan_screen.dart:130."
+  },
+  "goToDashboard": "Go to dashboard",
+  "@goToDashboard": {
+    "description": "Consumed by scan_screen.dart:139. Pinned by integration_test/app_test.dart:370, integration_test/store_screenshots_test.dart:206 — the value must not change without moving those."
+  },
+  "scanningEllipsis": "Scanning…",
+  "@scanningEllipsis": {
+    "description": "Consumed by scan_screen.dart:139."
+  },
+  "demoDataBanner": "Demo data - sample subscriptions, not your account",
+  "@demoDataBanner": {
+    "description": "Consumed by app_shell.dart:75. Shown ONLY when no API is configured. Seed data wearing real data's clothes is the defect this line exists to prevent, so it must stay plainly readable. Hyphen-minus, matching the live literal. Pinned by integration_test/store_screenshots_test.dart:17 — the value must not change without moving those."
+  },
+  "navCalendar": "Calendar",
+  "@navCalendar": {
+    "description": "Consumed by app_shell.dart:31. Shell destination label. Reaches the bar, the rail and the drawer. Pinned by integration_test/app_test.dart:386, integration_test/store_screenshots_test.dart:292 — the value must not change without moving those."
+  },
+  "navInsights": "Insights",
+  "@navInsights": {
+    "description": "Consumed by app_shell.dart:32. See navCalendar. Pinned by test/chassis_properties_test.dart:3384, integration_test/app_test.dart:393, integration_test/store_screenshots_test.dart:301 — the value must not change without moving those."
+  },
+  "navBudget": "Budget",
+  "@navBudget": {
+    "description": "Consumed by app_shell.dart:33. See navCalendar. Pinned by integration_test/app_test.dart:400, integration_test/store_screenshots_test.dart:310 — the value must not change without moving those."
+  },
+  "navMore": "More",
+  "@navMore": {
+    "description": "Consumed by app_shell.dart:34. See navCalendar. Pinned by integration_test/app_test.dart:406, integration_test/store_screenshots_test.dart:39 — the value must not change without moving those."
+  },
+  "couldNotLoad": "Could not load: {error}",
+  "@couldNotLoad": {
+    "description": "Consumed by home_screen.dart:157. ⚠️ FLAGGED: {error} is the raw exception, so this surface can leak an internal message to a user. Recorded rather than changed here — L0 is behaviour-neutral.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "SocketException"
+      }
+    }
+  },
+  "markedUnusedCount": "{count, plural, =1{1 marked unused} other{{count} marked unused}}",
+  "@markedUnusedCount": {
+    "description": "Consumed by home_screen.dart:296. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cancelToSave": "Cancel to save {amount}/mo",
+  "@cancelToSave": {
+    "description": "Consumed by home_screen.dart:298.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹499"
+      }
+    }
+  },
+  "calendarLink": "Calendar",
+  "@calendarLink": {
+    "description": "Consumed by home_screen.dart:312. The trailing link on the Upcoming renewals header. The live literal baked a \"→\" into the string; the arrow is DIRECTIONAL and belongs to the layout, not to the text. Pinned by integration_test/app_test.dart:386, integration_test/store_screenshots_test.dart:292 — the value must not change without moving those."
+  },
+  "monthlySpend": "MONTHLY SPEND",
+  "@monthlySpend": {
+    "description": "Consumed by home_screen.dart:368."
+  },
+  "upcomingRenewals": "Upcoming renewals",
+  "@upcomingRenewals": {
+    "description": "Consumed by home_screen.dart:308."
+  },
+  "allSubscriptions": "All subscriptions",
+  "@allSubscriptions": {
+    "description": "Consumed by home_screen.dart:328."
+  },
+  "activeCount": "{count, plural, =1{1 active} other{{count} active}}",
+  "@activeCount": {
+    "description": "Consumed by home_screen.dart:391. PLURAL. The hero card's count pill.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "perYearTotal": "{amount} / yr",
+  "@perYearTotal": {
+    "description": "Consumed by home_screen.dart:396.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹28,080"
+      }
+    }
+  },
+  "dueIn7Days": "DUE IN 7 DAYS",
+  "@dueIn7Days": {
+    "description": "Consumed by home_screen.dart:405."
+  },
+  "dueIn30Days": "DUE IN 30 DAYS",
+  "@dueIn30Days": {
+    "description": "Consumed by home_screen.dart:413."
+  },
+  "usageOccasional": "Occasional",
+  "@usageOccasional": {
+    "description": "Consumed by home_screen.dart:465. The third usage band, which only home renders — see usageRarelyUsed and usageActive."
+  },
+  "greetingMorning": "Good morning",
+  "@greetingMorning": {
+    "description": "Consumed by home_screen.dart:553."
+  },
+  "greetingAfternoon": "Good afternoon",
+  "@greetingAfternoon": {
+    "description": "Consumed by home_screen.dart:554."
+  },
+  "greetingEvening": "Good evening",
+  "@greetingEvening": {
+    "description": "Consumed by home_screen.dart:555."
+  },
+  "poweredByLine": "{app} by {company}",
+  "@poweredByLine": {
+    "description": "Consumed by features/shared/widgets.dart:371. Both names come from AppConfig and are not translated; only the joining word is.",
+    "placeholders": {
+      "app": {
+        "type": "String",
+        "example": "Subly"
+      },
+      "company": {
+        "type": "String",
+        "example": "Nikatru"
+      }
+    }
+  },
+  "linkPrivacyShort": "Privacy",
+  "@linkPrivacyShort": {
+    "description": "Consumed by features/shared/widgets.dart:383. The COMPACT footer link. Deliberately not the chassis `privacyPolicy` (\"Privacy policy\") — the values differ and the footer wraps three of these onto one line."
+  },
+  "linkTermsShort": "Terms",
+  "@linkTermsShort": {
+    "description": "Consumed by features/shared/widgets.dart:385. See linkPrivacyShort."
+  },
+  "linkRefundShort": "Refund",
+  "@linkRefundShort": {
+    "description": "Consumed by features/shared/widgets.dart:387. See linkPrivacyShort."
+  },
+  "dueToday": "Due today",
+  "@dueToday": {
+    "description": "Consumed by features/shared/due.dart:14. DueInfo is shared by home, calendar and detail, so this string reaches three screens."
+  },
+  "renewsTomorrow": "Renews tomorrow",
+  "@renewsTomorrow": {
+    "description": "Consumed by features/shared/due.dart:15. See dueToday."
+  },
+  "dueInDays": "{count, plural, =1{In 1 day} other{In {count} days}}",
+  "@dueInDays": {
+    "description": "Consumed by features/shared/due.dart:16-17. PLURAL. Both live branches read `In $d days`, so a two-day and a one-day horizon rendered identically wrong.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifNothingDue": "Nothing due in the next 7 days.",
+  "@notifNothingDue": {
+    "description": "Consumed by notifications_screen.dart:122."
+  },
+  "notifRenewsToday": "{name} renews today",
+  "@notifRenewsToday": {
+    "description": "Consumed by notifications_screen.dart:56.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "notifRenewsInDays": "{count, plural, =1{{name} renews in 1 day} other{{name} renews in {count} days}}",
+  "@notifRenewsInDays": {
+    "description": "Consumed by notifications_screen.dart:57-58. PLURAL. The live line switched \"day\"/\"days\" with a ternary inside the interpolation.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifChargeOn": "{amount} on {date}",
+  "@notifChargeOn": {
+    "description": "Consumed by notifications_screen.dart:59-60. {date} comes from DateFormat.yMd. The live line hardcoded d/m/y, which is wrong in half the locales the app can run in — and Tamil puts the date clause first, which is why this is one key rather than a concatenation.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "date": {
+        "type": "String",
+        "example": "12/8/2026"
+      }
+    }
+  },
+  "notifUnusedCount": "{count, plural, =1{1 plan is marked unused} other{{count} plans are marked unused}}",
+  "@notifUnusedCount": {
+    "description": "Consumed by notifications_screen.dart:68-69. PLURAL, and the WHOLE CLAUSE sits inside each arm: the verb agrees with the count (\"is\"/\"are\"), and a language that inflects it differently cannot be served by swapping one noun.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifCancellingSaves": "{count, plural, =1{Cancelling it would save {amount}/mo.} other{Cancelling them would save {amount}/mo.}}",
+  "@notifCancellingSaves": {
+    "description": "Consumed by notifications_screen.dart:70-71. PLURAL, whole clause per arm: the PRONOUN agrees with the count (\"it\"/\"them\"). See notifUnusedCount.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String",
+        "example": "₹499"
+      }
+    }
+  },
+  "consentPrivacyLive": "No name, no email, no advertising ID and no IP address. Just a random code for this installation. You can change this any time in Settings.",
+  "@consentPrivacyLive": {
+    "description": "Consumed by consent_prompt.dart:97-99. 🔴 THE LIVE DIALOG COPY, VERBATIM. Users consented under THIS text, so it is carried across unchanged rather than folded into the chassis `consentPrivacy`, whose wording differs. Changing consent copy is an owner/legal decision, not a refactor. 👤 OWNER: reconcile the two against privacy.html (P4 work order §8 decision 2)."
+  },
+  "consentReadPolicy": "Read the privacy policy",
+  "@consentReadPolicy": {
+    "description": "Consumed by consent_prompt.dart:106. Opens the published privacy policy from inside the consent dialog."
+  },
+  "forgotPasswordShort": "Forgot password?",
+  "@forgotPasswordShort": {
+    "description": "Consumed by auth/login_screen.dart:189. Subly's shorter label. The chassis `forgotPassword` reads \"Forgot your password?\" — the values differ, so this is minted rather than reused."
+  },
+  "orDivider": "or",
+  "@orDivider": {
+    "description": "Consumed by auth/login_screen.dart:211. The word between the email form and the OAuth button."
+  },
+  "dismiss": "Dismiss",
+  "@dismiss": {
+    "description": "Consumed by auth/login_screen.dart:349. Clears the account-deletion notice. Pinned by test/delete_account_test.dart:252 — the value must not change without moving those."
+  },
+  "authEnterBoth": "Enter your email and password.",
+  "@authEnterBoth": {
+    "description": "Consumed by auth/login_screen.dart:36."
+  },
+  "authInvalidEmail": "Enter a valid email address.",
+  "@authInvalidEmail": {
+    "description": "Consumed by auth/login_screen.dart:41."
+  },
+  "authIncorrect": "Incorrect email or password.",
+  "@authIncorrect": {
+    "description": "Consumed by auth/login_screen.dart:91. Says which of the two is wrong on purpose: it does not, because naming the wrong field lets anyone test which emails are registered."
+  },
+  "authAlreadyRegistered": "That email is already registered — try signing in.",
+  "@authAlreadyRegistered": {
+    "description": "Consumed by auth/login_screen.dart:96."
+  },
+  "authConfirmEmail": "Please confirm your email, then sign in.",
+  "@authConfirmEmail": {
+    "description": "Consumed by auth/login_screen.dart:102."
+  },
+  "authRateLimited": "Too many attempts — please wait a moment and try again.",
+  "@authRateLimited": {
+    "description": "Consumed by auth/login_screen.dart:105."
+  },
+  "authNetworkError": "Network error — check your connection and try again.",
+  "@authNetworkError": {
+    "description": "Consumed by auth/login_screen.dart:111."
+  },
+  "authUnknownError": "Something went wrong. Please try again.",
+  "@authUnknownError": {
+    "description": "Consumed by auth/login_screen.dart:113. The fallback for anything _friendlyMessage does not model. Never shows the raw exception."
+  },
+  "welcomeBack": "Welcome back",
+  "@welcomeBack": {
+    "description": "Consumed by auth/login_screen.dart:151. Pinned by test/sign_out_destination_test.dart:31, integration_test/app_test.dart:203, integration_test/store_screenshots_test.dart:191 — the value must not change without moving those."
+  },
+  "signUpSubtitle": "Start tracking every subscription in one place.",
+  "@signUpSubtitle": {
+    "description": "Consumed by auth/login_screen.dart:157."
+  },
+  "signInSubtitle": "Sign in to keep your money in check.",
+  "@signInSubtitle": {
+    "description": "Consumed by auth/login_screen.dart:158."
+  },
+  "emailHint": "you@email.com",
+  "@emailHint": {
+    "description": "Consumed by auth/login_screen.dart:167. An example address, not prose — it stays identical in every locale."
+  },
+  "passwordHint": "Your password",
+  "@passwordHint": {
+    "description": "Consumed by auth/login_screen.dart:176."
+  },
+  "pleaseWait": "Please wait…",
+  "@pleaseWait": {
+    "description": "Consumed by auth/login_screen.dart:201."
+  },
+  "haveAccountPrompt": "Have an account? Sign in",
+  "@haveAccountPrompt": {
+    "description": "Consumed by auth/login_screen.dart:227-231. ONE full sentence, not the two TextSpans the live screen concatenates — the emphasised half is the second clause in English and need not be in Tamil."
+  },
+  "newHerePrompt": "New here? Create account",
+  "@newHerePrompt": {
+    "description": "Consumed by auth/login_screen.dart:227-231. See haveAccountPrompt."
+  },
+  "sublyOnboarding1Title": "Every subscription, one clean board",
+  "@sublyOnboarding1Title": {
+    "description": "Consumed by onboarding/onboarding_screen.dart:24. Subly's OWN onboarding copy. Deliberately NOT the chassis `onboarding1Title` — that is the stamped-app default and must keep promising only what the chassis has. The live literal carried a hard `\\n`; the break is dropped so the text wraps to the width it is given."
+  },
+  "sublyOnboarding1Body": "Add what you pay for and every renewal lands on one board.",
+  "@sublyOnboarding1Body": {
+    "description": "Consumed by onboarding/onboarding_screen.dart:25. See sublyOnboarding1Title."
+  },
+  "sublyOnboarding2Title": "Never get surprised by a renewal",
+  "@sublyOnboarding2Title": {
+    "description": "Consumed by onboarding/onboarding_screen.dart:28. See sublyOnboarding1Title."
+  },
+  "sublyOnboarding2Body": "A reminder arrives before each renewal, and every due date sits on one calendar.",
+  "@sublyOnboarding2Body": {
+    "description": "Consumed by onboarding/onboarding_screen.dart:29. See sublyOnboarding1Title."
+  },
+  "sublyOnboarding3Title": "Cut what you don’t use",
+  "@sublyOnboarding3Title": {
+    "description": "Consumed by onboarding/onboarding_screen.dart:32. See sublyOnboarding1Title. Typographic apostrophe (U+2019), matching the live literal."
+  },
+  "sublyOnboarding3Body": "Mark a plan unused and Subly totals up what cancelling would save.",
+  "@sublyOnboarding3Body": {
+    "description": "Consumed by onboarding/onboarding_screen.dart:33. See sublyOnboarding1Title."
+  },
+  "renewalChannelName": "Renewal reminders",
+  "@renewalChannelName": {
+    "description": "Consumed by services/notifications/notification_service.dart:34. The Android notification CHANNEL name — shown in the OS settings app, outside any BuildContext, so it is passed in from a caller that has one."
+  },
+  "renewalReminderTitle": "Renewal coming up",
+  "@renewalReminderTitle": {
+    "description": "Consumed by services/notifications/notification_service.dart:141. See renewalChannelName on how it reaches the service."
+  },
+  "renewalReminderBody": "{name} renews on {date}.",
+  "@renewalReminderBody": {
+    "description": "Consumed by services/notifications/notification_service.dart:142. {date} is formatted by DateFormat.MMMd, replacing the service's own English month table.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      },
+      "date": {
+        "type": "String",
+        "example": "12 Aug"
+      }
+    }
+  },
+  "weeklyDigestTitle": "Your week in subscriptions",
+  "@weeklyDigestTitle": {
+    "description": "Consumed by services/notifications/notification_service.dart:182."
+  },
+  "weeklyDigestBody": "{count, plural, =1{1 active, {total} a month.} other{{count} active, {total} a month.}}",
+  "@weeklyDigestBody": {
+    "description": "Consumed by services/notifications/notification_service.dart:183. PLURAL. {total} is the real monthly figure computed from the subscriptions actually held.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "total": {
+        "type": "String",
+        "example": "₹2,340"
+      }
+    }
+  },
+  "notificationActionOpen": "Open",
+  "@notificationActionOpen": {
+    "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
   }
 }

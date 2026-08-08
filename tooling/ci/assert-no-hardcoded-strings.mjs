@@ -29,11 +29,10 @@
 // PERSON — `Text('…')` and the labelling parameters — which is a domain small
 // enough to be exact and large enough to matter.
 //
-// `apps/subly` is EXCLUDED and dated. It holds ~49 such literals across 46
-// files, and `39-CHASSIS` cut 1 froze it as a legacy rail-prover, so including
-// it would ship this guard red on day one — and a guard that is red on day one
-// gets switched off, which is the failure this repository keeps recording.
-// Retrofitting Subly is `architecture.md` §16's own work item.
+// The ENFORCED domain is the brick template, and only the brick template. That
+// is not modesty about the rule; it is where the rule is nearly free. A literal
+// fixed here never reaches the 50 apps the factory will stamp, and a literal
+// fixed in one stamped app fixes one app.
 //
 // ── 2026-08-08 · THE CANARY IS A FIXTURE NOW, NOT A PRODUCT TREE ────────────
 // The brick is clean, so this guard's coverage claim rests entirely on a tree
@@ -48,11 +47,28 @@
 // started as a check that fired on a correct change.
 //
 // So the primary canary is now `tooling/ci/test/fixtures/dirty-strings`, which
-// this guard owns and which no product work can tidy. `apps/subly/lib` is kept
-// as a SECOND canary — a real tree is better evidence than a written one, and
-// it is free until the retrofit lands — with a dated entry naming the increment
-// that retires it. The canary is a LIST for that reason: canaries arrive and
-// leave, and neither should require rewriting the check.
+// this guard owns and which no product work can tidy. `apps/subly/lib` was kept
+// alongside it as a SECOND canary — a real tree is better evidence than a
+// written one, and it was free until the retrofit landed. The canary is a LIST
+// for that reason: canaries arrive and leave, and neither should require
+// rewriting the check.
+//
+// ── 2026-08-08 · THE SUBLY CANARY IS RETIRED, ON SCHEDULE ───────────────────
+// P4 L0 of `knowledge/plans/subly-restamp-execution.md` is the increment the
+// entry named as its own expiry, and this is that increment: the .arb now holds
+// every key Subly's screens need, so the waves that follow will empty
+// `apps/subly/lib` of the literals this guard was counting there. Removing the
+// entry BEFORE the cleaning is deliberate — the alternative is a build that goes
+// red because somebody did the right thing, and the rational response to that is
+// to weaken the guard. Every switched-off check in this repo's history started as
+// a check that fired on a correct change.
+//
+// Measured the day it was removed, so the claim that the fixture alone carries
+// the floor is a number rather than a hope: `apps/subly/lib` 59 hits (49 `Text(…)`
+// + 10 labelling), the fixture 32 (23 + 9). MIN_CANARY is 20, and BOTH matcher
+// families still have their own evidence in the fixture — which is the property
+// the per-family check below actually needs, and the one a total would hide.
+// `expected-families.txt` is untouched: it declares matchers, not canaries.
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { listDir } from './tree-walk.mjs';
@@ -73,11 +89,15 @@ const FIXTURE_DIRTY = `${FIXTURE}/dirty`;
 const FIXTURE_QUIET = `${FIXTURE}/quiet`;
 const FIXTURE_FAMILIES = `${FIXTURE}/expected-families.txt`;
 
-// Dated exclusions. Each names WHY, so it stays reviewable rather than becoming
-// permanent by accident.
-const EXCLUDED_ROOTS = {
-  'apps/subly': '2026-07-28 · frozen as a legacy rail-prover by 39-CHASSIS cut 1; ~49 literals across 46 files. Retrofit is architecture.md §16\'s work item, and including it here would ship this guard red on day one.',
-};
+// 🔴 THERE IS NO EXCLUSION LIST ANY MORE, and its removal is the point rather
+// than tidying. `EXCLUDED_ROOTS` held exactly one dated entry — `apps/subly`,
+// frozen as a legacy rail-prover by 39-CHASSIS cut 1 — and it never filtered
+// anything: nothing below ever scanned outside the brick, the fixture and the
+// canary list, so the map's only effect was the ⬜ EXCLUDED notice it printed at
+// the end of every run. With the entry gone the map and its printing loop were
+// dead code that inflated the guard's apparent reach, so both went with it
+// (2026-08-08, P4 L0). Re-adding an exclusion is five lines; carrying an empty
+// mechanism that reads like enforcement is the more expensive mistake.
 
 // Where a string reaches a person. Captures the literal so it can be reported.
 const SHOWN_TO_A_PERSON = [
@@ -143,9 +163,12 @@ function scanRaw(dir) {
       // trap (its own header records it for JSONC's `"https://…"`), and the
       // string-awareness is the whole reason the reduction is shared rather than
       // re-typed per guard. Measured on the real trees the day it was swapped in:
-      // brick 0→0, apps/subly 71→71, fixture 31→31 — identical hits, so the
+      // brick 0→0, apps/subly 59→59, fixture 32→32 — identical hits, so the
       // defect was latent rather than active, which is precisely when it is
       // cheap to remove. Found by the canary fixture below, on its first run.
+      // (Those two totals read 71 and 31 until 2026-08-08. They were the counts
+      // from an earlier tree, copied forward rather than re-measured, and they
+      // were the numbers the retirement argument below was reasoning from.)
       const src = stripSourceComments(readFileSync(full, 'utf8'), '.dart');
       for (const { re, what } of SHOWN_TO_A_PERSON) {
         re.lastIndex = 0;
@@ -191,10 +214,12 @@ const CANARY_ROOTS = [
     root: FIXTURE_DIRTY,
     why: "this guard's own fixture: dirty on purpose, owned here, and unreachable by product work. It is the canary that stays.",
   },
-  {
-    root: 'apps/subly/lib',
-    why: '2026-08-08 · RETIRES with Subly\'s l10n retrofit — Phase 4 of knowledge/plans/subly-restamp-execution.md, which cleans these very literals. Kept until then because a real tree is stronger evidence than a written one; the increment that cleans it deletes this entry and the EXCLUDED_ROOTS line in the same commit. If you are reading this after that landed, it was missed.',
-  },
+  // `apps/subly/lib` sat here until 2026-08-08 and was removed by the increment
+  // its own entry named — P4 L0 of knowledge/plans/subly-restamp-execution.md.
+  // It stays a LIST with one element on purpose: the shape is what let a canary
+  // be retired by deleting an object rather than by rewriting the loop below,
+  // and the next real tree that is known-dirty in these ways can be added the
+  // same way.
 ];
 const MIN_CANARY = 20;
 
@@ -215,13 +240,14 @@ for (const { root, why } of CANARY_ROOTS) {
   ok(`matchers verified against a known-dirty tree: ${canary.length} literal(s) found in ${root}`);
 
   // 🔴 AND A RELATIONSHIP, NOT ONLY A COUNT (2026-08-01 corpus triage).
-  // MIN_CANARY is deliberately left FAR below every measured total — apps/subly
-  // yields 71, the fixture 31 — and it must stay that way: re-pinning a floor at
-  // whatever the tree happens to measure today is the stale-floor defect PR #85
-  // removed from assert-guard-coverage. But a total floor is also blind in the
-  // other direction: 58 of apps/subly's 71 hits come from the `Text(…)` matcher,
-  // so BREAKING THE LABELLING MATCHER still clears any total floor by a wide
-  // margin and prints "matchers verified".
+  // MIN_CANARY is deliberately left FAR below every measured total — the fixture
+  // yields 32 — and it must stay that way: re-pinning a floor at whatever the
+  // tree happens to measure today is the stale-floor defect PR #85 removed from
+  // assert-guard-coverage. But a total floor is also blind in the other
+  // direction: 23 of the fixture's 32 hits come from the `Text(…)` matcher, so
+  // BREAKING THE LABELLING MATCHER still clears any total floor by a wide margin
+  // and prints "matchers verified". (The retired apps/subly canary was worse on
+  // this axis, not better: 49 of its 59 were `Text(…)`.)
   //
   // So the real coverage claim is derived from the matcher list itself: every
   // family must show its own evidence, in every canary, that it still matches.
@@ -328,10 +354,6 @@ if (!existsSync(join(ROOT, FIXTURE_QUIET))) {
       ok(`all ${NOT_USER_FACING.length} exemptions still exempt: ${raw.length} near miss(es) in ${FIXTURE_QUIET}, 0 of them enforced`);
     }
   }
-}
-
-for (const [root, why] of Object.entries(EXCLUDED_ROOTS)) {
-  console.log(`\n⬜ EXCLUDED · ${root}\n   ${why}`);
 }
 
 if (problems.length) {

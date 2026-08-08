@@ -158,7 +158,7 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => _editProfile(context, ref, l10n, user),
                 child: Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: cardDecoration(),
+                  decoration: cardDecoration(context),
                   child: Row(
                     children: <Widget>[
                       Container(
@@ -249,7 +249,7 @@ class SettingsScreen extends ConsumerWidget {
             // find theirs without first being able to read the current one.
             _sectionLabel(l10n.language),
             Container(
-              decoration: cardDecoration(),
+              decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: Material(
                 color: Colors.transparent,
@@ -318,7 +318,7 @@ class SettingsScreen extends ConsumerWidget {
             // ── PREFERENCES (live-only) ──────────────────────────────────────
             _sectionLabel(l10n.preferences),
             Container(
-              decoration: cardDecoration(),
+              decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: <Widget>[
@@ -359,7 +359,7 @@ class SettingsScreen extends ConsumerWidget {
             // `canSchedule` is false.
             _sectionLabel(l10n.notifications),
             Container(
-              decoration: cardDecoration(),
+              decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: Material(
                 color: Colors.transparent,
@@ -404,7 +404,7 @@ class SettingsScreen extends ConsumerWidget {
             // than this screen. P2.7 owes a guard that names THIS file.
             _sectionLabel(l10n.privacy),
             Container(
-              decoration: cardDecoration(),
+              decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: _prefRow(
                 l10n.usageStatistics,
@@ -440,7 +440,7 @@ class SettingsScreen extends ConsumerWidget {
                 null) ...<Widget>[
               _sectionLabel(l10n.plan),
               Container(
-                decoration: cardDecoration(),
+                decoration: cardDecoration(context),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: <Widget>[
@@ -464,7 +464,7 @@ class SettingsScreen extends ConsumerWidget {
             // ── ACCOUNT & DATA (live-only rows) ──────────────────────────────
             const SizedBox(height: 22),
             Container(
-              decoration: cardDecoration(),
+              decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: <Widget>[
@@ -499,7 +499,7 @@ class SettingsScreen extends ConsumerWidget {
             //    IN-APP, not only from a store listing. [pipeline C-13]
             const SizedBox(height: 12),
             Container(
-              decoration: cardDecoration(),
+              decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: <Widget>[
@@ -559,7 +559,7 @@ class SettingsScreen extends ConsumerWidget {
             // change instead of being a list somebody must remember to update.
             const SizedBox(height: 12),
             Container(
-              decoration: cardDecoration(),
+              decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               // The Material is REQUIRED, not decoration. `ListTile` paints its
               // background and ink splashes on the nearest Material ancestor,
