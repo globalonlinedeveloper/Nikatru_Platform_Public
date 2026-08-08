@@ -160,3 +160,13 @@ mason-lock.json
 # domain, which makes UNTRACKED the designed state for them. Factory-wide
 # pattern: every stamped app produces the same triplet.
 apps/*/lib/l10n/app_localizations*.dart
+
+# …and gen-l10n's DIAGNOSTIC output, which lands in the app root rather than
+# beside the generated Dart (2026-08-08, P4 L0). `untranslated-messages-file:` in
+# l10n.yaml is resolved relative to the package, so `flutter gen-l10n` and every
+# `pub get` drop this file into the tracked tree — measured, not assumed. It is a
+# BUILD PRODUCT recomputed from the .arb files on every run, so committing it
+# would create a second, staler copy of a fact the .arb files already carry, and
+# a reviewer would have no way to tell which one was current. The parity
+# assertion lives in `test/l10n_parity_test.dart`, which is tracked and does fail.
+apps/*/l10n-untranslated.json
