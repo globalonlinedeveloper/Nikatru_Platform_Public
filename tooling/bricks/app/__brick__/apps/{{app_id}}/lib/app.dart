@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'core/app_config.dart';
 import 'core/router.dart';
 import 'l10n/app_localizations.dart';
+import 'state/notification_tap_observer.dart';
 import 'state/providers.dart';
 
 /// Root widget for {{{display_name}}}.
@@ -74,7 +75,11 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
               mustUpdate: mustUpdate,
               onUpdate: () => _openUpdate(updateUrl),
               child: AnalyticsGate(
-                child: _OfflineBanner(child: child ?? const SizedBox.shrink()),
+                child: _NotificationTapGate(
+                  child: _OfflineBanner(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
               ),
             ),
           ),
@@ -299,6 +304,99 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
         if (enabled && !decided) const _ConsentPrompt(),
       ],
     );
+  }
+}
+
+/// [13]T-9 — THE TAP→`notification_opened` SUBSCRIPTION, INHERITED BY EVERY
+/// STAMPED APP.
+///
+/// 🔴 THE GAP THIS CLOSES. The tap loop shipped in `apps/subly` and stopped
+/// there, so the template carried the whole OUTBOUND rail (schedule, re-arm,
+/// cancel, the platform matrix) and NOTHING on the way back. App #2 would have
+/// been born able to wake a user at 09:00 and unable to notice they answered.
+/// See [NotificationTapObserver] for why nothing went red.
+///
+/// 🔴 WHY A SEPARATE WIDGET RATHER THAN THREE LINES INSIDE [AnalyticsGate].
+/// They are two different subjects with two different owners: the launch trio is
+/// core's ([core.AnalyticsLifecycle] via `logLaunchLifecycle`) and fires once per
+/// launch off a latch; this is a SUBSCRIPTION that lives as long as the app and
+/// must be cancelled in `dispose`. Folding a stream subscription into the widget
+/// that owns the consent scrim would make both harder to reason about and neither
+/// easier to test.
+///
+/// Three constraints, each load-bearing:
+///  · SAME CONSENT GATE as every other emitter: `notification_opened` is an
+///    observation about a person and must not be recorded before they said yes.
+///  · IT AWAITS `analyticsProvider.future` rather than reading `.valueOrNull`,
+///    for the reason `logEvent` states in providers.dart — at launch the recorder
+///    is still resolving, and a `valueOrNull` read silently drops exactly the
+///    events it was subscribed to collect. Worse here than there: the consent
+///    decision INVALIDATES the recorder, so `valueOrNull` during that window
+///    hands back the previous, already-disposed one and the subscription is
+///    latched onto a sink that ships nothing.
+///  · ONE-SHOT: `_observing` latches BEFORE the await and `start()` is itself
+///    idempotent, so neither a rebuild nor a re-entry can stack subscriptions and
+///    double-log a tap.
+///
+/// The instance it subscribes to is [notificationServiceProvider] — the SAME one
+/// the reminder rail schedules through, and the one `main.dart` overrides with
+/// the adapter it actually `init()`ed. That single-instance discipline is the
+/// whole wiring: taps are delivered on the initialised object's own stream, so a
+/// second, uninitialised instance would expose a stream that is silent forever.
+class _NotificationTapGate extends ConsumerStatefulWidget {
+  const _NotificationTapGate({required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<_NotificationTapGate> createState() =>
+      _NotificationTapGateState();
+}
+
+class _NotificationTapGateState extends ConsumerState<_NotificationTapGate> {
+  /// Held so it can be cancelled. Null until consent is granted and the recorder
+  /// has resolved.
+  NotificationTapObserver? _taps;
+
+  /// Latched before the await, never after — see the class doc.
+  bool _observing = false;
+
+  @override
+  void dispose() {
+    _taps?.stop();
+    super.dispose();
+  }
+
+  Future<void> _observe() async {
+    try {
+      final core.Analytics analytics = await ref.read(analyticsProvider.future);
+      // The gate can be torn down while the recorder resolves. Subscribing after
+      // that would build an observer `dispose` has already run past, i.e. a
+      // subscription nothing will ever cancel.
+      if (!mounted) return;
+      final NotificationTapObserver observer = NotificationTapObserver(
+        service: ref.read(notificationServiceProvider),
+        analytics: analytics,
+      );
+      _taps = observer;
+      observer.start();
+    } catch (_) {
+      // A recorder that cannot resolve means no measurement, never a broken
+      // launch. Deliberately NOT retried: `_observing` stays latched, because a
+      // build-triggered retry loop is a worse failure than a missing event.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_observing &&
+        ref.watch(analyticsConsentProvider) == core.ConsentStatus.granted) {
+      _observing = true;
+      // Fire-and-forget, exactly as AnalyticsGate launches the trio: this is a
+      // build, and nothing in the tree may wait on a recorder.
+      _observe();
+    }
+    return widget.child;
   }
 }
 
