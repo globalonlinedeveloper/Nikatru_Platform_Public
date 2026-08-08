@@ -43,7 +43,10 @@
   .stores{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
   .store{display:inline-flex;align-items:center;text-decoration:none;font-weight:700;font-size:14px;padding:11px 20px;border-radius:11px;background:linear-gradient(90deg,var(--primary),var(--teal));color:#fff;border:0}
   .store:hover{filter:brightness(1.08)}
+  .store.ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.20)}
+  .store.ghost:hover{background:rgba(255,255,255,.16);filter:none}
   section{padding:56px 0}
+  section+section{padding-top:0}
   h2{font-size:24px;font-weight:800;color:var(--strong);letter-spacing:-.01em;margin-bottom:14px}
   p{margin-bottom:12px;font-size:16px}
   ul.feat{margin:0 0 12px 20px}
@@ -52,9 +55,17 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px}
   .card h3{font-size:19px;color:var(--strong);margin-bottom:6px}
   .card p{color:var(--muted);font-size:15px;margin-bottom:10px}
+  .card .amount{color:var(--strong);font-size:27px;font-weight:800;letter-spacing:-.02em;margin-bottom:2px}
+  .card .amount small{font-size:14.5px;font-weight:600;color:var(--muted);letter-spacing:0}
+  .trial{display:inline-block;background:var(--teal);color:#04231C;font-size:11px;font-weight:800;letter-spacing:.06em;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .note{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:16px 20px;color:var(--muted);font-size:15px;margin-top:16px}
+  .note p{margin:0;font-size:15px}
+  .note p+p{margin-top:8px}
   .privacy{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;margin-top:8px}
   .privacy b{color:var(--strong)}
   .privacy p{color:var(--muted);font-size:15px;margin:6px 0 0}
+  .privacy ul{margin:10px 0 0 20px}
+  .privacy li{color:var(--muted);font-size:15px;margin-bottom:6px}
   footer{background:#0B1220;color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px}
   footer a{color:#B6C2D9;text-decoration:none;margin:0 7px}
   footer a:hover{color:#fff}
