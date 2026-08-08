@@ -72,9 +72,20 @@
   <h1>Pricing</h1>
   <p class="updated">Last updated: 7 August 2026 &middot; All prices in US dollars (USD)</p>
 
+  <!-- ── THE APEX PATH IS THE ADDRESS WE PUBLISH (ADR 038, 2026-08-08) ────────
+       This line used to send readers to `https://subly.nikatru.com`, which was
+       correct on the day it was written and is the exact link the apex pattern
+       inverts: `nikatru.com/<app>` is an app's permanent commerce/product
+       address, so the merchant of record's domain approval is paid ONCE on the
+       apex instead of once per app (~50 reviews avoided, each of which would
+       hit the same CanvasKit-behind-an-auth-wall defect). `/subly` is a 301 to
+       the hub's per-app page today — see sites/nikatru/_redirects — and the
+       same path carries the buy surface later. The subdomain still resolves and
+       is still where the app itself is served; it is simply not the address a
+       published page argues for. ADR 038:93-95 asked for this line by name. -->
   <p><b>Subly</b> keeps every subscription you pay for in one place &mdash; what renews, when it renews, and
   what it costs you each month and each year. Subly is available on the web at
-  <a href="https://subly.nikatru.com">subly.nikatru.com</a>.</p>
+  <a href="https://nikatru.com/subly">nikatru.com/subly</a>.</p>
 
   <h2>Plans</h2>
 
