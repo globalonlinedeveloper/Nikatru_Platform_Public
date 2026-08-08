@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:subly/core/router/app_router.dart';
+import 'package:subly/core/router.dart';
 import 'package:subly/data/auth/mock_auth_repository.dart';
 import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';

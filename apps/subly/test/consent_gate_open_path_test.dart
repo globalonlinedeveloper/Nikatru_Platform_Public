@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:subly/core/router/app_router.dart';
+import 'package:subly/core/router.dart';
 import 'package:subly/features/consent/consent_prompt.dart';
 import 'package:subly/state/analytics_providers.dart';
 

@@ -570,7 +570,7 @@ void main() {
     await shot('17b-after-logout-tap');
     // signOut() is an async round-trip to Supabase; the router then refreshes
     // and redirects. A signed-out user on a non-auth route (/settings) lands on
-    // /login — NOT first-run onboarding — per the app_router redirect (a
+    // /login — NOT first-run onboarding — per the core/router.dart redirect (a
     // signed-out user is only left on /onboarding|/login|/scan). Poll for it.
     expect(
       await waitFor(tester, find.text('Welcome back')),
