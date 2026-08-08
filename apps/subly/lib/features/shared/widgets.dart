@@ -223,6 +223,19 @@ class RowCard extends StatelessWidget {
   }
 }
 
+/// The heading above a list section ("By date", "By category", the two on home).
+///
+/// 🔴 THE PUREST CASE OF THE P4·TEXT ROOT CAUSE, WHICH IS WHY IT CHANGES BY ONE
+/// WORD. `AppText.title` bakes [AppColors.ink] (0xFF141420) into a `const`
+/// TextStyle, so this heading rendered near-black on the dark calendar and
+/// budget screens — the widget itself paints nothing else, so the const style
+/// WAS the whole defect. `AppText.of(context)` resolves it at the chassis:
+///   · LIGHT returns the const object itself (`identical(…title, AppText.title)`
+///     — pinned in `packages/design_system/test/app_text_test.dart`), so this
+///     heading is byte-identical to the pre-dark one on every screen;
+///   · DARK returns the same style with `scheme.onSurface`.
+/// No `copyWith(color:)` at any of the four call sites, and none needed at the
+/// other 105 — they keep the const styles and keep compiling.
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.title, {super.key, this.trailing});
   final String title;
@@ -239,7 +252,7 @@ class SectionHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: AppText.title.copyWith(fontSize: 17),
+              style: AppText.of(context).title.copyWith(fontSize: 17),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -278,6 +291,48 @@ class Pill extends StatelessWidget {
   }
 }
 
+/// The accent glow under [GradientButton] in LIGHT. Named so the dark branch can
+/// state that it drops it, and so a test can pin the light half against the
+/// literal rather than against "whatever the widget currently does".
+const List<BoxShadow> kBrandGlow = <BoxShadow>[
+  BoxShadow(
+    color: Color.fromRGBO(100, 89, 245, 0.5),
+    blurRadius: 24,
+    offset: Offset(0, 12),
+    spreadRadius: -12,
+  ),
+];
+
+/// The primary CTA. **Theme-aware — the light branch is pinned.**
+///
+/// 🔴 ITS DARK DEFECT IS THE OPPOSITE OF [kCardShadow]'s, AND THAT IS THE WHOLE
+/// POINT. Both are fixed-alpha shadows tuned against ONE background, so both
+/// misbehave on the other — just in opposite directions. `kCardShadow` is two
+/// BLACK alphas, so on a dark scaffold it paints nothing and the card loses its
+/// edge (see [cardDecoration]). [kBrandGlow] is the ACCENT at 50%, so it does
+/// the reverse: composited over the near-white page it is a soft lift, but
+/// composited over `scheme.surface` in dark (measured #131318 for Subly's seed)
+/// the same constant resolves to #3B3687 (measured) — a hard purple bloom several
+/// times the weight the design asks for. A light-mode elevation cue does not
+/// become a dark-mode one by being left alone.
+///
+/// So DARK DROPS THE GLOW AND ADDS NOTHING. That is not an omission:
+///   · M3 conveys elevation in dark with surface lightness, not with shadow,
+///     and this button is far brighter than any scaffold it sits on, so it
+///     already reads as raised. Unlike the card, no affordance goes missing —
+///     which is why this widget gets no border and [cardDecoration] does.
+///
+/// 🔒 THE FILL AND THE LABEL ARE DELIBERATELY NOT BRANCHED, and this is the one
+/// of the three widgets where the text was never broken. `AppColors.brandGradient`
+/// + `Colors.white` is already the app's established treatment on its DARK
+/// surfaces — the onboarding CTA, the home and detail heroes, the FAB and the
+/// calendar's today-pill all paint exactly that pair. Contrast holds at both
+/// gradient ends for the 15px w700 label (4.9:1 on #6459F5, 3.5:1 on #9B6BFF;
+/// AA large-text is 3:1). Swapping dark to the theme's derived
+/// `AppThemeX.brandGradient` would ALSO force `scheme.onPrimary` for the label —
+/// M3 dark `primary` is a tone-80 lavender, on which white scores 1.70:1 — and
+/// would leave this one CTA diverging from every other brand surface in the app.
+/// A repaint with no defect behind it is not a fix.
 class GradientButton extends StatelessWidget {
   const GradientButton({
     super.key,
@@ -293,20 +348,14 @@ class GradientButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
     return SizedBox(
       height: height,
       child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: AppColors.brandGradient,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-              color: Color.fromRGBO(100, 89, 245, 0.5),
-              blurRadius: 24,
-              offset: Offset(0, 12),
-              spreadRadius: -12,
-            ),
-          ],
+          boxShadow: isLight ? kBrandGlow : null,
         ),
         child: Material(
           color: Colors.transparent,
@@ -331,29 +380,70 @@ class GradientButton extends StatelessWidget {
   }
 }
 
+/// The secondary action beside a [GradientButton]. **Theme-aware — the light
+/// branch is pinned.**
+///
+/// 🔴 THE WORST-LOOKING OF THE THREE IN DARK, because all three of its colours
+/// were light literals at once: a WHITE pill ([AppColors.surface]) with a
+/// near-white hairline ([AppColors.line], 0xFFECECF2) carrying near-black text
+/// ([AppColors.ink]). On a dark sheet that is a glaring white slab — "Keep it"
+/// on the cancel sheet, "Continue with Apple" on login, the two consent answers.
+/// The border is the same class of bug as [kCardShadow] read the other way: a
+/// pale hairline tuned to sit ON white becomes the brightest thing on the screen
+/// once the surface behind it is dark.
+///
+/// The dark branch is the [RowCard] idiom, slot for slot:
+///   · fill   → `scheme.surfaceContainerHighest` (the same slot the card and the
+///              row use, so the three read as one surface family)
+///   · edge   → `scheme.outlineVariant`
+///   · label  → `scheme.onSurface`
+/// LIGHT keeps the three literals exactly, pinned in
+/// `test/shared_primitives_test.dart`.
+///
+/// ⚠️ [color] BECAME NULLABLE, AND THE DEFAULT IS THE ONLY THING THAT MOVED.
+/// It used to default to `AppColors.ink`, which is a light literal baked into
+/// the signature where no `BuildContext` exists — a const default cannot consult
+/// the theme, so the brightness fix HAS to live in `build`. Null now means
+/// "resolve it", and an explicit [color] is still honoured verbatim in both
+/// brightnesses, because a caller that passes one is choosing an accent
+/// (`consent_prompt.dart` passes `AppColors.accent` for "Allow") rather than
+/// asking for default prose. Every call site that omitted it renders the
+/// identical `AppColors.ink` in light.
 class SoftButton extends StatelessWidget {
   const SoftButton({
     super.key,
     required this.label,
     this.onPressed,
     this.height = 50,
-    this.color = AppColors.ink,
+    this.color,
   });
   final String label;
   final VoidCallback? onPressed;
   final double height;
-  final Color color;
+
+  /// The label/foreground colour. Null resolves per brightness — see the class
+  /// doc; an explicit value is used as given in BOTH brightnesses.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final bool isLight = theme.brightness == Brightness.light;
+    final ColorScheme scheme = theme.colorScheme;
+    final Color fg = color ?? (isLight ? AppColors.ink : scheme.onSurface);
+
     return SizedBox(
       height: height,
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          foregroundColor: color,
-          backgroundColor: AppColors.surface,
-          side: const BorderSide(color: AppColors.line),
+          foregroundColor: fg,
+          backgroundColor: isLight
+              ? AppColors.surface
+              : scheme.surfaceContainerHighest,
+          side: BorderSide(
+            color: isLight ? AppColors.line : scheme.outlineVariant,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -363,7 +453,7 @@ class SoftButton extends StatelessWidget {
           style: TextStyle(
             fontFamily: 'Manrope',
             fontWeight: FontWeight.w700,
-            color: color,
+            color: fg,
           ),
         ),
       ),

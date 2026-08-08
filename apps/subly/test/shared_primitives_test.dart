@@ -24,6 +24,15 @@
 //      is even sharper here: `poweredByLine` reads "{company} வழங்கும் {app}" —
 //      the two names SWAP PLACES. A concatenation of an interpolated "by" cannot
 //      produce that string in any order.
+//
+//   4. P4·TEXT — THE OTHER THREE LIGHT-ONLY PRIMITIVES: `SectionHeader`,
+//      `SoftButton`, `GradientButton`. Same pair shape as RowCard above: each
+//      group is a LIGHT pin against the LITERAL tokens plus a DARK falsifier,
+//      and each of the three is independently falsifiable (reverting one
+//      widget's dark branch reddens only its own group — verified 2026-08-09).
+//      The seam underneath `SectionHeader` is `AppText.of(context)`, pinned
+//      separately at package level in
+//      `packages/design_system/test/app_text_test.dart`.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -334,4 +343,299 @@ void main() {
       );
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // P4·TEXT — the three primitives that were still light-only after W0/L1.
+  //
+  // Each group is one widget, so a revert of one dark branch reddens exactly
+  // one group and names itself. The LIGHT halves assert LITERAL tokens
+  // (`AppColors.ink` / `.surface` / `.line` / `.brandGradient`, `kBrandGlow`),
+  // never scheme slots: asserting against the scheme would let the natural
+  // regression — "tidying" a light branch to `scheme.*` — pass, because both
+  // sides of the comparison would move together.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('SectionHeader is theme-aware', () {
+    testWidgets('LIGHT is byte-identical to the pre-dark heading', (
+      WidgetTester tester,
+    ) async {
+      await _pumpUnder(tester, ThemeMode.light, const SectionHeader('By date'));
+      final TextStyle s = _headerStyle(tester);
+
+      expect(
+        s.color,
+        AppColors.ink,
+        reason:
+            'The light heading MUST stay the literal AppColors.ink. It is on '
+            'calendar, budget and twice on home — the screens the owner '
+            'eyeballs.',
+      );
+      // Still AppText.title underneath, not a style rebuilt by hand: these three
+      // are what `AppText.title` carries and a fresh TextStyle would drop them.
+      expect(s.fontFamily, 'Space Grotesk');
+      expect(s.fontWeight, FontWeight.w700);
+      expect(s.letterSpacing, -0.4);
+      expect(s.fontSize, 17, reason: 'The call-site copyWith is unchanged.');
+    });
+
+    testWidgets('DARK resolves the heading through the AppText seam', (
+      WidgetTester tester,
+    ) async {
+      await _pumpUnder(tester, ThemeMode.dark, const SectionHeader('By date'));
+      final TextStyle s = _headerStyle(tester);
+
+      expect(
+        s.color,
+        isNot(AppColors.ink),
+        reason:
+            'THE ROOT CAUSE THIS INCREMENT FIXES: 0xFF141420 prose on a dark '
+            'scaffold. Reverting SectionHeader to the const AppText.title '
+            'turns this red.',
+      );
+      expect(
+        s.color,
+        dark.onSurface,
+        reason: 'The seam maps the ink styles onto the scheme\'s prose slot.',
+      );
+      // copyWith, not a rebuild — the size and the tracking must survive dark.
+      expect(s.fontSize, 17);
+      expect(s.letterSpacing, -0.4);
+      expect(s.fontFamily, 'Space Grotesk');
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  group('SoftButton is theme-aware', () {
+    testWidgets('LIGHT is byte-identical to the pre-dark pill', (
+      WidgetTester tester,
+    ) async {
+      await _pumpUnder(
+        tester,
+        ThemeMode.light,
+        const SoftButton(label: 'Keep it'),
+      );
+      final _Soft s = _softStyle(tester);
+
+      expect(s.background, AppColors.surface, reason: 'literal, pinned');
+      expect(s.side, AppColors.line, reason: 'literal, pinned');
+      expect(s.foreground, AppColors.ink, reason: 'the old const default');
+      expect(s.labelColor, AppColors.ink);
+    });
+
+    testWidgets('DARK takes the RowCard slots instead of the white pill', (
+      WidgetTester tester,
+    ) async {
+      await _pumpUnder(
+        tester,
+        ThemeMode.dark,
+        const SoftButton(label: 'Keep it'),
+      );
+      final _Soft s = _softStyle(tester);
+
+      expect(
+        s.background,
+        isNot(AppColors.surface),
+        reason:
+            'THE DEFECT THIS INCREMENT FIXES: a white pill on a dark sheet — '
+            '"Keep it", "Continue with Apple", the consent answers. Reverting '
+            'the backgroundColor to the unconditional AppColors.surface turns '
+            'this red.',
+      );
+      expect(
+        s.background,
+        dark.surfaceContainerHighest,
+        reason:
+            'The same slot cardDecoration and RowCard use, so the three read '
+            'as one surface family.',
+      );
+      expect(
+        s.side,
+        isNot(AppColors.line),
+        reason:
+            'AppColors.line (0xFFECECF2) is a hairline tuned to sit ON white. '
+            'Left alone it is the brightest thing on a dark sheet.',
+      );
+      expect(s.side, dark.outlineVariant);
+      expect(s.foreground, isNot(AppColors.ink));
+      expect(s.foreground, dark.onSurface);
+      expect(
+        s.labelColor,
+        dark.onSurface,
+        reason:
+            'The Text carries its own style, so the foregroundColor alone is '
+            'not enough — both have to move or the label stays near-black.',
+      );
+    });
+
+    testWidgets('an EXPLICIT color is honoured verbatim in both brightnesses', (
+      WidgetTester tester,
+    ) async {
+      // `consent_prompt.dart` passes `color: AppColors.accent` for "Allow". A
+      // caller that names a colour is choosing an accent, not asking for the
+      // default prose colour, so the brightness branch must not overrule it —
+      // otherwise this widget's own dark fix would flatten a deliberate accent.
+      for (final ThemeMode mode in <ThemeMode>[
+        ThemeMode.light,
+        ThemeMode.dark,
+      ]) {
+        await _pumpUnder(
+          tester,
+          mode,
+          const SoftButton(label: 'Allow', color: AppColors.accent),
+        );
+        final _Soft s = _softStyle(tester);
+        expect(s.foreground, AppColors.accent, reason: 'mode: $mode');
+        expect(s.labelColor, AppColors.accent, reason: 'mode: $mode');
+      }
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  group('GradientButton is theme-aware', () {
+    testWidgets('LIGHT keeps the brand gradient AND the accent glow', (
+      WidgetTester tester,
+    ) async {
+      await _pumpUnder(
+        tester,
+        ThemeMode.light,
+        const GradientButton(label: 'Sign in'),
+      );
+      final _Grad g = _gradientStyle(tester);
+
+      expect(g.decoration.gradient, AppColors.brandGradient);
+      expect(
+        g.decoration.boxShadow,
+        kBrandGlow,
+        reason: 'Light keeps the original one-layer accent glow, unchanged.',
+      );
+      expect(g.labelColor, Colors.white);
+    });
+
+    testWidgets('DARK drops the light-tuned accent glow', (
+      WidgetTester tester,
+    ) async {
+      await _pumpUnder(
+        tester,
+        ThemeMode.dark,
+        const GradientButton(label: 'Sign in'),
+      );
+      final _Grad g = _gradientStyle(tester);
+
+      expect(
+        g.decoration.boxShadow,
+        isNull,
+        reason:
+            'kBrandGlow is the ACCENT at 50%. Over the near-white page it is a '
+            'soft lift; over scheme.surface in dark the same constant resolves '
+            'to #3B3687 (measured) — a hard purple bloom. This is kCardShadow\'s '
+            'defect read the other way round: a fixed-alpha shadow tuned to one '
+            'background misbehaves on the other. Restoring the unconditional '
+            'boxShadow turns this red.',
+      );
+    });
+
+    testWidgets('DARK does NOT repaint the fill or the label', (
+      WidgetTester tester,
+    ) async {
+      await _pumpUnder(
+        tester,
+        ThemeMode.dark,
+        const GradientButton(label: 'Sign in'),
+      );
+      final _Grad g = _gradientStyle(tester);
+
+      // 🔒 Deliberate NON-change, asserted so nobody "finishes the job" later.
+      // brandGradient + white is already this app's treatment on its dark
+      // surfaces (onboarding CTA, both heroes, the FAB, the calendar today-pill)
+      // and contrast holds at both gradient ends for a 15px w700 label. Swapping
+      // dark to the theme's derived gradient would force scheme.onPrimary for
+      // the label and leave this one CTA diverging from every other brand
+      // surface — a repaint with no defect behind it.
+      expect(g.decoration.gradient, AppColors.brandGradient);
+      expect(g.labelColor, Colors.white);
+    });
+  });
+}
+
+// ─── P4·TEXT helpers ─────────────────────────────────────────────────────────
+
+/// Mounts [child] under Subly's REAL theme pair — the same `buildAppTheme(seed:)`
+/// calls `app.dart` makes — at [mode].
+///
+/// ⚠️ `pumpAndSettle`, not `pump`: MaterialApp wraps its child in an
+/// `AnimatedTheme`, so a second `pumpWidget` in one test still reports the FIRST
+/// theme at t=0 and a light→dark switch reads as a broken widget.
+Future<void> _pumpUnder(
+  WidgetTester tester,
+  ThemeMode mode,
+  Widget child,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: buildAppTheme(seed: kSublySeed),
+      darkTheme: buildAppTheme(seed: kSublySeed, brightness: Brightness.dark),
+      themeMode: mode,
+      home: Scaffold(body: Center(child: child)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// The style the single [Text] inside a mounted [SectionHeader] actually renders
+/// with — the thing a user sees, not the style the widget was handed.
+TextStyle _headerStyle(WidgetTester tester) => tester
+    .widget<Text>(
+      find.descendant(
+        of: find.byType(SectionHeader),
+        matching: find.byType(Text),
+      ),
+    )
+    .style!;
+
+typedef _Soft = ({
+  Color background,
+  Color foreground,
+  Color side,
+  Color labelColor,
+});
+
+/// [SoftButton]'s four resolved colours. The `ButtonStyle` properties are
+/// `WidgetStateProperty`s, so they are resolved for the default (enabled,
+/// untouched) state rather than read raw.
+_Soft _softStyle(WidgetTester tester) {
+  final ButtonStyle style = tester
+      .widget<OutlinedButton>(find.byType(OutlinedButton))
+      .style!;
+  final Text label = tester.widget<Text>(
+    find.descendant(of: find.byType(SoftButton), matching: find.byType(Text)),
+  );
+  return (
+    background: style.backgroundColor!.resolve(<WidgetState>{})!,
+    foreground: style.foregroundColor!.resolve(<WidgetState>{})!,
+    side: style.side!.resolve(<WidgetState>{})!.color,
+    labelColor: label.style!.color!,
+  );
+}
+
+typedef _Grad = ({BoxDecoration decoration, Color labelColor});
+
+/// [GradientButton]'s outer decoration (gradient + glow) and its label colour.
+_Grad _gradientStyle(WidgetTester tester) {
+  final DecoratedBox box = tester.widget<DecoratedBox>(
+    find
+        .descendant(
+          of: find.byType(GradientButton),
+          matching: find.byType(DecoratedBox),
+        )
+        .first,
+  );
+  final Text label = tester.widget<Text>(
+    find.descendant(
+      of: find.byType(GradientButton),
+      matching: find.byType(Text),
+    ),
+  );
+  return (
+    decoration: box.decoration as BoxDecoration,
+    labelColor: label.style!.color!,
+  );
 }
