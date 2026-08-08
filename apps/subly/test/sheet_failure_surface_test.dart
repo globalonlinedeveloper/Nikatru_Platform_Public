@@ -59,11 +59,16 @@ class SocketFailure implements Exception {
 class _SilentNotifications extends NotificationService {
   _SilentNotifications() : super.forTesting();
   @override
-  Future<void> syncAll(List<Subscription> subs, {int daysBefore = 2}) async {}
+  Future<void> syncAll(
+    List<Subscription> subs, {
+    required ReminderCopy copy,
+    int daysBefore = 2,
+  }) async {}
   @override
   Future<void> cancelAll() async {}
   @override
   Future<void> scheduleWeeklyDigest({
+    required ReminderCopy copy,
     required int count,
     required String formattedTotal,
   }) async {}
@@ -76,7 +81,9 @@ Widget _app(void Function(BuildContext) open) {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
-      sublyNotificationServiceProvider.overrideWithValue(_SilentNotifications()),
+      sublyNotificationServiceProvider.overrideWithValue(
+        _SilentNotifications(),
+      ),
     ],
     child: MaterialApp(
       home: Scaffold(
