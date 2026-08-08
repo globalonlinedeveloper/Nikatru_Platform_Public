@@ -66,11 +66,16 @@ class MemStore implements core.KeyValueStore {
 class SilentNotifications extends NotificationService {
   SilentNotifications() : super.forTesting();
   @override
-  Future<void> syncAll(List<Subscription> subs, {int daysBefore = 2}) async {}
+  Future<void> syncAll(
+    List<Subscription> subs, {
+    required ReminderCopy copy,
+    int daysBefore = 2,
+  }) async {}
   @override
   Future<void> cancelAll() async {}
   @override
   Future<void> scheduleWeeklyDigest({
+    required ReminderCopy copy,
     required int count,
     required String formattedTotal,
   }) async {}
