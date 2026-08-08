@@ -7,7 +7,7 @@ import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 
 import 'app.dart';
-import 'core/config/app_config.dart';
+import 'core/app_config.dart';
 import 'services/notifications/notification_service.dart';
 import 'state/providers.dart';
 

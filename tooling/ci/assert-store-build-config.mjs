@@ -70,7 +70,25 @@ import { parseAllWorkflows } from './workflow-scan.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'sites/_shared/_data/apps.json';
-const CONFIG_REL = (slug) => `apps/${slug}/lib/core/config/app_config.dart`;
+/** ORDERED CANDIDATE LAYOUTS, read from the register — NOT one hard-coded path.
+ *
+ *  🔴 THIS WAS `apps/<slug>/lib/core/config/app_config.dart` AND IT MEMORISED THE
+ *  LAYOUT SUBLY IS MOVING OFF. apps/subly kept its config at
+ *  `lib/core/config/app_config.dart` while the BRICK stamps
+ *  `lib/core/app_config.dart`; the moment [ADR 037] P2.5 de-duplicated the two
+ *  onto the stamped path this lookup found nothing, `configsRead` stayed 0, and the
+ *  guard exited COVERAGE LOST — a CORRECT tree failing a guard that had
+ *  memorised the old one. Measured 2026-08-08 on a scratch root: exit 1,
+ *  "not one app_config.dart was read".
+ *
+ *  `assert-store-metadata.mjs` hit exactly this and already solved it in the
+ *  register — `storeMetadataContract.appConfigPaths`, which carries its own `_why`.
+ *  Reading the SAME declaration here means the next layout move is one edit
+ *  in one file, not a hunt for every guard that wrote a path down. */
+const configCandidateTemplates = (reg) => {
+  const t = reg?.storeMetadataContract?.appConfigPaths;
+  return Array.isArray(t) ? t.filter((p) => typeof p === 'string' && p.includes('{app}')) : [];
+};
 
 /** The getter every store artifact must satisfy. Named once; everything it
  *  requires is read out of the source, never listed here. */
@@ -140,6 +158,31 @@ function requiredDefines(source, rel) {
   return { defines: need, getters: seen };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 0. THE REGISTER, READ ONCE — it answers two questions, not one. Section 2
+//    derives WHICH LANES serve a store; the config lookup below derives WHICH
+//    LAYOUTS an app_config may live in. Hoisted here so the second reader is
+//    not a second parse that can disagree with the first.
+// ─────────────────────────────────────────────────────────────────────────────
+const registerRaw = read(REGISTER);
+if (registerRaw === null) coverageLost([`${REGISTER} does not exist — there is no declaration of which lane serves a store.`]);
+let register;
+try {
+  register = JSON.parse(registerRaw);
+} catch (e) {
+  coverageLost([`${REGISTER} is not valid JSON — ${e.message}`]);
+}
+const CONFIG_TEMPLATES = configCandidateTemplates(register);
+if (CONFIG_TEMPLATES.length === 0) {
+  coverageLost([
+    `${REGISTER} storeMetadataContract.appConfigPaths is missing, empty, or holds no {app} template.`,
+    'It is the only declaration of where an app keeps its compiled config, and the required-define set',
+    'below is derived from the files it locates. With no template this lookup finds nothing, every store',
+    'step then supplies all zero of the defines it needs, and this guard reports clean.',
+    'assert-store-metadata.mjs reads the same field and refuses the same way.',
+  ]);
+}
+
 const appsRaw = read(APPS);
 if (appsRaw === null) coverageLost([`${APPS} does not exist, so there is no app whose config could be read.`]);
 let apps;
@@ -153,10 +196,11 @@ const REQUIRED = new Set();
 let configsRead = 0;
 const getterChains = [];
 for (const app of Array.isArray(apps) ? apps : []) {
-  const rel = CONFIG_REL(app.slug);
-  const src = read(rel);
+  const candidates = CONFIG_TEMPLATES.map((t) => t.split('{app}').join(app.slug));
+  const rel = candidates.find((c) => read(c) !== null) ?? null;
+  const src = rel === null ? null : read(rel);
   if (src === null) {
-    problems.push(`${rel} does not exist. Every app in ${APPS} carries the config chassis; without it there is nothing to derive this app's store requirements from.`);
+    problems.push(`no app_config.dart for "${app.slug}" at any layout ${REGISTER} declares (${candidates.join(', ')}). Every app in ${APPS} carries the config chassis; without it there is nothing to derive this app's store requirements from.`);
     continue;
   }
   const r = requiredDefines(src, rel);
@@ -174,7 +218,7 @@ for (const app of Array.isArray(apps) ? apps : []) {
 }
 if (configsRead === 0) {
   coverageLost([
-    `not one app_config.dart was read under ${ROOT}.`,
+    `not one app_config.dart was read under ${ROOT} at any layout the register declares (${CONFIG_TEMPLATES.join(', ')}).`,
     'The required-define set is derived from those files; an empty set makes every store step pass by',
     'supplying all zero of the things it needs, which is exactly this defect wearing a green tick.',
   ]);
@@ -191,14 +235,8 @@ if (REQUIRED.size === 0) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. WHICH STEPS SHIP TO A STORE? Read out of the register, not listed here.
 // ─────────────────────────────────────────────────────────────────────────────
-const registerRaw = read(REGISTER);
-if (registerRaw === null) coverageLost([`${REGISTER} does not exist — there is no declaration of which lane serves a store.`]);
-let register;
-try {
-  register = JSON.parse(registerRaw);
-} catch (e) {
-  coverageLost([`${REGISTER} is not valid JSON — ${e.message}`]);
-}
+// `register` was read and parsed in section 0 — the config lookup needs it too,
+// and two parses of one file are two answers waiting to disagree.
 const storeRows = (register.channels ?? []).filter((c) => c.kind === 'store');
 if (storeRows.length === 0) {
   coverageLost([

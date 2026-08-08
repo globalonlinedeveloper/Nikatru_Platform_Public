@@ -1,4 +1,4 @@
-import '../../core/config/app_config.dart';
+import '../../core/app_config.dart';
 import '../models/budget_info.dart';
 import '../models/entitlement.dart';
 import '../models/payment_record.dart';

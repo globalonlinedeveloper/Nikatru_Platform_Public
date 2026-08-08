@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
-import 'core/config/app_config.dart';
+import 'core/app_config.dart';
 import 'core/router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/consent/consent_prompt.dart';

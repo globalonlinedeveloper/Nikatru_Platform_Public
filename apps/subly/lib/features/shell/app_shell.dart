@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/config/app_config.dart';
+import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../core/theme/app_colors.dart';
 import '../add/add_subscription_sheet.dart';

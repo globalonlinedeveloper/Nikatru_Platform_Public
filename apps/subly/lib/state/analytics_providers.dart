@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 
-import '../core/config/app_config.dart';
+import '../core/app_config.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 
 /// 🔒 The version of the privacy policy the consent prompt shows the user.

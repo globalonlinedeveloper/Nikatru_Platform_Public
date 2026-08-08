@@ -1,7 +1,0 @@
-{
-  "//": "Copy this to subly.live.json (gitignored) and fill real values, then run:",
-  "//run": "flutter run --dart-define-from-file=config/subly.live.json",
-  "SUPABASE_URL": "https://YOUR_PROJECT.supabase.co",
-  "SUPABASE_ANON_KEY": "sb_publishable_xxx  (modern publishable key; legacy anon JWT also works)",
-  "API_BASE_URL": "https://subly-api.YOUR_SUBDOMAIN.workers.dev"
-}
