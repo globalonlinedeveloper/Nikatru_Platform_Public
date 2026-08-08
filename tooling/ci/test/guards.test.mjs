@@ -2393,6 +2393,11 @@ describe('assert-stamp-properties', () => {
   const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
   const PROP = `${BRICK}/test/chassis_properties_test.dart`;
   const APP = `${BRICK}/lib/app.dart`;
+  // The stamped web shell with the device-width viewport the 2026-08-08 anchor
+  // demands — matched on the TAG (assert-stamp-properties.mjs WEB_INDEX anchor).
+  // Group-scoped: `build` seeds it into the brick and `stampedApp` into each app.
+  const BRICK_WEB_INDEX = `${BRICK}/web/index.html`;
+  const webIndex = '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>x</title></head><body></body></html>\n';
 
   // Mirrors the real template: four declared properties and >= MIN_BLOCKS blocks.
   // A fixture thinner than the tree it stands for fails for reasons that have
@@ -3273,11 +3278,6 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    // The stamped web shell with the device-width viewport the 2026-08-08 anchor
-    // demands — matched on the TAG (assert-stamp-properties.mjs WEB_INDEX anchor);
-    // the sp-viewport-gone case below deletes exactly this line.
-    const BRICK_WEB_INDEX = `${BRICK}/web/index.html`;
-    const webIndex = '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>x</title></head><body></body></html>\n';
     const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
@@ -3967,6 +3967,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     // the property test itself.
     [`${dir}/lib/features/monetization/paywall_screen.dart`]: over.paywall ?? goodPaywall,
     [`${dir}/lib/l10n/app_ta.arb`]: over.arbTa ?? goodArbTa,
+    // The viewport-bearing web shell every app carries (2026-08-08 anchor) —
+    // app-relative for the same reason as the paywall entry above.
+    [`${dir}/web/index.html`]: over.webIndex ?? webIndex,
   });
   const WS_WITH_PROBE = 'name: nikatru_workspace\nworkspace:\n  - packages/core\n  - apps/subly\n  - apps/probe\n';
 
