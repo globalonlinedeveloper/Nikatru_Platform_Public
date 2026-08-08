@@ -73,15 +73,15 @@
     },
     {
       "id": "digital-purchases",
-      "claim": "The app offers no digital purchases.",
-      "answer": false,
+      "claim": "The app offers digital purchases: its own premium subscription, presented in-app, with purchase execution OFF-DEVICE on the apex web checkout ([ADR 038]).",
+      "answer": true,
       "derivation": "dependency-tells",
       "tells": {
         "dartPackages": ["in_app_purchase", "in_app_purchase_android", "purchases_flutter", "nikatru_purchases", "flutter_stripe", "razorpay_flutter"],
         "androidPermissions": ["com.android.vending.BILLING"]
       },
-      "evidence": ["apps/subly/pubspec.yaml"],
-      "basis": "Subly has no purchase path at all. packages/purchases is deliberately not a dependency of this app, the RevenueCat dependency was removed with a tombstone at apps/subly/pubspec.yaml:92-97 recording [ADR 026] and [ADR 004], and PaywallGate has no call site here. Mechanically enforced: any of the tells appearing as a direct dependency, or the BILLING permission appearing in a manifest, makes this claim false and fails the build."
+      "evidence": ["apps/subly/pubspec.yaml", "packages/purchases/lib/src/hosted_checkout_rail.dart"],
+      "basis": "FLIPPED 2026-08-08 with productization P2.4b — the same commit that made nikatru_purchases a direct dependency; this claim's tells named that package in advance precisely so the dep and the answer could never move separately. What is offered: the app's own subscription tiers (offerings read from the platform catalog; purchase surface = PaywallGate → the apex web page nikatru.com/pricing?app=subly, [ADR 038]) — still no Play Billing and no on-device payment instrument (data-safety.json's Purchase-history clientAbsence carries that claim). At the time of the flip the rail has ZERO call sites (the first money surface lands with P2.6a; the paywall flip is Phase 4), so this answer leads the code — which is how a rating questionnaire is filled: it describes the product Play RATES at submission (A-3, owner-gated, post-Phase-4). If the store lane is ever decided to ship free-only permanently, flip this back WITH that decision. The tells stay as written — the guard tolerates a tell absent while the answer is true, and the set now enforces that this answer can never quietly return to false while a money-path package remains. (The old basis's 'packages/purchases is deliberately not a dependency' and its tombstone citation pubspec.yaml:92-97 — now :123-131 — expired with [ADR 036]/[ADR 037].)"
     },
     {
       "id": "contains-ads",
@@ -101,11 +101,11 @@
       "answer": false,
       "derivation": "dependency-tells",
       "tells": {
-        "dartPackages": ["in_app_purchase", "purchases_flutter", "nikatru_purchases", "flutter_stripe", "razorpay_flutter"],
+        "dartPackages": ["in_app_purchase", "purchases_flutter", "flutter_stripe", "razorpay_flutter"],
         "androidPermissions": ["com.android.vending.BILLING"]
       },
-      "evidence": ["apps/subly/pubspec.yaml"],
-      "basis": "There is no chance mechanic and no wagering surface anywhere in the app; the screens are a subscription list, a calendar grid of renewal dates, a budget figure and settings. The tells are the same money-path set as `digital-purchases` — they cannot prove the absence of a gambling THEME, which is content and is covered by `content-descriptors` below, but they do prove no path exists by which money could be staked."
+      "evidence": ["apps/subly/pubspec.yaml", "packages/purchases/lib/src/offering.dart"],
+      "basis": "There is no chance mechanic and no wagering surface anywhere in the app; the screens are a subscription list, a calendar grid of renewal dates, a budget figure and settings. THE TELL SET NARROWED IN P2.4b (2026-08-08): nikatru_purchases left it when it became a direct dependency, because its presence no longer proves what the old set's logic rested on — 'no money path at all ⇒ nothing can be staked'. What replaces that proof: the first-party rail is single-purpose by construction — fixed-price offerings for the app's OWN subscription, read from the platform catalog, with checkout on the apex web page ([ADR 038]) — no arbitrary-payment surface a wager could ride on and no chance mechanic reachable through a fixed-price subscription. The four remaining package tells and the BILLING permission stay armed: any of THOSE appearing means someone added a generic on-device payment path, and this claim must be re-derived, not re-worded."
     },
     {
       "id": "user-to-user-interaction",
