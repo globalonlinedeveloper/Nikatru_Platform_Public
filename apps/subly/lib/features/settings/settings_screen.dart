@@ -8,7 +8,6 @@ import '../../core/theme/app_theme.dart';
 // `auth_repository.dart` is the F0-4 re-export shim: it carries AuthRepository
 // AND the AuthUser/AuthFailure types, so one import covers both.
 import '../../data/auth/auth_repository.dart';
-import '../../state/analytics_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../shared/widgets.dart';

@@ -96,7 +96,7 @@
   "stamp-platforms.test.mjs": 27,
   "stamp-text-fidelity.test.mjs": 32,
   "stamp-wiring.test.mjs": 17,
-  "store-build-config.test.mjs": 20,
+  "store-build-config.test.mjs": 22,
   "store-identity.test.mjs": 24,
   "store-metadata.test.mjs": 69,
   "submission-safety.test.mjs": 20,

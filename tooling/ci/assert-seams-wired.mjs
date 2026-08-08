@@ -386,7 +386,16 @@ const EXCLUSIVE_TRIGGERS = [
     // (review_prompter.dart), the NoOp override and the concrete @override all
     // contain the bare name.
     re: /\.requestReview\(/,
-    allowed: [`${BRICK_APP}/lib/state/providers.dart`],
+    // apps/subly joined 2026-08-08 with productization P2.6a ([ADR 037]): the
+    // re-stamp lands the SAME spine file in the first in-repo stamped app, so
+    // the singleton becomes one-per-tree — the brick's copy and each stamped
+    // app's copy of that exact file. Any OTHER file calling it is still the
+    // failure this trigger exists for. Every future in-repo stamped app
+    // repeats this line; a call site outside a providers spine never gets one.
+    allowed: [
+      `${BRICK_APP}/lib/state/providers.dart`,
+      'apps/subly/lib/state/providers.dart',
+    ],
     why:
       'ReviewPromptController.maybeAsk is the only thing allowed to ask, because the decision belongs to ' +
       'ReviewGate and nothing else can know whether the quota is worth spending. iOS discards requests past ' +

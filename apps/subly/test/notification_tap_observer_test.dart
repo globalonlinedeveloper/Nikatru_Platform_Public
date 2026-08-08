@@ -114,10 +114,7 @@ void main() {
       service: service,
       observer: NotificationTapObserver(
         service: service,
-        funnel: AnalyticsFunnel(
-          analytics: analytics,
-          store: core.InMemoryKeyValueStore(),
-        ),
+        funnel: AnalyticsFunnel(analytics: analytics),
       ),
     );
   }

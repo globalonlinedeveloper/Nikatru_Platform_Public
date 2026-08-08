@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
@@ -7,7 +8,20 @@ import '../../core/theme/app_colors.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/widgets.dart';
 
-/// Tabbed shell: hosts the branch content plus the floating nav bar and FAB.
+/// Tabbed shell: hosts the branch content inside the chassis's adaptive
+/// [AppScaffold], supplying Subly's floating pill bar through the
+/// `compactNavigationBar` seam.
+///
+/// DOCKED IN P2.6a ([ADR 037]). Before this, the shell hand-rolled the whole
+/// thing — a bare Scaffold with a Positioned pill at `bottom: 20` and a
+/// Positioned FAB above it, with NO width decision anywhere: the exact class
+/// of defect PR #210 fixed for three other screens (a phone reporting ~980
+/// logical px got the same floating bar a phone gets, and a 1600px desktop
+/// did too). The seam's contract (app_scaffold.dart:150-169): the app supplies
+/// the COMPACT bar only; rail (medium/expanded) and drawer (large+, with the
+/// kMaxBodyWidth cap) stay chassis-owned, so this bar can never render at
+/// 1600px again. The five padding hacks and the dead tap-zone that
+/// app_test.dart documents die with the Positioned stack.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.navigationShell});
 
@@ -23,8 +37,16 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
+    return AppScaffold(
+      destinations: <AppDestination>[
+        for (final _TabSpec t in _tabs)
+          AppDestination(icon: t.icon, label: t.label),
+      ],
+      selectedIndex: navigationShell.currentIndex,
+      onDestinationSelected: (int i) => navigationShell.goBranch(
+        i,
+        initialLocation: i == navigationShell.currentIndex,
+      ),
       body: Stack(
         children: <Widget>[
           Positioned.fill(child: navigationShell),
@@ -34,6 +56,8 @@ class AppShell extends StatelessWidget {
           // with the old "detected across your accounts" copy it read as a real
           // account scan. Seed data is fine; seed data wearing real data's clothes
           // is not. Shows ONLY when unconfigured, so production never sees it.
+          // (Pinned to top: 0 — safe while AppScaffold gets no `title`; an AppBar
+          // would push it down, which is noted in the P2.6a docking spec.)
           if (!AppConfig.isApiConfigured)
             Positioned(
               left: 0,
@@ -43,7 +67,10 @@ class AppShell extends StatelessWidget {
                 bottom: false,
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   color: AppColors.warn,
                   child: const Text(
                     'Demo data - sample subscriptions, not your account',
@@ -57,54 +84,60 @@ class AppShell extends StatelessWidget {
                 ),
               ),
             ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 20,
-            child: Container(
-              height: 66,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              decoration: BoxDecoration(
-                color: const Color.fromRGBO(255, 255, 255, 0.9),
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: kCardShadow,
-                border: Border.all(color: const Color.fromRGBO(255, 255, 255, 0.6)),
-              ),
-              child: Row(
-                children: List<Widget>.generate(_tabs.length,
-                    (int i) => _tab(context, i, _tabs[i].icon, _tabs[i].label)),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 20,
-            bottom: 98,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                key: E2EKeys.fabAdd,
-                borderRadius: BorderRadius.circular(18),
-                onTap: () => showAddSubscriptionSheet(context),
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.brandGradient,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: const <BoxShadow>[
-                      BoxShadow(
-                          color: Color.fromRGBO(100, 89, 245, 0.6),
-                          blurRadius: 24,
-                          offset: Offset(0, 12),
-                          spreadRadius: -8),
-                    ],
-                  ),
-                  child: const Icon(Icons.add, color: Colors.white, size: 28),
-                ),
-              ),
-            ),
-          ),
         ],
+      ),
+      floatingActionButton: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: E2EKeys.fabAdd,
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => showAddSubscriptionSheet(context),
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              gradient: AppColors.brandGradient,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color.fromRGBO(100, 89, 245, 0.6),
+                  blurRadius: 24,
+                  offset: Offset(0, 12),
+                  spreadRadius: -8,
+                ),
+              ],
+            ),
+            child: const Icon(Icons.add, color: Colors.white, size: 28),
+          ),
+        ),
+      ),
+      // The floating pill, unchanged in look, now delivered through the seam:
+      // it renders ONLY in the compact window class. The ColoredBox paints the
+      // reserved nav strip in Subly's background so the pill keeps floating on
+      // the same colour it floated on when it was a Positioned overlay.
+      compactNavigationBar: ColoredBox(
+        color: AppColors.bg,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          child: Container(
+            height: 66,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+              color: const Color.fromRGBO(255, 255, 255, 0.9),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: kCardShadow,
+              border: Border.all(
+                color: const Color.fromRGBO(255, 255, 255, 0.6),
+              ),
+            ),
+            child: Row(
+              children: List<Widget>.generate(
+                _tabs.length,
+                (int i) => _tab(context, i, _tabs[i].icon, _tabs[i].label),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -115,8 +148,10 @@ class AppShell extends StatelessWidget {
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
-        onTap: () => navigationShell.goBranch(index,
-            initialLocation: index == navigationShell.currentIndex),
+        onTap: () => navigationShell.goBranch(
+          index,
+          initialLocation: index == navigationShell.currentIndex,
+        ),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
@@ -130,12 +165,15 @@ class AppShell extends StatelessWidget {
             children: <Widget>[
               Icon(icon, color: color, size: 22),
               const SizedBox(height: 3),
-              Text(label,
-                  style: TextStyle(
-                      fontFamily: 'Manrope',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 9,
-                      color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Manrope',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 9,
+                  color: color,
+                ),
+              ),
             ],
           ),
         ),

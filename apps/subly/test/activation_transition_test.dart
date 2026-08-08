@@ -7,7 +7,6 @@ import 'package:subly/data/models/subscription.dart';
 import 'package:subly/data/subscriptions/subscription_repository.dart';
 import 'package:subly/services/notifications/notification_service.dart';
 import 'package:subly/state/analytics_funnel.dart';
-import 'package:subly/state/analytics_providers.dart';
 import 'package:subly/state/providers.dart';
 import 'package:subly/state/subscriptions_controller.dart';
 
@@ -112,10 +111,10 @@ Subscription _draft() => Subscription(
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(repo),
-      notificationServiceProvider.overrideWithValue(_SilentNotifications()),
+      sublyNotificationServiceProvider.overrideWithValue(_SilentNotifications()),
       analyticsFunnelProvider.overrideWith(
         (Ref ref) async =>
-            AnalyticsFunnel(analytics: analytics, store: _MemStore()),
+            AnalyticsFunnel(analytics: analytics),
       ),
     ],
   );

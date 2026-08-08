@@ -1,7 +1,23 @@
+// ═════════════════════════════════════════════════════════════════════════════
+// P2.6a DRAFT — apps/subly/lib/main.dart
+//
+// The stamped init sequence with the live [13]T-9 tap-observer registration
+// intact. Not applied, not committed. See ../MANIFEST.md and ./boot-order.md.
+//
+// 🔢 The crash-sink define counts are stated and re-measured in ../MANIFEST.md
+// §"Decision D-6" rather than here, so that counting them in the SHIPPING body
+// is not thrown off by a header that talks about them. Post-merge expectation:
+//   grep -c "String.fromEnvironment(" apps/subly/lib/main.dart   → 2
+//   grep -c "GLITCHTIP" apps/subly/lib/main.dart                 → 2
+//
+// 🔴 DELETE THIS HEADER BLOCK WHEN INTEGRATING. It is draft scaffolding; the
+// live file must open on its imports.
+// ═════════════════════════════════════════════════════════════════════════════
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:nikatru_telemetry/nikatru_telemetry.dart';
@@ -14,25 +30,55 @@ import 'state/providers.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // [pipeline C-2] Telemetry chassis, mirroring the brick template's main.dart.
-  // Until this landed, the ONLY app in production had NO crash reporting: the
-  // package existed, was tested, and was declared by the brick and by nothing
-  // that ships — so if Subly broke for a real user, nobody would ever find out.
+  // [pipeline C-2] Telemetry chassis. Until this landed, the ONLY app in
+  // production had NO crash reporting: the package existed, was tested, and was
+  // declared by the brick and by nothing that ships — so if Subly broke for a
+  // real user, nobody would ever find out.
   //
   // No DSN => NoOp client and appRunner runs directly, so demo builds and tests
   // are unaffected. A GLITCHTIP_DSN via --dart-define enables GlitchTip with PII
   // scrubbing. `sentry_flutter` stays isolated inside packages/telemetry and must
   // never be imported anywhere else.
+  //
+  // `release` is AppConfig.telemetryRelease — `<this app's id>@<this build's
+  // version>` — and NOT a literal. A literal here is right for at most one of
+  // fifty apps: the brick's line used to carry the CI throwaway probe's own id
+  // and a frozen 0.1.0, which every stamped app then reported to the ONE shared
+  // GlitchTip project as though the crash were the probe's.
+  //
+  // P2.6a: this replaces the live `'subly@${AppConfig.appVersion}'`
+  // interpolation with the composed constant. The emitted STRING is identical
+  // (stamped AppConfig.appId == 'subly'); what changes is that it can no longer
+  // drift from the id when this app is re-stamped or cloned.
   const TelemetryConfig telemetry = TelemetryConfig(
     dsn: String.fromEnvironment('GLITCHTIP_DSN'),
-    release: 'subly@${AppConfig.appVersion}',
+    release: AppConfig.telemetryRelease,
     environment: String.fromEnvironment('APP_ENV', defaultValue: 'dev'),
   );
 
   await TelemetryBootstrap.init(
     telemetry,
     appRunner: () async {
-      // Local notifications work on all six platforms (web falls back to a no-op).
+      // [pipeline C-13] Replace Flutter's default build-error widget before the
+      // first frame. The default is the grey/yellow box in release and the red
+      // screen in debug; shipping either to a user looks like a broken app and
+      // leaks widget internals. One line at startup, impossible to retrofit
+      // across fifty shipped apps.
+      //
+      // The copy is the design system's own last-resort fallback: this runs
+      // before any BuildContext exists, so there is no Localizations to read,
+      // and an error during the FIRST build is exactly what this covers.
+      //
+      // 🔴 IT MUST STAY FIRST INSIDE `appRunner`. Everything below can throw —
+      // a plugin channel, a timezone database, a Supabase handshake — and the
+      // error widget is what the user sees if one of them does during the first
+      // build. Installing it after the thing it protects is installing it too
+      // late.
+      AppErrorScreen.install();
+
+      // Local notifications work on all six platforms (web falls back to a
+      // no-op). Subly's own fork, which owns every OUTBOUND call this app makes
+      // (renewal reminders, the weekly digest).
       await NotificationService.instance.init();
 
       // [13]T-9 THE INBOUND HALF, AND THE ORDER IS LOAD-BEARING.
@@ -53,35 +99,45 @@ Future<void> main() async {
       final core.NotificationService taps = createLocalNotificationService();
       await taps.init();
 
-      // Only initialize Supabase when real credentials are supplied via
-      // --dart-define. Left unconfigured, the app runs in demo mode with a mock
-      // auth repository.
+      // 🔴 [pipeline C-15 / G-43] IDENTITY, BEFORE THE FIRST FRAME — and this
+      // call is the only thing that makes the identity --dart-defines work.
       //
-      // 🔴 [G-43] THROUGH `initNikatruAuth`, NOT `Supabase.initialize`, AND THAT
-      // IS A SECURITY FIX, NOT A REFACTOR. The bare `Supabase.initialize` this
-      // replaces passed no `authOptions`, so the SDK fell back to
-      // `SharedPreferencesLocalStorage` and wrote the access AND **refresh**
-      // tokens as PLAINTEXT — a JSON file on Windows/Linux, a plist on
-      // iOS/macOS, an XML file on Android. A refresh token is a long-lived key
-      // to mint new access tokens, so leaking it is closer to leaking a password
-      // than a cookie. `initNikatruAuth` routes the session through
-      // `SecureSessionStorage` → DPAPI / Keychain / KeyStore / libsecret.
+      // Nothing in the brick used to initialise the SDK at all, while
+      // `authRepositoryProvider` returns the real `SupabaseAuthRepository` the
+      // moment SUPABASE_URL/SUPABASE_ANON_KEY are supplied. The router resolves
+      // that provider through `refreshListenable` while it is being built, so
+      // the app died at LAUNCH on `Supabase.instance` (AssertionError in debug,
+      // LateInitializationError in release), before a screen rendered. It was
+      // invisible to every test because widget tests take no --dart-defines.
       //
-      // ⚠️ DATED DECLARED EXCEPTION (2026-08-01) to 39-CHASSIS cut 1, which
-      // freezes Subly as a legacy rail-prover receiving exactly three things.
-      // This is not a fourth chassis feature: it is the G-43 requirement the
-      // written record already claims Subly meets, and the trigger is the
-      // Windows Store submission — the first DESKTOP binary is the first one
-      // that writes that plaintext file to a real user's disk. The live web
-      // surface is unchanged in substance (a browser has no OS keychain, so
-      // SecureStore degrades to web storage there and says so). No behaviour
-      // beyond session storage moves: same URL, same key, same flow.
-      if (AppConfig.isSupabaseConfigured) {
+      // It goes through `initNikatruAuth` rather than `Supabase.initialize`
+      // because that function is what passes the SecureStore-backed session
+      // storage: the SDK's default writes the access AND **refresh** tokens as
+      // PLAINTEXT — a JSON file on Windows/Linux, a plist on iOS/macOS, an XML
+      // file on Android. A refresh token is a long-lived key to mint new access
+      // tokens, so leaking it is closer to leaking a password than a cookie.
+      // `initNikatruAuth` routes the session through `SecureSessionStorage` →
+      // DPAPI / Keychain / KeyStore / libsecret. An app may not import
+      // `package:supabase_flutter` directly either — assert-package-boundaries
+      // fails the build for it — so this is also the only legal path.
+      //
+      // ⚠️ P2.6a CHANGES THE PREDICATE, AND IT IS NOT COSMETIC. The live line
+      // read `AppConfig.isSupabaseConfigured` (Supabase defines only); the
+      // stamped `AppConfig.isBackendLive` also requires the per-app API host to
+      // have been pointed away from its placeholder. Post-merge that is the
+      // right gate, because the merged `authRepositoryProvider` is itself gated
+      // on `isBackendLive` — under the live predicate a Supabase-only build
+      // would initialise the SDK for a repository that never uses it. See
+      // MANIFEST OQ-3 for the interaction with P2.5's api-base override.
+      if (AppConfig.isBackendLive) {
         await initNikatruAuth(
           url: AppConfig.supabaseUrl,
           // Same string the define still calls SUPABASE_ANON_KEY; the SDK
           // renamed the parameter, which is why the deprecation is now gone.
           publishableKey: AppConfig.supabaseAnonKey,
+          // Keychain / KeyStore / DPAPI / libsecret. On web there is no OS
+          // keychain a page can reach, so this degrades to ordinary web storage
+          // — stated in SecureSessionStorage rather than papered over.
           secureStore: FlutterSecureStore(),
         );
       }
@@ -94,6 +150,30 @@ Future<void> main() async {
             // the app a stream that is silent forever. See
             // notificationTapSourceProvider.
             notificationTapSourceProvider.overrideWithValue(taps),
+
+            // 🔴 P2.6a — THE SECOND OVERRIDE IS NEW, AND WITHOUT IT [13]T-9
+            // DIES SILENTLY THE MOMENT THE CHASSIS SPINE LANDS.
+            //
+            // The merged providers.dart carries the stamp's
+            // `notificationServiceProvider`, whose default body is
+            // `createLocalNotificationService()` — a SECOND adapter instance.
+            // `RemindersEnabledController.resyncOnStart` reads it and calls
+            // `svc.init()` from AnalyticsGate's post-frame callback, i.e. after
+            // main() has finished. `LocalNotificationService._initialized` is
+            // per-instance (local_notification_service_io.dart:74) and
+            // `init()` does `_plugin.initialize(_taps.add)` with THAT
+            // instance's own broadcast controller (:86-87, :100-113). The
+            // plugin is a process singleton and the last `initialize` wins, so
+            // that call re-points every future tap at a stream nobody listens
+            // to. Nothing throws, nothing goes red, and `notification_opened`
+            // silently returns to zero emitters — the exact defect [13]T-9 was
+            // written to end.
+            //
+            // Overriding with the same object makes `resyncOnStart`'s
+            // `svc.init()` an early return on the `_initialized` flag, so the
+            // registration made above survives and the reminder repair path
+            // still runs.
+            notificationServiceProvider.overrideWithValue(taps),
           ],
           child: const SublyApp(),
         ),
