@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,258 +29,273 @@ class SettingsScreen extends ConsumerWidget {
     final core.AuthUser? user = ref.watch(authUserProvider).valueOrNull;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
-      body: ListView(
-        children: <Widget>[
-          // ── PROFILE ──────────────────────────────────────────────────────
-          // Only when there is an account. Offering "edit your name" to a
-          // signed-out user is an offer the app cannot honour — the same reason
-          // the deletion entry is gated further down.
-          if (user != null) ...<Widget>[
+      // 🔴 THIS WAS A BARE `Scaffold` + `ListView`, i.e. NO WIDTH DECISION AT
+      // ALL. A `ListTile` fills whatever it is given, so on a maximised desktop
+      // window every row here stretched the full width of the display: the
+      // leading icon at the far left, its label a hand's width away, the
+      // trailing chevron off at the other edge. Nothing was clipped and nothing
+      // overflowed, so no test and no reviewer had anything to point at — the
+      // defect is that the eye has to travel, and only a measurement catches it.
+      //
+      // The DEFAULT cap (`AppBreakpoints.kMaxBodyWidth`), not `.reading`: this
+      // is a page of controls rather than prose, and 1280 is the same ceiling
+      // `AppScaffold` already applies to its extra-large class — so a settings
+      // screen inside the chassis shell and one pumped on its own now agree,
+      // instead of agreeing only up to 1600.
+      body: ContentPane(
+        child: ListView(
+          children: <Widget>[
+            // ── PROFILE ──────────────────────────────────────────────────────
+            // Only when there is an account. Offering "edit your name" to a
+            // signed-out user is an offer the app cannot honour — the same reason
+            // the deletion entry is gated further down.
+            if (user != null) ...<Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Text(
+                  l10n.profile,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ),
+              ListTile(
+                leading: CircleAvatar(child: Text(user.initial)),
+                title: Text(
+                  (user.displayName == null || user.displayName!.isEmpty)
+                      ? l10n.displayNameNotSet
+                      : user.displayName!,
+                ),
+                subtitle: Text(user.email),
+                trailing: const Icon(Icons.edit_outlined),
+                onTap: () => _editProfile(context, ref, l10n, user),
+              ),
+              const Divider(),
+            ],
+            // [pipeline C-16] The on-switch for the persisted themeMode. A stored
+            // preference with no control is a dead setting — the same shape as the
+            // consent recorder that had no prompt and silently discarded every
+            // event. Shipped together, or not at all.
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
               child: Text(
-                l10n.profile,
+                l10n.appearance,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
             ),
-            ListTile(
-              leading: CircleAvatar(child: Text(user.initial)),
-              title: Text(
-                (user.displayName == null || user.displayName!.isEmpty)
-                    ? l10n.displayNameNotSet
-                    : user.displayName!,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: SegmentedButton<ThemeMode>(
+                segments: <ButtonSegment<ThemeMode>>[
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.system,
+                    label: Text(l10n.themeSystem),
+                  ),
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.light,
+                    label: Text(l10n.themeLight),
+                  ),
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.dark,
+                    label: Text(l10n.themeDark),
+                  ),
+                ],
+                selected: <ThemeMode>{mode},
+                onSelectionChanged: (Set<ThemeMode> s) =>
+                    ref.read(themeModeProvider.notifier).set(s.first),
               ),
-              subtitle: Text(user.email),
-              trailing: const Icon(Icons.edit_outlined),
-              onTap: () => _editProfile(context, ref, l10n, user),
             ),
             const Divider(),
-          ],
-          // [pipeline C-16] The on-switch for the persisted themeMode. A stored
-          // preference with no control is a dead setting — the same shape as the
-          // consent recorder that had no prompt and silently discarded every
-          // event. Shipped together, or not at all.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: Text(
-              l10n.appearance,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: SegmentedButton<ThemeMode>(
-              segments: <ButtonSegment<ThemeMode>>[
-                ButtonSegment<ThemeMode>(
-                  value: ThemeMode.system,
-                  label: Text(l10n.themeSystem),
-                ),
-                ButtonSegment<ThemeMode>(
-                  value: ThemeMode.light,
-                  label: Text(l10n.themeLight),
-                ),
-                ButtonSegment<ThemeMode>(
-                  value: ThemeMode.dark,
-                  label: Text(l10n.themeDark),
-                ),
-              ],
-              selected: <ThemeMode>{mode},
-              onSelectionChanged: (Set<ThemeMode> s) =>
-                  ref.read(themeModeProvider.notifier).set(s.first),
-            ),
-          ),
-          const Divider(),
 
-          // ── LANGUAGE ─────────────────────────────────────────────────────
-          // Language names are shown in their OWN language, so a speaker can
-          // find theirs without first being able to read the current one.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Text(
-              l10n.language,
-              style: Theme.of(context).textTheme.labelLarge,
+            // ── LANGUAGE ─────────────────────────────────────────────────────
+            // Language names are shown in their OWN language, so a speaker can
+            // find theirs without first being able to read the current one.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                l10n.language,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
             ),
-          ),
-          RadioGroup<String>(
-            groupValue: ref.watch(localeProvider)?.languageCode ?? '',
-            onChanged: (String? code) => ref
-                .read(localeProvider.notifier)
-                .set((code == null || code.isEmpty) ? null : Locale(code)),
-            child: Column(
-              children: <Widget>[
-                RadioListTile<String>(
-                  value: '',
-                  title: Text(l10n.languageSystem),
-                ),
-                RadioListTile<String>(
-                  value: 'en',
-                  title: Text(l10n.languageEnglish),
-                ),
-                RadioListTile<String>(
-                  value: 'ta',
-                  title: Text(l10n.languageTamil),
-                ),
-              ],
+            RadioGroup<String>(
+              groupValue: ref.watch(localeProvider)?.languageCode ?? '',
+              onChanged: (String? code) => ref
+                  .read(localeProvider.notifier)
+                  .set((code == null || code.isEmpty) ? null : Locale(code)),
+              child: Column(
+                children: <Widget>[
+                  RadioListTile<String>(
+                    value: '',
+                    title: Text(l10n.languageSystem),
+                  ),
+                  RadioListTile<String>(
+                    value: 'en',
+                    title: Text(l10n.languageEnglish),
+                  ),
+                  RadioListTile<String>(
+                    value: 'ta',
+                    title: Text(l10n.languageTamil),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(),
+            const Divider(),
 
-          // ── NOTIFICATIONS ────────────────────────────────────────────────
-          // [pipeline C-7 earning its keep in real UI] The platform matrix is
-          // consulted BEFORE a control is offered. On Linux the plugin shows but
-          // cannot schedule; on Windows (pinned 17.x) it does neither. A toggle
-          // that silently does nothing on those platforms is worse than an
-          // honest sentence, because the user believes reminders are on.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Text(
-              l10n.notifications,
-              style: Theme.of(context).textTheme.labelLarge,
+            // ── NOTIFICATIONS ────────────────────────────────────────────────
+            // [pipeline C-7 earning its keep in real UI] The platform matrix is
+            // consulted BEFORE a control is offered. On Linux the plugin shows but
+            // cannot schedule; on Windows (pinned 17.x) it does neither. A toggle
+            // that silently does nothing on those platforms is worse than an
+            // honest sentence, because the user believes reminders are on.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                l10n.notifications,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
             ),
-          ),
-          Builder(
-            builder: (BuildContext context) {
-              final NotificationCapabilities caps =
-                  NotificationCapabilities.forPlatform(
-                    defaultTargetPlatform,
-                    isWeb: kIsWeb,
+            Builder(
+              builder: (BuildContext context) {
+                final NotificationCapabilities caps =
+                    NotificationCapabilities.forPlatform(
+                      defaultTargetPlatform,
+                      isWeb: kIsWeb,
+                    );
+                if (!caps.canSchedule) {
+                  return ListTile(
+                    leading: const Icon(Icons.notifications_off_outlined),
+                    title: Text(l10n.remindersUnavailable),
+                    enabled: false,
                   );
-              if (!caps.canSchedule) {
-                return ListTile(
-                  leading: const Icon(Icons.notifications_off_outlined),
-                  title: Text(l10n.remindersUnavailable),
-                  enabled: false,
+                }
+                return SwitchListTile(
+                  secondary: const Icon(Icons.notifications_outlined),
+                  title: Text(l10n.remindersEnabled),
+                  value: ref.watch(remindersEnabledProvider),
+                  onChanged: (bool on) =>
+                      _setReminders(context, ref, l10n, on: on),
                 );
-              }
-              return SwitchListTile(
-                secondary: const Icon(Icons.notifications_outlined),
-                title: Text(l10n.remindersEnabled),
-                value: ref.watch(remindersEnabledProvider),
-                onChanged: (bool on) =>
-                    _setReminders(context, ref, l10n, on: on),
-              );
-            },
-          ),
-          const Divider(),
+              },
+            ),
+            const Divider(),
 
-          // ── SUBSCRIPTION ([pipeline 5]M-6 · M-9) ──────────────────────────
-          //
-          // 🔴 THE TWO ENTRY POINTS SIT SIDE BY SIDE ON PURPOSE. ROSCA's rule
-          // is that cancelling must be no harder than subscribing, and the
-          // cheapest way to be sure of that is to reach both from the same
-          // place, one tap each. A cancel path buried a level deeper than the
-          // upgrade path is the specific pattern the rule exists to stop.
-          //
-          // Gated on a session because both terminate in a call keyed to an
-          // account: offering "manage your subscription" to a signed-out user
-          // is an offer the app cannot honour, the same reason the profile and
-          // deletion entries are gated.
-          if (ref.watch(authRepositoryProvider).currentUser !=
-              null) ...<Widget>[
+            // ── SUBSCRIPTION ([pipeline 5]M-6 · M-9) ──────────────────────────
+            //
+            // 🔴 THE TWO ENTRY POINTS SIT SIDE BY SIDE ON PURPOSE. ROSCA's rule
+            // is that cancelling must be no harder than subscribing, and the
+            // cheapest way to be sure of that is to reach both from the same
+            // place, one tap each. A cancel path buried a level deeper than the
+            // upgrade path is the specific pattern the rule exists to stop.
+            //
+            // Gated on a session because both terminate in a call keyed to an
+            // account: offering "manage your subscription" to a signed-out user
+            // is an offer the app cannot honour, the same reason the profile and
+            // deletion entries are gated.
+            if (ref.watch(authRepositoryProvider).currentUser !=
+                null) ...<Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Text(
+                  l10n.plan,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.workspace_premium_outlined),
+                title: Text(l10n.paywallUpgrade),
+                onTap: () => context.go('/paywall'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: Text(l10n.managePlanTitle),
+                onTap: () => context.go('/manage-plan'),
+              ),
+              const Divider(),
+            ],
+
+            // ── LEGAL. Both stores require these to be reachable IN-APP, not
+            //    only from a store listing. [pipeline C-13]
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(
-                l10n.plan,
+                l10n.legal,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.workspace_premium_outlined),
-              title: Text(l10n.paywallUpgrade),
-              onTap: () => context.go('/paywall'),
+              leading: const Icon(Icons.privacy_tip_outlined),
+              title: Text(l10n.privacyPolicy),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () => _openUrl(AppConfig.privacyUrl),
             ),
             ListTile(
-              leading: const Icon(Icons.receipt_long_outlined),
-              title: Text(l10n.managePlanTitle),
-              onTap: () => context.go('/manage-plan'),
+              leading: const Icon(Icons.description_outlined),
+              title: Text(l10n.termsOfService),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () => _openUrl(AppConfig.termsUrl),
+            ),
+            // [pipeline 8]K-6. The third published legal page, and the one that
+            // was missing: the site publishes privacy, terms AND refund, the
+            // brick linked the first two, and nothing compared the sets. A refund
+            // policy a buyer cannot reach from inside the app they bought in is
+            // the page a store reviewer looks for first when a charge is
+            // disputed.
+            ListTile(
+              leading: const Icon(Icons.currency_exchange_outlined),
+              title: Text(l10n.refundPolicy),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () => _openUrl(AppConfig.refundUrl),
             ),
             const Divider(),
+            ListTile(
+              leading: const Icon(Icons.mail_outline),
+              title: Text(l10n.contactSupport),
+              subtitle: const Text(AppConfig.supportEmail),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: _contactSupport,
+            ),
+            // Sign out sits ABOVE delete: it is the action a user wants
+            // hundreds of times more often, and putting the irreversible one
+            // first invites a misfire.
+            if (ref.watch(authRepositoryProvider).currentUser != null)
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: Text(l10n.signOut),
+                onTap: () => ref.read(authRepositoryProvider).signOut(),
+              ),
+
+            // [pipeline C-13] Only when there is an account to delete. Both
+            // stores require an in-app deletion path where accounts EXIST; an
+            // entry shown to a signed-out user is an offer the app cannot honour.
+            if (ref.watch(authRepositoryProvider).currentUser != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: Text(l10n.deleteAccount),
+                subtitle: Text(l10n.deleteAccountSubtitle),
+                onTap: () => _confirmDelete(context, ref, l10n),
+              ),
+            // 🔴 [pipeline C-13] `applicationVersion` WAS MISSING, and the
+            // register row for this screen has always promised "version and
+            // legalese". Flutter does not complain: `showAboutDialog` simply
+            // renders no version line, so the dialog looked complete and told a
+            // user reporting a bug nothing about WHICH BUILD they were running —
+            // which is the one fact a support mail is worthless without, and the
+            // reason both stores expect a version to be visible in-app.
+            //
+            // The RUNNING version, not the compiled-in constant: `AppConfig
+            // .appVersion` is a `String.fromEnvironment` default that a build
+            // which forgot `--dart-define` would report as the truth. The
+            // provider reads what is actually installed and falls back to the
+            // constant only while the plugin resolves (and on platforms where it
+            // cannot), exactly as the force-update gate does with the same value.
+            AboutListTile(
+              applicationName: AppConfig.appName,
+              applicationVersion:
+                  ref.watch(packageVersionProvider).valueOrNull ??
+                  AppConfig.appVersion,
+              applicationLegalese: l10n.legalese,
+              child: Text(l10n.about),
+            ),
           ],
-
-          // ── LEGAL. Both stores require these to be reachable IN-APP, not
-          //    only from a store listing. [pipeline C-13]
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Text(
-              l10n.legal,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.privacy_tip_outlined),
-            title: Text(l10n.privacyPolicy),
-            trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () => _openUrl(AppConfig.privacyUrl),
-          ),
-          ListTile(
-            leading: const Icon(Icons.description_outlined),
-            title: Text(l10n.termsOfService),
-            trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () => _openUrl(AppConfig.termsUrl),
-          ),
-          // [pipeline 8]K-6. The third published legal page, and the one that
-          // was missing: the site publishes privacy, terms AND refund, the
-          // brick linked the first two, and nothing compared the sets. A refund
-          // policy a buyer cannot reach from inside the app they bought in is
-          // the page a store reviewer looks for first when a charge is
-          // disputed.
-          ListTile(
-            leading: const Icon(Icons.currency_exchange_outlined),
-            title: Text(l10n.refundPolicy),
-            trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () => _openUrl(AppConfig.refundUrl),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.mail_outline),
-            title: Text(l10n.contactSupport),
-            subtitle: const Text(AppConfig.supportEmail),
-            trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: _contactSupport,
-          ),
-          // Sign out sits ABOVE delete: it is the action a user wants
-          // hundreds of times more often, and putting the irreversible one
-          // first invites a misfire.
-          if (ref.watch(authRepositoryProvider).currentUser != null)
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: Text(l10n.signOut),
-              onTap: () => ref.read(authRepositoryProvider).signOut(),
-            ),
-
-          // [pipeline C-13] Only when there is an account to delete. Both
-          // stores require an in-app deletion path where accounts EXIST; an
-          // entry shown to a signed-out user is an offer the app cannot honour.
-          if (ref.watch(authRepositoryProvider).currentUser != null)
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: Text(l10n.deleteAccount),
-              subtitle: Text(l10n.deleteAccountSubtitle),
-              onTap: () => _confirmDelete(context, ref, l10n),
-            ),
-          // 🔴 [pipeline C-13] `applicationVersion` WAS MISSING, and the
-          // register row for this screen has always promised "version and
-          // legalese". Flutter does not complain: `showAboutDialog` simply
-          // renders no version line, so the dialog looked complete and told a
-          // user reporting a bug nothing about WHICH BUILD they were running —
-          // which is the one fact a support mail is worthless without, and the
-          // reason both stores expect a version to be visible in-app.
-          //
-          // The RUNNING version, not the compiled-in constant: `AppConfig
-          // .appVersion` is a `String.fromEnvironment` default that a build
-          // which forgot `--dart-define` would report as the truth. The
-          // provider reads what is actually installed and falls back to the
-          // constant only while the plugin resolves (and on platforms where it
-          // cannot), exactly as the force-update gate does with the same value.
-          AboutListTile(
-            applicationName: AppConfig.appName,
-            applicationVersion:
-                ref.watch(packageVersionProvider).valueOrNull ??
-                AppConfig.appVersion,
-            applicationLegalese: l10n.legalese,
-            child: Text(l10n.about),
-          ),
-        ],
+        ),
       ),
     );
   }

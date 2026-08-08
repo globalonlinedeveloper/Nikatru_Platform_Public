@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
@@ -110,25 +111,49 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 controller: _pages,
                 itemCount: pages.length,
                 onPageChanged: (int i) => setState(() => _index = i),
-                itemBuilder: (BuildContext context, int i) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Text(
-                        pages[i].title,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall,
+                // 🔴 THE ONE UNCONSTRAINED SCREEN WHERE THE DAMAGE IS
+                // TYPOGRAPHIC. This was `Padding(symmetric horizontal: 32)` and
+                // nothing else, so on a 1280 px window the onboarding body ran
+                // 1216 px lines — roughly 200 characters, three times the 45–75
+                // the eye can track without losing the line return. A carousel
+                // whose whole job is to introduce the app was the hardest thing
+                // in it to read, and only on the widest screens, which is why
+                // nobody hit it on a phone.
+                //
+                // `.reading` (720) and not the default cap: this is continuous
+                // PROSE, and [AppBreakpoints.reading] is the constant that says
+                // so. The padding stays INSIDE the cap, which is exactly what
+                // the `Padding` it replaces did — so at any width below 720
+                // (every phone, every split pane) this renders pixel-identical
+                // to before.
+                //
+                // ⚠️ THE COLUMN KEEPS `MainAxisAlignment.center` AND STILL
+                // FILLS THE PAGE. `ContentPane` aligns to topCenter, but its
+                // `Align` hands the child LOOSENED constraints rather than
+                // tight ones, and a `Column` with the default
+                // `mainAxisSize.max` takes the full height it is offered — so
+                // the vertical centring this carousel wants is untouched. Only
+                // the horizontal half changed.
+                itemBuilder: (BuildContext context, int i) =>
+                    ContentPane.reading(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Text(
+                            pages[i].title,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            pages[i].body,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        pages[i].body,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
               ),
             ),
             Row(

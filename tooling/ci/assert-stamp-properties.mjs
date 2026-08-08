@@ -95,6 +95,11 @@ const SETTINGS = 'lib/features/settings/settings_screen.dart';
 const ROUTER = 'lib/core/router.dart';
 const MAIN = 'lib/main.dart';
 const HOME = 'lib/features/home/home_screen.dart';
+// The stamped WEB SHELL. App-relative on purpose: every app carries its own
+// copy, and the line anchored below can be lost from any one of them
+// independently — it was already missing from the template while the app the
+// template was derived from had it.
+const WEB_INDEX = 'web/index.html';
 // [pipeline 5]M-13's wiring. A SECOND providers file, so the domain scan below
 // reads both — a new providers file with no coverage requirement is a hole the
 // size of a whole capability.
@@ -622,6 +627,17 @@ const REQUIRED_COVERAGE = [
       { file: APP_ROOT, re: /MediaQuery\.withClampedTextScaling\(/, what: 'app.dart must clamp text scaling at the root — unbounded scaling overflows, and an overflowing screen is one the user cannot finish' },
       { file: SCAFFOLD, re: /static const double medium = 600;/, what: 'AppScaffold must use Material’s 600 boundary — it was 640, so every window 600–639 got the phone layout' },
       { file: SCAFFOLD, re: /enum WindowClass \{\s*compact,\s*medium,\s*expanded,\s*large,\s*extraLarge\s*\}/, what: 'all FIVE Material window classes must exist — the tree covered three' },
+      // 🔴 THE ONE ANCHOR NO WIDGET TEST CAN STAND IN FOR. `setSurfaceSize`
+      // sets the logical size directly, so every width assertion in the
+      // property test passes on a web build where real phones report ~980 px
+      // and land in `expanded`. A missing viewport meta discards the whole
+      // window-class decision in the browser, before Flutter runs.
+      //
+      // Matched on the TAG, never on prose: the template carries a comment
+      // explaining this line, and a looser /viewport/ would be satisfied by
+      // the explanation of the thing it is checking for. (The r2_buckets
+      // lesson — assert on structure, not on words.)
+      { file: WEB_INDEX, re: /<meta\s+name="viewport"[^>]*content="[^"]*width=device-width/, what: 'the stamped web shell must declare a device-width viewport — without it a mobile browser lays the app out at ~980px and scales it down, so every window class is resolved from a lie and the compact layout is unreachable on real phones' },
     ],
     why: 'these are near-free in the chassis and near-impossible to retrofit across 50 shipped apps',
   },
