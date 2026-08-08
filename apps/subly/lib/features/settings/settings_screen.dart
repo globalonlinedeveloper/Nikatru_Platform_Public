@@ -153,67 +153,89 @@ class SettingsScreen extends ConsumerWidget {
             // The live avatar card, now TAPPABLE: the chevron on the right has
             // pointed at nothing since the screen was written.
             if (user != null)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _editProfile(context, ref, l10n, user),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: cardDecoration(context),
-                  child: Row(
-                    children: <Widget>[
-                      Container(
-                        width: 52,
-                        height: 52,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          gradient: AppColors.brandGradient,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          user.initial,
-                          style: const TextStyle(
-                            fontFamily: 'Manrope',
-                            fontWeight: FontWeight.w800,
-                            fontSize: 20,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            // No tier is shown, deliberately. This read
-                            // '· Pro plan' as a HARDCODED string — not derived
-                            // from `isPro`, so every user saw it regardless of
-                            // entitlement, for a tier that is not sold and gates
-                            // nothing (`PaywallGate` has no consumers). A
-                            // paid-tier claim is the category Apple's
-                            // accurate-metadata rule and Google's
-                            // deceptive-behaviour policy scrutinise hardest, and
-                            // Paddle reviews the site against the product.
-                            // Restore a tier line only when a real entitlement
-                            // backs it.
-                            Text(
-                              (user.displayName == null ||
-                                      user.displayName!.isEmpty)
-                                  ? l10n.displayNameNotSet
-                                  : user.displayName!,
-                              style: AppText.body.copyWith(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
+              // Merged + `button:` and NO `label:`. The card already contains
+              // the display name and the email as text, which is exactly what a
+              // reader should hear; what it lacked was the ROLE — a bare
+              // `GestureDetector` announces nothing about being activatable, so
+              // the pencil glyph on the right was the only hint the row does
+              // anything, and a glyph is not a channel a screen reader has.
+              // Merging is what turns "Rajasekar" / "raj@…" / (silent icon)
+              // from three stops into one.
+              MergeSemantics(
+                child: Semantics(
+                  button: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _editProfile(context, ref, l10n, user),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: cardDecoration(context),
+                      child: Row(
+                        children: <Widget>[
+                          // The initial again — decorative for the reason
+                          // `home_screen.dart`'s avatar records, and here it is
+                          // even plainer: the display name is the very next
+                          // widget.
+                          ExcludeSemantics(
+                            child: Container(
+                              width: 52,
+                              height: 52,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                gradient: AppColors.brandGradient,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                user.initial,
+                                style: const TextStyle(
+                                  fontFamily: 'Manrope',
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 20,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
-                            Text(
-                              user.email,
-                              style: AppText.muted.copyWith(fontSize: 13),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                // No tier is shown, deliberately. This read
+                                // '· Pro plan' as a HARDCODED string — not
+                                // derived from `isPro`, so every user saw it
+                                // regardless of entitlement, for a tier that is
+                                // not sold and gates nothing (`PaywallGate` has
+                                // no consumers). A paid-tier claim is the
+                                // category Apple's accurate-metadata rule and
+                                // Google's deceptive-behaviour policy scrutinise
+                                // hardest, and Paddle reviews the site against
+                                // the product. Restore a tier line only when a
+                                // real entitlement backs it.
+                                Text(
+                                  (user.displayName == null ||
+                                          user.displayName!.isEmpty)
+                                      ? l10n.displayNameNotSet
+                                      : user.displayName!,
+                                  style: AppText.body.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  user.email,
+                                  style: AppText.muted.copyWith(fontSize: 13),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                          const Icon(
+                            Icons.edit_outlined,
+                            color: AppColors.muted,
+                          ),
+                        ],
                       ),
-                      const Icon(Icons.edit_outlined, color: AppColors.muted),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -288,24 +310,41 @@ class SettingsScreen extends ConsumerWidget {
                 return Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: () => controller.setCurrency(sym),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          gradient: sel ? AppColors.brandGradient : null,
-                          color: sel ? null : AppColors.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: sel ? Colors.transparent : AppColors.line,
-                          ),
-                        ),
-                        child: Text(
-                          sym,
-                          style: AppText.fig.copyWith(
-                            fontSize: 16,
-                            color: sel ? Colors.white : AppColors.ink,
+                    // ⚠️ FOUR CHIPS OF WHICH EXACTLY ONE IS ON, AND THE ONLY
+                    // THING THAT SAID SO WAS THE GRADIENT. `selected:` is the
+                    // load-bearing half here — without it a reader hears four
+                    // identical currency symbols and cannot tell which one the
+                    // app is using, which is the same defect as the nav pill's
+                    // and has the same fix.
+                    //
+                    // No `label:`: the symbol IS the datum, and it is already
+                    // the chip's own `Text`.
+                    child: MergeSemantics(
+                      child: Semantics(
+                        button: true,
+                        selected: sel,
+                        child: GestureDetector(
+                          onTap: () => controller.setCurrency(sym),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              gradient: sel ? AppColors.brandGradient : null,
+                              color: sel ? null : AppColors.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: sel
+                                    ? Colors.transparent
+                                    : AppColors.line,
+                              ),
+                            ),
+                            child: Text(
+                              sym,
+                              style: AppText.fig.copyWith(
+                                fontSize: 16,
+                                color: sel ? Colors.white : AppColors.ink,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1309,50 +1348,83 @@ class _LinkRow extends StatelessWidget {
           bottom: BorderSide(color: last ? Colors.transparent : AppColors.line),
         ),
       ),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          child: Row(
-            children: <Widget>[
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  gradient: const LinearGradient(
-                    colors: <Color>[
-                      Color.fromRGBO(100, 89, 245, 0.13),
-                      Color.fromRGBO(155, 107, 255, 0.13),
-                    ],
-                  ),
-                ),
-                child: Text(
-                  icon,
-                  style: const TextStyle(color: AppColors.accent, fontSize: 15),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      label,
-                      style: AppText.body.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
+      // ⚠️ `button:` IS CONDITIONAL, AND THAT IS THE HONEST HALF. This class's
+      // own doc records that `onTap == null` renders an INERT row — "Connected
+      // accounts" and "Export data (CSV)" are exactly that until they are wired
+      // — and announcing "button" for a row that does nothing when activated
+      // sends somebody tapping at a dead surface and blaming their reader.
+      //
+      // Merged so the label and its subtitle arrive as one stop rather than two,
+      // matching the profile card above.
+      child: MergeSemantics(
+        child: Semantics(
+          button: onTap != null,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+              child: Row(
+                children: <Widget>[
+                  // 🔴 THE LEADING GLYPH IS AN EMOJI IN A `Text`, NOT AN `Icon`,
+                  // WHICH IS WHY IT WAS AUDIBLE AT ALL. An `Icon` with no
+                  // `semanticLabel` contributes nothing, so the chevron on the
+                  // far right of this row has always been silent — correctly.
+                  // This one is a real string, so a reader announced the
+                  // emoji's CLDR name in front of every settings row ("locked
+                  // with key, Privacy policy"). Same decorative rule as
+                  // [GlyphTile]: the label beside it is the row.
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        gradient: const LinearGradient(
+                          colors: <Color>[
+                            Color.fromRGBO(100, 89, 245, 0.13),
+                            Color.fromRGBO(155, 107, 255, 0.13),
+                          ],
+                        ),
+                      ),
+                      child: Text(
+                        icon,
+                        style: const TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
-                    if (sub != null)
-                      Text(sub, style: AppText.muted.copyWith(fontSize: 12)),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          label,
+                          style: AppText.body.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (sub != null)
+                          Text(
+                            sub,
+                            style: AppText.muted.copyWith(fontSize: 12),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.muted,
+                    size: 18,
+                  ),
+                ],
               ),
-              const Icon(Icons.chevron_right, color: AppColors.muted, size: 18),
-            ],
+            ),
           ),
         ),
       ),

@@ -112,14 +112,25 @@ class _ConsentDialog extends StatelessWidget {
             style: AppText.muted.copyWith(fontSize: 13),
           ),
           const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => openExternalUrl(AppConfig.privacyUrl),
-            child: Text(
-              l10n.consentReadPolicy,
-              style: AppText.body.copyWith(
-                fontSize: 13,
-                color: AppColors.accent,
-                decoration: TextDecoration.underline,
+          // `link: true` and not `button: true` — the same distinction
+          // `_LegalLink` in `features/shared/widgets.dart` records: this hands
+          // the URL to the platform browser, and a reader announcing "link"
+          // is what warns somebody they are about to leave the app. It matters
+          // more here than anywhere: this dialog is the consent decision, and
+          // the policy is the thing being consented to.
+          MergeSemantics(
+            child: Semantics(
+              link: true,
+              child: GestureDetector(
+                onTap: () => openExternalUrl(AppConfig.privacyUrl),
+                child: Text(
+                  l10n.consentReadPolicy,
+                  style: AppText.body.copyWith(
+                    fontSize: 13,
+                    color: AppColors.accent,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
             ),
           ),

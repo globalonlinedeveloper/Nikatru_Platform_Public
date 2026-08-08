@@ -222,23 +222,44 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           SizedBox(
             width: 158,
             height: 158,
-            child: CustomPaint(
-              painter: RingPainter(
-                progress: _pct / 100,
-                // Brand hue, unforked — see the class doc.
-                color: AppColors.accent,
-                stroke: 14,
-              ),
-              child: Center(
-                child: Text(
-                  // `'$_pct%'` is interpolation, not a key: the only prose in
-                  // it is the percent sign, and a locale that writes percent
-                  // differently is a NumberFormat question rather than an arb
-                  // one. Recorded as such in the work order (§1, [FP]).
-                  '$_pct%',
-                  style: AppText.fig.copyWith(
-                    fontSize: 34,
-                    color: isLight ? AppColors.ink : scheme.onSurface,
+            // 🔴 A `CustomPaint` AGAIN, AND THIS ONE GATES THE APP. First run
+            // parks the user on this screen for the length of the scan with the
+            // CTA disabled ("Scanning…", `onPressed: null`), so the ring is the
+            // only thing on the page that changes and the only evidence that
+            // anything is happening. Its arc says nothing to a screen reader,
+            // and the bare "45%" in the middle says a number with no noun.
+            //
+            // The label wraps that same figure in a sentence. `'$_pct%'` is
+            // passed through verbatim rather than re-derived so the spoken
+            // percentage and the painted one are literally the same string —
+            // see the comment below on why the figure is an interpolation.
+            //
+            // `container: true` for the reason `insights_screen.dart` records
+            // against its donut — and it matters more here, because the thing
+            // this would otherwise be glued to is the status caption that
+            // changes on the same tick.
+            child: Semantics(
+              container: true,
+              label: l10n.a11yScanRing('$_pct%'),
+              excludeSemantics: true,
+              child: CustomPaint(
+                painter: RingPainter(
+                  progress: _pct / 100,
+                  // Brand hue, unforked — see the class doc.
+                  color: AppColors.accent,
+                  stroke: 14,
+                ),
+                child: Center(
+                  child: Text(
+                    // `'$_pct%'` is interpolation, not a key: the only prose in
+                    // it is the percent sign, and a locale that writes percent
+                    // differently is a NumberFormat question rather than an arb
+                    // one. Recorded as such in the work order (§1, [FP]).
+                    '$_pct%',
+                    style: AppText.fig.copyWith(
+                      fontSize: 34,
+                      color: isLight ? AppColors.ink : scheme.onSurface,
+                    ),
                   ),
                 ),
               ),

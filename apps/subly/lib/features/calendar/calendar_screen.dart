@@ -114,6 +114,23 @@ class CalendarScreen extends ConsumerWidget {
       for (int i = 0; i < 7; i++) symbols.NARROWWEEKDAYS[(firstColumn + i) % 7],
     ];
 
+    // 🔴 THE NARROW FORM IS UNREADABLE ALOUD, AND IN ENGLISH IT IS AMBIGUOUS ON
+    // FOUR OF SEVEN COLUMNS. `NARROWWEEKDAYS` in `en` is [S, M, T, W, T, F, S] —
+    // two T's and two S's — so a screen reader announces this header row as
+    // "S M T W T F S" and a user cannot tell Tuesday from Thursday or Saturday
+    // from Sunday. The letters exist because the column is ~44 px wide; that is
+    // a LAYOUT constraint and it has no business reaching the audio channel.
+    //
+    // `WEEKDAYS` is the same symbol table's full-name list, so this needs NO arb
+    // key — exactly the argument this file already makes for the month names it
+    // deleted three tables to reach. It is Sunday-first like NARROWWEEKDAYS, so
+    // it takes the IDENTICAL rotation; deriving it from `firstColumn` rather
+    // than re-deriving the offset is what keeps the two lists from drifting
+    // apart the day the week-start rule changes.
+    final List<String> weekdayNames = <String>[
+      for (int i = 0; i < 7; i++) symbols.WEEKDAYS[(firstColumn + i) % 7],
+    ];
+
     final Map<int, int> byDay = <int, int>{};
     for (final Subscription s in subs) {
       if (s.nextRenewal.year == y && s.nextRenewal.month == m) {
@@ -192,13 +209,32 @@ class CalendarScreen extends ConsumerWidget {
             decoration: cardDecoration(context),
             child: Column(
               children: <Widget>[
+                // Indexed rather than `.map`, because each column now needs BOTH
+                // of its forms — the letter it paints and the name it says.
                 Row(
-                  children: weekdayHeads
-                      .map(
-                        (String w) => Expanded(
+                  children: <Widget>[
+                    for (int i = 0; i < weekdayHeads.length; i++)
+                      Expanded(
+                        // `excludeSemantics` so the narrow letter does not ride
+                        // along behind the name ("Tuesday T"). Semantics wraps
+                        // the `Center`, which lays out exactly as it did — the
+                        // annotation is a proxy and takes no space.
+                        //
+                        // `container: true` because seven label-only
+                        // annotations with nothing to conflict over are ABSORBED
+                        // into one node — measured: the header row became a
+                        // single stop reading "Sunday Monday Tuesday Wednesday
+                        // Thursday Friday Saturday". That is one thing to hear
+                        // instead of seven things to land on, and it makes the
+                        // column under the finger unidentifiable, which is the
+                        // defect this whole change is about.
+                        child: Semantics(
+                          container: true,
+                          label: weekdayNames[i],
+                          excludeSemantics: true,
                           child: Center(
                             child: Text(
-                              w,
+                              weekdayHeads[i],
                               style: AppText.label.copyWith(
                                 fontSize: 10,
                                 color: neutral.muted,
@@ -206,8 +242,8 @@ class CalendarScreen extends ConsumerWidget {
                             ),
                           ),
                         ),
-                      )
-                      .toList(),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 6),
                 GridView.builder(
@@ -341,88 +377,108 @@ class CalendarScreen extends ConsumerWidget {
     // `In $d days`, so a one-day horizon rendered "In 1 days".
     final DueInfo due = DueInfo.localized(l10n, s, now);
     final ({Color ink, Color muted}) neutral = _neutrals(context);
-    return Container(
-      decoration: cardDecoration(context, radius: 18),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => context.push('/sub/${s.id}'),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: <Widget>[
-                SizedBox(
-                  width: 44,
-                  child: Column(
-                    children: <Widget>[
-                      Text(
-                        // Same reason as the grid numerals — the digits come
-                        // from the locale's own symbol table, not from Dart's
-                        // default interpolation.
-                        DateFormat.d(l10n.localeName).format(s.nextRenewal),
-                        style: AppText.fig.copyWith(
-                          fontSize: 19,
-                          color: neutral.ink,
-                        ),
+    // ⚠️ THIS ROW IS RowCard's TWIN AND HAS TO BE FIXED SEPARATELY, which is
+    // annoying and is the point of saying so. It hand-rolls the same
+    // Container/Material/InkWell that `features/shared/widgets.dart`'s [RowCard]
+    // is, because it carries a date column and a gradient rule that RowCard has
+    // no slot for — so it did NOT inherit the `button:` + `MergeSemantics` fix
+    // that landed there, and every renewal row on this screen stayed a bare
+    // InkWell: five text fragments (day, month, name, due phrase, price) read as
+    // five separate stops, none of them announced as a control.
+    //
+    // Same two annotations, same reasons — read RowCard's doc for the argument.
+    // The convergence of the two shapes belongs to the same closing cleanup that
+    // owns the triplicated `_neutrals` helper above.
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        child: Container(
+          decoration: cardDecoration(context, radius: 18),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => context.push('/sub/${s.id}'),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 44,
+                      child: Column(
+                        children: <Widget>[
+                          Text(
+                            // Same reason as the grid numerals — the digits come
+                            // from the locale's own symbol table, not from Dart's
+                            // default interpolation.
+                            DateFormat.d(l10n.localeName).format(s.nextRenewal),
+                            style: AppText.fig.copyWith(
+                              fontSize: 19,
+                              color: neutral.ink,
+                            ),
+                          ),
+                          Text(
+                            // ⚠️ `toUpperCase()` reproduces the live table's ALL
+                            // CAPS ("AUG"), and it is Unicode-default rather than
+                            // locale-aware — Tamil has no case so `ஆக.` is
+                            // unchanged, but a Turkish build would upper-case the
+                            // dotless i wrongly. Recorded here rather than fixed,
+                            // matching the note the workorder keeps on
+                            // `settings_screen.dart:684`.
+                            DateFormat.MMM(
+                              l10n.localeName,
+                            ).format(s.nextRenewal).toUpperCase(),
+                            style: AppText.label.copyWith(
+                              fontSize: 9,
+                              color: neutral.muted,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        // ⚠️ `toUpperCase()` reproduces the live table's ALL
-                        // CAPS ("AUG"), and it is Unicode-default rather than
-                        // locale-aware — Tamil has no case so `ஆக.` is
-                        // unchanged, but a Turkish build would upper-case the
-                        // dotless i wrongly. Recorded here rather than fixed,
-                        // matching the note the workorder keeps on
-                        // `settings_screen.dart:684`.
-                        DateFormat.MMM(
-                          l10n.localeName,
-                        ).format(s.nextRenewal).toUpperCase(),
-                        style: AppText.label.copyWith(
-                          fontSize: 9,
-                          color: neutral.muted,
-                        ),
+                    ),
+                    Container(
+                      width: 3,
+                      height: 38,
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.brandGradient,
+                        borderRadius: BorderRadius.circular(3),
                       ),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 3,
-                  height: 38,
-                  margin: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    gradient: AppColors.brandGradient,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        s.name,
-                        style: AppText.body.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: neutral.ink,
-                        ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            s.name,
+                            style: AppText.body.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: neutral.ink,
+                            ),
+                          ),
+                          Text(
+                            due.label,
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                              color: due.color,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        due.label,
-                        style: TextStyle(
-                          fontFamily: 'Manrope',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                          color: due.color,
-                        ),
+                    ),
+                    Text(
+                      currency.fmt(s.monthlyPrice),
+                      style: AppText.fig.copyWith(
+                        fontSize: 16,
+                        color: neutral.ink,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Text(
-                  currency.fmt(s.monthlyPrice),
-                  style: AppText.fig.copyWith(fontSize: 16, color: neutral.ink),
-                ),
-              ],
+              ),
             ),
           ),
         ),

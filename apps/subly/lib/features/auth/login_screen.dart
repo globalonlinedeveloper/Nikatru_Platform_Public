@@ -359,30 +359,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
                 Center(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _signUp = !_signUp),
-                    // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
-                    // This was two `TextSpan`s — "New here? " + "Create account"
-                    // — which is a concatenation wearing a rich-text costume: it
-                    // fixes English word order, and in a language that puts the
-                    // verb last the "link" half would have to move to the front
-                    // of the sentence. `newHerePrompt` / `haveAccountPrompt`
-                    // each carry the complete line, so the translator controls
-                    // the order.
-                    //
-                    // ⚠️ The whole line is the tap target either way — the
-                    // `GestureDetector` above always was the button, and the
-                    // second span was never independently tappable (no
-                    // `TapGestureRecognizer`), so nothing about the interaction
-                    // changed. What is lost is the accent colouring of the last
-                    // two words; a per-locale substring hunt to restore it would
-                    // be exactly the fixed-word-order assumption this removes.
-                    child: Text(
-                      _signUp ? l10n.haveAccountPrompt : l10n.newHerePrompt,
-                      textAlign: TextAlign.center,
-                      style: AppText.muted.copyWith(
-                        fontSize: 14,
-                        color: t.muted,
+                  // `button:` merged with the sentence below. The whole line is
+                  // the tap target (see the note further down), and it reads as
+                  // prose — "New here? Create account" — so without a role a
+                  // reader announces it as body copy that happens to sit at the
+                  // bottom of a form. It is the only way to reach sign-up.
+                  child: MergeSemantics(
+                    child: Semantics(
+                      button: true,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _signUp = !_signUp),
+                        // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
+                        // This was two `TextSpan`s — "New here? " + "Create account"
+                        // — which is a concatenation wearing a rich-text costume: it
+                        // fixes English word order, and in a language that puts the
+                        // verb last the "link" half would have to move to the front
+                        // of the sentence. `newHerePrompt` / `haveAccountPrompt`
+                        // each carry the complete line, so the translator controls
+                        // the order.
+                        //
+                        // ⚠️ The whole line is the tap target either way — the
+                        // `GestureDetector` above always was the button, and the
+                        // second span was never independently tappable (no
+                        // `TapGestureRecognizer`), so nothing about the interaction
+                        // changed. What is lost is the accent colouring of the last
+                        // two words; a per-locale substring hunt to restore it would
+                        // be exactly the fixed-word-order assumption this removes.
+                        child: Text(
+                          _signUp ? l10n.haveAccountPrompt : l10n.newHerePrompt,
+                          textAlign: TextAlign.center,
+                          style: AppText.muted.copyWith(
+                            fontSize: 14,
+                            color: t.muted,
+                          ),
+                        ),
                       ),
                     ),
                   ),

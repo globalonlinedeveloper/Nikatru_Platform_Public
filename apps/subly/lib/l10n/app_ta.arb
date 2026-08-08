@@ -262,5 +262,12 @@
   "renewalReminderBody": "{name} {date} அன்று புதுப்பிக்கப்படும்.",
   "weeklyDigestTitle": "உங்கள் வாரச் சந்தாச் சுருக்கம்",
   "weeklyDigestBody": "{count, plural, =1{1 செயலில், மாதம் {total}.} other{{count} செயலில், மாதம் {total}.}}",
-  "notificationActionOpen": "திற"
+  "notificationActionOpen": "திற",
+  "a11yCategoryDonut": "வகை வாரியான செலவு. மொத்தம் மாதம் {total}. {breakdown}",
+  "a11yCategoryShare": "{name} {amount}",
+  "a11yBudgetRing": "நிதித்திட்டப் பயன்பாடு. {budget} இல் {spent}, {percent}.",
+  "a11yBudgetRingOver": "நிதித்திட்டத்தை மீறியது. {budget} இல் {spent}, {percent}.",
+  "a11yScanRing": "வருடல் முன்னேற்றம் {percent}.",
+  "a11yAccountSettings": "கணக்கும் அமைப்புகளும்",
+  "a11yPageIndicator": "பக்கம் {current} / {total}"
 }
