@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -91,41 +92,54 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.managePlanTitle)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: <Widget>[
-          ListTile(
-            leading: Icon(isPro ? Icons.verified_outlined : Icons.lock_outline),
-            title: Text(isPro ? l10n.planActive : l10n.planInactive),
-          ),
-          const Divider(),
-          // [pipeline 5]M-10. On this rail the entitlement is a server row keyed
-          // (user_id, app_id), so a fresh install on a new device is unlocked by
-          // signing in — there is nothing device-local to restore. The control
-          // exists because a user who has just paid wants a button, and because
-          // Apple guideline 3.1.1 makes one mandatory the day a native IAP rail
-          // ships (deferred, 39-CHASSIS §4 cut 5).
-          ListTile(
-            leading: const Icon(Icons.refresh),
-            title: Text(l10n.restorePurchases),
-            subtitle: Text(l10n.restorePurchasesHint),
-            enabled: !_busy,
-            onTap: _busy ? null : _restore,
-          ),
-          if (isPro)
+      // Bare `Scaffold` + `ListView` before this, the same shape as settings —
+      // and this is the WORSE of the two to leave unconstrained. The screen
+      // whose only job is "cancel must be no harder than subscribe" was, on a
+      // desktop, a cancel row whose label sat a full window away from the icon
+      // that identifies it. ROSCA is a rule about the difficulty of finding the
+      // control, and layout is part of how hard something is to find.
+      //
+      // Same default cap as settings, for the same reason: a page of controls,
+      // agreeing with the ceiling `AppScaffold` already applies.
+      body: ContentPane(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: <Widget>[
             ListTile(
-              leading: const Icon(Icons.cancel_outlined),
-              title: Text(l10n.cancelPlan),
+              leading: Icon(
+                isPro ? Icons.verified_outlined : Icons.lock_outline,
+              ),
+              title: Text(isPro ? l10n.planActive : l10n.planInactive),
+            ),
+            const Divider(),
+            // [pipeline 5]M-10. On this rail the entitlement is a server row keyed
+            // (user_id, app_id), so a fresh install on a new device is unlocked by
+            // signing in — there is nothing device-local to restore. The control
+            // exists because a user who has just paid wants a button, and because
+            // Apple guideline 3.1.1 makes one mandatory the day a native IAP rail
+            // ships (deferred, 39-CHASSIS §4 cut 5).
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: Text(l10n.restorePurchases),
+              subtitle: Text(l10n.restorePurchasesHint),
               enabled: !_busy,
-              onTap: _busy ? null : _cancel,
+              onTap: _busy ? null : _restore,
             ),
-          if (_busy) const LinearProgressIndicator(),
-          if (_outcome != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Text(_outcomeMessage(l10n, _outcome!)),
-            ),
-        ],
+            if (isPro)
+              ListTile(
+                leading: const Icon(Icons.cancel_outlined),
+                title: Text(l10n.cancelPlan),
+                enabled: !_busy,
+                onTap: _busy ? null : _cancel,
+              ),
+            if (_busy) const LinearProgressIndicator(),
+            if (_outcome != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(_outcomeMessage(l10n, _outcome!)),
+              ),
+          ],
+        ),
       ),
     );
   }

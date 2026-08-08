@@ -22,6 +22,26 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="{{description}}">
 
+  <!--
+    🔴 WITHOUT THIS LINE EVERY RESPONSIVE DECISION IN THE APP IS DISCARDED BY
+    THE BROWSER BEFORE FLUTTER RUNS. A mobile browser with no viewport meta
+    assumes the page was written for a desktop, lays it out at ~980 CSS px and
+    then scales the whole thing down to fit the screen. So a phone reports
+    itself as ~980 logical pixels wide, `windowClassFor` answers `expanded`,
+    and the user gets a NavigationRail and 720-px prose columns rendered at
+    about a third scale — pinch-to-zoom text on a device the entire compact
+    class exists to serve.
+    That is the failure mode this whole increment is about, arriving one layer
+    below anything a widget test can reach: `setSurfaceSize` sets the logical
+    size directly, so every width test in `test/responsive_width_test.dart`
+    passes on a build whose real phones are all `expanded`.
+    It was absent from the stamp while `apps/subly/web/index.html` — the shell
+    this template was derived from — has carried it all along, so this is a
+    line lost in the copy rather than a decision anybody made.
+    `assert-stamp-properties.mjs` anchors it under `ui-invariants-inherited`.
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">

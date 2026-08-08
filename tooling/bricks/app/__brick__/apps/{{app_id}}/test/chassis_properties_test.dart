@@ -1210,6 +1210,74 @@ void main() {
       );
     });
 
+    // LIMB 3b — THE SAME BOUNDARY, PUMPED.
+    //
+    // 🔴 WHY THE PURE RESOLVER WAS NOT ENOUGH. Everything above is a test of
+    // `windowClassFor`, a total function over a double. It is the right place
+    // to check the EDGES — and it would go on passing in full if `AppScaffold`
+    // stopped calling it, or called it and switched on the answer wrongly, or
+    // returned the same widget for two classes. The resolver's contract is
+    // "600 is medium"; the CHASSIS's contract is "at 600 the user gets a rail
+    // instead of a bottom bar", and no assertion in this file connected the
+    // two. That gap is the same shape as a fail-closed seam with no proven open
+    // path: every part correct, nothing joining them, nothing red.
+    //
+    // TWO WIDTHS, ON OPPOSITE SIDES OF ONE BOUNDARY, and each asserts the
+    // presence of its own control AND the absence of the other's — a bar that
+    // renders at 768 alongside a rail would pass a presence-only check.
+    //
+    // Cheap on purpose: a bare `AppScaffold` on a `MaterialApp`, no providers,
+    // no router, no config. This limb is about the shell's own layout decision,
+    // so pulling the app root in would only add ways for it to fail for reasons
+    // that are not this property.
+    testWidgets('the scaffold really switches control at the 600 boundary', (
+      WidgetTester tester,
+    ) async {
+      const List<AppDestination> destinations = <AppDestination>[
+        AppDestination(icon: Icons.home_outlined, label: 'Home'),
+        AppDestination(icon: Icons.settings_outlined, label: 'Settings'),
+      ];
+      Widget shell() => MaterialApp(
+        home: AppScaffold(
+          destinations: destinations,
+          selectedIndex: 0,
+          onDestinationSelected: (_) {},
+          body: const SizedBox.shrink(),
+        ),
+      );
+
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      // 375 — a phone. COMPACT, so the navigation belongs at the bottom.
+      await tester.binding.setSurfaceSize(const Size(375, 812));
+      await tester.pumpWidget(shell());
+      expect(
+        find.byType(NavigationBar),
+        findsOneWidget,
+        reason:
+            'at 375 the window class is compact and the control must be a '
+            'bottom NavigationBar — a rail on a phone eats the width the '
+            'content needs',
+      );
+      expect(find.byType(NavigationRail), findsNothing);
+
+      // 768 — a small tablet, or a half-screen desktop window. MEDIUM. This is
+      // the width the 640-instead-of-600 bug got wrong, and the width at which
+      // it was invisible to the resolver test alone.
+      await tester.binding.setSurfaceSize(const Size(768, 1024));
+      await tester.pumpWidget(shell());
+      await tester.pump();
+      expect(
+        find.byType(NavigationRail),
+        findsOneWidget,
+        reason:
+            'at 768 the window class is medium and the control must be a side '
+            'NavigationRail — this is the range that silently got the phone '
+            'layout while `medium` was 640',
+      );
+      expect(find.byType(NavigationBar), findsNothing);
+    });
+
     // LIMB 4 — the ICON-LABEL check, on every declared route.
     //
     // Every navigation destination must carry a non-empty text label, AND every
