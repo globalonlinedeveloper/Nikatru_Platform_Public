@@ -15,6 +15,23 @@
 /*.html
   Cache-Control: public, max-age=0, must-revalidate
 
+# ── THE EXTENSIONLESS CHECKOUT RETURN PATH, DECLARED RATHER THAN INHERITED ───
+# `_headers` rules match the REQUEST path, not the file that ends up serving it.
+# Every stamped app sends a returning buyer to `https://nikatru.com/checkout-
+# return` — no extension (apps/<id>/lib/state/money_providers.dart's
+# CHECKOUT_RETURN_URL default, and the brick template it is stamped from) — and
+# Cloudflare Pages serves `checkout-return.html` for it. That request path
+# matches `/*.html` NOWHERE, so without this line the one URL in the whole money
+# flow that a paying stranger lands on would be the only page on this root
+# running on a platform default nobody chose. Measured default is the same value
+# (see the .css/.js note below, where robots.txt, sitemap.xml and llms.txt all
+# returned `public, max-age=0, must-revalidate`) — so this changes nothing that
+# is served today, which is the same bargain and the same reason as the two
+# class rules below: a policy is declared before it is needed, not discovered
+# afterwards on the page it was needed for.
+/checkout-return
+  Cache-Control: public, max-age=0, must-revalidate
+
 # ── CSS and JS: DECLARED, not inherited ─────────────────────────────────────
 # 🔴 2026-08-04. Until today these two classes had no rule here at all, and
 # that was not a decision — it was a gap the Cloudflare zone happened to be

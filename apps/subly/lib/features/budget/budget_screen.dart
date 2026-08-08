@@ -93,7 +93,7 @@ class BudgetScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: cardDecoration(),
+            decoration: cardDecoration(context),
             child: Column(
               children: <Widget>[
                 SizedBox(
@@ -150,6 +150,7 @@ class BudgetScreen extends ConsumerWidget {
               // decision, not a bug — recorded here because the number looks
               // like an arbitrary constant at the call site.
               child: _categoryBar(
+                context,
                 currency,
                 cats[i],
                 capMap[cats[i].name] ?? cats[i].value * 1.2,
@@ -170,7 +171,13 @@ class BudgetScreen extends ConsumerWidget {
     );
   }
 
-  Widget _categoryBar(Currency currency, CategoryTotal cat, double cap, int i) {
+  Widget _categoryBar(
+    BuildContext context,
+    Currency currency,
+    CategoryTotal cat,
+    double cap,
+    int i,
+  ) {
     final bool over = cat.value > cap;
     final double frac = cap <= 0 ? 1 : math.min(cat.value / cap, 1);
     final Color barColor = over
@@ -179,7 +186,7 @@ class BudgetScreen extends ConsumerWidget {
 
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: cardDecoration(radius: 18),
+      decoration: cardDecoration(context, radius: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

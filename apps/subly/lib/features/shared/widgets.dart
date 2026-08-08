@@ -15,11 +15,45 @@ const List<BoxShadow> kCardShadow = <BoxShadow>[
   ),
 ];
 
-BoxDecoration cardDecoration({double radius = 24}) => BoxDecoration(
-  color: AppColors.surface,
-  borderRadius: BorderRadius.circular(radius),
-  boxShadow: kCardShadow,
-);
+/// The shared card surface. **Theme-aware — the light branch is pinned.**
+///
+/// 🔴 THE LIGHT BRANCH IS BYTE-FOR-BYTE THE PRE-DARK DECORATION AND MUST STAY
+/// THAT WAY. `apps/subly` ships as a frozen legacy rail-prover and the owner
+/// eyeballs the light build; a "harmless" swap of [AppColors.surface] for
+/// `scheme.surface` would repaint every card on every screen at once, which is
+/// exactly the repaint `app.dart`'s theme-fork note exists to avoid.
+/// `test/dark_card_surface_test.dart` pins the resolved light colour to the
+/// literal token so that swap fails the build rather than shipping.
+///
+/// 🔴 DARK DROPS THE SHADOW AND GAINS A BORDER, and that is a correctness fix
+/// rather than a taste call: [kCardShadow] is two BLACK alphas (`0x0A141420`,
+/// `0x24141420`). Black-on-dark is invisible, so a card carrying only a shadow
+/// has NO edge at all against a dark scaffold — it reads as a flat region of
+/// background with text floating on it. The affordance has to come from
+/// somewhere, so it comes from a `scheme.outlineVariant` hairline.
+///
+/// `surfaceContainerHighest` is the slot, matching the brick's own home screen
+/// (`tooling/bricks/app/__brick__/…/home_screen.dart`). In an M3 dark scheme it
+/// is the lightest of the container ramp, so it separates from the scaffold
+/// (which `buildAppTheme` sets to `scheme.surface`) by the widest margin any
+/// single scheme slot offers — the card lifts without inventing a colour the
+/// seed never derived.
+BoxDecoration cardDecoration(BuildContext context, {double radius = 24}) {
+  final ThemeData theme = Theme.of(context);
+  if (theme.brightness == Brightness.light) {
+    return BoxDecoration(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(radius),
+      boxShadow: kCardShadow,
+    );
+  }
+  final ColorScheme scheme = theme.colorScheme;
+  return BoxDecoration(
+    color: scheme.surfaceContainerHighest,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(color: scheme.outlineVariant),
+  );
+}
 
 /// Rounded gradient-tinted glyph square used for every subscription.
 class GlyphTile extends StatelessWidget {
