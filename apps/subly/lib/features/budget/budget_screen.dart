@@ -2,12 +2,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/format/currency.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/budget_info.dart';
 import '../../data/models/subscription.dart';
+import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
@@ -18,26 +20,48 @@ final FutureProvider<BudgetInfo> budgetProvider = FutureProvider<BudgetInfo>(
   (ref) => ref.watch(subscriptionRepositoryProvider).budget(),
 );
 
+/// The three neutrals this screen paints with, resolved for the current
+/// brightness.
+///
+/// 🔴 LIGHT IS THE LITERAL TOKEN, ON PURPOSE — the rule `cardDecoration` and
+/// `RowCard` carry (`features/shared/widgets.dart`): `apps/subly` is the frozen
+/// legacy rail-prover the owner eyeballs, so light stays byte-identical.
+/// `Theme.of(context).extension<AppThemeX>()` is NOT a substitute — under the
+/// seeded chassis theme its `muted`/`line` are `scheme.onSurfaceVariant`/
+/// `outlineVariant` in BOTH brightnesses, so reading it would repaint the light
+/// build.
+///
+/// 🔴 DARK IS THE DEFECT THIS FIXES. `AppText.title`/`.fig`/`.body` bake
+/// `AppColors.ink` (#141420) and `AppText.muted` bakes `AppColors.muted`, so on
+/// a dark scaffold the ring percentage, the three stats and every category name
+/// were near-black on near-black. The dark values are the same slots
+/// `buildAppTheme` maps these neutrals to (`ink: scheme.onSurface`,
+/// `divider: scheme.outlineVariant`) and `AppThemeX.fromScheme` maps `muted` to.
+///
+/// ⚠️ `calendar_screen.dart` and `insights_screen.dart` carry the identical
+/// helper: each P4 file-group increment has to stay independently compilable,
+/// and the hoist into `features/shared/` belongs to the campaign's closing
+/// cleanup alongside the deletion of `DueInfo.of`.
+({Color ink, Color muted, Color line}) _neutrals(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  if (theme.brightness == Brightness.light) {
+    return (ink: AppColors.ink, muted: AppColors.muted, line: AppColors.line);
+  }
+  final ColorScheme scheme = theme.colorScheme;
+  return (
+    ink: scheme.onSurface,
+    muted: scheme.onSurfaceVariant,
+    line: scheme.outlineVariant,
+  );
+}
+
 class BudgetScreen extends ConsumerWidget {
   const BudgetScreen({super.key});
 
-  static const List<String> _months = <String>[
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
@@ -84,11 +108,22 @@ class BudgetScreen extends ConsumerWidget {
           AppSpacing.xl,
         ),
         children: <Widget>[
-          Text('Budget & goals', style: AppText.title.copyWith(fontSize: 26)),
+          Text(
+            l10n.budgetTitle,
+            style: AppText.title.copyWith(fontSize: 26, color: neutral.ink),
+          ),
           const SizedBox(height: 4),
           Text(
-            '${_months[now.month - 1]} ${now.year}',
-            style: AppText.muted.copyWith(fontSize: 12),
+            // 🔴 THE HARDCODED ENGLISH `_months` TABLE IS GONE. It was never a
+            // translation problem so much as a data one: `intl` already ships
+            // month names for every locale, so an arb key for "January" would
+            // have been asking a translator for something the SDK knows.
+            // `DateFormat.yMMMM` also carries the ORDER — "August 2026" in en,
+            // and whatever the locale puts first elsewhere, which the
+            // interpolated `'$month $year'` could never do. Measured: `en`
+            // renders "August 2026", byte-identical to the table it replaces.
+            DateFormat.yMMMM(l10n.localeName).format(now),
+            style: AppText.muted.copyWith(fontSize: 12, color: neutral.muted),
           ),
           const SizedBox(height: 16),
           Container(
@@ -109,15 +144,27 @@ class BudgetScreen extends ConsumerWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           Text(
-                            '${(pct * 100).round()}%',
+                            // NOT an arb key — a NUMBER. `NumberFormat`
+                            // .percentPattern carries the locale's own
+                            // convention, including where the sign goes (some
+                            // locales lead with it) and which digits are used;
+                            // `'${…}%'` hardcoded the English answer to both.
+                            // The pattern is `#,##0%`, i.e. zero fraction
+                            // digits, so `en` still renders "83%".
+                            NumberFormat.percentPattern(
+                              l10n.localeName,
+                            ).format(pct),
                             style: AppText.fig.copyWith(
                               fontSize: 34,
-                              color: over ? AppColors.danger : AppColors.ink,
+                              color: over ? AppColors.danger : neutral.ink,
                             ),
                           ),
                           Text(
-                            over ? 'over budget' : 'of budget',
-                            style: AppText.muted.copyWith(fontSize: 10),
+                            over ? l10n.overBudget : l10n.ofBudget,
+                            style: AppText.muted.copyWith(
+                              fontSize: 10,
+                              color: neutral.muted,
+                            ),
                           ),
                         ],
                       ),
@@ -128,19 +175,40 @@ class BudgetScreen extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: <Widget>[
-                    _stat('Spent', currency.fmt(total), AppColors.ink),
                     _stat(
-                      'Left',
-                      currency.fmt0(math.max(budgetVal - total, 0)),
-                      AppColors.positive,
+                      label: l10n.statSpent,
+                      value: currency.fmt(total),
+                      valueColor: neutral.ink,
+                      labelColor: neutral.muted,
                     ),
-                    _stat('Budget', currency.fmt0(budgetVal), AppColors.ink),
+                    _stat(
+                      label: l10n.statLeft,
+                      value: currency.fmt0(math.max(budgetVal - total, 0)),
+                      // `positive` is a STATUS colour, not a neutral: green
+                      // means "money left" in either brightness, so it stays
+                      // the literal token deliberately — the same reason
+                      // `AppThemeX.fromScheme` refuses to re-hue it from the
+                      // seed.
+                      valueColor: AppColors.positive,
+                      labelColor: neutral.muted,
+                    ),
+                    _stat(
+                      label: l10n.statBudget,
+                      value: currency.fmt0(budgetVal),
+                      valueColor: neutral.ink,
+                      labelColor: neutral.muted,
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          SectionHeader('By category'),
+          // ⚠️ `byCategory` is SHARED with `insights_screen.dart` — one heading
+          // over the same breakdown, so one key. And `SectionHeader` itself
+          // paints with `AppText.title`'s baked `AppColors.ink`, which this
+          // file cannot reach: it lives in `features/shared/widgets.dart`.
+          // Named in this increment's report.
+          SectionHeader(l10n.byCategory),
           for (int i = 0; i < cats.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -162,11 +230,22 @@ class BudgetScreen extends ConsumerWidget {
     );
   }
 
-  Widget _stat(String label, String value, Color color) {
+  Widget _stat({
+    required String label,
+    required String value,
+    required Color valueColor,
+    required Color labelColor,
+  }) {
     return Column(
       children: <Widget>[
-        Text(value, style: AppText.fig.copyWith(fontSize: 18, color: color)),
-        Text(label, style: AppText.muted.copyWith(fontSize: 10)),
+        Text(
+          value,
+          style: AppText.fig.copyWith(fontSize: 18, color: valueColor),
+        ),
+        Text(
+          label,
+          style: AppText.muted.copyWith(fontSize: 10, color: labelColor),
+        ),
       ],
     );
   }
@@ -183,6 +262,7 @@ class BudgetScreen extends ConsumerWidget {
     final Color barColor = over
         ? AppColors.danger
         : AppColors.ramp[i % AppColors.ramp.length];
+    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
 
     return Container(
       padding: const EdgeInsets.all(15),
@@ -198,6 +278,7 @@ class BudgetScreen extends ConsumerWidget {
                 style: AppText.body.copyWith(
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
+                  color: neutral.ink,
                 ),
               ),
               Text.rich(
@@ -205,12 +286,17 @@ class BudgetScreen extends ConsumerWidget {
                   text: currency.fmt0(cat.value),
                   style: AppText.fig.copyWith(
                     fontSize: 13,
-                    color: over ? AppColors.danger : AppColors.ink,
+                    color: over ? AppColors.danger : neutral.ink,
                   ),
                   children: <InlineSpan>[
+                    // NOT an l10n key: ' / ' is a separator between two
+                    // formatted figures, and both figures come from `Currency`.
                     TextSpan(
                       text: ' / ${currency.fmt0(cap)}',
-                      style: AppText.muted.copyWith(fontSize: 13),
+                      style: AppText.muted.copyWith(
+                        fontSize: 13,
+                        color: neutral.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -223,7 +309,10 @@ class BudgetScreen extends ConsumerWidget {
             child: LinearProgressIndicator(
               value: frac,
               minHeight: 8,
-              backgroundColor: AppColors.line,
+              // The UNFILLED half of the bar is a neutral, so it has to move
+              // with the surface: `AppColors.line` (#ECECF2) is a
+              // near-white hairline that reads as a FULL bar on a dark card.
+              backgroundColor: neutral.line,
               color: barColor,
             ),
           ),

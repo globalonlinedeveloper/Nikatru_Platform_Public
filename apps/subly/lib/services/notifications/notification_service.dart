@@ -1,9 +1,56 @@
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show immutable, kIsWeb, visibleForTesting;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../data/models/subscription.dart';
+
+/// Every user-visible string this service hands to the OS, already rendered in
+/// the language the app is currently showing.
+///
+/// 🔴 THIS EXISTS BECAUSE THE SERVICE HAS NO `BuildContext` AND MUST NOT GET ONE.
+/// It is a process singleton constructed in `main()` before `runApp`, and its
+/// scheduling methods run from a Riverpod notifier — there is no element tree to
+/// read `AppLocalizations.of(context)` from at either point. The alternative
+/// shapes were measured and rejected:
+///
+///  · a `BuildContext` parameter — would tie a background scheduling seam to a
+///    mounted widget, and `SubscriptionsController.build()` has none;
+///  · `AppLocalizations` itself as the parameter — drags the generated l10n
+///    class (and `flutter_localizations`) into a file that otherwise knows only
+///    about the plugin, and this service is a candidate to move into the chassis.
+///
+/// So the CALLER renders and the service posts. The two closures are closures
+/// rather than strings because their arguments are only known per-notification:
+/// `syncAll` loops over subscriptions itself, and the digest's plural arm is
+/// chosen by a count this object cannot see. They carry the locale's
+/// `DateFormat` with them — the date belongs to the same sentence as the words
+/// around it, so it is formatted where the words are.
+@immutable
+class ReminderCopy {
+  const ReminderCopy({
+    required this.channelName,
+    required this.reminderTitle,
+    required this.reminderBody,
+    required this.digestTitle,
+    required this.digestBody,
+  });
+
+  /// The Android notification CHANNEL name — visible in the OS settings app,
+  /// long after the notification itself is gone.
+  final String channelName;
+
+  final String reminderTitle;
+
+  /// `(name, renewal date) → body`. The caller owns the date format.
+  final String Function(String name, DateTime renewal) reminderBody;
+
+  final String digestTitle;
+
+  /// `(count, formatted total) → body`. PLURAL: [count] picks the arm.
+  final String Function(int count, String formattedTotal) digestBody;
+}
 
 /// On-device renewal reminders — the cross-platform reminder path (iOS, Android,
 /// macOS, Linux, Windows). No server push, so it also covers the desktop targets
@@ -31,7 +78,6 @@ class NotificationService {
   bool _ready = false;
 
   static const String _channelId = 'renewals';
-  static const String _channelName = 'Renewal reminders';
 
   Future<void> init() async {
     if (kIsWeb) return; // plugin has no web implementation
@@ -44,6 +90,17 @@ class NotificationService {
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
       macOS: DarwinInitializationSettings(),
+      // ⚠️ THIS LITERAL IS ALREADY DEAD, AND LOCALIZING IT HERE WOULD CHANGE
+      // NOTHING — which is why `notificationActionOpen` is in the .arb and not
+      // read on this line. `FlutterLocalNotificationsPlugin()` is a process
+      // singleton (its constructor is a `factory` returning a static instance),
+      // and `main.dart` initialises the SHARED adapter immediately after this
+      // one; that adapter's `initialize` passes its own
+      // `LinuxInitializationSettings(defaultActionName: 'Open')`
+      // (packages/notifications/lib/src/local_notification_service_io.dart:266)
+      // and, being last, is the one the plugin keeps. The label a Linux user
+      // reads therefore comes from the chassis, so translating it is a chassis
+      // change — out of scope for this increment, recorded rather than faked.
       linux: LinuxInitializationSettings(defaultActionName: 'Open'),
       // Windows: add WindowsInitializationSettings(appName, appUserModelId, guid)
       // once you have an AppUserModelID; omitted here to stay version-safe.
@@ -102,17 +159,23 @@ class NotificationService {
     return ios ?? macos ?? android ?? true;
   }
 
-  NotificationDetails get _details => const NotificationDetails(
+  /// 👤 `channelDescription` IS STILL ENGLISH, DELIBERATELY. It is the second
+  /// line under the channel name in Android's app-notification settings, so it
+  /// is as user-visible as the name above it — but there is no .arb key for it
+  /// (the P4 baseline minted `renewalChannelName` and no description), and
+  /// minting one is the arb owner's call, not this increment's. Recorded so the
+  /// gap is a decision rather than an oversight.
+  NotificationDetails _detailsFor(ReminderCopy copy) => NotificationDetails(
     android: AndroidNotificationDetails(
       _channelId,
-      _channelName,
+      copy.channelName,
       channelDescription: 'Alerts a couple of days before a charge',
       importance: Importance.high,
       priority: Priority.high,
     ),
-    iOS: DarwinNotificationDetails(),
-    macOS: DarwinNotificationDetails(),
-    linux: LinuxNotificationDetails(),
+    iOS: const DarwinNotificationDetails(),
+    macOS: const DarwinNotificationDetails(),
+    linux: const LinuxNotificationDetails(),
   );
 
   /// Schedules a one-off reminder [daysBefore] the renewal, at 09:00 local.
@@ -120,6 +183,7 @@ class NotificationService {
   /// reminders like this work everywhere.)
   Future<void> scheduleRenewalReminder(
     Subscription sub, {
+    required ReminderCopy copy,
     int daysBefore = 2,
   }) async {
     if (!_ready) return;
@@ -138,10 +202,10 @@ class NotificationService {
 
     await _plugin.zonedSchedule(
       _idFor(sub.id),
-      'Renewal coming up',
-      '${sub.name} renews on ${_pretty(sub.nextRenewal)}.',
+      copy.reminderTitle,
+      copy.reminderBody(sub.name, sub.nextRenewal),
       when,
-      _details,
+      _detailsFor(copy),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
@@ -160,6 +224,7 @@ class NotificationService {
   /// that promises a feature and delivers none is the same defect class as copy
   /// that claims one.
   Future<void> scheduleWeeklyDigest({
+    required ReminderCopy copy,
     required int count,
     required String formattedTotal,
   }) async {
@@ -179,10 +244,10 @@ class NotificationService {
     }
     await _plugin.zonedSchedule(
       _digestId,
-      'Your week in subscriptions',
-      '$count active, $formattedTotal a month.',
+      copy.digestTitle,
+      copy.digestBody(count, formattedTotal),
       when,
-      _details,
+      _detailsFor(copy),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
@@ -206,11 +271,15 @@ class NotificationService {
   }
 
   /// Rebuilds the full reminder set (call after edits, or on app resume).
-  Future<void> syncAll(List<Subscription> subs, {int daysBefore = 2}) async {
+  Future<void> syncAll(
+    List<Subscription> subs, {
+    required ReminderCopy copy,
+    int daysBefore = 2,
+  }) async {
     if (!_ready) return;
     await cancelAll();
     for (final Subscription s in subs) {
-      await scheduleRenewalReminder(s, daysBefore: daysBefore);
+      await scheduleRenewalReminder(s, copy: copy, daysBefore: daysBefore);
     }
   }
 
@@ -221,23 +290,5 @@ class NotificationService {
   int _idFor(String id) {
     final int h = id.hashCode & 0x7fffffff;
     return h == _digestId ? h - 1 : h;
-  }
-
-  String _pretty(DateTime d) {
-    const List<String> m = <String>[
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${m[d.month - 1]} ${d.day}';
   }
 }

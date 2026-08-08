@@ -1,12 +1,99 @@
+import 'package:flutter/foundation.dart' show PlatformDispatcher;
+import 'package:flutter/widgets.dart' show Locale, basicLocaleListResolution;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/format/currency.dart';
 import '../core/format/sub_math.dart';
 import '../data/models/subscription.dart';
+import '../l10n/app_localizations.dart';
 import '../services/notifications/notification_service.dart';
 import 'analytics_funnel.dart';
 import 'providers.dart';
 import 'settings_controller.dart';
+
+/// `DateFormat.MMMd` for [localeName], degrading to the compiled-in `en_US`
+/// rather than throwing.
+///
+/// 🔴 MEASURED, NOT ASSUMED (2026-08-09). `DateFormat.MMMd('en')` throws
+/// `LocaleDataException` on a bare `ProviderContainer` — and so does
+/// `DateFormat.MMMd('ta')`. Only the argument-less form and `'en_US'` work
+/// before something loads the symbol tables, because that one locale is
+/// compiled into intl and every other is data. In the running app
+/// `GlobalMaterialLocalizations.delegate` loads the whole set on its first
+/// `load()` (flutter_localizations/lib/src/utils/date_localizations.dart), and
+/// `MaterialApp` blocks its subtree until the delegates resolve, so any screen
+/// that can read [subscriptionsControllerProvider] is already past that point.
+/// This branch is for the callers that are NOT under a `MaterialApp` — the
+/// container tests that drive the controller directly — where the throw would
+/// land inside a fire-and-forget `_syncReminders` and surface as an unrelated
+/// failure somewhere else entirely.
+///
+/// ⚠️ `DateFormat.localeExists` CANNOT BE THE GUARD: it throws the very
+/// exception it would be checking for (measured — `intl_helpers.dart:73`).
+///
+/// ✅ AND THE `catch` IS NOT DEFENSIVE PADDING — deleting it turns SEVEN tests
+/// red (four in activation_transition_test, three in settings_wiring_test), each
+/// with that exact `LocaleDataException`. Those suites drive this controller
+/// through a bare container on purpose, so the branch has a proven open path.
+DateFormat _monthDay(String localeName) {
+  try {
+    return DateFormat.MMMd(localeName);
+  } on Exception {
+    return DateFormat.MMMd();
+  }
+}
+
+/// The OS-notification copy for [chosen] — `LocaleController`'s persisted
+/// language override, where null means "follow the device".
+///
+/// 🔴 WHY THE COPY IS BUILT HERE AND NOT PASSED IN FROM THE UI. [ReminderCopy]'s
+/// doc explains why the service takes strings; this explains where they come
+/// from. `_syncReminders` has four call sites and only two are user gestures:
+/// `build()` (provider construction) and the `settingsControllerProvider`
+/// listener both run with no widget in the loop, and `AsyncNotifier.build()`
+/// takes no arguments, so there is no signature through which a screen could
+/// hand copy down. Threading it from the UI would leave exactly the two paths
+/// that fire at launch and on a settings change — the ones that actually
+/// schedule — with nothing to render from.
+///
+/// 🔴 AND WHY A PLAIN FUNCTION RATHER THAN A DERIVED `Provider`. The obvious
+/// shape is `Provider((ref) => …ref.watch(localeProvider)…)` read with
+/// `ref.read`. IT SHIPS A STALE FIRST NOTIFICATION, measured 2026-08-09: on the
+/// locale-change edge the listener below fires while the derived provider is
+/// still holding the previous language's copy, so the re-render that switching
+/// language is supposed to cause re-posts the OLD words — one notification per
+/// switch, in the language the user just left, with nothing red anywhere. A
+/// function has no cache to be stale, and `ref.read(localeProvider)` inside a
+/// listener on that same provider is the new value by construction. The regressed
+/// case is pinned by reminder_plan_test's 'switching language re-renders'.
+///
+/// The resolution mirrors `WidgetsApp`'s own, deliberately, so the words in the
+/// notification are the words on the screen: a chosen locale is still passed
+/// through [basicLocaleListResolution] (that is what `WidgetsApp._resolveLocales`
+/// does with a non-null `locale`), and a null one falls back to the platform's
+/// list exactly as `MaterialApp` does. [PlatformDispatcher.instance] is used
+/// rather than `WidgetsBinding.instance.platformDispatcher` because it needs no
+/// binding, so a plain `ProviderContainer` test resolves a locale instead of
+/// asserting.
+ReminderCopy reminderCopyFor(Locale? chosen) {
+  final Locale resolved = basicLocaleListResolution(
+    chosen != null ? <Locale>[chosen] : PlatformDispatcher.instance.locales,
+    AppLocalizations.supportedLocales,
+  );
+  final AppLocalizations l10n = lookupAppLocalizations(resolved);
+  final DateFormat monthDay = _monthDay(l10n.localeName);
+  return ReminderCopy(
+    channelName: l10n.renewalChannelName,
+    reminderTitle: l10n.renewalReminderTitle,
+    reminderBody: (String name, DateTime renewal) =>
+        l10n.renewalReminderBody(name, monthDay.format(renewal)),
+    digestTitle: l10n.weeklyDigestTitle,
+    // A tear-off, not a wrapper: `weeklyDigestBody` IS `(int, String) → String`,
+    // and it is the plural — `count` picks the arm inside the .arb.
+    digestBody: l10n.weeklyDigestBody,
+  );
+}
 
 /// What the reminder wiring should do for a given set of preferences.
 ///
@@ -43,6 +130,18 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     // the "which toggle causes which action" wiring: registered BEFORE the
     // first await, so a settings hydration landing mid-load is never missed.
     ref.listen<SettingsState>(settingsControllerProvider, (_, __) {
+      _syncReminders(state.valueOrNull ?? const <Subscription>[]);
+    });
+
+    // The same trigger edge for the LANGUAGE. Since P4 the reminder text is
+    // rendered from the active locale, so a user who switches language in
+    // settings has notifications already sitting in the OS queue written in the
+    // language they just left — and they would stay that way until the list or
+    // a preference next happened to change. Same defect shape as the line
+    // above, same fix: re-render on the edge. Which toggle causes which action
+    // is untouched — this changes only WHEN a re-sync runs, never what
+    // [ReminderPlan] decides.
+    ref.listen<Locale?>(localeProvider, (_, _) {
       _syncReminders(state.valueOrNull ?? const <Subscription>[]);
     });
 
@@ -118,8 +217,13 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
 
   void _syncReminders(List<Subscription> subs) {
     final SettingsState settings = ref.read(settingsControllerProvider);
-    final NotificationService notifier = ref.read(sublyNotificationServiceProvider);
+    final NotificationService notifier = ref.read(
+      sublyNotificationServiceProvider,
+    );
     final ReminderPlan plan = ReminderPlan.from(settings.prefs);
+    // Rendered here, once, for both scheduling branches — see reminderCopyFor
+    // on why it is rebuilt each sync rather than cached in a provider.
+    final ReminderCopy copy = reminderCopyFor(ref.read(localeProvider));
 
     // Fire-and-forget; NotificationService is a no-op on web.
     //
@@ -129,7 +233,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     // notification silently never fired -- the exact shape of bug this wiring
     // exists to remove.
     if (plan.syncRenewals) {
-      notifier.syncAll(subs);
+      notifier.syncAll(subs, copy: copy);
     } else {
       notifier.cancelAll();
     }
@@ -137,6 +241,7 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     if (plan.weeklyDigest) {
       final Currency currency = ref.read(currencyProvider);
       notifier.scheduleWeeklyDigest(
+        copy: copy,
         count: subs.length,
         formattedTotal: currency.fmt(SubMath.totalMonthly(subs)),
       );
