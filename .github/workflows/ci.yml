@@ -1424,6 +1424,20 @@ jobs:
       - name: The inherited screen set is declared, present and reachable
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-screen-set.mjs
+      # Every surface a user can REACH has a width measurement, and every width
+      # measurement points at a surface a user can reach. Set equality, both
+      # directions, keyed by <file>#<Symbol> rather than by class name — because
+      # responsive_width_test.dart spent its life measuring
+      # features/firstrun/onboarding_screen.dart, the unrouted STAMPED TWIN of
+      # the carousel. Both classes were called OnboardingScreen: the screen with
+      # the width cap had no user, the screen with the user had no width cap, and
+      # a name-keyed check would have called that clean. "The content grew to
+      # fill a 1920 px display" throws no exception and clips no pixel, so an
+      # unmeasured pane is an unpoliced one. The shell chrome and the 404 surface
+      # are PRINTED exclusions with reasons, never silent ones. [pipeline C-13]
+      - name: Every reachable surface has a width measurement, and every measurement a surface
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-responsive-coverage.mjs
       # ── THE CLIENT MONEY RAIL ([pipeline 5]M-6/M-8/M-9/M-10/M-15) ───────────
       # Every limb here replaces an acceptance criterion that COULD NOT FAIL:
       # M-15 was satisfied by six rows of `false` (a rail dead everywhere
