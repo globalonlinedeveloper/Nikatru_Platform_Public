@@ -19,8 +19,18 @@ class SubscriptionDetailScreen extends ConsumerWidget {
   final String id;
 
   static const List<String> _months = <String>[
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   @override
@@ -28,7 +38,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
-            const <Subscription>[];
+        const <Subscription>[];
     Subscription? sub;
     for (final Subscription s in subs) {
       if (s.id == id) {
@@ -63,8 +73,12 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: <Widget>[
-                        _iconButton(Icons.arrow_back, () => context.pop()),
-                        _iconButton(Icons.more_horiz, () {}),
+                        _iconButton(
+                          Icons.arrow_back,
+                          'Back',
+                          () => context.pop(),
+                        ),
+                        _iconButton(Icons.more_horiz, 'More options', () {}),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -75,25 +89,37 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
                         color: const Color.fromRGBO(255, 255, 255, 0.14),
-                        border:
-                            Border.all(color: const Color.fromRGBO(255, 255, 255, 0.2)),
+                        border: Border.all(
+                          color: const Color.fromRGBO(255, 255, 255, 0.2),
+                        ),
                       ),
-                      child: Text(s.glyph,
-                          style: const TextStyle(
-                              fontFamily: 'Space Grotesk',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              color: Colors.white)),
+                      child: Text(
+                        s.glyph,
+                        style: const TextStyle(
+                          fontFamily: 'Space Grotesk',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    Text(s.name,
-                        style: AppText.title.copyWith(fontSize: 30, color: Colors.white)),
-                    Text('${s.category} · ${s.plan}',
-                        style: const TextStyle(
-                            fontFamily: 'Manrope',
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: Color.fromRGBO(255, 255, 255, 0.82))),
+                    Text(
+                      s.name,
+                      style: AppText.title.copyWith(
+                        fontSize: 30,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      '${s.category} · ${s.plan}',
+                      style: const TextStyle(
+                        fontFamily: 'Manrope',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Color.fromRGBO(255, 255, 255, 0.82),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -106,16 +132,22 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                 Row(
                   children: <Widget>[
                     Expanded(
-                      child: _miniCard('PRICE', currency.fmt(s.price),
-                          s.cycle == BillingCycle.yearly ? 'per year' : 'per month'),
+                      child: _miniCard(
+                        'PRICE',
+                        currency.fmt(s.price),
+                        s.cycle == BillingCycle.yearly
+                            ? 'per year'
+                            : 'per month',
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _miniCard(
-                          'NEXT CHARGE',
-                          '${_shortMon(s.nextRenewal.month)} ${s.nextRenewal.day}',
-                          due.label,
-                          valueSub: due.color),
+                        'NEXT CHARGE',
+                        '${_shortMon(s.nextRenewal.month)} ${s.nextRenewal.day}',
+                        due.label,
+                        valueSub: due.color,
+                      ),
                     ),
                   ],
                 ),
@@ -129,15 +161,24 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: <Widget>[
-                          Text('Usage this month',
-                              style: AppText.body
-                                  .copyWith(fontWeight: FontWeight.w700, fontSize: 14)),
-                          Text(s.unused ? 'Rarely used' : 'Active',
-                              style: TextStyle(
-                                  fontFamily: 'Manrope',
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                  color: s.unused ? AppColors.warn : AppColors.positive)),
+                          Text(
+                            'Usage this month',
+                            style: AppText.body.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            s.unused ? 'Rarely used' : 'Active',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: s.unused
+                                  ? AppColors.warn
+                                  : AppColors.positive,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -151,24 +192,35 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Text(s.usageNote, style: AppText.muted.copyWith(fontSize: 12)),
+                      Text(
+                        s.usageNote,
+                        style: AppText.muted.copyWith(fontSize: 12),
+                      ),
                     ],
                   ),
                 ),
                 const Padding(
                   padding: EdgeInsets.fromLTRB(2, 18, 2, 10),
-                  child: Text('Payment history',
-                      style: TextStyle(
-                          fontFamily: 'Space Grotesk',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: AppColors.ink)),
+                  child: Text(
+                    'Payment history',
+                    style: TextStyle(
+                      fontFamily: 'Space Grotesk',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppColors.ink,
+                    ),
+                  ),
                 ),
                 _history(ref, currency, s.id),
                 const SizedBox(height: 20),
                 Row(
                   children: <Widget>[
-                    Expanded(child: SoftButton(label: 'Edit plan', onPressed: () => context.pop())),
+                    Expanded(
+                      child: SoftButton(
+                        label: 'Edit plan',
+                        onPressed: () => context.pop(),
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: SizedBox(
@@ -181,11 +233,16 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.danger,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
-                          child: const Text('Cancel plan',
-                              style: TextStyle(
-                                  fontFamily: 'Manrope', fontWeight: FontWeight.w700)),
+                          child: const Text(
+                            'Cancel plan',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -205,27 +262,39 @@ class SubscriptionDetailScreen extends ConsumerWidget {
       builder: (BuildContext context, AsyncSnapshot<List<PaymentRecord>> snap) {
         final List<PaymentRecord> hist = snap.data ?? const <PaymentRecord>[];
         if (hist.isEmpty) {
-          return Text('No payments yet.', style: AppText.muted.copyWith(fontSize: 12));
+          return Text(
+            'No payments yet.',
+            style: AppText.muted.copyWith(fontSize: 12),
+          );
         }
         return Column(
           children: hist
-              .map((PaymentRecord h) => Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(13)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        Text(
-                            '${_months[h.date.month - 1]} ${h.date.day}, ${h.date.year}',
-                            style: AppText.muted.copyWith(fontSize: 13)),
-                        Text(currency.fmt(h.amount),
-                            style: AppText.fig.copyWith(fontSize: 14)),
-                      ],
-                    ),
-                  ))
+              .map(
+                (PaymentRecord h) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Text(
+                        '${_months[h.date.month - 1]} ${h.date.day}, ${h.date.year}',
+                        style: AppText.muted.copyWith(fontSize: 13),
+                      ),
+                      Text(
+                        currency.fmt(h.amount),
+                        style: AppText.fig.copyWith(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              )
               .toList(),
         );
       },
@@ -242,35 +311,56 @@ class SubscriptionDetailScreen extends ConsumerWidget {
           Text(label, style: AppText.label.copyWith(fontSize: 10)),
           const SizedBox(height: 2),
           Text(value, style: AppText.fig.copyWith(fontSize: 21)),
-          Text(sub,
-              style: TextStyle(
-                  fontFamily: 'Manrope',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: valueSub ?? AppColors.muted)),
+          Text(
+            sub,
+            style: TextStyle(
+              fontFamily: 'Manrope',
+              fontWeight: FontWeight.w700,
+              fontSize: 10,
+              color: valueSub ?? AppColors.muted,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _iconButton(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
+  // 48px + a label: the chassis floor for icon-only controls, and what a
+  // screen reader announces (P2.6b route-walk findings).
+  Widget _iconButton(IconData icon, String semanticLabel, VoidCallback onTap) {
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
             color: const Color.fromRGBO(255, 255, 255, 0.16),
-            borderRadius: BorderRadius.circular(13)),
-        child: Icon(icon, color: Colors.white, size: 19),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, color: Colors.white, size: 19),
+        ),
       ),
     );
   }
 
   String _shortMon(int m) {
     const List<String> s = <String>[
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return s[m - 1];
   }

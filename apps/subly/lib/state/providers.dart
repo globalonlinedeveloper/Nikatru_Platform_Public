@@ -68,7 +68,7 @@ import 'package:nikatru_api_client/nikatru_api_client.dart';
 // app actually constructs — see [authRepositoryProvider]). An unnarrowed import
 // makes that name ambiguous and the file will not compile.
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
-    show AuthCapabilities;
+    show AuthCapabilities, InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 // `show` for the same class of reason: the barrel also exports
@@ -85,7 +85,6 @@ import '../data/api/dio_api_client.dart';
 import '../data/api/seed_api_client.dart';
 import '../data/auth/auth_models.dart';
 import '../data/auth/auth_repository.dart';
-import '../data/auth/mock_auth_repository.dart';
 import '../data/auth/supabase_auth_repository.dart';
 import '../data/subscriptions/subscription_repository.dart';
 import '../services/notifications/notification_service.dart';
@@ -105,11 +104,13 @@ import 'analytics_providers.dart';
 export 'analytics_providers.dart'
     show
         analyticsConsentProvider,
+        analyticsEnabledProvider,
         analyticsProvider,
         applyConsentDecision,
         consentControllerProvider,
         consentDecidedProvider,
         consentTransportProvider,
+        eventTransportProvider,
         installIdProvider,
         kPrivacyPolicyVersion,
         keyValueStoreProvider,
@@ -488,27 +489,6 @@ String analyticsPlatformName() {
 /// property test overrides it to true and drives a real event all the way to a
 /// transport.
 ///
-/// ⚠️ TODAY IT HAS NO CONSUMER IN THIS APP, and that is a known, bounded state
-/// rather than an oversight: `analytics_providers.dart` reads
-/// `AppConfig.isBackendLive` directly (and exposes `backendLiveProvider` for the
-/// same purpose). The two converge when `test/chassis_properties_test.dart` and
-/// the chassis consent surfaces land in P2.6b. Recorded in MANIFEST.md §7 so it
-/// is a scheduled convergence and not a duplicate nobody noticed.
-final Provider<bool> analyticsEnabledProvider = Provider<bool>(
-  (ref) => AppConfig.isBackendLive,
-);
-
-/// Ships event batches. A provider so the property test can watch a real event
-/// arrive rather than assert that a fake returns what it was told to return.
-///
-/// ⚠️ Also unconsumed until P2.6b — `analytics_providers.dart`'s
-/// `analyticsProvider` constructs its `DioEventTransport` inline. Same
-/// convergence item.
-final Provider<core.EventTransport> eventTransportProvider =
-    Provider<core.EventTransport>(
-      (ref) => DioEventTransport(platformBaseUrl: kPlatformBaseUrl),
-    );
-
 // ═════════════════════════════════════════════════════════════════════════════
 // SECTION F · IDENTITY ([pipeline C-15] · [ADR 027])
 // ═════════════════════════════════════════════════════════════════════════════
@@ -542,7 +522,7 @@ final Provider<AuthRepository> authRepositoryProvider =
               requestServerDeletion: () =>
                   requestAccountDeletion(ref.read(platformRestClientProvider)),
             )
-          : MockAuthRepository(),
+          : InMemoryAuthRepository(),
     );
 
 /// The authenticated client for the SHARED platform Worker (`/v1/...`).

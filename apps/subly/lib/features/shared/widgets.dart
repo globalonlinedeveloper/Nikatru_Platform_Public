@@ -8,17 +8,18 @@ import '../../core/theme/app_theme.dart';
 const List<BoxShadow> kCardShadow = <BoxShadow>[
   BoxShadow(color: Color(0x0A141420), blurRadius: 5, offset: Offset(0, 2)),
   BoxShadow(
-      color: Color(0x24141420),
-      blurRadius: 44,
-      spreadRadius: -26,
-      offset: Offset(0, 20)),
+    color: Color(0x24141420),
+    blurRadius: 44,
+    spreadRadius: -26,
+    offset: Offset(0, 20),
+  ),
 ];
 
 BoxDecoration cardDecoration({double radius = 24}) => BoxDecoration(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(radius),
-      boxShadow: kCardShadow,
-    );
+  color: AppColors.surface,
+  borderRadius: BorderRadius.circular(radius),
+  boxShadow: kCardShadow,
+);
 
 /// Rounded gradient-tinted glyph square used for every subscription.
 class GlyphTile extends StatelessWidget {
@@ -126,11 +127,19 @@ class RowCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(title,
-                  style: AppText.body.copyWith(fontWeight: FontWeight.w700, fontSize: 15),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-              if (subtitle != null) ...<Widget>[const SizedBox(height: 2), subtitle!],
+              Text(
+                title,
+                style: AppText.body.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (subtitle != null) ...<Widget>[
+                const SizedBox(height: 2),
+                subtitle!,
+              ],
             ],
           ),
         ),
@@ -139,8 +148,10 @@ class RowCard extends StatelessWidget {
     );
 
     return Container(
-      decoration:
-          BoxDecoration(borderRadius: BorderRadius.circular(18), boxShadow: kCardShadow),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: kCardShadow,
+      ),
       child: Material(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
@@ -167,7 +178,14 @@ class SectionHeader extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Text(title, style: AppText.title.copyWith(fontSize: 17)),
+          Expanded(
+            child: Text(
+              title,
+              style: AppText.title.copyWith(fontSize: 17),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           if (trailing != null) trailing!,
         ],
       ),
@@ -185,17 +203,31 @@ class Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(text,
-          style: TextStyle(
-              fontFamily: 'Manrope', fontWeight: FontWeight.w700, fontSize: 11, color: fg)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontFamily: 'Manrope',
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+          color: fg,
+        ),
+      ),
     );
   }
 }
 
 class GradientButton extends StatelessWidget {
-  const GradientButton(
-      {super.key, required this.label, this.onPressed, this.height = 52, this.fontSize = 15});
+  const GradientButton({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.height = 52,
+    this.fontSize = 15,
+  });
   final String label;
   final VoidCallback? onPressed;
   final double height;
@@ -211,10 +243,11 @@ class GradientButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: const <BoxShadow>[
             BoxShadow(
-                color: Color.fromRGBO(100, 89, 245, 0.5),
-                blurRadius: 24,
-                offset: Offset(0, 12),
-                spreadRadius: -12),
+              color: Color.fromRGBO(100, 89, 245, 0.5),
+              blurRadius: 24,
+              offset: Offset(0, 12),
+              spreadRadius: -12,
+            ),
           ],
         ),
         child: Material(
@@ -223,12 +256,15 @@ class GradientButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             onTap: onPressed,
             child: Center(
-              child: Text(label,
-                  style: TextStyle(
-                      fontFamily: 'Manrope',
-                      fontWeight: FontWeight.w700,
-                      fontSize: fontSize,
-                      color: Colors.white)),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Manrope',
+                  fontWeight: FontWeight.w700,
+                  fontSize: fontSize,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ),
@@ -238,12 +274,13 @@ class GradientButton extends StatelessWidget {
 }
 
 class SoftButton extends StatelessWidget {
-  const SoftButton(
-      {super.key,
-      required this.label,
-      this.onPressed,
-      this.height = 50,
-      this.color = AppColors.ink});
+  const SoftButton({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.height = 50,
+    this.color = AppColors.ink,
+  });
   final String label;
   final VoidCallback? onPressed;
   final double height;
@@ -259,11 +296,18 @@ class SoftButton extends StatelessWidget {
           foregroundColor: color,
           backgroundColor: AppColors.surface,
           side: const BorderSide(color: AppColors.line),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontFamily: 'Manrope', fontWeight: FontWeight.w700, color: color)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Manrope',
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
       ),
     );
   }
@@ -304,16 +348,20 @@ class NikatruWordmark extends StatelessWidget {
 /// (optionally) tappable Privacy · Terms · Refund links to the live site.
 /// Company name + URLs come from [AppConfig] so every portfolio app inherits.
 class PoweredByNikatru extends StatelessWidget {
-  const PoweredByNikatru(
-      {super.key, this.onDark = false, this.showLinks = true});
+  const PoweredByNikatru({
+    super.key,
+    this.onDark = false,
+    this.showLinks = true,
+  });
 
   final bool onDark;
   final bool showLinks;
 
   @override
   Widget build(BuildContext context) {
-    final Color faint =
-        onDark ? const Color.fromRGBO(255, 255, 255, 0.6) : AppColors.muted;
+    final Color faint = onDark
+        ? const Color.fromRGBO(255, 255, 255, 0.6)
+        : AppColors.muted;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -325,8 +373,12 @@ class PoweredByNikatru extends StatelessWidget {
         ),
         if (showLinks) ...<Widget>[
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          // Wrap, not Row (P2.6b route-walk finding): three links and two dots
+          // have no flex, and at narrow widths — or under the wide test font —
+          // a Row overflows where a Wrap folds to a second centred line.
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               _LegalLink('Privacy', AppConfig.privacyUrl, faint),
               _LegalDot(faint),

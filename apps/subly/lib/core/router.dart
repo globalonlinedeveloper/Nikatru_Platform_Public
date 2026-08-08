@@ -47,6 +47,7 @@ import '../features/scan/scan_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../l10n/app_localizations.dart';
+import '../state/money_providers.dart';
 import '../state/providers.dart';
 
 /// The root Navigator's key — public, not an implementation detail, because
@@ -199,7 +200,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             routes: <RouteBase>[
               GoRoute(
                 path: '/insights',
-                builder: (_, __) => const InsightsScreen(),
+                builder: (_, __) => const _GatedInsights(),
               ),
             ],
           ),
@@ -250,5 +251,30 @@ class GoRouterRefreshStream extends ChangeNotifier {
   void dispose() {
     _sub.cancel();
     super.dispose();
+  }
+}
+
+/// The INSIGHTS branch behind the chassis [PaywallGate] — [pipeline 5]M-5's
+/// open path, moved here in P2.6b when VARIANT B took the AppScaffold out of
+/// HomeScreen (the stamped shell gated its Explore tab; Subly's 5-tab nav has
+/// no Explore, and Insights — the savings surface — is the premium-surface
+/// default until Phase 4 decides finally). `paywallLockedProvider` resolves
+/// from the SERVER's entitlement read; with `PaywallConfig(enabled: false)`
+/// (today's default) it locks nothing, so the gate costs Subly nothing while
+/// staying a live, consumed seam rather than the [pipeline C-6] dead shape.
+class _GatedInsights extends ConsumerWidget {
+  const _GatedInsights();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return PaywallGate(
+      locked: ref.watch(paywallLockedProvider),
+      onUpgrade: () => context.go('/paywall'),
+      title: l10n.paywallHeadline,
+      message: l10n.paywallGateMessage,
+      upgradeLabel: l10n.paywallUpgrade,
+      child: const InsightsScreen(),
+    );
   }
 }

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,7 +20,7 @@ class InsightsScreen extends ConsumerWidget {
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
-            const <Subscription>[];
+        const <Subscription>[];
     final double total = SubMath.totalMonthly(subs);
     final List<CategoryTotal> cats = SubMath.categoryTotals(subs);
     final List<Subscription> unused = SubMath.unused(subs);
@@ -32,7 +31,10 @@ class InsightsScreen extends ConsumerWidget {
       children: <Widget>[
         Text('Insights', style: AppText.title.copyWith(fontSize: 26)),
         const SizedBox(height: 4),
-        Text('Where your money goes', style: AppText.muted.copyWith(fontSize: 12)),
+        Text(
+          'Where your money goes',
+          style: AppText.muted.copyWith(fontSize: 12),
+        ),
         const SizedBox(height: 16),
         _categoryCard(currency, cats, total),
         const SizedBox(height: 14),
@@ -51,10 +53,17 @@ class InsightsScreen extends ConsumerWidget {
   // Everything left on this screen is computed from the subscriptions actually
   // held. When real history exists, a trend can come back and be true.
 
-  Widget _categoryCard(Currency currency, List<CategoryTotal> cats, double total) {
+  Widget _categoryCard(
+    Currency currency,
+    List<CategoryTotal> cats,
+    double total,
+  ) {
     final List<MapEntry<double, Color>> segments = <MapEntry<double, Color>>[
       for (int i = 0; i < cats.length; i++)
-        MapEntry<double, Color>(cats[i].value, AppColors.ramp[i % AppColors.ramp.length]),
+        MapEntry<double, Color>(
+          cats[i].value,
+          AppColors.ramp[i % AppColors.ramp.length],
+        ),
     ];
 
     return Container(
@@ -76,9 +85,14 @@ class InsightsScreen extends ConsumerWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
-                        Text(currency.fmt0(total),
-                            style: AppText.fig.copyWith(fontSize: 18)),
-                        Text('/ mo', style: AppText.muted.copyWith(fontSize: 9)),
+                        Text(
+                          currency.fmt0(total),
+                          style: AppText.fig.copyWith(fontSize: 18),
+                        ),
+                        Text(
+                          '/ mo',
+                          style: AppText.muted.copyWith(fontSize: 9),
+                        ),
                       ],
                     ),
                   ),
@@ -97,18 +111,28 @@ class InsightsScreen extends ConsumerWidget {
                               width: 10,
                               height: 10,
                               decoration: BoxDecoration(
-                                  color: AppColors.ramp[i % AppColors.ramp.length],
-                                  borderRadius: BorderRadius.circular(3)),
+                                color:
+                                    AppColors.ramp[i % AppColors.ramp.length],
+                                borderRadius: BorderRadius.circular(3),
+                              ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(cats[i].name,
-                                  style: AppText.body.copyWith(
-                                      fontWeight: FontWeight.w700, fontSize: 12)),
+                              child: Text(
+                                cats[i].name,
+                                style: AppText.body.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
-                            Text(currency.fmt0(cats[i].value),
-                                style: AppText.fig
-                                    .copyWith(fontSize: 12, color: AppColors.muted)),
+                            Text(
+                              currency.fmt0(cats[i].value),
+                              style: AppText.fig.copyWith(
+                                fontSize: 12,
+                                color: AppColors.muted,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -122,8 +146,12 @@ class InsightsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _savingsCard(BuildContext context, Currency currency,
-      List<Subscription> unused, double savings) {
+  Widget _savingsCard(
+    BuildContext context,
+    Currency currency,
+    List<Subscription> unused,
+    double savings,
+  ) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: cardDecoration(),
@@ -132,10 +160,22 @@ class InsightsScreen extends ConsumerWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Text('Savings opportunities', style: AppText.title.copyWith(fontSize: 16)),
+              // Expanded + ellipsis (P2.6b route-walk finding): an intrinsic
+              // title beside an intrinsic pill overflows narrow cards.
+              Expanded(
+                child: Text(
+                  'Savings opportunities',
+                  style: AppText.title.copyWith(fontSize: 16),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               const SizedBox(width: 8),
-              Pill('${currency.fmt(savings)}/mo',
-                  bg: const Color.fromRGBO(16, 185, 129, 0.12), fg: AppColors.positive),
+              Pill(
+                '${currency.fmt(savings)}/mo',
+                bg: const Color.fromRGBO(16, 185, 129, 0.12),
+                fg: AppColors.positive,
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -145,8 +185,9 @@ class InsightsScreen extends ConsumerWidget {
               child: Container(
                 padding: const EdgeInsets.all(11),
                 decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.line),
-                    borderRadius: BorderRadius.circular(15)),
+                  border: Border.all(color: AppColors.line),
+                  borderRadius: BorderRadius.circular(15),
+                ),
                 child: Row(
                   children: <Widget>[
                     GlyphTile(glyph: s.glyph, size: 40, fontSize: 11),
@@ -155,15 +196,22 @@ class InsightsScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text(s.name,
-                              style: AppText.body
-                                  .copyWith(fontWeight: FontWeight.w700, fontSize: 14)),
-                          Text(s.usageNote,
-                              style: const TextStyle(
-                                  fontFamily: 'Manrope',
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                  color: AppColors.warn)),
+                          Text(
+                            s.name,
+                            style: AppText.body.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            s.usageNote,
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                              color: AppColors.warn,
+                            ),
+                          ),
                         ],
                       ),
                     ),

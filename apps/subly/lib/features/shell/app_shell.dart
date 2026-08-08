@@ -4,7 +4,6 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
-import '../../core/theme/app_colors.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/widgets.dart';
 
@@ -88,26 +87,31 @@ class AppShell extends StatelessWidget {
       ),
       floatingActionButton: Material(
         color: Colors.transparent,
-        child: InkWell(
-          key: E2EKeys.fabAdd,
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => showAddSubscriptionSheet(context),
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              gradient: AppColors.brandGradient,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: const <BoxShadow>[
-                BoxShadow(
-                  color: Color.fromRGBO(100, 89, 245, 0.6),
-                  blurRadius: 24,
-                  offset: Offset(0, 12),
-                  spreadRadius: -8,
-                ),
-              ],
+        // Tooltip is what a screen reader announces for this icon-only FAB —
+        // the same mechanism IconButton uses internally.
+        child: Tooltip(
+          message: 'Add subscription',
+          child: InkWell(
+            key: E2EKeys.fabAdd,
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => showAddSubscriptionSheet(context),
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                gradient: AppColors.brandGradient,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(
+                    color: Color.fromRGBO(100, 89, 245, 0.6),
+                    blurRadius: 24,
+                    offset: Offset(0, 12),
+                    spreadRadius: -8,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 28),
             ),
-            child: const Icon(Icons.add, color: Colors.white, size: 28),
           ),
         ),
       ),
@@ -167,6 +171,8 @@ class AppShell extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontFamily: 'Manrope',
                   fontWeight: FontWeight.w700,

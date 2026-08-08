@@ -18,7 +18,7 @@ class NotificationsScreen extends ConsumerWidget {
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
-            const <Subscription>[];
+        const <Subscription>[];
     final double savings = SubMath.savings(subs);
 
     // 2026-07-27 - this list was FIVE HARDCODED entries naming real brands and
@@ -33,17 +33,18 @@ class NotificationsScreen extends ConsumerWidget {
     // shown at all.
     final DateTime now = DateTime.now();
 
-    final List<Subscription> dueSoon = subs
-        .where((Subscription x) {
+    final List<Subscription> dueSoon =
+        subs.where((Subscription x) {
           final int d = x.daysUntil(now);
           return d >= 0 && d <= 7;
-        })
-        .toList()
-      ..sort((Subscription a, Subscription b) =>
-          a.daysUntil(now).compareTo(b.daysUntil(now)));
+        }).toList()..sort(
+          (Subscription a, Subscription b) =>
+              a.daysUntil(now).compareTo(b.daysUntil(now)),
+        );
 
-    final List<Subscription> flaggedUnused =
-        subs.where((Subscription x) => x.unused).toList();
+    final List<Subscription> flaggedUnused = subs
+        .where((Subscription x) => x.unused)
+        .toList();
 
     final List<_Notif> items = <_Notif>[
       for (final Subscription x in dueSoon)
@@ -54,7 +55,7 @@ class NotificationsScreen extends ConsumerWidget {
           x.daysUntil(now) == 0
               ? '${x.name} renews today'
               : '${x.name} renews in ${x.daysUntil(now)} '
-                  '${x.daysUntil(now) == 1 ? "day" : "days"}',
+                    '${x.daysUntil(now) == 1 ? "day" : "days"}',
           '${currency.fmt(x.price)} on '
               '${x.nextRenewal.day}/${x.nextRenewal.month}/${x.nextRenewal.year}',
           '',
@@ -82,18 +83,30 @@ class NotificationsScreen extends ConsumerWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: <Widget>[
-                  Text('Notifications', style: AppText.title.copyWith(fontSize: 22)),
-                  GestureDetector(
-                    onTap: () => context.pop(),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
+                  Text(
+                    'Notifications',
+                    style: AppText.title.copyWith(fontSize: 22),
+                  ),
+                  Semantics(
+                    button: true,
+                    label: 'Close',
+                    child: GestureDetector(
+                      onTap: () => context.pop(),
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
                           color: AppColors.surface,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.line)),
-                      child: const Icon(Icons.close, size: 18, color: AppColors.ink),
+                          border: Border.all(color: AppColors.line),
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          size: 18,
+                          color: AppColors.ink,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -116,7 +129,8 @@ class NotificationsScreen extends ConsumerWidget {
                       padding: const EdgeInsets.all(18),
                       itemCount: items.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (BuildContext context, int i) => _card(items[i]),
+                      itemBuilder: (BuildContext context, int i) =>
+                          _card(items[i]),
                     ),
             ),
           ],
@@ -129,7 +143,9 @@ class NotificationsScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: AppColors.surface, borderRadius: BorderRadius.circular(18)),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -137,7 +153,10 @@ class NotificationsScreen extends ConsumerWidget {
             width: 40,
             height: 40,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: n.bg, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: n.bg,
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Icon(n.icon, color: n.color, size: 18),
           ),
           const SizedBox(width: 12),
@@ -145,13 +164,23 @@ class NotificationsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(n.title,
-                    style: AppText.body.copyWith(fontWeight: FontWeight.w800, fontSize: 14)),
+                Text(
+                  n.title,
+                  style: AppText.body.copyWith(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(n.body,
-                    style: AppText.muted.copyWith(fontSize: 13, height: 1.45)),
+                Text(
+                  n.body,
+                  style: AppText.muted.copyWith(fontSize: 13, height: 1.45),
+                ),
                 const SizedBox(height: 6),
-                Text(n.time.toUpperCase(), style: AppText.label.copyWith(fontSize: 10)),
+                Text(
+                  n.time.toUpperCase(),
+                  style: AppText.label.copyWith(fontSize: 10),
+                ),
               ],
             ),
           ),
@@ -162,7 +191,14 @@ class NotificationsScreen extends ConsumerWidget {
 }
 
 class _Notif {
-  const _Notif(this.icon, this.color, this.bg, this.title, this.body, this.time);
+  const _Notif(
+    this.icon,
+    this.color,
+    this.bg,
+    this.title,
+    this.body,
+    this.time,
+  );
   final IconData icon;
   final Color color;
   final Color bg;
