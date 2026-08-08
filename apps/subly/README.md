@@ -43,7 +43,7 @@ lib/
 │   ├── config/app_config.dart        per-app identity + --dart-define config (no secrets)
 │   ├── theme/                        colors + text styles from the design
 │   ├── format/                       Currency (with demo FX) + SubMath derivations
-│   └── router/app_router.dart        go_router: onboarding→login→scan→shell + overlays
+│   └── router.dart                   go_router: onboarding→login→scan→shell + overlays (moved P2.5, [ADR 037])
 ├── data/
 │   ├── auth/                         AuthRepository (abstract) · Supabase · Mock
 │   ├── api/                          ApiClient (abstract) · Dio (live) · Seed (demo)

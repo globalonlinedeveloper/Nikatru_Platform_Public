@@ -259,7 +259,7 @@ class SettingsScreen extends ConsumerWidget {
         // only thing that can own it correctly.
         //
         // This used to `await signOut()` and then `context.go('/onboarding')`,
-        // which raced `app_router.dart`'s own redirect. gotrue notifies its
+        // which raced the router's own redirect. gotrue notifies its
         // subscribers of `signedOut` BEFORE awaiting `POST /logout`, so the auth
         // stream fires first and the router sends /settings → /login; the
         // awaited continuation then resumed and pushed /onboarding on top. And

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:subly/core/router/app_router.dart';
+import 'package:subly/core/router.dart';
 import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/onboarding/onboarding_screen.dart';
 import 'package:subly/state/analytics_providers.dart';
@@ -19,7 +19,7 @@ import 'package:subly/state/providers.dart';
 /// if (context.mounted) context.go('/onboarding');
 /// ```
 ///
-/// while `app_router.dart` independently redirects a signed-out user off
+/// while `core/router.dart` independently redirects a signed-out user off
 /// `/settings` to `/login`. Two navigations, one tap. Which one won depended on
 /// whether the awaited continuation resumed before or after the router's
 /// refresh — and `/onboarding` is inside the router's `authFlow` allowlist, so
@@ -155,7 +155,7 @@ void main() {
         find.byType(LoginScreen),
         findsOneWidget,
         reason:
-            'a signed-out user belongs on /login — app_router redirects them '
+            'a signed-out user belongs on /login — the router redirects them '
             'there from any route outside authFlow',
       );
       expect(
