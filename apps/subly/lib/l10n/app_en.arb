@@ -1248,5 +1248,98 @@
   "notificationActionOpen": "Open",
   "@notificationActionOpen": {
     "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
+  },
+
+  "a11yCategoryDonut": "Spending by category. {total} a month in total. {breakdown}",
+  "@a11yCategoryDonut": {
+    "description": "Consumed by insights_screen.dart. The Semantics label of the category donut. A CustomPaint announces NOTHING on its own — it is pixels — so without this key the one figure that matters on the insights screen is inaudible. {breakdown} is a11yCategoryShare joined per category, from the SAME list the painter is handed, so the sentence cannot drift from the chart.",
+    "placeholders": {
+      "total": {
+        "type": "String",
+        "example": "₹2,340"
+      },
+      "breakdown": {
+        "type": "String",
+        "example": "Entertainment ₹960, Work ₹720"
+      }
+    }
+  },
+  "a11yCategoryShare": "{name} {amount}",
+  "@a11yCategoryShare": {
+    "description": "Consumed by insights_screen.dart. ONE category inside a11yCategoryDonut's {breakdown}. Its own key rather than an interpolation because a language may need a particle or a different order between the name and the figure.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Entertainment"
+      },
+      "amount": {
+        "type": "String",
+        "example": "₹960"
+      }
+    }
+  },
+  "a11yBudgetRing": "Budget used. {spent} of {budget}, {percent}.",
+  "@a11yBudgetRing": {
+    "description": "Consumed by budget_screen.dart. The Semantics label of the budget progress arc (a CustomPaint, so silent on its own). The UNDER-budget arm — see a11yBudgetRingOver for the other.",
+    "placeholders": {
+      "spent": {
+        "type": "String",
+        "example": "₹1,800"
+      },
+      "budget": {
+        "type": "String",
+        "example": "₹2,500"
+      },
+      "percent": {
+        "type": "String",
+        "example": "72%"
+      }
+    }
+  },
+  "a11yBudgetRingOver": "Over budget. {spent} of {budget}, {percent}.",
+  "@a11yBudgetRingOver": {
+    "description": "Consumed by budget_screen.dart. The OVER-budget arm of a11yBudgetRing. A WHOLE SECOND SENTENCE and not a fragment prepended to the first: the two differ by a clause a translator must be free to place, and the percent is clamped at 100% in this arm so the figures carry the overspend, not the ring.",
+    "placeholders": {
+      "spent": {
+        "type": "String",
+        "example": "₹2,900"
+      },
+      "budget": {
+        "type": "String",
+        "example": "₹2,500"
+      },
+      "percent": {
+        "type": "String",
+        "example": "100%"
+      }
+    }
+  },
+  "a11yScanRing": "Scan progress {percent}.",
+  "@a11yScanRing": {
+    "description": "Consumed by scan_screen.dart. The Semantics label of the scan progress ring (a CustomPaint). The visible centre figure is an interpolated '45%' — pixels either way — so this is the only thing a screen reader can hear while the scan runs.",
+    "placeholders": {
+      "percent": {
+        "type": "String",
+        "example": "45%"
+      }
+    }
+  },
+  "a11yAccountSettings": "Account and settings",
+  "@a11yAccountSettings": {
+    "description": "Consumed by home_screen.dart. The home header's avatar control. Its only visible content is the account INITIAL — a single letter, which a screen reader would otherwise read as the whole button — so the letter is excluded and this replaces it."
+  },
+  "a11yPageIndicator": "Page {current} of {total}",
+  "@a11yPageIndicator": {
+    "description": "Consumed by onboarding/onboarding_screen.dart. The carousel's dot row carries the reader's position ENTIRELY in pixel width (24 px active, 7 px inactive) and announces nothing. This is that position as a sentence.",
+    "placeholders": {
+      "current": {
+        "type": "int",
+        "example": "2"
+      },
+      "total": {
+        "type": "int",
+        "example": "3"
+      }
+    }
   }
 }

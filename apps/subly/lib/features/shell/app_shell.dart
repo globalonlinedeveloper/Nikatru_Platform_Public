@@ -124,32 +124,49 @@ class AppShell extends StatelessWidget {
       ),
       floatingActionButton: Material(
         color: Colors.transparent,
-        // Tooltip is what a screen reader announces for this icon-only FAB —
-        // the same mechanism IconButton uses internally. It REUSES the sheet's
-        // own title key: the control and the surface it opens must not be able
-        // to drift into two different words for one action.
-        child: Tooltip(
-          message: l10n.addSubscriptionTitle,
-          child: InkWell(
-            key: E2EKeys.fabAdd,
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => showAddSubscriptionSheet(context),
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: AppColors.brandGradient,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(
-                    color: Color.fromRGBO(100, 89, 245, 0.6),
-                    blurRadius: 24,
-                    offset: Offset(0, 12),
-                    spreadRadius: -8,
-                  ),
-                ],
+        // 🔴 THE TOOLTIP WAS DOING TWO JOBS AND ONLY HALF OF ONE OF THEM. It
+        // still earns its place as the DESKTOP HOVER affordance — three of the
+        // six targets are pointer-first, and a 56 px glyph with no hover text is
+        // a guess there. What it was ALSO being asked to do was be this
+        // control's screen-reader identity, and a tooltip is a weak substitute:
+        // it lands in the `tooltip` slot rather than `label`, and it carries no
+        // `isButton` flag at all, so the app's most prominent action announced
+        // as an unlabelled tappable region with a hint attached.
+        //
+        // So the two jobs are now split, and neither is lost:
+        //   · `excludeFromSemantics: true` keeps the tooltip VISUAL only;
+        //   · `Semantics(button:, label:)` gives the real node — one node, with
+        //     the flag a reader needs to say "button".
+        // The key is unchanged and still REUSED from the sheet's own title: the
+        // control and the surface it opens must not be able to drift into two
+        // different words for one action.
+        child: Semantics(
+          button: true,
+          label: l10n.addSubscriptionTitle,
+          child: Tooltip(
+            message: l10n.addSubscriptionTitle,
+            excludeFromSemantics: true,
+            child: InkWell(
+              key: E2EKeys.fabAdd,
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => showAddSubscriptionSheet(context),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: AppColors.brandGradient,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: Color.fromRGBO(100, 89, 245, 0.6),
+                      blurRadius: 24,
+                      offset: Offset(0, 12),
+                      spreadRadius: -8,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 28),
             ),
           ),
         ),
@@ -234,38 +251,60 @@ class AppShell extends StatelessWidget {
         : (theme.brightness == Brightness.light
               ? AppColors.muted
               : theme.colorScheme.onSurfaceVariant);
+    // 🔴 THE CHASSIS ALREADY SOLVES THIS AT EVERY OTHER WIDTH, AND CANNOT HERE.
+    // `AppScaffold` is handed the `destinations:` list above, and in the medium,
+    // large and extra-large classes it renders that list through Material's own
+    // `NavigationRail` / `NavigationDrawer`, which supply the label, the
+    // selected state and the tab role themselves — nothing in this file should
+    // duplicate that, and nothing does. But COMPACT is exactly the class Subly
+    // overrides, through the `compactNavigationBar` seam: the stock
+    // `NavigationBar` is never built, this hand-rolled pill is, and the
+    // destination semantics go with the widget that was replaced. So on a phone
+    // — the one window class where this bar is the ONLY navigation — five tabs
+    // announced as text with no role and, worse, no indication of WHICH ONE YOU
+    // ARE ON. `selected:` is the half that carries that.
+    //
+    // No `label:`: the tab's own `Text` is right there and `MergeSemantics`
+    // folds it in, so restating it in Dart would announce the name twice and
+    // give the arb key a second, drift-prone consumer.
     return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(15),
-        onTap: () => navigationShell.goBranch(
-          index,
-          initialLocation: index == navigationShell.currentIndex,
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
+      child: MergeSemantics(
+        child: Semantics(
+          button: true,
+          selected: selected,
+          child: InkWell(
             borderRadius: BorderRadius.circular(15),
-            color: selected
-                ? const Color.fromRGBO(100, 89, 245, 0.1)
-                : Colors.transparent,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(icon, color: color, size: 22),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Manrope',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 9,
-                  color: color,
-                ),
+            onTap: () => navigationShell.goBranch(
+              index,
+              initialLocation: index == navigationShell.currentIndex,
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(15),
+                color: selected
+                    ? const Color.fromRGBO(100, 89, 245, 0.1)
+                    : Colors.transparent,
               ),
-            ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(icon, color: color, size: 22),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 9,
+                      color: color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

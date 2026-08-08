@@ -299,22 +299,43 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       },
                     ),
                   ),
-                  Row(
-                    children: List<Widget>.generate(_slideCount, (int i) {
-                      final bool active = i == _page;
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.only(right: 6),
-                        width: active ? 24 : 7,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
-                          color: active
-                              ? Colors.white
-                              : const Color.fromRGBO(255, 255, 255, 0.3),
-                        ),
-                      );
-                    }),
+                  // 🔴 THE DOTS ENCODE POSITION IN PIXEL WIDTH AND NOTHING ELSE.
+                  // Three `AnimatedContainer`s — 24 px wide when active, 7 when
+                  // not — with no text anywhere: the semantics tree for this row
+                  // is EMPTY, so a reader on a swipeable carousel is given no
+                  // way to know it is on slide 2 of 3, or that there are three.
+                  // The `PageView` above is swipeable but is not announced as
+                  // paged either, so this row is the only place the position can
+                  // come from.
+                  //
+                  // One `Semantics` over the ROW, not one per dot: the fact is
+                  // "2 of 3", which is a property of the group. Three labelled
+                  // dots would be three stops saying almost the same thing.
+                  Semantics(
+                    // `container: true` for the reason the calendar header and
+                    // the insights donut record: a label-only annotation with
+                    // no conflicting sibling is ABSORBED upward, which here
+                    // would glue "Page 2 of 3" onto the slide copy above it
+                    // instead of being a position you can go and check.
+                    container: true,
+                    label: l10n.a11yPageIndicator(_page + 1, _slideCount),
+                    child: Row(
+                      children: List<Widget>.generate(_slideCount, (int i) {
+                        final bool active = i == _page;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.only(right: 6),
+                          width: active ? 24 : 7,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: active
+                                ? Colors.white
+                                : const Color.fromRGBO(255, 255, 255, 0.3),
+                          ),
+                        );
+                      }),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   Row(

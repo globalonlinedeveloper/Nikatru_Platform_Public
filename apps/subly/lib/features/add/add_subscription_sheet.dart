@@ -244,45 +244,59 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
                   // Renamed from `p` when the palette took that name — the two
                   // are one letter apart and both are read inside this builder.
                   final List<String> service = DemoData.popular[i];
-                  return GestureDetector(
-                    onTap: () => _name.text = service[0],
-                    child: Column(
-                      children: <Widget>[
-                        Expanded(
-                          child: Container(
-                            width: double.infinity,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(13),
-                              gradient: const LinearGradient(
-                                colors: <Color>[
-                                  Color.fromRGBO(100, 89, 245, 0.13),
-                                  Color.fromRGBO(155, 107, 255, 0.13),
-                                ],
+                  // `service[1]` is the abbreviation ("NF"), `service[0]` the
+                  // name ("Netflix"), and they are stacked one above the other —
+                  // so unmerged this tile announced "NF" then "Netflix" as two
+                  // separate stops, and neither of them as a control. Merged and
+                  // with the mark excluded, it is one node: "Netflix, button".
+                  // The same decorative rule [GlyphTile] records, applied to the
+                  // hand-rolled twin of it that this grid draws.
+                  return MergeSemantics(
+                    child: Semantics(
+                      button: true,
+                      child: GestureDetector(
+                        onTap: () => _name.text = service[0],
+                        child: Column(
+                          children: <Widget>[
+                            Expanded(
+                              child: ExcludeSemantics(
+                                child: Container(
+                                  width: double.infinity,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(13),
+                                    gradient: const LinearGradient(
+                                      colors: <Color>[
+                                        Color.fromRGBO(100, 89, 245, 0.13),
+                                        Color.fromRGBO(155, 107, 255, 0.13),
+                                      ],
+                                    ),
+                                  ),
+                                  child: Text(
+                                    service[1],
+                                    style: TextStyle(
+                                      fontFamily: 'Space Grotesk',
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: p.accent,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                            child: Text(
-                              service[1],
-                              style: TextStyle(
-                                fontFamily: 'Space Grotesk',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                                color: p.accent,
+                            const SizedBox(height: 5),
+                            Text(
+                              service[0],
+                              style: AppText.muted.copyWith(
+                                fontSize: 10,
+                                color: p.muted,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
+                          ],
                         ),
-                        const SizedBox(height: 5),
-                        Text(
-                          service[0],
-                          style: AppText.muted.copyWith(
-                            fontSize: 10,
-                            color: p.muted,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                      ),
                     ),
                   );
                 },
@@ -372,30 +386,40 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
   Widget _cycleBtn(String label, BillingCycle cycle) {
     final bool sel = _cycle == cycle;
     final _SheetPalette p = _SheetPalette.of(context);
+    // Monthly / Yearly is a two-way choice whose ONLY indication of which arm is
+    // active is the gradient fill — the same colour-only state the settings
+    // currency chips carried, one screen over. `selected:` is the whole fix; the
+    // label is the button's own `Text` and is not restated.
     return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _cycle = cycle),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            // 🔴 THE SELECTED BRANCH IS BRIGHTNESS-INDEPENDENT ON PURPOSE. It is
-            // the brand gradient, and white on that gradient is the same
-            // decision in both themes — the gradient IS the background, so it
-            // does not inherit one. Every white in this file that survives dark
-            // survives for that reason and no other.
-            gradient: sel ? AppColors.brandGradient : null,
-            color: sel ? null : p.raised,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: sel ? Colors.transparent : p.line),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Manrope',
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: sel ? Colors.white : p.ink,
+      child: MergeSemantics(
+        child: Semantics(
+          button: true,
+          selected: sel,
+          child: GestureDetector(
+            onTap: () => setState(() => _cycle = cycle),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                // 🔴 THE SELECTED BRANCH IS BRIGHTNESS-INDEPENDENT ON PURPOSE.
+                // It is the brand gradient, and white on that gradient is the
+                // same decision in both themes — the gradient IS the background,
+                // so it does not inherit one. Every white in this file that
+                // survives dark survives for that reason and no other.
+                gradient: sel ? AppColors.brandGradient : null,
+                color: sel ? null : p.raised,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: sel ? Colors.transparent : p.line),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Manrope',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: sel ? Colors.white : p.ink,
+                ),
+              ),
             ),
           ),
         ),

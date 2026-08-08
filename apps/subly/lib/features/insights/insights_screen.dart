@@ -165,27 +165,79 @@ class InsightsScreen extends ConsumerWidget {
               SizedBox(
                 width: 126,
                 height: 126,
-                child: CustomPaint(
-                  painter: DonutPainter(segments: segments),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        Text(
-                          currency.fmt0(total),
-                          style: AppText.fig.copyWith(
-                            fontSize: 18,
-                            color: neutral.ink,
+                // 🔴 A `CustomPaint` IS PIXELS. It contributes NOTHING to the
+                // semantics tree — no label, no value, no role — so the chart
+                // that is the whole point of this screen was, to a screen
+                // reader, a 126×126 hole with a bare currency figure floating in
+                // the middle of it. The `Center` child below is real text, so
+                // "₹2,340" and "/mo" were audible, but nothing said what they
+                // were the total OF, and the SHAPE — which categories, in what
+                // proportion — existed only as arcs.
+                //
+                // 🔴 THE LABEL IS BUILT FROM `cats` AND `total`, WHICH IS THE
+                // SAME DATA `DonutPainter` IS HANDED. `segments` is derived from
+                // `cats` two statements up, so the sentence and the arcs cannot
+                // disagree: a category that stops being painted stops being
+                // announced in the same edit. Reading the figures back out of
+                // the widget tree, or restating them from a second query, is how
+                // a chart description drifts from its chart.
+                //
+                // ⚠️ `excludeSemantics: true` IS DELIBERATE AND IT IS NOT A LOSS.
+                // The centre's two `Text`s say `{total}` and "/mo", and
+                // `a11yCategoryDonut` already opens with `{total} a month in
+                // total` — keeping both would announce the same figure twice,
+                // once as a fragment. The legend to the RIGHT of the donut is
+                // outside this subtree and is untouched, so a reader who wants
+                // the per-category rows one at a time still has them.
+                //
+                // ⚠️ The join is `', '` and NOT an arb key, matching the rule
+                // this file group already records for `' / '` in
+                // `budget_screen.dart`: it separates two formatted values, both
+                // of which are themselves localized (`a11yCategoryShare` carries
+                // the name/figure order, `Currency` carries the figure). A key
+                // for a comma asks a translator for punctuation, not language.
+                //
+                // 🔴 `container: true` IS LOAD-BEARING AND WAS MEASURED, not
+                // assumed. Without it this annotation has no conflicting
+                // sibling, so Flutter's fragment compiler ABSORBS it upward:
+                // the whole card became ONE node reading "By category ·
+                // <this sentence> · Fitness · $255 · Creative · $60 · …" — the
+                // description and the legend it summarises glued into a single
+                // stop, the chart no longer a thing you can land on, and the
+                // figures said twice. `container: true` makes the chart its own
+                // element, which is what it is.
+                child: Semantics(
+                  container: true,
+                  label: l10n.a11yCategoryDonut(
+                    currency.fmt0(total),
+                    <String>[
+                      for (final CategoryTotal c in cats)
+                        l10n.a11yCategoryShare(c.name, currency.fmt0(c.value)),
+                    ].join(', '),
+                  ),
+                  excludeSemantics: true,
+                  child: CustomPaint(
+                    painter: DonutPainter(segments: segments),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Text(
+                            currency.fmt0(total),
+                            style: AppText.fig.copyWith(
+                              fontSize: 18,
+                              color: neutral.ink,
+                            ),
                           ),
-                        ),
-                        Text(
-                          l10n.perMonthShort,
-                          style: AppText.muted.copyWith(
-                            fontSize: 9,
-                            color: neutral.muted,
+                          Text(
+                            l10n.perMonthShort,
+                            style: AppText.muted.copyWith(
+                              fontSize: 9,
+                              color: neutral.muted,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
