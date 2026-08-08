@@ -18,6 +18,9 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 ///
 /// It is NOT a security boundary and never validates a password: it is the
 /// demo/test identity, exactly as `NoOpAnalytics` is the demo/test rail.
+///
+/// ⚠️ ONE MEMBER DELIBERATELY REFUSES: [deleteAccount]. That is not the
+/// fail-closed shape above — it is [ADR 027]. Read its doc before "fixing" it.
 class InMemoryAuthRepository implements core.AuthRepository {
   InMemoryAuthRepository({this.sessionLifetime = const Duration(hours: 1)});
 
@@ -32,8 +35,10 @@ class InMemoryAuthRepository implements core.AuthRepository {
   core.AuthSession? _session;
   int _issued = 0;
 
-  /// Set when [deleteAccount] succeeds, so a test can assert the request really
-  /// happened rather than assert the absence of a crash.
+  /// Set when [deleteAccount] REACHES the seam — before it refuses — so a test
+  /// can assert the request really happened rather than assert the absence of a
+  /// crash. It records arrival, never success: see [deleteAccount], which always
+  /// throws here ([ADR 027]).
   bool deletionRequested = false;
 
   @override
@@ -122,11 +127,38 @@ class InMemoryAuthRepository implements core.AuthRepository {
     return updated;
   }
 
+  /// 🔴 IT REFUSES, AND THAT REFUSAL IS THE HONEST ANSWER — [ADR 027].
+  ///
+  /// Every other member of this class is a REAL implementation, because the
+  /// alternative to a working demo identity is the dead fail-closed seam
+  /// [pipeline C-6] exists to catch. Deletion is the one member where the
+  /// opposite is true, and the reason is that there is nothing here to delete.
+  ///
+  /// Returning normally makes the Delete-account control render
+  /// [core.AccountDeletionOutcome.deleted]'s sentence — "Your account has been
+  /// deleted. Signing in with the same email and password will not work any
+  /// more." In demo mode that is FALSE twice over: no server account was ever
+  /// created, and [signInWithEmail] here accepts ANY non-empty credentials, so
+  /// the user types the same pair and is signed straight back in. Every
+  /// non-web artifact `build-platforms.yml` produces runs on this repository,
+  /// because none of those builds passes the identity `--dart-define`s.
+  ///
+  /// **Only a real 2xx from `DELETE /v1/account` may ever produce `deleted`.**
+  ///
+  /// [deletionRequested] is set BEFORE the throw, so a test proving the button
+  /// is wired to the seam still sees the request arrive — the dead-button shape
+  /// and the lying-button shape are different defects and both are asserted.
+  /// `notConfigured` is the outcome the server itself returns (501) when it
+  /// cannot remove the identity record, and its message is already exact for
+  /// this case: nothing was deleted, and the user was signed out of this device.
   @override
   Future<void> deleteAccount() async {
     if (_user == null) throw core.AuthFailure('Not signed in');
     deletionRequested = true;
     await signOut();
+    throw core.AccountDeletionFailure(
+      core.AccountDeletionOutcome.notConfigured,
+    );
   }
 
   /// Release the broadcast controller. Call from a test's tearDown.

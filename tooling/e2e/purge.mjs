@@ -2,6 +2,20 @@
 // by the throwaway user (all four tables), then deletes the Supabase auth user.
 // Runs even when the test fails (workflow `if: always()`). Node 20 fetch only.
 //
+// ⚠️ IT IS RUN ONCE PER THROWAWAY USER, AND ONE OF THEM IS ALREADY GONE.
+// Since [pipeline N-6 leg 6] the nightly provisions a SECOND user whose account
+// the app itself deletes from inside the running build, so this teardown's
+// normal outcome for that id is "0 row(s)" on every table and HTTP 404 from the
+// identity delete. Both are already the success path below — the D1 DELETEs are
+// unconditional and report `changes: 0`, and 404 has always been forgiven — so
+// nothing here needed loosening to become idempotent; it already was, and the
+// 404 branch now SAYS which case it is rather than passing in silence.
+//
+// It still has to run for that user: the deletion happens at the END of the
+// suite, and a run that fails before it (or fails the deletion itself) leaves a
+// live account and its rows in production. A teardown that assumed the app had
+// already cleaned up would strand exactly the users a red night creates.
+//
 // Env: E2E_USER_ID, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN,
 //      SUBLY_D1_DATABASE_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // NOTE: CLOUDFLARE_API_TOKEN must have D1 WRITE access for this account.
@@ -36,7 +50,11 @@ const del = await fetch(`${supaUrl}/auth/v1/admin/users/${userId}`, {
   method: 'DELETE',
   headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
 });
-console.log(`auth user delete: HTTP ${del.status}`);
+console.log(
+  del.status === 404
+    ? 'auth user delete: HTTP 404 — the identity was already gone (expected when the suite deleted this account from inside the app)'
+    : `auth user delete: HTTP ${del.status}`,
+);
 if (!del.ok && del.status !== 404) {
   failures++;
   console.error(`WARN: user delete returned ${del.status}\n${await del.text()}`);
