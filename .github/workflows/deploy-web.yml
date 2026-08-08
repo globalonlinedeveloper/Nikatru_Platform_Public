@@ -357,7 +357,7 @@ jobs:
         run: |
           set -uo pipefail
           ver="$(node -p "require('./tooling/versions.json').wrangler")"
-          out="$(npx --yes "wrangler@${ver}" pages project create "$APP" --production-branch=main 2>&1)"; code=$?
+          out="$(npx --yes "wrangler@${ver}" pages project create "$APP" --production-branch=main 2>&1)" && code=0 || code=$?
           printf '%s\n' "$out"
           if [ "$code" -eq 0 ]; then echo "Created Direct Upload Pages project \"$APP\"."; exit 0; fi
           if printf '%s' "$out" | grep -qiE 'already exists|8000007'; then echo "Pages project \"$APP\" already exists — nothing to create."; exit 0; fi

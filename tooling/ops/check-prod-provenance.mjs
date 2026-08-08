@@ -293,8 +293,49 @@ async function main() {
   if (lines.size === 0) throw new CouldNotLook('no apps/*/pubspec.yaml declares a version, so no release line is known');
   if (runs.length === 0) throw new CouldNotLook('no successful run of any served release lane was found, so the released-build set is EMPTY');
 
+  // ── attested manual deploys — tooling/ops/manual-deploys.json ─────────────
+  // A deploy that shipped outside its lane is attributable ONLY through this
+  // register, and an entry is accepted ONLY after two independent records
+  // confirm it: the sha must be a real commit on this repository (GitHub API),
+  // and a GitHub Deployment written by record-deployment.mjs must exist for
+  // that sha + environment. Accepted entries PRINT on every run; an invalid
+  // entry lands in `violations` — a bad attestation is worse than an
+  // unattributed row. Born 2026-08-08: run numbers are never reissued, so a
+  // manual restore that reuses a FAILED run's number is version-monotonic but
+  // provenance-orphaned, and deleting real production rows to appease this
+  // checker was the alternative nobody should ever take.
+  const attested = [];
+  const attViolations = [];
+  {
+    const regPath = join(ROOT, 'tooling/ops/manual-deploys.json');
+    if (existsSync(regPath)) {
+      const reg = JSON.parse(readFileSync(regPath, 'utf8'));
+      const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+      const ghRepo = process.env.GITHUB_REPOSITORY || gitRemoteRepo();
+      for (const d of reg.deploys ?? []) {
+        const m = String(d.version ?? '').match(/^(\d+)\.(\d+)\.(\d+)\+([0-9a-fA-F]{7,40})$/);
+        if (!m) { attViolations.push(`manual-deploys.json: \`${d.version}\` is not a shipped-build shape`); continue; }
+        if (!String(d.sha ?? '').toLowerCase().startsWith(m[4].toLowerCase())) {
+          attViolations.push(`manual-deploys.json: \`${d.version}\` build metadata does not match its own sha field`); continue;
+        }
+        const gh = (path) => fetch(`https://api.github.com/repos/${ghRepo}${path}`, {
+          headers: { Authorization: `Bearer ${ghToken}`, 'User-Agent': 'check-prod-provenance' },
+        });
+        const commit = await gh(`/commits/${d.sha}`);
+        if (commit.status !== 200) { attViolations.push(`manual-deploys.json: sha ${String(d.sha).slice(0, 7)} is not a commit on ${ghRepo} (HTTP ${commit.status})`); continue; }
+        const depRes = await gh(`/deployments?environment=${encodeURIComponent(d.environment)}&sha=${d.sha}`);
+        const deps = depRes.status === 200 ? await depRes.json() : [];
+        if (!Array.isArray(deps) || deps.length === 0) {
+          attViolations.push(`manual-deploys.json: no GitHub Deployment exists for ${d.environment} @ ${String(d.sha).slice(0, 7)} — record-deployment.mjs never ran, so this attestation has no second witness`); continue;
+        }
+        attested.push({ run_number: Number(m[3]), head_sha: String(d.sha).toLowerCase() });
+        console.log(`⬜  attested manual deploy accepted: ${d.version} (${d.environment}, ${d.deployedAt}) — commit and GitHub Deployment both verified`);
+      }
+    }
+  }
+
   const resolverFns = {
-    'released-build': makeReleasedBuildResolver(lines, runs),
+    'released-build': makeReleasedBuildResolver(lines, [...runs, ...attested]),
     'live-environment': (v) =>
       v === 'live' ? null : v == null ? 'no environment at all — the rail could not attribute this row to a money world' : `environment is \`${v}\`, not \`live\``,
     'cron-job': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `job \`${v}\` is declared by no \`export const <NAME>_JOB\` in services/platform/src`))(cronJobNames()),
@@ -306,7 +347,7 @@ async function main() {
   const fixture = rowsFile ? JSON.parse(readFileSync(rowsFile, 'utf8')) : null;
 
   const census = [];
-  const violations = [];
+  const violations = [...attViolations];
   for (const name of [...tables.keys()].sort()) {
     const rule = rules[name];
     const marker = rule.marker;
