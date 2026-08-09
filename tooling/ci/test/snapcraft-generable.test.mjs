@@ -40,7 +40,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling', 'ci', 'assert-snapcraft-generable.mjs');
@@ -106,6 +106,11 @@ const LISTING = {
   'short-description.txt': 'Track every subscription in one place\n',
   'long-description.txt': 'Subly keeps every subscription in one list.\n\nIt does the arithmetic and the remembering.\n',
   'license.txt': 'proprietary\n',
+  // `category.txt` joined this fixture on 2026-08-09, when the generator began
+  // emitting the snap's own launcher entry: `deriveDesktopEntry` maps the STORE
+  // category to a freedesktop one, so a tree without it can no longer produce a
+  // recipe. Its absence is covered as a refusal further down.
+  'category.txt': 'Productivity\n',
 };
 
 /**
@@ -127,6 +132,9 @@ function tree({
   runner = 'ubuntu-24.04',
   extraInstallStep = false,
   buildsLinux = true,
+  // Per-file listing overrides. The licence cases need a tree whose
+  // `license.txt` is a real SPDX identifier, which the default fixture is not.
+  listing = {},
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -162,7 +170,7 @@ function tree({
     for (const [rel, body] of Object.entries(LISTING)) {
       if (omitListing.includes(rel)) continue;
       const name = rel === 'snap-name.txt' && renameSnapName ? 'snapname.txt' : rel;
-      write(`apps/subly/store/linux-snap/${name}`, emptyListing.includes(rel) ? '   \n' : body);
+      write(`apps/subly/store/linux-snap/${name}`, emptyListing.includes(rel) ? '   \n' : (listing[rel] ?? body));
     }
   } else {
     // The app directory still exists — otherwise the guard would be complaining
@@ -173,12 +181,29 @@ function tree({
 }
 
 /** A stand-in for the built Linux bundle: a directory, a file named BINARY_NAME,
- *  and the desktop entry CMake installs under share/. */
-function bundle(binary = 'subly', applicationId = 'com.nikatru.subly', { omitBinary = false } = {}) {
+ *  the desktop entry CMake installs under share/, and — since 2026-08-09 — the
+ *  hicolor icon it installs beside it.
+ *
+ *  🔴 THE ICON IS HERE BECAUSE ITS ABSENCE WAS THE UNTESTED PATH. Until the first
+ *  real pack (run 31294305898) every fixture bundle carried no icon, so every
+ *  test graded the NO-ICON branch while the lane ran the other one — and the
+ *  other one is where `Icon '<application-id>' … not found in prime directory`
+ *  lives. `withIcon: false` still builds the iconless bundle, on purpose: both
+ *  branches are real and both are now exercised. */
+function bundle(
+  binary = 'subly',
+  applicationId = 'com.nikatru.subly',
+  { omitBinary = false, withIcon = true, iconSize = 512, iconBytes = 'stand-in for the primed icon\n' } = {},
+) {
   const dir = join(TMP, `b${seq++}`);
   mkdirSync(join(dir, 'share', 'applications'), { recursive: true });
   if (!omitBinary) writeFileSync(join(dir, binary), 'stand-in\n');
   writeFileSync(join(dir, 'share', 'applications', `${applicationId}.desktop`), '[Desktop Entry]\nType=Application\n');
+  if (withIcon) {
+    const iconDir = join(dir, 'share', 'icons', 'hicolor', `${iconSize}x${iconSize}`, 'apps');
+    mkdirSync(iconDir, { recursive: true });
+    writeFileSync(join(iconDir, `${applicationId}.png`), iconBytes);
+  }
   return dir;
 }
 
@@ -645,6 +670,220 @@ describe('assert-snapcraft-generable — `source:` resolves from the PROJECT dir
     assert.equal(g.code, 0, g.out);
     assert.match(g.out, /is not at \.\.\.\/snap\/snapcraft\.yaml/);
     assert.match(g.out, /stated gap, not a pass/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TWO THINGS THE FIRST REAL PACK REJECTED (run 31294305898, 2026-08-09).
+//
+// 🔴 EVERY CHECK IN THIS FILE PASSED OVER THE RECIPE SNAPCRAFT REFUSED, because
+// each one compared the recipe to THIS TREE and none knew a rule of the snap
+// FORMAT. That is the lesson these two suites encode: a derivation being correct
+// is not the same as its output being acceptable to the thing that consumes it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the licence: SPDX-valid, or no key at all', () => {
+  test('a NON-SPDX listing value produces NO `license:` key, and the recipe says why', () => {
+    const g = generate(tree(), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    const yaml = readFileSync(g.recipe, 'utf8');
+    assert.doesNotMatch(yaml, /^license:/m, 'the key snapcraft refused must not be emitted at all');
+    assert.match(yaml, /# NO `license:` KEY, DELIBERATELY/);
+    assert.match(g.out, /no `license:` key/);
+  });
+
+  test('an SPDX listing value IS emitted verbatim — the rule narrows, it does not silence', () => {
+    const g = generate(tree({ listing: { 'license.txt': 'MIT\n' } }), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    assert.match(readFileSync(g.recipe, 'utf8'), /^license: "MIT"$/m);
+  });
+
+  test('the decision is case-insensitive: "Proprietary" is no more SPDX than "proprietary"', () => {
+    const g = generate(tree({ listing: { 'license.txt': 'Proprietary\n' } }), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    assert.doesNotMatch(readFileSync(g.recipe, 'utf8'), /^license:/m);
+  });
+
+  // 🔴 NEGATIVE, THE WAY THE PACK FAILED: the key put back.
+  test('the guard FAILS an emitted recipe that carries the licence snapcraft rejects', () => {
+    const root = tree();
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subly']).code, 0);
+    writeFileSync(gen.recipe, readFileSync(gen.recipe, 'utf8').replace(/^# NO `license:` KEY.*$/m, 'license: "proprietary"'));
+    const g = guard(root, ['--emitted', gen.recipe, '--app', 'subly']);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`license` is present as "proprietary"/);
+    assert.match(g.out, /cannot validate license/);
+  });
+
+  // …and the OTHER direction, which is the one a "just drop it always" fix would
+  // have broken silently: a licence that COULD have been declared, omitted.
+  test('the guard FAILS an emitted recipe that drops an SPDX licence it could have carried', () => {
+    const root = tree({ listing: { 'license.txt': 'MIT\n' } });
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subly']).code, 0);
+    writeFileSync(gen.recipe, readFileSync(gen.recipe, 'utf8').replace(/^license: "MIT"$/m, '# licence quietly dropped'));
+    const g = guard(root, ['--emitted', gen.recipe, '--app', 'subly']);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`license` is ABSENT/);
+  });
+
+  test('NON_SPDX_LICENCES is not empty, and every entry carries a reason', async () => {
+    const { NON_SPDX_LICENCES, licenceForRecipe } = await import(pathToFileURL(GENERATOR).href);
+    assert.ok(NON_SPDX_LICENCES.size > 0, 'an empty map makes every listing value emittable and this rule inert');
+    for (const [k, why] of NON_SPDX_LICENCES) {
+      assert.equal(k, k.toLowerCase(), 'keys are lowercased because the lookup lowercases');
+      assert.ok(typeof why === 'string' && why.length > 40, `${k} has no written reason`);
+    }
+    assert.equal(licenceForRecipe('proprietary').license, null);
+    assert.equal(licenceForRecipe('  PROPRIETARY  ').license, null);
+    assert.equal(licenceForRecipe('Apache-2.0').license, 'Apache-2.0');
+  });
+});
+
+describe('the launcher: snap/gui, an absolute Icon, and no `desktop:` key', () => {
+  test('the generator writes the launcher pair beside the recipe', () => {
+    const g = generate(tree(), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    const desktop = join(g.out_dir, 'snap', 'gui', 'subly.desktop');
+    const icon = join(g.out_dir, 'snap', 'gui', 'subly.png');
+    assert.ok(existsSync(desktop), g.out);
+    assert.ok(existsSync(icon), g.out);
+    const text = readFileSync(desktop, 'utf8');
+    // The absolute installed path, which is what snapcraft could not derive from
+    // a bare theme name. `${SNAP}` is snapd's own variable, not a template slot.
+    assert.match(text, /^Icon=\$\{SNAP\}\/meta\/gui\/subly\.png$/m);
+    assert.match(text, /^Exec=subly$/m, 'inside a snap the command is the snap name, not a path');
+    // …and the fields that must NOT be re-invented come from the maintained entry.
+    assert.match(text, /^Name=Subly$/m);
+    assert.match(text, /^Comment=Track every subscription in one place$/m);
+    assert.match(text, /^Categories=Office;$/m);
+  });
+
+  // The launcher's text is derived, so the files it is derived FROM are now
+  // load-bearing for the recipe. `category.txt` was not read by this generator at
+  // all before 2026-08-09; a tree without it must refuse rather than crash.
+  test('REFUSES, without crashing, when the category the launcher needs is missing', () => {
+    const g = generate(tree({ omitListing: ['category.txt'] }), ['--bundle', bundle()]);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /category\.txt does not exist/);
+  });
+
+  test('REFUSES a store category with no freedesktop equivalent rather than passing it through', () => {
+    const g = generate(tree({ listing: { 'category.txt': 'Nonexistent\n' } }), ['--bundle', bundle()]);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /has no freedesktop equivalent recorded/);
+  });
+
+  test('the recipe carries NO `apps.<name>.desktop` — that key is what snapcraft refused', () => {
+    const g = generate(tree(), ['--bundle', bundle()]);
+    assert.equal(g.code, 0, g.out);
+    assert.doesNotMatch(readFileSync(g.recipe, 'utf8'), /^\s+desktop:/m);
+  });
+
+  test('a bundle with NO primed icon drops the Icon line rather than dangling it', () => {
+    const g = generate(tree(), ['--bundle', bundle('subly', 'com.nikatru.subly', { withIcon: false })]);
+    assert.equal(g.code, 0, g.out);
+    const text = readFileSync(join(g.out_dir, 'snap', 'gui', 'subly.desktop'), 'utf8');
+    assert.doesNotMatch(text, /^Icon=/m, 'a path to a file that will not exist is worse than no line');
+    assert.ok(!existsSync(join(g.out_dir, 'snap', 'gui', 'subly.png')));
+    assert.match(g.out, /primed no hicolor icon/);
+    assert.match(g.out, /NO ICON/);
+  });
+
+  test('the LARGEST primed size wins — meta/gui carries exactly one file', () => {
+    const b = bundle('subly', 'com.nikatru.subly', { withIcon: true, iconSize: 512, iconBytes: 'five-twelve\n' });
+    // a smaller one alongside it, which must NOT be the one chosen
+    mkdirSync(join(b, 'share', 'icons', 'hicolor', '64x64', 'apps'), { recursive: true });
+    writeFileSync(join(b, 'share', 'icons', 'hicolor', '64x64', 'apps', 'com.nikatru.subly.png'), 'sixty-four\n');
+    const g = generate(tree(), ['--bundle', b]);
+    assert.equal(g.code, 0, g.out);
+    assert.equal(readFileSync(join(g.out_dir, 'snap', 'gui', 'subly.png'), 'utf8'), 'five-twelve\n');
+  });
+
+  test('a smaller size is used when the largest was not primed', () => {
+    const b = bundle('subly', 'com.nikatru.subly', { iconSize: 128, iconBytes: 'one-two-eight\n' });
+    const g = generate(tree(), ['--bundle', b]);
+    assert.equal(g.code, 0, g.out);
+    assert.equal(readFileSync(join(g.out_dir, 'snap', 'gui', 'subly.png'), 'utf8'), 'one-two-eight\n');
+  });
+
+  // ── the guard's side, every limb with a failing input ─────────────────────
+  const mutated = (mutate, listingOverrides = {}) => {
+    const root = tree(listingOverrides);
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(gen.code, 0, gen.out);
+    assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subly']).code, 0, 'green before the mutation');
+    mutate(gen);
+    return guard(root, ['--emitted', gen.recipe, '--app', 'subly']);
+  };
+
+  test('FAILS when `apps.<name>.desktop` is put back', () => {
+    const g = mutated((gen) =>
+      writeFileSync(
+        gen.recipe,
+        readFileSync(gen.recipe, 'utf8').replace(/^ {4}# The launcher lives in.*$/m, '    desktop: share/applications/com.nikatru.subly.desktop'),
+      ),
+    );
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`apps\.subly\.desktop` is present/);
+    assert.match(g.out, /not found in prime directory/);
+  });
+
+  test('FAILS when the launcher entry is missing from snap/gui', () => {
+    const g = mutated((gen) => rmSync(join(gen.out_dir, 'snap', 'gui', 'subly.desktop'), { force: true }));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /snap\/gui\/subly\.desktop does not exist beside the recipe/);
+  });
+
+  test('FAILS when the Icon line is a bare theme name — the exact shape snapcraft refused', () => {
+    const g = mutated((gen) => {
+      const p = join(gen.out_dir, 'snap', 'gui', 'subly.desktop');
+      writeFileSync(p, readFileSync(p, 'utf8').replace(/^Icon=.*$/m, 'Icon=com.nikatru.subly'));
+    });
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /it has to be exactly/);
+  });
+
+  test('FAILS when the Icon line points at a PNG that is not there', () => {
+    const g = mutated((gen) => rmSync(join(gen.out_dir, 'snap', 'gui', 'subly.png'), { force: true }));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /snap\/gui\/subly\.png does not exist/);
+  });
+
+  test('FAILS on a ZERO-BYTE icon, which satisfies "the file exists"', () => {
+    const g = mutated((gen) => writeFileSync(join(gen.out_dir, 'snap', 'gui', 'subly.png'), ''));
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /is ZERO bytes/);
+  });
+
+  test('FAILS when Exec is the freedesktop answer rather than the snap command', () => {
+    const g = mutated((gen) => {
+      const p = join(gen.out_dir, 'snap', 'gui', 'subly.desktop');
+      writeFileSync(p, readFileSync(p, 'utf8').replace(/^Exec=.*$/m, 'Exec=/usr/bin/subly'));
+    });
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /inside a snap the command is the one snapd/);
+  });
+
+  // The OTHER direction of the one fact: an icon shipped that nothing points at.
+  test('FAILS when an icon is primed and the entry carries no Icon line', () => {
+    const g = mutated((gen) => {
+      const p = join(gen.out_dir, 'snap', 'gui', 'subly.desktop');
+      writeFileSync(p, readFileSync(p, 'utf8').replace(/^Icon=.*\n/m, ''));
+    });
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /carries no `Icon=` line/);
   });
 });
 

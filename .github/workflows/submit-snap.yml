@@ -192,6 +192,13 @@ jobs:
       # and both are silent everywhere else: a wrong base produces a snap that
       # installs and misbehaves, and a `source` off by one `..` is still relative,
       # still free of host paths, and still points at nothing.
+      #
+      # ✅ AND, SINCE THE FIRST DISPATCH, THE TWO RULES OF THE SNAP FORMAT ITSELF
+      # that no amount of comparing the recipe to this tree could ever have caught:
+      # the licence is an SPDX expression snapd accepts or the key is absent, and
+      # the launcher resolves inside the snap. Each carries the exact string
+      # snapcraft failed with, so the next reader does not have to spend a runner
+      # to find out what these limbs are for.
       - name: The generated recipe is complete, still derived, and packable here
         run: >
           node tooling/ci/assert-snapcraft-generable.mjs
@@ -206,13 +213,23 @@ jobs:
       # permissions to install packages, snaps and repositories — which is exactly
       # what `stage-packages` makes it do.
       #
-      # ⬜ WHAT THIS STEP PROVES CAN ONLY BE PROVEN BY RUNNING IT, and two things
-      # here are unexercised until it does. `plugin: dump` is given a `source:`
-      # that points OUTSIDE the project directory (the bundle is in the workspace,
-      # the project is in $RUNNER_TEMP) — legal as far as anything read says, and
-      # never run. And `stage-packages` is resolved by snapcraft's own apt handling
-      # in destructive mode rather than by the step above. Both fail loudly if they
-      # fail at all; neither is something a Windows box or a fixture can answer.
+      # ✅ THE FIRST DISPATCH (run 31294305898, 2026-08-09) PROVED THE MECHANISM,
+      # and this note records it rather than leaving the claim aspirational. It
+      # reached snapcraft's own validation, which means: the Flutter build, the
+      # recipe generation, `--destructive-mode` on this runner, `plugin: dump`
+      # ingesting a `source:` that points OUTSIDE the project directory, and
+      # `stage-packages` resolving under snapcraft's own apt handling ALL WORK.
+      #
+      # 🔴 WHAT IT REJECTED WAS THE RECIPE'S CONTENT, in two ways no check in this
+      # repository could have seen, because every check compared the recipe to THE
+      # TREE and none knew a rule of the snap FORMAT:
+      #   · `cannot validate license "proprietary": unknown license: proprietary`
+      #   · `Icon 'com.nikatru.subly' … not found in prime directory`
+      # Both are fixed at their source in tooling/release/generate-snapcraft.mjs
+      # (the `license:` key is omitted, and the launcher moved to `snap/gui/` with
+      # an absolute `${SNAP}/meta/gui/…` icon path), and BOTH ARE NOW ASSERTED by
+      # the step above — with the failing input recorded, so re-introducing either
+      # reddens before a runner is spent rather than after a full Linux build.
       #
       # 🔴 THE OUTPUT NAME IS SNAPCRAFT'S, AND THE PATH THIS REPO COLLECTS IT AT IS
       # OURS. snapcraft writes `<name>_<version>_<arch>.snap`; submit-snap.mjs
