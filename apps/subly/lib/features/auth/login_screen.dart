@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -473,6 +474,7 @@ class _AccountDeletionNotice extends ConsumerWidget {
     final core.AccountDeletionOutcome? outcome = ref.watch(
       lastAccountDeletionOutcomeProvider,
     );
+    final String? detail = ref.watch(lastAccountDeletionDetailProvider);
     if (outcome == null) return const SizedBox.shrink();
     return Container(
       key: E2EKeys.accountDeletionNotice,
@@ -512,12 +514,33 @@ class _AccountDeletionNotice extends ConsumerWidget {
               style: AppText.muted.copyWith(fontSize: 13, color: t.muted),
             ),
           ],
+          // 🔴 WHY IT FAILED, IN A DEBUG BUILD ONLY — never localised, never
+          // shown to a user, and never in a release artifact (`kDebugMode` is a
+          // const, so the tree-shaker removes this whole branch).
+          //
+          // `flutter drive` builds DEBUG, so this is the surface the E2E can
+          // read. Without it the suite could only print the outcome SENTENCE,
+          // and "we cannot tell how much of it was removed" is the same sentence
+          // for a 404, a 500, and a client-side throw that never sent a request
+          // — which is exactly how the 2026-08-09 delete leg stayed unexplained
+          // across three sessions. [ADR 027]
+          if (kDebugMode && detail != null) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              'debug: $detail',
+              key: E2EKeys.accountDeletionNoticeDetail,
+              style: AppText.muted.copyWith(fontSize: 11, color: t.muted),
+            ),
+          ],
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () =>
-                  ref.read(lastAccountDeletionOutcomeProvider.notifier).state =
-                      null,
+              onPressed: () {
+                ref.read(lastAccountDeletionOutcomeProvider.notifier).state =
+                    null;
+                ref.read(lastAccountDeletionDetailProvider.notifier).state =
+                    null;
+              },
               child: Text(l10n.dismiss),
             ),
           ),

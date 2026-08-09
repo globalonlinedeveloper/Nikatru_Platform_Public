@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 // `show` only: this package also exports a `SupabaseAuthRepository`, and so
 // does Subly's own data layer — an unnarrowed import makes that name ambiguous.
+import 'package:nikatru_api_client/nikatru_api_client.dart' show RestClient;
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -184,6 +185,65 @@ class _OnboardingSeen extends OnboardingSeenController {
 }
 
 void main() {
+  // ───────────────────────────────────────────────────────────────────────────
+  test('🔴 THE ERASURE CLOSURE CAN READ ITS CLIENT — the cycle that made Delete '
+      'account send NOTHING', () {
+    // WHAT THIS CAUGHT, MEASURED 2026-08-09. `platformRestClientProvider` used
+    // to `ref.watch(authRepositoryProvider)` for its token, while
+    // `authRepositoryProvider`'s erasure closure does `ref.read(
+    // platformRestClientProvider)`. That is a cycle in the provider GRAPH, and
+    // `ref.read` runs `_debugAssertCanDependOn` on every call — so the read
+    // threw `CircularDependencyError` before dio was ever asked for anything.
+    // `deleteAccount` caught it, could not recognise it as an `AuthFailure`,
+    // and rebuilt it as `AccountDeletionOutcome.unknown` — "we cannot tell how
+    // much of it was removed" — with the cause dropped. Cloudflare's zone
+    // analytics recorded ZERO `/v1/account` requests for the whole live delete
+    // leg, not even a CORS preflight. Three sessions looked for a malformed
+    // request; there was no request.
+    //
+    // ⚠️ IT IS AN ASSERT, SO IT IS DEBUG-ONLY: release builds strip the check
+    // and work. Tests, `flutter run`, and the whole `flutter drive` E2E do not
+    // — which is why the only automated proof of erasure could never go green.
+    //
+    // ⚠️ WHY AN OVERRIDE. The live erasure closure only exists on the
+    // `isBackendLive` branch, and a `flutter test` takes no `--dart-define`s, so
+    // the shipping closure cannot be reached from here. What CAN be reproduced
+    // exactly is the thing Riverpod actually checks: an element whose ORIGIN is
+    // `authRepositoryProvider` reading `platformRestClientProvider` after both
+    // exist. An override keeps the origin, so the cycle check sees the same two
+    // providers in the same direction as the live build.
+    late final RestClient Function() readAsTheErasureClosureDoes;
+    final ProviderContainer c = ProviderContainer(
+      overrides: <Override>[
+        authRepositoryProvider.overrideWith((Ref<core.AuthRepository> ref) {
+          readAsTheErasureClosureDoes = () =>
+              ref.read(platformRestClientProvider);
+          return _FakeAuth();
+        }),
+      ],
+    );
+    addTearDown(c.dispose);
+    c.read(authRepositoryProvider); // built, exactly as the app builds it
+
+    expect(
+      readAsTheErasureClosureDoes,
+      returnsNormally,
+      reason:
+          'the erasure closure could not resolve the platform REST client. If '
+          'this is a CircularDependencyError, some provider the auth repository '
+          'READS is WATCHING the auth repository — take the token through '
+          '`authTokenProvider` (which only reads it) instead',
+    );
+    expect(
+      identical(
+        readAsTheErasureClosureDoes(),
+        c.read(platformRestClientProvider),
+      ),
+      isTrue,
+      reason: 'it must resolve the app`s own client, not a second one',
+    );
+  });
+
   testWidgets(
     '🔴 THE OUTCOME SURVIVES THE SIGN-OUT REDIRECT — driven through the REAL router',
     (WidgetTester tester) async {
@@ -250,6 +310,21 @@ void main() {
             .widget<Text>(find.byKey(const Key('accountDeletionNoticeText')))
             .data!,
         contains('sign-in was NOT'),
+      );
+
+      // 🔴 AND THE CAUSE IS ON SCREEN FOR A DEVELOPER, IN A DEBUG BUILD. The
+      // sentence above is outcome-shaped by design, so `unknown` reads the same
+      // for a 404, a 500 and a client throw that sent no request at all — the
+      // hole the 2026-08-09 delete leg fell into. `kDebugMode` is true here and
+      // in `flutter drive`, and false in every store artifact.
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('accountDeletionNoticeDetail')))
+            .data!,
+        contains('502'),
+        reason:
+            'the status that produced this outcome must survive to somewhere a '
+            'failing run can print it — see AccountDeletionFailure.detail',
       );
 
       // …and it does not haunt a later sign-out.

@@ -71,6 +71,18 @@ enum AccountDeletionOutcome {
 
   /// The outcome a given HTTP [statusCode] means. `0` is the [RestClient]
   /// convention for "no response", not a real status.
+  ///
+  /// ⬜ 404 IS DELIBERATELY NOT MODELLED, decided 2026-08-09 rather than left
+  /// open. The case for modelling it is that a route which is not there cannot
+  /// have deleted anything, so [nothingDeleted] would be knowable. It is not:
+  /// that value's sentence says "the server refused the request", and a 404 does
+  /// not say WHO answered — an edge, a proxy, a cached redirect and the Worker's
+  /// own `notFound` are indistinguishable from here. Claiming the server refused
+  /// when the request may never have reached it is the same class of guess this
+  /// enum exists to refuse. The second reason is diagnostic: a 404 means the
+  /// CLIENT is pointed somewhere the route is not, and [unknown]'s sentence is
+  /// the one that makes somebody look. Give it a confident "nothing was
+  /// deleted" and a broken path reads as ordinary server behaviour.
   static AccountDeletionOutcome forStatus(int statusCode) {
     if (statusCode >= 200 && statusCode < 300) {
       return AccountDeletionOutcome.deleted;
@@ -136,12 +148,12 @@ enum AccountDeletionOutcome {
 /// `AuthFailure` changes — but a caller that wants to say what really happened
 /// can ask for [outcome] instead of parsing a sentence.
 class AccountDeletionFailure extends AuthFailure {
-  AccountDeletionFailure(this.outcome, {String? message})
+  AccountDeletionFailure(this.outcome, {String? message, this.detail})
       : super(message ?? outcome.plainMessage);
 
   /// Build the failure a given HTTP [statusCode] deserves. Throwing on a 2xx is
   /// refused loudly rather than quietly producing a "failure" that means success.
-  factory AccountDeletionFailure.forStatus(int statusCode) {
+  factory AccountDeletionFailure.forStatus(int statusCode, {String? detail}) {
     final AccountDeletionOutcome outcome =
         AccountDeletionOutcome.forStatus(statusCode);
     assert(
@@ -150,13 +162,34 @@ class AccountDeletionFailure extends AuthFailure {
       'constructing a failure from it would report a deletion that worked as '
       'one that did not.',
     );
-    return AccountDeletionFailure(outcome);
+    return AccountDeletionFailure(
+      outcome,
+      detail: detail ?? 'HTTP $statusCode',
+    );
   }
 
   final AccountDeletionOutcome outcome;
 
+  /// 🔴 WHAT ACTUALLY WENT WRONG, FOR A DEVELOPER — never for a user, and never
+  /// rendered by a screen. [message] is the sentence the person reads and it is
+  /// deliberately outcome-shaped; this is the status, the error body, or the
+  /// exception that produced that outcome.
+  ///
+  /// It exists because [AccountDeletionOutcome.unknown] is a BUCKET, and a
+  /// bucket with no label costs a session every time something lands in it. On
+  /// 2026-08-09 the live delete leg reported "we cannot tell how much of it was
+  /// removed" across three sessions (E2E run 31295025009): the cause was a Riverpod
+  /// `CircularDependencyError` thrown before any request was formed, and the
+  /// object carrying it was rebuilt as a plain outcome with the cause dropped on
+  /// the floor. Two others chased an HTTP status that never existed. The next
+  /// unmodelled status, or the next non-HTTP throw, names itself here in one
+  /// run instead.
+  final String? detail;
+
   @override
-  String toString() => 'AccountDeletionFailure(${outcome.name}): $message';
+  String toString() => detail == null
+      ? 'AccountDeletionFailure(${outcome.name}): $message'
+      : 'AccountDeletionFailure(${outcome.name}) [$detail]: $message';
 }
 
 /// The outcome to SHOW for an error thrown out of `AuthRepository.deleteAccount`.

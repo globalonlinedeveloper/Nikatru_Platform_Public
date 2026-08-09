@@ -18,9 +18,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
     Future<void> Function()? requestServerDeletion,
     DateTime Function()? clock,
     this.refreshSkew = const Duration(seconds: 30),
-  }) : _injected = client,
-       _requestServerDeletion = requestServerDeletion,
-       _now = clock ?? (() => DateTime.now().toUtc());
+  })  : _injected = client,
+        _requestServerDeletion = requestServerDeletion,
+        _now = clock ?? (() => DateTime.now().toUtc());
 
   final sb.GoTrueClient? _injected;
 
@@ -254,9 +254,20 @@ class SupabaseAuthRepository implements core.AuthRepository {
       // Already failing; a sign-out error must not mask the real cause.
     }
     if (failure != null) {
+      // 🔴 THE FALLBACK IS AN `AccountDeletionFailure`, NOT A BARE `AuthFailure`,
+      // AND THE CAUSE RIDES IN `detail`. A plain `AuthFailure` resolves through
+      // `accountDeletionOutcomeOf` to `unknown` just the same — but with the
+      // outcome INVENTED at the screen instead of carried, and with `$failure`
+      // buried in a `message` no UI renders (every screen shows
+      // `outcome.plainMessage`). That is how the 2026-08-09 delete-account
+      // failure spent three sessions unnamed: the thrower knew exactly what went
+      // wrong and every layer above it could only say "we cannot tell".
       throw failure is core.AuthFailure
           ? failure
-          : core.AuthFailure('Account deletion failed: $failure');
+          : core.AccountDeletionFailure(
+              core.AccountDeletionOutcome.unknown,
+              detail: '$failure',
+            );
     }
   }
 }

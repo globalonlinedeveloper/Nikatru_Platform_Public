@@ -50,4 +50,17 @@ class E2EKeys {
   /// which "Account deleted" survives long enough to be asserted after the
   /// router has finished, so it is the E2E's landing assertion. [ADR 027]
   static const Key accountDeletionNotice = Key('accountDeletionNotice');
+
+  /// WHY that notice says what it says — DEBUG BUILDS ONLY, and that is not a
+  /// caveat but the point: `flutter drive` builds debug, a store artifact does
+  /// not, so the E2E can name a cause the user is never shown.
+  ///
+  /// Its absence is what made the 2026-08-09 delete leg unreadable. The notice
+  /// text alone cannot tell a 404 from a 500 from a client-side throw that never
+  /// sent a request — all three render "we cannot tell how much of it was
+  /// removed" — so three sessions searched for an HTTP status that had never
+  /// been returned to anybody.
+  static const Key accountDeletionNoticeDetail = Key(
+    'accountDeletionNoticeDetail',
+  );
 }

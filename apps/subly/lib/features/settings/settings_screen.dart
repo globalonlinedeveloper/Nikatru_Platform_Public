@@ -917,6 +917,7 @@ class SettingsScreen extends ConsumerWidget {
     final AuthRepository auth = ref.read(authRepositoryProvider);
     final AuthUser? user = auth.currentUser;
     core.AccountDeletionOutcome outcome;
+    String? detail;
     try {
       if (user == null) throw core.AuthFailure('Not signed in');
       // Re-authenticate through the SAME seam sign-in uses, so it works against
@@ -930,6 +931,11 @@ class SettingsScreen extends ConsumerWidget {
         // rather than to a refusal shape this screen invented — an error nobody
         // modelled is exactly the case where how far the deletion got is unknown.
         outcome = core.accountDeletionOutcomeOf(e);
+        // 🔴 KEEP THE ERROR ITSELF. Until 2026-08-09 this line did not exist and
+        // `e` was discarded here — so `unknown` arrived at the screen with the
+        // one fact that explains it already thrown away. Parked, not rendered in
+        // release: see [lastAccountDeletionDetailProvider].
+        detail = '$e';
       }
     } on core.AuthFailure {
       // The provider REFUSED the credentials. Nothing was sent, nothing was
@@ -949,6 +955,7 @@ class SettingsScreen extends ConsumerWidget {
     // login screen renders whatever is left here. Measured: without this the
     // result widget is GONE by the time the redirect settles.
     ref.read(lastAccountDeletionOutcomeProvider.notifier).state = outcome;
+    ref.read(lastAccountDeletionDetailProvider.notifier).state = detail;
     return outcome;
   }
 
