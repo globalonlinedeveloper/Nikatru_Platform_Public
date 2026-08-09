@@ -94,7 +94,13 @@ import { parseWorkflow, shellSegments } from '../ci/workflow-scan.mjs';
 // both variables in prose — a bare text match reads the explanation, not the
 // value. Importing it is what keeps this recipe's `command` and the installed
 // .desktop entry the same identity by construction rather than by agreeing today.
-import { readLinuxIdentity, LinuxBrandUnavailable, PACKAGING_DIR } from '../store/render-linux-icons.mjs';
+import {
+  readLinuxIdentity,
+  deriveDesktopEntry,
+  LinuxBrandUnavailable,
+  PACKAGING_DIR,
+  HICOLOR_SIZES,
+} from '../store/render-linux-icons.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -105,6 +111,21 @@ export const BUILD_WORKFLOW = '.github/workflows/build-platforms.yml';
  *  relative to the project directory, so `--out` IS the project directory and
  *  this is the fixed path inside it. */
 export const RECIPE_PATH = 'snap/snapcraft.yaml';
+
+/**
+ * THE SNAP'S GUI DIRECTORY — the one place a snap's launcher entry and icon may
+ * live, and the reason this generator emits two more files than it used to.
+ *
+ * ✅ SOURCED, fetched 2026-08-09: https://ubuntu.com/docs/snapcraft/stable/
+ * how-to/crafting/configure-package-information/ — "create files named
+ * `<snap-name>.desktop` and `<snap-name>.png` in the `snap/gui/` directory in
+ * your project's source", "Assign `Icon` to the absolute path of the image file.
+ * This path must be the location of the icon after the snap is installed", and
+ * "Since Snapcraft copies all the contents of the `snap/gui/` folder to
+ * `meta/gui` during installation, the absolute path of the icon in this
+ * arrangement is `${SNAP}/meta/gui/<snap-name>.png`".
+ */
+export const GUI_DIR = 'snap/gui';
 
 /**
  * `grade: stable` — the Snap Store's own vocabulary for "this is a release, not
@@ -197,6 +218,64 @@ export const BASE_FOR_RUNNER = new Map([
   ['ubuntu-22.04', 'core22'],
   ['ubuntu-24.04', 'core24'],
 ]);
+
+/**
+ * LISTING LICENCE VALUES THAT CANNOT BE EMITTED AS `license:`, with the reason.
+ *
+ * 🔴 FOUND BY THE FIRST REAL PACK (run 31294305898, 2026-08-09), NOT BY ANY
+ * CHECK IN THIS TREE. The recipe carried `license: "proprietary"`, straight from
+ * apps/{app}/store/linux-snap/license.txt, and snapcraft refused it:
+ *
+ *     cannot validate license "proprietary": unknown license: proprietary
+ *
+ * ✅ WHY THERE IS NO SPELLING THAT WORKS, read at the primary source rather than
+ * guessed. The `license` key is "the project's license as an SPDX expression.
+ * Currently, only SPDX 2.1 expressions are supported"
+ * (https://ubuntu.com/docs/snapcraft/stable/reference/snapcraft-yaml/, fetched
+ * 2026-08-09). The validator that produced that exact string is snapd's own,
+ * https://github.com/snapcore/snapd/blob/master/spdx/parser.go (fetched
+ * 2026-08-09), whose `newLicenseID` is a linear scan of a fixed list:
+ *
+ *     for _, known := range allLicenses { if needle == known { … } }
+ *     return "", fmt.Errorf("unknown license: %s", s)
+ *
+ * There is NO `LicenseRef-` or `DocumentRef-` branch, so SPDX's own escape hatch
+ * for non-listed licences is rejected too — which is why this is an OMISSION and
+ * not a translation to some other string. Case does not help either: no casing of
+ * this word is on the SPDX License List.
+ *
+ * ✅ AND OMITTING IT IS NOT A LOSS OF THE FACT. `license` is not a required key
+ * (same reference), and the store fills the same answer in: "By default, when no
+ * license is specified (which is always the case when pushing from `snapcraft`),
+ * the `Proprietary` value is assumed" — matiasb, store-side, in
+ * https://forum.snapcraft.io/t/snap-license-metadata/856 (fetched 2026-08-09).
+ * So the listing keeps saying `proprietary`, which is TRUE, and the recipe
+ * reaches the same store value by the only route snapd accepts.
+ *
+ * ⚠️ THIS MAP IS NOT AN SPDX VALIDATOR AND MUST NEVER BECOME ONE. It records the
+ * values this repository has PROVEN unemittable; everything else is passed
+ * through verbatim for snapd to judge. A hand-rolled allowlist would be an
+ * invented limit that fires on correct input — the failure this repo has already
+ * paid for twice (a made-up 120-character store limit; a guessed base).
+ *
+ * Exported so tooling/ci/assert-snapcraft-generable.mjs asserts against THIS
+ * declaration instead of a retyped copy of it.
+ */
+export const NON_SPDX_LICENCES = new Map([
+  [
+    'proprietary',
+    'snapd\'s SPDX parser accepts only identifiers on the SPDX License List and has no `LicenseRef-` branch, so no spelling of this word validates. The Snap Store assumes `Proprietary` when the key is absent, which is the same answer by the only route that packs.',
+  ],
+]);
+
+/** The `license:` value to emit for a listing value, or `null` to omit the key.
+ *  Lookup is case-insensitive: SPDX identifiers ARE case-sensitive, but no casing
+ *  of a word in this map is an identifier, so a capitalised `Proprietary` would
+ *  fail in exactly the same way and must be caught by the same rule. */
+export function licenceForRecipe(listingValue) {
+  const why = NON_SPDX_LICENCES.get(String(listingValue).trim().toLowerCase());
+  return why === undefined ? { license: String(listingValue).trim(), omittedBecause: null } : { license: null, omittedBecause: why };
+}
 
 /** The recipe could not be derived from the tree. Same shape as
  *  `LinuxBrandUnavailable`, so a caller renders either the same way. */
@@ -522,6 +601,33 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
   const desktopRel = `share/applications/${identity.applicationId}.desktop`;
   const desktopMissing = !existsSync(join(bundleAbs, desktopRel));
 
+  // ── the icon the SNAP layer will carry ────────────────────────────────────
+  // 🔴 THE SECOND THING THE FIRST REAL PACK FOUND (run 31294305898, 2026-08-09):
+  //
+  //     Icon 'com.nikatru.subly' specified in desktop file … not found in
+  //     prime directory
+  //
+  // The bundle's entry says `Icon=com.nikatru.subly` — a BARE THEME NAME, which
+  // is correct freedesktop and is what makes one entry serve deb, flatpak and
+  // AppImage (render-linux-icons.mjs says so at the line that writes it). Snap is
+  // the layer that does not do theme lookup: its `Icon` must be "the absolute
+  // path of the image file … the location of the icon after the snap is
+  // installed". The icons ARE primed — CMake installs the whole hicolor tree into
+  // the bundle — and snapcraft still refused, because it resolves the name
+  // against the prime directory rather than against an icon theme in it.
+  //
+  // So the snap layer gets its OWN pair, TRANSLATED from the maintained ones
+  // rather than duplicating them: see `snapGuiFiles` below. The committed
+  // .desktop keeps its bare `Icon=` and stays packaging-layer-agnostic, which is
+  // the property apps/{app}/linux/CMakeLists.txt exists to protect.
+  //
+  // The LARGEST primed size wins because meta/gui carries exactly one file and a
+  // launcher downscales far better than it upscales. HICOLOR_SIZES is already
+  // ordered largest-first and is imported, never retyped — a private copy here
+  // would keep picking 512 the day the renderer's set changes.
+  const iconCandidates = HICOLOR_SIZES.map((s) => `share/icons/hicolor/${s}x${s}/apps/${identity.applicationId}.png`);
+  const iconRel = iconCandidates.find((rel) => existsSync(join(bundleAbs, rel))) ?? null;
+
   // ── the source path, RELATIVE ─────────────────────────────────────────────
   // 🔴 A HOST PATH IN A RECIPE IS A RECIPE THAT ONLY BUILDS ON ONE MACHINE, and
   // on this repo's primary host it is worse than unportable: a Windows drive path
@@ -553,15 +659,53 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
     ]);
   }
 
+  // ── the listing, READ BEFORE anything derived from it ─────────────────────
+  // 🔴 THE ORDER IS THE DIAGNOSIS. `deriveDesktopEntry` reads four of these files
+  // too, and its refusals are phrased for a desktop entry ("the desktop entry has
+  // no short-description.txt to carry") where `listingField`'s name the contract
+  // ("is EMPTY. An empty listing field satisfies 'the file exists' and publishes a
+  // blank"). Reading them here first means an emptied listing field is reported as
+  // what it is, rather than as a consequence two derivations downstream.
+  const title = listingField(root, dirRel, 'title.txt');
+  const summary = listingField(root, dirRel, 'short-description.txt');
+  const description = listingField(root, dirRel, 'long-description.txt');
+
+  // ── the licence, TRANSLATED rather than passed through ────────────────────
+  // The listing keeps saying what is TRUE about the licence; the recipe carries
+  // it only when snapd can validate it. See NON_SPDX_LICENCES for the sources.
+  const listedLicence = listingField(root, dirRel, 'license.txt');
+  const { license, omittedBecause: licenceOmittedBecause } = licenceForRecipe(listedLicence);
+
+  // ── the maintained launcher text, TRANSLATED not re-derived ───────────────
+  // ⚠️ IT IS READ HERE AND NOT INSIDE `snapGuiFiles`, so its refusal joins every
+  // other one: deriving it at emit time let a `LinuxBrandUnavailable` (a missing
+  // `category.txt`) escape as an unhandled throw with a stack trace, and a crash
+  // is not a catch.
+  let baseDesktopEntry;
+  try {
+    baseDesktopEntry = deriveDesktopEntry(appDir);
+  } catch (e) {
+    if (!(e instanceof LinuxBrandUnavailable)) throw e;
+    refuse(e.lines);
+  }
+
+  // The snap-layer launcher entry, DERIVED from the same function that writes the
+  // maintained freedesktop one, with exactly the two fields the snap layer
+  // defines differently. See `snapGuiFiles`.
+  const guiDesktopRel = `${GUI_DIR}/${snapName}.desktop`;
+  const guiIconRel = iconRel === null ? null : `${GUI_DIR}/${snapName}.png`;
+
   return {
     app,
     channelId: row.id,
     storeMetadataDir: dirRel,
     name: snapName,
-    title: listingField(root, dirRel, 'title.txt'),
-    summary: listingField(root, dirRel, 'short-description.txt'),
-    description: listingField(root, dirRel, 'long-description.txt'),
-    license: listingField(root, dirRel, 'license.txt'),
+    title,
+    summary,
+    description,
+    listedLicence,
+    license,
+    licenceOmittedBecause,
     version: version.trim(),
     base,
     grade: GRADE,
@@ -570,11 +714,58 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
     stagePackages: lane.packages,
     command: identity.binaryName,
     applicationId: identity.applicationId,
+    baseDesktopEntry,
+    bundleAbs,
     desktopRel,
     desktopMissing,
+    iconRel,
+    guiDesktopRel,
+    guiIconRel,
     sourceRel,
     lane,
   };
+}
+
+/**
+ * THE SNAP LAYER'S LAUNCHER PAIR: relative path under the project directory →
+ * bytes. Empty of nothing — the desktop entry is always produced; the icon is
+ * only there when the bundle primed one.
+ *
+ * 🔴 TRANSLATED, NOT DUPLICATED, AND THE DIFFERENCE IS THE WHOLE DESIGN. The text
+ * comes from `deriveDesktopEntry`, the same function that writes the maintained
+ * freedesktop entry, so Name, Comment and Categories cannot drift between the two
+ * layers. Exactly TWO fields are rewritten, and each is a place where snap and
+ * freedesktop genuinely disagree:
+ *
+ *   · `Icon` — freedesktop resolves a BARE NAME through the icon theme, which is
+ *     what lets one entry serve deb, flatpak and AppImage. Snap does not: the
+ *     value must be "the absolute path of the image file … the location of the
+ *     icon after the snap is installed", i.e. `${SNAP}/meta/gui/<snap-name>.png`.
+ *     Emitting the bare name is exactly what failed the first real pack.
+ *   · `Exec` — freedesktop runs the binary by name off PATH. In a snap the
+ *     command is the one snapd exposes, which for an app named after its snap is
+ *     the SNAP NAME. The recipe names the app `f.name` a few lines below, so this
+ *     is that same string by construction rather than by agreeing today.
+ *
+ * ⚠️ THE `Icon` LINE IS DROPPED, NOT DEFAULTED, WHEN THE BUNDLE PRIMED NO ICON.
+ * A path to a file that will not be in meta/gui is worse than no line at all: the
+ * launcher shows a broken image instead of the desktop's generic fallback, and
+ * nothing anywhere would say why.
+ */
+export function snapGuiFiles(f) {
+  const lines = f.baseDesktopEntry
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((l) => {
+      if (/^Exec=/.test(l)) return `Exec=${f.name}`;
+      if (/^Icon=/.test(l)) return f.iconRel === null ? null : `Icon=\${SNAP}/meta/gui/${f.name}.png`;
+      return l;
+    })
+    .filter((l) => l !== null);
+  const out = new Map();
+  out.set(f.guiDesktopRel, Buffer.from(lines.join('\n'), 'utf8'));
+  if (f.iconRel !== null) out.set(f.guiIconRel, readFileSync(join(f.bundleAbs, f.iconRel)));
+  return out;
 }
 
 /**
@@ -603,7 +794,18 @@ export function renderSnapcraftYaml(f) {
   L.push(`version: ${q(f.version)}`);
   L.push(`summary: ${q(f.summary)}`);
   L.push(`description: ${blockScalar(f.description)}`);
-  L.push(`license: ${q(f.license)}`);
+  if (f.license === null) {
+    // The KEY IS ABSENT and the reason is in the file, because a reader who finds
+    // no `license:` in a generated recipe will otherwise assume the generator
+    // forgot one. Sources are on NON_SPDX_LICENCES in the generator.
+    L.push(`# NO \`license:\` KEY, DELIBERATELY. ${f.storeMetadataDir}/license.txt says`);
+    L.push(`# "${f.listedLicence}", and snapd's SPDX parser rejects it: it accepts only identifiers`);
+    L.push('# on the SPDX License List and has no `LicenseRef-` branch, so there is no spelling');
+    L.push('# that validates. The Snap Store assumes `Proprietary` when the key is absent, which');
+    L.push('# is the same answer by the only route that packs. The listing keeps the true word.');
+  } else {
+    L.push(`license: ${q(f.license)}`);
+  }
   L.push('');
   L.push('# The base names the Ubuntu release whose libraries this snap runs against, and');
   L.push(`# it is derived from the runner the bundle is compiled on: job "${f.lane.job}"`);
@@ -616,7 +818,14 @@ export function renderSnapcraftYaml(f) {
   L.push('apps:');
   L.push(`  ${f.name}:`);
   L.push(`    command: ${f.command}`);
-  L.push(`    desktop: ${f.desktopRel}`);
+  // 🔴 NO `desktop:` KEY, AND ITS ABSENCE IS THE FIX FOR THE SECOND PACK FAILURE.
+  // It pointed at the bundle's freedesktop entry, whose `Icon` is a bare theme
+  // name — correct for every OTHER packaging layer and unresolvable for snapcraft,
+  // which searches the prime directory rather than an icon theme in it. The snap
+  // layer's launcher is `snap/gui/<name>.desktop` + `<name>.png` instead, which
+  // snapcraft copies to meta/gui verbatim and where the `Icon` can be the absolute
+  // installed path the snap format requires. Both are emitted by this generator.
+  L.push(`    # The launcher lives in ${GUI_DIR}/, not here — see the generator's snapGuiFiles.`);
   L.push('    plugs:');
   for (const p of f.plugs) L.push(`      - ${p}`);
   L.push('');
@@ -707,21 +916,44 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   writeFileSync(target, result.yaml, { encoding: 'utf8' });
   if (argv.includes('--print')) process.stdout.write(result.yaml);
 
+  // The launcher pair, into the SAME project directory. Written here rather than
+  // inside `generateSnapcraft` for the reason the recipe is: a module that wrote
+  // files on import would write into the tree the guard is checking.
+  for (const [rel, bytes] of snapGuiFiles(result.facts)) {
+    const p = join(resolve(out), rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, bytes);
+  }
+
   const f = result.facts;
   console.log(`generate-snapcraft: ok — ${join(out, RECIPE_PATH)}`);
   console.log(`   snap "${f.name}" ${f.version} · base ${f.base} · ${f.grade}/${f.confinement}`);
   console.log(
     `   command ${f.command} · ${f.plugs.length} plug(s) · ${f.stagePackages.length} stage-package(s) from ${BUILD_WORKFLOW}:${f.lane.line}`,
   );
+  console.log(
+    `   launcher ${f.guiDesktopRel}` +
+      (f.iconRel === null ? ' · NO ICON' : ` + ${f.guiIconRel} (from the bundle's ${f.iconRel})`),
+  );
+  if (f.license === null) {
+    console.log(`   ⬜ no \`license:\` key — ${f.storeMetadataDir}/license.txt says "${f.listedLicence}": ${f.licenceOmittedBecause}`);
+  }
   if (f.desktopMissing) {
     // Printed, not failed: the bundle a caller hands this script is whatever
     // `flutter build linux` produced, and on a machine where the icons have not
     // been generated the entry is legitimately absent. Failing here would make
     // this script unusable for the exact case it exists to unblock, while saying
     // nothing would keep a launcher-less snap invisible.
-    console.log(`   ⬜ the bundle carries no ${f.desktopRel} — the snap installs without a launcher entry.`);
+    console.log(`   ⬜ the bundle carries no ${f.desktopRel} — every OTHER packaging layer installs without a launcher entry.`);
     console.log(`      Generate it with: node tooling/store/render-linux-icons.mjs --app ${f.app}`);
     console.log(`      (CMake installs it from apps/${f.app}/${PACKAGING_DIR} at build time.)`);
+  }
+  if (f.iconRel === null) {
+    // Same rule, and it is the one the first real pack turned from theory into a
+    // failed build: the emitted entry simply carries NO `Icon=` line rather than
+    // a path to a file that will not be in meta/gui.
+    console.log(`   ⬜ the bundle primed no hicolor icon for "${f.applicationId}" — the snap's launcher has no icon.`);
+    console.log(`      Generate them with: node tooling/store/render-linux-icons.mjs --app ${f.app}`);
   }
   console.log('   ⚠️ NOT BUILT. This wrote a configuration file; `snapcraft` was not run and is not installed here.');
 }

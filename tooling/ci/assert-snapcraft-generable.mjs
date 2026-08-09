@@ -44,8 +44,28 @@
 //      case; a generator that quietly emitted it would turn a submission into a
 //      negotiation.
 // Plus the values that make the recipe THIS app's — title, summary, description,
-// licence, base, grade, plugs, command and the desktop entry — each compared to
-// the artifact it is derived from rather than to a copy kept here.
+// base, grade, plugs and command — each compared to the artifact it is derived
+// from rather than to a copy kept here.
+//
+// ── AND THE TWO THE FIRST REAL PACK ADDED (run 31294305898, 2026-08-09) ──────
+// Both were invisible to everything above, and both stopped `snapcraft` dead.
+// 🔴 THEY ARE THE ANSWER TO "WHAT ELSE IS ONLY TRUE UNTIL SOMETHING RUNS IT" —
+// this guard graded nine values correctly against a recipe snapcraft would not
+// accept, because every one of those checks compares the recipe to THIS TREE and
+// none of them knew a single rule of the snap FORMAT.
+//
+//   8. THE LICENCE IS SPDX-VALID OR THE KEY IS ABSENT. `license: "proprietary"`
+//      failed with `cannot validate license "proprietary": unknown license:
+//      proprietary`. The rule is imported from the generator's `NON_SPDX_LICENCES`
+//      — a listing value in that map must produce NO `license:` key at all, and a
+//      value outside it must be emitted verbatim. Asserting it here against a
+//      RETYPED list would agree with a generator that had drifted.
+//   9. THE LAUNCHER RESOLVES INSIDE THE SNAP. `Icon 'com.nikatru.subly' … not
+//      found in prime directory` — the bundle's entry names a freedesktop THEME
+//      NAME, and snapcraft searches the prime directory rather than an icon theme
+//      in it. So the recipe must carry no `apps.<name>.desktop`, and the project
+//      must carry `snap/gui/<name>.desktop` whose `Icon` is exactly the installed
+//      path `${SNAP}/meta/gui/<name>.png`, with that PNG beside it.
 //
 // ⚠️ EVERY EXPECTATION IS IMPORTED, NEVER RETYPED. `DESKTOP_PLUGS`, `GRADE`,
 // `CONFINEMENT` and `BASE_FOR_RUNNER` come from the generator; the listing values
@@ -97,14 +117,17 @@ import {
   CONFINEMENT,
   DESKTOP_PLUGS,
   GRADE,
+  GUI_DIR,
+  NON_SPDX_LICENCES,
   RECIPE_PATH,
   REGISTER,
   SnapcraftUngenerable,
   baseForRunner,
+  licenceForRecipe,
   linuxStoreRow,
   readLinuxBuildLane,
 } from '../release/generate-snapcraft.mjs';
-import { readLinuxIdentity, LinuxBrandUnavailable } from '../store/render-linux-icons.mjs';
+import { readLinuxIdentity, LinuxBrandUnavailable, HICOLOR_SIZES } from '../store/render-linux-icons.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** Resolved from THIS FILE, never from the repo root under test. A fixture root
@@ -402,7 +425,31 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
   eq('title', doc.title, expected.title);
   eq('summary', doc.summary, expected.summary);
   eq('description', doc.description, expected.description);
-  eq('license', doc.license, expected.license);
+
+  // ── limb 8 — the licence is SPDX-valid, or the key is absent ──────────────
+  // 🔴 `undefined` AND `null` ARE DIFFERENT ANSWERS HERE. The minimal reader
+  // returns `undefined` for a key that is not in the document and `null` for one
+  // written as `license: null`, and only the first is what snapd sees as absent —
+  // an explicit null is a value, and it is not an SPDX expression either.
+  if (expected.license === null) {
+    if (doc.license !== undefined) {
+      bad(
+        `\`license\` is present as ${JSON.stringify(doc.license)}, and ${expected.storeMetadataDir}/license.txt says ` +
+          `${JSON.stringify(expected.listedLicence)} — a value snapd's SPDX parser REJECTS: ${expected.licenceOmittedBecause} ` +
+          'The key has to be absent, not translated: `cannot validate license "proprietary": unknown license: proprietary` ' +
+          'is where this ends otherwise, at pack time, after the whole Linux build.',
+      );
+    }
+  } else if (doc.license === undefined) {
+    bad(
+      `\`license\` is ABSENT and ${expected.storeMetadataDir}/license.txt says ${JSON.stringify(expected.listedLicence)}, ` +
+        'which is not one of the values this repository has proven unemittable (NON_SPDX_LICENCES in the generator). ' +
+        'A licence the store could have been told is one it now assumes — silently, and as `Proprietary`.',
+    );
+  } else {
+    eq('license', doc.license, expected.license);
+  }
+
   eq('base', doc.base, expected.base);
   eq('grade', doc.grade, expected.grade);
   eq('confinement', doc.confinement, expected.confinement);
@@ -429,6 +476,9 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
   }
 
   // ── stage-packages: non-empty, and EQUAL to the workflow's list ────────────
+  /** The bundle `source:` really resolves to, once limb 7 has agreed it does.
+   *  Limb 9b reads the icon question out of it. */
+  let bundleAt = null;
   const part = doc.parts?.[expected.name];
   if (!part) {
     bad(`\`parts\` declares no part named "${expected.name}". Nothing then stages the bundle.`);
@@ -448,6 +498,13 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
             'snap/snapcraft.yaml — a path computed against the recipe file is off by exactly one `..` and ' +
             'satisfies "is it relative" and "is it a host path" while pointing at nothing.',
         );
+      } else {
+        // 🔴 WHETHER AN ICON IS EXPECTED IS READ FROM THE BUNDLE THE RECIPE POINTS
+        // AT, not taken from the generator. That is what makes limb 9b an
+        // independent reading: the generator decided to emit an `Icon=` line
+        // because it found a primed icon, and this arrives at the same question
+        // from the other end — the bundle snapcraft will actually dump.
+        bundleAt = r.at;
       }
     }
     const staged = Array.isArray(part['stage-packages']) ? part['stage-packages'] : null;
@@ -481,7 +538,21 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
     bad(`\`apps\` declares no entry named "${expected.name}", so the snap installs with nothing to run.`);
   } else {
     eq(`apps.${expected.name}.command`, appEntry.command, expected.command);
-    eq(`apps.${expected.name}.desktop`, appEntry.desktop, expected.desktopRel);
+    // 🔴 limb 9a — `desktop:` MUST BE ABSENT, and it is the key that broke the pack.
+    // It pointed snapcraft at the bundle's freedesktop entry; snapcraft then tried
+    // to resolve that entry's BARE THEME NAME against the prime directory and
+    // refused. The launcher moved to snap/gui, which snapcraft copies to meta/gui
+    // verbatim, so re-adding this key does not "also" work — it reintroduces the
+    // exact failure, after a full Linux build.
+    if (appEntry.desktop !== undefined) {
+      bad(
+        `\`apps.${expected.name}.desktop\` is present as ${JSON.stringify(appEntry.desktop)}. ` +
+          'A desktop file named here is VALIDATED against the prime directory, and the entry this repo primes ' +
+          'carries a freedesktop theme name (`Icon=<application-id>`) that snapcraft cannot resolve there — ' +
+          '`Icon \'…\' specified in desktop file … not found in prime directory`, which is where the first real ' +
+          `pack stopped. The snap layer's launcher is ${GUI_DIR}/${expected.name}.desktop instead.`,
+      );
+    }
     const plugs = Array.isArray(appEntry.plugs) ? appEntry.plugs : [];
     const missing = expected.plugs.filter((p) => !plugs.includes(p));
     const extra = plugs.filter((p) => !expected.plugs.includes(p));
@@ -493,7 +564,98 @@ export function validateEmitted({ yaml, expected, label, packBase = null, projec
     }
   }
 
+  // ── limb 9b — the launcher, on disk, beside the recipe ────────────────────
+  // Skipped when the bundle could not be resolved: limb 7 has already said why,
+  // and "is an icon expected" cannot be answered without the directory that holds
+  // the answer. A skipped limb with a stated reason beats one that guesses.
+  if (projectDir !== null && bundleAt !== null && expected.applicationId) {
+    const expectIcon = HICOLOR_SIZES.some((s) =>
+      existsSync(join(bundleAt, 'share', 'icons', 'hicolor', `${s}x${s}`, 'apps', `${expected.applicationId}.png`)),
+    );
+    for (const line of guiPairProblems({ projectDir, snapName: expected.name, expectIcon })) bad(line);
+  }
+
   return found;
+}
+
+/**
+ * The snap's launcher pair under `<project>/snap/gui/`, graded. Exported so the
+ * test can drive it against a directory it built itself.
+ *
+ * ✅ THE RULE, fetched 2026-08-09 from https://ubuntu.com/docs/snapcraft/stable/
+ * how-to/crafting/configure-package-information/ : the files are named
+ * `<snap-name>.desktop` and `<snap-name>.png`, snapcraft "copies all the contents
+ * of the `snap/gui/` folder to `meta/gui`", and `Icon` must be "the absolute path
+ * of the image file … the location of the icon after the snap is installed",
+ * which in this arrangement is `${SNAP}/meta/gui/<snap-name>.png`.
+ *
+ * 🔴 THE ICON LINE AND THE ICON FILE ARE CHECKED AS ONE FACT, in both directions.
+ * A path with no file is a launcher showing a broken image; a file with no path
+ * is a payload nothing points at. The generator drops the line when the bundle
+ * primed no icon, so `expectIcon` says which of the two shapes is correct here
+ * rather than this function assuming one.
+ */
+export function guiPairProblems({ projectDir, snapName, expectIcon }) {
+  const out = [];
+  const desktopPath = join(projectDir, GUI_DIR, `${snapName}.desktop`);
+  const iconPath = join(projectDir, GUI_DIR, `${snapName}.png`);
+  const wantIcon = `\${SNAP}/meta/gui/${snapName}.png`;
+
+  if (!existsSync(desktopPath)) {
+    out.push(
+      `${GUI_DIR}/${snapName}.desktop does not exist beside the recipe. snapcraft copies snap/gui/ to meta/gui, ` +
+        'and it is the ONLY launcher this snap has since the recipe stopped naming one — without it the app ' +
+        'installs and appears in no menu.',
+    );
+    return out;
+  }
+  const text = readFileSync(desktopPath, 'utf8');
+  const exec = /^Exec=(.*)$/m.exec(text);
+  if (!exec) {
+    out.push(`${GUI_DIR}/${snapName}.desktop carries no \`Exec=\` line, so the launcher runs nothing.`);
+  } else if (exec[1].trim() !== snapName) {
+    out.push(
+      `${GUI_DIR}/${snapName}.desktop says \`Exec=${exec[1].trim()}\`; inside a snap the command is the one snapd ` +
+        `exposes, which for an app named after its snap is "${snapName}". A binary name off PATH is the freedesktop ` +
+        'answer and is not reachable from a strict-confined launcher.',
+    );
+  }
+
+  const icon = /^Icon=(.*)$/m.exec(text);
+  if (expectIcon) {
+    if (!icon) {
+      out.push(
+        `${GUI_DIR}/${snapName}.png exists and ${GUI_DIR}/${snapName}.desktop carries no \`Icon=\` line — an icon ` +
+          'shipped into meta/gui that nothing points at is a payload with no effect.',
+      );
+    } else if (icon[1].trim() !== wantIcon) {
+      out.push(
+        `${GUI_DIR}/${snapName}.desktop says \`Icon=${icon[1].trim()}\`; it has to be exactly \`${wantIcon}\` — ` +
+          'the absolute path the icon has AFTER install. A bare theme name is the freedesktop form and is what ' +
+          'snapcraft refused with `not found in prime directory`; anything else is a path that resolves on no machine.',
+      );
+    }
+    if (!existsSync(iconPath)) {
+      out.push(
+        `${GUI_DIR}/${snapName}.desktop points at \`${wantIcon}\` and ${GUI_DIR}/${snapName}.png does not exist. ` +
+          'Nothing would be copied to meta/gui, so the launcher shows a broken image rather than the generic fallback.',
+      );
+    } else if (statSync(iconPath).size === 0) {
+      out.push(`${GUI_DIR}/${snapName}.png is ZERO bytes. An empty PNG satisfies "the file exists" and renders nothing.`);
+    }
+  } else {
+    if (icon) {
+      out.push(
+        `${GUI_DIR}/${snapName}.desktop carries \`Icon=${icon[1].trim()}\` while the bundle primed no icon for this ` +
+          'app, so nothing will be at that path in meta/gui. The line is dropped rather than defaulted precisely ' +
+          'so a launcher falls back to the desktop generic rather than to a broken image.',
+      );
+    }
+    if (existsSync(iconPath)) {
+      out.push(`${GUI_DIR}/${snapName}.png exists although the bundle primed no icon — the two readings disagree about what was found.`);
+    }
+  }
+  return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -506,22 +668,39 @@ function readListing(root, dirRel, file) {
   return v === '' ? null : v;
 }
 
-function expectationsFor({ root, row, app, lane, version }) {
+function expectationsFor({ root, row, app, lane, version, expectIcon }) {
   const dirRel = row.storeMetadataDir.replace('{app}', app);
   const fields = {
     name: 'snap-name.txt',
     title: 'title.txt',
     summary: 'short-description.txt',
     description: 'long-description.txt',
-    license: 'license.txt',
+    listedLicence: 'license.txt',
   };
-  const out = { stagePackages: lane.packages, plugs: [...DESKTOP_PLUGS], grade: GRADE, confinement: CONFINEMENT, version };
+  const out = {
+    stagePackages: lane.packages,
+    plugs: [...DESKTOP_PLUGS],
+    grade: GRADE,
+    confinement: CONFINEMENT,
+    version,
+    storeMetadataDir: dirRel,
+    expectIcon,
+  };
   const missing = [];
   for (const [key, file] of Object.entries(fields)) {
     const v = readListing(root, dirRel, file);
     if (v === null) missing.push(`${dirRel}/${file}`);
     out[key] = v;
   }
+  // ⚠️ THROUGH THE GENERATOR'S OWN FUNCTION, never a second reading of the same
+  // rule. `licenceForRecipe` decides emit-or-omit from `NON_SPDX_LICENCES`, and a
+  // guard that re-implemented that decision would agree with a generator that had
+  // drifted — the failure this whole file's "every expectation is imported" note
+  // is about.
+  const licence = out.listedLicence === null ? { license: null, omittedBecause: null } : licenceForRecipe(out.listedLicence);
+  out.license = licence.license;
+  out.licenceOmittedBecause = licence.omittedBecause;
+
   out.base = baseForRunner(lane.runner);
   let identity = null;
   try {
@@ -531,7 +710,7 @@ function expectationsFor({ root, row, app, lane, version }) {
     missing.push(`apps/${app}/linux/CMakeLists.txt (${e.lines[0]})`);
   }
   out.command = identity?.binaryName ?? null;
-  out.desktopRel = identity ? `share/applications/${identity.applicationId}.desktop` : null;
+  out.applicationId = identity?.applicationId ?? null;
   return { expected: out, missing, dirRel };
 }
 
@@ -617,6 +796,8 @@ try {
     }
 
     let yaml;
+    /** The project directory this guard generated into, when it generated one. */
+    let generatedOut = null;
     if (EMITTED) {
       // Validate a recipe that already exists. `--app` says which listing it is
       // supposed to have come from; nothing about the expectations comes from
@@ -628,12 +809,26 @@ try {
       yaml = readFileSync(EMITTED, 'utf8');
     } else {
       // ── the fixture bundle ────────────────────────────────────────────────
+      // 🔴 IT NOW STAGES AN ICON, and it has to. Until 2026-08-09 this fixture
+      // carried only the binary and the desktop entry, so every CI run graded the
+      // NO-ICON branch while the lane ran the icon one — the passing path was the
+      // one nobody was checking, which is how `Icon 'com.nikatru.subly' … not
+      // found in prime directory` reached a real pack. The largest hicolor size
+      // is used because that is the one the generator picks.
       const bundle = join(tmpRoot, app, 'bundle');
       const out = join(tmpRoot, app, 'out');
+      generatedOut = out;
+      const biggest = Math.max(...HICOLOR_SIZES);
+      const iconDir = join(bundle, 'share', 'icons', 'hicolor', `${biggest}x${biggest}`, 'apps');
       mkdirSync(join(bundle, 'share', 'applications'), { recursive: true });
-      // The three facts the generator's contract with a bundle rests on.
+      mkdirSync(iconDir, { recursive: true });
+      // The facts the generator's contract with a bundle rests on.
       writeFileSync(join(bundle, expected.command), 'fixture stand-in for the built binary\n');
-      writeFileSync(join(bundle, expected.desktopRel), '[Desktop Entry]\nType=Application\n');
+      writeFileSync(
+        join(bundle, 'share', 'applications', `${expected.applicationId}.desktop`),
+        '[Desktop Entry]\nType=Application\n',
+      );
+      writeFileSync(join(iconDir, `${expected.applicationId}.png`), 'fixture stand-in for the primed icon\n');
 
       const r = spawnSync(
         process.execPath,
@@ -659,17 +854,18 @@ try {
       }
     }
 
-    // The snapcraft PROJECT DIRECTORY of an existing recipe is derivable from the
-    // recipe's own path and NOTHING ELSE: RECIPE_PATH is the fixed location
-    // inside it. So limb 7 is asked only of a file that actually sits there —
-    // a recipe somewhere else has no project directory to resolve `source` from,
-    // and inventing one would make this limb fire on input it cannot judge.
+    // The snapcraft PROJECT DIRECTORY. In the default scan this guard chose it
+    // (`--out`); for `--emitted` it is derivable from the recipe's own path and
+    // NOTHING ELSE, because RECIPE_PATH is the fixed location inside it. So limbs
+    // 7 and 9b are asked only of a file that actually sits there — a recipe
+    // somewhere else has no project directory to resolve against, and inventing
+    // one would make them fire on input they cannot judge.
     const atRecipePath = EMITTED !== null && EMITTED.split('\\').join('/').endsWith(`/${RECIPE_PATH}`);
-    const projectDir = atRecipePath ? resolve(EMITTED, '..', '..') : null;
+    const projectDir = EMITTED === null ? generatedOut : atRecipePath ? resolve(EMITTED, '..', '..') : null;
     if (EMITTED && !atRecipePath) {
       notes.push(
         `${label} — --emitted ${EMITTED} is not at .../${RECIPE_PATH}, so its snapcraft project directory is ` +
-          'not derivable and `source` was NOT resolved. That is a stated gap, not a pass.',
+          'not derivable and neither `source` nor the launcher pair was resolved. A stated gap, not a pass.',
       );
     }
     problems.push(...validateEmitted({ yaml, expected, label, packBase, projectDir }));
