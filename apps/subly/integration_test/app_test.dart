@@ -429,12 +429,133 @@ void main() {
   /// first-run proof lives in the first test, which is the one launch that is
   /// genuinely a first run — and it is now an explicit `isTrue`, where before it
   /// was an incidental tap that happened not to throw.
+  /// The scroll view that belongs to [screen], rather than whichever one the
+  /// tree happens to list first.
+  ///
+  /// 🔴 `find.byType(Scrollable).first` IS A GUESS, AND ON 2026-08-08 IT COST A
+  /// RUN. The app shell is a `StatefulShellRoute` and the settings body is a
+  /// LAZY `ListView` inside a `ContentPane`, so "the first Scrollable" is
+  /// whatever the element tree yields first — not necessarily the list holding
+  /// the control being hunted. Scoping the search to the screen's own subtree
+  /// removes the guess entirely.
+  Finder scrollableWithin(Finder screen) =>
+      find.descendant(of: screen, matching: find.byType(Scrollable));
+
+  /// Scroll until [target] exists — and if it never does, SAY WHY.
+  ///
+  /// 🔬 WHAT THIS REPLACES, AND WHY A WRAPPER EARNS ITS KEEP. `tester
+  /// .scrollUntilVisible` ends in `Scrollable.ensureVisible(finder.evaluate()
+  /// .single)` (`flutter_test/src/controller.dart:2482`). When the target never
+  /// appears, `.single` throws `Bad state: No element` — a message that names
+  /// neither the widget, nor the screen, nor how far it scrolled. That is
+  /// exactly what the 2026-08-08 run reported for `find.text('Log out')`, and it
+  /// took the screenshot list (which stopped at `16-home-currency`) to work out
+  /// which of the suite's five scroll sites had failed.
+  ///
+  /// This reports the target, the distance travelled, how many scroll views were
+  /// in scope, and what text is actually on screen — the difference between "the
+  /// control moved" and "we were dragging the wrong list".
+  Future<void> scrollUntilFound(
+    WidgetTester tester, {
+    required Finder target,
+    required Finder scrollable,
+    required String what,
+    int maxScrolls = 40,
+    double delta = 160,
+  }) async {
+    final int views = scrollable.evaluate().length;
+    expect(
+      views,
+      greaterThan(0),
+      reason:
+          'Nothing to scroll while looking for "$what": the scroll view it '
+          'lives in is not in the tree. On screen: ${onScreen(tester)}',
+    );
+    for (int i = 0; i < maxScrolls && target.evaluate().isEmpty; i++) {
+      await tester.drag(scrollable.first, Offset(0, -delta));
+      await pumpFor(tester, const Duration(milliseconds: 120));
+    }
+    expect(
+      target,
+      findsWidgets,
+      reason:
+          '"$what" never appeared after scrolling ${maxScrolls * delta}px '
+          'through ${views == 1 ? 'its scroll view' : '$views scroll views in '
+                    'scope (dragging the first)'}. Either the control was removed or '
+          'renamed, or the list being dragged is not the one it lives in. '
+          'On screen: ${onScreen(tester)}',
+    );
+    // NOT pumpAndSettle: this app animates forever in places (the scan progress
+    // ring, loaders), so settling never returns — the reason `pumpFor` exists at
+    // the top of this file.
+    await pumpFor(tester, const Duration(milliseconds: 200));
+  }
+
   Future<bool> skipOnboardingIfShown(WidgetTester tester) async {
     if (find.text('Skip').evaluate().isEmpty) return false;
     expectNothingCoveringTheApp('the onboarding screen');
     await shot('01-onboarding');
     await tester.tap(find.text('Skip'));
     await pumpFor(tester, const Duration(seconds: 2));
+    return true;
+  }
+
+  /// Signs out IF a session survived from an earlier test, and says whether one
+  /// did.
+  ///
+  /// 🔴 THE THIRD PIECE OF INHERITED STATE, AND THE ONE THAT PROVED THE PATTERN
+  /// IS STRUCTURAL. On 2026-08-08 the second test died at its `Log out` step, so
+  /// it never signed out — and the third test then booted straight into
+  /// `/home` as the SECOND test's user, with that user's subscription on screen,
+  /// and reported "the app did not reach the login screen". One real defect,
+  /// two red tests, and the second message pointed at the wrong test entirely.
+  ///
+  /// Three tests share ONE browser profile, so everything the app persists is
+  /// the next test's precondition: the consent decision, the onboarding-seen
+  /// flag, and the Supabase session. The first two were made conditional when
+  /// they bit; this is the third, and it is handled the same way rather than by
+  /// assuming the previous test succeeded. A test that depends on ANOTHER test's
+  /// happy path cannot report its own result honestly.
+  Future<bool> signOutIfSignedIn(WidgetTester tester) async {
+    final Finder shell = find.byType(AppShell);
+    if (shell.evaluate().isEmpty) return false;
+    // …and CONFIRM it, because a redirect in flight can paint the shell for a
+    // frame or two on the way to /login. Acting on that frame would drive
+    // Settings on a screen that is being torn down, and this helper would
+    // manufacture the very failure it exists to prevent.
+    await pumpFor(tester, const Duration(seconds: 2));
+    if (shell.evaluate().isEmpty) return false;
+    await tester.tap(find.text('More'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    final Finder settings = find.byType(SettingsScreen);
+    expect(
+      settings,
+      findsWidgets,
+      reason:
+          'A session survived into this test and the settings tab did not open, '
+          'so it cannot be signed out. On screen: ${onScreen(tester)}',
+    );
+    await scrollUntilFound(
+      tester,
+      target: find.text('Log out'),
+      scrollable: scrollableWithin(settings),
+      what: 'Log out (clearing a session inherited from an earlier test)',
+      maxScrolls: 30,
+      delta: 200,
+    );
+    await tapWhenHittable(
+      tester,
+      find.text('Log out'),
+      'Log out',
+      scrollable: scrollableWithin(settings).first,
+    );
+    expect(
+      await waitFor(tester, find.text('Welcome back')),
+      isTrue,
+      reason:
+          'Signing out an inherited session did not return to the login '
+          'screen. On screen: ${onScreen(tester)}',
+    );
     return true;
   }
 
@@ -557,6 +678,8 @@ void main() {
     // launch really is a first run. Asserting it again here would only assert
     // that the flag failed to save.
     await skipOnboardingIfShown(tester);
+    // …and clear any session the previous test left behind, for the same reason.
+    await signOutIfSignedIn(tester);
 
     // ── 02 Login ─────────────────────────────────────────────────────────────
     // Reached either straight off the carousel or, for a returning user, via the
@@ -768,11 +891,21 @@ void main() {
     // ── 17 Sign out → back to the login screen ───────────────────────────────
     await tester.tap(find.text('More'));
     await pumpFor(tester, const Duration(seconds: 2));
-    await tester.scrollUntilVisible(
-      find.text('Log out'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 20,
+    // 🔬 THIS IS THE LINE THAT FAILED ON 2026-08-08, and it failed as
+    // `Bad state: No element` — flutter_test's `scrollUntilVisible` ending in
+    // `.single` on a finder that never matched. It named nothing: not the
+    // control, not the screen, not the distance. Two things are different now:
+    // the scroll view is the SETTINGS one by construction rather than "the first
+    // Scrollable in the tree" (this screen is a lazy ListView inside a
+    // StatefulShellRoute, so first-in-tree was always a guess), and a miss now
+    // prints what is on screen.
+    await scrollUntilFound(
+      tester,
+      target: find.text('Log out'),
+      scrollable: scrollableWithin(find.byType(SettingsScreen)),
+      what: 'Log out',
+      maxScrolls: 30,
+      delta: 200,
     );
     // 🔴 THE ONE MOMENT THIS SUITE NEVER PHOTOGRAPHED. Every failure from
     // 2026-08-03 onward was "Sign-out did not return to the login screen", and
@@ -785,7 +918,7 @@ void main() {
       tester,
       find.text('Log out'),
       'Log out',
-      scrollable: find.byType(Scrollable).first,
+      scrollable: scrollableWithin(find.byType(SettingsScreen)).first,
     );
     await pumpFor(tester, const Duration(seconds: 3));
     await shot('17b-after-logout-tap');
@@ -901,6 +1034,14 @@ void main() {
     // and it is tolerated either way. Same reasoning as the second test.
     await skipOnboardingIfShown(tester);
 
+    // 🔴 AND THE SESSION. This is the line that makes leg 6 report its OWN
+    // result: on 2026-08-08 the second test died before its sign-out, this walk
+    // booted as that test's user with their subscription on screen, and leg 6
+    // went red for a defect that was not in it. Signing out here is not defence
+    // in depth — it is the difference between a leg that is proven and a leg
+    // that merely rode on the previous test finishing.
+    await signOutIfSignedIn(tester);
+
     // POLLED, not a fixed pump then a hard expect. This is the third full boot
     // of the run and the route change is asynchronous; a 2s window that happens
     // to be enough twice is not a proof that it is enough. `Found 0 widgets
@@ -953,11 +1094,19 @@ void main() {
     await pumpFor(tester, const Duration(seconds: 2));
     expect(find.byType(SettingsScreen), findsWidgets);
     final Finder deleteButton = find.byKey(E2EKeys.settingsDeleteAccount);
-    await tester.scrollUntilVisible(
-      deleteButton,
-      200,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 25,
+    // Same repair as step 17, applied BEFORE it bites: "Delete account" is the
+    // last control in the same lazy settings list, so it was carrying the
+    // identical `find.byType(Scrollable).first` guess and the identical
+    // `Bad state: No element` failure mode. This walk has never reached this
+    // line on CI, which is exactly why the latent version of a bug that already
+    // cost one run should not be left sitting in it.
+    await scrollUntilFound(
+      tester,
+      target: deleteButton,
+      scrollable: scrollableWithin(find.byType(SettingsScreen)),
+      what: 'Delete account',
+      maxScrolls: 30,
+      delta: 200,
     );
     await shot('19a-delete-control');
     // The floating navigation bar in app_shell.dart sits OVER the bottom ~86px
@@ -968,7 +1117,7 @@ void main() {
       tester,
       deleteButton,
       'Delete account',
-      scrollable: find.byType(Scrollable).first,
+      scrollable: scrollableWithin(find.byType(SettingsScreen)).first,
     );
     await pumpFor(tester, const Duration(seconds: 2));
 
