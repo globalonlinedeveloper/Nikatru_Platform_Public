@@ -149,7 +149,11 @@ void main() {
       addTearDown(c.dispose);
 
       await _launch(tester, c);
-      expect(_allow, findsOneWidget, reason: 'precondition: the prompt mounted');
+      expect(
+        _allow,
+        findsOneWidget,
+        reason: 'precondition: the prompt mounted',
+      );
       expect(
         _decline,
         findsOneWidget,
