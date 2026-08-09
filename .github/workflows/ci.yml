@@ -1573,6 +1573,28 @@ jobs:
       - name: Workflow static analysis (self-tests, then scans)
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/scan-workflows.mjs . --zizmor "${RUNNER_TEMP}/zizmor"
+      # A provider CYCLE is DEBUG-ONLY, which is the whole reason it needs a
+      # static guard rather than a test. Riverpod's `ref.read` runs an assert that
+      # walks the target's watch/listen ancestors and throws
+      # CircularDependencyError when it finds the reader -- so `--release` strips
+      # it and deletes accounts fine, while every debug run and the whole
+      # `flutter drive` E2E throws. #258 was exactly that: the delete button threw
+      # before a request was ever formed, and Cloudflare's zone analytics recorded
+      # ZERO /v1/account requests for the leg -- not even a preflight -- while
+      # production looked healthy for four days.
+      # This checks the CLASS, not that instance: for every `R --read--> T`, R must
+      # not already be a watch/listen ancestor of T, across every apps/*/lib and the
+      # brick template whose providers.dart all fifty planned apps are born from.
+      # The same anti-pattern was still live at apps/subly/lib/state/providers.dart
+      # :1450 after #258 shipped, one `ref.read` away from closing a second loop.
+      # Comments AND string literals are stripped first (text-reductions.mjs): the
+      # real providers.dart spells the cycle out in PROSE, so a raw-text scan
+      # reports the FIXED tree as broken -- the r2_buckets shape.
+      # ⚠️ Green means no CLOSED cycle, NOT that the two-hop watch tear-off is
+      # impossible; it prints the graph size it reached on every run.
+      - name: No provider reads a provider that already watches it
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-provider-graph-acyclic.mjs
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
