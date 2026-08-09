@@ -22,9 +22,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import entitlements from '../src/routes/entitlements';
-import { realPlatformDb, ENTITLEMENTS_SCHEMA, TEST_ENV } from './harness';
-import type { AppEnv, Entitlement } from '../src/types';
+import entitlements, { type EntitlementRow } from '../src/routes/entitlements';
+import { realPlatformDb, ENTITLEMENTS_SCHEMA, PLATFORM_MIGRATIONS, TEST_ENV } from './harness';
+import type { AppEnv } from '../src/types';
 
 const USER = 'user-a';
 const OTHER = 'user-b';
@@ -230,13 +230,34 @@ describe('GET /v1/entitlements — a row from the wrong money world grants nothi
     expect((await h.get()).body.is_pro).toBe(false);
   });
 
-  it('a sandbox deploy honours sandbox rows and refuses live ones', async () => {
+  it('a sandbox deploy REFUSES a live row — the limb cuts both ways', async () => {
+    // The refusal half on its own: a live row ALONE on a sandbox deploy grants
+    // nothing. (An earlier draft seeded a granting sandbox row next to this one
+    // and asserted is_pro === true — a test the limb's deletion also passes.)
+    const db = realPlatformDb();
+    const h = harness(db, { MONEY_ENVIRONMENT: 'sandbox' });
+    h.seed({ entitlement: 'cloud_sync', is_active: 1, expires_at: future, provider_environment: 'live' });
+    expect((await h.get()).body.is_pro).toBe(false);
+  });
+
+  it('a sandbox deploy honours a sandbox row in its own world', async () => {
     const db = realPlatformDb();
     const h = harness(db, { MONEY_ENVIRONMENT: 'sandbox' });
     h.seed({ entitlement: 'pro', is_active: 1, expires_at: future, provider_environment: 'sandbox' });
-    h.seed({ entitlement: 'cloud_sync', is_active: 1, expires_at: future, provider_environment: 'live' });
+    expect((await h.get()).body.is_pro).toBe(true);
+  });
+
+  it('the denial reason is DIAGNOSABLE from the payload — the world rides along', async () => {
+    // Two denial reasons now exist (wrong world, unparseable expiry); support
+    // must be able to tell them apart without server logs.
+    const db = realPlatformDb();
+    const h = harness(db);
+    h.seed({ is_active: 1, expires_at: future, provider_environment: 'sandbox' });
     const { body } = await h.get();
-    expect(body.is_pro).toBe(true); // the sandbox row, in its own world
+    expect(body.is_pro).toBe(false);
+    expect(
+      (body.entitlements[0] as { provider_environment?: string }).provider_environment,
+    ).toBe('sandbox');
   });
 
   it('503s when MONEY_ENVIRONMENT is unset — no guess, no access decision', async () => {
@@ -262,7 +283,7 @@ describe('GET /v1/entitlements — a row from the wrong money world grants nothi
 // column added or renamed there would otherwise leave this Worker's whole
 // entitlement suite passing against a table it does not talk to.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('the SHIPPED platform_db schema matches src/types.ts Entitlement', () => {
+describe('the SHIPPED platform_db schema carries every column the route reads', () => {
   /** Column names from the CREATE TABLE body — not the indexes after it. */
   function columnsOf(sql: string): string[] {
     const body = /CREATE TABLE[^(]*\(([\s\S]*?)\n\);/.exec(sql);
@@ -282,23 +303,38 @@ describe('the SHIPPED platform_db schema matches src/types.ts Entitlement', () =
       .filter((name) => !TABLE_CONSTRAINTS.has(name.toUpperCase()));
   }
 
-  it('declares exactly the columns the Entitlement type has', () => {
-    const declared = columnsOf(ENTITLEMENTS_SCHEMA);
-    // A witness value of the type: TypeScript makes this fail to COMPILE if a
-    // field is added to or removed from `Entitlement`, and the runtime compare
-    // then fails if the SQL was not updated to match.
-    const witness: Record<keyof Entitlement, true> = {
-      user_id: true,
-      app_id: true,
+  /** Columns later migrations bolt onto the table. */
+  function alterColumnsOf(migrations: readonly string[]): string[] {
+    return migrations.flatMap((sql) =>
+      [...sql.matchAll(/ALTER TABLE entitlements ADD COLUMN (\w+)/g)].map((m) => m[1]),
+    );
+  }
+
+  it('every EntitlementRow field is a real column of the shipped migrations', () => {
+    // The witness used to compare src/types.ts `Entitlement` against 0001 —
+    // and this PR removed that type's last reader, so the pair asserted less
+    // than it said. It now witnesses the type the route ACTUALLY reads rows
+    // through: TypeScript fails to compile if `EntitlementRow` gains or loses
+    // a field, and the runtime check fails if a field names no shipped column.
+    const witness: Record<keyof EntitlementRow, true> = {
       entitlement: true,
       product_id: true,
       store: true,
       is_active: true,
       expires_at: true,
-      updated_at: true,
+      provider_environment: true,
     };
-    expect(declared.length, 'the column parser must actually find columns').toBe(8);
-    expect(new Set(declared)).toEqual(new Set(Object.keys(witness)));
+    const shipped = new Set([
+      ...columnsOf(ENTITLEMENTS_SCHEMA),
+      ...alterColumnsOf(PLATFORM_MIGRATIONS),
+    ]);
+    expect(
+      alterColumnsOf(PLATFORM_MIGRATIONS).length,
+      'the ALTER parser must actually find the 0004 money columns',
+    ).toBeGreaterThanOrEqual(11);
+    for (const field of Object.keys(witness)) {
+      expect(shipped.has(field), `${field} is read by the route but shipped by no migration`).toBe(true);
+    }
   });
 
   it('the parser really reads the file — it is not matching an empty set', () => {
@@ -330,6 +366,7 @@ CREATE INDEX idx_x ON entitlements (user_id);`),
       store: 'STRIPE',
       is_active: true,
       expires_at: future,
+      provider_environment: 'live',
     });
   });
 });

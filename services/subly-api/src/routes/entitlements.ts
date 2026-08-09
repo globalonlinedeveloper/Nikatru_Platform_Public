@@ -11,9 +11,11 @@ const app = new Hono<AppEnv>();
 
 /** The row shape this route reads. Named columns, not `SELECT *`: the shared
  *  table grows a column with every platform migration, and `*` would ship each
- *  one to every client without anybody deciding that. Same reasoning (and the
- *  same shape) as services/platform/src/routes/entitlements.ts. */
-interface EntitlementRow {
+ *  one to every client without anybody deciding that. Same reasoning as
+ *  services/platform/src/routes/entitlements.ts — a smaller subset, not the
+ *  same one. Exported for the schema-witness test, which asserts every field
+ *  here is a real column of the shipped platform migrations. */
+export interface EntitlementRow {
   entitlement: string;
   product_id: string | null;
   store: string | null;
@@ -48,12 +50,18 @@ app.get('/', async (c) => {
   );
 
   const nowMs = Date.now();
+  // `provider_environment` rides along so a denied row is DIAGNOSABLE from the
+  // payload: with the environment limb there are two denial reasons, and
+  // support cannot tell "wrong money world" from "unparseable expiry" if the
+  // response hides the world. Same reason the platform route returns provider
+  // and revocation fields.
   const entitlements = rows.map((r) => ({
     entitlement: r.entitlement,
     product_id: r.product_id,
     store: r.store,
     is_active: r.is_active === 1,
     expires_at: r.expires_at,
+    provider_environment: r.provider_environment,
   }));
 
   // ── THE MONEY BOUNDARY — IT MUST FAIL CLOSED ────────────────────────────────

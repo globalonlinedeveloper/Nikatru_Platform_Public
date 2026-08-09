@@ -41,9 +41,9 @@
 // deploy's is not honoured, and a row with NO environment at all is UNDECIDABLE
 // and is therefore also not honoured. That second case is the fail-closed rule
 // applied to itself: "written before the rail knew" is not evidence of a live
-// payment. The RevenueCat writer sets the column as of 2026-08-09 (with the
-// same fail-closed world guard and the M-2 ordering clause), so both of this
-// table's writers now stamp their world; that rail itself stays owner-deferred.
+// payment. The RevenueCat writer sets the column as of 2026-08-09 (same fail-
+// closed world guard, M-2 ordering); `entitlements` was verified EMPTY that
+// day, so no row predates the stamp — NULL here only ever means damage.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';

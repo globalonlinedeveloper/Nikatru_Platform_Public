@@ -264,6 +264,7 @@ describe('POST /v1/webhooks/revenuecat → /v1/entitlements', () => {
         app_user_id: USER,
         entitlement_ids: ['pro', 'cloud_sync'],
         environment: 'PRODUCTION',
+        event_timestamp_ms: nextEventTs(),
         expiration_at_ms: Date.now() + 30 * DAY,
       },
     });
@@ -321,8 +322,8 @@ describe('POST /v1/webhooks/revenuecat — authentication', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('POST /v1/webhooks/revenuecat — body validation', () => {
   /** Build an INITIAL_PURCHASE with one field overridden/injected. Carries the
-   *  PRODUCTION environment (the harness deploy is 'live') and NO provider
-   *  clock — a clock-less event, which inserts freely on an empty key. */
+   *  PRODUCTION environment (the harness deploy is 'live') and a fresh provider
+   *  clock — a clock-less event is ACKED, so every write-path fixture needs one. */
   const withField = (patch: Record<string, unknown>) => ({
     api_version: '1.0',
     event: {
@@ -330,6 +331,7 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
       app_user_id: USER,
       entitlement_ids: ['pro'],
       environment: 'PRODUCTION',
+      event_timestamp_ms: nextEventTs(),
       ...patch,
     },
   });
@@ -360,7 +362,8 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
       // with no try/catch above it — a 500 RevenueCat retries forever.
       const raw =
         `{"event":{"type":"INITIAL_PURCHASE","app_user_id":"${USER}",` +
-        `"entitlement_ids":["pro"],"environment":"PRODUCTION","expiration_at_ms":1e400}}`;
+        `"entitlement_ids":["pro"],"environment":"PRODUCTION",` +
+        `"event_timestamp_ms":${nextEventTs()},"expiration_at_ms":1e400}}`;
       expect(
         (JSON.parse(raw) as { event: { expiration_at_ms: number } }).event
           .expiration_at_ms,
@@ -494,6 +497,7 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
           original_app_user_id: 'legacy-user',
           entitlement_ids: ['pro'],
           environment: 'PRODUCTION',
+          event_timestamp_ms: nextEventTs(),
         },
       });
       expect(ok.status).toBe(200);
@@ -569,7 +573,7 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
 
   describe('validateEvent as a unit', () => {
     it('reports WHICH field was wrong — a 400 has to be actionable', () => {
-      const r = validateEvent({ event: { type: 'RENEWAL', app_user_id: 1 } });
+      const r = validateEvent({ event: { type: 'RENEWAL', app_user_id: 1 } }, 'live');
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.detail).toContain('app_user_id');
     });
@@ -577,17 +581,20 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
     it('returns the checked values, with the ISO conversion already done', () => {
       const ms = Date.UTC(2026, 8, 1);
       const ts = Date.UTC(2026, 7, 15, 12);
-      const r = validateEvent({
-        event: {
-          id: 'evt-abc',
-          type: 'RENEWAL',
-          app_user_id: USER,
-          entitlement_id: 'pro',
-          environment: 'PRODUCTION',
-          event_timestamp_ms: ts,
-          expiration_at_ms: ms,
+      const r = validateEvent(
+        {
+          event: {
+            id: 'evt-abc',
+            type: 'RENEWAL',
+            app_user_id: USER,
+            entitlement_id: 'pro',
+            environment: 'PRODUCTION',
+            event_timestamp_ms: ts,
+            expiration_at_ms: ms,
+          },
         },
-      });
+        'live',
+      );
       expect(r.ok && r.act).toBe(true);
       if (r.ok && r.act) {
         expect(r.event).toEqual({
@@ -605,33 +612,90 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
       }
     });
 
-    it('maps SANDBOX to sandbox, and a clock-less event to a null occurred_at', () => {
-      const r = validateEvent({
-        event: {
-          type: 'RENEWAL',
-          app_user_id: USER,
-          entitlement_id: 'pro',
-          environment: 'SANDBOX',
+    it('maps SANDBOX to sandbox on a sandbox deploy', () => {
+      const r = validateEvent(
+        {
+          event: {
+            type: 'RENEWAL',
+            app_user_id: USER,
+            entitlement_id: 'pro',
+            environment: 'SANDBOX',
+            event_timestamp_ms: Date.UTC(2026, 7, 15),
+          },
         },
-      });
+        'sandbox',
+      );
       expect(r.ok && r.act).toBe(true);
       if (r.ok && r.act) {
         expect(r.event.environment).toBe('sandbox');
-        expect(r.event.occurredAt).toBeNull();
         expect(r.event.eventId).toBeNull();
       }
     });
 
-    it('prefers entitlement_ids over the singular entitlement_id', () => {
-      const r = validateEvent({
-        event: {
-          type: 'RENEWAL',
-          app_user_id: USER,
-          entitlement_ids: ['a', 'b'],
-          entitlement_id: 'ignored',
-          environment: 'PRODUCTION',
+    it('acks a clock-less event — an unordered write is not an option', () => {
+      const r = validateEvent(
+        { event: { type: 'RENEWAL', app_user_id: USER, entitlement_id: 'pro', environment: 'PRODUCTION' } },
+        'live',
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.act).toBe(false);
+        if (!r.act) expect(r.reason).toContain('event_timestamp_ms');
+      }
+    });
+
+    it('short-circuits the OTHER world before the remaining field checks', () => {
+      // Junk in every later field, and it must still be an ack: a retry cannot
+      // change which world an event belongs to.
+      const r = validateEvent(
+        {
+          event: {
+            type: 'RENEWAL',
+            app_user_id: USER,
+            environment: 'SANDBOX',
+            event_timestamp_ms: 'garbage',
+            expiration_at_ms: 'garbage',
+            entitlement_ids: 'garbage',
+          },
         },
-      });
+        'live',
+      );
+      expect(r.ok && !r.act).toBe(true);
+      if (r.ok && !r.act) expect(r.ignoredEnvironment).toBe('sandbox');
+    });
+
+    it('a non-conforming event.id becomes NULL, never a 400 — audit-only fields cannot stop the rail', () => {
+      const r = validateEvent(
+        {
+          event: {
+            id: 12345,
+            type: 'RENEWAL',
+            app_user_id: USER,
+            entitlement_id: 'pro',
+            environment: 'PRODUCTION',
+            event_timestamp_ms: Date.UTC(2026, 7, 15),
+          },
+        },
+        'live',
+      );
+      expect(r.ok && r.act).toBe(true);
+      if (r.ok && r.act) expect(r.event.eventId).toBeNull();
+    });
+
+    it('prefers entitlement_ids over the singular entitlement_id', () => {
+      const r = validateEvent(
+        {
+          event: {
+            type: 'RENEWAL',
+            app_user_id: USER,
+            entitlement_ids: ['a', 'b'],
+            entitlement_id: 'ignored',
+            environment: 'PRODUCTION',
+            event_timestamp_ms: Date.UTC(2026, 7, 15),
+          },
+        },
+        'live',
+      );
       expect(r.ok && r.act && r.event.entitlementIds).toEqual(['a', 'b']);
     });
   });
@@ -659,11 +723,24 @@ describe('POST /v1/webhooks/revenuecat — event ordering (occurred_at)', () => 
     // Then an OLDER cancellation-refund (past expiry) arrives late.
     const res = await h.post(event('CANCELLATION', { expiresInDays: -1, eventTs: T1 }));
     expect(res.status, 'the late event is still acked — RevenueCat must stop retrying').toBe(200);
+    // …but NOT silently: a dropped write must be distinguishable from a landed
+    // one, or a comparison-breaking occurred_at format would freeze every row
+    // behind a wall of 200s. The `stale` field is that signal.
+    expect(await res.json()).toEqual({ ok: true, stale: 1 });
 
     const [row] = db.rows('SELECT is_active, occurred_at FROM entitlements');
     expect(row.is_active, 'the older event must not revoke the newer grant').toBe(1);
     expect(row.occurred_at).toBe(new Date(T2).toISOString());
     expect(await h.isPro()).toBe(true);
+  });
+
+  it('a write that LANDS does not claim staleness', async () => {
+    // Without this, a route that always answered {ok, stale} would pass the
+    // test above. The fresh insert and the genuine update both report clean.
+    const db = realPlatformDb();
+    const h = harness(db);
+    expect(await (await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: T1 }))).json()).toEqual({ ok: true });
+    expect(await (await h.post(event('EXPIRATION', { expiresInDays: -1, eventTs: T2 }))).json()).toEqual({ ok: true });
   });
 
   it('a genuinely newer event still applies', async () => {
@@ -686,24 +763,71 @@ describe('POST /v1/webhooks/revenuecat — event ordering (occurred_at)', () => 
     expect(db.rows('SELECT is_active FROM entitlements')[0].is_active).toBe(1);
   });
 
-  it('a clock-less event cannot clobber a clocked row', async () => {
-    const db = realPlatformDb();
-    const h = harness(db);
-    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: T2 }));
-    const res = await h.post(event('EXPIRATION', { expiresInDays: -1, eventTs: null }));
+  it('a CLOCK-LESS event is acked and writes NOTHING — the unordered path is closed', async () => {
+    // A clock-less write would be last-write-wins, which is verbatim the defect
+    // this suite exists to close — and the MoR adapter refuses a missing
+    // occurred_at for the same stated reason. RevenueCat documents the field on
+    // every event, so acking the absent case costs nothing real.
+    const db = new RecordingDb();
+    const res = await harness(db).post(event('EXPIRATION', { expiresInDays: -1, eventTs: null }));
     expect(res.status).toBe(200);
-    expect(db.rows('SELECT is_active FROM entitlements')[0].is_active).toBe(1);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(db.sql.length, 'no clock, no write').toBe(0);
   });
 
-  it('a clocked event upgrades a clock-less row', async () => {
+  it('a clocked event upgrades a legacy clock-less row', async () => {
+    // The webhook can no longer CREATE a clock-less row, but an operator
+    // backfill or another writer could; the WHERE clause's NULL branch keeps
+    // such a row upgradeable instead of frozen.
     const db = realPlatformDb();
+    db.db
+      .prepare(
+        `INSERT INTO entitlements (user_id, app_id, entitlement, is_active, expires_at, updated_at, provider_environment)
+         VALUES (?, 'subly', 'pro', 1, NULL, '2026-08-01T00:00:00.000Z', 'live')`,
+      )
+      .run(USER);
     const h = harness(db);
-    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: null }));
-    expect(db.rows('SELECT occurred_at FROM entitlements')[0].occurred_at).toBeNull();
     await h.post(event('EXPIRATION', { expiresInDays: -1, eventTs: T1 }));
     const [row] = db.rows('SELECT is_active, occurred_at FROM entitlements');
     expect(row.is_active).toBe(0);
     expect(row.occurred_at).toBe(new Date(T1).toISOString());
+  });
+
+  it('winning a row from ANOTHER provider clears the columns this writer cannot speak to', async () => {
+    // The MoR store resets ALL money columns on update; a writer that reset
+    // nine and left seven would interleave two providers' truths on one row —
+    // a Paddle refund's revoked_at/provider_status/subscription id surviving
+    // under provider='revenuecat' is a self-contradicting row the platform
+    // reader hands to clients and applyAdjustment decides refunds against.
+    const db = realPlatformDb();
+    db.db
+      .prepare(
+        `INSERT INTO entitlements
+           (user_id, app_id, entitlement, is_active, expires_at, updated_at,
+            provider, provider_environment, provider_subscription_id, provider_transaction_id,
+            provider_status, current_period_end, trial_end, revoked_at, revocation_reason, occurred_at)
+         VALUES (?, 'subly', 'pro', 0, ?, '2026-08-01T00:00:00.000Z',
+                 'paddle', 'live', 'sub_x', 'txn_y',
+                 'canceled', ?, NULL, ?, 'refund_approved', ?)`,
+      )
+      .run(USER, new Date(T1).toISOString(), new Date(T1).toISOString(), new Date(T1).toISOString(), new Date(T1).toISOString());
+
+    const h = harness(db);
+    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: T2 }));
+    const [row] = db.rows('SELECT * FROM entitlements');
+    expect(row.provider).toBe('revenuecat');
+    expect(row.is_active).toBe(1);
+    for (const col of [
+      'provider_subscription_id',
+      'provider_transaction_id',
+      'provider_status',
+      'current_period_end',
+      'trial_end',
+      'revoked_at',
+      'revocation_reason',
+    ]) {
+      expect(row[col], `${col} must not survive as another provider's leftover`).toBeNull();
+    }
   });
 
   it('rows are stamped with the full provenance quartet', async () => {
@@ -771,6 +895,20 @@ describe('POST /v1/webhooks/revenuecat — the money-world guard', () => {
     expect(db.sql.length).toBe(0);
   });
 
+  it('a MALFORMED event from the other world is still an ACK, never a 400', async () => {
+    // The world check runs before the remaining field checks on purpose: a 400
+    // asks RevenueCat to retry forever — on the queue shared with the events
+    // that move money — for a row this deploy would never write, and a retry
+    // cannot change which world an event belongs to.
+    const db = new RecordingDb();
+    const body = event('RENEWAL', { environment: 'SANDBOX' });
+    (body.event as Record<string, unknown>).expiration_at_ms = '1234'; // would 400 in-world
+    const res = await harness(db).post(body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, ignored_environment: 'sandbox' });
+    expect(db.sql.length).toBe(0);
+  });
+
   it('an event with NO environment is acked without writing — no world, no row', async () => {
     const db = new RecordingDb();
     const body = event('RENEWAL', { expiresInDays: 30 });
@@ -799,6 +937,11 @@ describe('POST /v1/webhooks/revenuecat — the money-world guard', () => {
       expect(res.status, JSON.stringify(broken)).toBe(503);
       expect(await res.json()).toEqual({ error: 'money_rail_not_configured' });
     }
+    // The "before the body is even read" half, made falsifiable: NON-JSON on an
+    // unconfigured deploy must 503, not 400 — moving the check below the JSON
+    // parse would flip this to 400 and the name would be a lie the suite passes.
+    const rawRes = await harness(db, SECRET, { MONEY_ENVIRONMENT: undefined }).post('{not json');
+    expect(rawRes.status).toBe(503);
     expect(db.sql.length).toBe(0);
   });
 });

@@ -163,6 +163,7 @@ export const ENTITLEMENTS_SCHEMA = platformEntitlements;
  * entitlements.test.ts deliberately compares 0001's base contract.
  */
 import { PLATFORM_MIGRATIONS } from '../../platform/test/harness';
+export { PLATFORM_MIGRATIONS };
 
 export function realPlatformDb(): SqliteD1 {
   return new SqliteD1([...PLATFORM_MIGRATIONS]);

@@ -190,13 +190,16 @@ export interface ValidatedEvent {
   /** ISO form of [expiresAtMs] — converted once, inside validation. */
   expiresAt: string | null;
   /** The event's money world, already mapped to ours: SANDBOX → 'sandbox',
-   *  PRODUCTION → 'live'. The route compares it to MONEY_ENVIRONMENT. */
+   *  PRODUCTION → 'live'. Always equal to the deploy's world — a mismatch is
+   *  acked inside validateEvent and never reaches an `act: true` result. */
   environment: MoneyEnvironment;
-  /** The PROVIDER'S clock (`event_timestamp_ms`) as ISO, or null when the
-   *  event carries none. This is what the conditional UPSERT orders by. */
-  occurredAt: string | null;
+  /** The PROVIDER'S clock (`event_timestamp_ms`) as ISO — never null: a
+   *  clock-less event is acked, because an unordered write is the defect the
+   *  conditional UPSERT exists to close. */
+  occurredAt: string;
   /** RevenueCat's own event id — `last_event_id` on the row, the audit half
-   *  of the ordering pair 0004 documents. Null when absent. */
+   *  of the ordering pair 0004 documents. Null when absent or non-conforming
+   *  (audit-only, so never worth a 400). */
   eventId: string | null;
 }
 
@@ -213,10 +216,10 @@ export interface ValidatedEvent {
  */
 export type ValidatedWebhook =
   | { ok: true; act: true; event: ValidatedEvent }
-  | { ok: true; act: false; reason: string; ignoredType?: string }
+  | { ok: true; act: false; reason: string; ignoredType?: string; ignoredEnvironment?: MoneyEnvironment }
   | Invalid;
 
-export function validateEvent(body: unknown): ValidatedWebhook {
+export function validateEvent(body: unknown, deployEnvironment: MoneyEnvironment): ValidatedWebhook {
   if (!isPlainObject(body)) {
     return { ok: false, detail: 'body must be a JSON object' };
   }
@@ -281,36 +284,49 @@ export function validateEvent(body: unknown): ValidatedWebhook {
   }
   const environment: MoneyEnvironment = envRaw === 'PRODUCTION' ? 'live' : 'sandbox';
 
-  // ── the provider's clock — what the conditional UPSERT orders by ───────────
-  // Same rule as `expiration_at_ms` below: an unreadable instant is a 400,
-  // never silently reinterpreted — here "reinterpreted" would mean "treated as
-  // clock-less", and a clock-less event writes over clock-less rows.
-  const tsRaw = evRaw.event_timestamp_ms;
-  let occurredAt: string | null = null;
-  if (tsRaw !== undefined && tsRaw !== null) {
-    occurredAt = isoFromEpochMs(tsRaw);
-    if (occurredAt === null) {
-      return {
-        ok: false,
-        detail:
-          'event.event_timestamp_ms must be a finite epoch-millisecond number ' +
-          'within the representable date range',
-      };
-    }
+  // ── THE WORLD COMPARISON, HERE AND NOT IN THE ROUTE — review finding ───────
+  // The other world's event must short-circuit BEFORE the remaining field
+  // checks: a SANDBOX event with a malformed expiry that reached those checks
+  // would 400 — an infinite retry, on the shared delivery queue, for a row this
+  // deploy would never write. A retry cannot change which world an event
+  // belongs to, so nothing below this line is worth validating for it.
+  if (environment !== deployEnvironment) {
+    return {
+      ok: true,
+      act: false,
+      reason: `event is from the '${environment}' money world, this deploy is '${deployEnvironment}'`,
+      ignoredEnvironment: environment,
+    };
   }
 
-  // ── the event's own id — the audit half of the ordering pair ───────────────
-  const idRaw = evRaw.id;
-  let eventId: string | null = null;
-  if (idRaw !== undefined && idRaw !== null) {
-    if (!isIdString(idRaw, MAX_ID_LENGTH)) {
-      return {
-        ok: false,
-        detail: `event.id must be a non-empty string of at most ${MAX_ID_LENGTH} characters`,
-      };
-    }
-    eventId = idRaw;
+  // ── the provider's clock — what the conditional UPSERT orders by ───────────
+  // ABSENT is ACKED, not written clock-less: a clock-less write is last-write-
+  // wins, which is verbatim the defect the ordering clause closes — and the MoR
+  // adapter refuses a missing `occurred_at` for the same stated reason
+  // (paddle.ts: "a defaulted occurred_at breaks ordering"). RevenueCat
+  // documents `event_timestamp_ms` on every event, so this costs nothing real.
+  // Present-but-unreadable stays a 400, same rule as `expiration_at_ms`.
+  const tsRaw = evRaw.event_timestamp_ms;
+  if (tsRaw === undefined || tsRaw === null) {
+    return { ok: true, act: false, reason: 'missing event_timestamp_ms' };
   }
+  const occurredAt = isoFromEpochMs(tsRaw);
+  if (occurredAt === null) {
+    return {
+      ok: false,
+      detail:
+        'event.event_timestamp_ms must be a finite epoch-millisecond number ' +
+        'within the representable date range',
+    };
+  }
+
+  // ── the event's own id — audit-only, so it can NEVER be worth a 400 ────────
+  // `last_event_id` feeds no decision: it is not a dedup key here and nothing
+  // reads it back. A 400 would let a cosmetic id-format change stop RENEWAL and
+  // EXPIRATION delivery for this app forever, over a column nobody consults —
+  // so a non-conforming id is stored as NULL instead of rejected.
+  const idRaw = evRaw.id;
+  const eventId: string | null = isIdString(idRaw, MAX_ID_LENGTH) ? idRaw : null;
 
   // ── the paid-through date — the whole money boundary on this side ───────────
   const expRaw = evRaw.expiration_at_ms;
@@ -449,7 +465,10 @@ app.post('/revenuecat', async (c) => {
   }
 
   // ── VALIDATE FIRST — nothing below this line may touch a row otherwise ──────
-  const checked = validateEvent(body);
+  // The deploy's world goes IN: the other world's event must short-circuit
+  // before the remaining field checks (see the comment inside validateEvent),
+  // so the sandbox guard lives there rather than here. [5]M-12
+  const checked = validateEvent(body, deployEnvironment);
   if (!checked.ok) {
     // 400, NOT an ack: the sender should retry with a body we can read, and the
     // stored entitlement keeps whatever it already said in the meantime.
@@ -459,22 +478,12 @@ app.post('/revenuecat', async (c) => {
   if (!checked.act) {
     // Well-formed but nothing to do; ack so RevenueCat doesn't retry forever.
     console.warn(`[webhooks/revenuecat] ${checked.reason}`);
+    if (checked.ignoredEnvironment !== undefined) {
+      return c.json({ ok: true, ignored_environment: checked.ignoredEnvironment });
+    }
     return checked.ignoredType !== undefined
       ? c.json({ ok: true, ignored: checked.ignoredType })
       : c.json({ ok: true });
-  }
-
-  // ── THE SANDBOX GUARD — an event from the other money world writes NOTHING ──
-  // Acked, not 400ed: RevenueCat sends both worlds' events to the same URL
-  // under the same secret, and a retry cannot change which world an event
-  // belongs to. Without this, one sandbox test purchase against a production
-  // user id would overwrite that user's PAID row. [5]M-12
-  if (checked.event.environment !== deployEnvironment) {
-    console.warn(
-      `[webhooks/revenuecat] ignoring ${checked.event.type} from the '${checked.event.environment}' ` +
-        `money world — this deploy is '${deployEnvironment}'. [5]M-12`,
-    );
-    return c.json({ ok: true, ignored_environment: checked.event.environment });
   }
 
   const appId = c.env.APP_ID;
@@ -497,26 +506,43 @@ app.post('/revenuecat', async (c) => {
   // the one services/platform/src/lib/mor/store.ts applies to this same table:
   // an event older than (or exactly as old as) the one that last wrote the row
   // changes nothing, so a delayed retry cannot roll access backwards.
+  //
+  // AND EVERY MONEY COLUMN MOVES TOGETHER — review finding. The MoR store
+  // resets ALL of them on its update path; a writer that reset nine and left
+  // seven would interleave two providers' truths on one row: a Paddle refund's
+  // `revoked_at`/`provider_status`/subscription id surviving under
+  // provider='revenuecat' is a self-contradicting row that /v1/entitlements
+  // hands to the client and applyAdjustment decides refunds against. This
+  // writer cannot speak to those seven RevenueCat-less columns, so on the
+  // rows it wins they are NULL — "this writer knows nothing about that",
+  // which is true, rather than a dead provider's leftovers, which is not.
   const stmt = c.env.PLATFORM_DB.prepare(
     `INSERT INTO entitlements
        (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at,
         provider, provider_environment, last_event_id, occurred_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'revenuecat', ?, ?, ?)
      ON CONFLICT(user_id, app_id, entitlement) DO UPDATE SET
-       product_id           = excluded.product_id,
-       store                = excluded.store,
-       is_active            = excluded.is_active,
-       expires_at           = excluded.expires_at,
-       updated_at           = excluded.updated_at,
-       provider             = excluded.provider,
-       provider_environment = excluded.provider_environment,
-       last_event_id        = excluded.last_event_id,
-       occurred_at          = excluded.occurred_at
+       product_id               = excluded.product_id,
+       store                    = excluded.store,
+       is_active                = excluded.is_active,
+       expires_at               = excluded.expires_at,
+       updated_at               = excluded.updated_at,
+       provider                 = excluded.provider,
+       provider_environment     = excluded.provider_environment,
+       last_event_id            = excluded.last_event_id,
+       occurred_at              = excluded.occurred_at,
+       provider_subscription_id = NULL,
+       provider_transaction_id  = NULL,
+       provider_status          = NULL,
+       current_period_end       = NULL,
+       trial_end                = NULL,
+       revoked_at               = NULL,
+       revocation_reason        = NULL
      WHERE entitlements.occurred_at IS NULL
         OR excluded.occurred_at > entitlements.occurred_at`,
   );
 
-  await c.env.PLATFORM_DB.batch(
+  const results = await c.env.PLATFORM_DB.batch(
     entitlementIds.map((entId) =>
       stmt.bind(
         userId,
@@ -533,6 +559,21 @@ app.post('/revenuecat', async (c) => {
       ),
     ),
   );
+
+  // A write the WHERE clause dropped must not be indistinguishable from one
+  // that landed — silence ≠ success. If `occurred_at` ever acquires a value
+  // that stops comparing (a second writer storing epoch-ms, an operator
+  // backfill), EVERY write becomes a silent no-op and the 200s keep flowing;
+  // this line and the `stale` field are the only signal. No user_id in the
+  // log — rid/entitlement correlation only, per the standing convention.
+  const stale = results.filter((r) => Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) === 0).length;
+  if (stale > 0) {
+    console.warn(
+      `[webhooks/revenuecat] ${stale} of ${entitlementIds.length} row(s) unchanged — ${type} at ` +
+        `${occurredAt} lost the ordering race (a stale retry, or two events on the same clock)`,
+    );
+    return c.json({ ok: true, stale });
+  }
 
   return c.json({ ok: true });
 });

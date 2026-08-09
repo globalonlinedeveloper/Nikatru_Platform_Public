@@ -123,14 +123,8 @@ export interface Payment {
   paid_at: string | null;
 }
 
-/** An entitlements row (PLATFORM_DB). */
-export interface Entitlement {
-  user_id: string;
-  app_id: string;
-  entitlement: string;
-  product_id: string | null;
-  store: string | null;
-  is_active: number; // 0 | 1 in DB
-  expires_at: string | null;
-  updated_at: string | null;
-}
+// `Entitlement` WAS HERE and was deleted 2026-08-09 with its last reader: both
+// routes now read the shared table through their own named-column row types
+// (routes/entitlements.ts exports `EntitlementRow` for the schema-witness
+// test). A row type no route reads through is a declaration standing in for a
+// use — the same mistake the EXPORTS note above records in the other direction.
