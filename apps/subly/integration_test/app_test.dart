@@ -23,6 +23,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 
 import 'package:subly/core/e2e_keys.dart';
 import 'package:subly/features/budget/budget_screen.dart';
@@ -32,6 +33,7 @@ import 'package:subly/features/insights/insights_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';
 import 'package:subly/features/shell/app_shell.dart';
 import 'package:subly/main.dart' as app;
+import 'package:subly/state/analytics_providers.dart' show kInstallIdKey;
 
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
@@ -373,6 +375,75 @@ void main() {
     return true;
   }
 
+  /// Hands the harness the `anon_id` the consent artifact this run uploaded is
+  /// keyed by, and returns it.
+  ///
+  /// 🔴 THE UPLOAD IS FIRE-AND-FORGET, SO A SILENTLY FAILING POST IS INVISIBLE
+  /// FROM IN HERE, AND THAT IS WHY THIS EXISTS. `_ConsentPrompt._answer`
+  /// (app.dart) does not await `recordAnalyticsConsent`, and
+  /// `applyConsentDecision` (state/analytics_providers.dart) treats the consent
+  /// transport as best-effort by contract — both correct for the user, whose
+  /// choice must not look rejected because the network is down. The consequence
+  /// is that the tap above proves a DECISION WAS TAKEN and proves nothing about
+  /// the record reaching the server: a `POST /v1/consent` that 404s, 429s or
+  /// never leaves the browser produces the identical green prompt-closes-and-
+  /// the-run-continues. `tooling/e2e/verify_consent.mjs` re-reads platform_db
+  /// after the drive, and `anon_id` is the ONLY key it can find the row by —
+  /// `consent_artifacts` deliberately carries no user id.
+  ///
+  /// POLLED, BECAUSE THE WRITE RACES THE TAP. `installIdProvider` mints the id
+  /// and persists it inside that same un-awaited chain, so it is normally on
+  /// disk within a frame or two — and "normally" is not a schedule.
+  ///
+  /// `SharedPreferences.getInstance()` returns the SAME cached singleton the app
+  /// is writing through, so this reads the app's store rather than a second copy
+  /// of it that could never see the write.
+  Future<String> exportConsentAnonId(
+    WidgetTester tester, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final PrefsKeyValueStore store = await PrefsKeyValueStore.create();
+    String? id;
+    final DateTime end = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(end)) {
+      id = await store.read(kInstallIdKey);
+      if (id != null && id.isNotEmpty) break;
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(
+      id != null && id.isNotEmpty,
+      isTrue,
+      reason:
+          'The consent prompt was answered but no install id was persisted under '
+          '"$kInstallIdKey" within ${timeout.inSeconds}s. That id is the anon_id '
+          'every consent artifact and every analytics event is keyed by, so '
+          'without it the server-side half of this leg has nothing to look the '
+          'row up by — and an install that re-mints its id on every launch is a '
+          'defect in its own right (the analytics cohort and the feature-flag '
+          'bucket stop joining). On screen: ${onScreen(tester)}',
+    );
+
+    // 🔴 MERGED INTO reportData, NEVER ASSIGNED OVER IT. `binding.takeScreenshot`
+    // accumulates into this same map (integration_test.dart: `reportData
+    // ??= {}` then `reportData['screenshots'] ??= []`), and `shot('00-consent')`
+    // has already run — so `reportData = {…}` would throw the screenshot list
+    // away on its way past.
+    binding.reportData ??= <String, dynamic>{};
+    binding.reportData!['consent_anon_id'] = id;
+
+    // ⚠️ THIS LINE GOES TO THE BROWSER CONSOLE, NOT TO THE CI LOG, AND IT IS
+    // KEPT ANYWAY. Measured against Flutter 3.44 on 2026-08-09: flutter_tools
+    // does ask chromedriver for browser logs
+    // (`goog:loggingPrefs` in drive/web_driver_service.dart), but nothing ever
+    // reads them — flutter_driver consumes only the PERFORMANCE log, and only
+    // for tracing — so this token cannot reach the tee'd drive log from inside
+    // the app. It is here for a headed local run with devtools open. The
+    // CI-visible copy of the same token is printed HOST-SIDE by
+    // test_driver/integration_test.dart, out of the reportData set above.
+    debugPrint('E2E_CONSENT_ANON_ID=$id');
+    return id!;
+  }
+
   /// Boots the real app, and hands back the one global it mutates.
   ///
   /// 🔴 `app.main()` CALLS `AppErrorScreen.install()` (`main.dart:65`), WHICH
@@ -595,6 +666,12 @@ void main() {
           'the dialog the recorder stays fail-closed and discards every event, '
           'and nothing else in the suite would notice.',
     );
+
+    // …and hand the harness the id that decision was recorded under. This is the
+    // only launch of the run that answers the prompt, so it is the only launch
+    // that uploads an artifact — the other two find the decision already on disk
+    // and never call the route at all.
+    await exportConsentAnonId(tester);
 
     // THE ONE LAUNCH THAT IS GENUINELY A FIRST RUN, so this is the one place
     // the carousel is REQUIRED rather than tolerated. If it is ever absent here,

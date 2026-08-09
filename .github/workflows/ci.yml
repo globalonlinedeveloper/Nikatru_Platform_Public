@@ -712,6 +712,25 @@ jobs:
       - name: Account deletion reaches every user-owned table, never via a shared secret
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-erasure-reach.mjs
+      # …and the SQL that reach is built from is SQL D1 will actually run. The
+      # guard above proves the route can reach every user-owned table by parsing
+      # MIGRATION FILES — so a statement D1 refuses at runtime looks perfectly
+      # reachable to it, and that is exactly what happened: both erasure routes
+      # derived their table set from `FROM sqlite_master m JOIN
+      # pragma_table_info(m.name) p`, which D1's authorizer answers 7500 `not
+      # authorized: SQLITE_AUTH` to. EVERY IN-APP ACCOUNT DELETION IN PRODUCTION
+      # FAILED FROM THE DAY THE ROUTES SHIPPED, 503, with every check here green.
+      # The local suite could not see it either: it runs real SQL through
+      # `node:sqlite`, which has no authorizer and accepts the join.
+      #
+      # This step is the SECRETLESS half — it reads statements out of the tree
+      # and applies the measured prohibition. The half that EXECUTES them needs a
+      # Cloudflare token, which this workflow deliberately does not hold, and
+      # runs in deploy-workers.yml (before each deploy, after its migrations) and
+      # daily in ops-watch.yml. [pipeline K-7] · [ADR 027]
+      - name: Every statement sent to D1 is one D1 will run
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-d1-sql-inventory.mjs
       # …and the rows a LIVE VERIFICATION leaves behind are attributable. This
       # repo's own standing rule — "live-test every implementation, once, using
       # the exact invocation the real caller uses" — necessarily writes to
@@ -1573,6 +1592,28 @@ jobs:
       - name: Workflow static analysis (self-tests, then scans)
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/scan-workflows.mjs . --zizmor "${RUNNER_TEMP}/zizmor"
+      # A provider CYCLE is DEBUG-ONLY, which is the whole reason it needs a
+      # static guard rather than a test. Riverpod's `ref.read` runs an assert that
+      # walks the target's watch/listen ancestors and throws
+      # CircularDependencyError when it finds the reader -- so `--release` strips
+      # it and deletes accounts fine, while every debug run and the whole
+      # `flutter drive` E2E throws. #258 was exactly that: the delete button threw
+      # before a request was ever formed, and Cloudflare's zone analytics recorded
+      # ZERO /v1/account requests for the leg -- not even a preflight -- while
+      # production looked healthy for four days.
+      # This checks the CLASS, not that instance: for every `R --read--> T`, R must
+      # not already be a watch/listen ancestor of T, across every apps/*/lib and the
+      # brick template whose providers.dart all fifty planned apps are born from.
+      # The same anti-pattern was still live at apps/subly/lib/state/providers.dart
+      # :1450 after #258 shipped, one `ref.read` away from closing a second loop.
+      # Comments AND string literals are stripped first (text-reductions.mjs): the
+      # real providers.dart spells the cycle out in PROSE, so a raw-text scan
+      # reports the FIXED tree as broken -- the r2_buckets shape.
+      # ⚠️ Green means no CLOSED cycle, NOT that the two-hop watch tear-off is
+      # impossible; it prints the graph size it reached on every run.
+      - name: No provider reads a provider that already watches it
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-provider-graph-acyclic.mjs
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test

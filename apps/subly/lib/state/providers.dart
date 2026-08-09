@@ -1441,13 +1441,36 @@ final StateProvider<String?> lastAccountDeletionDetailProvider =
 /// API: real Worker via Dio when configured, else the seed client (demo mode).
 /// The Dio base URL comes from the CFG-1 `api_base_url` (runtime, swappable with
 /// no store release), falling back to the compile-time define until it resolves.
+///
+/// 🔴 `tokenProvider` TAKES [authTokenProvider], AND IT IS THE SAME RULE
+/// [platformRestClientProvider] IS BUILT ON — read that block, which explains how
+/// the identical tear-off there became a delete button that never sent a request
+/// (#258). This line held `ref.watch(authRepositoryProvider).currentAccessToken`
+/// until 2026-08-09, and nothing was broken by it YET: the loop was still OPEN,
+/// because nothing inside [authRepositoryProvider]'s own closure reads this
+/// provider. It was ONE EDIT from closing — measured, not argued, by adding a
+/// single `ref.read(apiClientProvider)` to that closure and watching
+/// `assert-provider-graph-acyclic.mjs` name the chain
+/// `authRepositoryProvider --read--> apiClientProvider --watch-->
+/// authRepositoryProvider`. With this line as it now stands, the same addition is
+/// green. The note at [authRepositoryProvider] records that routing erasure
+/// through a second client was CONSIDERED; had it been chosen against the old
+/// line here, the same debug-only `CircularDependencyError` would have landed on
+/// a second seam, and the four days would have been spent twice.
+///
+/// [authTokenProvider] is a type-identical drop-in — both are
+/// `Future<String?> Function()` — and it is STRICTLY FRESHER: the tear-off binds
+/// whichever repository instance existed when this provider built, while
+/// [authTokenProvider] resolves the repository at CALL time. A hand-written
+/// client belongs on this shape; the brick's `restClientProvider` already is, and
+/// is why the brick never had this defect.
 final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   if (!AppConfig.isApiConfigured) return SeedApiClient();
   final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
   final String baseUrl = cfg?.apiBaseUrl ?? '${AppConfig.apiBaseUrl}/v1';
   return DioApiClient(
     baseUrl: baseUrl,
-    tokenProvider: ref.watch(authRepositoryProvider).currentAccessToken,
+    tokenProvider: ref.watch(authTokenProvider),
   );
 });
 

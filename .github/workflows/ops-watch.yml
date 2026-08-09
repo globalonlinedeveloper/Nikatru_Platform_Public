@@ -65,6 +65,44 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tooling/ops/check-heartbeats.mjs
 
+      # ── [pipeline K-7] · DOES LIVE D1 STILL RUN THE SQL WE DEPLOYED? ────────
+      #
+      # 🔴 THE DEPLOY-TIME CHECK IS NOT ENOUGH ON ITS OWN, AND THAT IS THE WHOLE
+      # REASON THIS COPY EXISTS. deploy-workers.yml runs the same script before
+      # each deploy — but a Worker that is not redeployed for six weeks is a
+      # Worker nothing has re-asked, and the authorizer is D1's, not ours. A
+      # rule that tightens on Cloudflare's side would break every account
+      # deletion in production and the next signal would be a user complaint.
+      # That is precisely the shape the original defect had: 503 on every
+      # deletion for months, every check green, nobody looking.
+      #
+      # ⚠️ `if: ${{ !cancelled() }}` IS LOAD-BEARING, for the same reason it is
+      # on the step below: a failing heartbeat read must not silence the part
+      # that would have told you. Its own exit code still fails the job.
+      #
+      # Exit 1 = D1 refuses a statement we deploy (or a guarded write touched a
+      # row). Exit 2 = nothing was judged, which fails too — an unexecuted sweep
+      # prints the same "ok" as a complete one.
+      - name: Live D1 still runs every statement the Workers send it
+        if: ${{ !cancelled() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node tooling/ops/check-d1-accepts-live-sql.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            # NO BACKTICKS ANYWHERE IN THESE STRINGS: they are double-quoted, so
+            # a backtick opens a command substitution and the annotation would
+            # silently execute part of itself.
+            echo "::error title=D1 statement acceptance is UNKNOWN — nothing was executed::The check could not reach D1, could not read a schema, or a database did not refuse the known-bad control statement. NOTHING was judged. A negative control that comes back accepted means the harness is not talking to a real authorizer, and a sweep in that state waves every statement through — which is indistinguishable from a healthy one."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=Live D1 REFUSES a statement the Workers deploy::A statement in services/*/src is rejected by D1's authorizer at runtime, or a write guarded by an unmatched key changed a row. The last time the first was true, every in-app account deletion had been failing with 503 for months while every check was green. The failing statement, its file and its line are in the step log."
+          fi
+          exit "$code"
+
       # ── [pipeline 11]E-13 · IS THE RAIL'S SILENCE A FAULT? ─────────────────
       #
       # The step above asks whether the job RAN AND SUCCEEDED. This one asks the
