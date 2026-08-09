@@ -55,6 +55,7 @@ import {
   parseOpensslVerify,
   pinVerdict,
 } from '../appimage-signing.mjs';
+import { armingOf } from '../channel-arming.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = resolve(CI_DIR, '..', '..');
@@ -105,6 +106,14 @@ function makeRoot({
   names = [B64_ENV],
   apps = [{ slug: 'subly' }],
   submissionWorkflow = null,
+  // ── THE ARMING FIELDS ──────────────────────────────────────────────────────
+  // The REAL register's values for this row: submittable: false, served: false,
+  // lane: null. Nothing publishes an .AppImage today, so a release-lane failure
+  // here blocked every other channel's release for a download that does not
+  // exist. A fixture that wants the failure arms the row, and two below do.
+  submittable = false,
+  served = false,
+  lane = null,
 } = {}) {
   const root = join(TMP, `root${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
@@ -117,6 +126,9 @@ function makeRoot({
     const row = {
       id: channelId,
       kind: 'direct',
+      submittable,
+      served,
+      lane,
       signing: {
         keyKind: 'own-signing-key',
         custody: 'does not exist — no store gatekeeper verifies this one.',
@@ -393,25 +405,67 @@ describe('appimage-signing · the three endings', () => {
     assert.match(out(r), /a backup nobody has restored from is a belief/);
   });
 
-  test('🔴 a TAG PUSH with NO secret FAILS, and names the secret to create', () => {
+  // ── 🔴 THE RESCOPE, AND THE PAIR THAT MAKES IT A RESCOPE AND NOT A DELETION ──
+  // Measured 2026-08-09: this step is in build-platforms.yml's
+  // `linux_web_android` job, which the `release` job `needs:` — so this file was
+  // the THIRD of three credential steps that each killed a tag push, and the
+  // reason the first GitHub Release could never be published. The failure moved
+  // to where it can fire (an armed row); it did not go away.
+  test('🔴 a TAG PUSH with NO secret on an UNARMED channel PRINTS the gap and PASSES', () => {
+    const { r, exported } = runPrepare(makeRoot({}), ON_TAG);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /RELEASE LANE, NO SIGNING SECRETS — PRINTED IN FULL AND NOT FAILED/);
+    assert.match(out(r), /channel "linux-appimage" is NOT ARMED/);
+    assert.match(out(r), /`served: false`/);
+    assert.match(out(r), /TRIPWIRE, NOT A WAIVER/);
+    assert.match(out(r), new RegExp(B64_ENV));
+    assert.match(exported, new RegExp(`${POSTURE_ENV}=${UNSIGNED_PROOF}`));
+  });
+
+  test('the printed gap still names all THREE owner obligations', () => {
     const { r } = runPrepare(makeRoot({}), ON_TAG);
+    assert.match(out(r), /THE BLOCKER IS OWNER-GATED/);
+    assert.match(out(r), /GENERATE the Ed25519 keypair/);
+    assert.match(out(r), /CUSTODY/);
+    assert.match(out(r), /RESTORE DRILL/);
+    // …and the build proof underneath it still argues WHY this row is exposed.
+    assert.match(out(r), /ENTIRE provenance story|no provenance at all/i);
+  });
+
+  test('🔴 a TAG PUSH with NO secret on an ARMED channel FAILS, and names the secret to create', () => {
+    const { r } = runPrepare(makeRoot({ served: true }), ON_TAG);
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /this is a RELEASE lane and no AppImage signing key is configured/);
+    assert.match(out(r), /channel "linux-appimage" IS ARMED/);
+    assert.match(out(r), /`served: true`/);
+    assert.match(out(r), /ENTIRE provenance story/);
+    assert.match(out(r), /anonymous binary on a CDN/);
     assert.match(out(r), new RegExp(B64_ENV));
   });
 
-  test('the tag-push failure explains WHY an unsigned AppImage is worse here than elsewhere', () => {
-    const { r } = runPrepare(makeRoot({}), ON_TAG);
-    assert.match(out(r), /ENTIRE provenance story/);
-    assert.match(out(r), /anonymous binary on a CDN/);
-  });
-
-  test('the declared submission workflow is also a release trigger', () => {
-    const { r } = runPrepare(makeRoot({ submissionWorkflow: SUBMIT_WF }), {
+  test('the declared submission workflow is also a release trigger — and is fatal on an armed row', () => {
+    const { r } = runPrepare(makeRoot({ submissionWorkflow: SUBMIT_WF, served: true }), {
       GITHUB_WORKFLOW_REF: `owner/repo/${SUBMIT_WF}@refs/heads/main`,
     });
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /declared submission workflow/);
+  });
+
+  test('…and on an UNARMED row that same submission workflow prints and passes', () => {
+    const { r } = runPrepare(makeRoot({ submissionWorkflow: SUBMIT_WF }), {
+      GITHUB_WORKFLOW_REF: `owner/repo/${SUBMIT_WF}@refs/heads/main`,
+    });
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /declared submission workflow/);
+    assert.match(out(r), /RELEASE LANE, NO SIGNING SECRETS/);
+  });
+
+  test('🔴 the rescope is RELEASE-LANE-ONLY: a branch push prints not one word of it', () => {
+    const { r } = runPrepare(makeRoot({}), {});
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /RELEASE LANE, NO SIGNING SECRETS/);
+    assert.doesNotMatch(out(r), /TRIPWIRE/);
+    assert.doesNotMatch(out(r), /NOT ARMED/);
   });
 
   test('🔴 HALF the secrets FAILS — with a register row declaring two names, which is the shape a passphrase would add', () => {
@@ -654,5 +708,14 @@ describe('appimage-signing · against the REAL tooling/channel-register.json', (
     const row = realRegister().channels.find((c) => c.id === CHANNEL_ID);
     assert.equal(row.signing.restoreDrill.required, true);
     assert.equal(row.signing.restoreDrill.date, null);
+  });
+
+  test('🔴 linux-appimage is STILL UNARMED — the day it is not, a tag stops being survivable without the keypair', () => {
+    const a = armingOf(realRegister().channels.find((c) => c.id === CHANNEL_ID));
+    assert.equal(
+      a.armed,
+      false,
+      `linux-appimage is now armed (${a.reasons.join('; ')}). The release lane is fatal again without the signing key — which is right, and is what this test exists to announce.`,
+    );
   });
 });
