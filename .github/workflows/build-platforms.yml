@@ -367,13 +367,13 @@ jobs:
       # versioned differently from the binary it packages is two release lines
       # wearing one name.
       #
-      # ⬜ NO .snap IS BUILT HERE AND snapcraft IS NOT INSTALLED — on this runner
-      # or on the owner's box. That is the honest boundary of this increment:
-      # what a machine without snapcraft can prove is that the recipe is
-      # DERIVABLE from the tree and structurally what the Snap Store needs.
-      # Packing a real .snap (snapcraft in LXD/multipass, then `snapcraft
-      # upload`) is the follow-up, and it belongs with OWNER_QUEUE A-6 — the
-      # global name claim — rather than here.
+      # ⬜ NO .snap IS BUILT HERE, AND THAT IS NOW A CHOICE RATHER THAN A LIMIT.
+      # ⚠️ This said "snapcraft IS NOT INSTALLED — on this runner or on the
+      # owner's box … packing a real .snap is the follow-up". As of 2026-08-09
+      # submit-snap.yml installs it and packs one with `--destructive-mode`.
+      # It is not done HERE because this job is the weekly six-platform proof,
+      # and a snap no lane consumes would charge every run for it. What this
+      # step proves is that the recipe is DERIVABLE from the tree.
       - name: Generate the snapcraft recipe
         run: >
           node tooling/release/generate-snapcraft.mjs

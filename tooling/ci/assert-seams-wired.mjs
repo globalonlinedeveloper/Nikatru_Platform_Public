@@ -590,8 +590,13 @@ function jobBody(yaml, jobName) {
   const entry = join(repo, 'apps', 'subly', 'lib', 'main.dart');
   /** Rows with a lane today. A DERIVED subject set can shrink to nothing — the
    *  register losing its `lane` keys would leave this loop iterating zero jobs
-   *  and printing nothing at all — so the count is floored by what exists. */
-  const MIN_LANES = 3;
+   *  and printing nothing at all — so the count is floored by what exists.
+   *
+   *  3 → 4 on 2026-08-09, when `linux-snap` gained a lane (submit-snap.yml's
+   *  `dry-run` job now compiles a Linux bundle and packs a .snap). The floor is
+   *  "what exists today", so it moves with the register in the same change — a
+   *  floor left behind is one that would accept the new lane silently vanishing. */
+  const MIN_LANES = 4;
 
   let lanes = [];
   try {

@@ -55,16 +55,25 @@
 //
 // ── THIS SCRIPT NEVER RUNS snapcraft ────────────────────────────────────────
 // It writes a configuration file and stops. `snapcraft` does not exist on the
-// owner's Windows box and is not on the runner image either, so a build here
-// would be an unproven call in a script nobody could exercise. What IS provable
-// today is that the recipe can be produced from the tree and is structurally
-// what the Snap Store needs, and that is what the guard asserts. Building a real
-// .snap stays with the channel, which [ADR 015] §2 defers.
+// owner's Windows box, so a build here would be an unproven call in a script
+// nobody could exercise. What IS provable on any machine is that the recipe can
+// be produced from the tree and is structurally what the Snap Store needs, and
+// that is what the guard asserts.
+//
+// ⚠️ THE SENTENCE ABOVE USED TO END "…and is not on the runner image either …
+// Building a real .snap stays with the channel, which [ADR 015] §2 defers", and
+// as of 2026-08-09 the second half is false: `.github/workflows/submit-snap.yml`
+// installs snapcraft and PACKS one, on dispatch. What [ADR 015] §2 defers is
+// SERVING the channel — an upload to the store — not proving that the recipe
+// this file writes is one snapcraft accepts.
 //
 // Usage:
 //   node tooling/release/generate-snapcraft.mjs \
 //     --app subly --bundle apps/subly/build/linux/x64/release/bundle \
 //     --out build/snap/subly --version 1.0.75
+//   node tooling/release/generate-snapcraft.mjs --emit-build-deps
+//     → the Linux lane's apt list, space-separated on stdout, for a second job
+//       that must install the same toolchain (see the CLI block at the bottom)
 //   [--repo-root path]  read the maintained artifacts from another tree (tests)
 //   [--print]           write the recipe to stdout as well as to --out
 //
@@ -519,13 +528,28 @@ export function deriveSnapcraftFacts({ root, app, bundle, out, version }) {
   // is not something snapcraft can parse at all. `relative` returns an ABSOLUTE
   // path when the two sides are on different Windows drives, so the result is
   // checked rather than assumed.
+  //
+  // 🔴 THE FRAME IS THE PROJECT DIRECTORY (`--out`), NOT THE RECIPE FILE, AND THE
+  // DIFFERENCE IS ONE `..` THAT NOTHING IN THIS REPOSITORY COULD HAVE CAUGHT.
+  // This computed the path relative to `<out>/snap` — "relative to the recipe
+  // itself" — until 2026-08-09. snapcraft does not resolve it that way: a part's
+  // local `source:` is resolved from the PROJECT directory, the one snapcraft is
+  // run in, and `snap/snapcraft.yaml` is a fixed path INSIDE that directory. So
+  // the emitted path carried exactly one extra `..` and pointed one level above
+  // the bundle. Every check in the tree passed — it is relative, it holds no host
+  // path, it parses — because no machine in this repository had `snapcraft` on it
+  // to reject the result. The fix arrives with the first job that actually packs.
+  // Source: https://forum.snapcraft.io/t/part-source-when-snapcraft-yaml-is-in-snap-dir/19361
+  // (fetched 2026-08-09) — "your part source will be `.`, as it's relative to the
+  // snap project (where you run `snapcraft`)".
   const outAbs = resolve(out ?? '.');
-  const sourceRel = relative(join(outAbs, dirname(RECIPE_PATH)), bundleAbs).split('\\').join('/');
+  const sourceRel = relative(outAbs, bundleAbs).split('\\').join('/');
   if (sourceRel === '' || isAbsolute(sourceRel) || /^[A-Za-z]:/.test(sourceRel)) {
     refuse([
       `--bundle and --out have no relative path between them (${q(sourceRel)}).`,
-      'The recipe records the bundle as a path relative to itself so it is portable; on Windows two',
-      'different drives make that impossible. Put the bundle and the output directory on one volume.',
+      'The recipe records the bundle as a path relative to the snapcraft PROJECT DIRECTORY so it is',
+      'portable; on Windows two different drives make that impossible. Put the bundle and the output',
+      'directory on one volume.',
     ]);
   }
 
@@ -629,6 +653,37 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     return i !== -1 && i + 1 < argv.length ? argv[i + 1] : fallback;
   };
   const root = resolve(opt('repo-root') ?? join(HERE, '..', '..'));
+
+  // ── --emit-build-deps: THE apt LIST, FOR A SECOND JOB THAT NEEDS IT ────────
+  // 🔴 IT IS THE SAME EXTRACTION `stage-packages` USES, EXPOSED RATHER THAN
+  // RETYPED. submit-snap.yml compiles the Linux bundle it packs, so it needs the
+  // same GTK/secret-storage/curl toolchain build-platforms.yml installs — and a
+  // second `sudo apt-get install -y clang cmake …` line in that file would be the
+  // exact [pipeline F-2] duplication `readLinuxBuildLane` exists to prevent, one
+  // file further away. It would also break the extraction outright the day
+  // somebody moved the snap build into build-platforms.yml: that parser requires
+  // EXACTLY ONE `apt-get install` in the file it reads.
+  //
+  // Emitted space-separated on one line so a shell can spread it into `apt-get
+  // install -y $(…)`, and nothing else is printed on stdout — a diagnostic mixed
+  // into that stream becomes a package name.
+  if (argv.includes('--emit-build-deps')) {
+    let lane;
+    try {
+      lane = readLinuxBuildLane(root);
+    } catch (e) {
+      if (!(e instanceof SnapcraftUngenerable)) throw e;
+      console.error('generate-snapcraft: REFUSING to emit a build-dep list');
+      for (const l of e.lines) console.error(`  ${l}`);
+      process.exit(1);
+    }
+    process.stdout.write(`${lane.packages.join(' ')}\n`);
+    console.error(
+      `generate-snapcraft: ${lane.packages.length} build dep(s) from ${BUILD_WORKFLOW}:${lane.line} (job "${lane.job}", ${lane.runner})`,
+    );
+    process.exit(0);
+  }
+
   const out = opt('out');
   if (!out) {
     console.error('FAIL --out is required: it is the snapcraft project directory the recipe is written into.');
