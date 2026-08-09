@@ -14,10 +14,27 @@
 //                          read-back that proves it afterwards
 //   none supplied        → posture = `unsigned-build-proof`, printed in capitals
 //                          together with the OWNER item that is the real blocker
-//                          — UNLESS this is a release lane, where the absence is
-//                          a FAILURE and not a posture
+//                          — UNLESS this is a release lane AND the register ARMS
+//                          this channel, where the absence is a FAILURE and not
+//                          a posture
 //   some supplied        → FAIL, always, on every lane. Half a credential is an
 //                          artifact nobody can explain.
+//
+// 🔴 THE RELEASE-LANE FAILURE IS SCOPED BY THE REGISTER, NOT BY THE TAG ALONE,
+// AND THAT CORRECTION WAS MEASURED. Until 2026-08-09 the middle ending read
+// "UNLESS this is a release lane" full stop, and the consequence was that a
+// `subly-v*` tag killed this job — while `apple-signing.mjs` killed the `apple`
+// job and `appimage-signing.mjs` killed `linux_web_android` for the same reason.
+// build-platforms.yml's `release` job `needs:` all three, so the FIRST GitHub
+// Release this repository would ever publish was unreachable, blocked on a
+// certificate protecting a download that does not exist: `windows-direct` is
+// `submittable: false`, `served: false`, `lane: null`. The scope test now comes
+// from those fields, through `tooling/ci/channel-arming.mjs`, and the gap is
+// PRINTED IN FULL on the release lane instead ([pipeline C-6] — the owner-gated
+// gap must print, because failing on a certificate only the owner can BUY blocks
+// every merge and every release of every other channel). The failing case did
+// not go away: arm the row in the register and the identical tag fails, naming
+// the field that armed it. See channel-arming.mjs's header for the derivation.
 //
 // 🔴 THE DIFFERENCE FROM THE ANDROID ROW, AND IT IS THE WHOLE REASON THIS FILE
 // EXISTS SEPARATELY: the Play upload key is a thing we HAVE. This certificate is
@@ -104,6 +121,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
 
 export const APPS = 'sites/_shared/_data/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
@@ -648,11 +666,19 @@ function main() {
 
   if (set.state === 'none') {
     const verdict = pinVerdict(pin, UNSIGNED_PROOF);
-    if (lane.required) {
+    // 🔴 IS THE CHANNEL ARMED? Derived from THIS row's own register fields —
+    // `served`, `submittable`, `lane` — and never from a channel name written
+    // here. The row was found by id above; from here on the answer is the
+    // register's, so arming `windows-direct` needs no edit to this file and
+    // cannot be undone by one either.
+    const gap = releaseGapVerdict([channel]);
+    if (lane.required && gap.fatal) {
       // 🔴 THE WHOLE POINT OF THE FILE.
       die([
         'FAIL this is a RELEASE lane and no Windows code-signing secrets are configured.',
         `     absent: ${declared.join(', ')}`,
+        '',
+        ...armedFatalLines(gap.armed),
         '',
         '     A release lane that cannot sign must not produce a direct-download artifact. Microsoft Store',
         '     Policies v7.19 §10.2.9 requires every PE file on a non-gaming direct download to be signed by a',
@@ -672,6 +698,25 @@ function main() {
         '     …or run this lane on a non-release trigger, where an unsigned BUILD PROOF is the recorded,',
         '     labelled outcome rather than a silent one.',
       ]);
+    }
+    // A release lane whose channel is NOT armed. Printed in full — the loudest
+    // thing this run says — and not fatal, because failing would block the
+    // release of five channels that ARE ready on a certificate only the owner
+    // can buy. This block does not exist on a non-release trigger, so every
+    // branch, fork PR and weekly proof prints exactly what it printed before.
+    if (lane.required) {
+      console.log('');
+      for (const l of unarmedGapLines({
+        armings: gap.unarmed,
+        secretNames: declared,
+        laneReasons: lane.reasons,
+        ownerItem:
+          'a Windows code-signing certificate must be PURCHASED from a CA in the Microsoft Trusted Root ' +
+          `Program and RENEWED every year. ${REGISTER} records this row's custody as ` +
+          `"${channel.signing?.custody ?? '(undeclared)'}"`,
+      })) {
+        console.log(l);
+      }
     }
     console.log('');
     console.log(`⬜ SIGNING POSTURE: ${UNSIGNED_PROOF.toUpperCase()}`);
