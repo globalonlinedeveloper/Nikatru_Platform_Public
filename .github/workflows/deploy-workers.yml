@@ -150,6 +150,35 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/subly-api
           command: d1 migrations apply APP_DB --remote
+      # ── [pipeline K-7] THE SQL IS EXECUTED BEFORE THE CODE THAT SENDS IT IS ──
+      #
+      # 🔴 EVERY IN-APP ACCOUNT DELETION IN PRODUCTION FAILED FROM THE DAY THE
+      # ROUTES SHIPPED AND EVERY CHECK WAS GREEN. The erasure routes derived
+      # their table set from `FROM sqlite_master m JOIN pragma_table_info(m.name)
+      # p`; D1's authorizer refuses that statement at RUNTIME (7500 `not
+      # authorized: SQLITE_AUTH`), so the route threw before reading a row and
+      # answered 503. Nothing could see it: the unit suite runs SQL through
+      # `node:sqlite`, which has no authorizer, and ci.yml's static half can only
+      # read text. A statement's legality is a property of the ENGINE.
+      #
+      # ⚠️ AFTER THE MIGRATIONS AND BEFORE THE DEPLOY, AND THE HALF-STATE IS THE
+      # REASON. It has to run after the migrations because it executes the real
+      # statements against the real schema, and a statement checked against
+      # yesterday's columns proves nothing about today's. So a failure here
+      # leaves migrations applied and the old code serving — which is the SAFE
+      # half-state precisely because the schema standard is additive-only (see
+      # the "MIGRATIONS BEFORE DEPLOY" note above and
+      # company/requirements/schema-evolution.md): new columns are harmless to
+      # code that predates them. The unsafe half-state is the other order.
+      #
+      # BLOCKING, and exit 2 ("could not look") blocks too. The check retries a
+      # dropped socket once by itself; past that, deploying code whose SQL nobody
+      # could execute is the state this whole step exists to end.
+      - name: The deployed SQL is SQL live D1 will run
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tooling/ops/check-d1-accepts-live-sql.mjs
       - uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -221,6 +250,18 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/platform
           command: d1 migrations apply PLATFORM_DB --remote
+      # ── [pipeline K-7] see the identical step in the subly-api job above ─────
+      # This Worker is the portfolio's erasure ENTRY POINT: its DELETE
+      # /v1/account sweeps platform_db, relays to every app's own route and
+      # deletes the identity last. It is the route the rejected join broke first.
+      # It binds subly_db as well as platform_db, so the check executes its
+      # statements against BOTH — a route reads the databases it reads, not the
+      # ones its Worker binds, and this is the seam where that stopped being true.
+      - name: The deployed SQL is SQL live D1 will run
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tooling/ops/check-d1-accepts-live-sql.mjs
       # ── ONE DEPLOY PER JOB, AND IT CARRIES THE VARS ─────────────────────────
       #
       # 🔴 THE SECOND DEPLOY NOBODY WROTE. The keep-alive secret used to be

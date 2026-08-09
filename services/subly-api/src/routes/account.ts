@@ -100,13 +100,25 @@ async function userOwnedTables(db: D1Database): Promise<string[]> {
  *
  *     FROM sqlite_master m JOIN pragma_table_info(m.name) p
  *
- * D1 rejects that with `not authorized: SQLITE_AUTH` (error 7500) — a
- * table-valued function whose argument is a COLUMN of another table is not
- * allowed. The same pragma with a LITERAL argument is fine, and plain
- * `sqlite_master` reads are fine. So the schema is asked in two steps instead of
- * one, and the property this file argues for is unchanged: the DATABASE still
- * answers which tables are user-owned, so a migration that adds one is covered
- * by that migration alone.
+ * D1 rejects that with `not authorized: SQLITE_AUTH` (error 7500), and the rule
+ * is about the STATEMENT rather than about where the pragma's argument came
+ * from: any single statement that names sqlite_master/sqlite_schema AND calls a
+ * pragma_* table-valued function is rejected — join, subquery, CTE and
+ * correlated scalar subquery alike (measured 2026-08-09 against both production
+ * databases). The same pragma fed a literal, a bound parameter or a VALUES list
+ * is accepted, and so is a plain sqlite_master read.
+ *
+ * ⚠️ THE FIRST VERSION OF THIS PARAGRAPH WAS WRONG, HERE AND IN TWO OTHER FILES
+ * SIMULTANEOUSLY. It read "a table-valued function whose argument is a COLUMN of
+ * another table is not allowed", which the accepted VALUES and bound-parameter
+ * forms falsify, and which points the next reader at a CTE rewrite D1 also
+ * refuses. The sentence now lives once — `MEASURED_CAUSE` in
+ * tooling/ci/d1-sql-inventory.mjs — and assert-d1-sql-inventory.mjs pins this
+ * paragraph against it.
+ *
+ * So the schema is asked in two steps instead of one, and the property this file
+ * argues for is unchanged: the DATABASE still answers which tables are
+ * user-owned, so a migration that adds one is covered by that migration alone.
  *
  * 🔬 MEASURED 2026-08-09, IN PRODUCTION, NOT REASONED ABOUT. A real ES256 user
  * token against the deployed platform Worker returned
