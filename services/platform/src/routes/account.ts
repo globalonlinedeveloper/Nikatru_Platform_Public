@@ -131,13 +131,26 @@ async function userOwnedTables(db: D1Database): Promise<string[]> {
  *
  *     FROM sqlite_master m JOIN pragma_table_info(m.name) p
  *
- * D1 rejects that with `not authorized: SQLITE_AUTH` (error 7500) — a
- * table-valued function whose argument is a COLUMN of another table is not
- * allowed. The same pragma with a LITERAL argument is fine, and plain
- * `sqlite_master` reads are fine. The schema is therefore asked in two steps,
- * and the property the header argues for is untouched: the DATABASE still says
- * which tables are user-owned, so a migration that adds one is covered by that
- * migration alone.
+ * D1 rejects that with `not authorized: SQLITE_AUTH` (error 7500), and the rule
+ * is both narrower and wider than the shape of that one query:
+ * any single statement that names sqlite_master/sqlite_schema AND calls a
+ * pragma_* table-valued function is rejected — join, subquery, CTE and
+ * correlated scalar subquery alike (measured 2026-08-09 against both production
+ * databases). The same pragma fed a literal, a bound parameter or a VALUES list
+ * is accepted, and so is a plain sqlite_master read.
+ *
+ * ⚠️ THE FIRST VERSION OF THIS PARAGRAPH WAS WRONG, IN THREE FILES AT ONCE. It
+ * read "a table-valued function whose argument is a COLUMN of another table is
+ * not allowed" — which the accepted VALUES and bound-parameter forms falsify,
+ * and which would have licensed rewriting the join as a CTE, a shape D1 refuses
+ * too. Three copies of one wrong sentence read like three sources agreeing, so
+ * the sentence now lives once, as `MEASURED_CAUSE` in
+ * tooling/ci/d1-sql-inventory.mjs, and assert-d1-sql-inventory.mjs pins this
+ * paragraph against the constant the live check sends.
+ *
+ * The schema is therefore asked in two steps, and the property the header
+ * argues for is untouched: the DATABASE still says which tables are user-owned,
+ * so a migration that adds one is covered by that migration alone.
  *
  * 🔬 MEASURED 2026-08-09, IN PRODUCTION. A real ES256 user token against the
  * deployed Worker returned `503 {"error":"account_deletion_failed"}` — the catch

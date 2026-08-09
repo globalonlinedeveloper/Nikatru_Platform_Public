@@ -1720,6 +1720,13 @@ async function probeCloudflareHeartbeat(q, root) {
     return { unreadable: true, why: `${q.wrangler} could not be read for its database_id (${e.message})` };
   }
   if (!dbId) return { unreadable: true, why: `${q.wrangler} carries no D1 binding with a migrations_dir, so the heartbeat database cannot be resolved` };
+  // `q.table` is register text interpolated straight into SQL — D1 cannot bind
+  // an identifier, so the string is built by hand and a register is not a trust
+  // boundary anybody audits. Refused rather than quoted, the same rule the
+  // erasure routes apply to names they take from sqlite_master.
+  if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(String(q.table ?? ''))) {
+    return { unreadable: true, why: `\`recordQuery.table\` is not a plain identifier: ${JSON.stringify(q.table)}` };
+  }
   const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${dbId}/query`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
