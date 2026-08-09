@@ -153,11 +153,18 @@ class SupabaseAuthRepository implements AuthRepository {
       // Already failing; a sign-out error must not mask the real cause.
     }
     if (failure != null) {
+      // 🔴 `detail:`, NOT `message:`. `message` is the sentence a screen may
+      // show a user, and no screen shows this one — every one of them renders
+      // `outcome.plainMessage` instead ([ADR 027]), so the cause written here
+      // went nowhere. On 2026-08-09 the thing it swallowed was a Riverpod
+      // `CircularDependencyError`: the erasure closure could not even resolve
+      // its REST client, no request was ever formed, and the app said "we
+      // cannot tell how much of it was removed" — E2E run 31295025009.
       throw failure is AuthFailure
           ? failure
           : core.AccountDeletionFailure(
               core.AccountDeletionOutcome.unknown,
-              message: 'Account deletion failed: $failure',
+              detail: '$failure',
             );
     }
   }

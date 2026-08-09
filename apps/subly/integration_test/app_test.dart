@@ -1024,6 +1024,25 @@ void main() {
       return tester.widget<Text>(f.first).data ?? '(notice with no text)';
     }
 
+    /// 🔴 THE TECHNICAL CAUSE, WHICH THE SENTENCE ABOVE CANNOT CARRY. One
+    /// outcome — `unknown` — is reached by a 404, a 500, an unmodelled status,
+    /// and by any client-side throw that means NO REQUEST WAS EVER SENT, and all
+    /// of them render the identical sentence. On 2026-08-09 this leg printed
+    /// that sentence (E2E run 31295025009 among others): the cause was a Riverpod
+    /// `CircularDependencyError` inside the erasure closure, and proving it took
+    /// Cloudflare's zone analytics showing zero `/v1/account` requests, because
+    /// nothing the suite could read said so. This key is rendered by
+    /// `_AccountDeletionNotice` in DEBUG builds only, which is what `flutter
+    /// drive` builds. [ADR 027]
+    String noticeDetail() {
+      final Finder f = find.byKey(E2EKeys.accountDeletionNoticeDetail);
+      if (f.evaluate().isEmpty) {
+        return '(no technical detail — the outcome came back clean, or this is '
+            'not a debug build)';
+      }
+      return tester.widget<Text>(f.first).data ?? '(detail with no text)';
+    }
+
     // ── Boot + sign in as the sacrificial user ───────────────────────────────
     final VoidCallback restoreGlobals = await launchApp(tester);
     // Consent was answered and persisted by the first test; called anyway so a
@@ -1178,11 +1197,17 @@ void main() {
       find.text('Account deleted'),
       findsWidgets,
       reason:
-          'The app did NOT report the account as gone. Its own words: '
-          '"${noticeText()}". A "Not deleted" here means the deployed erasure '
-          'route refused (501 = unconfigured/no APP_ERASURE_ENDPOINTS, 502 = '
-          'the subly-api relay or the identity delete failed) — check the '
-          'services/platform Worker logs for this run, not this test.',
+          'The app did NOT report the account as gone.\n'
+          '  Its own words : "${noticeText()}"\n'
+          '  Technical     : ${noticeDetail()}\n'
+          'READ THE TECHNICAL LINE FIRST — it names the cause; the sentence '
+          'above does not. It is the SERVER that refused when it reads '
+          '`HTTP 501` (unconfigured / no APP_ERASURE_ENDPOINTS) or `HTTP 502` '
+          '(the subly-api relay or the identity delete failed) — only then are '
+          'the services/platform Worker logs the place to look. Anything else '
+          '— `HTTP 0`, an unmodelled status, or a Dart exception such as '
+          'CircularDependencyError — is a CLIENT defect and the Worker logs '
+          'will show no request at all. [ADR 027]',
     );
 
     // …and the user really is signed out, on the login screen, and STAYS there.

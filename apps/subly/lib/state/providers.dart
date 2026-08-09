@@ -518,6 +518,10 @@ String analyticsPlatformName() {
 /// provider reads THIS provider, so resolving it out here would be a cycle.
 /// Deletion happens long after both exist.
 ///
+/// ⚠️ AND THAT ALONE IS NOT ENOUGH — see [platformRestClientProvider]. Moving
+/// the read late fixes the BUILD ORDER; Riverpod's cycle check is about the
+/// dependency GRAPH, and it runs on every `ref.read`, however late.
+///
 /// 🔴 THE PREDICATE IS `isBackendLive`, AND IT MUST MATCH `main.dart`'S.
 /// `main.dart` gates `initNikatruAuth` — the call that initialises the Supabase
 /// SDK before the first frame — on `AppConfig.isBackendLive`. This provider used
@@ -553,10 +557,36 @@ final Provider<AuthRepository> authRepositoryProvider =
 /// at the chassis constant would change a live file for no behavioural gain —
 /// both spellings resolve the same `PLATFORM_BASE_URL` define with the same
 /// default. Converging the two names is MANIFEST.md §7's item, on its own.
+///
+/// 🔴 IT TAKES [authTokenProvider], NOT `ref.watch(authRepositoryProvider)
+/// .currentAccessToken`, AND THE DIFFERENCE WAS A DELETE BUTTON THAT NEVER SENT
+/// A REQUEST. Measured 2026-08-09 against the live tree: `deleteAccount()` threw
+/// `AccountDeletionFailure(unknown)` wrapping a Riverpod `CircularDependencyError`,
+/// and Cloudflare's zone analytics recorded ZERO `/v1/account` requests — not
+/// even a CORS preflight — for the whole delete leg. Nothing was malformed; the
+/// request was never formed.
+///
+/// The cycle is in the GRAPH, not in the timing. `authRepositoryProvider` does
+/// `ref.read(this)` inside its erasure closure; `ref.read` runs
+/// `_debugAssertCanDependOn`, which walks the TARGET's ancestors and throws
+/// `CircularDependencyError` if it finds the reader. `ref.watch(
+/// authRepositoryProvider)` here is exactly that ancestor edge, so the read
+/// throws every time, no matter how late it happens. Watching
+/// [authTokenProvider] instead breaks the edge — that provider only `ref.read`s
+/// the repository, and a `read` registers no dependency — which is why the
+/// brick's `restClientProvider` (same two-hop shape, in the brick's own
+/// `providers.dart`) has never had
+/// this defect. This provider was the one written by hand afterwards.
+///
+/// ⚠️ IT IS AN ASSERT, SO IT IS DEBUG-ONLY. A `--release` build strips it and
+/// deletes accounts fine; every debug run and the whole `flutter drive` E2E
+/// (DDC) does not. A defect that only exists where the tests run is still a
+/// defect — and it is the reason the one automated proof of erasure could not
+/// go green while production looked healthy.
 final Provider<RestClient> platformRestClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: '${AppConfig.platformBaseUrl}/v1',
-    tokenProvider: ref.watch(authRepositoryProvider).currentAccessToken,
+    tokenProvider: ref.watch(authTokenProvider),
   ),
 );
 
@@ -1388,6 +1418,25 @@ final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
 final StateProvider<core.AccountDeletionOutcome?>
 lastAccountDeletionOutcomeProvider =
     StateProvider<core.AccountDeletionOutcome?>((ref) => null);
+
+/// WHY that outcome, for a developer — parked next to it and NEVER shown in a
+/// release build.
+///
+/// 🔴 IT EXISTS BECAUSE `unknown` IS A BUCKET WITH NO LABEL, AND THE LABEL COST
+/// FOUR DAYS. The live delete leg reported "we cannot tell how much of it was
+/// removed" on 2026-08-09; the cause was a Riverpod `CircularDependencyError`
+/// thrown before a request was formed, and three sessions went looking for an
+/// HTTP status that had never existed — one of them reading Cloudflare's zone
+/// analytics to prove the request had never been sent. `_deleteAccount` had the
+/// exception in its hand and threw it away, because the screen renders
+/// `outcome.plainMessage` and nothing else.
+///
+/// It holds `error.toString()`, which for an [core.AccountDeletionFailure] now
+/// carries the status or the underlying throw in `[...]`. `LoginScreen` renders
+/// it under the notice IN DEBUG BUILDS ONLY — that is where `flutter drive`
+/// runs, so the E2E can name the cause in one run, and a user never sees it.
+final StateProvider<String?> lastAccountDeletionDetailProvider =
+    StateProvider<String?>((ref) => null);
 
 /// API: real Worker via Dio when configured, else the seed client (demo mode).
 /// The Dio base URL comes from the CFG-1 `api_base_url` (runtime, swappable with
