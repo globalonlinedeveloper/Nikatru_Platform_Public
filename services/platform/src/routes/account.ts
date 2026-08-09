@@ -119,18 +119,80 @@ const RESERVED = /^(sqlite_|d1_|_cf_)/;
  * same query locally, in the test harness and in production.
  */
 async function userOwnedTables(db: D1Database): Promise<string[]> {
-  const res = await db
-    .prepare(
-      `SELECT m.name AS name
-         FROM sqlite_master m
-         JOIN pragma_table_info(m.name) p
-        WHERE m.type = 'table' AND p.name = 'user_id'
-        ORDER BY m.name`,
-    )
+  const hits = await columnsMatching(db, (col) => col === 'user_id');
+  return hits.map((h) => h.table);
+}
+
+/**
+ * 🔴 THE TWO-STEP WALK EXISTS BECAUSE D1 REFUSES THE ONE-STEP FORM, AND THIS
+ * ROUTE IS WHERE THE REFUSAL WAS FOUND.
+ *
+ * Both derivations here used to be a single correlated join:
+ *
+ *     FROM sqlite_master m JOIN pragma_table_info(m.name) p
+ *
+ * D1 rejects that with `not authorized: SQLITE_AUTH` (error 7500) — a
+ * table-valued function whose argument is a COLUMN of another table is not
+ * allowed. The same pragma with a LITERAL argument is fine, and plain
+ * `sqlite_master` reads are fine. The schema is therefore asked in two steps,
+ * and the property the header argues for is untouched: the DATABASE still says
+ * which tables are user-owned, so a migration that adds one is covered by that
+ * migration alone.
+ *
+ * 🔬 MEASURED 2026-08-09, IN PRODUCTION. A real ES256 user token against the
+ * deployed Worker returned `503 {"error":"account_deletion_failed"}` — the catch
+ * around this derivation, three lines of which is the whole story: the throw
+ * happened before a single row was read, so the 501/502 limbs below never ran
+ * and `SUPABASE_SERVICE_ROLE_KEY` and `APP_ERASURE_ENDPOINTS` were never at
+ * fault. Running the old query against both live databases through the D1 HTTP
+ * API returned SQLITE_AUTH for the join and rows for the literal-argument
+ * pragma. **Every in-app account deletion in production had been failing this
+ * way since these routes shipped** — the user told "not deleted", correctly but
+ * for a reason nobody could see, with nothing wrong with their request. The
+ * routes failed CLOSED, so nothing was ever half-erased.
+ *
+ * ⚠️ THE LOCAL SUITE CANNOT REPRODUCE THE REJECTION, AND SAYING SO IS PART OF
+ * THE FIX. This harness runs real SQL through `node:sqlite`, which has no D1
+ * authorizer and ACCEPTS the correlated join — verified directly rather than
+ * assumed. No test here can go red on the old form, so the accompanying tests
+ * pin the DERIVED SET against the real migrations instead. Only a query executed
+ * against a live D1 can catch this class, and nothing in CI does that today:
+ * `assert-erasure-reach.mjs` proves reachability by parsing MIGRATION FILES, so
+ * a query D1 rejects at runtime looks perfectly reachable to it.
+ */
+async function columnsMatching(
+  db: D1Database,
+  match: (column: string) => boolean,
+): Promise<Array<{ table: string; column: string }>> {
+  const listed = await db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)
     .all<{ name: string }>();
-  return (res.results ?? [])
+
+  const tables = (listed.results ?? [])
     .map((r) => r.name)
-    .filter((n) => typeof n === 'string' && !RESERVED.test(n));
+    .filter(
+      (n) =>
+        typeof n === 'string' &&
+        !RESERVED.test(n) &&
+        // The name is interpolated into the pragma below — D1 cannot bind an
+        // identifier — so anything that is not a plain identifier is refused
+        // rather than quoted. It comes from sqlite_master, never from a request.
+        /^[A-Za-z_][A-Za-z0-9_$]*$/.test(n),
+    );
+
+  const hits: Array<{ table: string; column: string }> = [];
+  for (const table of tables) {
+    // eslint-disable-next-line no-await-in-loop
+    const cols = await db
+      .prepare(`SELECT name FROM pragma_table_info('${table}')`)
+      .all<{ name: string }>();
+    for (const row of cols.results ?? []) {
+      if (typeof row.name === 'string' && match(row.name)) {
+        hits.push({ table, column: row.name });
+      }
+    }
+  }
+  return hits;
 }
 
 /**
@@ -146,29 +208,22 @@ async function userOwnedTables(db: D1Database): Promise<string[]> {
 async function userReferencingColumns(
   db: D1Database,
 ): Promise<Array<{ table: string; column: string }>> {
-  const res = await db
-    .prepare(
-      `SELECT m.name AS name, p.name AS col
-         FROM sqlite_master m
-         JOIN pragma_table_info(m.name) p
-        WHERE m.type = 'table' AND p.name LIKE '%\\_user\\_id' ESCAPE '\\'
-        ORDER BY m.name, p.name`,
-    )
-    .all<{ name: string; col: string }>();
-  return (res.results ?? [])
-    .filter(
-      (r) =>
-        typeof r.name === 'string' &&
-        typeof r.col === 'string' &&
-        !RESERVED.test(r.name) &&
-        // Identifier hygiene: the column name is interpolated into the UPDATE
-        // below (D1 cannot bind an identifier), so anything that is not a plain
-        // identifier is refused rather than quoted. Nothing user-controlled can
-        // reach here — it comes from the schema — but the string still gets
-        // built, and a schema is not a trust boundary anyone audits.
-        /^[A-Za-z_][A-Za-z0-9_$]*$/.test(r.col),
-    )
-    .map((r) => ({ table: r.name, column: r.col }));
+  // `%_user_id` in SQL became this predicate when the correlated join went (see
+  // [columnsMatching]). `user_id` itself cannot match — something must precede
+  // the `_user_id` suffix — so the two sets stay disjoint BY CONSTRUCTION rather
+  // than by a subtraction somebody could forget, exactly as the SQL did.
+  const hits = await columnsMatching(
+    db,
+    (col) => col.endsWith('_user_id') && col.length > '_user_id'.length,
+  );
+  return hits.filter(
+    // Identifier hygiene: the column name is interpolated into the UPDATE below
+    // (D1 cannot bind an identifier), so anything that is not a plain identifier
+    // is refused rather than quoted. Nothing user-controlled can reach here — it
+    // comes from the schema — but the string still gets built, and a schema is
+    // not a trust boundary anyone audits.
+    (h) => /^[A-Za-z_][A-Za-z0-9_$]*$/.test(h.column),
+  );
 }
 
 /**

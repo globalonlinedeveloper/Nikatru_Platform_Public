@@ -201,21 +201,59 @@ process.exitCode = survived ? 1 : blind ? 2 : 0;
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /** Every table in subly_db carrying a `user_id` column, straight from the
- *  schema — the same derivation `services/subly-api/src/routes/account.ts` uses
- *  to choose what to delete. `null` = the read failed. */
+ *  schema. `null` = the read failed.
+ *
+ * 🔴 IT IS TWO STEPS BECAUSE D1 REFUSES THE ONE-STEP FORM. This used to be the
+ * single correlated join the erasure routes use:
+ *
+ *     FROM sqlite_master m JOIN pragma_table_info(m.name) p
+ *
+ * D1 rejects that with `not authorized: SQLITE_AUTH` (code 7500) — measured
+ * 2026-08-09 against BOTH production databases. A table-valued function whose
+ * argument is a column from another table is not allowed; the SAME pragma with a
+ * LITERAL argument is fine, and plain `sqlite_master` reads are fine. So the
+ * derivation is: list the tables, then ask each one for its columns.
+ *
+ * ⚠️ THIS IS THE SAME DEFECT THAT BREAKS THE ROUTES THEMSELVES, and it is fixed
+ * here only so this verifier stops being a second casualty of it.
+ * `services/platform/src/routes/account.ts` and
+ * `services/subly-api/src/routes/account.ts` still carry the rejected join, and
+ * account deletion answers 503 `account_deletion_failed` in production until
+ * they are changed. Fixing them is a server change, not this file's business —
+ * but leaving this file broken would mean that on the day they ARE fixed, leg 6
+ * fails again here for the identical reason. The property is unchanged: the
+ * SCHEMA still answers, so a migration that adds a user-owned table is covered
+ * with no edit. */
 async function userOwnedTables() {
-  const result = await d1(
-    `SELECT m.name AS name
-       FROM sqlite_master m
-       JOIN pragma_table_info(m.name) p
-      WHERE m.type = 'table' AND p.name = 'user_id'
-      ORDER BY m.name`,
+  const listed = await d1(
+    `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
     [],
   );
-  if (result === null) return null;
-  return (result?.[0]?.results ?? [])
+  if (listed === null) return null;
+  const candidates = (listed?.[0]?.results ?? [])
     .map((r) => r.name)
-    .filter((n) => typeof n === 'string' && !RESERVED.test(n));
+    .filter(
+      (n) =>
+        typeof n === 'string' &&
+        !RESERVED.test(n) &&
+        // The name is interpolated into the pragma below (D1 cannot bind an
+        // identifier), so anything that is not a plain identifier is refused
+        // rather than quoted. It comes from sqlite_master, never from an
+        // argument — but the string still gets built.
+        /^[A-Za-z_][A-Za-z0-9_$]*$/.test(n),
+    );
+
+  const owned = [];
+  for (const table of candidates) {
+    // eslint-disable-next-line no-await-in-loop
+    const cols = await d1(
+      `SELECT name FROM pragma_table_info('${table}') WHERE name = 'user_id'`,
+      [],
+    );
+    if (cols === null) return null; // a failed read is not "no user_id"
+    if ((cols?.[0]?.results ?? []).length > 0) owned.push(table);
+  }
+  return owned;
 }
 
 /** Surviving rows for the deleted user in one table. `null` = the read failed.
