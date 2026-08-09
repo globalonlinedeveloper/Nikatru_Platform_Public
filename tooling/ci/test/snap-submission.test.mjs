@@ -3,9 +3,12 @@
 // FAIL, and --submit must refuse.
 //
 // [pipeline D-10] limb (i): "a submission script exists AND resolves to a step
-// in a workflow". For this channel the ci.yml dry run is the ONLY thing keeping
-// the path from rotting — submit-snap.yml runs the same command, because there
-// is no snapcraft.yaml for it to build anything from.
+// in a workflow". ⚠️ THIS HEADER SAID "the ci.yml dry run is the ONLY thing
+// keeping the path from rotting — submit-snap.yml runs the same command, because
+// there is no snapcraft.yaml for it to build anything from", and that stopped
+// being true on 2026-08-09: submit-snap.yml compiles the Linux bundle, generates
+// the recipe, PACKS a .snap and runs this script without
+// `--allow-missing-artifact`. The ci.yml step is now the cheap listing-only half.
 //
 // ⚠️ THESE FIXTURES ARE THE SECOND LINE OF EVIDENCE, NOT THE FIRST. The script
 // was mutation-proven FIRST against a scratch COPY of the real repository
@@ -18,11 +21,13 @@
 // produces the wrong revision on somebody's desktop. `--submit` therefore exits
 // 1 with `UNVERIFIED:` lines before running a single check.
 //
-// 🔴 NO .snap HAS EVER BEEN BUILT. There is no snapcraft.yaml in the repository,
-// so unlike the Microsoft path — which validated a real 14.8 MiB .msix — there
-// is NO recorded end-to-end proof over a real artifact. The artifact cases below
-// use a stand-in file of the right NAME, which proves path handling and nothing
-// about snap packaging.
+// 🔴 NO .snap HAS BEEN BUILT YET, and the distinction from "cannot be" is new.
+// Until 2026-08-09 there was no recipe and no packing step anywhere, so unlike
+// the Microsoft path — which validated a real 14.8 MiB .msix — there was NO
+// end-to-end proof possible. submit-snap.yml can now produce one, and the first
+// dispatch is where that proof comes from; nothing in this suite is it. The
+// artifact cases below use a stand-in file of the right NAME, which proves path
+// handling and nothing about snap packaging.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,7 +66,20 @@ const FILES = {
   'license.txt': 'proprietary\n',
 };
 
-function tree({ mutateRegister = null, fields = {}, omitFiles = [], omitTree = false, withArtifact = false, artifactBytes = 1024, withRecipe = false } = {}) {
+function tree({
+  mutateRegister = null,
+  fields = {},
+  omitFiles = [],
+  omitTree = false,
+  withArtifact = false,
+  artifactBytes = 1024,
+  withRecipe = false,
+  // The real register declares `submission.recipeScript` and the file exists, so
+  // the recipe is DERIVED at build time and no committed one is expected. The
+  // fixture can build either arrangement, because §4 must recognise both and
+  // must still print when neither is present.
+  withRecipeScript = false,
+} = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
     const p = join(root, rel);
@@ -86,7 +104,10 @@ function tree({ mutateRegister = null, fields = {}, omitFiles = [], omitTree = f
         storeMetadataDir: 'apps/{app}/store/linux-snap',
         ownerQueue: 'A-6',
         signing: { keyKind: 'none' },
-        submission: { runbook: 'company/runbooks/store-submission-snap.md' },
+        submission: {
+          runbook: 'company/runbooks/store-submission-snap.md',
+          ...(withRecipeScript ? { recipeScript: 'tooling/release/generate-snapcraft.mjs' } : {}),
+        },
       },
     ],
   };
@@ -103,6 +124,7 @@ function tree({ mutateRegister = null, fields = {}, omitFiles = [], omitTree = f
   }
   if (withArtifact) write(ARTIFACT, 'x'.repeat(artifactBytes));
   if (withRecipe) write('apps/subly/snap/snapcraft.yaml', 'name: subly\n');
+  if (withRecipeScript) write('tooling/release/generate-snapcraft.mjs', '// stand-in for the generator\n');
   return root;
 }
 
@@ -231,8 +253,8 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     assert.match(out, /OWNER_QUEUE A-6/);
   });
 
-  // ── the recipe that does not exist yet ────────────────────────────────────
-  test('PRINTS the missing snapcraft recipe rather than failing on deferred work', () => {
+  // ── where the recipe comes from ───────────────────────────────────────────
+  test('PRINTS the missing snapcraft recipe when NEITHER source exists', () => {
     const { code, out } = dry(tree({ withArtifact: true }));
     assert.equal(code, 0, out);
     assert.match(out, /NO SNAPCRAFT RECIPE/);
@@ -240,11 +262,40 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     assert.match(out, /libmpv2/);
   });
 
-  test('stops printing the recipe gap once one exists', () => {
+  test('stops printing the recipe gap once a COMMITTED one exists', () => {
     const { code, out } = dry(tree({ withArtifact: true, withRecipe: true }));
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /NO SNAPCRAFT RECIPE/);
     assert.match(out, /snapcraft recipe apps\/subly\/snap\/snapcraft\.yaml/);
+  });
+
+  // 🔴 THE ARRANGEMENT THE REAL REGISTER USES, and the case whose absence made
+  // this script print a closed gap on every run from 2026-08-08 to 2026-08-09.
+  // The recipe is GENERATED and never committed, so looking only for a committed
+  // file reported "nothing in this repo can build a .snap" while a workflow was
+  // building one.
+  test('a DECLARED generator is a recipe source: no committed file, and no gap printed', () => {
+    const { code, out } = dry(tree({ withArtifact: true, withRecipeScript: true }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /NO SNAPCRAFT RECIPE/);
+    assert.match(out, /recipe generator tooling\/release\/generate-snapcraft\.mjs/);
+    assert.match(out, /DERIVED at build time and never committed/);
+  });
+
+  // …and the declaration alone is not enough: a register naming a generator that
+  // is not on disk is a path nobody can walk, which must read as the gap it is.
+  test('a DECLARED generator that is NOT on disk still prints the gap', () => {
+    const { code, out } = dry(
+      tree({
+        withArtifact: true,
+        mutateRegister: (r) => {
+          r.channels[0].submission.recipeScript = 'tooling/release/generate-snapcraft.mjs';
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NO SNAPCRAFT RECIPE/);
+    assert.match(out, /names no `submission\.recipeScript` that does/);
   });
 
   // ── the artifact ──────────────────────────────────────────────────────────

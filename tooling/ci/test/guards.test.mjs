@@ -1683,15 +1683,22 @@ final FutureProvider<core.ContentPack?> contentPackProvider =
       .split('\n')
       .join('\n        ')}\n`;
   const workflow = (...jobs) => `name: fixture\non: [push]\njobs:\n${jobs.join('')}`;
-  /** Three lanes — the number the real register carries — because the guard
-   *  floors the derived subject set at 3 and a fixture below deliberately
-   *  drops one to prove that floor can fail. */
+  /** FOUR lanes — the number the real register carries — because the guard
+   *  floors the derived subject set at that number and a fixture below
+   *  deliberately drops one to prove that floor can fail.
+   *
+   *  Three until 2026-08-09, when `linux-snap` gained a lane: submit-snap.yml's
+   *  `dry-run` job now compiles a Linux bundle and packs a .snap, so it acquired
+   *  the crash-sink obligation by BEING a lane — which is exactly the property
+   *  the derivation exists for, and the reason this fixture moves with the
+   *  register rather than pinning a number of its own. */
   const CHANNEL_REGISTER = JSON.stringify(
     {
       channels: [
         { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
         { id: 'android-play', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
         { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'linux-snap', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     },
     null,
@@ -1727,6 +1734,7 @@ Future<void> main() async {
       deploy = DEPLOY_WITH_DSN,
       android = DEPLOY_WITH_DSN,
       windows = DEPLOY_WITH_DSN,
+      snap = DEPLOY_WITH_DSN,
       register = CHANNEL_REGISTER,
       // [pipeline 11]E-10. The fixture's COMMENT deliberately explains the
       // setting in prose, so the passing case exercises the comment stripping
@@ -1757,6 +1765,7 @@ Future<void> main() async {
         jobWith('linux_web_android', android),
         jobWith('windows', windows),
       ),
+      '.github/workflows/submit-snap.yml': workflow(jobWith('dry-run', snap)),
       'apps/subly/lib/main.dart': mainDart,
       'packages/telemetry/lib/src/telemetry_bootstrap.dart': bootstrap,
       'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': brickMain,
@@ -1968,6 +1977,20 @@ Future<void> main() async {
     assert.match(out, /job `windows` \(the lane of channel `windows-store`\)/);
   });
 
+  // 🔴 THE OBLIGATION IS ACQUIRED BY BEING A LANE, and this is the proof for the
+  // one added on 2026-08-09. Nothing in assert-seams-wired.mjs names
+  // submit-snap.yml: the subject set is derived from the register, so the .snap
+  // lane started owing a crash sink the moment it got a `lane` block — which is
+  // the property the derivation exists for, stated as a failing case rather than
+  // as a comment.
+  test('FAILS when the SNAP lane supplies no DSN — a lane acquires the duty by existing', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-dsn-no-snap', { snap: 'run: flutter build linux --release\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /job `dry-run` \(the lane of channel `linux-snap`\)/);
+  });
+
   test('COVERAGE LOST when the register stops declaring the lanes that exist', () => {
     const shrunk = JSON.parse(CHANNEL_REGISTER);
     shrunk.channels[2].lane = null;
@@ -1975,7 +1998,7 @@ Future<void> main() async {
       cwd: build('seams-lane-dropped', { register: JSON.stringify(shrunk, null, 2) }),
     });
     assert.equal(code, 1);
-    assert.match(out, /only 2 channel row\(s\) declare a `lane\.workflow` \+ `lane\.job`/);
+    assert.match(out, /only 3 channel row\(s\) declare a `lane\.workflow` \+ `lane\.job`/);
   });
 
   test('COVERAGE LOST when a lane names a job that is not in its workflow', () => {
@@ -2251,11 +2274,18 @@ class Ed25519PackVerifier implements PackVerifier {
         { id: 'web', lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
         { id: 'android-play', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
         { id: 'windows-store', lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        // The fourth lane, from 2026-08-09: submit-snap.yml's `dry-run` job packs
+        // a .snap and therefore carries the crash-sink obligation. The guard
+        // floors its subject set at what the real register carries, so a fixture
+        // one lane short fails on coverage rather than on the verifier these
+        // tests are about.
+        { id: 'linux-snap', lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
       ],
     }),
     '.github/workflows/deploy-web.yml': `name: f\njobs:\n${laneJob('deploy-web')}`,
     '.github/workflows/build-platforms.yml':
       `name: f\njobs:\n${laneJob('linux_web_android')}${laneJob('windows')}`,
+    '.github/workflows/submit-snap.yml': `name: f\njobs:\n${laneJob('dry-run')}`,
     'apps/subly/lib/main.dart': "final dsn = String.fromEnvironment('GLITCHTIP_DSN');\n",
     // [pipeline 11]E-10 — another seam that must stay satisfied so these tests
     // isolate the verifier rather than failing for an unrelated reason.

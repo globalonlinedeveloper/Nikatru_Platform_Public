@@ -643,9 +643,24 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
     assert.deepEqual(missingReleaseFormats(new Set(['.msix', '.aab', '.apk']), []), ['.aab', '.apk', '.msix']);
   });
 
-  test('the REAL register resolves to exactly what the release lane stages today', () => {
+  // ⚠️ THE NAME OF THIS TEST USED TO BE "…exactly what the release lane stages
+  // today", AND ON 2026-08-09 THAT STOPPED BEING THE SAME QUESTION. `linux-snap`
+  // gained a lane — .github/workflows/submit-snap.yml's `dry-run` job packs a real
+  // .snap — so the factory now EMITS a format that build-platforms.yml's release
+  // job does not stage: it is a different workflow, on a dispatch-only trigger,
+  // and `download-artifact` reaches only the current run's own artifacts.
+  //
+  // 🔴 NOTHING IS RED TODAY AND ONE THING WILL BE. The release job runs `--verify`
+  // WITHOUT `--expect-formats` (the flag is exercised only by this file), so the
+  // wider set changes no lane's outcome. The increment that wires the flag into
+  // that job — the one the "DEFAULT BEHAVIOUR IS UNCHANGED" test below anticipates
+  // — will get a red naming `.snap`, and that red is correct rather than
+  // spurious: it is the question "should the expectation narrow to lanes that FEED
+  // the release, or should the .snap reach one?" arriving at the moment somebody
+  // can answer it, instead of a silent pass over a release missing a platform.
+  test('the REAL register resolves to every format a lane in this factory emits', () => {
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
-    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.apk', '.msix']);
+    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.apk', '.msix', '.snap']);
   });
 });
 
@@ -657,7 +672,16 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     assert.equal(cli(['--write', d, '--app', 'subly', '--tag', 'subly-v1', '--sha', '93aee1d']).code, 0);
     return d;
   };
-  const COMPLETE = ['subly-v1-app-release.apk', 'subly-v1-app-release.aab', 'subly-v1-subly.msix'];
+  // ⚠️ `.snap` JOINED THIS SET ON 2026-08-09 — see the note above the REAL-register
+  // test. These cases drive the CLI against the real register, so "complete" here
+  // means every format a lane emits, which is not the same as every format
+  // build-platforms.yml's release job stages. That divergence is recorded there.
+  const COMPLETE = [
+    'subly-v1-app-release.apk',
+    'subly-v1-app-release.aab',
+    'subly-v1-subly.msix',
+    'subly-v1-subly.snap',
+  ];
 
   test('THE RECORDED FAILING CASE — a release with no .msix verifies clean and IS NOT COMPLETE', () => {
     const d = staged(COMPLETE.filter((f) => !f.endsWith('.msix')));
@@ -673,7 +697,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(COMPLETE);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 3 expected format\(s\) present: \.aab, \.apk, \.msix/);
+    assert.match(r.out, /all 4 expected format\(s\) present: \.aab, \.apk, \.msix, \.snap/);
   });
 
   test('DEFAULT BEHAVIOUR IS UNCHANGED — without the flag nothing new can go red', () => {
