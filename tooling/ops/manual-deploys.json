@@ -17,6 +17,14 @@
       "deployedAt": "2026-08-08T06:35:00Z",
       "why": "deploy-web rail down since #185 (out=$(...) under bash -e dies before the already-exists tolerance); manual restore of merged main, full lane replica (version 132, artifact smoke, pages deploy, post-deploy smoke, GitHub Deployment record). Run 132 had failed, so the number resolves to no successful run — this attestation carries the traceability instead.",
       "recordedBy": "agent session 2026-08-08, owner-directed incident response"
+    },
+    {
+      "version": "1.0.144+40c0787",
+      "sha": "40c0787a41f9ee7f5befdcb380646ae717f4a9f7",
+      "environment": "subly-web",
+      "deployedAt": "2026-08-08T16:08:58Z",
+      "why": "IN-lane deploy whose RUN reads failure: deploy-web run 144's 'Deploy to Cloudflare Pages' step succeeded at 16:08:58Z, then the post-deploy smoke gave up 51s later while the CDN still propagated — so 'Record the deployed SHA' skipped and the run went red AFTER the bundle shipped. The build genuinely served: a real visitor's consent artifact (granted=1) + 2 events carry 1.0.144+40c0787 at 2026-08-08T16:50Z, and runs 145/146 were concurrency-cancelled so nothing replaced it until later. The rows are a real person's, not residue; this attestation carries their traceability. Deployment witness recorded retroactively 2026-08-09.",
+      "recordedBy": "agent session 2026-08-09, ops-watch 31302723527 provenance-red diagnosis"
     }
   ]
 }
