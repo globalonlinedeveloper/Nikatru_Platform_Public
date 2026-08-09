@@ -187,10 +187,41 @@ jobs:
           # tee'd, not just printed: the step below turns the assertion into a
           # GitHub annotation, and `pipefail` (set above) keeps flutter's exit
           # code as the pipeline's, so teeing cannot mask a failure.
+          # 🔴 `--web-port=3000` IS LOAD-BEARING, NOT TIDINESS. [pipeline N-6 leg 6]
+          #
+          # `flutter drive -d web-server` otherwise serves the app on
+          # http://localhost:<RANDOM port>, and every Worker call the suite makes
+          # is therefore cross-origin. api.nikatru.com tolerates that: its CORS
+          # middleware carries an explicit localhost-any-port exception
+          # (services/subly-api/src/middleware/cors.ts:38) added as the INC13 fix,
+          # which is why legs 1-2 have always passed.
+          #
+          # The SHARED platform Worker deliberately does NOT carry that exception
+          # — the same file says so in as many words: "It is a PER-APP trade: the
+          # shared platform Worker deliberately does not carry it." Its allowlist
+          # is exact origins only (services/platform/wrangler.jsonc:48), and the
+          # one localhost entry there is the FIXED port 3000.
+          #
+          # Leg 6 is the first golden-path leg that calls the platform Worker
+          # from the browser (`DELETE /v1/account` — the erasure entry point), so
+          # it is the first thing a random port breaks. Measured 2026-08-09
+          # against the deployed Worker:
+          #   Origin: http://localhost:42389 -> preflight 204, NO allow-origin
+          #   Origin: http://localhost:3000  -> preflight 204, allow-origin echoed,
+          #                                     allow-methods GET, POST, DELETE, OPTIONS
+          # The browser blocked the real request, the app never saw a status, and
+          # the outcome resolved to `unknown` — "we cannot tell how much of it was
+          # removed" — which is exactly what run 31290922922 printed on screen.
+          #
+          # Pinning the port makes the suite serve from an origin production
+          # ALREADY allows, so nothing about the platform Worker's posture
+          # changes. `localhost` and not `127.0.0.1`: only the former is on the
+          # list (measured — 127.0.0.1:3000 gets no allow-origin), and
+          # `--web-hostname` already defaults to localhost.
           flutter drive \
             --driver=test_driver/integration_test.dart \
             --target=integration_test/app_test.dart \
-            -d web-server --browser-name=chrome \
+            -d web-server --web-port=3000 --browser-name=chrome \
             --web-browser-flag=--headless=new \
             --web-browser-flag=--disable-gpu \
             --web-browser-flag=--no-sandbox \
