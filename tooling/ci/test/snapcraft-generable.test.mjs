@@ -527,3 +527,164 @@ describe('assert-snapcraft-generable — it runs the generator and grades the re
     assert.match(g.out, /COVERAGE LOST/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TWO LIMBS ONLY A PACKING JOB CAN ASK.
+//
+// Both were added on 2026-08-09, when .github/workflows/submit-snap.yml started
+// packing a real .snap, and both are invisible to every other check here: a
+// recipe whose `base` does not match the host that packs it is a perfectly valid
+// recipe, and a `source:` computed against the wrong directory is still relative
+// and still free of host paths.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-snapcraft-generable — the base must match the host that packs it', () => {
+  test('--pack-runner PASSES when the recipe base and the packing host agree', () => {
+    const root = tree({ runner: 'ubuntu-24.04' });
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(gen.code, 0, gen.out);
+    assert.match(readFileSync(gen.recipe, 'utf8'), /^base: core24$/m);
+    const g = guard(root, ['--emitted', gen.recipe, '--app', 'subly', '--pack-runner', 'ubuntu-24.04']);
+    assert.equal(g.code, 0, g.out);
+    assert.match(g.out, /packed on ubuntu-24\.04 whose base is core24/);
+  });
+
+  // 🔴 THE RECORDED FAILING CASE. The bundle is compiled on ubuntu-22.04 (base
+  // core22) and packed on ubuntu-24.04 — which is exactly what happens if one of
+  // the two workflows moves runner and the other does not. In
+  // `--destructive-mode` there is no container to hide the mismatch.
+  test('--pack-runner FAILS when the bundle lane and the packing host disagree', () => {
+    const root = tree({ runner: 'ubuntu-22.04' });
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(gen.code, 0, gen.out);
+    // green without the argument first, so the redness is attributable to it alone
+    assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subly']).code, 0);
+    const g = guard(root, ['--emitted', gen.recipe, '--app', 'subly', '--pack-runner', 'ubuntu-24.04']);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /`base` is "core22" and this recipe is about to be packed on a host whose base is "core24"/);
+  });
+
+  test('--pack-runner REFUSES an unmapped label rather than treating it as a match', () => {
+    const root = tree();
+    const gen = generate(root, ['--bundle', bundle()]);
+    const g = guard(root, ['--emitted', gen.recipe, '--app', 'subly', '--pack-runner', 'ubuntu-latest']);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /--pack-runner ubuntu-latest has no snapcraft base recorded/);
+  });
+
+  test('--pack-runner without --emitted is refused: a fixture recipe is packed by nobody', () => {
+    const g = guard(tree(), ['--pack-runner', 'ubuntu-24.04']);
+    assert.equal(g.code, 1, g.out);
+    assert.match(g.out, /--pack-runner is only meaningful with --emitted/);
+  });
+});
+
+describe('assert-snapcraft-generable — `source:` resolves from the PROJECT directory', () => {
+  // 🔴 THE REGRESSION THIS EXISTS FOR. generate-snapcraft.mjs computed the path
+  // relative to `<out>/snap` — "relative to the recipe itself" — until 2026-08-09.
+  // snapcraft resolves a part's local `source:` from the project directory it is
+  // run in, so the emitted path carried one extra `..` and pointed one level above
+  // the bundle. Every other check passed: it was relative, it held no host path,
+  // and it parsed.
+  test('the generator emits a source that resolves, from --out, to the bundle', () => {
+    const root = tree();
+    const b = bundle();
+    const gen = generate(root, ['--bundle', b]);
+    assert.equal(gen.code, 0, gen.out);
+    const source = readFileSync(gen.recipe, 'utf8').match(/^ {4}source: (.+)$/m)[1];
+    assert.equal(
+      resolve(gen.out_dir, source),
+      resolve(b),
+      `source ${JSON.stringify(source)} resolved from the project directory must BE the bundle`,
+    );
+    assert.ok(existsSync(join(resolve(gen.out_dir, source), 'subly')), 'and the resolved directory holds the binary');
+  });
+
+  test('--emitted FAILS a recipe whose source does not resolve to this app\'s bundle', () => {
+    const root = tree();
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(guard(root, ['--emitted', gen.recipe, '--app', 'subly']).code, 0);
+    // The exact shape of the old bug: one extra `..` in front of the path.
+    const yaml = readFileSync(gen.recipe, 'utf8').replace(/^( {4}source: )(.+)$/m, '$1../$2');
+    writeFileSync(gen.recipe, yaml);
+    const g = guard(root, ['--emitted', gen.recipe, '--app', 'subly']);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /resolves from the snapcraft project directory to .* which is not a directory/);
+  });
+
+  // A directory that EXISTS but is not this app's bundle — the case a mere
+  // existence check would pass. `--out` and the fixture bundles are siblings under
+  // TMP, so a sibling directory is reachable with a relative path (an absolute one
+  // would be refused earlier, by the host-path limb, and prove something else).
+  test("--emitted FAILS a source pointing at a directory that is not this app's bundle", () => {
+    const root = tree();
+    const good = generate(root, ['--bundle', bundle()]);
+    assert.equal(good.code, 0, good.out);
+    assert.equal(guard(root, ['--emitted', good.recipe, '--app', 'subly']).code, 0);
+
+    const emptyName = `e${seq++}`;
+    mkdirSync(join(TMP, emptyName), { recursive: true });
+    writeFileSync(
+      good.recipe,
+      readFileSync(good.recipe, 'utf8').replace(/^( {4}source: ).+$/m, `$1../${emptyName}`),
+    );
+    const g = guard(root, ['--emitted', good.recipe, '--app', 'subly']);
+    assert.equal(g.code, 1, g.out);
+    assertComplained(g.out);
+    assert.match(g.out, /is a directory but holds no file named "subly"/);
+  });
+
+  test('a recipe NOT at snap/snapcraft.yaml has no project directory, and says so', () => {
+    const root = tree();
+    const gen = generate(root, ['--bundle', bundle()]);
+    const elsewhere = join(TMP, `x${seq++}.yaml`);
+    writeFileSync(elsewhere, readFileSync(gen.recipe, 'utf8'));
+    const g = guard(root, ['--emitted', elsewhere, '--app', 'subly']);
+    assert.equal(g.code, 0, g.out);
+    assert.match(g.out, /is not at \.\.\.\/snap\/snapcraft\.yaml/);
+    assert.match(g.out, /stated gap, not a pass/);
+  });
+});
+
+describe('generate-snapcraft --emit-build-deps — one apt list, two jobs', () => {
+  // 🔴 WHY THIS MODE EXISTS. submit-snap.yml compiles the Linux bundle it packs,
+  // so it needs the same toolchain build-platforms.yml installs. A second
+  // `apt-get install -y clang cmake …` line there would be the [pipeline F-2]
+  // duplication `readLinuxBuildLane` exists to prevent, one file further away.
+  test('prints the lane apt list, space-separated, and NOTHING ELSE on stdout', () => {
+    const root = tree();
+    const r = spawnSync(process.execPath, [GENERATOR, '--repo-root', root, '--emit-build-deps'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.equal(r.stdout.trim(), FIXTURE_PACKAGES.join(' '));
+    // the diagnostic goes to stderr, because a diagnostic on stdout becomes a
+    // package name the moment a shell spreads this into `apt-get install -y $(…)`
+    assert.match(r.stderr, /build dep\(s\) from/);
+  });
+
+  test('it is the SAME list the recipe stages — one extraction, not two', () => {
+    const root = tree();
+    const gen = generate(root, ['--bundle', bundle()]);
+    assert.equal(gen.code, 0, gen.out);
+    // Only the `stage-packages:` block — `plugs:` entries sit at the same indent,
+    // so a bare `- item` match would compare the apt list against both.
+    const yaml = readFileSync(gen.recipe, 'utf8');
+    const block = yaml.slice(yaml.indexOf('    stage-packages:'));
+    const staged = [...block.matchAll(/^ {6}- (\S+)$/gm)].map((m) => m[1]);
+    assert.deepEqual(staged, FIXTURE_PACKAGES, 'the block extraction itself must be reading the packages');
+
+    const emitted = spawnSync(process.execPath, [GENERATOR, '--repo-root', root, '--emit-build-deps'], { encoding: 'utf8' })
+      .stdout.trim()
+      .split(' ');
+    assert.deepEqual(emitted, staged, 'apt installs exactly what the snap stages, from one read of one file');
+  });
+
+  test('REFUSES rather than emitting an empty list when the workflow parse breaks', () => {
+    const root = tree({ omitWorkflow: true });
+    const r = spawnSync(process.execPath, [GENERATOR, '--repo-root', root, '--emit-build-deps'], { encoding: 'utf8' });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.equal(r.stdout.trim(), '', 'nothing may reach stdout on a refusal — it would be read as a package name');
+    assert.match(r.stderr, /COVERAGE LOST/);
+  });
+});

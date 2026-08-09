@@ -53,9 +53,32 @@
 // generator's own exported parser. A guard holding its own copy of a constant
 // agrees with a generator that has drifted, which is a check that cannot fail.
 //
+// ── AND TWO THINGS ONLY THE PACKING JOB CAN ASK ─────────────────────────────
+// Both are `--emitted`-mode checks, because both are about a recipe that is one
+// step away from being handed to a real `snapcraft`.
+//
+//   6. `--pack-runner <label>` — THE BASE MUST MATCH THE HOST THAT PACKS IT.
+//      The recipe's `base` is derived from the runner the BUNDLE was compiled on
+//      (build-platforms.yml's Linux job). The .snap is packed in a DIFFERENT
+//      workflow, on a runner of its own, in `--destructive-mode` — which builds
+//      on the host with no container between them. ✅ Sourced, fetched
+//      2026-08-09, https://ubuntu.com/docs/snapcraft/stable/reference/
+//      build-environment-options/ : "The build environment should match the snap
+//      base. For example, a core26 snap should be built inside of an Ubuntu 26.04
+//      LTS environment." Two workflows now name a runner label for one snap, so
+//      moving either one alone links the app against libraries it did not build
+//      with — and nothing else in the tree compares them.
+//   7. THE `source:` MUST RESOLVE, FROM THE PROJECT DIRECTORY, TO THIS APP'S
+//      BUNDLE. snapcraft resolves a part's local `source:` from the project
+//      directory (the one it is run in), not from `snap/snapcraft.yaml`. The
+//      generator computed it from the recipe file until 2026-08-09 — one `..` too
+//      many — and every check here passed, because "is it relative" and "is it a
+//      host path" are both satisfied by a relative path that points nowhere.
+//
 // Usage:
 //   node tooling/ci/assert-snapcraft-generable.mjs [repoRoot]
 //   node tooling/ci/assert-snapcraft-generable.mjs [repoRoot] --emitted <file> --app <id>
+//     [--pack-runner ubuntu-24.04]
 //
 // `--emitted` validates a recipe that ALREADY EXISTS instead of generating one.
 // It is how a release lane checks the file it is about to hand to snapcraft, and
@@ -111,10 +134,31 @@ for (let k = 0; k < argv.length; k++) {
 const ROOT = resolve(opt('repo-root') ?? positional ?? join(HERE, '..', '..'));
 const EMITTED = opt('emitted');
 const ONLY_APP = opt('app');
+const PACK_RUNNER = opt('pack-runner');
 if (EMITTED && !ONLY_APP) {
   console.error('✗ --emitted requires --app: the listing an existing recipe is checked against has to be named,');
   console.error('  because nothing about the expectations may come from the file being checked.');
   process.exit(1);
+}
+if (PACK_RUNNER && !EMITTED) {
+  console.error('✗ --pack-runner is only meaningful with --emitted: it asks whether the recipe about to be packed');
+  console.error('  matches the host that will pack it, and a generated fixture recipe is packed by nobody.');
+  process.exit(1);
+}
+// An unmapped label is refused rather than passed through, for the reason
+// `baseForRunner` refuses one: a label with no recorded Ubuntu release cannot be
+// compared to a base, and treating "cannot compare" as "matches" is how this
+// check would report clean on the one input it exists for.
+let packBase = null;
+if (PACK_RUNNER) {
+  try {
+    packBase = baseForRunner(PACK_RUNNER);
+  } catch (e) {
+    if (!(e instanceof SnapcraftUngenerable)) throw e;
+    console.error(`✗ --pack-runner ${PACK_RUNNER} has no snapcraft base recorded:`);
+    for (const l of e.lines) console.error(`  ${l}`);
+    process.exit(1);
+  }
 }
 
 /** The version this guard hands the generator. It is a FIXTURE, and it is shaped
@@ -293,7 +337,29 @@ export function absoluteHostPaths(text) {
 // itself — which is what makes the equality limb negative-testable without a
 // backdoor that supplies the answer.
 // ─────────────────────────────────────────────────────────────────────────────
-export function validateEmitted({ yaml, expected, label }) {
+/**
+ * Where a part's local `source:` actually lands, and whether that is this app's
+ * bundle. Exported so the test can drive it with a tree it built itself.
+ *
+ * 🔴 THE FRAME IS THE PROJECT DIRECTORY, NOT THE RECIPE FILE, and getting it
+ * wrong is invisible to every other limb here. `projectDir` is the directory
+ * snapcraft is run in — `snap/snapcraft.yaml` is a fixed path inside it — and a
+ * relative `source:` is resolved from there.
+ * Source: https://forum.snapcraft.io/t/part-source-when-snapcraft-yaml-is-in-snap-dir/19361
+ * (fetched 2026-08-09).
+ */
+export function sourceResolution({ projectDir, source, binaryName }) {
+  const at = resolve(projectDir, source);
+  if (!existsSync(at) || !statSync(at).isDirectory()) {
+    return { ok: false, at, why: 'is not a directory' };
+  }
+  if (!existsSync(join(at, binaryName))) {
+    return { ok: false, at, why: `is a directory but holds no file named "${binaryName}"` };
+  }
+  return { ok: true, at };
+}
+
+export function validateEmitted({ yaml, expected, label, packBase = null, projectDir = null }) {
   const found = [];
   const bad = (m) => found.push(`${label} — ${m}`);
 
@@ -341,6 +407,21 @@ export function validateEmitted({ yaml, expected, label }) {
   eq('grade', doc.grade, expected.grade);
   eq('confinement', doc.confinement, expected.confinement);
 
+  // ── limb 6 — the base and the host that packs it ──────────────────────────
+  // Compared against the base the RECIPE carries, not against `expected.base`:
+  // the two agreeing is limb "base" above, and asking the same question twice of
+  // the same value would be an assertion that cannot fail independently.
+  if (packBase !== null && doc.base !== packBase) {
+    bad(
+      `\`base\` is ${JSON.stringify(doc.base)} and this recipe is about to be packed on a host whose base is ` +
+        `${JSON.stringify(packBase)}. In \`--destructive-mode\` there is no container between the two: ` +
+        'snapcraft\'s own guidance is that "the build environment should match the snap base". The base is ' +
+        'derived from the runner the BUNDLE was compiled on and the packing job names a runner of its own, ' +
+        'so moving either one alone links the app against libraries it did not build with — and this is the ' +
+        'only place the two labels meet.',
+    );
+  }
+
   if (typeof doc.version !== 'string' || doc.version.trim() === '') {
     bad('`version` is absent or empty. The Snap Store orders revisions by it; an empty one is not a release.');
   } else if (expected.version != null) {
@@ -357,6 +438,17 @@ export function validateEmitted({ yaml, expected, label }) {
     }
     if (typeof part.source !== 'string' || part.source.trim() === '') {
       bad('the part declares no `source`, so `dump` would ingest nothing and the snap would be empty.');
+    } else if (projectDir !== null && expected.command) {
+      // ── limb 7 — the source RESOLVES, from the project directory ───────────
+      const r = sourceResolution({ projectDir, source: part.source, binaryName: expected.command });
+      if (!r.ok) {
+        bad(
+          `\`source: ${part.source}\` resolves from the snapcraft project directory to ${r.at}, which ${r.why}. ` +
+            'snapcraft resolves a local `source:` from the project directory it is run in, NOT from ' +
+            'snap/snapcraft.yaml — a path computed against the recipe file is off by exactly one `..` and ' +
+            'satisfies "is it relative" and "is it a host path" while pointing at nothing.',
+        );
+      }
     }
     const staged = Array.isArray(part['stage-packages']) ? part['stage-packages'] : null;
     if (staged === null) {
@@ -567,7 +659,20 @@ try {
       }
     }
 
-    problems.push(...validateEmitted({ yaml, expected, label }));
+    // The snapcraft PROJECT DIRECTORY of an existing recipe is derivable from the
+    // recipe's own path and NOTHING ELSE: RECIPE_PATH is the fixed location
+    // inside it. So limb 7 is asked only of a file that actually sits there —
+    // a recipe somewhere else has no project directory to resolve `source` from,
+    // and inventing one would make this limb fire on input it cannot judge.
+    const atRecipePath = EMITTED !== null && EMITTED.split('\\').join('/').endsWith(`/${RECIPE_PATH}`);
+    const projectDir = atRecipePath ? resolve(EMITTED, '..', '..') : null;
+    if (EMITTED && !atRecipePath) {
+      notes.push(
+        `${label} — --emitted ${EMITTED} is not at .../${RECIPE_PATH}, so its snapcraft project directory is ` +
+          'not derivable and `source` was NOT resolved. That is a stated gap, not a pass.',
+      );
+    }
+    problems.push(...validateEmitted({ yaml, expected, label, packBase, projectDir }));
     validated++;
     if (!EMITTED) {
       notes.push(`${label} — recipe generated from ${dirRel}, base ${expected.base}, ${expected.stagePackages.length} stage-package(s)`);
@@ -615,6 +720,11 @@ for (const n of notes) console.log(`    ${n}`);
 console.log(
   `ok  snapcraft generable — ${validated} recipe(s) for ${apps.length} app(s) on ${row.id}: parse, ` +
     `name from the store tree, no host paths, strict confinement, and ${lane.packages.length} stage-package(s) ` +
-    `equal to ${BUILD_WORKFLOW}:${lane.line}'s apt list (base ${BASE_FOR_RUNNER.get(lane.runner)} from ${lane.runner}). ` +
-    '⚠️ CONFIGURATION ONLY — `snapcraft` was not run and no .snap was built.',
+    `equal to ${BUILD_WORKFLOW}:${lane.line}'s apt list (base ${BASE_FOR_RUNNER.get(lane.runner)} from ${lane.runner})` +
+    (PACK_RUNNER ? `, packed on ${PACK_RUNNER} whose base is ${packBase}` : '') +
+    (EMITTED ? ', and its `source` resolves from the project directory to a bundle holding the binary.' : '.') +
+    (PACK_RUNNER
+      ? ''
+      : ' ⚠️ CONFIGURATION ONLY — `snapcraft` was not run here. The pack itself is proven by' +
+        ' .github/workflows/submit-snap.yml, on dispatch.'),
 );

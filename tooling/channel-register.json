@@ -1417,11 +1417,53 @@
           "note": "No key of ours. Cost is a per-app namespace registration, the same one-time shape as Play and MS Store."
         }
       },
-      "minimumToolchain": ["flutter"],
-      "lane": null,
+      "minimumToolchain": ["flutter", "snapcraft"],
+      "lane": {
+        "workflow": ".github/workflows/submit-snap.yml",
+        "job": "dry-run",
+        "_why": [
+          "The row's lane is the job that EMITS the format the row accepts, and until 2026-08-09 nothing in",
+          "this factory emitted a .snap — so this was `null`, correctly. `submit-snap.yml`'s own header carried",
+          "the condition for changing that: 'When the recipe lands, add the build to THIS job and drop",
+          "`--allow-missing-artifact`, in the same increment.' The recipe landed on 2026-08-08 (generated, never",
+          "committed — see `_whyRecipeScript` below) and that job now compiles the Linux bundle, derives the",
+          "recipe from it, packs a real .snap with `snapcraft pack --destructive-mode`, and uploads it.",
+          "",
+          "🔴 IT IS THE SAME JOB AS `submission.job`, WHICH NO OTHER STORE ROW DOES, AND THAT IS A FACT ABOUT",
+          "THIS CHANNEL RATHER THAN A SHORTCUT. Play and the Microsoft Store have a routine build lane in",
+          "build-platforms.yml because their artifacts fall out of the six-platform proof this factory already",
+          "runs weekly. A .snap does not: packing one needs `snapcraft` installed and ~an extra Linux compile,",
+          "on a channel [ADR 015] §2 defers until revenue. Putting that in build-platforms.yml would charge",
+          "every weekly proof run for an artifact no lane consumes. So the emitting job and the submitting job",
+          "are one job, dispatched on demand — which is also why `served` stays false: a lane that BUILDS the",
+          "artifact is not a channel that SHIPS it, and shipping still needs OWNER_QUEUE A-6 (the global name",
+          "claim) plus the `--submit` verbs submit-snap.mjs refuses to guess.",
+          "",
+          "⚠️ THE CONSEQUENCE FOR [9]R-4, WRITTEN DOWN BECAUSE IT IS A FUTURE RED AND NOT A PRESENT ONE.",
+          "tooling/ci/release-manifest.mjs derives `expectedReleaseFormats` from the rows that HAVE a lane, so",
+          "`.snap` is now in that set. Nothing goes red today: build-platforms.yml's release job runs",
+          "`--verify` WITHOUT `--expect-formats`, and that flag is used only by tests. The day somebody wires",
+          "it into the release job — release-durable.test.mjs says that is a later increment — a tag-push",
+          "release will fail naming `.snap`, because a GitHub Release is staged from build-platforms.yml's own",
+          "artifacts and this lane is a different workflow on a different trigger. That failure is loud, names",
+          "the exact artifact, and fails closed. It is the right shape for the decision it forces: either the",
+          "expectation narrows to lanes that feed the release, or the .snap reaches one.",
+          "",
+          "⚠️ TWO WORKFLOWS NOW NAME A RUNNER LABEL FOR ONE SNAP. build-platforms.yml's `linux_web_android`",
+          "runner decides the recipe's `base` (ubuntu-24.04 → core24); this lane's runner is the host that packs",
+          "against it, with no container in between. tooling/ci/assert-snapcraft-generable.mjs's `--pack-runner`",
+          "compares them and fails the job — a mismatch otherwise produces a snap that installs and misbehaves,",
+          "which is the kind of defect nothing downstream detects."
+        ]
+      },
       "deploymentEnvironment": "{app}-linux-snap",
       "storeMetadataDir": "apps/{app}/store/linux-snap",
       "ownerQueue": "A-6",
+      "crashSink": {
+        "layers": ["dart"],
+        "native": false,
+        "note": "THE DART LAYER ONLY. The lane has supplied --dart-define=GLITCHTIP_DSN since 2026-08-09, when it started compiling a Linux bundle at all, so a Dart exception from a packed .snap reaches GlitchTip; a native crash in the GTK runner or a plugin's native half does NOT. ⚠️ NOTHING HAS EVER RUN A .snap — the artifact is packed and uploaded, never installed — so even the Dart layer is UNVERIFIED on this channel and is claimed as wiring, not as coverage. [pipeline 11]E-7"
+      },
       "identity": {
         "_why": [
           "🔴 THE ONE NOTHING COMPARED. `set(APPLICATION_ID \"…\")` in the Linux CMakeLists is the id GTK",
@@ -1482,7 +1524,18 @@
         "[ADR 015] §3 ranks Snap FIRST when native Linux is built: a real store link, discovery and",
         "silent auto-update; accepts closed source; NO AI-code policy; ingests the prebuilt CI artifact",
         "via `plugin: dump`; bundles libmpv via `stage-packages: [libmpv2]`; must declare",
-        "`plugs: [opengl, wayland, x11, audio-playback]`."
+        "`plugs: [opengl, wayland, x11, audio-playback]`.",
+        "",
+        "⬜ `snapcraft` JOINED `minimumToolchain` ON 2026-08-09 AND tooling/versions.json HAS NO SUCH KEY,",
+        "so assert-channel-register.mjs prints `(deferred) needs a pinned \\`snapcraft\\`` on every run. THE",
+        "PRINT IS THE POINT, and it is the same shape the `xcode` key was added to close one row over: the",
+        "lane installs `snapcraft` from the Snap Store with `snap install snapcraft --classic`, which takes",
+        "whatever `latest/stable` holds that day — real drift on the tool that PACKAGES the artifact.",
+        "It is not closed here because closing it means naming a track, and no track other than `latest`",
+        "was verified: snapcraft.io/snapcraft (fetched 2026-08-09) shows `latest/stable` at 9.0.1 and does",
+        "not enumerate the version tracks. An invented `8.x/stable` would fail the install outright, and an",
+        "invented floor nothing reads would be worse — a declaration with no consumer. Pin it in the same",
+        "increment that reads a primary source for snapcraft's tracks."
       ]
     },
     {
