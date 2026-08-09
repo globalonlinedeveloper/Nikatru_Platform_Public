@@ -270,7 +270,19 @@
           "claimed once with `snapcraft register <name>` (OWNER_QUEUE A-6) and never transferable",
           "casually. It is carried in the tree so the name we intend to claim is reviewable and diffable",
           "BEFORE it is claimed, rather than being decided at a terminal prompt.",
-          "`license.txt` is the SPDX identifier the store listing shows."
+          "",
+          "🔴 `license.txt` IS THE LICENCE THE STORE LISTING SHOWS, AND IT IS NOT NECESSARILY AN SPDX",
+          "IDENTIFIER. This line said \"`license.txt` is the SPDX identifier the store listing shows\", and",
+          "the file has said `proprietary` the whole time — which is TRUE about the licence and is not an",
+          "SPDX identifier at all. The contradiction sat here unnoticed until the first real pack refused",
+          "the recipe built from it: `cannot validate license \"proprietary\": unknown license: proprietary`",
+          "(run 31294305898, 2026-08-09). The wrong half was this sentence, not the file.",
+          "",
+          "Where the two meet is tooling/release/generate-snapcraft.mjs: `NON_SPDX_LICENCES` records the",
+          "values that cannot be emitted as snapcraft's `license:` key WITH the reason, and the recipe then",
+          "omits the key entirely — which the Snap Store reads as `Proprietary` anyway. So the listing keeps",
+          "the true word and the recipe reaches the same answer by the only route snapd accepts. Sources are",
+          "on that constant; assert-snapcraft-generable.mjs holds both directions."
         ],
         "additionalFiles": ["snap-name.txt", "license.txt"]
       },
