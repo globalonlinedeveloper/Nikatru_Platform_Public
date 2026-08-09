@@ -24,16 +24,25 @@
 //   · client tokens   sandbox begins `test_`
 //   (developer.paddle.com/api-reference/about/authentication · /sdks/sandbox)
 //
-// FOUR LIMBS, each with a CONSTRUCTIBLE failing input:
-//   1 EXACTLY ONE money environment is declared in the deployed config, and it
-//     is `live`. A sandbox value there is the whole defect, in one line.
+// FIVE LIMBS, each with a CONSTRUCTIBLE failing input:
+//   1 THE DECLARING SET IS THE MONEY-DOOR SET, and every declared value is
+//     `live`. A Worker "has a money door" iff its deployed source refuses with
+//     `money_rail_not_configured` — the fail-closed marker limb 4 requires.
+//     (Until 2026-08-09 this read "exactly one config declares"; that was true
+//     while platform owned every door and became false when [ADR 039] D5's
+//     RevenueCat fan-in on services/subly-api gained the same world guard. The
+//     rule that survives both eras: declaring without a door is a second rail
+//     nobody decided to run, and a door without a declaration is a Worker that
+//     503s every money read in production.)
 //   2 NO sandbox-shaped credential or base URL appears in ANY deployed config.
 //   3 EXACTLY ONE destination secret per registered rail, and NONE of them is a
 //     committed var. The set comes from the adapter registry, so a second rail
 //     is inside this limb the day it is registered.
-//   4 THE ROUTE FAILS CLOSED on an absent or unrecognised environment. A default
-//     in either direction is a silent catastrophe: 'live' honours sandbox money
-//     as real, 'sandbox' stops honouring real money, and both stay green.
+//   4 THE MoR ROUTE FAILS CLOSED on an absent or unrecognised environment. A
+//     default in either direction is a silent catastrophe: 'live' honours
+//     sandbox money as real, 'sandbox' stops honouring real money, both green.
+//   5 EVERY money-door Worker's own tests EXERCISE the 503 — a branch that is
+//     written but never fired is exactly what the MC7 mutation run found.
 //
 // Usage:  node tooling/ci/assert-money-config.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,7 +130,42 @@ if (!configs.some((c) => c.service === MONEY_WORKER)) {
   process.exit(1);
 }
 
-// ── LIMB 1 · exactly one money environment, and it is `live` ─────────────────
+// ── LIMB 1 · the declaring set IS the money-door set, and every value is live ─
+/** A service "has a money door" iff a file under its src/ refuses with the
+ *  `money_rail_not_configured` marker — read comment-stripped, the same idiom
+ *  limb 4 uses, so the prose explaining the refusal cannot count as one. */
+function hasMoneyDoor(service) {
+  const srcDir = join(SERVICES, service, 'src');
+  if (!existsSync(srcDir)) return false;
+  let found = false;
+  const walk = (d) => {
+    for (const e of listDir(d, { withFileTypes: true })) {
+      if (found) return;
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(ts|js|mjs)$/.test(e.name)) {
+        const code = readFileSync(p, 'utf8')
+          .split('\n')
+          .filter((l) => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*'))
+          .join('\n');
+        if (code.includes('money_rail_not_configured')) found = true;
+      }
+    }
+  };
+  walk(srcDir);
+  return found;
+}
+
+const doorServices = [...new Set(configs.map((c) => c.service))].filter(hasMoneyDoor);
+if (doorServices.length === 0) {
+  // A recorded failure, not an early exit: the limbs below still run, so a tree
+  // that ALSO lost its route file reports both findings rather than the first.
+  fail(
+    'COVERAGE LOST — no deployed source refuses with `money_rail_not_configured`, so the money-door set is empty; ' +
+      'limb 1 has nothing to compare and limb 5 nothing to exercise. The scan is broken, not the tree.',
+  );
+}
+
 const declaringEnvironment = [];
 for (const c of configs) {
   const cfg = parseJsonc(c.raw, c.rel);
@@ -140,15 +184,29 @@ for (const c of configs) {
 }
 if (declaringEnvironment.length === 0) {
   fail(
-    'NO deployed config declares MONEY_ENVIRONMENT. The money route refuses to serve without it (503), so the rail ' +
+    'NO deployed config declares MONEY_ENVIRONMENT. The money doors refuse to serve without it (503), so the rail ' +
       'would be dead in production — and neither the notification payload nor the destination secret can supply the ' +
       'value, because no primary source establishes either. [5]M-12',
   );
-} else if (declaringEnvironment.length > 1) {
-  fail(
-    `${declaringEnvironment.length} deployed configs declare MONEY_ENVIRONMENT (${declaringEnvironment.map((d) => d.rel).join(', ')}). ` +
-      'Exactly one Worker owns the money rail ([ADR 020]:18); a second declaration is a second rail nobody decided to run.',
-  );
+} else if (doorServices.length > 0) {
+  for (const d of declaringEnvironment) {
+    if (!doorServices.includes(d.service)) {
+      fail(
+        `${d.rel} declares MONEY_ENVIRONMENT but no file under services/${d.service}/src refuses with ` +
+          '`money_rail_not_configured` — a declaration without a door is a second rail nobody decided to run ' +
+          '([ADR 020]:18; the decided set is the MoR rail plus [ADR 039] D5\'s RevenueCat fan-in).',
+      );
+    }
+  }
+  for (const s of doorServices) {
+    if (!declaringEnvironment.some((d) => d.service === s)) {
+      fail(
+        `services/${s} carries a money door (its source refuses with \`money_rail_not_configured\`) but its deployed ` +
+          'config declares no MONEY_ENVIRONMENT — every money read on that Worker would 503 in production, which is ' +
+          'the fail-closed branch firing on every request instead of on a misconfiguration. [5]M-12',
+      );
+    }
+  }
 }
 
 // ── LIMB 2 · no sandbox shape anywhere in a deployed config ─────────────────
@@ -275,37 +333,39 @@ if (!existsSync(routePath)) {
 
 // ── LIMB 5 · the fail-closed behaviour is EXERCISED, not just written ────────
 // A structural check can say the branch exists; only a test can say it fires.
-// The two together are what make limb 4 more than a shape.
-{
-  const testDir = join(ROOT, 'services', 'platform', 'test');
+// The two together are what make limb 4 more than a shape. PER MONEY-DOOR
+// WORKER: each service in the door set proves its own 503 with its own tests —
+// platform's suite firing says nothing about subly-api's door.
+for (const svc of doorServices) {
+  const testDir = join(ROOT, 'services', svc, 'test');
   const files = existsSync(testDir) ? listDir(testDir).filter((f) => f.endsWith('.test.ts')) : [];
   if (files.length === 0) {
-    fail('COVERAGE LOST — no test files under services/platform/test, so nothing exercises the money rail\'s fail-closed branch.');
-  } else {
-    const blocks = [];
-    for (const f of files) {
-      const src = readFileSync(join(testDir, f), 'utf8');
-      // ⚠️ A SKIPPED TEST IS TEXT, NOT EVIDENCE. Mutation-proven 2026-08-01:
-      // changing the [5]M-12 suite to `describe.skip` left every assertion
-      // readable and none of them running, and this limb said ok.
-      if (/\bdescribe\s*\.\s*(?:skip|todo)\s*\(/.test(src)) continue;
-      for (const m of src.matchAll(/\b(?:it|test)(?!\s*\.\s*(?:skip|todo))\s*\(/g)) {
-        const open = src.indexOf('(', m.index);
-        let depth = 0;
-        for (let k = open; k < src.length; k++) {
-          if (src[k] === '(') depth++;
-          else if (src[k] === ')') { depth--; if (depth === 0) { blocks.push(src.slice(open, k + 1)); break; } }
-        }
+    fail(`COVERAGE LOST — no test files under services/${svc}/test, so nothing exercises that money door's fail-closed branch.`);
+    continue;
+  }
+  const blocks = [];
+  for (const f of files) {
+    const src = readFileSync(join(testDir, f), 'utf8');
+    // ⚠️ A SKIPPED TEST IS TEXT, NOT EVIDENCE. Mutation-proven 2026-08-01:
+    // changing the [5]M-12 suite to `describe.skip` left every assertion
+    // readable and none of them running, and this limb said ok.
+    if (/\bdescribe\s*\.\s*(?:skip|todo)\s*\(/.test(src)) continue;
+    for (const m of src.matchAll(/\b(?:it|test)(?!\s*\.\s*(?:skip|todo))\s*\(/g)) {
+      const open = src.indexOf('(', m.index);
+      let depth = 0;
+      for (let k = open; k < src.length; k++) {
+        if (src[k] === '(') depth++;
+        else if (src[k] === ')') { depth--; if (depth === 0) { blocks.push(src.slice(open, k + 1)); break; } }
       }
     }
-    const proven = blocks.some((b) => /\b503\b/.test(b) && /environment/i.test(b) && /\bexpect\s*\(/.test(b));
-    if (!proven) {
-      fail(
-        'NO SINGLE test block asserts that an absent or unrecognised money environment yields 503. [5]M-12: the branch ' +
-          'can be written and unreachable — that is exactly what the mutation run found — so it has to be fired, not ' +
-          'merely present.',
-      );
-    }
+  }
+  const proven = blocks.some((b) => /\b503\b/.test(b) && /environment/i.test(b) && /\bexpect\s*\(/.test(b));
+  if (!proven) {
+    fail(
+      'NO SINGLE test block asserts that an absent or unrecognised money environment yields 503 ' +
+        `under services/${svc}/test. [5]M-12: the branch can be written and unreachable — that is exactly what ` +
+        'the mutation run found — so it has to be fired, not merely present.',
+    );
   }
 }
 
@@ -320,7 +380,8 @@ if (problems.length) {
 }
 
 console.log(
-  `ok  money config — ${configs.length} deployed config(s) scanned; MONEY_ENVIRONMENT declared exactly once and is ` +
-    `"live"; no sandbox credential or host in any deployed config; ${secretVars.length} destination secret(s) derived ` +
-    `from the adapter registry, none committed; the route refuses an undeclared environment`,
+  `ok  money config — ${configs.length} deployed config(s) scanned; MONEY_ENVIRONMENT declared by exactly the ` +
+    `${doorServices.length} money-door Worker(s) {${doorServices.join(', ')}} and every value is "live"; no sandbox ` +
+    `credential or host in any deployed config; ${secretVars.length} destination secret(s) derived from the adapter ` +
+    `registry, none committed; each door refuses an undeclared environment and its own tests fire the 503`,
 );

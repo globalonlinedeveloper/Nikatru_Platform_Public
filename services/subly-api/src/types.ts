@@ -29,6 +29,14 @@ export interface Env {
   /** Comma-separated browser origins for CORS. Absent/empty ⇒ '*' (template). */
   ALLOWED_ORIGINS?: string;
   /**
+   * [5]M-12 — which money world this deploy is: 'live' or 'sandbox'. Read by
+   * the RevenueCat webhook (events from the OTHER world are acked and ignored,
+   * never written) and by /v1/entitlements (a row from the other world grants
+   * nothing). Absent/unrecognised ⇒ both answer 503 rather than guess — see
+   * src/lib/money.ts for why neither default is safe.
+   */
+  MONEY_ENVIRONMENT?: string;
+  /**
    * [pipeline 11]E-8 — the crash sink for UNHANDLED WORKER ERRORS. A `var`, not
    * a secret: a GlitchTip DSN is a write-only ingest key this factory already
    * ships inside every web build. Absent ⇒ no report, silently; lib/

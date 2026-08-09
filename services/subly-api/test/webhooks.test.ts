@@ -27,8 +27,14 @@ const USER = 'user-a';
 const DAY = 24 * 60 * 60 * 1000;
 
 /** `null` means NO secret configured — an `undefined` default would be
- *  swallowed by the parameter default and quietly test the wrong thing. */
-function harness(db: unknown, secret: string | null = SECRET) {
+ *  swallowed by the parameter default and quietly test the wrong thing.
+ *  `envOverrides` patches bindings AFTER TEST_ENV, so a test can unset
+ *  MONEY_ENVIRONMENT (pass `undefined` explicitly) or run as a sandbox deploy. */
+function harness(
+  db: unknown,
+  secret: string | null = SECRET,
+  envOverrides: Record<string, unknown> = {},
+) {
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
     c.set('requestId', 'test-rid');
@@ -48,6 +54,7 @@ function harness(db: unknown, secret: string | null = SECRET) {
     ...TEST_ENV,
     PLATFORM_DB: db,
     REVENUECAT_WEBHOOK_SECRET: secret ?? undefined,
+    ...envOverrides,
   } as unknown as AppEnv['Bindings'];
 
   return {
@@ -71,18 +78,45 @@ function harness(db: unknown, secret: string | null = SECRET) {
   };
 }
 
-/** `expiresInDays` omitted ⇒ the field is absent; null ⇒ explicitly null. */
+/**
+ * The provider's clock, DETERMINISTIC AND STRICTLY INCREASING. Each event built
+ * by `event()` is stamped one second after the previous one — `Date.now()`
+ * would hand two in-process posts the SAME millisecond, and the strict-`>`
+ * ordering clause would then (correctly) drop the second write, turning every
+ * two-event lifecycle test into a coin flip.
+ */
+const CLOCK_BASE = Date.UTC(2026, 7, 1);
+let clockSeq = 0;
+const nextEventTs = () => CLOCK_BASE + ++clockSeq * 1000;
+
+/** `expiresInDays` omitted ⇒ the field is absent; null ⇒ explicitly null.
+ *  `environment` defaults to PRODUCTION (the tests run as a live deploy);
+ *  `eventTs` overrides the provider clock, null OMITS it (a clock-less event). */
 const event = (
   type: string,
-  opts: { expiresInDays?: number | null; entitlement?: string } = {},
+  opts: {
+    expiresInDays?: number | null;
+    entitlement?: string;
+    environment?: string;
+    eventTs?: number | null;
+  } = {},
 ) => {
   const ev: Record<string, unknown> = {
+    id: `evt-${++clockSeq}`,
     type,
     app_user_id: USER,
     entitlement_ids: [opts.entitlement ?? 'pro'],
     product_id: 'subly_pro_monthly',
     store: 'APP_STORE',
+    environment: opts.environment ?? 'PRODUCTION',
   };
+  if (opts.eventTs === null) {
+    // clock-less on purpose — no event_timestamp_ms at all
+  } else if (opts.eventTs !== undefined) {
+    // Passed through VERBATIM, junk included — the unreadable-clock tests cast
+    // garbage through this parameter and it must reach the wire unrepaired.
+    ev.event_timestamp_ms = opts.eventTs;
+  } else ev.event_timestamp_ms = nextEventTs();
   if (opts.expiresInDays === null) ev.expiration_at_ms = null;
   else if (typeof opts.expiresInDays === 'number') {
     ev.expiration_at_ms = Date.now() + opts.expiresInDays * DAY;
@@ -229,6 +263,7 @@ describe('POST /v1/webhooks/revenuecat → /v1/entitlements', () => {
         type: 'INITIAL_PURCHASE',
         app_user_id: USER,
         entitlement_ids: ['pro', 'cloud_sync'],
+        environment: 'PRODUCTION',
         expiration_at_ms: Date.now() + 30 * DAY,
       },
     });
@@ -285,13 +320,16 @@ describe('POST /v1/webhooks/revenuecat — authentication', () => {
 // the sender retries), never silently reinterpreted.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('POST /v1/webhooks/revenuecat — body validation', () => {
-  /** Build an INITIAL_PURCHASE with one field overridden/injected. */
+  /** Build an INITIAL_PURCHASE with one field overridden/injected. Carries the
+   *  PRODUCTION environment (the harness deploy is 'live') and NO provider
+   *  clock — a clock-less event, which inserts freely on an empty key. */
   const withField = (patch: Record<string, unknown>) => ({
     api_version: '1.0',
     event: {
       type: 'INITIAL_PURCHASE',
       app_user_id: USER,
       entitlement_ids: ['pro'],
+      environment: 'PRODUCTION',
       ...patch,
     },
   });
@@ -322,7 +360,7 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
       // with no try/catch above it — a 500 RevenueCat retries forever.
       const raw =
         `{"event":{"type":"INITIAL_PURCHASE","app_user_id":"${USER}",` +
-        `"entitlement_ids":["pro"],"expiration_at_ms":1e400}}`;
+        `"entitlement_ids":["pro"],"environment":"PRODUCTION","expiration_at_ms":1e400}}`;
       expect(
         (JSON.parse(raw) as { event: { expiration_at_ms: number } }).event
           .expiration_at_ms,
@@ -455,6 +493,7 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
           type: 'INITIAL_PURCHASE',
           original_app_user_id: 'legacy-user',
           entitlement_ids: ['pro'],
+          environment: 'PRODUCTION',
         },
       });
       expect(ok.status).toBe(200);
@@ -537,11 +576,15 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
 
     it('returns the checked values, with the ISO conversion already done', () => {
       const ms = Date.UTC(2026, 8, 1);
+      const ts = Date.UTC(2026, 7, 15, 12);
       const r = validateEvent({
         event: {
+          id: 'evt-abc',
           type: 'RENEWAL',
           app_user_id: USER,
           entitlement_id: 'pro',
+          environment: 'PRODUCTION',
+          event_timestamp_ms: ts,
           expiration_at_ms: ms,
         },
       });
@@ -555,7 +598,27 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
           store: null,
           expiresAtMs: ms,
           expiresAt: new Date(ms).toISOString(),
+          environment: 'live', // PRODUCTION, mapped to OUR vocabulary
+          occurredAt: new Date(ts).toISOString(),
+          eventId: 'evt-abc',
         });
+      }
+    });
+
+    it('maps SANDBOX to sandbox, and a clock-less event to a null occurred_at', () => {
+      const r = validateEvent({
+        event: {
+          type: 'RENEWAL',
+          app_user_id: USER,
+          entitlement_id: 'pro',
+          environment: 'SANDBOX',
+        },
+      });
+      expect(r.ok && r.act).toBe(true);
+      if (r.ok && r.act) {
+        expect(r.event.environment).toBe('sandbox');
+        expect(r.event.occurredAt).toBeNull();
+        expect(r.event.eventId).toBeNull();
       }
     });
 
@@ -566,9 +629,176 @@ describe('POST /v1/webhooks/revenuecat — body validation', () => {
           app_user_id: USER,
           entitlement_ids: ['a', 'b'],
           entitlement_id: 'ignored',
+          environment: 'PRODUCTION',
         },
       });
       expect(r.ok && r.act && r.event.entitlementIds).toEqual(['a', 'b']);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDERING — [5]M-2's defence on THIS writer. RevenueCat gives no ordering
+// guarantee, so a delayed retry of an older event arrives after a newer one;
+// before 2026-08-09 the UPSERT overwrote unconditionally and the retry rolled
+// access backwards. The conditional `WHERE occurred_at IS NULL OR excluded > …`
+// is clause-for-clause the MoR store's, against the same shared table.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('POST /v1/webhooks/revenuecat — event ordering (occurred_at)', () => {
+  const T1 = Date.UTC(2026, 6, 1, 10);
+  const T2 = Date.UTC(2026, 6, 1, 11);
+  const T3 = Date.UTC(2026, 6, 1, 12);
+
+  it('a delayed retry of an OLDER event cannot roll a newer state back', async () => {
+    const db = realPlatformDb();
+    const h = harness(db);
+    // The newer event lands first: a renewal, paid 30 days out.
+    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: T2 }));
+    expect(await h.isPro()).toBe(true);
+
+    // Then an OLDER cancellation-refund (past expiry) arrives late.
+    const res = await h.post(event('CANCELLATION', { expiresInDays: -1, eventTs: T1 }));
+    expect(res.status, 'the late event is still acked — RevenueCat must stop retrying').toBe(200);
+
+    const [row] = db.rows('SELECT is_active, occurred_at FROM entitlements');
+    expect(row.is_active, 'the older event must not revoke the newer grant').toBe(1);
+    expect(row.occurred_at).toBe(new Date(T2).toISOString());
+    expect(await h.isPro()).toBe(true);
+  });
+
+  it('a genuinely newer event still applies', async () => {
+    const db = realPlatformDb();
+    const h = harness(db);
+    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: T1 }));
+    await h.post(event('EXPIRATION', { expiresInDays: -1, eventTs: T3 }));
+    expect(db.rows('SELECT is_active FROM entitlements')[0].is_active).toBe(0);
+    expect(await h.isPro()).toBe(false);
+  });
+
+  it('an event with the SAME clock does not overwrite — the > is strict', async () => {
+    // Two different events in the same millisecond are unorderable; first-in
+    // wins, which is also what the MoR store does. A same-event RETRY loses
+    // nothing here: its content is identical by definition.
+    const db = realPlatformDb();
+    const h = harness(db);
+    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: T2 }));
+    await h.post(event('EXPIRATION', { expiresInDays: -1, eventTs: T2 }));
+    expect(db.rows('SELECT is_active FROM entitlements')[0].is_active).toBe(1);
+  });
+
+  it('a clock-less event cannot clobber a clocked row', async () => {
+    const db = realPlatformDb();
+    const h = harness(db);
+    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: T2 }));
+    const res = await h.post(event('EXPIRATION', { expiresInDays: -1, eventTs: null }));
+    expect(res.status).toBe(200);
+    expect(db.rows('SELECT is_active FROM entitlements')[0].is_active).toBe(1);
+  });
+
+  it('a clocked event upgrades a clock-less row', async () => {
+    const db = realPlatformDb();
+    const h = harness(db);
+    await h.post(event('RENEWAL', { expiresInDays: 30, eventTs: null }));
+    expect(db.rows('SELECT occurred_at FROM entitlements')[0].occurred_at).toBeNull();
+    await h.post(event('EXPIRATION', { expiresInDays: -1, eventTs: T1 }));
+    const [row] = db.rows('SELECT is_active, occurred_at FROM entitlements');
+    expect(row.is_active).toBe(0);
+    expect(row.occurred_at).toBe(new Date(T1).toISOString());
+  });
+
+  it('rows are stamped with the full provenance quartet', async () => {
+    const db = realPlatformDb();
+    const h = harness(db);
+    const body = event('INITIAL_PURCHASE', { expiresInDays: 30, eventTs: T1 });
+    await h.post(body);
+    const [row] = db.rows(
+      'SELECT provider, provider_environment, last_event_id, occurred_at FROM entitlements',
+    );
+    expect(row.provider).toBe('revenuecat');
+    expect(row.provider_environment).toBe('live');
+    expect(row.last_event_id).toBe((body.event as { id: string }).id);
+    expect(row.occurred_at).toBe(new Date(T1).toISOString());
+  });
+
+  it('400s an unreadable event_timestamp_ms and writes nothing', async () => {
+    for (const bad of ['garbage', '1800000000000', {}, 8.64e15 + 1]) {
+      const db = new RecordingDb();
+      const res = await harness(db).post(event('RENEWAL', { eventTs: bad as number }));
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+      expect(db.sql.length).toBe(0);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SANDBOX GUARD — [5]M-12 on THIS writer. RevenueCat delivers SANDBOX and
+// PRODUCTION events to the SAME URL under the SAME bearer secret (where a
+// sandbox-signed MoR notification simply fails live verification), so without
+// this guard one sandbox test purchase against a production user id overwrites
+// a paying customer's live row.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('POST /v1/webhooks/revenuecat — the money-world guard', () => {
+  it('a SANDBOX event on a live deploy is ACKED and writes NOTHING', async () => {
+    const db = new RecordingDb();
+    const res = await harness(db).post(
+      event('INITIAL_PURCHASE', { expiresInDays: 30, environment: 'SANDBOX' }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, ignored_environment: 'sandbox' });
+    expect(db.sql.length, 'the other money world must not reach a bind').toBe(0);
+  });
+
+  it('a sandbox test purchase cannot overwrite a paying customer', async () => {
+    // The end-to-end statement, through a real table: live Pro, then the same
+    // user's id turns up in a sandbox event with a dead expiry.
+    const db = realPlatformDb();
+    const h = harness(db);
+    await h.post(event('INITIAL_PURCHASE', { expiresInDays: 30 }));
+    expect(await h.isPro()).toBe(true);
+
+    await h.post(event('EXPIRATION', { expiresInDays: -1, environment: 'SANDBOX' }));
+    expect(await h.isPro(), 'sandbox money must never touch a live row').toBe(true);
+    expect(db.rows('SELECT provider_environment FROM entitlements')[0].provider_environment).toBe('live');
+  });
+
+  it('a PRODUCTION event on a SANDBOX deploy is ignored the same way', async () => {
+    const db = new RecordingDb();
+    const res = await harness(db, SECRET, { MONEY_ENVIRONMENT: 'sandbox' }).post(
+      event('RENEWAL', { expiresInDays: 30 }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, ignored_environment: 'live' });
+    expect(db.sql.length).toBe(0);
+  });
+
+  it('an event with NO environment is acked without writing — no world, no row', async () => {
+    const db = new RecordingDb();
+    const body = event('RENEWAL', { expiresInDays: 30 });
+    delete (body.event as Record<string, unknown>).environment;
+    const res = await harness(db).post(body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(db.sql.length).toBe(0);
+  });
+
+  it('400s an unrecognised environment and writes nothing', async () => {
+    for (const bad of ['STAGING', 'production', 7, {}]) {
+      const db = new RecordingDb();
+      const res = await harness(db).post(event('RENEWAL', { environment: bad as string }));
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+      expect(db.sql.length).toBe(0);
+    }
+  });
+
+  it('503s when MONEY_ENVIRONMENT is unset — before the body is even read', async () => {
+    const db = new RecordingDb();
+    for (const broken of [undefined, 'prod', '']) {
+      const res = await harness(db, SECRET, { MONEY_ENVIRONMENT: broken }).post(
+        event('RENEWAL', { expiresInDays: 30 }),
+      );
+      expect(res.status, JSON.stringify(broken)).toBe(503);
+      expect(await res.json()).toEqual({ error: 'money_rail_not_configured' });
+    }
+    expect(db.sql.length).toBe(0);
   });
 });

@@ -151,8 +151,21 @@ import platformEntitlements from '../../platform/migrations/0001_entitlements.sq
 
 export const ENTITLEMENTS_SCHEMA = platformEntitlements;
 
+/**
+ * The FULL platform_db migration set, imported from the harness that owns it
+ * (services/platform/test/harness.ts exports it for exactly this reason — "a
+ * second list is a second thing to forget to extend"). Until 2026-08-09 this
+ * file applied 0001 alone, so every webhook test ran against a table WITHOUT
+ * the 0004 money-rail columns (`occurred_at`, `provider_environment`, …) that
+ * the production table has carried since the money rail landed — the
+ * conditional-UPSERT ordering could not even be written against it.
+ * `ENTITLEMENTS_SCHEMA` stays exported on its own: the schema-witness test in
+ * entitlements.test.ts deliberately compares 0001's base contract.
+ */
+import { PLATFORM_MIGRATIONS } from '../../platform/test/harness';
+
 export function realPlatformDb(): SqliteD1 {
-  return new SqliteD1([ENTITLEMENTS_SCHEMA]);
+  return new SqliteD1([...PLATFORM_MIGRATIONS]);
 }
 
 /** Records every prepared SQL string and every bound argument list. */
@@ -225,6 +238,9 @@ export const TEST_ENV = {
   SUPABASE_URL: 'https://project.supabase.co',
   API_VERSION: 'v1',
   ALLOWED_ORIGINS: 'https://subly.nikatru.com,https://subly-9cp.pages.dev',
+  // [5]M-12 — the tests run as a LIVE deploy, like production wrangler.jsonc.
+  // Suites that need the sandbox side override this per-harness.
+  MONEY_ENVIRONMENT: 'live',
 };
 
 /**

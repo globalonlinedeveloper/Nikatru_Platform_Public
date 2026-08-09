@@ -37,9 +37,15 @@ type Row = {
   expires_at?: string | null;
   user_id?: string;
   app_id?: string;
+  /** [5]M-12 — defaults to 'live', the world a live rail stamps. Pass null
+   *  explicitly to seed a pre-2026-08-09 legacy row that carries no world. */
+  provider_environment?: string | null;
 };
 
-function harness(db: ReturnType<typeof realPlatformDb>) {
+function harness(
+  db: ReturnType<typeof realPlatformDb>,
+  envOverrides: Record<string, unknown> = {},
+) {
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
     c.set('userId', c.req.header('X-Test-User') ?? USER);
@@ -52,6 +58,7 @@ function harness(db: ReturnType<typeof realPlatformDb>) {
   const env = {
     ...TEST_ENV,
     PLATFORM_DB: db,
+    ...envOverrides,
   } as unknown as AppEnv['Bindings'];
 
   return {
@@ -60,8 +67,9 @@ function harness(db: ReturnType<typeof realPlatformDb>) {
       db.db
         .prepare(
           `INSERT INTO entitlements
-             (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at,
+              provider_environment)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           row.user_id ?? USER,
@@ -72,6 +80,7 @@ function harness(db: ReturnType<typeof realPlatformDb>) {
           row.is_active ?? 1,
           row.expires_at ?? null,
           '2026-08-01T00:00:00.000Z',
+          row.provider_environment === undefined ? 'live' : row.provider_environment,
         );
     },
     get: async (user = USER) => {
@@ -193,6 +202,50 @@ describe('GET /v1/entitlements — the decidable cases still decide correctly', 
     expect(body.app_id).toBe('subly');
     expect(body.is_pro).toBe(false);
     expect(body.entitlements).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ENVIRONMENT LIMB — [5]M-12 on the legacy reader, added 2026-08-09. The
+// platform route has carried it all along; this one granted on `is_active`
+// alone, so a sandbox row (or a row that never declared a world) unlocked live
+// Pro through the door the app actually uses.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('GET /v1/entitlements — a row from the wrong money world grants nothing', () => {
+  it('a SANDBOX row does not unlock a live deploy', async () => {
+    const db = realPlatformDb();
+    const h = harness(db);
+    h.seed({ is_active: 1, expires_at: future, provider_environment: 'sandbox' });
+    const { body } = await h.get();
+    expect(body.is_pro, 'sandbox money must never grant a production unlock').toBe(false);
+    expect(body.entitlements, 'the row is still visible — denied, not hidden').toHaveLength(1);
+  });
+
+  it('a row with NO world at all is UNDECIDABLE and denies', async () => {
+    // "Written before the rail knew" is not evidence of a live payment — the
+    // fail-closed rule applied to itself, same as the platform route.
+    const db = realPlatformDb();
+    const h = harness(db);
+    h.seed({ is_active: 1, expires_at: null, provider_environment: null });
+    expect((await h.get()).body.is_pro).toBe(false);
+  });
+
+  it('a sandbox deploy honours sandbox rows and refuses live ones', async () => {
+    const db = realPlatformDb();
+    const h = harness(db, { MONEY_ENVIRONMENT: 'sandbox' });
+    h.seed({ entitlement: 'pro', is_active: 1, expires_at: future, provider_environment: 'sandbox' });
+    h.seed({ entitlement: 'cloud_sync', is_active: 1, expires_at: future, provider_environment: 'live' });
+    const { body } = await h.get();
+    expect(body.is_pro).toBe(true); // the sandbox row, in its own world
+  });
+
+  it('503s when MONEY_ENVIRONMENT is unset — no guess, no access decision', async () => {
+    const db = realPlatformDb();
+    for (const broken of [undefined, '', 'prod']) {
+      const h = harness(db, { MONEY_ENVIRONMENT: broken });
+      const { status } = await h.get();
+      expect(status, JSON.stringify(broken)).toBe(503);
+    }
   });
 });
 

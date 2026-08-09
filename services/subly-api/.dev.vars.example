@@ -8,5 +8,11 @@
 SUPABASE_JWT_SECRET=
 
 # Shared secret used to authenticate the RevenueCat webhook. If blank, the
-# webhook accepts unauthenticated requests in template mode (a warning is logged).
+# webhook FAILS CLOSED: every request answers 503 until the secret is set.
 REVENUECAT_WEBHOOK_SECRET=
+
+# [5]M-12 — which money world this local run is. Production wrangler.jsonc says
+# 'live'; local development against test receipts should say 'sandbox' so a
+# sandbox RevenueCat event is written (and read back) as sandbox money. Blank or
+# unrecognised ⇒ the webhook and /v1/entitlements answer 503 (fail closed).
+MONEY_ENVIRONMENT=sandbox

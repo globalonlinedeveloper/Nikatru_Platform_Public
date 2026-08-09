@@ -54,7 +54,7 @@
   "lint-inheritance.test.mjs": 12,
   "listing-assets.test.mjs": 55,
   "mail-transport-claims.test.mjs": 35,
-  "money-config.test.mjs": 20,
+  "money-config.test.mjs": 26,
   "monitor-coverage.test.mjs": 21,
   "mor-adapters.test.mjs": 34,
   "no-clone-tells.test.mjs": 18,

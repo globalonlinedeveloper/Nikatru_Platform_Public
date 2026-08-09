@@ -3,19 +3,47 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Hono } from 'hono';
-import type { AppEnv, Entitlement } from '../types';
+import type { AppEnv } from '../types';
 import { allRows } from '../lib/d1';
+import { isMoneyEnvironment } from '../lib/money';
 
 const app = new Hono<AppEnv>();
+
+/** The row shape this route reads. Named columns, not `SELECT *`: the shared
+ *  table grows a column with every platform migration, and `*` would ship each
+ *  one to every client without anybody deciding that. Same reasoning (and the
+ *  same shape) as services/platform/src/routes/entitlements.ts. */
+interface EntitlementRow {
+  entitlement: string;
+  product_id: string | null;
+  store: string | null;
+  is_active: number;
+  expires_at: string | null;
+  provider_environment: string | null;
+}
 
 // GET / — { app_id, is_pro, entitlements: [...] }
 app.get('/', async (c) => {
   const userId = c.get('userId');
   const appId = c.env.APP_ID;
 
-  const rows = await allRows<Entitlement>(
+  // This deploy's money world. Undeclared is a 503 for the same reason the
+  // webhook refuses: there is no safe default, and a read that guessed 'live'
+  // would honour sandbox rows in production. [5]M-12
+  const environment = c.env.MONEY_ENVIRONMENT;
+  if (!isMoneyEnvironment(environment)) {
+    console.error(
+      `[entitlements] rid=${c.get('requestId')} MONEY_ENVIRONMENT is ${JSON.stringify(environment)} — ` +
+        'refusing to decide access without knowing which money world this deploy is. [5]M-12',
+    );
+    return c.json({ error: 'money_rail_not_configured' }, 503);
+  }
+
+  const rows = await allRows<EntitlementRow>(
     c.env.PLATFORM_DB.prepare(
-      'SELECT * FROM entitlements WHERE user_id = ? AND app_id = ?',
+      `SELECT entitlement, product_id, store, is_active, expires_at, provider_environment
+         FROM entitlements
+        WHERE user_id = ? AND app_id = ?`,
     ).bind(userId, appId),
   );
 
@@ -55,6 +83,19 @@ app.get('/', async (c) => {
   // (packages/core .../entitlement.dart), so the two ends cannot disagree.
   const isPro = rows.some((r) => {
     if (r.is_active !== 1) return false;
+    // [5]M-12 — the environment limb the platform route has had all along. A
+    // row from the OTHER money world grants nothing here, and a row with NO
+    // world at all is UNDECIDABLE — "written before the rail knew" is not
+    // evidence of a live payment, so it denies too (fail closed, both rails'
+    // writers stamp the column as of 2026-08-09).
+    if (r.provider_environment !== environment) {
+      console.warn(
+        `[entitlements] rid=${c.get('requestId')} app=${appId} entitlement=${r.entitlement} — row's ` +
+          `money environment is ${JSON.stringify(r.provider_environment)}, this deploy is '${environment}'. ` +
+          'Denying. [5]M-12',
+      );
+      return false;
+    }
     if (r.expires_at === null || r.expires_at === undefined) {
       return true; // lifetime
     }

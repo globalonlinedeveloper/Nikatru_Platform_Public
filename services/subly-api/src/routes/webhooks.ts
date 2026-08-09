@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { nowIso } from '../lib/d1';
+import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/money';
 import {
   isIdString,
   isPlainObject,
@@ -26,6 +27,7 @@ const app = new Hono<AppEnv>();
  */
 interface RevenueCatEvent {
   event?: {
+    id?: string;
     type?: string;
     app_user_id?: string;
     original_app_user_id?: string;
@@ -33,6 +35,8 @@ interface RevenueCatEvent {
     entitlement_ids?: string[] | null;
     product_id?: string | null;
     store?: string | null; // APP_STORE | PLAY_STORE | STRIPE | ...
+    environment?: string; // SANDBOX | PRODUCTION
+    event_timestamp_ms?: number;
     expiration_at_ms?: number | null;
   };
 }
@@ -62,12 +66,29 @@ interface RevenueCatEvent {
 // the `expires_at > now` check. [pipeline 5]M-8 — "do not revoke on
 // cancel-at-period-end".
 //
-// ⚠️ KNOWN GAP, deliberately not fixed here: RevenueCat gives NO ordering
-// guarantee, and the UPSERT below overwrites unconditionally, so a delayed
-// retry of an older event can still clobber a newer state. Rejecting that needs
-// the event's own clock persisted alongside the row — an `event_ts` column on
-// the SHARED platform_db, i.e. a migration owned by services/platform. It is
-// its own change; do not fake it with `updated_at`, which is receipt time.
+// ORDERING — closed 2026-08-09 (the gap that used to be documented here).
+// RevenueCat gives NO ordering guarantee, so a delayed retry of an older event
+// arrives after a newer one. The defence is the one 0004_money_rail.sql built
+// for the MoR rail and names in its own comments: persist the PROVIDER'S clock
+// (`occurred_at`, from the event's `event_timestamp_ms` — never `updated_at`,
+// which is receipt time) and make the UPSERT conditional:
+//   `DO UPDATE … WHERE entitlements.occurred_at IS NULL
+//                   OR excluded.occurred_at > entitlements.occurred_at`
+// — the same clause services/platform/src/lib/mor/store.ts applies, so the two
+// writers of the shared table cannot disagree about what "older" means. A
+// clock-less event (no `event_timestamp_ms`) can seed an empty key or upgrade a
+// clock-less row, and can never overwrite a clocked one: NULL > x is NULL.
+//
+// ENVIRONMENT — [5]M-12, and this rail needs it MORE than the MoR one does:
+// RevenueCat delivers SANDBOX and PRODUCTION events to the SAME URL under the
+// SAME bearer secret, where a sandbox-signed MoR notification simply fails live
+// verification. Without the guard, one sandbox test purchase against a
+// production user id would overwrite a paying customer's live row. So: this
+// deploy declares its world (MONEY_ENVIRONMENT, 503 when absent — no safe
+// guess), an event from the OTHER world is ACKED AND IGNORED (200, no write —
+// a retry cannot change which world an event belongs to), and every row is
+// stamped with `provider_environment` so the read side can refuse cross-world
+// rows on its own evidence.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Access is granted outright. */
@@ -168,6 +189,15 @@ export interface ValidatedEvent {
   expiresAtMs: number | null;
   /** ISO form of [expiresAtMs] — converted once, inside validation. */
   expiresAt: string | null;
+  /** The event's money world, already mapped to ours: SANDBOX → 'sandbox',
+   *  PRODUCTION → 'live'. The route compares it to MONEY_ENVIRONMENT. */
+  environment: MoneyEnvironment;
+  /** The PROVIDER'S clock (`event_timestamp_ms`) as ISO, or null when the
+   *  event carries none. This is what the conditional UPSERT orders by. */
+  occurredAt: string | null;
+  /** RevenueCat's own event id — `last_event_id` on the row, the audit half
+   *  of the ordering pair 0004 documents. Null when absent. */
+  eventId: string | null;
 }
 
 /**
@@ -231,6 +261,55 @@ export function validateEvent(body: unknown): ValidatedWebhook {
   }
   if (userId === null) {
     return { ok: true, act: false, reason: 'missing app_user_id' };
+  }
+
+  // ── the money world this event belongs to — [5]M-12 ───────────────────────
+  // Absent is ACKED, not 400ed: no retry can add a world to an event that never
+  // declared one, and writing it anyway would put an unattributable row in a
+  // table whose readers refuse exactly that. Present-but-unrecognised is a 400:
+  // a value like "STAGNG" is more plausibly corruption than a new RevenueCat
+  // vocabulary, and the stored row keeps its old state while the sender retries.
+  const envRaw = evRaw.environment;
+  if (envRaw === undefined || envRaw === null || envRaw === '') {
+    return { ok: true, act: false, reason: 'missing environment' };
+  }
+  if (envRaw !== 'SANDBOX' && envRaw !== 'PRODUCTION') {
+    return {
+      ok: false,
+      detail: "event.environment must be exactly 'SANDBOX' or 'PRODUCTION'",
+    };
+  }
+  const environment: MoneyEnvironment = envRaw === 'PRODUCTION' ? 'live' : 'sandbox';
+
+  // ── the provider's clock — what the conditional UPSERT orders by ───────────
+  // Same rule as `expiration_at_ms` below: an unreadable instant is a 400,
+  // never silently reinterpreted — here "reinterpreted" would mean "treated as
+  // clock-less", and a clock-less event writes over clock-less rows.
+  const tsRaw = evRaw.event_timestamp_ms;
+  let occurredAt: string | null = null;
+  if (tsRaw !== undefined && tsRaw !== null) {
+    occurredAt = isoFromEpochMs(tsRaw);
+    if (occurredAt === null) {
+      return {
+        ok: false,
+        detail:
+          'event.event_timestamp_ms must be a finite epoch-millisecond number ' +
+          'within the representable date range',
+      };
+    }
+  }
+
+  // ── the event's own id — the audit half of the ordering pair ───────────────
+  const idRaw = evRaw.id;
+  let eventId: string | null = null;
+  if (idRaw !== undefined && idRaw !== null) {
+    if (!isIdString(idRaw, MAX_ID_LENGTH)) {
+      return {
+        ok: false,
+        detail: `event.id must be a non-empty string of at most ${MAX_ID_LENGTH} characters`,
+      };
+    }
+    eventId = idRaw;
   }
 
   // ── the paid-through date — the whole money boundary on this side ───────────
@@ -307,7 +386,18 @@ export function validateEvent(body: unknown): ValidatedWebhook {
   return {
     ok: true,
     act: true,
-    event: { type, userId, entitlementIds, productId, store, expiresAtMs, expiresAt },
+    event: {
+      type,
+      userId,
+      entitlementIds,
+      productId,
+      store,
+      expiresAtMs,
+      expiresAt,
+      environment,
+      occurredAt,
+      eventId,
+    },
   };
 }
 
@@ -337,6 +427,20 @@ app.post('/revenuecat', async (c) => {
     return c.json({ error: 'unauthorized' }, 401);
   }
 
+  // ── This deploy's money world — FAIL CLOSED, same as the MoR rail ───────────
+  // [5]M-12: without knowing which world we are, a sandbox event and a live one
+  // are indistinguishable, and either guess is wrong in a way that moves money.
+  // 503 so RevenueCat retries once the variable is set.
+  const deployEnvironment = c.env.MONEY_ENVIRONMENT;
+  if (!isMoneyEnvironment(deployEnvironment)) {
+    console.error(
+      `[webhooks/revenuecat] MONEY_ENVIRONMENT is ${JSON.stringify(deployEnvironment)} — ` +
+        "must be exactly 'live' or 'sandbox'. Refusing: honouring sandbox money as real and " +
+        'ignoring real money are both wrong, so there is no default. [5]M-12',
+    );
+    return c.json({ error: 'money_rail_not_configured' }, 503);
+  }
+
   let body: unknown;
   try {
     body = await c.req.json<RevenueCatEvent>();
@@ -360,22 +464,56 @@ app.post('/revenuecat', async (c) => {
       : c.json({ ok: true });
   }
 
+  // ── THE SANDBOX GUARD — an event from the other money world writes NOTHING ──
+  // Acked, not 400ed: RevenueCat sends both worlds' events to the same URL
+  // under the same secret, and a retry cannot change which world an event
+  // belongs to. Without this, one sandbox test purchase against a production
+  // user id would overwrite that user's PAID row. [5]M-12
+  if (checked.event.environment !== deployEnvironment) {
+    console.warn(
+      `[webhooks/revenuecat] ignoring ${checked.event.type} from the '${checked.event.environment}' ` +
+        `money world — this deploy is '${deployEnvironment}'. [5]M-12`,
+    );
+    return c.json({ ok: true, ignored_environment: checked.event.environment });
+  }
+
   const appId = c.env.APP_ID;
-  const { type, userId, entitlementIds, productId, store, expiresAtMs, expiresAt } =
-    checked.event;
+  const {
+    type,
+    userId,
+    entitlementIds,
+    productId,
+    store,
+    expiresAtMs,
+    expiresAt,
+    environment,
+    occurredAt,
+    eventId,
+  } = checked.event;
   const isActive = resolveIsActive(type, expiresAtMs, Date.now());
   const ts = nowIso();
 
+  // The conditional DO UPDATE is [5]M-2's ordering defence, clause-for-clause
+  // the one services/platform/src/lib/mor/store.ts applies to this same table:
+  // an event older than (or exactly as old as) the one that last wrote the row
+  // changes nothing, so a delayed retry cannot roll access backwards.
   const stmt = c.env.PLATFORM_DB.prepare(
     `INSERT INTO entitlements
-       (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at,
+        provider, provider_environment, last_event_id, occurred_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'revenuecat', ?, ?, ?)
      ON CONFLICT(user_id, app_id, entitlement) DO UPDATE SET
-       product_id = excluded.product_id,
-       store      = excluded.store,
-       is_active  = excluded.is_active,
-       expires_at = excluded.expires_at,
-       updated_at = excluded.updated_at`,
+       product_id           = excluded.product_id,
+       store                = excluded.store,
+       is_active            = excluded.is_active,
+       expires_at           = excluded.expires_at,
+       updated_at           = excluded.updated_at,
+       provider             = excluded.provider,
+       provider_environment = excluded.provider_environment,
+       last_event_id        = excluded.last_event_id,
+       occurred_at          = excluded.occurred_at
+     WHERE entitlements.occurred_at IS NULL
+        OR excluded.occurred_at > entitlements.occurred_at`,
   );
 
   await c.env.PLATFORM_DB.batch(
@@ -389,6 +527,9 @@ app.post('/revenuecat', async (c) => {
         isActive,
         expiresAt,
         ts,
+        environment,
+        eventId,
+        occurredAt,
       ),
     ),
   );
