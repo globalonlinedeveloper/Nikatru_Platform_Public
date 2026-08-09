@@ -1391,8 +1391,8 @@ jobs:
       #
       # Carries a CANARY: the brick is clean, so enforcement passes over an empty
       # set, which is indistinguishable from matchers that have stopped matching.
-      # They are re-proven every run against apps/subly, a tree known to be full
-      # of violations and excluded from enforcement because it is frozen.
+      # They are re-proven every run against the guard-owned fixture
+      # tooling/ci/test/fixtures/dirty-strings (the subly canary retired, P4 L0).
       # [pipeline C-12]
       - name: No hardcoded user-facing strings in the brick
         working-directory: ${{ github.workspace }}
@@ -1454,8 +1454,8 @@ jobs:
       # the rail CHARGES, so the two cannot disagree. The defect this is named
       # after — `$2.99` compiled into a binary five days after the owner decided
       # $4.99 — was invisible to every existing guard, because
-      # assert-no-hardcoded-strings.mjs excludes apps/subly, i.e. excludes the
-      # evidence file. This one has no such exclusion.
+      # assert-no-hardcoded-strings.mjs then excluded apps/subly — the evidence
+      # file itself (exclusion retired at P4 L0, #231). This one never had one.
       - name: No price is typed into app code
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-no-price-literals.mjs
