@@ -1,42 +1,138 @@
-name: Google Play submission path (dry run)
+name: Google Play submission path
 
 # [pipeline D-10] limb (i) — "a submission script exists AND RESOLVES TO A STEP
 # IN A WORKFLOW, parsed not grepped". This workflow is the step it resolves to.
-# tooling/channel-register.json's android-play row names this file and this job
-# in its `submission` block, so deleting either is a register that points at
-# nothing rather than an unnoticed loss.
+# tooling/channel-register.json's android-play row names this file and the
+# `dry-run` job in its `submission` block, so deleting either is a register that
+# points at nothing rather than an unnoticed loss.
 #
-# 🔴 DISPATCH-ONLY, AND THAT IS THE CORRECT SHAPE WHILE `served: false`.
-# The channel has no publisher account (OWNER_QUEUE A-3), so there is nothing to
-# submit TO. What this proves on demand is that the path from source to a
-# validated, store-shaped bundle still WALKS — the listing tree is complete and
-# derived from the spec, the .aab actually builds, the package name is the
-# canonical one Play would bind permanently, and — since 2026-08-04 — the bundle
-# is really signed by the upload key rather than merely configured to be. That is
-# the whole of D-10's promise: submission #2 costs minutes, not archaeology.
-# Submission #1 costs the account and a 14-day tester window.
+# ── WHAT CHANGED 2026-08-09: THERE IS NOW A REAL UPLOAD PATH ─────────────────
+# `submit-play.mjs --submit` performs the Google Play Developer API edit
+# lifecycle for real (insert → upload → tracks.update → validate → commit).
+# Every endpoint it uses was fetched from a primary source; the URLs are in that
+# script's `PRIMARY_SOURCES` block. Until 2026-08-09 `--submit` refused with a
+# list of `UNVERIFIED:` facts, and it stopped refusing because the verification
+# happened — not because the refusal was deleted.
 #
-# ⚠️ WHAT CHANGED ON 2026-08-04, because it changes what a green run here means.
-# An upload key now exists and the four repository secrets carry it into this job.
-# Before that, this lane built a DEBUG-SIGNED bundle and reported the submission
-# path healthy: the Gradle signingConfig was correct, nothing supplied its values,
-# and Play rejects a debug-signed upload — so the dry run validated a path whose
-# last step could only ever have failed. Signing is now REQUIRED here (see the
-# step below) and the signature is read back out of the built .aab.
+# The `dry-run` job is unchanged and still runs on every dispatch: it is the
+# "does the path walk" proof and it is what ci.yml exercises. The `submit` job is
+# new, is OFF unless a human types the confirmation, and is gated on an
+# environment with a required reviewer.
 #
-# ⚠️ IT RUNS THE REAL THING, NOT A DOUBLE. The dry run is deliberately NOT given
-# --allow-missing-artifact: the job builds the app bundle first, so the script
-# validates a bundle that exists on disk. A dry run that skipped the artifact
-# would report the path healthy while never touching the one output the channel
-# actually accepts — which is precisely the .apk-shaped hole this channel spent
-# months in.
+# ═════════════════════════════════════════════════════════════════════════════
+# THE PUBLISH GATE — [ADR 031:117-124], AND WHY IT IS TWO MECHANISMS NOT ONE
+# ═════════════════════════════════════════════════════════════════════════════
+# ADR 031 records the boundary between what the agent may do alone and what only
+# the owner may do. "Promoting any release to the production track" is class A —
+# owner-only, per instance. "Testing-track uploads" are explicitly NOT gated. The
+# ADR also states the enforcement mechanism was UNBUILT, names it — "a GitHub
+# environment with a required reviewer" — and says to build it WITH the upload
+# path rather than after. This is that.
 #
-# Nothing here contacts Google. `--dry-run` has no network path at all, and the
-# script's `--submit` mode refuses with UNVERIFIED rather than guessing at the
-# Play Developer API's endpoints.
+# 🔴 `environment:` ON ITS OWN FAILS OPEN. THIS IS DOCUMENTED GITHUB BEHAVIOUR.
+#   docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
+#   VERBATIM: "Running a workflow that references an environment that does not
+#   exist will create an environment with the referenced name."
+# So if `store-publish` is missing — never created, or renamed, or simply typo'd
+# on the line below — GitHub does not fail the job and does not pause it. It
+# creates the environment, with NO protection rules, and runs the job
+# immediately. The run history then shows a deployment to an environment, which
+# reads exactly like an approval that happened.
+#
+# ⚠️ MEASURED IN THIS REPOSITORY, 2026-08-09, not assumed: the three environments
+# that already exist here (`platform`, `subly-api`, `subly-web` — all
+# auto-created by deploy lanes) each return `"protection_rules": []`. That is the
+# fail-open state, observed, on this repo.
+#
+# Therefore the gate is TWO mechanisms and each covers the other's failure:
+#   (1) `environment: store-publish` on the submit job — what makes GitHub pause
+#       for an approval and record who gave it, WHEN the environment is
+#       configured;
+#   (2) `submit-play.mjs`'s PG-5, which GETs
+#       /repos/{owner}/{repo}/environments/store-publish and REFUSES unless a
+#       protection rule carries at least one reviewer — what makes (1)'s absence
+#       loud instead of invisible. It runs inside the gated job, so the very
+#       first thing an unapproved run does is fail.
+# Plus PG-4, which reads THIS FILE and refuses if the job that runs `--submit`
+# has lost its `environment:` line or stopped reading the .aab's signature first.
+# A gate whose only evidence is a line of YAML is a gate one edit from gone.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔧 THE ENVIRONMENT DOES NOT EXIST YET. THESE ARE THE EXACT COMMANDS TO CREATE
+#    IT. They are a repo-admin act (ADR 031 class D — "account-level permission
+#    changes"), so they are written here for a human to run rather than executed
+#    by an agent. Source for the endpoint and its body:
+#    docs.github.com/en/rest/deployments/environments — "PUT /repos/{owner}/{repo}/
+#    environments/{environment_name}", parameters wait_timer, prevent_self_review,
+#    reviewers[{type,id}], deployment_branch_policy.
+#
+#   # 1 · the reviewer's NUMERIC id — the API takes ids, never logins.
+#   gh api users/globalonlinedeveloper --jq '.id'      # → 55662283 (read 2026-08-09)
+#
+#   # 2 · create the environment WITH the required reviewer, in one call.
+#   gh api --method PUT \
+#     repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish \
+#     --input - <<'JSON'
+#   {
+#     "wait_timer": 0,
+#     "prevent_self_review": false,
+#     "reviewers": [ { "type": "User", "id": 55662283 } ],
+#     "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
+#   }
+#   JSON
+#
+#   # 3 · restrict which branch may reach the gate at all (the custom policy
+#   #     declared above is inert until a pattern is added).
+#   gh api --method POST \
+#     repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish/deployment-branch-policies \
+#     -f name='main'
+#
+#   # 4 · prove it took. This is the EXACT read PG-5 makes, so a non-empty
+#   #     `reviewers` here is a submit job that can pass, and `[]` is one that
+#   #     cannot.
+#   gh api repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish \
+#     --jq '.protection_rules'
+#
+# ⚠️ `prevent_self_review` IS DELIBERATELY false, AND THE HONEST REASON MATTERS.
+# NIKATRU is a sole proprietorship: there is one human. With prevent_self_review
+# true, the person who dispatches the run is barred from approving it and the
+# gate is unpassable — a control that cannot be satisfied is a control that gets
+# deleted. So what this gate actually buys is NOT a second pair of eyes. It is:
+# a deliberate second act, separated in time from the dispatch, recorded in the
+# run history with a name and a timestamp, on a job that cannot start without it.
+# That is a real control and it is smaller than "peer review"; saying so is the
+# point of this paragraph. When there is a second person, set it to true.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ IT RUNS THE REAL THING, NOT A DOUBLE. Neither job is given
+# --allow-missing-artifact: each builds the app bundle first, so the script
+# validates (and the submit job uploads) a bundle that exists on disk. A dry run
+# that skipped the artifact would report the path healthy while never touching
+# the one output the channel actually accepts — which is precisely the .apk-shaped
+# hole this channel spent months in. `--submit` refuses that flag outright.
+#
+# The `dry-run` job contacts nothing. Only the `submit` job has a network path to
+# Google, and only when a human typed the confirmation AND a reviewer approved.
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SUBMIT-TO-PLAY to authorise a real upload. Anything else runs the dry run only.'
+        required: true
+        default: 'dry-run-only'
+        type: string
+      track:
+        description: 'Play track. Leave empty to use the least-public track the API reports for the app. `production` is REFUSED (ADR 031 class A).'
+        required: false
+        default: ''
+        type: string
+      release_status:
+        description: 'Release status on that track: completed (served to the track''s testers) or draft (uploaded, not served).'
+        required: false
+        default: 'completed'
+        type: choice
+        options: [completed, draft]
 
 permissions:
   contents: read
@@ -49,7 +145,7 @@ jobs:
   # Same shape and same reason as build-platforms.yml's gate job: this workflow
   # runs a `flutter build --release`, and a release build from an ungated commit
   # is [pipeline R-6]'s whole subject. assert-release-provenance.mjs walks the
-  # `needs` graph, so gating once here covers the job below.
+  # `needs` graph, so gating once here covers the jobs below.
   gate:
     name: Require ci-gate to have passed
     runs-on: ubuntu-24.04
@@ -135,16 +231,11 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-signed.mjs
           apps/subly/build/app/outputs/bundle/release/app-release.aab
-      # The credentials do not exist yet — OWNER_QUEUE A-3 creates the Play
-      # Developer account, and a Google Cloud service account is then granted
-      # access in the Play Console — and the script reports their ABSENCE as a
-      # printed gap rather than a failure. They are wired now so that the day
-      # they exist, nothing about this job changes. An unset `secrets` value is
-      # an empty string, which is what the script's presence check reads.
-      #
       # ⚠️ PLAY_SERVICE_ACCOUNT_JSON is a PRIVATE KEY. The script parses it to
       # check its shape and never prints any part of it, including in the
-      # failure messages for a malformed value.
+      # failure messages for a malformed value. In `--dry-run` its absence is a
+      # printed gap; in `--submit` it is a hard stop, because nothing can
+      # authenticate without it.
       - name: Dry-run the Google Play submission
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -161,3 +252,85 @@ jobs:
           path: apps/subly/build/app/outputs/bundle/release/app-release.aab
           retention-days: 7
           if-no-files-found: error
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # THE REAL UPLOAD. Two switches and a reviewer stand in front of it.
+  #
+  # `if:` is switch one — the dispatch input a human types. `environment:` is
+  # switch two — the reviewer gate, whose fail-open behaviour is covered by the
+  # script's PG-5 (see the header). `needs: dry-run` means the path has already
+  # been proven to walk on this very commit before anything is uploaded.
+  #
+  # 🔴 IT REBUILDS RATHER THAN DOWNLOADING THE dry-run JOB'S ARTIFACT, on
+  # purpose. The chain that matters is build → read this bundle's signature →
+  # upload THIS bundle, unbroken inside one job. Fetching an artifact across a
+  # job boundary inserts a step at which a different file could arrive, and the
+  # thing it would be inserted into is the one action here that cannot be undone
+  # (Play fixes the upload certificate at the first upload). Six minutes of CPU
+  # against that is not a trade worth thinking about.
+  # ═══════════════════════════════════════════════════════════════════════════
+  submit:
+    name: Upload to Google Play (owner-approved)
+    runs-on: ubuntu-24.04
+    needs: [gate, dry-run]
+    if: inputs.confirm == 'SUBMIT-TO-PLAY'
+    environment: store-publish
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d7793b545071e98d581d3bf084a51c3213318a07 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Prepare the Android upload key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: node tooling/ci/android-signing.mjs --app subly
+      - name: Build the app bundle
+        working-directory: apps/subly
+        run: >
+          flutter build appbundle --release
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # 🔴 THIS STEP IS LOAD-BEARING AND submit-play.mjs KNOWS IT. PG-4 parses
+      # this file, finds the job that runs `--submit`, and REFUSES if this step
+      # is missing or sits after it. Play binds the upload certificate at the
+      # first upload and never accepts another; a signature nobody read before
+      # that is a one-way door taken blind.
+      - name: The .aab must be signed by the upload key, not the debug key
+        run: >
+          node tooling/ci/assert-artifact-signed.mjs
+          apps/subly/build/app/outputs/bundle/release/app-release.aab
+      # ⚠️ THE DISPATCH INPUTS REACH THE SCRIPT AS ENVIRONMENT VARIABLES, NEVER
+      # INTERPOLATED INTO THE SHELL. `${{ inputs.track }}` written inside a `run:`
+      # is a template-injection sink: the value is pasted into the command line
+      # before bash sees it, so a crafted input becomes a command. Passing it
+      # through `env:` and dereferencing with "$VAR" leaves it data throughout.
+      # tooling/ci/scan-workflows.mjs (zizmor) is the guard that says so.
+      #
+      # GITHUB_TOKEN is here for PG-5, which GETs this repository's
+      # `store-publish` environment and refuses unless it carries a required
+      # reviewer. It is a READ (ADR 031: "Reading is never gated") and needs only
+      # the `contents: read` this workflow already grants.
+      - name: Upload to Google Play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_TRACK: ${{ inputs.track }}
+          RELEASE_STATUS: ${{ inputs.release_status }}
+          CONFIRM: ${{ inputs.confirm }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >
+          node tooling/release/submit-play.mjs --submit --app subly
+          --confirm "$CONFIRM" --status "$RELEASE_STATUS"
