@@ -102,7 +102,7 @@
       "Actions. Their coverage is O-2's external prober, named here so a NEW site arrives unclassified and red",
       "rather than unwatched and quiet."
     ],
-    "site:nikatru": "Deployed by Cloudflare Git integration, not by a workflow — there is no job to probe from. Covered by O-2's external prober (tooling/ops/status.mjs) against the hostname enumerated in tooling/monitor-register.json, which is stage 11's derivation and strictly wider than anything this file would restate. ⚠️ Two of that register's monitors are still `Ping` rather than `GET`+expectedStatus, and a Pages project serving a 500 or a blank shell answers a ping — OWNER_QUEUE S-8.",
+    "site:nikatru": "Deployed by Cloudflare Git integration, not by a workflow — there is no job to probe from. Covered by O-2's external prober (tooling/ops/status.mjs) against the hostname enumerated in tooling/monitor-register.json, which is stage 11's derivation and strictly wider than anything this file would restate. ⚠️ THREE of that register's monitors are still `Ping` rather than `GET`+expectedStatus — nikatru.com (id 4), rajasekarselvam.com (id 5) and Subly web (id 3) — and a Pages project serving a 500 or a blank shell answers a ping. This said `Two` until 2026-08-09 while the register carried three; the miscount understated the gap on the very line that names it, and the number is only correct if it is counted from tooling/monitor-register.json rather than remembered. tooling/ci/test/ops-status.test.mjs already said three. OWNER_QUEUE S-8.",
     "site:rajasekarselvam": "Same mechanism and the same caveat as site:nikatru: Cloudflare Git integration, no workflow job, covered by O-2's external prober over the delegated hostname set."
   },
   "_delegated": {
@@ -2179,7 +2179,7 @@
       "what": "🔴 THE SIGNUP RECORDS THEMSELVES — an email address and a timestamp, written with NO expirationTtl. This is the store O-17 was written about, and the drafted acceptance excluded it by construction because it quantified over 'every store WITH a retention rule'.",
       "rule": "period-undeclared",
       "detector": "tooling/ci/assert-retention-coverage.mjs — this row is in _requiredCoverage, so it cannot leave the domain by having no rule.",
-      "response": "🔴 The PERIOD is the missing half and it is a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 days would be WRITING POLICY under the appearance of fixing a bug. Owner declares the period; the expirationTtl then follows in one line.",
+      "response": "🔴 The PERIOD is the missing half and it is a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 days would be WRITING POLICY under the appearance of fixing a bug. Owner declares the period; the expirationTtl then follows in one line — and as of 2026-08-09 that line EXISTS rather than being described: sites/nikatru/functions/api/subscribe.js:128 (`SIGNUP_RETENTION_DAYS`), inert at `null`, both branches held by tooling/ci/test/signup-retention.test.mjs.",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-kv",
@@ -2192,7 +2192,7 @@
         "cloudflare"
       ],
       "ownerGated": true,
-      "ownerGap": "🔴 THIS IS THE ONE STORE IN THE PORTFOLIO HOLDING A CONTACTABLE IDENTITY WITH NO EXPIRY. It is also, with Supabase auth, one of the two stores that determine the notifiable population in a breach — the D1 tables are pseudonymous and notifiable only by public notice. Owner: declare the period.",
+      "ownerGap": "🔴 THIS IS THE ONE STORE IN THE PORTFOLIO HOLDING A CONTACTABLE IDENTITY WITH NO EXPIRY. It is also, with Supabase auth, one of the two stores that determine the notifiable population in a breach — the D1 tables are pseudonymous and notifiable only by public notice. Owner: declare the period. ✅ THE ENGINEERING HALF IS NOW BUILT AND DORMANT (2026-08-09), so what is left is only the decision: set `SIGNUP_RETENTION_DAYS` at sites/nikatru/functions/api/subscribe.js:128 from `null` to a positive number of days. That is the whole code change — one value, one line, one place. While it reads `null` the write is the same two-argument `put(key, value)` the site has always made, so the seam costs nothing until it is switched on. Then move this row's `rule` from `period-undeclared` to `ttl`: assert-retention-coverage.mjs's ttl limb verifies the TTL by READING the anchor, so that move is what puts the activated period under a guard rather than under a claim — and tooling/ci/test/signup-retention.test.mjs fails if the code and this row disagree about whether a period exists.",
       "source": "verified"
     },
     {
