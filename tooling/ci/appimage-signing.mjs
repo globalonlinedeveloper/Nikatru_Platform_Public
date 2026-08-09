@@ -11,9 +11,25 @@
 //                     detached-signature generation AND the verification against
 //                     the register's PINNED PUBLIC KEY
 //   absent          → posture = `unsigned-build-proof`, printed in capitals with
-//                     the OWNER item named — UNLESS this is a release lane,
-//                     where the absence is a FAILURE and not a posture
+//                     the OWNER item named — UNLESS this is a release lane AND
+//                     the register ARMS this channel, where the absence is a
+//                     FAILURE and not a posture
 //   half            → FAIL, always. See the note on reachability below.
+//
+// 🔴 THE RELEASE-LANE FAILURE IS SCOPED BY THE REGISTER, NOT BY THE TAG ALONE.
+// Measured 2026-08-09, before any tag had ever been pushed: a `subly-v*` tag
+// killed this step, and therefore build-platforms.yml's `linux_web_android` job,
+// while `windows-signing.mjs` killed `windows` and `apple-signing.mjs` killed
+// `apple` for the identical reason. The `release` job `needs:` all three, so the
+// FIRST GitHub Release this repository would ever publish was skipped — three
+// individually-defensible checks composing into an unreachable release. This row
+// is `submittable: false`, `served: false`, `lane: null`: nothing is published
+// from it, so an unsigned build here reaches nobody. The scope test now comes
+// from those fields, through `tooling/ci/channel-arming.mjs`, and the gap is
+// PRINTED IN FULL on the release lane instead ([pipeline C-6] — the owner item
+// here is three obligations the owner alone can discharge, listed below). The
+// failing case did not go away: serve this row, and the identical tag fails
+// naming the field that armed it.
 //
 // 🔴 WHY THIS ROW IS THE MOST EXPOSED ONE IN THE REGISTER, in its own words:
 // `keyKind: "own-signing-key"`, and "no store gatekeeper verifies this one, so
@@ -102,6 +118,7 @@ import { createPrivateKey, createPublicKey, sign as cryptoSign, verify as crypto
 import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
 
 export const APPS = 'sites/_shared/_data/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
@@ -569,10 +586,16 @@ function main() {
 
   if (set.state === 'none') {
     const verdict = pinVerdict(pin, UNSIGNED_PROOF);
-    if (lane.required) {
+    // 🔴 IS THE CHANNEL ARMED? From THIS row's own register fields, never from a
+    // channel name written here — the row was found by id above and the answer
+    // is the register's from that point on.
+    const gap = releaseGapVerdict([channel]);
+    if (lane.required && gap.fatal) {
       die([
         'FAIL this is a RELEASE lane and no AppImage signing key is configured.',
         `     absent: ${declared.join(', ')}`,
+        '',
+        ...armedFatalLines(gap.armed),
         '',
         '     A release lane that cannot sign must not publish a direct download. The .AppImage is served from',
         '     dl.nikatru.com on R2 and never a direct GitHub link ([ADR 015] §4), so the detached signature is',
@@ -593,6 +616,23 @@ function main() {
         '     …or run this lane on a non-release trigger, where an unsigned BUILD PROOF is the recorded,',
         '     labelled outcome rather than a silent one.',
       ]);
+    }
+    // A release lane whose channel is NOT armed. Printed in full, not fatal —
+    // and confined to `lane.required`, so nothing a branch, a fork PR or the
+    // weekly platform proof prints has changed by one byte.
+    if (lane.required) {
+      console.log('');
+      for (const l of unarmedGapLines({
+        armings: gap.unarmed,
+        secretNames: declared,
+        laneReasons: lane.reasons,
+        ownerItem:
+          'GENERATE the Ed25519 keypair, take CUSTODY of the private half, and run a RESTORE DRILL — ' +
+          `three obligations no agent can discharge. ${REGISTER} records this row's custody as ` +
+          `"${channel.signing?.custody ?? '(undeclared)'}"`,
+      })) {
+        console.log(l);
+      }
     }
     console.log('');
     console.log(`⬜ SIGNING POSTURE: ${UNSIGNED_PROOF.toUpperCase()}`);
