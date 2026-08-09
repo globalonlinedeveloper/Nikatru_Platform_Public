@@ -207,6 +207,10 @@ const NO_NEGATIVE_TEST_NEEDED = new Map([
     'tooling/e2e/verify_purged.mjs',
     'is the e2e harness assertion for golden-path leg 6, run nightly by e2e.yml: it re-reads live D1 and the live GoTrue admin API AFTER the app has deleted a real account from inside the running build. A fixture would have to model a deletion that already happened, i.e. encode the very belief the file exists to check — the assert-seams-wired failure shape, where all six fixtures passed against a broken guard. Its negative case is the live one: the run it audits is the only place a server that answered `{ ok: true }` while deleting nothing can be caught.',
   ],
+  [
+    'tooling/e2e/verify_consent.mjs',
+    'is the e2e harness assertion for the DPDP consent trail, run nightly by e2e.yml: it re-reads live platform_db for the artifact the running build uploaded when the suite answered its own consent prompt. Its subject is a fire-and-forget POST, so the only input that can distinguish "the record landed" from "the prompt merely closed" is a real one — a fixture would assert that a row somebody wrote is a row that was written. The half of it that IS fixture-testable was deliberately split out: tooling/e2e/consent_anon_id.mjs parses the run\'s exported install id, and tooling/ci/test/consent-anon-id.test.mjs exercises every way that parse can fail.',
+  ],
 ]);
 
 const problems = [];

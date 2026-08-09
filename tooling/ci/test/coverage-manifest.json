@@ -22,6 +22,7 @@
   "channel-register.test.mjs": 151,
   "clone-contract.test.mjs": 34,
   "config-registry.test.mjs": 22,
+  "consent-anon-id.test.mjs": 12,
   "consent-withdrawal-surface.test.mjs": 13,
   "content-pipeline.test.mjs": 45,
   "content-qa-checks.test.mjs": 7,
