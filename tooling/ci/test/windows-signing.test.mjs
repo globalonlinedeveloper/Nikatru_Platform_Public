@@ -54,6 +54,7 @@ import {
   parseSigntoolVerify,
   pinVerdict,
 } from '../windows-signing.mjs';
+import { armingOf } from '../channel-arming.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = resolve(CI_DIR, '..', '..');
@@ -99,6 +100,15 @@ function makeRoot({
   apps = [{ slug: 'subly' }],
   submissionWorkflow = null,
   storeRow = true,
+  // ── THE ARMING FIELDS ──────────────────────────────────────────────────────
+  // Defaulted to the REAL register's values for this row (submittable: false,
+  // served: false, lane: null), so every fixture written before the rescope
+  // keeps modelling the tree it was written against. A test that wants the
+  // release-lane FAILURE must arm the row explicitly, which is the point: the
+  // failing case is now something a fixture has to ASK for, and one does.
+  submittable = false,
+  served = false,
+  lane = null,
 } = {}) {
   const root = join(TMP, `root${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
@@ -111,6 +121,9 @@ function makeRoot({
     const row = {
       id: channelId,
       kind: 'direct',
+      submittable,
+      served,
+      lane,
       signing: {
         keyKind: 'code-signing-certificate',
         custody: 'does not exist — and unlike every other row this one costs real money every year.',
@@ -477,18 +490,83 @@ describe('windows-signing · the three endings', () => {
     assert.match(out(r), /RENEWED every year/);
   });
 
-  test('🔴 a TAG PUSH with NO secrets FAILS, and names every secret to create', () => {
+  // ── 🔴 THE RESCOPE, AND THE PAIR THAT MAKES IT A RESCOPE AND NOT A DELETION ──
+  // These two tests read as a contradiction until the register row is read with
+  // them: a tag push with no secrets PASSES when the channel is unarmed and
+  // FAILS when it is armed. The tag did not stop being a release signal; it
+  // stopped being the WHOLE question. Before 2026-08-09 the first of these
+  // expected exit 1, and the consequence was that build-platforms.yml's
+  // `release` job — which `needs:` windows, apple and linux_web_android — could
+  // never run, because all three credential steps died on a tag. The failing
+  // case moved to where it can fire; it did not go away, and the second test is
+  // the proof.
+  test('🔴 a TAG PUSH with NO secrets on an UNARMED channel PRINTS the gap and PASSES', () => {
+    const { r, exported } = runPrepare(makeRoot({}), ON_TAG);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /RELEASE LANE, NO SIGNING SECRETS — PRINTED IN FULL AND NOT FAILED/);
+    // The derivation is shown, not asserted: which release signal fired, and
+    // which register FIELDS say the channel cannot reach anybody.
+    assert.match(out(r), /this run IS a release lane — the run is a TAG push/);
+    assert.match(out(r), /channel "windows-direct" is NOT ARMED/);
+    assert.match(out(r), /`served: false`/);
+    assert.match(out(r), /`submittable: false`/);
+    for (const n of [B64_ENV, PW_ENV]) assert.match(out(r), new RegExp(n));
+    // Still a LABELLED build proof, and still exported — a release that carries
+    // an unsigned Windows binary must say so downstream, not merely in a log.
+    assert.match(exported, new RegExp(`${POSTURE_ENV}=${UNSIGNED_PROOF}`));
+  });
+
+  test('the printed gap carries the TRIPWIRE and names the owner-gated purchase', () => {
     const { r } = runPrepare(makeRoot({}), ON_TAG);
+    assert.match(out(r), /TRIPWIRE, NOT A WAIVER/);
+    assert.match(out(r), /THE BLOCKER IS OWNER-GATED/);
+    assert.match(out(r), /PURCHASED from a CA in the Microsoft Trusted Root Program/);
+    assert.match(out(r), /costs real money every year/);
+  });
+
+  test('🔴 a TAG PUSH with NO secrets on a channel armed by `served: true` FAILS', () => {
+    const { r } = runPrepare(makeRoot({ served: true }), ON_TAG);
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /this is a RELEASE lane and no Windows code-signing secrets are configured/);
     assert.match(out(r), /required because the run is a TAG push/);
+    // The failure names the FIELD that armed the row, not only the missing
+    // secret — a reader must be able to check the claim against the register.
+    assert.match(out(r), /channel "windows-direct" IS ARMED/);
+    assert.match(out(r), /`served: true`/);
+    assert.match(out(r), /OWNER ITEM WITH A RECURRING COST, NOT A WIRING GAP/);
     for (const n of [B64_ENV, PW_ENV]) assert.match(out(r), new RegExp(n));
   });
 
-  test('a tag-push failure still explains that the blocker is a PURCHASE, not wiring', () => {
-    const { r } = runPrepare(makeRoot({}), ON_TAG);
-    assert.match(out(r), /OWNER ITEM WITH A RECURRING COST, NOT A WIRING GAP/);
-    assert.match(out(r), /costs real money every year/);
+  test('🔴 …and on a channel armed by `submittable: true` PLUS a real lane', () => {
+    const { r } = runPrepare(
+      makeRoot({ submittable: true, lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } }),
+      ON_TAG,
+    );
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /channel "windows-direct" IS ARMED/);
+    assert.match(out(r), /build-platforms\.yml · job "windows"/);
+  });
+
+  test('`submittable: true` with NO lane does NOT arm — that is the ios-appstore shape, and nothing it emits exists', () => {
+    const { r } = runPrepare(makeRoot({ submittable: true, lane: null }), ON_TAG);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /`submittable: true` but `lane: null`/);
+  });
+
+  test('a MALFORMED lane does not arm either — a lane that resolves to nothing looks exactly like coverage', () => {
+    const { r } = runPrepare(makeRoot({ submittable: true, lane: { workflow: '' } }), ON_TAG);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /`lane: null`/);
+  });
+
+  test('🔴 the rescope is TAG-ONLY: a branch push prints not one word of it', () => {
+    // The non-release path has to be byte-identical to what it was, or the
+    // rescope has quietly changed the output every ordinary CI run produces.
+    const { r } = runPrepare(makeRoot({}), {});
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /RELEASE LANE, NO SIGNING SECRETS/);
+    assert.doesNotMatch(out(r), /TRIPWIRE/);
+    assert.doesNotMatch(out(r), /NOT ARMED/);
   });
 
   test('🔴 HALF the secrets FAILS on EVERY lane, release or not', () => {
@@ -699,5 +777,28 @@ describe('windows-signing · against the REAL tooling/channel-register.json', ()
   test('the store row still says keyKind "none", which is what the out-of-scope line claims', () => {
     const row = realRegister().channels.find((c) => c.id === 'windows-store');
     assert.equal(row.signing.keyKind, 'none');
+  });
+
+  test('🔴 windows-direct is STILL UNARMED — the day it is not, a tag stops being survivable without the certificate', () => {
+    // This is the anti-drift half of the rescope and it is deliberately worded
+    // as a reminder rather than a rule. If somebody serves this channel or gives
+    // it a submittable lane, the tag path becomes fatal again — correctly — and
+    // this test is where that change announces itself instead of surfacing on
+    // release day.
+    const a = armingOf(realRegister().channels.find((c) => c.id === CHANNEL_ID));
+    assert.equal(
+      a.armed,
+      false,
+      `windows-direct is now armed (${a.reasons.join('; ')}). The release lane is fatal again without the certificate — which is right, and is what this test exists to announce.`,
+    );
+    assert.ok(a.blockers.length > 0, 'an unarmed row must be able to say WHY, or the print block asserts nothing');
+  });
+
+  test('the arming derivation reads the register FIELDS and not the channel id', () => {
+    // Same row, renamed. A derivation keyed on "windows-direct" would answer
+    // differently; this one must not.
+    const row = realRegister().channels.find((c) => c.id === CHANNEL_ID);
+    assert.equal(armingOf({ ...row, id: 'renamed-row' }).armed, armingOf(row).armed);
+    assert.equal(armingOf({ ...row, id: 'renamed-row', served: true }).armed, true);
   });
 });

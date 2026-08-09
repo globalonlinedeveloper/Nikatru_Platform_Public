@@ -60,8 +60,10 @@ import {
   unzip,
   profileMembers,
 } from '../apple-signing.mjs';
+import { armingOf } from '../channel-arming.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = resolve(CI_DIR, '..', '..');
 const PREPARE = join(CI_DIR, 'apple-signing.mjs');
 
 const TEAM = 'A1B2C3D4E5';
@@ -205,13 +207,33 @@ function makeRoot({
   register = true,
   apps = [{ slug: 'subly' }],
   submissionWorkflow = SUBMIT_WF,
+  // ── THE ARMING FIELDS ──────────────────────────────────────────────────────
+  // Defaulted to the REAL register's values for both Apple rows: `submittable:
+  // true`, `served: false`, and — the field that decides it — `lane: null`.
+  // Nothing in this repository emits an .ipa or a .pkg, so a release from these
+  // rows would produce nothing to submit, signed or not. A test that wants the
+  // release-lane FAILURE arms a row explicitly, and two below do.
+  submittable = true,
+  served = false,
+  lane = null,
+  /** Per-row overrides, keyed by channel id. ONE identity signs both Apple rows,
+   *  so "either row armed ⇒ fatal" is a real property and needs a fixture that
+   *  can arm exactly one of them. */
+  rowOverrides = {},
 } = {}) {
   const root = join(TMP, `root${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
   mkdirSync(join(root, 'sites', '_shared', '_data'), { recursive: true });
   if (register) {
     const channels = channelIds.map((id) => {
-      const row = { id, signing: { ciSecrets: { names: [...names] } } };
+      const row = {
+        id,
+        submittable,
+        served,
+        lane,
+        ...(rowOverrides[id] ?? {}),
+        signing: { ciSecrets: { names: [...names] } },
+      };
       if (submissionWorkflow !== null) row.submission = { workflow: submissionWorkflow };
       return row;
     });
@@ -353,6 +375,25 @@ describe('apple-signing — posture resolution', () => {
     assert.match(text, /RELEASE lane/);
     assert.match(text, /OWNER_QUEUE A-4/);
     for (const n of WANTED) assert.match(text, new RegExp(n));
+  });
+
+  test('🔴 `armed: []` leaves the release-lane message BYTE FOR BYTE what it was', () => {
+    // The rescope's whole claim is that it changed WHEN the failure fires, not
+    // WHAT it says. `armed` defaulting to nothing must therefore be invisible —
+    // and this compares the two forms rather than trusting the reading.
+    const before = resolvePosture({ law: none, required: true, platform: 'darwin' }).fatal.lines;
+    const withEmpty = resolvePosture({ law: none, required: true, platform: 'darwin', armed: [] }).fatal.lines;
+    assert.deepEqual(withEmpty, before);
+    assert.ok(!before.join('\n').includes('IS ARMED'), 'an empty armed set must contribute no lines at all');
+  });
+
+  test('an ARMED row adds the field that armed it to the same message', () => {
+    const armed = [armingOf({ id: 'ios-appstore', submittable: true, served: true, lane: null })];
+    const text = resolvePosture({ law: none, required: true, platform: 'darwin', armed }).fatal.lines.join('\n');
+    assert.match(text, /channel "ios-appstore" IS ARMED/);
+    assert.match(text, /`served: true`/);
+    // …and the original message survives underneath it.
+    assert.match(text, /OWNER_QUEUE A-4/);
   });
 
   test('partial → fatal on EVERY lane, release or not', () => {
@@ -602,17 +643,72 @@ describe('apple-signing — the endings, run as a process', () => {
     assert.match(out(r), /CANNOT BE UPLOADED TO APP STORE CONNECT/);
   });
 
-  test('no secrets on a TAG run FAILS and names every secret to create', () => {
-    const { r } = runPrepare(makeRoot(), ON_TAG);
+  // ── 🔴 THE RESCOPE, AND THE PAIR THAT MAKES IT A RESCOPE AND NOT A DELETION ──
+  // A tag push with no secrets PASSES while both Apple rows are `lane: null`,
+  // and FAILS the moment either one can actually ship. Before 2026-08-09 the
+  // first two of these expected exit 1, and the consequence was measured: a
+  // `subly-v*` tag killed the `apple` job, build-platforms.yml's `release` job
+  // `needs:` it, and the first Release this repository would ever publish was
+  // skipped — over an enrolment guarding a submission no lane in the tree can
+  // even produce an artifact for.
+  test('🔴 no secrets on a TAG run with BOTH rows unarmed PRINTS the gap and PASSES', () => {
+    const { r, exported } = runPrepare(makeRoot(), ON_TAG);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /RELEASE LANE, NO SIGNING SECRETS — PRINTED IN FULL AND NOT FAILED/);
+    assert.match(out(r), /this run IS a release lane — the run is a TAG push/);
+    // BOTH rows are named. One identity signs both, so a print that mentioned
+    // only one would leave a reader unable to check the other.
+    assert.match(out(r), /channel "ios-appstore" is NOT ARMED/);
+    assert.match(out(r), /channel "macos-appstore" is NOT ARMED/);
+    assert.match(out(r), /`submittable: true` but `lane: null`/);
+    assert.match(out(r), /TRIPWIRE, NOT A WAIVER/);
+    assert.match(out(r), /THE BLOCKER IS OWNER-GATED: Apple Developer account \(OWNER_QUEUE A-4\)/);
+    for (const n of WANTED) assert.match(out(r), new RegExp(n));
+    assert.match(exported, /APPLE_SIGNING_POSTURE=unsigned-build-proof/);
+  });
+
+  test('no secrets on the DECLARED submission workflow, both rows unarmed, prints and passes too', () => {
+    const { r } = runPrepare(makeRoot(), ON_SUBMISSION_WF);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /declared Apple submission workflow/);
+    assert.match(out(r), /RELEASE LANE, NO SIGNING SECRETS/);
+  });
+
+  test('🔴 no secrets on a TAG run FAILS when a row is ARMED, and names every secret to create', () => {
+    const { r } = runPrepare(makeRoot({ served: true }), ON_TAG);
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /this is a RELEASE lane and no Apple signing secrets are configured/);
+    assert.match(out(r), /IS ARMED/);
+    assert.match(out(r), /`served: true`/);
     for (const n of WANTED) assert.match(out(r), new RegExp(n));
   });
 
-  test('no secrets on the DECLARED submission workflow FAILS too', () => {
-    const { r } = runPrepare(makeRoot(), ON_SUBMISSION_WF);
+  test('🔴 ONE armed row is enough — one identity signs both, so a partial answer is not on offer', () => {
+    const { r } = runPrepare(
+      makeRoot({
+        rowOverrides: {
+          'macos-appstore': {
+            submittable: true,
+            served: false,
+            lane: { workflow: '.github/workflows/build-platforms.yml', job: 'apple' },
+          },
+        },
+      }),
+      ON_TAG,
+    );
     assert.equal(r.status, 1, out(r));
-    assert.match(out(r), /declared Apple submission workflow/);
+    assert.match(out(r), /channel "macos-appstore" IS ARMED/);
+    assert.match(out(r), /build-platforms\.yml · job "apple"/);
+    // The unarmed sibling is NOT reported as armed — the split has to be real.
+    assert.doesNotMatch(out(r), /channel "ios-appstore" IS ARMED/);
+  });
+
+  test('🔴 the rescope is RELEASE-LANE-ONLY: a branch push prints not one word of it', () => {
+    const { r } = runPrepare(makeRoot(), {});
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /RELEASE LANE, NO SIGNING SECRETS/);
+    assert.doesNotMatch(out(r), /TRIPWIRE/);
+    assert.doesNotMatch(out(r), /NOT ARMED/);
   });
 
   test('HALF the secrets FAIL on EVERY lane, release or not', () => {
@@ -782,5 +878,42 @@ describe('apple-signing — coverage self-checks', () => {
     assert.equal(r.status, 0, out(r));
     assert.match(out(r), /NOT EXPORTED/);
     assert.doesNotMatch(out(r), /ENOENT/);
+  });
+});
+
+// ═════ the real register — the anti-drift check ══════════════════════════════
+describe('apple-signing — against the REAL tooling/channel-register.json', () => {
+  const realRows = () => {
+    const p = join(REPO_ROOT, 'tooling', 'channel-register.json');
+    assert.ok(existsSync(p), `${p} does not exist — this seam reads it and cannot be checked against it`);
+    const reg = JSON.parse(readFileSync(p, 'utf8'));
+    return ['ios-appstore', 'macos-appstore'].map((id) => {
+      const row = reg.channels.find((c) => c.id === id);
+      assert.ok(row, `the register declares no ${id} row`);
+      return row;
+    });
+  };
+
+  test('🔴 BOTH Apple rows are STILL UNARMED — the day either is not, a tag stops being survivable without the enrolment', () => {
+    for (const row of realRows()) {
+      const a = armingOf(row);
+      assert.equal(
+        a.armed,
+        false,
+        `${row.id} is now armed (${a.reasons.join('; ')}). The release lane is fatal again without the Apple enrolment — which is right, and is what this test exists to announce.`,
+      );
+    }
+  });
+
+  test('the reason both are unarmed is `lane: null`, not `submittable`, and the print says exactly that', () => {
+    // Worth pinning separately: these rows ARE submittable. If the derivation
+    // were "submittable ⇒ armed" the release lane would still be fatal, so the
+    // specific field doing the work has to be the one the message names.
+    for (const row of realRows()) {
+      const a = armingOf(row);
+      assert.equal(a.submittable, true, `${row.id} is expected to be a submittable store row`);
+      assert.equal(a.lane, null, `${row.id} is expected to have no lane — nothing here emits an .ipa or a .pkg`);
+      assert.ok(a.blockers.some((b) => b.includes('`lane: null`')), a.blockers.join(' | '));
+    }
   });
 });

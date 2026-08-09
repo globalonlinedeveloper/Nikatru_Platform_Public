@@ -26,12 +26,30 @@
 //                         signed export needs, posture = `release-signed`
 //   none supplied       → posture = `unsigned-build-proof`, the gap PRINTED IN
 //                         CAPITALS and named (Apple Developer account,
-//                         OWNER_QUEUE A-4) — UNLESS this is a release lane,
-//                         where the absence is a FAILURE and not a posture
+//                         OWNER_QUEUE A-4) — UNLESS this is a release lane AND
+//                         the register ARMS one of the two Apple rows, where the
+//                         absence is a FAILURE and not a posture
 //   some supplied       → FAIL, always, on every lane. Three of four is an
 //                         artifact nobody can explain, and Apple's notion of a
 //                         "correctly signed but wrong identity" build is
 //                         rejected at upload, after the account is spent.
+//
+// 🔴 THE RELEASE-LANE FAILURE IS SCOPED BY THE REGISTER, NOT BY THE TAG ALONE,
+// AND THAT CORRECTION WAS MEASURED. Until 2026-08-09 the middle ending read
+// "UNLESS this is a release lane" full stop, and the consequence was that a
+// `subly-v*` tag killed the `apple` job — while `windows-signing.mjs` killed
+// `windows` and `appimage-signing.mjs` killed `linux_web_android` for the same
+// reason. build-platforms.yml's `release` job `needs:` all three, so the FIRST
+// GitHub Release this repository would ever publish was unreachable, blocked on
+// an Apple enrolment protecting a submission that cannot happen: BOTH Apple rows
+// are `lane: null` — nothing in this repository emits an .ipa or a .pkg, and
+// `build-platforms.yml` builds iOS with `--no-codesign` on purpose. The scope
+// test now comes from the register's own `served` / `submittable` / `lane`
+// fields, through `tooling/ci/channel-arming.mjs`, and the gap is PRINTED IN
+// FULL on the release lane instead ([pipeline C-6], the same rule the .pkg
+// installer-certificate gap below already follows). The failing case did not go
+// away: give an Apple row a lane, or mark it served, and the identical tag fails
+// naming the field that armed it.
 //
 // ⚠️ THIS SCRIPT IS NOT THE PROOF. It says what it INTENDS; it cannot say what
 // xcodebuild did. `tooling/ci/assert-artifact-signed-apple.mjs` reads the real
@@ -106,6 +124,7 @@ import { inflateRawSync } from 'node:zlib';
 import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
 
 export const APPS = 'sites/_shared/_data/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
@@ -228,8 +247,15 @@ export function releaseLane({ gitRef = '', workflowRef = '', submissionWorkflows
  * `security` and the keychain do not exist elsewhere — so a lane that supplied
  * the secrets on another runner is misconfigured, and the honest report of a
  * misconfiguration is a failure with the platform named in it.
+ *
+ * 🔴 `required` IS NOW "A RELEASE LANE **AND** AN ARMED CHANNEL". The caller
+ * derives it from the release signal AND `channel-arming.mjs`'s reading of the
+ * register; `armed` carries the rows that made it true so the message names the
+ * FIELD that armed them and not only the secret that is missing. Passing
+ * `required: true` with no `armed` rows still produces the exact message it
+ * always did — which is why every existing case of this function is unchanged.
  */
-export function resolvePosture({ law, required, platform = process.platform } = {}) {
+export function resolvePosture({ law, required, platform = process.platform, armed = [] } = {}) {
   if (law.kind === 'partial') {
     return {
       posture: null,
@@ -255,6 +281,8 @@ export function resolvePosture({ law, required, platform = process.platform } = 
             'FAIL this is a RELEASE lane and no Apple signing secrets are configured.',
             `     absent: ${law.missing.join(', ')}`,
             '',
+            ...armedFatalLines(armed),
+            ...(armed.length ? [''] : []),
             '     A release lane that cannot sign must not produce an artifact. App Store Connect rejects an',
             '     unsigned upload, so continuing here would spend a build, an artifact and a version string to',
             '     arrive at a bundle that cannot be submitted — with every check green.',
@@ -706,13 +734,37 @@ function main() {
   if (!lane.required) console.log('   no release signal (not a tag push, not a declared submission workflow) — a BUILD PROOF is legal here');
   for (const b of lane.blind) console.log(`   ⬜ ${b}`);
 
-  // ── partial and the missing-on-a-release-lane endings ─────────────────────
-  if (law.kind === 'partial' || (law.kind === 'none' && lane.required)) {
-    die(resolvePosture({ law, required: lane.required }).fatal.lines);
+  // 🔴 IS EITHER APPLE ROW ARMED? Derived from the rows this script already
+  // found by id, out of their own `served` / `submittable` / `lane` fields —
+  // there is no channel name in this decision, only the two rows the register
+  // handed back. Either row arming makes the release lane fatal: ONE identity
+  // signs both, so a partial answer is not on offer.
+  const gap = releaseGapVerdict(rows);
+  const releaseFatal = lane.required && gap.fatal;
+
+  // ── partial and the missing-on-an-ARMED-release-lane endings ──────────────
+  if (law.kind === 'partial' || (law.kind === 'none' && releaseFatal)) {
+    die(resolvePosture({ law, required: releaseFatal, armed: gap.armed }).fatal.lines);
   }
 
   // ── the legal unsigned ending — LABELLED, which is the whole difference ───
   if (law.kind === 'none') {
+    // A release lane whose channels are NOT armed. Printed in full and not
+    // fatal: no lane in this repository emits an .ipa or a .pkg, so failing
+    // would block the release of five ready channels on an enrolment only the
+    // owner can buy. Guarded by `lane.required`, so a branch push, a fork PR and
+    // the weekly platform proof print exactly what they printed before.
+    if (lane.required) {
+      console.log('');
+      for (const l of unarmedGapLines({
+        armings: gap.unarmed,
+        secretNames: law.missing,
+        laneReasons: lane.reasons,
+        ownerItem: `${OWNER_GAP} — there is no distribution certificate to export until the enrolment exists`,
+      })) {
+        console.log(l);
+      }
+    }
     console.log('');
     console.log(`⬜ SIGNING POSTURE: ${UNSIGNED_PROOF.toUpperCase()}`);
     console.log(`   🔴 NO APPLE SIGNING SECRETS ARE SET, AND THE REASON IS NOT A MISSING SECRET.`);
