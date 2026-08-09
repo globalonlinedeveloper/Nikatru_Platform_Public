@@ -45,8 +45,9 @@ enum PurchaseChannel {
 ///
 /// ## The matrix is pinned
 /// Tied to **`url_launcher` 6.x** and to the store policies as read on
-/// **2026-08-01**. Re-review on any dependency bump and whenever a channel's
-/// commerce policy changes.
+/// **2026-08-01** (windows-store re-read against the v7.19 primary text on
+/// **2026-08-09** — [ADR 039]). Re-review on any dependency bump and whenever
+/// a channel's commerce policy changes.
 @immutable
 class PurchaseCapabilities {
   const PurchaseCapabilities({
@@ -100,8 +101,7 @@ class PurchaseCapabilities {
         return const PurchaseCapabilities(
           technicallySupported: true,
           channelPermitted: false,
-          why:
-              'App Store Review Guideline 3.1.1 requires in-app purchase for '
+          why: 'App Store Review Guideline 3.1.1 requires in-app purchase for '
               'digital content. Launching an external checkout is a documented '
               'rejection cause, not a grey area.',
         );
@@ -116,15 +116,20 @@ class PurchaseCapabilities {
       case PurchaseChannel.windowsStore:
         return const PurchaseCapabilities(
           technicallySupported: true,
-          channelPermitted: false,
-          // ⚠️ UNVERIFIED — and therefore NO. Microsoft Store policy on using a
-          // developer's own commerce engine for digital goods has not been read
-          // against a primary source in this repo. Guessing "allowed" risks a
-          // takedown on the single store identity L21 depends on.
-          why:
-              'UNVERIFIED: Microsoft Store commerce policy has not been checked '
-              'against a primary source. Undecidable ⇒ denied. windows-direct '
-              'carries the Windows rail until it is.',
+          channelPermitted: true,
+          // Was UNVERIFIED ⇒ denied until 2026-08-09, when the primary source
+          // was read: Microsoft Store Policies v7.19 (effective 2025-10-14)
+          // §10.8.1 lets a non-game PC app use "a secure third-party purchase
+          // API" for digital goods, §10.8.6 says the same for subscriptions,
+          // and the App Developer Agreement exempts third-party commerce from
+          // the Store Fee. Two conditions ride with this `true`: Paddle is
+          // identified as the seller at purchase time (its checkout does), and
+          // the third-party purchase API must be DECLARED in Partner Center at
+          // submission — runbooks/store-submission-windows.md carries that
+          // step. [ADR 039]
+          why: 'Microsoft Store Policies §10.8.1/§10.8.6 permit a third-party '
+              'purchase rail for non-game PC apps at no Store Fee (verified '
+              '2026-08-09, v7.19); declared in Partner Center per ADR 039.',
         );
       case PurchaseChannel.windowsDirect:
         return const PurchaseCapabilities(
@@ -147,12 +152,15 @@ class PurchaseCapabilities {
   /// The capabilities for [platform], taking the RESTRICTIVE answer where a
   /// platform ships through more than one channel.
   ///
-  /// 🔴 RESTRICTIVE, NOT OPTIMISTIC, and Windows is why the rule needs writing
-  /// down: it ships through `windows-store` AND `windows-direct`, and a build
-  /// does not know at runtime which one installed it. Taking the permissive
-  /// answer would put an external checkout inside a Store build on the strength
-  /// of the direct build's freedom. A caller that DOES know its channel should
-  /// use [forChannel] and get the better answer honestly.
+  /// 🔴 RESTRICTIVE, NOT OPTIMISTIC, and Windows is why the rule needed
+  /// writing down: it ships through `windows-store` AND `windows-direct`, and
+  /// a build does not know at runtime which one installed it. Taking the
+  /// permissive answer would put an external checkout inside a Store build on
+  /// the strength of the direct build's freedom. (Since [ADR 039] resolved the
+  /// store row, both Windows channels currently permit — the restriction is
+  /// dormant there, and the rule stays for the next divergence.) A caller that
+  /// DOES know its channel should use [forChannel] and get the better answer
+  /// honestly.
   static PurchaseCapabilities forPlatform(
     TargetPlatform platform, {
     required bool isWeb,

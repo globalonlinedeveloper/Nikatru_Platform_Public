@@ -54,21 +54,40 @@ void main() {
   group('forPlatform takes the RESTRICTIVE channel', () {
     test('Windows resolves to windows-store, not windows-direct', () {
       // Windows ships through both and a build cannot tell at runtime which one
-      // installed it. Taking the permissive answer would put an external
-      // checkout inside a Store build on the strength of the direct build's
-      // freedom.
+      // installed it. Both rows permit since ADR 039 resolved the store row, so
+      // the restrictive resolution is proven by ROUTE (the `why` is the store
+      // row's), not by outcome — and the outcome check keeps the rule honest on
+      // a channel that is still genuinely denied.
       final PurchaseCapabilities p = PurchaseCapabilities.forPlatform(
         TargetPlatform.windows,
         isWeb: false,
       );
-      expect(p.canStartCheckout, isFalse);
+      expect(p.canStartCheckout, isTrue);
       expect(
-        PurchaseCapabilities.forChannel(PurchaseChannel.windowsDirect)
-            .canStartCheckout,
-        isTrue,
-        reason: 'the permissive channel really is permissive — so the '
-            'restrictive resolution above is a choice, not an accident',
+        p.why,
+        PurchaseCapabilities.forChannel(PurchaseChannel.windowsStore).why,
+        reason: 'forPlatform must still route Windows through the STORE row — '
+            'the restrictive rule outlives the rows happening to agree',
       );
+      expect(
+        PurchaseCapabilities.forPlatform(TargetPlatform.android, isWeb: false)
+            .canStartCheckout,
+        isFalse,
+        reason: 'the restrictive concept still has a live denied example',
+      );
+    });
+
+    test('windows-store permission is CITED, not asserted', () {
+      // The row spent its first week as UNVERIFIED ⇒ denied, and flipped only
+      // when the primary source was read (ADR 039). If someone ever edits the
+      // `why` away from the policy citation, this goes red before a Store
+      // reviewer does.
+      final PurchaseCapabilities c = PurchaseCapabilities.forChannel(
+        PurchaseChannel.windowsStore,
+      );
+      expect(c.canStartCheckout, isTrue);
+      expect(c.why, contains('10.8.1'));
+      expect(c.why, contains('ADR 039'));
     });
 
     test('isWeb wins over the host platform', () {

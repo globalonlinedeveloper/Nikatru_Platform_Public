@@ -83,6 +83,9 @@ void main() {
   group('[5]M-6(a) · every sellable channel really opens the checkout', () {
     for (final PurchaseChannel channel in <PurchaseChannel>[
       PurchaseChannel.web,
+      // Sellable since ADR 039 read Store Policies §10.8.1/§10.8.6: the store
+      // permits a third-party purchase rail for non-game PC apps.
+      PurchaseChannel.windowsStore,
       PurchaseChannel.windowsDirect,
       PurchaseChannel.linuxSnap,
       PurchaseChannel.linuxAppImage,
@@ -114,7 +117,6 @@ void main() {
       PurchaseChannel.iosAppStore,
       PurchaseChannel.macosAppStore,
       PurchaseChannel.androidPlay,
-      PurchaseChannel.windowsStore,
     ]) {
       test('${channel.registerId} refuses with channelNotPermitted', () async {
         final _RecordingLauncher launcher = _RecordingLauncher();
