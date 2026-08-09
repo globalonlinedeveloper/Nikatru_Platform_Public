@@ -89,6 +89,7 @@
   "scan-workflows.test.mjs": 12,
   "screen-set.test.mjs": 19,
   "selection-record.test.mjs": 12,
+  "signup-retention.test.mjs": 10,
   "sink-disclosure.test.mjs": 34,
   "site-integrity.test.mjs": 68,
   "smoke-web-artifact.test.mjs": 8,

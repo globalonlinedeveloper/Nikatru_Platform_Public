@@ -103,6 +103,47 @@ async function fingerprint(secret, text) {
 const RATE_LIMIT = 12; // max signups per fingerprint per hour
 const RATE_WINDOW_SECONDS = 3600;
 
+// ── SIGNUP RETENTION — THE WIRING IS BUILT, THE VALUE IS NOT ─────────────────
+// 🔑 THE NUMBER ON THE `SIGNUP_RETENTION_DAYS` LINE IS THE OWNER'S POLICY CALL,
+// NOT AN ENGINEERING ONE. tooling/ops/register.json →
+// retention.kv.nikatru-signups.signup records why, and it is the reason this
+// ships dormant rather than filled in: the published privacy policy says
+// information is kept "only for as long as necessary", no number is derivable
+// from anything in this tree, and an agent picking 180 or 365 would be WRITING
+// POLICY under the appearance of fixing a bug — while silently deleting the
+// owner's real launch list once the period passed.
+//
+// So the half that IS engineering is done here, and the half that is policy is
+// left as one value. `null` means no expiry, which is exactly what ships today.
+//
+// TO ACTIVATE: change `null` on the next line to a positive number of days.
+// That is the entire change — one value, in one place. Every signup written
+// afterwards carries the TTL, and the register row's `rule` moves from
+// `period-undeclared` to `ttl` (assert-retention-coverage.mjs then verifies the
+// TTL by reading THIS file, so the claim stays checked against the code).
+//
+// ⚠️ IT APPLIES TO SUBSEQUENT WRITES ONLY. Workers KV fixes a key's expiry at
+// write time, so keys already stored keep no expiry; ageing those out is an
+// operator action against the namespace, not something this code path does.
+const SIGNUP_RETENTION_DAYS = null;
+
+const SECONDS_PER_DAY = 86400;
+
+/** KV put options for a signup record, or `undefined` while no period is declared.
+ *
+ *  ⚠️ RETURNS `undefined` RATHER THAN `{ expirationTtl: undefined }`, and the
+ *  call site spreads it away entirely, so the dormant path is the SAME TWO-ARG
+ *  `put(key, value)` the site makes today. If the inert state were an options
+ *  object with an undefined field, "leaving the period undeclared changes
+ *  nothing" would be a claim resting on how KV treats that field rather than a
+ *  property of this file — and the whole point of the seam is that switching it
+ *  on is the only thing that changes behaviour. */
+export function signupPutOptions(days = SIGNUP_RETENTION_DAYS) {
+  return typeof days === "number" && Number.isFinite(days) && days > 0
+    ? { expirationTtl: Math.round(days * SECONDS_PER_DAY) }
+    : undefined;
+}
+
 export async function onRequestPost({ request, env }) {
   let email = "";
   let honeypot = "";
@@ -168,7 +209,11 @@ export async function onRequestPost({ request, env }) {
     const existing = await env.SIGNUPS.get(key);
     if (!existing) {
       const record = { email, ts: new Date().toISOString() };
-      await env.SIGNUPS.put(key, JSON.stringify(record));
+      // The spread is what keeps the dormant seam inert: with no declared
+      // period this is `put(key, value)` and nothing more. See
+      // SIGNUP_RETENTION_DAYS above — one value turns it into a TTL'd write.
+      const ttl = signupPutOptions();
+      await env.SIGNUPS.put(key, JSON.stringify(record), ...(ttl ? [ttl] : []));
     }
     return json({ ok: true });
   } catch (_) {
