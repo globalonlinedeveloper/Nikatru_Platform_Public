@@ -208,22 +208,28 @@ process.exitCode = survived ? 1 : blind ? 2 : 0;
  *
  *     FROM sqlite_master m JOIN pragma_table_info(m.name) p
  *
- * D1 rejects that with `not authorized: SQLITE_AUTH` (code 7500) — measured
- * 2026-08-09 against BOTH production databases. A table-valued function whose
- * argument is a column from another table is not allowed; the SAME pragma with a
- * LITERAL argument is fine, and plain `sqlite_master` reads are fine. So the
+ * D1 rejects that with `not authorized: SQLITE_AUTH` (code 7500), and the rule
+ * is about one statement naming both things rather than about where the pragma's
+ * argument came from: any single statement that names sqlite_master/sqlite_schema
+ * AND calls a pragma_* table-valued function is rejected — join, subquery, CTE
+ * and correlated scalar subquery alike (measured 2026-08-09 against both
+ * production databases). The same pragma fed a literal, a bound parameter or a
+ * VALUES list is accepted, and so is a plain sqlite_master read. So the
  * derivation is: list the tables, then ask each one for its columns.
  *
- * ⚠️ THIS IS THE SAME DEFECT THAT BREAKS THE ROUTES THEMSELVES, and it is fixed
- * here only so this verifier stops being a second casualty of it.
- * `services/platform/src/routes/account.ts` and
- * `services/subly-api/src/routes/account.ts` still carry the rejected join, and
- * account deletion answers 503 `account_deletion_failed` in production until
- * they are changed. Fixing them is a server change, not this file's business —
- * but leaving this file broken would mean that on the day they ARE fixed, leg 6
- * fails again here for the identical reason. The property is unchanged: the
- * SCHEMA still answers, so a migration that adds a user-owned table is covered
- * with no edit. */
+ * ⚠️ THE WORDING HERE WAS WRONG UNTIL THE SAME MEASUREMENT WAS RE-READ. It said
+ * "a table-valued function whose argument is a column from another table is not
+ * allowed" — falsified by the accepted VALUES and bound-parameter forms, and it
+ * would have licensed a CTE rewrite that is refused too. Both erasure routes
+ * carried the identical sentence, so the three copies corroborated each other.
+ * It now lives once, as `MEASURED_CAUSE` in tooling/ci/d1-sql-inventory.mjs, and
+ * tooling/ci/assert-d1-sql-inventory.mjs pins all three against it.
+ *
+ * ⚠️ THIS IS THE SAME DEFECT THAT BROKE THE ROUTES THEMSELVES. They were fixed
+ * in #256 (both now walk the schema in two steps); this file was fixed first, so
+ * that leg 6 would not fail again here for the identical reason on the day they
+ * landed. The property is unchanged: the SCHEMA still answers, so a migration
+ * that adds a user-owned table is covered with no edit. */
 async function userOwnedTables() {
   const listed = await d1(
     `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,

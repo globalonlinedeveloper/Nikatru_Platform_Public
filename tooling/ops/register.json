@@ -403,6 +403,41 @@
       "verifiedHow": "The full arc, observed live the day the row was written — and it began with EXACTLY the predicted first result. (1) EXIT 1 on true silence: ops-watch dispatch run 31243278611, the judge step red on the production row `consents=1 events=0` — reach proven, arrivals zero. (2) The CAUSE was fixed, never the alarm: the sender repair (#203) deployed, the owner's real browser sessions delivered the first 22 production events, and the reader's first live GREEN printed 'the rail produced events=22 in the last 24h (consents=3)' against the 06:45:16Z heartbeat. (3) The scheduled run 31247642857 (event=schedule, 08:05Z) carries the step green. All three exit codes have now fired against live D1 — 2 on missing credentials during setup, 1 on true silence, 0 on true delivery."
     },
     {
+      "_whyAnchoredAtTheScript": "🔴 THE ANCHOR IS THE READER, NOT ops-watch.yml, AND THE REASON IS MECHANICAL. assert-ops-register.mjs builds its `anchored` map as `anchor -> row`, so a THIRD duty row anchored at .github/workflows/ops-watch.yml would silently overwrite whichever row got there first and take its place in the [14]O-10 freshness limb — dropping that row's print with nothing said. The anchor therefore names the file this duty actually IS. The brief for this increment asked for the two wrangler configs as the anchor; they are not a single path and services/platform/wrangler.jsonc is ALREADY anchored by duty.platform-cron, so using them would have silently displaced the portfolio cron's row. They are named in `databases` below instead, which is where a reader looks for them and where nothing overwrites anything.",
+      "id": "duty.d1-statement-acceptance",
+      "kind": "duty",
+      "what": "[pipeline K-7] — live D1 still EXECUTES every statement services/*/src sends it. A statement's legality is a property of the engine, not of its text: D1's authorizer refuses any single statement that names sqlite_master/sqlite_schema and also calls a pragma_* table-valued function (7500 `not authorized: SQLITE_AUTH`), and both erasure routes shipped exactly that. Every in-app account deletion in production answered 503 from the day they shipped until 2026-08-09, with every check in the repository green — the unit suite runs SQL through `node:sqlite`, which has no authorizer, and assert-erasure-reach.mjs proves reachability by parsing migration files.",
+      "detector": "tooling/ops/check-d1-accepts-live-sql.mjs, run daily by .github/workflows/ops-watch.yml (in the heartbeats job, behind `if: !cancelled()` so a failing heartbeat read cannot skip it) and again by .github/workflows/deploy-workers.yml in BOTH deploy jobs, after `d1 migrations apply --remote` and before `wrangler deploy`. Three-valued: 0 every statement executed and accepted · 1 D1 REFUSES a statement the Workers deploy, or a write bound to an unmatched key changed a row · 2 COULD NOT LOOK (no credential, an unreadable schema, or — the one that matters — a database that did NOT refuse the known-bad control statement, which means the harness is not talking to a real authorizer).",
+      "response": "Exit 1 fails the ops-watch heartbeats job and blocks the deploy that raised it; the failing statement, its file and its line are in the step log, and the repair is always the same shape — ask the schema in two steps rather than one. Exit 2 is the separate \"nothing was judged\" state and fails too, because an unexecuted sweep prints the same ok as a complete one.",
+      "cadence": "1d",
+      "databases": "Derived, never listed: services/*/wrangler.jsonc → every `d1_databases` binding (ALL of them, not only the migrated one — the shared Worker binds subly_db as well as platform_db, and \"a route reads the databases it reads, not the ones its Worker binds\" is the defect this family exists for). services/platform/wrangler.jsonc and services/subly-api/wrangler.jsonc are the two configs that resolve today; a third app adds itself by existing.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": "tooling/ops/check-d1-accepts-live-sql.mjs",
+        "record": "GitHub Actions run history for .github/workflows/ops-watch.yml (event = schedule) — a failing step is a failing run. ⚠️ THE DURABLE-ISSUE DECLARATION CLAUSE IS DELIBERATELY NOT RESTATED IN THIS FIELD, for the reason duty.analytics-silence-judgment records: tooling/ci/assert-alert-disposition.mjs DERIVES its alerting sources from that clause, so a second row repeating it declares ONE durable issue TWICE and that guard's own mutation tests then replace the wrong occurrence.",
+        "failingValue": "a non-zero exit from tooling/ops/check-d1-accepts-live-sql.mjs. REACHABLE AND REACHED, by mutation of the real tree on 2026-08-09: putting the pre-#256 correlated join back into services/platform/src/routes/account.ts made it exit 1 against BOTH live databases with `[{\"code\":7500,\"message\":\"not authorized: SQLITE_AUTH\"}]`; the same derivation spelled as a CTE exited 1 as well; and the VALUES-fed form, which production D1 accepts, exited 0 — so the failing value is reachable AND the passing value is not merely the absence of a signal.",
+        "readBy": ".github/workflows/ops-watch.yml — the daily step, whose non-zero exit fails the heartbeats job; and .github/workflows/deploy-workers.yml, which runs the same script in both deploy jobs so a refused statement blocks the deploy that introduced it rather than being found the next morning.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "ops-watch.yml",
+          "event": "schedule"
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "(none)",
+        "what": "NOTHING, and it is the SAME gap duty.workflow.ops-watch.yml and duty.analytics-silence-judgment already carry rather than a new one: this duty is a step inside that workflow, so whatever silences the workflow silences this too. Recorded separately instead of borrowed, because a gap inherited by implication is a gap nobody counts. Its deploy-time copy is NOT an absence watcher either — it runs only when somebody deploys, so a portfolio that ships nothing for six weeks is a portfolio nothing re-asks.",
+        "ownerGated": true,
+        "gap": "🔴 NOTHING WATCHES THIS STEP'S ABSENCE, with the same repair as the two rows above it: GitHub disables scheduled workflows in inactive public repositories, and a dead cron here looks exactly like a portfolio whose SQL all runs. Its FAILING is loud (a non-zero exit fails the heartbeats job, which reaches the durable issue). Closing the absence half needs a signal hosted on a second provider and a monitor created in the GlitchTip console: OWNER_QUEUE S-8, the same item. Declared 2026-08-09."
+      },
+      "accessProviders": [
+        "github",
+        "cloudflare"
+      ],
+      "source": "verified",
+      "verifiedOn": "2026-08-09",
+      "verifiedHow": "Executed against PRODUCTION from the developer host, both databases, with the vault token: exit 0. Per database, in order — the known-refused control came back `7500 not authorized: SQLITE_AUTH` (step 0); the `sqlite_master` read was accepted (12 rows in platform_db, 7 in subly_db); the per-table `pragma_table_info('<table>')` was accepted for every table that read returned (9 and 4 real tables after the sqlite_/d1_/_cf_ filter); and both mutating statements — `DELETE FROM <table> WHERE user_id = ?` and `UPDATE <table> SET <col> = NULL WHERE <col> = ?` — were EXECUTED with the key `d1guard-<uuid>` and reported `changes=0`. Four (service, database) pairs in all, because both Workers bind both databases. Exit-code contract measured separately, three runs each: no credential → 2 before any request; a bad token → 2, caught by the negative control rather than by a status code, never 127."
+    },
+    {
       "id": "duty.workflow.ci.yml",
       "kind": "duty",
       "what": "The full gate: every guard, both Workers, the brick stamp, the sites.",
