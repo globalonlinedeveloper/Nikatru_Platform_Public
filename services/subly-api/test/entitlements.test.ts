@@ -22,9 +22,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import entitlements from '../src/routes/entitlements';
-import { realPlatformDb, ENTITLEMENTS_SCHEMA, TEST_ENV } from './harness';
-import type { AppEnv, Entitlement } from '../src/types';
+import entitlements, { type EntitlementRow } from '../src/routes/entitlements';
+import { realPlatformDb, ENTITLEMENTS_SCHEMA, PLATFORM_MIGRATIONS, TEST_ENV } from './harness';
+import type { AppEnv } from '../src/types';
 
 const USER = 'user-a';
 const OTHER = 'user-b';
@@ -37,9 +37,15 @@ type Row = {
   expires_at?: string | null;
   user_id?: string;
   app_id?: string;
+  /** [5]M-12 — defaults to 'live', the world a live rail stamps. Pass null
+   *  explicitly to seed a pre-2026-08-09 legacy row that carries no world. */
+  provider_environment?: string | null;
 };
 
-function harness(db: ReturnType<typeof realPlatformDb>) {
+function harness(
+  db: ReturnType<typeof realPlatformDb>,
+  envOverrides: Record<string, unknown> = {},
+) {
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
     c.set('userId', c.req.header('X-Test-User') ?? USER);
@@ -52,6 +58,7 @@ function harness(db: ReturnType<typeof realPlatformDb>) {
   const env = {
     ...TEST_ENV,
     PLATFORM_DB: db,
+    ...envOverrides,
   } as unknown as AppEnv['Bindings'];
 
   return {
@@ -60,8 +67,9 @@ function harness(db: ReturnType<typeof realPlatformDb>) {
       db.db
         .prepare(
           `INSERT INTO entitlements
-             (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at,
+              provider_environment)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           row.user_id ?? USER,
@@ -72,6 +80,7 @@ function harness(db: ReturnType<typeof realPlatformDb>) {
           row.is_active ?? 1,
           row.expires_at ?? null,
           '2026-08-01T00:00:00.000Z',
+          row.provider_environment === undefined ? 'live' : row.provider_environment,
         );
     },
     get: async (user = USER) => {
@@ -197,6 +206,71 @@ describe('GET /v1/entitlements — the decidable cases still decide correctly', 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// THE ENVIRONMENT LIMB — [5]M-12 on the legacy reader, added 2026-08-09. The
+// platform route has carried it all along; this one granted on `is_active`
+// alone, so a sandbox row (or a row that never declared a world) unlocked live
+// Pro through the door the app actually uses.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('GET /v1/entitlements — a row from the wrong money world grants nothing', () => {
+  it('a SANDBOX row does not unlock a live deploy', async () => {
+    const db = realPlatformDb();
+    const h = harness(db);
+    h.seed({ is_active: 1, expires_at: future, provider_environment: 'sandbox' });
+    const { body } = await h.get();
+    expect(body.is_pro, 'sandbox money must never grant a production unlock').toBe(false);
+    expect(body.entitlements, 'the row is still visible — denied, not hidden').toHaveLength(1);
+  });
+
+  it('a row with NO world at all is UNDECIDABLE and denies', async () => {
+    // "Written before the rail knew" is not evidence of a live payment — the
+    // fail-closed rule applied to itself, same as the platform route.
+    const db = realPlatformDb();
+    const h = harness(db);
+    h.seed({ is_active: 1, expires_at: null, provider_environment: null });
+    expect((await h.get()).body.is_pro).toBe(false);
+  });
+
+  it('a sandbox deploy REFUSES a live row — the limb cuts both ways', async () => {
+    // The refusal half on its own: a live row ALONE on a sandbox deploy grants
+    // nothing. (An earlier draft seeded a granting sandbox row next to this one
+    // and asserted is_pro === true — a test the limb's deletion also passes.)
+    const db = realPlatformDb();
+    const h = harness(db, { MONEY_ENVIRONMENT: 'sandbox' });
+    h.seed({ entitlement: 'cloud_sync', is_active: 1, expires_at: future, provider_environment: 'live' });
+    expect((await h.get()).body.is_pro).toBe(false);
+  });
+
+  it('a sandbox deploy honours a sandbox row in its own world', async () => {
+    const db = realPlatformDb();
+    const h = harness(db, { MONEY_ENVIRONMENT: 'sandbox' });
+    h.seed({ entitlement: 'pro', is_active: 1, expires_at: future, provider_environment: 'sandbox' });
+    expect((await h.get()).body.is_pro).toBe(true);
+  });
+
+  it('the denial reason is DIAGNOSABLE from the payload — the world rides along', async () => {
+    // Two denial reasons now exist (wrong world, unparseable expiry); support
+    // must be able to tell them apart without server logs.
+    const db = realPlatformDb();
+    const h = harness(db);
+    h.seed({ is_active: 1, expires_at: future, provider_environment: 'sandbox' });
+    const { body } = await h.get();
+    expect(body.is_pro).toBe(false);
+    expect(
+      (body.entitlements[0] as { provider_environment?: string }).provider_environment,
+    ).toBe('sandbox');
+  });
+
+  it('503s when MONEY_ENVIRONMENT is unset — no guess, no access decision', async () => {
+    const db = realPlatformDb();
+    for (const broken of [undefined, '', 'prod']) {
+      const h = harness(db, { MONEY_ENVIRONMENT: broken });
+      const { status } = await h.get();
+      expect(status, JSON.stringify(broken)).toBe(503);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // The harness comment has claimed since PR #94 that "the shape is asserted
 // against src/types.ts's `Entitlement` in entitlements.test.ts so it cannot
 // drift unnoticed" — and entitlements.test.ts did not exist. A guard described
@@ -209,7 +283,7 @@ describe('GET /v1/entitlements — the decidable cases still decide correctly', 
 // column added or renamed there would otherwise leave this Worker's whole
 // entitlement suite passing against a table it does not talk to.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('the SHIPPED platform_db schema matches src/types.ts Entitlement', () => {
+describe('the SHIPPED platform_db schema carries every column the route reads', () => {
   /** Column names from the CREATE TABLE body — not the indexes after it. */
   function columnsOf(sql: string): string[] {
     const body = /CREATE TABLE[^(]*\(([\s\S]*?)\n\);/.exec(sql);
@@ -229,23 +303,38 @@ describe('the SHIPPED platform_db schema matches src/types.ts Entitlement', () =
       .filter((name) => !TABLE_CONSTRAINTS.has(name.toUpperCase()));
   }
 
-  it('declares exactly the columns the Entitlement type has', () => {
-    const declared = columnsOf(ENTITLEMENTS_SCHEMA);
-    // A witness value of the type: TypeScript makes this fail to COMPILE if a
-    // field is added to or removed from `Entitlement`, and the runtime compare
-    // then fails if the SQL was not updated to match.
-    const witness: Record<keyof Entitlement, true> = {
-      user_id: true,
-      app_id: true,
+  /** Columns later migrations bolt onto the table. */
+  function alterColumnsOf(migrations: readonly string[]): string[] {
+    return migrations.flatMap((sql) =>
+      [...sql.matchAll(/ALTER TABLE entitlements ADD COLUMN (\w+)/g)].map((m) => m[1]),
+    );
+  }
+
+  it('every EntitlementRow field is a real column of the shipped migrations', () => {
+    // The witness used to compare src/types.ts `Entitlement` against 0001 —
+    // and this PR removed that type's last reader, so the pair asserted less
+    // than it said. It now witnesses the type the route ACTUALLY reads rows
+    // through: TypeScript fails to compile if `EntitlementRow` gains or loses
+    // a field, and the runtime check fails if a field names no shipped column.
+    const witness: Record<keyof EntitlementRow, true> = {
       entitlement: true,
       product_id: true,
       store: true,
       is_active: true,
       expires_at: true,
-      updated_at: true,
+      provider_environment: true,
     };
-    expect(declared.length, 'the column parser must actually find columns').toBe(8);
-    expect(new Set(declared)).toEqual(new Set(Object.keys(witness)));
+    const shipped = new Set([
+      ...columnsOf(ENTITLEMENTS_SCHEMA),
+      ...alterColumnsOf(PLATFORM_MIGRATIONS),
+    ]);
+    expect(
+      alterColumnsOf(PLATFORM_MIGRATIONS).length,
+      'the ALTER parser must actually find the 0004 money columns',
+    ).toBeGreaterThanOrEqual(11);
+    for (const field of Object.keys(witness)) {
+      expect(shipped.has(field), `${field} is read by the route but shipped by no migration`).toBe(true);
+    }
   });
 
   it('the parser really reads the file — it is not matching an empty set', () => {
@@ -277,6 +366,7 @@ CREATE INDEX idx_x ON entitlements (user_id);`),
       store: 'STRIPE',
       is_active: true,
       expires_at: future,
+      provider_environment: 'live',
     });
   });
 });

@@ -85,6 +85,16 @@ describe('the parse itself reached the config', () => {
   });
 });
 
+describe('vars.MONEY_ENVIRONMENT — load-bearing since both money doors 503 without it', () => {
+  // [5]M-12: the RevenueCat webhook and /v1/entitlements each answer 503 when
+  // this var is absent or unrecognised. A deploy that lost it would not fail a
+  // health check — it would fail every entitlement read. Production is 'live'
+  // by definition; a sandbox deploy edits this knowingly.
+  it("is declared and is exactly 'live'", () => {
+    expect(cfg.vars?.MONEY_ENVIRONMENT).toBe('live');
+  });
+});
+
 describe('vars.ALLOWED_ORIGINS — load-bearing since CORS fails closed', () => {
   const listed = String(cfg.vars?.ALLOWED_ORIGINS ?? '')
     .split(',')

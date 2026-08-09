@@ -29,6 +29,14 @@ export interface Env {
   /** Comma-separated browser origins for CORS. Absent/empty ⇒ '*' (template). */
   ALLOWED_ORIGINS?: string;
   /**
+   * [5]M-12 — which money world this deploy is: 'live' or 'sandbox'. Read by
+   * the RevenueCat webhook (events from the OTHER world are acked and ignored,
+   * never written) and by /v1/entitlements (a row from the other world grants
+   * nothing). Absent/unrecognised ⇒ both answer 503 rather than guess — see
+   * src/lib/money.ts for why neither default is safe.
+   */
+  MONEY_ENVIRONMENT?: string;
+  /**
    * [pipeline 11]E-8 — the crash sink for UNHANDLED WORKER ERRORS. A `var`, not
    * a secret: a GlitchTip DSN is a write-only ingest key this factory already
    * ships inside every web build. Absent ⇒ no report, silently; lib/
@@ -115,14 +123,8 @@ export interface Payment {
   paid_at: string | null;
 }
 
-/** An entitlements row (PLATFORM_DB). */
-export interface Entitlement {
-  user_id: string;
-  app_id: string;
-  entitlement: string;
-  product_id: string | null;
-  store: string | null;
-  is_active: number; // 0 | 1 in DB
-  expires_at: string | null;
-  updated_at: string | null;
-}
+// `Entitlement` WAS HERE and was deleted 2026-08-09 with its last reader: both
+// routes now read the shared table through their own named-column row types
+// (routes/entitlements.ts exports `EntitlementRow` for the schema-witness
+// test). A row type no route reads through is a declaration standing in for a
+// use — the same mistake the EXPORTS note above records in the other direction.

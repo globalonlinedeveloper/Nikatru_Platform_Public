@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { nowIso } from '../lib/d1';
+import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/money';
 import {
   isIdString,
   isPlainObject,
@@ -26,6 +27,7 @@ const app = new Hono<AppEnv>();
  */
 interface RevenueCatEvent {
   event?: {
+    id?: string;
     type?: string;
     app_user_id?: string;
     original_app_user_id?: string;
@@ -33,6 +35,8 @@ interface RevenueCatEvent {
     entitlement_ids?: string[] | null;
     product_id?: string | null;
     store?: string | null; // APP_STORE | PLAY_STORE | STRIPE | ...
+    environment?: string; // SANDBOX | PRODUCTION
+    event_timestamp_ms?: number;
     expiration_at_ms?: number | null;
   };
 }
@@ -62,12 +66,29 @@ interface RevenueCatEvent {
 // the `expires_at > now` check. [pipeline 5]M-8 — "do not revoke on
 // cancel-at-period-end".
 //
-// ⚠️ KNOWN GAP, deliberately not fixed here: RevenueCat gives NO ordering
-// guarantee, and the UPSERT below overwrites unconditionally, so a delayed
-// retry of an older event can still clobber a newer state. Rejecting that needs
-// the event's own clock persisted alongside the row — an `event_ts` column on
-// the SHARED platform_db, i.e. a migration owned by services/platform. It is
-// its own change; do not fake it with `updated_at`, which is receipt time.
+// ORDERING — closed 2026-08-09 (the gap that used to be documented here).
+// RevenueCat gives NO ordering guarantee, so a delayed retry of an older event
+// arrives after a newer one. The defence is the one 0004_money_rail.sql built
+// for the MoR rail and names in its own comments: persist the PROVIDER'S clock
+// (`occurred_at`, from the event's `event_timestamp_ms` — never `updated_at`,
+// which is receipt time) and make the UPSERT conditional:
+//   `DO UPDATE … WHERE entitlements.occurred_at IS NULL
+//                   OR excluded.occurred_at > entitlements.occurred_at`
+// — the same clause services/platform/src/lib/mor/store.ts applies, so the two
+// writers of the shared table cannot disagree about what "older" means. A
+// clock-less event (no `event_timestamp_ms`) can seed an empty key or upgrade a
+// clock-less row, and can never overwrite a clocked one: NULL > x is NULL.
+//
+// ENVIRONMENT — [5]M-12, and this rail needs it MORE than the MoR one does:
+// RevenueCat delivers SANDBOX and PRODUCTION events to the SAME URL under the
+// SAME bearer secret, where a sandbox-signed MoR notification simply fails live
+// verification. Without the guard, one sandbox test purchase against a
+// production user id would overwrite a paying customer's live row. So: this
+// deploy declares its world (MONEY_ENVIRONMENT, 503 when absent — no safe
+// guess), an event from the OTHER world is ACKED AND IGNORED (200, no write —
+// a retry cannot change which world an event belongs to), and every row is
+// stamped with `provider_environment` so the read side can refuse cross-world
+// rows on its own evidence.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Access is granted outright. */
@@ -168,6 +189,18 @@ export interface ValidatedEvent {
   expiresAtMs: number | null;
   /** ISO form of [expiresAtMs] — converted once, inside validation. */
   expiresAt: string | null;
+  /** The event's money world, already mapped to ours: SANDBOX → 'sandbox',
+   *  PRODUCTION → 'live'. Always equal to the deploy's world — a mismatch is
+   *  acked inside validateEvent and never reaches an `act: true` result. */
+  environment: MoneyEnvironment;
+  /** The PROVIDER'S clock (`event_timestamp_ms`) as ISO — never null: a
+   *  clock-less event is acked, because an unordered write is the defect the
+   *  conditional UPSERT exists to close. */
+  occurredAt: string;
+  /** RevenueCat's own event id — `last_event_id` on the row, the audit half
+   *  of the ordering pair 0004 documents. Null when absent or non-conforming
+   *  (audit-only, so never worth a 400). */
+  eventId: string | null;
 }
 
 /**
@@ -183,10 +216,10 @@ export interface ValidatedEvent {
  */
 export type ValidatedWebhook =
   | { ok: true; act: true; event: ValidatedEvent }
-  | { ok: true; act: false; reason: string; ignoredType?: string }
+  | { ok: true; act: false; reason: string; ignoredType?: string; ignoredEnvironment?: MoneyEnvironment }
   | Invalid;
 
-export function validateEvent(body: unknown): ValidatedWebhook {
+export function validateEvent(body: unknown, deployEnvironment: MoneyEnvironment): ValidatedWebhook {
   if (!isPlainObject(body)) {
     return { ok: false, detail: 'body must be a JSON object' };
   }
@@ -232,6 +265,68 @@ export function validateEvent(body: unknown): ValidatedWebhook {
   if (userId === null) {
     return { ok: true, act: false, reason: 'missing app_user_id' };
   }
+
+  // ── the money world this event belongs to — [5]M-12 ───────────────────────
+  // Absent is ACKED, not 400ed: no retry can add a world to an event that never
+  // declared one, and writing it anyway would put an unattributable row in a
+  // table whose readers refuse exactly that. Present-but-unrecognised is a 400:
+  // a value like "STAGNG" is more plausibly corruption than a new RevenueCat
+  // vocabulary, and the stored row keeps its old state while the sender retries.
+  const envRaw = evRaw.environment;
+  if (envRaw === undefined || envRaw === null || envRaw === '') {
+    return { ok: true, act: false, reason: 'missing environment' };
+  }
+  if (envRaw !== 'SANDBOX' && envRaw !== 'PRODUCTION') {
+    return {
+      ok: false,
+      detail: "event.environment must be exactly 'SANDBOX' or 'PRODUCTION'",
+    };
+  }
+  const environment: MoneyEnvironment = envRaw === 'PRODUCTION' ? 'live' : 'sandbox';
+
+  // ── THE WORLD COMPARISON, HERE AND NOT IN THE ROUTE — review finding ───────
+  // The other world's event must short-circuit BEFORE the remaining field
+  // checks: a SANDBOX event with a malformed expiry that reached those checks
+  // would 400 — an infinite retry, on the shared delivery queue, for a row this
+  // deploy would never write. A retry cannot change which world an event
+  // belongs to, so nothing below this line is worth validating for it.
+  if (environment !== deployEnvironment) {
+    return {
+      ok: true,
+      act: false,
+      reason: `event is from the '${environment}' money world, this deploy is '${deployEnvironment}'`,
+      ignoredEnvironment: environment,
+    };
+  }
+
+  // ── the provider's clock — what the conditional UPSERT orders by ───────────
+  // ABSENT is ACKED, not written clock-less: a clock-less write is last-write-
+  // wins, which is verbatim the defect the ordering clause closes — and the MoR
+  // adapter refuses a missing `occurred_at` for the same stated reason
+  // (paddle.ts: "a defaulted occurred_at breaks ordering"). RevenueCat
+  // documents `event_timestamp_ms` on every event, so this costs nothing real.
+  // Present-but-unreadable stays a 400, same rule as `expiration_at_ms`.
+  const tsRaw = evRaw.event_timestamp_ms;
+  if (tsRaw === undefined || tsRaw === null) {
+    return { ok: true, act: false, reason: 'missing event_timestamp_ms' };
+  }
+  const occurredAt = isoFromEpochMs(tsRaw);
+  if (occurredAt === null) {
+    return {
+      ok: false,
+      detail:
+        'event.event_timestamp_ms must be a finite epoch-millisecond number ' +
+        'within the representable date range',
+    };
+  }
+
+  // ── the event's own id — audit-only, so it can NEVER be worth a 400 ────────
+  // `last_event_id` feeds no decision: it is not a dedup key here and nothing
+  // reads it back. A 400 would let a cosmetic id-format change stop RENEWAL and
+  // EXPIRATION delivery for this app forever, over a column nobody consults —
+  // so a non-conforming id is stored as NULL instead of rejected.
+  const idRaw = evRaw.id;
+  const eventId: string | null = isIdString(idRaw, MAX_ID_LENGTH) ? idRaw : null;
 
   // ── the paid-through date — the whole money boundary on this side ───────────
   const expRaw = evRaw.expiration_at_ms;
@@ -307,7 +402,18 @@ export function validateEvent(body: unknown): ValidatedWebhook {
   return {
     ok: true,
     act: true,
-    event: { type, userId, entitlementIds, productId, store, expiresAtMs, expiresAt },
+    event: {
+      type,
+      userId,
+      entitlementIds,
+      productId,
+      store,
+      expiresAtMs,
+      expiresAt,
+      environment,
+      occurredAt,
+      eventId,
+    },
   };
 }
 
@@ -337,6 +443,20 @@ app.post('/revenuecat', async (c) => {
     return c.json({ error: 'unauthorized' }, 401);
   }
 
+  // ── This deploy's money world — FAIL CLOSED, same as the MoR rail ───────────
+  // [5]M-12: without knowing which world we are, a sandbox event and a live one
+  // are indistinguishable, and either guess is wrong in a way that moves money.
+  // 503 so RevenueCat retries once the variable is set.
+  const deployEnvironment = c.env.MONEY_ENVIRONMENT;
+  if (!isMoneyEnvironment(deployEnvironment)) {
+    console.error(
+      `[webhooks/revenuecat] MONEY_ENVIRONMENT is ${JSON.stringify(deployEnvironment)} — ` +
+        "must be exactly 'live' or 'sandbox'. Refusing: honouring sandbox money as real and " +
+        'ignoring real money are both wrong, so there is no default. [5]M-12',
+    );
+    return c.json({ error: 'money_rail_not_configured' }, 503);
+  }
+
   let body: unknown;
   try {
     body = await c.req.json<RevenueCatEvent>();
@@ -345,7 +465,10 @@ app.post('/revenuecat', async (c) => {
   }
 
   // ── VALIDATE FIRST — nothing below this line may touch a row otherwise ──────
-  const checked = validateEvent(body);
+  // The deploy's world goes IN: the other world's event must short-circuit
+  // before the remaining field checks (see the comment inside validateEvent),
+  // so the sandbox guard lives there rather than here. [5]M-12
+  const checked = validateEvent(body, deployEnvironment);
   if (!checked.ok) {
     // 400, NOT an ack: the sender should retry with a body we can read, and the
     // stored entitlement keeps whatever it already said in the meantime.
@@ -355,30 +478,71 @@ app.post('/revenuecat', async (c) => {
   if (!checked.act) {
     // Well-formed but nothing to do; ack so RevenueCat doesn't retry forever.
     console.warn(`[webhooks/revenuecat] ${checked.reason}`);
+    if (checked.ignoredEnvironment !== undefined) {
+      return c.json({ ok: true, ignored_environment: checked.ignoredEnvironment });
+    }
     return checked.ignoredType !== undefined
       ? c.json({ ok: true, ignored: checked.ignoredType })
       : c.json({ ok: true });
   }
 
   const appId = c.env.APP_ID;
-  const { type, userId, entitlementIds, productId, store, expiresAtMs, expiresAt } =
-    checked.event;
+  const {
+    type,
+    userId,
+    entitlementIds,
+    productId,
+    store,
+    expiresAtMs,
+    expiresAt,
+    environment,
+    occurredAt,
+    eventId,
+  } = checked.event;
   const isActive = resolveIsActive(type, expiresAtMs, Date.now());
   const ts = nowIso();
 
+  // The conditional DO UPDATE is [5]M-2's ordering defence, clause-for-clause
+  // the one services/platform/src/lib/mor/store.ts applies to this same table:
+  // an event older than (or exactly as old as) the one that last wrote the row
+  // changes nothing, so a delayed retry cannot roll access backwards.
+  //
+  // AND EVERY MONEY COLUMN MOVES TOGETHER — review finding. The MoR store
+  // resets ALL of them on its update path; a writer that reset nine and left
+  // seven would interleave two providers' truths on one row: a Paddle refund's
+  // `revoked_at`/`provider_status`/subscription id surviving under
+  // provider='revenuecat' is a self-contradicting row that /v1/entitlements
+  // hands to the client and applyAdjustment decides refunds against. This
+  // writer cannot speak to those seven RevenueCat-less columns, so on the
+  // rows it wins they are NULL — "this writer knows nothing about that",
+  // which is true, rather than a dead provider's leftovers, which is not.
   const stmt = c.env.PLATFORM_DB.prepare(
     `INSERT INTO entitlements
-       (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       (user_id, app_id, entitlement, product_id, store, is_active, expires_at, updated_at,
+        provider, provider_environment, last_event_id, occurred_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'revenuecat', ?, ?, ?)
      ON CONFLICT(user_id, app_id, entitlement) DO UPDATE SET
-       product_id = excluded.product_id,
-       store      = excluded.store,
-       is_active  = excluded.is_active,
-       expires_at = excluded.expires_at,
-       updated_at = excluded.updated_at`,
+       product_id               = excluded.product_id,
+       store                    = excluded.store,
+       is_active                = excluded.is_active,
+       expires_at               = excluded.expires_at,
+       updated_at               = excluded.updated_at,
+       provider                 = excluded.provider,
+       provider_environment     = excluded.provider_environment,
+       last_event_id            = excluded.last_event_id,
+       occurred_at              = excluded.occurred_at,
+       provider_subscription_id = NULL,
+       provider_transaction_id  = NULL,
+       provider_status          = NULL,
+       current_period_end       = NULL,
+       trial_end                = NULL,
+       revoked_at               = NULL,
+       revocation_reason        = NULL
+     WHERE entitlements.occurred_at IS NULL
+        OR excluded.occurred_at > entitlements.occurred_at`,
   );
 
-  await c.env.PLATFORM_DB.batch(
+  const results = await c.env.PLATFORM_DB.batch(
     entitlementIds.map((entId) =>
       stmt.bind(
         userId,
@@ -389,9 +553,27 @@ app.post('/revenuecat', async (c) => {
         isActive,
         expiresAt,
         ts,
+        environment,
+        eventId,
+        occurredAt,
       ),
     ),
   );
+
+  // A write the WHERE clause dropped must not be indistinguishable from one
+  // that landed — silence ≠ success. If `occurred_at` ever acquires a value
+  // that stops comparing (a second writer storing epoch-ms, an operator
+  // backfill), EVERY write becomes a silent no-op and the 200s keep flowing;
+  // this line and the `stale` field are the only signal. No user_id in the
+  // log — rid/entitlement correlation only, per the standing convention.
+  const stale = results.filter((r) => Number((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) === 0).length;
+  if (stale > 0) {
+    console.warn(
+      `[webhooks/revenuecat] ${stale} of ${entitlementIds.length} row(s) unchanged — ${type} at ` +
+        `${occurredAt} lost the ordering race (a stale retry, or two events on the same clock)`,
+    );
+    return c.json({ ok: true, stale });
+  }
 
   return c.json({ ok: true });
 });

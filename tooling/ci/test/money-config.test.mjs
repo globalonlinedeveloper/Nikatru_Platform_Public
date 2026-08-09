@@ -24,8 +24,12 @@
 //                                                             API key prefix"
 //   MC5  PADDLE_NOTIFICATION_SECRET committed as a var     -> caught: "as a committed
 //        in a PUBLIC repository                              `vars` entry"
-//   MC6  a SECOND Worker declares a money environment      -> caught: "2 deployed configs
-//                                                             declare MONEY_ENVIRONMENT"
+//   MC6  a SECOND Worker declares a money environment      -> caught (2026-08-09 form: the
+//        WITHOUT carrying a money door                        declaring set must EQUAL the
+//                                                             derived money-door set; [ADR
+//                                                             039] D5 made a two-door tree
+//                                                             the decided state, so "exactly
+//                                                             one" stopped being the rule)
 //   MC7  the resolver's `: null` refusal replaced by       -> caught after a FIX (below)
 //        `: ('live' as MoneyEnvironment)`
 //   MC8  `isMoneyEnvironment(...)` removed                 -> caught: "does not validate"
@@ -129,6 +133,28 @@ function write(root, rel, body) {
   writeFileSync(p, body);
 }
 
+/** A second money DOOR, in subly-api's shape: the fail-closed refusal without
+ *  the MoR resolver — limb 1/5 derive from the marker, limb 4 stays platform's. */
+const SUBLY_DOOR_TS = `
+import { isMoneyEnvironment } from '../lib/money';
+app.post('/revenuecat', async (c) => {
+  if (!isMoneyEnvironment(c.env.MONEY_ENVIRONMENT)) {
+    return c.json({ error: 'money_rail_not_configured' }, 503);
+  }
+  return c.json({ ok: true });
+});
+`;
+
+const SUBLY_MONEY_TEST_TS = `
+import { describe, it, expect } from 'vitest';
+describe('[5]M-12 — the RevenueCat door', () => {
+  it('503s when the money environment is unset', async () => {
+    const res = await post({ environment: undefined });
+    expect(res.status).toBe(503);
+  });
+});
+`;
+
 function run(o = {}) {
   const root = join(TMP, `case-${(seq += 1)}`);
   write(root, 'services/platform/wrangler.jsonc', o.platformWrangler ?? PLATFORM_WRANGLER);
@@ -137,6 +163,8 @@ function run(o = {}) {
   write(root, 'services/platform/src/lib/mor/paddle.ts', o.paddle ?? PADDLE_TS);
   if (o.route !== null) write(root, 'services/platform/src/routes/money.ts', o.route ?? ROUTE_TS);
   write(root, 'services/platform/test/money.test.ts', o.moneyTest ?? MONEY_TEST_TS);
+  if (o.sublySrc) write(root, 'services/subly-api/src/routes/webhooks.ts', o.sublySrc);
+  if (o.sublyTest) write(root, 'services/subly-api/test/webhooks.test.ts', o.sublyTest);
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -168,10 +196,58 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     assert.match(r.out, /NO deployed config declares MONEY_ENVIRONMENT/);
   });
 
-  test('FAILS when a SECOND Worker declares a money environment', () => {
+  test('FAILS when a Worker declares the money environment WITHOUT carrying a door', () => {
     const r = run({ sublyWrangler: '{ "name": "subly-api", "vars": { "MONEY_ENVIRONMENT": "live" } }' });
     assert.equal(r.code, 1);
-    assert.match(r.out, /2 deployed configs declare MONEY_ENVIRONMENT/);
+    assert.match(r.out, /declares MONEY_ENVIRONMENT but no file under services\/subly-api\/src refuses/);
+  });
+
+  test('FAILS when a Worker carries a money door WITHOUT declaring its environment', () => {
+    const r = run({ sublySrc: SUBLY_DOOR_TS, sublyTest: SUBLY_MONEY_TEST_TS });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /services\/subly-api carries a money door .* declares no MONEY_ENVIRONMENT/);
+  });
+
+  test('PASSES on the decided two-door tree — MoR rail plus the RevenueCat fan-in', () => {
+    // The real tree since [ADR 039] D5's hardening chip: both Workers carry the
+    // fail-closed door, both declare "live", both exercise their own 503.
+    const r = run({
+      sublyWrangler: '{ "name": "subly-api", "vars": { "MONEY_ENVIRONMENT": "live" } }',
+      sublySrc: SUBLY_DOOR_TS,
+      sublyTest: SUBLY_MONEY_TEST_TS,
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /\{platform, subly-api\}/);
+  });
+
+  test('FAILS when the second door declares the sandbox world', () => {
+    const r = run({
+      sublyWrangler: '{ "name": "subly-api", "vars": { "MONEY_ENVIRONMENT": "sandbox" } }',
+      sublySrc: SUBLY_DOOR_TS,
+      sublyTest: SUBLY_MONEY_TEST_TS,
+    });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /declares MONEY_ENVIRONMENT = "sandbox"/);
+  });
+
+  test("FAILS when the second door's own tests never fire its 503 — platform's suite does not vouch for it", () => {
+    const r = run({
+      sublyWrangler: '{ "name": "subly-api", "vars": { "MONEY_ENVIRONMENT": "live" } }',
+      sublySrc: SUBLY_DOOR_TS,
+      // no sublyTest: services/subly-api/test does not exist in this fixture
+    });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /COVERAGE LOST — no test files under services\/subly-api\/test/);
+  });
+
+  test('a door whose 503 evidence is only a SKIPPED subly test still fails', () => {
+    const r = run({
+      sublyWrangler: '{ "name": "subly-api", "vars": { "MONEY_ENVIRONMENT": "live" } }',
+      sublySrc: SUBLY_DOOR_TS,
+      sublyTest: SUBLY_MONEY_TEST_TS.replace("it('503s", "it.skip('503s"),
+    });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /yields 503 under services\/subly-api\/test/);
   });
 
   test('FAILS on a Paddle SANDBOX base URL in a deployed config', () => {
