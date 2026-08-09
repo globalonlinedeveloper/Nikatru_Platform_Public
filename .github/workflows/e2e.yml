@@ -333,6 +333,37 @@ jobs:
           SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
         run: node tooling/e2e/verify_purged.mjs
 
+      # ── THE CONSENT LEG'S SERVER-SIDE HALF ──────────────────────────────────
+      # The suite proves the DPDP prompt comes up on a fresh live launch and
+      # answers it. It cannot prove the artifact ARRIVED, and the reason is in
+      # the app by design: `_ConsentPrompt._answer` does not await the record
+      # call, and `applyConsentDecision` treats the consent upload as best-effort
+      # — a user's choice must not look rejected because the network is down.
+      # So a `POST /v1/consent` that 404s, is shed by the rate limiter or never
+      # leaves the browser gives the identical green run with an EMPTY §6(3)
+      # trail, and nothing anywhere says so. This step is what says so.
+      #
+      # ⬜ `PLATFORM_D1_DATABASE_ID` IS A LITERAL FOR THE SAME REASON THE TWO
+      # SUBLY IDS ABOVE ARE, and a weaker one besides: this database is SHARED by
+      # the whole portfolio, so it is not even app-specific — there is exactly one
+      # of it, named in services/platform/wrangler.jsonc, and a `${{ matrix.app }}`
+      # in the variable NAME would produce something no script reads. `E2E_APP_ID`
+      # is the matrix value, so the ROW is looked up per app even though the
+      # database is not.
+      #
+      # BEFORE the purges below, necessarily: the teardown deletes exactly the row
+      # this step exists to find. NOT `if:`-gated, per the workflow header — a
+      # step that can green-skip is a step that can go dark unnoticed.
+      - name: Verify the consent artifact landed in platform_db
+        env:
+          E2E_APP_ID: ${{ matrix.app }}
+          E2E_RESPONSE_DATA: apps/${{ matrix.app }}/build/integration_response_data.json
+          E2E_DRIVE_LOG: ${{ runner.temp }}/drive.log
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
+        run: node tooling/e2e/verify_consent.mjs
+
       # `steps.user.outcome != 'skipped'` = "provisioning was ATTEMPTED", which is
       # the honest trigger for both cleanup steps: it is true when the run got far
       # enough to touch production (including when provisioning itself failed
@@ -353,13 +384,29 @@ jobs:
           path: apps/${{ matrix.app }}/screenshots/
           if-no-files-found: warn
 
+      # 🔴 THE CONSENT ENV IS ON THIS STEP AND NOT ON THE DELETE-LEG ONE BELOW,
+      # and that asymmetry is the point rather than an oversight. The consent
+      # artifact belongs to the BROWSER PROFILE, not to either throwaway user:
+      # all three tests share one profile, the prompt is answered once, and one
+      # row is written for the whole run. Handing the same anon_id to both purge
+      # steps would issue the identical DELETE twice and print a confusing
+      # `0 row(s)` the second time, as if something had gone missing.
+      #
+      # Why it is deleted at all is in tooling/e2e/purge.mjs's header: left to
+      # accumulate, these CI rows feed `analyticsLiveness` in
+      # services/platform/src/scheduled.ts, which reads a consent row as evidence
+      # that a HUMAN used a shipped build.
       - name: Purge test data (always — keep prod pristine)
         if: always() && steps.user.outcome != 'skipped'
         env:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          E2E_APP_ID: ${{ matrix.app }}
+          E2E_RESPONSE_DATA: apps/${{ matrix.app }}/build/integration_response_data.json
+          E2E_DRIVE_LOG: ${{ runner.temp }}/drive.log
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           SUBLY_D1_DATABASE_ID: 88da9026-f72a-4cda-823d-431148fa8112
+          PLATFORM_D1_DATABASE_ID: 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/purge.mjs
