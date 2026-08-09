@@ -128,12 +128,13 @@ const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
  *  fires.
  *
  *  Each entry is an expression that must survive in the comment-stripped
- *  workflow. They are the four things that make a green e2e.yml run mean "the
+ *  workflow. They are the five things that make a green e2e.yml run mean "the
  *  golden path was walked against production":
  *    · `flutter drive`                        — the suite is actually driven
  *    · the integration target                 — and it is THE named E2E, not some other target
  *    · tooling/e2e/verify_row.mjs             — and the write really reached live D1
  *    · tooling/e2e/verify_purged.mjs          — and the ERASURE really emptied both stores
+ *    · tooling/e2e/verify_consent.mjs         — and the CONSENT the user gave was really recorded
  *  Without the third, a green run proves the UI moved and proves nothing landed.
  *
  *  🔴 THE FOURTH WAS ADDED 2026-08-08 WITH leg 6, AND IT GUARDS THE ONE CLAIM
@@ -143,12 +144,23 @@ const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
  *  answered `{ ok: true }` produces the identical screen and the identical green
  *  anchors, so deleting this step from the workflow would leave the register
  *  claiming a leg nothing checks, with assert-e2e-legs.mjs entirely satisfied.
- *  That is precisely the overclaim N-6 was failing on, one layer further out. */
+ *  That is precisely the overclaim N-6 was failing on, one layer further out.
+ *
+ *  🔴 THE FIFTH WAS ADDED 2026-08-09 AND GUARDS THE SAME SHAPE OF CLAIM ONE
+ *  LAYER IN. The suite asserts the DPDP consent prompt appears and answers it —
+ *  and the upload of the resulting artifact is FIRE-AND-FORGET by design
+ *  (`_ConsentPrompt._answer` does not await it; `applyConsentDecision` documents
+ *  the transport as best-effort so a network failure cannot make a user's choice
+ *  look rejected). A `POST /v1/consent` that never lands therefore produces a
+ *  green suite over an EMPTY §6(3) trail. Deleting this step would leave the
+ *  prompt assertion looking like proof that consent is recorded, which is the
+ *  one thing it cannot see. */
 export const REQUIRED_WORK = [
   'flutter drive',
   'integration_test/app_test.dart',
   'tooling/e2e/verify_row.mjs',
   'tooling/e2e/verify_purged.mjs',
+  'tooling/e2e/verify_consent.mjs',
 ];
 
 function fail(msg) {
