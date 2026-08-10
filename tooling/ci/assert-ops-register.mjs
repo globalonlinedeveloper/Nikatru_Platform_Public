@@ -236,8 +236,13 @@ const NO_WATCHER = '(none)';
  *  least one thing a later reader can go and LOOK UP: a delivery-record UUID, a
  *  wall-clock time, an issue key (OPS-3), a GitHub issue number (#151), or a
  *  workflow run id. This is deliberately a shape test and NOT a length test — a
- *  minimum character count is a threshold somebody lowers. */
-const DURABLE_ID =
+ *  minimum character count is a threshold somebody lowers.
+ *
+ *  Exported so the `_retiredRows` seam in tooling/ci/test/ops-register.test.mjs
+ *  holds retirement evidence to the same shape rather than to a second regex
+ *  written from the same idea — four copies of a rule drift in the way that
+ *  reports clean. */
+export const DURABLE_ID =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\b\d{2}:\d{2}:\d{2}\b|\b[A-Z][A-Z0-9]+-\d+\b|#\d{2,}|\b\d{9,}\b/;
 
 /** Structural failure — the scan itself is broken, so nothing below it means

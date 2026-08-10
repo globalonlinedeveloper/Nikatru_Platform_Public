@@ -73,19 +73,40 @@
       "hostname": "nikatru.com",
       "what": "the factory's public site",
       "derivedFrom": "siteCanonicals",
-      "monitor": { "id": 4, "name": "nikatru.com", "type": "Ping", "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+      "monitor": { "id": 4, "name": "nikatru.com", "type": "GET", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
+      "closedGap": {
+        "why": "The monitor was type `Ping` — it proves a socket opened and nothing else. A Cloudflare Pages project serving a 500, an edge error page or a blank shell answers a ping, so this check was green over precisely the failure it existed to catch. tooling/ops/status.mjs named it on the day it landed and tooling/ops/register.json's `_deploySmokeExemptions` restated it, because this host has no deploy job to probe from and O-2's external prober is its whole coverage.",
+        "openedOn": "2026-08-03",
+        "closedOn": "2026-08-11",
+        "howItWasClosed": "Converted on the live instance via the GlitchTip API (PUT /api/0/organizations/nikatru/monitors/4/) and read back: monitorType GET, expectedStatus 200, everything else — url, interval 60s, timeout, confirmationThreshold, project — re-sent unchanged and diffed after, because PUT is a full replace. The save triggered an off-cadence check at 2026-08-10T19:22:21.660Z UTC which came back up in 32 ms.",
+        "note": "⚠️ WHAT THIS STILL DOES NOT ASSERT: a body. A 200 carrying a blank shell passes, unlike monitors 11 and 12, which assert `expectedBody`. Naming a body string for an HTML page is a separate decision — pick the wrong one and every copy edit alarms — so the status limb was taken and the body limb is left open rather than guessed at."
+      }
     },
     {
       "hostname": "rajasekarselvam.com",
       "what": "the founder site",
       "derivedFrom": "siteCanonicals",
-      "monitor": { "id": 5, "name": "rajasekarselvam.com", "type": "Ping", "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+      "monitor": { "id": 5, "name": "rajasekarselvam.com", "type": "GET", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
+      "closedGap": {
+        "why": "Same defect and the same reason as nikatru.com: a `Ping` on a Pages host is green while the page behind it is a 500 or an empty shell, and this host's only coverage is O-2's external prober.",
+        "openedOn": "2026-08-03",
+        "closedOn": "2026-08-11",
+        "howItWasClosed": "PUT /api/0/organizations/nikatru/monitors/5/ with every existing value re-sent and only monitorType and expectedStatus changed; read back as GET / 200. The save's off-cadence check at 2026-08-10T19:22:22.230Z UTC came back up in 64 ms.",
+        "note": "Same residual as monitor 4 — the status is asserted, the body is not."
+      }
     },
     {
       "hostname": "subly.nikatru.com",
       "what": "the flagship app's web build — the only shipping client today",
       "derivedFrom": "appCatalogue",
-      "monitor": { "id": 3, "name": "Subly web", "type": "Ping", "intervalSeconds": 60, "verifiedOn": "2026-08-02" }
+      "monitor": { "id": 3, "name": "Subly web", "type": "GET", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
+      "closedGap": {
+        "why": "The sharpest of the three. This is the only shipping client, it is a Flutter web build, and a Ping is green whenever the door opens — including when `flutter_bootstrap.js` is missing and the page renders nothing at all.",
+        "openedOn": "2026-08-03",
+        "closedOn": "2026-08-11",
+        "howItWasClosed": "PUT /api/0/organizations/nikatru/monitors/3/ with every existing value re-sent and only monitorType and expectedStatus changed; read back as GET / 200. The save's off-cadence check at 2026-08-10T19:22:21.062Z UTC came back up in 42 ms.",
+        "note": "⚠️ AND THE RESIDUAL IS BIGGEST HERE. A Flutter web index.html is 768 bytes of loader: it answers 200 whether or not the app boots. The status assertion closes the 500-and-error-page half; the did-it-boot half needs an `expectedBody` or an e2e run, and the nightly e2e is what carries it today."
+      }
     },
     {
       "hostname": "api.nikatru.com",

@@ -102,7 +102,7 @@
       "Actions. Their coverage is O-2's external prober, named here so a NEW site arrives unclassified and red",
       "rather than unwatched and quiet."
     ],
-    "site:nikatru": "Deployed by Cloudflare Git integration, not by a workflow — there is no job to probe from. Covered by O-2's external prober (tooling/ops/status.mjs) against the hostname enumerated in tooling/monitor-register.json, which is stage 11's derivation and strictly wider than anything this file would restate. ⚠️ THREE of that register's monitors are still `Ping` rather than `GET`+expectedStatus — nikatru.com (id 4), rajasekarselvam.com (id 5) and Subly web (id 3) — and a Pages project serving a 500 or a blank shell answers a ping. This said `Two` until 2026-08-09 while the register carried three; the miscount understated the gap on the very line that names it, and the number is only correct if it is counted from tooling/monitor-register.json rather than remembered. tooling/ci/test/ops-status.test.mjs already said three. OWNER_QUEUE S-8.",
+    "site:nikatru": "Deployed by Cloudflare Git integration, not by a workflow — there is no job to probe from. Covered by O-2's external prober (tooling/ops/status.mjs) against the hostname enumerated in tooling/monitor-register.json, which is stage 11's derivation and strictly wider than anything this file would restate. ✅ CLOSED 2026-08-11. This line read '⚠️ THREE of that register's monitors are still `Ping` rather than `GET`+expectedStatus — nikatru.com (id 4), rajasekarselvam.com (id 5) and Subly web (id 3) — and a Pages project serving a 500 or a blank shell answers a ping … OWNER_QUEUE S-8.' All three were converted on the live instance with the vault GLITCHTIP_TOKEN and one PUT each; tooling/ops/status.mjs now probes 7 of 7 declared hostnames and prints `0 of 7 … are unprobeable`. 🔴 IT WAS NEVER OWNER WORK — the same wrong filing tooling/monitor-register.json records for the two monitors it CREATED on 2026-08-05, repeated on the conversion. ⚠️ AND THE RESIDUAL IS REAL: a GET+200 on an HTML site still passes on a blank shell, because no `expectedBody` is asserted; the count in this file was also wrong twice (`Two` until 2026-08-09 against a register carrying three), which is why the number now belongs to the printed count and not to this sentence.",
     "site:rajasekarselvam": "Same mechanism and the same caveat as site:nikatru: Cloudflare Git integration, no workflow job, covered by O-2's external prober over the delegated hostname set."
   },
   "_delegated": {
@@ -332,8 +332,64 @@
       "failure.google-account-lost",
       "review.kill-or-keep",
       "retention.kv.nikatru-signups.rate-limit",
-      "retention.kv.nikatru-signups.signup",
-      "retention.kv.ratel-cache"
+      "retention.kv.nikatru-signups.signup"
+    ]
+  },
+  "_retiredRows": {
+    "_why": [
+      "🔴 RETIRED, NOT DELETED — tooling/legal/provider-register.json's `retiredDisclosureGaps` convention,",
+      "and tooling/monitor-register.json's `closedGap` one level down. A register that erases a row when it",
+      "stops being true cannot answer 'how long did this stand, and what made it stop', which is the only",
+      "question that catches a row that was wrong the whole time. Each entry carries the row VERBATIM as it",
+      "last stood, the date, and the EVIDENCE that the thing it covered is gone.",
+      "",
+      "⚠️ NOTHING READS THIS ARRAY AND IT DOES NOT PRETEND TO. assert-ops-register.mjs and",
+      "assert-retention-coverage.mjs range over `rows` and `_requiredCoverage.ids` only, so an entry here is",
+      "outside every limb — which is the point of retiring rather than editing in place. What IS held is the",
+      "SEAM: tooling/ci/test/ops-register.test.mjs requires every retired id to be absent from BOTH `rows` and",
+      "`_requiredCoverage.ids`. A half-retirement — the row gone with its id left, or the id gone with the row",
+      "left — is the state where one guard enforces a store that does not exist while this record says it was",
+      "retired, and it is the only failure mode retirement introduces.",
+      "",
+      "🔴 RETIRING IS NOT A WAY TO SHRINK THE DOMAIN. The `rows ⊇ _requiredCoverage.ids` limb cannot see a row",
+      "and its id deleted TOGETHER — that is check-migrations.mjs's five-files-to-four defect, and it is why",
+      "ops-register.test.mjs already pins the two written-procedure ids against this file. So an entry here",
+      "must carry evidence that the covered thing is GONE, read from the thing itself. A retirement whose",
+      "reason is 'we decided not to track it' is a deletion wearing a record's clothes."
+    ],
+    "rows": [
+      {
+        "id": "retention.kv.ratel-cache",
+        "retiredOn": "2026-08-11",
+        "retiredWhy": "🔴 THE NAMESPACE NO LONGER EXISTS, SO THE ROW MADE A GUARD ENFORCE A STORE THAT IS GONE AND PRINTED AN OWNER GAP ASKING FOR WORK ALREADY DONE. Its `ownerGap` read 'Owner decides whether it should still exist' — the owner decided, and deleted it; nothing re-read the account, so assert-retention-coverage.mjs and assert-ops-register.mjs went on naming it on every run. That is the same class as an expiry date nobody re-reads, one register over: the row was a claim about a vendor account, and a claim about a vendor account is only true until somebody logs in.",
+        "evidence": "GET https://api.cloudflare.com/client/v4/accounts/<account>/storage/kv/namespaces?per_page=100 with the vault token, answered HTTP 200 `success: true` at Mon, 10 Aug 2026 19:32:16 GMT (cf-ray a2916cf04aab7faf-MAA). THREE namespaces returned, none of them ratel-cache: 33e4e58abb644d0e917a159227c6c134 platform-config · bcfcb1618d1a4bfd8d02f87d3d21010d platform-jwks · d73cf5ffd0fd4d8396012fccd15906ad nikatru-signups. Re-run twice, sixteen minutes apart, with the same result.",
+        "whatTheRetirementCosts": "NOTHING, AND THE ROW'S OWN PURPOSE IS WHAT PROVES IT. It existed 'so the account's store count and the repo's store count can be reconciled rather than silently differing'. That reconciliation now SUCCEEDS with the row gone: platform-config and platform-jwks are the two ids bound in services/platform/wrangler.jsonc and services/subly-api/wrangler.jsonc, nikatru-signups is the Pages KV that `_requiredCoverage` still names, and there is no fourth. The unbound-namespace case the row was written for has zero instances today — and if a fourth namespace ever appears, it appears in this same probe, not in this row.",
+        "row": {
+          "id": "retention.kv.ratel-cache",
+          "kind": "retention",
+          "store": "kv:external:ratel-cache",
+          "what": "A KV namespace in the Cloudflare account that NO wrangler config in this repo binds.",
+          "rule": "keep",
+          "keepWhy": "Nothing in this repo writes it, so this repo cannot declare a period for it. It is listed so the account's store count and the repo's store count can be reconciled rather than silently differing — an unbound namespace is exactly the kind of thing a tree walk can never see.",
+          "detector": "tooling/ci/assert-retention-coverage.mjs, via _requiredCoverage.",
+          "response": "n/a from this repo.",
+          "cadence": "365d",
+          "mechanism": {
+            "substrate": "cloudflare-kv",
+            "anchor": "tooling/ops/register.json",
+            "record": "the Cloudflare dashboard",
+            "failingValue": "n/a",
+            "readBy": "nothing — recorded so it is counted"
+          },
+          "accessProviders": [
+            "cloudflare"
+          ],
+          "ownerGated": true,
+          "ownerGap": "Belongs to a project this repo does not build. Owner decides whether it should still exist.",
+          "source": "unverified",
+          "unverifiedWhy": "Its existence is reported by the stage-14 plan's live account read, not by anything in this tree. Marked unverified because no in-tree artefact corroborates it."
+        }
+      }
     ]
   },
   "rows": [
@@ -2243,31 +2299,6 @@
       "ownerGated": true,
       "ownerGap": "🔴 THE KEYS WRITTEN BEFORE 2026-08-09 STILL HAVE NO EXPIRY, AND NO CODE PATH WILL GIVE THEM ONE. Workers KV fixes a key's expiry at WRITE time, so the declared 365 days reaches subsequent writes only — ageing out the existing `sub:` keys is an OPERATOR action against the namespace (re-put or delete by key), which is why this row stays owner-gated after the period was declared. Until that is done this store still holds contactable addresses with no bound, and it remains — with Supabase auth — one of the two stores that determine the notifiable population in a breach (docs/runbooks/breach-response.md step 2); the D1 tables are pseudonymous and notifiable only by public notice. ✅ THE PERIOD ITSELF IS DECIDED AND UNDER A GUARD: owner, 2026-08-09, 365 days.",
       "source": "verified"
-    },
-    {
-      "id": "retention.kv.ratel-cache",
-      "kind": "retention",
-      "store": "kv:external:ratel-cache",
-      "what": "A KV namespace in the Cloudflare account that NO wrangler config in this repo binds.",
-      "rule": "keep",
-      "keepWhy": "Nothing in this repo writes it, so this repo cannot declare a period for it. It is listed so the account's store count and the repo's store count can be reconciled rather than silently differing — an unbound namespace is exactly the kind of thing a tree walk can never see.",
-      "detector": "tooling/ci/assert-retention-coverage.mjs, via _requiredCoverage.",
-      "response": "n/a from this repo.",
-      "cadence": "365d",
-      "mechanism": {
-        "substrate": "cloudflare-kv",
-        "anchor": "tooling/ops/register.json",
-        "record": "the Cloudflare dashboard",
-        "failingValue": "n/a",
-        "readBy": "nothing — recorded so it is counted"
-      },
-      "accessProviders": [
-        "cloudflare"
-      ],
-      "ownerGated": true,
-      "ownerGap": "Belongs to a project this repo does not build. Owner decides whether it should still exist.",
-      "source": "unverified",
-      "unverifiedWhy": "Its existence is reported by the stage-14 plan's live account read, not by anything in this tree. Marked unverified because no in-tree artefact corroborates it."
     }
   ]
 }

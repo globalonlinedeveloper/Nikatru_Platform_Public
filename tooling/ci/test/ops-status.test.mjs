@@ -4,9 +4,12 @@
 // [pipeline O-2] "One command answers 'is anything broken now?'"
 //
 // 🔴 THE THING THIS COMMAND EXISTS TO REFUSE TO DO, and the reason every case
-// below exists: report a surface healthy because a socket opened. Three of the
-// six live GlitchTip monitors are `Ping`; a Ping on a Pages host is green while
-// the app behind it serves a blank shell. And `platform`, `config` and `api` all
+// below exists: report a surface healthy because a socket opened. Three live
+// GlitchTip monitors were `Ping` until 2026-08-11 (ids 3, 4, 5); a Ping on a
+// Pages host is green while the app behind it serves a blank shell. The Ping
+// cases below stay, and are fixtures rather than a description of the live
+// instance: the shape has to keep being refused whether or not one exists
+// today. And `platform`, `config` and `api` all
 // answer `{"ok":true}` today while `events` and `consent_artifacts` hold ZERO
 // rows — so a status-only assertion certifies a broken pipe.
 //
@@ -368,7 +371,8 @@ describe('status — through the CLI: exit codes, the printed count, and the liv
     return root;
   }
 
-  /** One healthy surface plus FIVE unprobeable ones — today's live gap count. */
+  /** One healthy surface plus FIVE unprobeable ones. Five was the live gap count
+   *  when this was written; it is a fixture, not a reading of the register. */
   function gappyTree() {
     const root = join(TMP, `q${seq++}`);
     mkdirSync(join(root, 'tooling'), { recursive: true });
@@ -439,9 +443,14 @@ describe('status — through the CLI: exit codes, the printed count, and the liv
   // ── the gap PRINT, asserted on the COUNT ─────────────────────────────────
   test('five unprobeable hostnames print as "5 of 6", and do NOT fail the build', () => {
     const r = run(['--root', gappyTree(), '--probes-file', probes({ 'api.example.test': { status: 200, body: '{"ok":true}' } })]);
-    assert.equal(r.status, EXIT_OK, `an owner-gated gap must never block: ${r.stdout}\n${r.stderr}`);
+    assert.equal(r.status, EXIT_OK, `a printed gap must never block: ${r.stdout}\n${r.stderr}`);
     assert.match(r.stdout, /5 of 6 declared hostname\(s\) CANNOT BE PROBED/);
-    assert.match(r.stdout, /OWNER_QUEUE S-8/);
+    // The print used to tag the whole class OWNER_QUEUE S-8. It is not owner
+    // work — ids 11 and 12 were CREATED and ids 3, 4 and 5 CONVERTED with the
+    // vault token — so what must survive is the reason it does not block, and
+    // an explicit refusal to re-file it as owner-only.
+    assert.match(r.stdout, /a disabled guard checks nothing/);
+    assert.match(r.stdout, /NOT a claim that the work is owner-only/);
   });
 
   test('ZERO gaps prints "0 of 1" — the count is there either way, so the two never read identically', () => {

@@ -9,9 +9,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 "HEALTHY" MEANS THE SURFACE PRODUCED ITS EXPECTED OUTPUT. NOT THAT A SOCKET
 // OPENED. This is the whole reason the file exists, and it is not pedantry — it
-// was measured. Three of the six live GlitchTip monitors are type `Ping`, and a
-// Ping on a Pages host is green while the app behind it serves a 500, a blank
-// shell, or has emitted nothing, ever. So every surface this command probes is
+// was measured. Three live GlitchTip monitors were type `Ping` until 2026-08-11
+// (ids 3, 4 and 5, converted to GET+expectedStatus that day), and a Ping on a
+// Pages host is green while the app behind it serves a 500, a blank shell, or
+// has emitted nothing, ever. So every surface this command probes is
 // asserted with a GET AND the status the register declares it should answer,
 // and every DATA-BEARING surface is additionally asserted to return a body that
 // carries something. `platform`, `config` and `api` all answer `{"ok":true}`
@@ -71,15 +72,24 @@
 //      comes to look like "something was checked and failed".
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// WHAT PRINTS AND NEVER BLOCKS. Five declared hostnames cannot be probed from
-// the register today: `platform.nikatru.com` and `config.nikatru.com` have no
-// monitor at all, and three more are `Ping` with no expectedStatus. Creating or
-// converting a monitor is an action on the owner's GlitchTip instance
-// (OWNER_QUEUE S-8), not a change to this repository — a guard that failed CI on
-// it would block every branch on work only the owner can do, and a guard people
-// disable checks nothing (CLAUDE.md's C-6 rule). So the gap PRINTS, WITH ITS
-// COUNT, on every single run, gap or no gap. "0 unprobeable" and "5 unprobeable"
-// must never read identically; that is the only thing keeping the gap visible.
+// WHAT PRINTS AND NEVER BLOCKS. A declared hostname whose monitor is absent, is
+// not a GET, or is a GET with no expectedStatus cannot be probed, and the count
+// PRINTS on every single run — gap or no gap. "0 unprobeable" and "5
+// unprobeable" must never read identically; that is the only thing keeping the
+// gap visible. The number is deliberately NOT written down here: it was `Five`
+// from 2026-08-03, and by 2026-08-05 it was three (monitors 11 and 12 were
+// created for platform and config) with nothing in this paragraph saying so.
+// The count is computed below and printed; a second copy of it in prose is a
+// claim that goes stale silently, which is this file's own subject.
+//
+// AS OF 2026-08-11 IT IS ZERO — monitors 3, 4 and 5 were converted from `Ping`
+// to GET+expectedStatus 200 on the live instance, so all seven declared
+// hostnames are probed. That gap was owner-gated in writing and was not:
+// converting a monitor takes the vault GLITCHTIP_TOKEN and one PUT, the same
+// disproof monitor-register.json already records for CREATING one. It stays
+// non-blocking because the honest reason survives — a guard that failed CI on a
+// change to somebody's monitoring instance would be disabled, and a disabled
+// guard checks nothing (CLAUDE.md's C-6 rule).
 //
 // ⚠️ NO THRESHOLD IS ASSERTED AND NONE IS INVENTED. No SLA, no latency budget,
 // no "N consecutive failures", no retries. How many failures should page, and
@@ -236,7 +246,7 @@ export function deriveSurfaces(root) {
         hostname,
         kind: 'not-a-get',
         why: `monitor ${m.id} is type "${m.type}" — a ping proves a socket opened, not that the surface produced its expected output.`,
-        action: `Convert monitor ${m.id} to GET with an expectedStatus (OWNER_QUEUE S-8).`,
+        action: `PUT /api/0/organizations/<org>/monitors/${m.id}/ with monitorType GET and an expectedStatus, then record it here. Agent-doable with the vault GLITCHTIP_TOKEN — done for ids 3, 4 and 5 on 2026-08-11 — so this is not an owner item.`,
       });
       continue;
     }
@@ -245,7 +255,7 @@ export function deriveSurfaces(root) {
         hostname,
         kind: 'no-expected-status',
         why: `monitor ${m.id} is a GET but declares no expectedStatus, so there is nothing to assert the answer against.`,
-        action: `Record the expected status for monitor ${m.id} (OWNER_QUEUE S-8).`,
+        action: `Read monitor ${m.id}'s expectedStatus off the live instance and record it here; if it has none, set one.`,
       });
       continue;
     }
@@ -461,11 +471,13 @@ async function main() {
   // ── the owner-gated gap, printed on EVERY run, WITH ITS COUNT ──────────────
   const declared = surfaces.length + gaps.length;
   if (gaps.length) {
-    console.log(`--  ${gaps.length} of ${declared} declared hostname(s) CANNOT BE PROBED from the register — OWNER-GATED (OWNER_QUEUE S-8), printed not hidden:`);
+    console.log(`--  ${gaps.length} of ${declared} declared hostname(s) CANNOT BE PROBED from the register — printed not hidden:`);
     for (const g of gaps) console.log(`      ${g.hostname} — ${g.why}${g.action ? ` ACTION: ${g.action}` : ''}`);
-    console.log('    Creating or converting a GlitchTip monitor is an action on the owner\'s instance, not a change');
-    console.log('    to this repository, so this prints rather than failing the build. It stops being printed when');
-    console.log('    it stops being true.');
+    console.log('    This prints rather than failing the build because a guard that reddens every branch on a change');
+    console.log('    to somebody else\'s monitoring instance gets disabled, and a disabled guard checks nothing. It is');
+    console.log('    NOT a claim that the work is owner-only: creating a monitor (ids 11, 12) and converting one');
+    console.log('    (ids 3, 4, 5) were both done with the vault token and the GlitchTip API. It stops being printed');
+    console.log('    when it stops being true.');
   } else {
     console.log(`--  0 of ${declared} declared hostname(s) are unprobeable — every one carries a GET and an expectedStatus.`);
   }

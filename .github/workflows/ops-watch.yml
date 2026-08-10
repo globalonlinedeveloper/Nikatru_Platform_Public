@@ -145,11 +145,11 @@ jobs:
   #
   # 🔴 THE THING IT REFUSES TO DO IS THE POINT. Every analytics surface in this
   # portfolio answers `{"ok":true}` while `events` and `consent_artifacts` hold
-  # ZERO rows, and three of the six GlitchTip monitors are `Ping` — a ping proves
-  # a socket opened. So "healthy" here means the surface produced its EXPECTED
-  # OUTPUT, and a data-bearing surface additionally has to return a non-vacuous
-  # body. A green tick over a broken pipe is the specific failure this stage
-  # exists to make impossible.
+  # ZERO rows, and until 2026-08-11 three of the GlitchTip monitors were `Ping` —
+  # a ping proves a socket opened. So "healthy" here means the surface produced
+  # its EXPECTED OUTPUT, and a data-bearing surface additionally has to return a
+  # non-vacuous body. A green tick over a broken pipe is the specific failure
+  # this stage exists to make impossible.
   #
   # The probed set is DERIVED from tooling/monitor-register.json — [11]E-9's
   # enumeration, which is strictly wider than anything restated here. No
