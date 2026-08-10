@@ -1,0 +1,311 @@
+{
+  "_readme": [
+    "DRAFTS FOR THE OWNER'S DONE-FLIP — [pipeline N-8 · N-9] company/pipeline/06-app-build.md",
+    "",
+    "🔴 THIS FILE IS NOT A DONE-RECORD AND NOTHING READS IT. `apps/subly/dod.json` is the record;",
+    "tooling/ci/assert-app-dod.mjs grades that file and knows nothing about this one (it reads a fixed",
+    "set of keys off a fixed path, so a sibling file is invisible to it). Every string below is an",
+    "UNSIGNED DRAFT written by an agent. A draft is a starting sentence with its evidence attached, so",
+    "the owner is answering a question rather than inventing one from a blank field. It is not a",
+    "verdict, and moving one of these strings into dod.json is an act only the owner performs.",
+    "",
+    "WHY DRAFTS EXIST AT ALL. decisions-log 2026-08-09: \"dod 13 strings: agent DRAFTS the 13 with",
+    "context; owner signs each before the atomic DONE flip (owner-voice rule intact).\" The judgments",
+    "are his; the RECORDING of them is mechanical, and so is the legwork of measuring what he is being",
+    "asked to judge. Everything under `measured` in each row below was read off the tree at the commit",
+    "named in `draftedAgainst`, with file:line, not recalled.",
+    "",
+    "WHAT THE 13 ARE, so the count is auditable rather than folklore:",
+    "  N-8 → 4   the four humanReview VERDICTS (one per required row of tooling/dod-register.json's",
+    "            `humanReviewRows`). These are judgments; nothing mechanical can produce them.",
+    "  N-9 → 9   `selection`: record · sha256 · decided · decidedBy · gates.g1a · g1b · g1c · g2 · g3.",
+    "            The gate answers are the owner's by requirement (\"the gates are his\"), and the record",
+    "            they link lives in company/, which no agent in the public worktree can write.",
+    "  ────────",
+    "  13        every field in dod.json that carries a JUDGMENT.",
+    "",
+    "The record has 12 further blanks that `claiming-done` also refuses (reviewer · date · artifact, on",
+    "each of the four humanReview rows). They are NOT part of the 13 because none of them is a",
+    "judgment — a name, a calendar date, and the thing that was looked at. They are drafted anyway,",
+    "under `mechanicalCompanions`, so the flip is a copy rather than a scavenger hunt. 13 + 12 = 25 =",
+    "every blank in apps/subly/dod.json today.",
+    "",
+    "🔴 THE FLIP IS ONE COMMIT OR NONE, AND THE 13 STRINGS ARE NOT SUFFICIENT ON THEIR OWN. Dropping",
+    "the exemption while the record still says `stamped` turns the lifecycle anchor red on the first",
+    "push (sites/_shared/_data/apps.json already advertises subly as \"status\": \"live\"), and flipping",
+    "the record to `claiming-done` while the exemption stands changes nothing at all, because an exempt",
+    "app is outside the guard's domain. `flipChecklist` below is the whole act in order, including one",
+    "thing that is neither a string nor a switch: a STALE MUTATION ROW that must be re-run first.",
+    "",
+    "DELETE THIS FILE IN THE FLIP COMMIT. Its entire purpose is consumed the moment the strings land in",
+    "dod.json; a drafts file that outlives its flip is unsigned prose sitting next to a graded record,",
+    "reading like evidence. `flipChecklist` step 9 is that deletion.",
+    "",
+    "NO BRICK TWIN, DELIBERATELY. The chassis rule is that a behavior in apps/subly is also a behavior in",
+    "tooling/bricks/app/__brick__ — but this is not a behavior, it is one app's homework for one owner act,",
+    "and it names subly's own screens at subly's own line numbers. A stamped app inheriting a file of",
+    "another app's measurements, pre-filled with verdicts nobody signed, is the exact failure the record",
+    "format exists to prevent. The BRICK's dod.json is the twin, and it already ships (with blanks)."
+  ],
+
+  "app": "subly",
+  "targetRecord": "apps/subly/dod.json",
+  "status": "DRAFT — UNSIGNED",
+  "signed": false,
+  "drafted": "2026-08-09 (UTC — the local IST clock rolled to 2026-08-10 mid-session; every date in this file is the UTC one, which is the calendar assert-app-dod.mjs compares on)",
+  "draftedBy": "agent (chip7-dod13-drafts). NOT the owner. NOT a signature. NOT a verdict.",
+  "draftedAgainst": "main @ 255265b — every file:line below was read at that commit",
+
+  "ownerStrings": [
+    {
+      "n": 1,
+      "requirement": "N-8",
+      "field": "humanReview[id=four-states].verdict",
+      "asks": "loading (skeleton), empty (illustration+CTA), error (message+Retry) and offline are FOUR visually distinct outcomes on every data screen",
+      "measured": [
+        "SIX data screens: home · calendar · insights · budget · detail · notifications.",
+        "home is the ONLY one that branches: lib/features/home/home_screen.dart:147 `.when(loading/error/data)`. Its loading arm is a bare CircularProgressIndicator (:151), not a skeleton; its error arm (:161) interpolates the raw exception into `couldNotLoad` and offers NO Retry control (the file's own comment at :154-160 records that leak as a known copy defect).",
+        "calendar:69 · insights:68 · budget:67 · detail:60 · notifications:22 each read `ref.watch(subscriptionsControllerProvider).valueOrNull ?? const []`. A FAILED fetch therefore renders as the empty state and is byte-indistinguishable from having no data.",
+        "budget_screen.dart:71 renders `Center(CircularProgressIndicator())` for the budget value with NO error branch at all.",
+        "No screen anywhere distinguishes OFFLINE from ERROR — there is no connectivity read in the app.",
+        "The two sheets are the exception and are proven: test/sheet_failure_surface_test.dart drives both failure paths, and both are feature rows in the record with watched mutations."
+      ],
+      "draft": "NOT HELD — 1 of 6 data screens distinguishes the states. home branches three ways (home_screen.dart:147) and even its error arm leaks the raw exception with no Retry; calendar, insights, budget, detail and notifications all read `.valueOrNull ?? const []`, so a failed fetch is rendered as the empty state and cannot be told apart from having no data; budget's own value is a bare spinner with no error branch; nothing anywhere distinguishes offline. The add and cancel sheets are the exception and are proven by sheet_failure_surface_test.dart. This is a known, priced gap, not a surprise: 39-CHASSIS §6 downgraded widget-per-state from CI precisely because seven screens x fifty apps of state widgets is unaffordable, and DoD item B stays `claim: \"pending\"` at the flip.",
+      "signingThisMeans": "Item B remains `\"claim\": \"pending\"` in dod.json after the flip. assert-app-dod.mjs permits that — for a `human` item, only `\"held\"` is constrained (it is refused while the app is `stamped`), so an app may claim done with a human item honestly pending. The alternative is to fix the five screens first and re-draft this row as a pass; that is a build decision, not a wording one."
+    },
+    {
+      "n": 2,
+      "requirement": "N-8",
+      "field": "humanReview[id=depth-beyond-viewing].verdict",
+      "asks": "at least one interactive feature beyond viewing content. UNVERIFIED: the applicable Apple clause is carried as 4.2.2 from 00-STAGE-3-14-RESEARCH.md, not read from developer.apple.com",
+      "measured": [
+        "add_subscription_sheet.dart:_save and cancel_sheet.dart:_confirm both drive the repository — each is a feature row in the record whose mutation was applied to the real tree and watched red.",
+        "settings_screen.dart:updateProfile writes a display name through the identity seam (feature row, watched red).",
+        "onboarding_screen.dart:onboardingSeenProvider persists a first-run choice that survives a restart (feature row, watched red).",
+        "Theme mode is written AND read back across a restart (chassis properties `theme-mode-persisted`, both limbs), and locale selection changes rendered text (l10n_screens_test.dart).",
+        "⚠️ scan_screen.dart is NOT evidence of depth. Its own header comment (:22-33) records that the app has no bank or mail integration anywhere in the dependency graph and that this widget is a timer over a fixed list — the labels were rewritten in 2026-07-27 for exactly that reason. Cite it as first-run setup, never as detection."
+      ],
+      "draft": "HELD — the app creates and mutates the user's own data rather than displaying a catalogue. Adding a subscription and confirming a cancel both drive the repository (add_subscription_sheet.dart:_save, cancel_sheet.dart:_confirm), the profile edit writes through the identity seam, and the onboarding, theme and locale choices all persist across a restart — five of these carry feature rows in this record whose mutations were applied to the real tree and watched red, so 'interactive' here is a measured property and not a screenshot. It is emphatically not a repackaged website: there is no web view and no remote content surface in the app. ⚠️ The clause number 4.2.2 is carried from 00-STAGE-3-14-RESEARCH.md and was never read from developer.apple.com; this verdict is a judgment about the product, not a claim about Apple's determination.",
+      "signingThisMeans": "You are asserting the product has depth beyond viewing. You are NOT asserting the Apple clause number is correct — that stays UNVERIFIED and the wording keeps the caveat, per the record's own `asks`."
+    },
+    {
+      "n": 3,
+      "requirement": "N-8",
+      "field": "humanReview[id=first-value-and-paywall].verdict",
+      "asks": "first value arrives fast and the paywall sits AFTER the value moment. A judgment, never a threshold a guard may assert — the '60 seconds' in master-requirements §2.4 is a target with no measurement method",
+      "measured": [
+        "THE ONLY GATED SURFACE is the Insights tab: lib/core/router.dart:229 `_GatedInsights` wraps it in the chassis `PaywallGate` (:235). Home, calendar, budget and settings are ungated. Nothing in the app forces a user onto /paywall.",
+        "🔴 THE GATE IS DORMANT TODAY. lib/state/money_providers.dart:168-174 — `paywallLockedProvider` returns false whenever `cfg.paywall.enabled` is false, and it is false in production. No user meets a wall right now.",
+        "FIRST VALUE SITS BEHIND A SIGN-IN. router.dart's redirect sends a signed-out user to /login for every location outside the auth flow (`/onboarding /login /sign-in /sign-up /scan`), so the dashboard is reached only after account creation. Onboarding runs FIRST and is exempt from the auth gate by design.",
+        "The flow is: /onboarding (3-step carousel) → /login → /home (the dashboard, which is the value moment) → Insights is behind it.",
+        "master-requirements §2.4's '60 seconds' has no measurement method; N-8 states explicitly that no guard may assert it."
+      ],
+      "draft": "HELD ON PLACEMENT, and the placement is currently unarmed. The one gated surface is the Insights tab (router.dart:229 `_GatedInsights` → PaywallGate); the dashboard, the renewal calendar and the budget are all reached without ever meeting a wall, so the value moment precedes the paywall rather than following it, and nothing forces /paywall on anybody. ⚠️ TWO FACTS THIS VERDICT RESTS ON, both of which change it if they change: (1) the gate is DORMANT — paywallLockedProvider returns false while paywall.enabled is false (money_providers.dart:168-174), so this is a judgment about a placement no user has met yet and it must be RE-SIGNED the day the enabled flip lands; (2) first value sits behind account creation — router.dart bounces a signed-out user to /login for everything outside the auth flow, so the 'fast' half is a sign-up cost, not a rendering cost. The 60-second figure is a target with no measurement method and is not being asserted here.",
+      "signingThisMeans": "This verdict expires by design at the paywall enabled-flip. That flip also arms the T-11 renewal-notice tripwire (legal K-13), and this row is dated, so once apps/subly/lib moves the staleness PRINT will name it on every run — printed, never failed ([pipeline C-6])."
+    },
+    {
+      "n": 4,
+      "requirement": "N-8",
+      "field": "humanReview[id=polish].verdict",
+      "asks": "brand icon and splash applied, motion tokens, skeletons not spinners, friendly empty/error states",
+      "measured": [
+        "ICON — APPLIED, and mechanically proven. assert-launcher-icons.mjs walks apps/ and does cover apps/subly: 33 native icons compared against stock resolved by RUNNING `flutter create` with the live SDK (never pinned hashes), 21 iOS icons checked for the ITMS-90717 alpha channel, 1 adaptive-icon manifest, 5 Linux packaging artefacts re-derived from subly's own 1024 master and compared as decoded pixels.",
+        "SPLASH — NOT APPLIED, still Flutter's stock. android/app/src/main/res/drawable/launch_background.xml (and drawable-v21/) is a plain white `@android:color/white` layer-list with the bitmap item still COMMENTED OUT; ios/Runner/Assets.xcassets/LaunchImage.imageset holds the three stock 68-byte PNGs.",
+        "MOTION TOKENS — none. Four hand-rolled durations, no shared token: onboarding_screen.dart:76 (320ms) and :330 (300ms), settings_screen.dart:1293/:1301 (180ms), scan_screen.dart:80 (560ms timer).",
+        "SKELETONS NOT SPINNERS — not met. home_screen.dart:151, budget_screen.dart:71 and features/monetization/paywall_screen.dart:172 are bare CircularProgressIndicators.",
+        "FRIENDLY EMPTY STATES — present ('No renewals this month.', 'Nothing flagged — nice.', 'Subscription not found'), but on five of the six data screens the same empty state also renders on FAILURE (see row 1), so 'friendly' is doing work that 'honest' should be doing."
+      ],
+      "draft": "NOT HELD — one of the four limbs. The brand icon is genuinely applied and is the one limb with a standing mechanical proof (assert-launcher-icons.mjs: 33 native icons against stock resolved by running the live SDK, plus 5 Linux artefacts re-derived from subly's own master). The other three are not: the SPLASH is still Flutter's stock white screen on both Android and iOS (launch_background.xml's bitmap is still commented out; LaunchImage.imageset holds the stock 68-byte PNGs), there are NO motion tokens — four hand-rolled durations across onboarding, settings and scan — and the loading state is a bare spinner in three places rather than a skeleton. The empty states are friendly, but on five of six data screens they double as the failure state, which is the item-B defect wearing a nice illustration.",
+      "signingThisMeans": "Item G's mechanical half (the app's OWN icons) stays `\"claim\": \"held\"` — that limb is guarded and true. This verdict is the JUDGMENT half that item G points at via `humanHalf`, and it records the three unfinished limbs as debt rather than letting the guarded icon limb imply them."
+    },
+
+    {
+      "n": 5,
+      "requirement": "N-9",
+      "field": "selection.record",
+      "asks": "the path, under company/, of the per-app selection entry recording the three gate answers and the owner's yes",
+      "measured": [
+        "🔴 NO SUCH FILE EXISTS YET, anywhere. N-9's own evidence records it: `ls company/` → no selection register, no app-selection/ directory. Re-checked today: company/ holds business/ decisions/ pipeline/ requirements/ runbooks/ sessions/ tooling/ vendors/ and no selection tree.",
+        "The path shape the guard's own fixtures use is `company/app-selection/<app>.md` (tooling/ci/test/app-dod.test.mjs:348).",
+        "CI can only see that this string is non-blank. Whether it RESOLVES is checked by tooling/scripts/check-selection-record.mjs, locally, which is the only place both trees are readable."
+      ],
+      "draft": "company/app-selection/subly.md",
+      "signingThisMeans": "The file must be CREATED in the same act, with the five gate answers (rows 9-13) and your yes in it. This is a company/-side write; no agent working in the public worktree can do it, because company/ is gitignored and is not in the worktree at all. Until it exists, check-selection-record.mjs fails with 'selection record does not resolve' the moment the exemption drops."
+    },
+    {
+      "n": 6,
+      "requirement": "N-9",
+      "field": "selection.sha256",
+      "asks": "the sha256 of that file, so a record edited after the decision cannot pass as the record that was decided",
+      "measured": [
+        "check-selection-record.mjs:226 computes `createHash('sha256').update(readFileSync(target)).digest('hex')` and compares with `!==` against this field — so it must be LOWERCASE hex of the file's raw bytes.",
+        "PowerShell's `Get-FileHash -Algorithm SHA256 <path>` returns UPPERCASE. Lowercase it or the comparison fails with 'hashes to X, the done-record claims Y', which reads like tampering.",
+        "assert-app-dod.mjs cannot verify this at all and PRINTS 'not verifiable from the public repo' on every run — by design, so an unperformed check never looks like a performed one."
+      ],
+      "draft": "<64 lowercase hex chars — compute AFTER the record file is final>",
+      "signingThisMeans": "Compute it last, from the finished file: `(Get-FileHash -Algorithm SHA256 company/app-selection/subly.md).Hash.ToLower()`. Any later edit to that file — even a typo fix — invalidates this string and must be followed by re-hashing and a new commit. That expiry is the point of the field."
+    },
+    {
+      "n": 7,
+      "requirement": "N-9",
+      "field": "selection.decided",
+      "asks": "the date the gate decision was taken, YYYY-MM-DD",
+      "measured": [
+        "assert-app-dod.mjs refuses a non-YYYY-MM-DD string and refuses a date more than one day in the future (one day of slack, because IST is UTC+5:30 and a bare calendar date carries no timezone — the recorded failing input 2099-01-01 still fails).",
+        "A past date is always accepted; this field does not expire."
+      ],
+      "draft": "2026-08-09",
+      "signingThisMeans": "Replace it with the day you actually record the gate answers if that is not today. It is the date of the DECISION, not of the commit."
+    },
+    {
+      "n": 8,
+      "requirement": "N-9",
+      "field": "selection.decidedBy",
+      "asks": "who took the decision",
+      "measured": [
+        "N-9: 'the gates are his' — the selection gates are the owner's, by requirement.",
+        "company/business/company-master.md:20 — 'Legal / owner: Rajasekar Selvam (Sole Proprietor)'.",
+        "The guard checks only that the string is non-blank; the fixture uses the bare word 'owner'."
+      ],
+      "draft": "Rajasekar Selvam (owner, sole proprietor)",
+      "signingThisMeans": "Nothing beyond attribution. Named rather than 'owner' because a portfolio-level clause (row 9) is answered here, and an answer with a name on it is one somebody can be asked about later."
+    },
+    {
+      "n": 9,
+      "requirement": "N-9",
+      "field": "selection.gates.g1a",
+      "asks": "Apple 4.3(a) — multiple Bundle IDs / duplicate submissions. A PORTFOLIO property, not a per-app judgment: a 4.3(a) finding does not reject one app, it can take the developer account every app ships through",
+      "measured": [
+        "apps/ holds exactly one app. Subly is the only app this identity has ever built, and no second stamped app has been submitted anywhere.",
+        "06-app-build.md N-9: '50 apps from one template is the literal pattern this clause describes' — and it is 'absent from all 14 stages until now'.",
+        "⚠️ UNVERIFIED — '4.3(a)' is carried from 00-STAGE-3-14-RESEARCH.md and could not be read from developer.apple.com in this environment (the same host and the same failure recorded at [3]S-16). Do not restate it as settled.",
+        "master-requirements §1.3: 'Never create multiple accounts/shell entities to evade volume limits' — the portfolio ships through ONE store identity on purpose, which is exactly why this clause is the expensive one."
+      ],
+      "draft": "PASS at n=1, and this answer is inherited by no other app. Subly is the only app this developer identity has built or submitted: one Bundle ID, one binary, no duplicate or near-duplicate submission exists to compare it with. The clause bites at app #2 and #3, when a shared chassis starts producing siblings, and the answer then must be re-argued per app on its own content and category — a template is a framework, and what must differ is the product. ⚠️ The clause number is carried from 00-STAGE-3-14-RESEARCH.md and was NOT read from developer.apple.com; re-read it from a machine that can open the host before acting on it. Recorded here because its failure mode is the loss of the single store identity the whole portfolio depends on, which is unwindable in no way at all.",
+      "signingThisMeans": "You are answering for the PORTFOLIO as it stands at one app, not certifying a policy reading. This string is the one that must be re-answered — not copied — into every later app's selection record."
+    },
+    {
+      "n": 10,
+      "requirement": "N-9",
+      "field": "selection.gates.g1b",
+      "asks": "Apple 4.3(b), the market/differentiation test — 'must have a one-sentence \"meaningfully different from the top 5 incumbents\" answer' (master-requirements §2.1)",
+      "measured": [
+        "🔴 THE DIFFERENTIATOR THAT IS TRUE OF THE BUILD: Subly asks for no bank login and no mailbox access. scan_screen.dart:22-33 records it in the source — 'there is no bank or mail integration anywhere in the dependency graph', and the step labels were rewritten on 2026-07-27 for exactly that reason ('Reading bank statements' etc. were false claims about access to financial data).",
+        "The incumbent category is built on account aggregation. Nothing in this app reads a financial account; the user's own entries are the data.",
+        "It ships on six platforms from one codebase (web · Windows · macOS · Linux · Android · iOS), which the incumbents' mobile-only aggregator apps do not.",
+        "⚠️ DO NOT WRITE A CLAIM ABOUT NAMED COMPETITORS INTO THIS FIELD unless you have checked it. The sentence below is about what Subly does, not about what anybody else fails to do — and this sentence is later SUBMITTED as store metadata (stage 10), where an unchecked comparative claim is a different kind of problem.",
+        "⚠️ '4.3(b)' is carried from 00-STAGE-3-14-RESEARCH.md, not read from developer.apple.com."
+      ],
+      "draft": "Subly tracks subscription renewals, spend and cancellations WITHOUT asking for a bank login, a card, or mailbox access — the category's incumbents are built on account aggregation, and this app reads no financial account at all: the user's own entries are the data, held on one cross-platform account that works the same on web, desktop and mobile. ⚠️ The clause number 4.3(b) is carried from 00-STAGE-3-14-RESEARCH.md and was not read from developer.apple.com.",
+      "signingThisMeans": "This sentence is later submitted as store metadata (stage 10 owns the wording AT LISTING TIME). Say it as a positive claim about Subly, which is checkable against the build, rather than as a claim about competitors, which is not."
+    },
+    {
+      "n": 11,
+      "requirement": "N-9",
+      "field": "selection.gates.g1c",
+      "asks": "Apple 4.2.6 — content-provider / template attestation",
+      "measured": [
+        "Subly is first-party: built, owned and published by the same sole proprietorship, for no client and to no commission. There is no third-party content provider anywhere in it.",
+        "🔴 06-app-build.md's own gate table marks G1c 'UNVERIFIED — its non-applicability to us is A READING OF THE GUIDELINE, NOT AN APPLE DETERMINATION (00-STAGE-3-14-RESEARCH.md §1.3 #12). Do not restate as settled.'",
+        "39-CHASSIS §4 cut 1: apps/subly predates the brick and was never stamped from it, so at the moment of this record it is not even a template output."
+      ],
+      "draft": "PASS on the facts, UNVERIFIED on the reading. Subly is a first-party app: NIKATRU built it, owns it and publishes it on its own account, for no client and under no commission, and there is no third-party content provider in it — so 4.2.6's subject, an app built by a provider on behalf of someone else, does not describe this. ⚠️ That non-applicability is a reading of the guideline and NOT an Apple determination (00-STAGE-3-14-RESEARCH.md §1.3 #12, and developer.apple.com could not be read from this environment). It is recorded as a reading and must be re-read before it is relied on for a template-stamped app, where the question is genuinely closer.",
+      "signingThisMeans": "You are signing the FACT (first-party, uncommissioned), which is checkable, and explicitly not signing the guideline reading, which is not. Keeping those two apart in one string is the whole point of the caveat."
+    },
+    {
+      "n": 12,
+      "requirement": "N-9",
+      "field": "selection.gates.g2",
+      "asks": "Zero-freshness — 'content stays valid ≥12 months (no prices, news, tax rates) or generate-once breaks' (master-requirements §2.1)",
+      "measured": [
+        "Subly ships NO pre-generated content pack. There is no packs directory, no bundled corpus, and no R2-served content in the app — its data is the user's own subscription entries, created at runtime.",
+        "The gate exists to protect the margin thesis (§1.1: generate once, COGS ≈ $0). An app with nothing generated has nothing that can go stale.",
+        "What DOES age is the surrounding copy, not content: currency formatting, the store listing and the legal pages. None of those is what G2 measures, and each has its own owner (stage 10, the legal tripwires).",
+        "⚠️ Subly is the rail-prover, not a catalogue app. When the first content-pack app (Lingo, Tales, Decks) reaches this gate, this answer will NOT transfer and must be argued from the pack's own shelf life."
+      ],
+      "draft": "PASS, and trivially so, for the reason that makes it uninformative for every later app: Subly ships no pre-generated content at all. There is no content pack, no bundled corpus and no R2-served data — the subscriptions are the user's own entries, created at runtime — so there is nothing that can be twelve months stale. The user-visible copy (currency formatting, store listing, legal pages) does age, but that is not what this gate measures and each of those has its own owner. This answer is worth nothing to the first content-pack app and must be argued there from that pack's shelf life.",
+      "signingThisMeans": "Recording a trivially-passed gate as trivially passed, rather than as a pass. A gate that reads 'PASS' with no reason attached is the shape that gets copied into an app where it is false."
+    },
+    {
+      "n": 13,
+      "requirement": "N-9",
+      "field": "selection.gates.g3",
+      "asks": "Do-no-harm — 'wrong content can't hurt anyone (no medical dosing, foraging, etc., without expert review)' (master-requirements §2.1)",
+      "measured": [
+        "No health, safety, legal, dosing, foraging or navigation content of any kind. The app displays what the user typed and arithmetic over it (lib/core/format/sub_math.dart).",
+        "The realistic harm surface is FINANCIAL-ADJACENT, not physical: a wrong renewal date, or a cancel flow that claims success when it failed. The second is guarded — cancel_sheet.dart:_confirm's failure path is a feature row proved by a watched mutation, and the test is named 'cancel sheet: a failed cancel never claims success'.",
+        "The app does not touch the user's money: no bank connection, no card, and the purchase rail is dormant (paywall.enabled false).",
+        "Deletion fails CLOSED and says so rather than half-erasing (services/*/src/routes/account.ts) — that posture was live-proven the hard way on 2026-08-09."
+      ],
+      "draft": "PASS. There is no health, safety, legal or navigational content anywhere in the app — it displays the user's own entries and arithmetic over them. The realistic harm surface is financial-adjacent rather than physical, and both halves of it are addressed rather than assumed: a cancel that fails never shows the congratulation step (cancel_sheet.dart:_confirm, proved by a watched mutation whose test is named 'a failed cancel never claims success'), and the app connects to no bank and holds no card, so a wrong number here misinforms a decision but cannot move money. The one thing it could get wrong in a way a user would act on is a renewal date, which is derived arithmetic over data the user entered and can see.",
+      "signingThisMeans": "You are signing that the failure modes are informational. If a future release ever moves money, cancels a real service on the user's behalf, or ingests financial accounts, this gate is re-opened — none of those is true today."
+    }
+  ],
+
+  "mechanicalCompanions": {
+    "_why": [
+      "assert-app-dod.mjs refuses `claiming-done` while ANY of verdict/reviewer/date/artifact is blank on ANY",
+      "of the four humanReview rows. These twelve are therefore required by the flip, but none of them is one",
+      "of the 13: a name, a date and the thing that was looked at are records, not judgments. Drafted here so",
+      "the flip is a copy."
+    ],
+    "reviewer": {
+      "appliesTo": "all four humanReview rows",
+      "draft": "Rajasekar Selvam (owner)",
+      "note": "N-8's four judgments are one sign-off event, not four ceremonies — the same reviewer on all four rows is the intended shape."
+    },
+    "date": {
+      "appliesTo": "all four humanReview rows",
+      "draft": "2026-08-09",
+      "note": "The day you actually review, YYYY-MM-DD, not in the future. ⚠️ apps/subly/lib last changed 2026-08-09 (UTC), so a date EARLIER than that makes assert-app-dod.mjs print a staleness line for the row on every run — printed, never failed ([pipeline C-6]: a guard on owner-gated work must not halt CI). Every later commit under apps/subly/lib re-arms that print, which is the design: a human verdict is a state that ages, not an event. ⚠️ AND WRITE THE UTC DAY, not the IST one: the guard compares this string against a UTC `today` and a UTC-normalised git commit day, and between 00:00 and 05:30 IST those are yesterday's date — the recorded scar that reddened four fixtures on 2026-08-03."
+    },
+    "artifact": {
+      "appliesTo": "all four humanReview rows",
+      "draft": "255265b — https://subly.nikatru.com (the build reviewed)",
+      "note": "N-8's replacement acceptance #2: 'a commit SHA or a screenshot path. A verdict with no artifact is a memory.' Replace 255265b with the sha you actually looked at, and if you reviewed screenshots rather than the live site, name the paths instead. The four rows may legitimately carry different artifacts — the polish row is the one most likely to want screenshots (splash and loading states), since those are the limbs it fails on."
+    }
+  },
+
+  "flipChecklist": [
+    "🔴 ONE COMMIT OR NONE. Steps 2 and 3 in isolation each produce a WRONG state: dropping the exemption alone turns the lifecycle anchor red on the first push (sites/_shared/_data/apps.json already says \"status\": \"live\", and a live app whose record says `stamped` FAILS — that is the anchor working); flipping the record alone changes nothing at all, because an exempt app is outside the guard's domain.",
+    "1 · RE-RUN THE ONE STALE MUTATION FIRST — this is not optional and no string fixes it. The `edit profile` feature row records its mutation on 2026-08-08 and lib/features/settings/settings_screen.dart was last committed 2026-08-09, so `mut.date < day` and the row fails the moment the exemption drops: 'the record now describes code that is no longer there'. Re-apply the mutation (delete/neuter `updateProfile`), watch `editing it in the REAL app updates what the user sees` go red through its own expect with `flutter analyze` clean so the red is an assertion and not a compile error, restore, and re-date the row. Measured 2026-08-09: this is the ONLY stale row of the fourteen.",
+    "2 · tooling/ci/assert-app-dod.mjs:115 — remove 'apps/subly' from EXEMPT.",
+    "3 · tooling/scripts/check-selection-record.mjs:87 — remove 'apps/subly' from EXEMPT. BOTH, not one: that script is the ONLY place the selection record's sha256 is ever resolved (company/ is unreadable from CI by construction), so leaving subly exempt there grades the string in dod.json while nothing ever opens the file it names. Measured on a patched copy 2026-08-09: dropping it there alone is harmless — with the record still `stamped` it exits 0 with the note 'no selection record linked yet — nothing to resolve'.",
+    "4 · apps/subly/dod.json — `\"status\": \"claiming-done\"`.",
+    "5 · apps/subly/dod.json — paste the 13 signed strings and the 12 mechanical companions. Item B stays `\"claim\": \"pending\"` if row 1 is signed as drafted.",
+    "6 · CREATE company/app-selection/subly.md with the five gate answers and the yes, then hash it and paste the hash into selection.sha256 (row 6). company/ is gitignored and is NOT in an agent's worktree — this step is the owner's or the main checkout's.",
+    "7 · RUN BOTH, and read them: `node tooling/ci/assert-app-dod.mjs` (must exit 0, and its passing line must now say 2 done-record(s) and 1 app claiming done — if it still says 1 record, step 2 did not take) and `node tooling/scripts/check-selection-record.mjs` (must resolve the sha256; from the main checkout, where company/ is readable).",
+    "8 · FIX THE STALE NOTE ON ITEM C while the file is open. It reads '⬜ ONE GAP: HomeScreen's ContentPane has no width group … so that one wrapper can still be deleted with every test green'. That gap CLOSED: apps/subly/test/width_home_test.dart exists and pins the pane at 375/1920/1500, and assert-responsive-coverage.mjs now holds 16 routed surfaces = 16 measured, symbol-keyed. A note claiming a hole that is filled is how a record starts lying in the direction of caution.",
+    "9 · DELETE THIS FILE (apps/subly/dod-flip-draft.json) in the same commit."
+  ],
+
+  "preflight": {
+    "_what": [
+      "RUN 2026-08-09 (UTC) against main @ 255265b, on PATCHED COPIES of the two guards, with apps/subly/dod.json",
+      "backed up, mutated and restored byte-identical in a finally block — the worktree was never flipped and",
+      "the record on disk is unchanged. It answers one question: are these drafts the right SHAPE, i.e. is the",
+      "record with them pasted in exactly what makes the flip green? Every line below is a measured exit code.",
+      "The scripts are re-runnable and are not shipped: a one-time owner act does not earn a standing guard.",
+      "",
+      "🔁 RE-RUN FROM SCRATCH, by a second agent, on the same commit, with the flipped record built BY READING",
+      "THIS FILE rather than retyped — so the thing measured is the strings actually below, not a copy of them.",
+      "It reproduced every result and CORRECTED TWO OVERSTATEMENTS:",
+      "  1. the old `withDraftsApplied` said EXIT 0 for 'the drafts applied' without saying that its own EXIT 0",
+      "     had required checklist step 1 to have been done first. It is split in two below, because the",
+      "     difference between those two lines IS the argument for step 1.",
+      "  2. `inertness` said the guards do not read this file. They DO — the corpus scanners open every tracked",
+      "     text file, this one included. Inert means it changes no VERDICT, which is the stronger claim and the",
+      "     one that was actually measured. See the line itself."
+    ],
+    "exemptionDropAlone": "EXIT 1, exactly TWO problems, both of them the machinery working: (1) the lifecycle anchor — 'sites/_shared/_data/apps.json advertises it as \"live\" to the public while its done-record still says status: \"stamped\"'; (2) the `edit profile` mutation row, recorded 2026-08-08 against a settings_screen.dart last changed 2026-08-09. Checklist step 1 exists because of the second one.",
+    "withDraftsAppliedANDStep1SKIPPED": "🔴 STILL EXIT 1 — measured, not predicted. Pasting all 13 strings and all 12 companions and flipping the status to `claiming-done` clears the lifecycle anchor and NOTHING ELSE: the `edit profile` row is still recorded 2026-08-08 against a file last changed 2026-08-09, and it fails alone. THE 13 STRINGS DO NOT MAKE THE FLIP GREEN BY THEMSELVES. This is the line that makes checklist step 1 a step rather than a suggestion, and it is why the drafts are not the deliverable the flip needs — they are one of two.",
+    "withDraftsAppliedANDStep1DONE": "EXIT 0. 'ok app DoD — 2 done-record(s): the brick template plus 1 stamped app(s) of the workspace's 1 app member(s) (0 exempt by name) … 20 feature row(s) resolved … 1 app(s) claiming done'. 20 = subly's 14 + the brick's 6. The one ⬜ print is the sha256 half CI cannot verify, which is the design.",
+    "negativeTest": "🔴 ALL 13 BLANKED ONE AT A TIME, ALL 13 TURN THE GUARD RED — 13/13, and REPRODUCED 13/13 by the independent re-run above. That is what makes the count a MEASUREMENT and not a claim: not one of the thirteen is decorative, and if a future edit makes one of them optional the number in this file is wrong. Two of the messages verbatim: 'claims done and `selection.gates.g2` is blank.' · 'claims done, and humanReview row \"polish\" has a blank `verdict`.'",
+    "selectionHalf": "check-selection-record.mjs with subly non-exempt, on a patched copy: with no link → EXIT 0 and a note; with the link and no company/ in the checkout (the CI shape) → EXIT 0 and the honest print, 1 record unresolved; with the link and company/ readable → EXIT 1, 'selection record \"company/app-selection/subly.md\" does not resolve'. That last red is what checklist step 6 clears, and it cannot be cleared from the public worktree.",
+    "inertness": "MEASURED, not argued — and it is the CHANGES-NO-VERDICT claim, not an unseen-file claim. With this file present vs absent, tooling/scripts/guard-sweep.mjs — all 125 files in tooling/ci, 108 executed with the arguments the workflows really pass — produces BYTE-IDENTICAL output apart from the sweep's own random temp-directory name: 99 ok · 7 RED · 9 LIBRARY · 10 MUTATES both ways, the same seven pre-existing reds. assert-app-dod.mjs exits 0 with an unchanged passing line; `node --test \"tooling/ci/test/*.test.mjs\"` — the ci.yml:118 step — is 4107/4107 with this file in the tree, 0 failed. assert-app-dod.mjs reads a fixed key set off a fixed path, so a sibling JSON is invisible TO IT; the app's pubspec ships only `assets/brand/`, so no build bundles it.",
+
+    "inertnessIsNotInvisibility": "🔴 THE CORPUS SCANNERS DO READ THIS FILE, and saying otherwise would invite a future edit that assumes nobody is looking. assert-mail-transport-claims.mjs walks every tracked text file: 934 with this file absent, 935 with it present, OK both ways. Anything written here is scanned prose in a public repo, held to the same claim-hygiene as any doc — which is a reason to keep the caveats in the drafts honest, not a reason to trim them.",
+
+    "🔴 methodTrapThatProducedAFALSERED": "RECORDED BECAUSE IT COST A REAL INVESTIGATION, and the next agent comparing present-vs-absent will hit it. Deleting this file from disk WITHOUT removing it from the git INDEX turns assert-mail-transport-claims.mjs RED with 'git tracks N text file(s) and this walk opened N-1 … Every unseen file takes its claims with it' — because `git ls-files` still lists a STAGED file the walk can no longer open. That reads exactly like a corpus defect caused by the file, and it is the opposite: the guard is working, and the ABSENT side of the comparison was malformed. An absent-side run must remove the file from the index as well as from disk (`git reset <path>` first). Verified all three states: present+staged OK · absent+still-staged COVERAGE LOST · absent+unstaged OK."
+  }
+}
