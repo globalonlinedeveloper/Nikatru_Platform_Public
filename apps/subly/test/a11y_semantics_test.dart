@@ -314,10 +314,14 @@ class _OnboardingSeen extends OnboardingSeenController {
   bool? build() => true;
 }
 
-class _SignedInAuth implements core.AuthRepository {
+class _SignedInAuth extends core.AuthRepository {
   @override
   core.AuthUser? get currentUser =>
-      const core.AuthUser(id: 'a11y', email: 'a11y@test.dev');
+      const core.AuthUser(
+    id: 'a11y',
+    email: 'a11y@test.dev',
+    emailVerified: true,
+  );
 
   @override
   Stream<core.AuthUser?> authStateChanges() =>
@@ -341,6 +345,11 @@ Future<void> pumpShell(WidgetTester tester) async {
     overrides: <Override>[
       ...defaultWidthOverrides(),
       onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+      // This user has accepted the current terms. Stated, not defaulted: a
+      // signed-in user with no acceptance on record is sent to /reaccept-terms
+      // by the router, which is correct and is what every pre-clickwrap install
+      // sees once. The gate itself is driven in legal_gates_test.dart.
+      legalReacceptanceNeededProvider.overrideWithValue(false),
       authRepositoryProvider.overrideWithValue(_SignedInAuth()),
       analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
     ],

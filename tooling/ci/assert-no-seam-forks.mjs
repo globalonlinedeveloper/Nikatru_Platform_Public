@@ -187,13 +187,23 @@ const suspects = implementersIn(suspectFiles);
 const homed = new Set(shared.map((s) => s.contract));
 
 /** Violations already declared in the register are printed, not failed — the
- *  same posture assert-capability-register takes, and for the same reason: both
- *  are blocked by 39-CHASSIS cut 1's freeze on apps/subly, which the agent may
- *  not reverse. */
+ *  same posture assert-capability-register takes. The original reason was
+ *  39-CHASSIS cut 1's freeze on apps/subly, which the agent could not reverse;
+ *  that freeze is gone ([ADR 036], and the auth cut-1 reversal landed
+ *  2026-08-10), so what a declaration means now is simply "known, dated, and
+ *  owned by a named increment". */
 const declared = new Set();
+/** The same declarations WITH their claimed symbol, for the staleness check
+ *  below. The set above is deliberately symbol-blind — a waiver waives a FILE —
+ *  but "is this waiver still describing anything?" cannot be asked without
+ *  knowing what it claimed to be. */
+const declaredEntries = [];
 for (const cap of register.capabilities ?? []) {
   for (const v of cap.violations ?? []) {
-    if (v.path) declared.add(posix.normalize(v.path.replace(/\\/g, '/')));
+    if (!v.path) continue;
+    const p = posix.normalize(v.path.replace(/\\/g, '/'));
+    declared.add(p);
+    declaredEntries.push({ path: p, symbol: v.symbol, kind: v.kind });
   }
 }
 
@@ -224,6 +234,68 @@ if (forks.length) {
   lines.push('  Use the shared implementation, or declare it in tooling/capability-register.json');
   lines.push('  with a detail and a fixOwner if it is a known, blocked exception.');
   fail(lines);
+}
+
+// ── the declarations must still describe something ───────────────────────────
+// 🔴 A WAIVER THAT MATCHES NOTHING IS AN EXEMPTION OVER NOTHING, AND IT IS
+// WORSE THAN NO WAIVER: it reads as "known and managed" in the register, it
+// costs nothing to leave behind, and it is a live re-entry permit — put a fork
+// back at that exact path tomorrow and this guard waives it on sight without a
+// single person deciding to.
+//
+// 🔬 THIS LIMB WAS WRITTEN BECAUSE THE CUT-1 REVERSAL PRODUCED THE FIRST ONE.
+// `apps/subly/lib/data/auth/supabase_auth_repository.dart` was deleted on
+// 2026-08-10 and its violation entry went on sitting in the register, matching
+// nothing, printing nothing, failing nothing. The loop above only ever speaks
+// when a suspect is FOUND, so a stale path is silent by construction — the
+// exact "a check that silently stopped checking" shape this repository keeps
+// paying for. The register's own doctrine already says an exception for
+// something that is not there is judgement over nothing; this is that rule
+// applied to itself.
+//
+// It fires on two things, and the second one is deliberately NARROW:
+//   (i) THE FILE IS GONE — stale whatever the declaration claimed. Universal.
+//  (ii) the file is there, the declaration claims a REGISTERED CONTRACT, and the
+//       file no longer implements it. Scoped to registered contracts because
+//       that is the only claim this guard can adjudicate: the register also
+//       carries `capability-implemented-in-app` waivers (e.g. `AnalyticsFunnel`)
+//       whose symbol is not a seam at all, so they are invisible to the scan
+//       above by construction and "not a suspect" says nothing about them.
+//       Measured, not assumed — the first version of this limb failed on exactly
+//       that entry, which is a guard reporting a defect in its own reach as a
+//       defect in the tree.
+//
+// ⚠️ WHAT IT CANNOT ADJUDICATE, STATED SO NOBODY READS ITS SILENCE AS A CLAIM:
+// the `blockedBy` and `detail` PROSE. This limb decides whether the PATH is
+// still real and whether the SYMBOL is still implemented there; it has no way to
+// tell whether the sentence explaining why the waiver must stay is still true.
+// Both halves were live on the same day: this limb caught the deleted
+// `supabase_auth_repository.dart` entry, while the entry beside it claimed the
+// `--proof` screenshot lane depended on `MockAuthRepository`'s fictional profile
+// — which was false in both halves (the lane resolves the chassis
+// InMemoryAuthRepository, whose identity has no displayName), and the file and
+// symbol were both perfectly real, so nothing here fired. A waiver's REASON has
+// to be re-measured by a person; passing this guard is not evidence about it.
+const suspectPaths = new Set(suspects.map((s) => s.file));
+const stale = [];
+for (const d of declaredEntries) {
+  if (!existsSync(join(ROOT, d.path))) {
+    stale.push(`    ${d.path} — the file does not exist.`);
+  } else if (contracts.has(d.symbol) && !suspectPaths.has(d.path)) {
+    stale.push(
+      `    ${d.path} — exists, but nothing in it declares or re-implements \`${d.symbol}\` any more.`,
+    );
+  }
+}
+if (stale.length) {
+  fail([
+    `✗ ${stale.length} declared violation(s) in tooling/capability-register.json match NOTHING in the tree:`,
+    ...stale,
+    '',
+    '  A waiver over nothing is not harmless: it reads as a known, managed fork and it silently',
+    '  re-authorises one at that path. Delete the entry (record the resolution in `resolved` if the',
+    '  history is worth keeping), or re-point it at what it actually describes.',
+  ]);
 }
 
 for (const h of homeless) {
