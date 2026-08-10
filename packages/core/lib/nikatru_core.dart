@@ -30,6 +30,7 @@ export 'src/config/version_gate.dart';
 export 'src/models/entitlement.dart';
 export 'src/notifications/catch_up_nudge.dart';
 export 'src/notifications/notification_service.dart';
+export 'src/promo/promo_gate.dart';
 export 'src/review/review_gate.dart';
 export 'src/review/review_prompter.dart';
 export 'src/storage/key_value_store.dart';
