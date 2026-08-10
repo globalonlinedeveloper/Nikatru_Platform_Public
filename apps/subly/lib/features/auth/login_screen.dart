@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
+    show AuthCapabilities;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ContentPane;
@@ -203,6 +205,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  /// The chassis `SignInScreen._forgot`, ported into this fork.
+  ///
+  /// 🔴 BOTH HALVES WERE MISSING AND BOTH FAILED SILENTLY — this button read
+  /// the field, sent whatever was in it, and then said a reset link was on its
+  /// way, unconditionally.
+  ///   · EMPTY FIELD: `sendPasswordReset('')` reaches Supabase as a malformed
+  ///     request, and the user is told the mail is coming. There is no address
+  ///     it could be coming to. The brick's twin throws
+  ///     `AuthFailure(l10n.emailRequired)` into its `_run` wrapper; this screen
+  ///     has no `_run`, so the guard returns early instead.
+  ///   · A THROW: the rate limit (the likeliest one — GoTrue caps reset mail
+  ///     per address) landed in an unawaited future, so the user got the same
+  ///     "on its way" and the real answer went to the console. Every other
+  ///     await on this screen is already wrapped; this one was not.
+  Future<void> _forgot() async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final String email = _email.text.trim();
+    if (email.isEmpty) {
+      _snack(l10n.emailRequired);
+      return;
+    }
+    try {
+      await ref.read(authRepositoryProvider).sendPasswordReset(email);
+      // 🔴 THE "(demo)" LEAK IS GONE. This said "Password reset sent (demo)." —
+      // a build-mode detail shown to a user, and a claim the app cannot make:
+      // it does not know whether that address has an account, and saying so
+      // either way is an account-enumeration oracle. `resetSent` is the
+      // existing key that says neither.
+      _snack(l10n.resetSent);
+    } catch (e) {
+      _snack(e);
+    }
+  }
+
   void _snack(Object e) {
     if (!mounted) return;
     // Read INSIDE the mounted check, not at the call site: this runs from a
@@ -261,6 +297,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final _Tones t = _tones(context);
+    // What identity can actually do HERE — declared, not assumed
+    // ([pipeline C-7]). Offering an OAuth button on a platform that cannot
+    // complete the redirect is promising something the app cannot deliver.
+    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);
     return Scaffold(
       backgroundColor: t.bg,
       body: SafeArea(
@@ -351,18 +391,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () async {
-                        await ref
-                            .read(authRepositoryProvider)
-                            .sendPasswordReset(_email.text.trim());
-                        // 🔴 THE "(demo)" LEAK IS GONE. This said "Password
-                        // reset sent (demo)." — a build-mode detail shown to a
-                        // user, and a claim the app cannot make: it does not
-                        // know whether that address has an account, and saying
-                        // so either way is an account-enumeration oracle.
-                        // `resetSent` is the existing key that says neither.
-                        _snack(l10n.resetSent);
-                      },
+                      onPressed: _forgot,
                       child: Text(
                         l10n.forgotPasswordShort,
                         style: AppText.body.copyWith(
@@ -402,41 +431,63 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ? null
                       : _submit,
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  children: <Widget>[
-                    Expanded(child: Divider(color: t.line)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        l10n.orDivider,
-                        style: TextStyle(color: t.muted),
-                      ),
-                    ),
-                    Expanded(child: Divider(color: t.line)),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                // ⚠️ THE TWO-SPACE GUTTER IS GONE, and it could not survive
-                // translation: the literal was '  Continue with Apple', and
-                // `SoftButton` CENTRES its label, so the spaces were only ever a
-                // ~4 px optical nudge left over from a design that had a glyph
-                // in front of the words. Leading whitespace inside an arb value
-                // is invisible in review, is the first thing a translator drops,
-                // and would therefore render differently per locale for no
-                // stated reason. The reused key is the chassis's plain
-                // `continueWithApple`.
+                // THE WHOLE OAUTH LIMB IS GATED, NOT JUST THE BUTTON — the
+                // chassis `SignInScreen` guard ([pipeline C-7]) that this fork
+                // never had. Subly rendered "Continue with Apple"
+                // unconditionally; it is now behind `caps.oauthRedirect`,
+                // GATED rather than deleted, and not enabled by this change.
                 //
-                // 👤 `SoftButton` ITSELF IS STILL LIGHT-ONLY — it hardcodes
-                // `AppColors.surface` + `AppColors.line` in
-                // `features/shared/widgets.dart`, which this increment does not
-                // own. So this control stays a white pill in dark mode, and
-                // `AppColors.ink` is the RIGHT foreground for it: passing
-                // `t.ink` would put near-white text on that white pill.
-                SoftButton(
-                  label: l10n.continueWithApple,
-                  onPressed: _loading ? null : _apple,
-                ),
+                // ⚠️ THIS GATE HIDES THE BUTTON ON NO TARGET THIS PORTFOLIO
+                // SHIPS TO, and saying so here is the point — the earlier
+                // version of this comment claimed the button "returns on its
+                // own the day the capability says yes", which reads as: it is
+                // hidden now. It is not. `AuthCapabilities.forPlatform` answers
+                // `oauthRedirect: true` for web, android, iOS, macOS, windows
+                // and linux; only fuchsia says false, and fuchsia is not a
+                // target. So what renders today is UNCHANGED.
+                //
+                // A live probe on 2026-08-10 answered
+                // `GET /auth/v1/authorize?provider=apple` with 400 "Unsupported
+                // provider: provider is not enabled". That is a switch in the
+                // SUPABASE PROJECT — server-side — which this gate neither
+                // reads nor flips, and which the capability matrix does not
+                // describe at all. Structural parity with the chassis is what
+                // changed here, and nothing beyond it.
+                //
+                // ⚠️ THE DIVIDER IS INSIDE THE GATE BECAUSE IT IS THE OTHER
+                // HALF OF THE SENTENCE. "or" with nothing after it is a rule
+                // with a dangling caption; hiding the button alone would trade
+                // a dead control for a stray one.
+                if (caps.oauthRedirect) ...<Widget>[
+                  const SizedBox(height: 20),
+                  Row(
+                    children: <Widget>[
+                      Expanded(child: Divider(color: t.line)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          l10n.orDivider,
+                          style: TextStyle(color: t.muted),
+                        ),
+                      ),
+                      Expanded(child: Divider(color: t.line)),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // ⚠️ THE TWO-SPACE GUTTER IS GONE, and it could not survive
+                  // translation: the literal was '  Continue with Apple', and
+                  // `SoftButton` CENTRES its label, so the spaces were only
+                  // ever a ~4 px optical nudge left over from a design that had
+                  // a glyph in front of the words. Leading whitespace inside an
+                  // arb value is invisible in review, is the first thing a
+                  // translator drops, and would therefore render differently
+                  // per locale for no stated reason. The reused key is the
+                  // chassis's plain `continueWithApple`.
+                  SoftButton(
+                    label: l10n.continueWithApple,
+                    onPressed: _loading ? null : _apple,
+                  ),
+                ],
                 const SizedBox(height: 24),
                 Center(
                   // `button:` merged with the sentence below. The whole line is
