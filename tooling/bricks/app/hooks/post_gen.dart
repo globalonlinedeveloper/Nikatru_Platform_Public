@@ -145,9 +145,13 @@ void run(HookContext context) {
       )
       ..info('       node tooling/scripts/provision-backend.mjs $id')
       ..info(
-        '     (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Do NOT '
-        '`source` .claude/secrets.env — it is not a pure env file; extract '
-        'the two keys. [pipeline S-12])',
+        // The "not a pure env file" reason was retired 2026-08-10: the vault is
+        // pure KEY=VALUE now and sourcing exits 0. The ADVICE is unchanged, on
+        // the reason that outlived it — extracting two keys exposes two, and
+        // sourcing exposes forty to everything this command spawns.
+        '     (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Extract just '
+        'those two from .claude/secrets.env rather than sourcing it — least '
+        'exposure — and strip the surrounding quotes. [pipeline S-12])',
       )
       // [pipeline S-1r] NOT "add DNS". [ADR 006] locked a proxied wildcard
       // `*.nikatru.com`, so a stamped app needs ZERO new DNS — and the old step
