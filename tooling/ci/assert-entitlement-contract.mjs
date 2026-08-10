@@ -17,7 +17,7 @@
 // citing an assertion that cannot fail for this property. The two are
 // complementary and neither substitutes for the other.
 //
-// FOUR LIMBS, each with a constructible failing input:
+// FIVE LIMBS, each with a constructible failing input:
 //   1 REQUIRED COLUMNS on `entitlements`, computed from the CREATE plus every
 //     ALTER … ADD COLUMN across the whole migration set.
 //   2 REQUIRED TABLES + their columns + their UNIQUENESS constraints. A
@@ -31,6 +31,8 @@
 //     places drifts in one of them, and the drift is invisible until a refund
 //     lands. (This is not hypothetical: the two were written minutes apart and
 //     were already out of step by one member.)
+//   5 THE TWO WRITERS ORDER BY THE SAME CLOCK, WITH THE SAME CLAUSE — [5]M-2's
+//     ordering defence, which limbs 1–4 do not touch. See below.
 //
 // ⚠️ EVERYTHING IS PARSED, NOTHING IS GREPPED. Comments AND string literals are
 // blanked before the structural scan, because this repo has already shipped a
@@ -39,6 +41,71 @@
 // second view with comments blanked and strings kept — and it reads them out of
 // the INSERT statement's own VALUES tuples, never out of the file at large.
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB 5 · TWO WORKERS UPSERT THE SAME `entitlements` ROW, AND THEY MUST NOT
+// DISAGREE ABOUT WHAT "OLDER" MEANS.
+//
+// Limbs 1–4 make the row COMPLETE. They say nothing about which write WINS when
+// two arrive out of order, and that is a separate way to lose a stranger's
+// money: neither RevenueCat nor a MoR gives an ordering guarantee, so a delayed
+// retry of an OLDER event lands after a NEWER one and — under a plain
+// `DO UPDATE SET` — silently overwrites the truth. A refunded customer regains
+// access; a paying one loses it. Nothing errors, and every response is 200.
+//
+// The defence both writers implement is the same three lines, and it only works
+// if it is LITERALLY the same:
+//
+//     WHERE entitlements.occurred_at IS NULL
+//        OR excluded.occurred_at > entitlements.occurred_at
+//
+// `occurred_at` is the PROVIDER's clock (limb 1 requires the column for exactly
+// this reason). Two writers with two different comparisons is worse than one
+// writer with none: each is individually defensible and together they interleave
+// — services/platform/src/lib/mor/store.ts (the MoR rail, HMAC-gated) and
+// services/subly-api/src/routes/webhooks.ts (the LEGACY RevenueCat route, bearer
+// -gated) write the SAME table for the SAME (user_id, app_id, entitlement) key.
+//
+// THREE THINGS ARE CHECKED, and each has an input that makes it fail ALONE:
+//   (i)   every conditional UPSERT into `entitlements` anywhere under services/
+//         carries that tail VERBATIM (whitespace-normalised). A DO UPDATE SET
+//         with NO trailing WHERE is last-write-wins and fails loudest of all.
+//   (ii)  the instant that feeds it is CANONICALISED — services/platform's
+//         `normalizeInstant` and services/subly-api's `isoFromEpochMs` must each
+//         let an instant out only through `new Date(…).toISOString()`. The
+//         comparison is a STRING comparison in SQLite: ISO-8601 UTC sorts
+//         lexicographically, `1754697600000` does not, and `2026-08-09T00:00:00
+//         +05:30` sorts as if it were a different day. One writer storing
+//         epoch-ms would make EVERY comparison against the other's rows garbage
+//         while both files still contain the correct-looking clause.
+//   (iii) each canonicaliser is CALLED from a file other than the one declaring
+//         it. A canonicaliser nobody calls is a dead seam that reports healthy —
+//         this repo has shipped four of those.
+//
+// 🔴 WHY THE CLAUSE IS PINNED HERE RATHER THAN THE TWO FILES BEING COMPARED TO
+// EACH OTHER. "Extract both and assert equality" is the obvious shape and it is
+// STRICTLY WEAKER: it passes when both drift the same way — a `>` flipped to
+// `>=` in both files re-applies a duplicate delivery and the equality check says
+// nothing. And once each file is pinned to the canonical text, a pairwise check
+// between them CANNOT FAIL, which this repo deletes on sight (an assertion that
+// cannot fail inflates apparent coverage). So: one constant, both files measured
+// against it, and the parity is a consequence rather than a second assertion.
+//
+// 🔴 AND WHY COMMENTS ARE BLANKED FIRST, MEASURED NOT ASSUMED. webhooks.ts
+// contains the clause TWICE: once as SQL, once inside the `// ORDERING` header
+// comment that explains it. A text scan of that file finds the clause with the
+// SQL deleted. (Measured on the real tree while writing this limb: 2 raw hits, 1
+// after `stripSourceComments`.) The same trap as the `"r2_buckets"` grep above,
+// in a file whose prose is unusually thorough — which is what made it reachable.
+//
+// SCOPE, STATED RATHER THAN LEFT TO INFERENCE: the sweep is `services/`, minus
+// test directories (a test fixture seeding a row is not a writer of production
+// truth). `tooling/bricks/app/__brick__` is NOT swept here — [ADR 020]:18 says a
+// stamped app's Worker must never see a webhook, and assert-mor-adapters.mjs
+// limb 1 already FAILS on any undeclared entitlement writer in the brick. The
+// residual gap is honest and small: a brick writer DECLARED in that guard would
+// escape this one, and declaring one is a reviewed line in a diff.
+// ─────────────────────────────────────────────────────────────────────────────
+//
 // Usage:  node tooling/ci/assert-entitlement-contract.mjs [repoRoot]
 // Exit 0 = the contract holds, 1 = it does not.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +113,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -124,6 +192,58 @@ const REQUIRED_REASONS = [
   'trial_expired',
   'payment_failed_final',
   'cancelled_at_period_end',
+];
+
+// ── limb 5's constants ───────────────────────────────────────────────────────
+
+/**
+ * The ordering tail, VERBATIM after whitespace normalisation. Every part of it
+ * is load-bearing:
+ *   `entitlements.occurred_at IS NULL` — the FIRST write to a key has no clock
+ *     to beat, and a clock-less row can still be upgraded by a clocked event.
+ *   `excluded.occurred_at > entitlements.occurred_at` — strictly greater, so a
+ *     re-delivery of the SAME event (same clock) is a no-op rather than a
+ *     re-application. A clock-less event can never overwrite a clocked row,
+ *     because `NULL > x` is NULL and NULL is not true.
+ */
+const ORDERING_CLAUSE =
+  'WHERE entitlements.occurred_at IS NULL OR excluded.occurred_at > entitlements.occurred_at';
+
+/** The tree limb 5 sweeps. Absent = COVERAGE LOST, never a clean run. */
+const WRITER_SCAN = { dir: 'services', label: 'every deployed Worker — the sweep is not scoped to the rail that owns the table, because the rail that does NOT own it is the one that got missed' };
+
+/**
+ * The files that MUST each contain a conditional UPSERT into `entitlements`.
+ * Derived-set-plus-required-members, the same shape as REQUIRED_COVERAGE above:
+ * the sweep finds writers wherever they are, and this list is what stops the
+ * sweep from silently finding NONE and printing ok.
+ */
+const REQUIRED_UPSERT_WRITERS = [
+  {
+    file: 'services/platform/src/lib/mor/store.ts',
+    why: 'the MoR rail. Reached only after MoRWebhookVerifier.verify has checked an HMAC over the raw body',
+  },
+  {
+    file: 'services/subly-api/src/routes/webhooks.ts',
+    why: 'the LEGACY RevenueCat route — live, deployed, bearer-gated, and writing the SAME shared table. A guard scoped to services/platform prints clean standing right next to it',
+  },
+];
+
+/**
+ * The two instant canonicalisers. Named with the file that declares them so a
+ * rename is a diff rather than a silent COVERAGE LOST.
+ */
+const INSTANT_PATHS = [
+  {
+    file: 'services/platform/src/lib/mor/contract.ts',
+    fn: 'normalizeInstant',
+    why: "the MoR side. Providers send instants as strings in whatever shape they like; this is the one place that turns them into the UTC ISO-8601 the clause compares",
+  },
+  {
+    file: 'services/subly-api/src/lib/validate.ts',
+    fn: 'isoFromEpochMs',
+    why: "the RevenueCat side. `event_timestamp_ms` is epoch MILLISECONDS — stored raw it would sort as a number-shaped string against the other writer's ISO strings, and every comparison between the two would be nonsense",
+  },
 ];
 
 const problems = [];
@@ -459,6 +579,223 @@ if (!existsSync(tsPath)) {
   }
 }
 
+// ── LIMB 5 · the two writers agree on what "older" means ─────────────────────
+
+/** Every `.ts` under `dir` that is production source. */
+function tsSourcesUnder(dir, out = []) {
+  let entries;
+  try {
+    entries = listDir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    // node_modules/dist/.wrangler are build output, not source. `test`/`tests`
+    // are excluded because a fixture seeding a row is not a writer of
+    // production truth — services/subly-api/test/webhooks.test.ts alone holds
+    // three `INSERT INTO entitlements` that exist to SET UP a stale row.
+    if (['node_modules', 'dist', '.wrangler', 'test', 'tests'].includes(e.name)) continue;
+    const p = join(dir, e.name);
+    if (e.isDirectory()) tsSourcesUnder(p, out);
+    else if (e.name.endsWith('.ts') && !e.name.endsWith('.test.ts') && !e.name.endsWith('.d.ts')) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Every string/template literal in `src`, as {start, end, text}. Run over a
+ * COMMENT-BLANKED view, so a backtick or an apostrophe inside a comment cannot
+ * open a phantom literal. An unterminated single/double-quoted literal is closed
+ * at the newline for the same reason assert-mor-adapters does it: one stray
+ * apostrophe must not swallow the rest of the file.
+ */
+function stringSpans(src) {
+  const spans = [];
+  let i = 0;
+  while (i < src.length) {
+    const q = src[i];
+    if (q !== "'" && q !== '"' && q !== '`') {
+      i++;
+      continue;
+    }
+    const start = i;
+    i++;
+    while (i < src.length) {
+      if (src[i] === '\\') { i += 2; continue; }
+      if (src[i] === q) { i++; break; }
+      if (q !== '`' && src[i] === '\n') break;
+      i++;
+    }
+    spans.push({ start, end: i, text: src.slice(start + 1, Math.max(start + 1, i - 1)) });
+  }
+  return spans;
+}
+
+/** `src` with every string literal's interior blanked, offsets preserved. */
+function blankSpans(src) {
+  const out = src.split('');
+  for (const s of stringSpans(src)) {
+    for (let k = s.start + 1; k < s.end - 1 && k < out.length; k++) if (out[k] !== '\n') out[k] = ' ';
+  }
+  return out.join('');
+}
+
+const norm = (s) => s.replace(/\s+/g, ' ').trim();
+
+const scanRoot = join(ROOT, WRITER_SCAN.dir);
+/** rel path -> array of {conditional, tail} for each entitlements write found. */
+const entitlementWrites = new Map();
+let upsertsScanned = 0;
+
+if (!existsSync(scanRoot)) {
+  fail(
+    `COVERAGE LOST — ${WRITER_SCAN.dir}/ does not exist (${WRITER_SCAN.label}), so limb 5 compared no writers at all. ` +
+      'A parity check over zero writers is unanimous.',
+  );
+} else {
+  for (const abs of tsSourcesUnder(scanRoot)) {
+    const rel = abs.replace(ROOT, '').replace(/^[\\/]/, '').replaceAll('\\', '/');
+    const src = stripSourceComments(readFileSync(abs, 'utf8'), '.ts');
+    for (const span of stringSpans(src)) {
+      if (!/INSERT\s+INTO\s+entitlements\b/i.test(span.text)) continue;
+      const sql = span.text;
+      const doUpdate = /ON\s+CONFLICT[\s\S]*?DO\s+UPDATE\s+SET/i.exec(sql);
+      if (!doUpdate) {
+        // An INSERT with no ON CONFLICT is not an upsert and cannot silently
+        // lose to a stale retry — it raises. Recorded (so the required-writer
+        // check below can tell "no upsert here" from "file not scanned") and
+        // otherwise left alone.
+        if (!entitlementWrites.has(rel)) entitlementWrites.set(rel, []);
+        entitlementWrites.get(rel).push({ conditional: false, tail: null });
+        continue;
+      }
+      upsertsScanned += 1;
+      const after = doUpdate.index + doUpdate[0].length;
+      let whereAt = -1;
+      for (const w of sql.matchAll(/\bWHERE\b/gi)) if (w.index >= after) whereAt = w.index;
+      const tail = whereAt === -1 ? null : norm(sql.slice(whereAt));
+      if (!entitlementWrites.has(rel)) entitlementWrites.set(rel, []);
+      entitlementWrites.get(rel).push({ conditional: true, tail });
+      if (tail === null) {
+        fail(
+          `${rel} — the UPSERT into \`entitlements\` is UNCONDITIONAL: \`DO UPDATE SET\` with no trailing WHERE. ` +
+            'That is last-write-wins, and neither rail guarantees ordering — a delayed retry of an OLDER event ' +
+            `silently overwrites a newer truth, 200 all the way. Expected: ${ORDERING_CLAUSE}`,
+        );
+      } else if (tail !== ORDERING_CLAUSE) {
+        fail(
+          `${rel} — the UPSERT's ordering clause is not the shared one. Two writers of the SAME row with two ` +
+            'different comparisons interleave, and each one reads as defensible on its own.\n' +
+            `      found:    ${tail}\n` +
+            `      required: ${ORDERING_CLAUSE}`,
+        );
+      }
+    }
+  }
+
+  for (const { file, why } of REQUIRED_UPSERT_WRITERS) {
+    const found = entitlementWrites.get(file) ?? [];
+    if (!existsSync(join(ROOT, file))) {
+      fail(`COVERAGE LOST — ${file} does not exist (${why}), so its ordering clause was compared against nothing.`);
+    } else if (!found.some((w) => w.conditional)) {
+      fail(
+        `COVERAGE LOST — no conditional UPSERT into \`entitlements\` was parsed out of ${file} (${why}). ` +
+          'Either the writer lost its `ON CONFLICT … DO UPDATE SET`, or the scan stopped reaching it — ' +
+          'and the two are indistinguishable from a clean run.',
+      );
+    }
+  }
+}
+
+// (ii) the instant that feeds the clause is canonicalised, and (iii) something
+// calls the thing that canonicalises it.
+const instantSources = existsSync(scanRoot)
+  ? tsSourcesUnder(scanRoot).map((abs) => ({
+      rel: abs.replace(ROOT, '').replace(/^[\\/]/, '').replaceAll('\\', '/'),
+      src: stripSourceComments(readFileSync(abs, 'utf8'), '.ts'),
+    }))
+  : [];
+
+for (const { file, fn, why } of INSTANT_PATHS) {
+  const abs = join(ROOT, file);
+  if (!existsSync(abs)) {
+    fail(`COVERAGE LOST — ${file} does not exist, so \`${fn}\` (${why}) was checked against nothing.`);
+    continue;
+  }
+  const src = stripSourceComments(readFileSync(abs, 'utf8'), '.ts');
+  const decl = new RegExp(String.raw`export\s+function\s+${fn}\s*\(`).exec(src);
+  if (!decl) {
+    fail(
+      `COVERAGE LOST — no \`export function ${fn}\` in ${file}. ${why}. ` +
+        'A renamed canonicaliser is not a checked one, and the rename is invisible from here.',
+    );
+    continue;
+  }
+  // The declaration through its top-level closing brace. `}` at column 0 ends a
+  // top-level function; the brace-balance check below is what turns that from an
+  // assumption into a measurement — a region truncated early does not balance,
+  // and an unbalanced region would under-count the returns silently.
+  const endRel = src.slice(decl.index).search(/\n\}/);
+  if (endRel === -1) {
+    fail(`COVERAGE LOST — could not find the end of \`${fn}\` in ${file}; nothing below was measured.`);
+    continue;
+  }
+  const region = src.slice(decl.index, decl.index + endRel + 2);
+  const regionCode = blankSpans(region);
+  const opens = (regionCode.match(/\{/g) ?? []).length;
+  const closes = (regionCode.match(/\}/g) ?? []).length;
+  if (opens !== closes) {
+    fail(
+      `COVERAGE LOST — the parsed body of \`${fn}\` in ${file} does not brace-balance (${opens} open, ${closes} close). ` +
+        'The region is truncated, so every assertion over it is over a fragment.',
+    );
+    continue;
+  }
+
+  if (!/new\s+Date\s*\([^()]*\)\s*\.\s*toISOString\s*\(\s*\)/.test(region)) {
+    fail(
+      `${fn} in ${file} never produces \`new Date(…).toISOString()\`. ${why}. ` +
+        'The ordering clause is a STRING comparison in SQLite: ISO-8601 UTC sorts lexicographically, epoch-ms ' +
+        'does not, and an offset like +05:30 sorts as a different day. A non-canonical instant makes the clause ' +
+        'in both files correct-looking and the comparison between them meaningless.',
+    );
+  }
+  // Every return is either a constant refusal or a canonicalised instant. This
+  // is the limb that catches an ADDED bypass — `if (typeof v === 'string')
+  // return v;` — which leaves the canonical expression sitting untouched a few
+  // lines below, so the check above still passes.
+  for (const m of region.matchAll(/\breturn\b([^;]*);/g)) {
+    const expr = m[1].trim();
+    if (/\.\s*toISOString\s*\(\s*\)/.test(expr)) continue;
+    const residue = expr.replace(/\b(null|true|false|ok|iso)\b/g, '').replace(/[{}:,;\s]/g, '');
+    if (residue !== '') {
+      fail(
+        `${fn} in ${file} returns \`${norm(expr)}\` — an instant that did not go through \`.toISOString()\`. ` +
+          'The only two things this function may hand back are a constant "not an instant" answer and a ' +
+          'canonicalised one; anything else is a raw provider value reaching the ordering comparison.',
+      );
+    }
+  }
+
+  // 🔴 A DECLARATION IS NOT A CALL, and the other file's declaration is not
+  // either. assert-seams-wired.mjs shipped with its caller check matching the
+  // function's OWN declaration and passed with every real caller deleted; the
+  // same shape one file over is a FORK — someone copied the canonicaliser rather
+  // than importing it — which would satisfy a naive `NAME(` match while leaving
+  // the seam dead. So declarations are blanked before the call test, in both
+  // their `function NAME(` and `const NAME = (` spellings.
+  const declShapes = new RegExp(String.raw`\b(?:function\s+${fn}|(?:const|let|var)\s+${fn}\s*=)\s*\(`, 'g');
+  const callRe = new RegExp(String.raw`\b${fn}\s*\(`);
+  const callers = instantSources.filter((f) => f.rel !== file && callRe.test(f.src.replace(declShapes, ' ')));
+  if (callers.length === 0) {
+    fail(
+      `${fn} is declared in ${file} but CALLED from nowhere else under ${WRITER_SCAN.dir}/. ` +
+        'A canonicaliser nobody calls is a dead seam that reports healthy — the writer is canonicalising ' +
+        'somewhere else, or not at all, and this whole limb would keep printing ok.',
+    );
+  }
+}
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ entitlement contract — ${problems.length} problem(s):`);
@@ -467,11 +804,19 @@ if (problems.length) {
   console.error('  [pipeline 5]M-3 The entitlement record is complete BEFORE the first payment lands.');
   console.error('  company/requirements/schema-evolution.md makes migrations ADDITIVE-ONLY, so every');
   console.error('  column above is free today and permanent the instant a stranger pays.');
+  // [5]M-2, matching the citation the code itself carries at
+  // services/subly-api/src/routes/webhooks.ts:505 ("the conditional DO UPDATE is
+  // [5]M-2's ordering defence"). M-8 is the neighbouring rule about NOT revoking
+  // on cancel-at-period-end and is a different requirement.
+  console.error("  [5]M-2 Ordering is the provider's clock, and it is the SAME clause in both writers.");
   process.exit(1);
 }
 
 console.log(
   `ok  entitlement contract — ${files.length} migration file(s); entitlements carries ${ent.size} column(s) ` +
     `including all ${REQUIRED_ENTITLEMENT_COLUMNS.length} the money rail requires; ${REQUIRED_TABLES.length} rail table(s) ` +
-    `present with their uniqueness constraints; ${seeded.size} revocation reason(s) seeded and matching ${CONTRACT_TS}`,
+    `present with their uniqueness constraints; ${seeded.size} revocation reason(s) seeded and matching ${CONTRACT_TS}; ` +
+    `${upsertsScanned} conditional UPSERT(s) into entitlements across ${entitlementWrites.size} file(s) under ` +
+    `${WRITER_SCAN.dir}/ carry the one ordering clause, fed by ${INSTANT_PATHS.length} canonicaliser(s) that emit ` +
+    'nothing but new Date(…).toISOString()',
 );

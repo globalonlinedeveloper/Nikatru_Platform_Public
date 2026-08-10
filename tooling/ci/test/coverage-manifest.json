@@ -38,7 +38,7 @@
   "dod-sync.test.mjs": 20,
   "e2e-legs.test.mjs": 28,
   "e2e-proof-fresh.test.mjs": 30,
-  "entitlement-contract.test.mjs": 22,
+  "entitlement-contract.test.mjs": 43,
   "erasure-reach.test.mjs": 21,
   "flag-exposure.test.mjs": 18,
   "green-means-ran.test.mjs": 25,
