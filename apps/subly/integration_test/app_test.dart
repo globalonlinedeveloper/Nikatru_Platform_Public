@@ -235,11 +235,12 @@ void main() {
   /// no exception, no warning. The test then fails several lines later on
   /// whatever the tap was supposed to produce, naming the wrong thing.
   ///
-  /// 🔬 2026-07-27, THE FIRST TIME. The DPDP consent prompt (`ConsentGate`) came
-  /// up over onboarding as a `showDialog` ROUTE, `tap('Skip')` was swallowed,
-  /// and both tests reported `Found 0 widgets with text "Welcome back"` — a
-  /// login-screen error for a dialog problem. This function was written then,
-  /// and it asked `find.byType(Dialog)`.
+  /// 🔬 2026-07-27, THE FIRST TIME. The DPDP consent prompt (`ConsentGate` —
+  /// retired in the P2.6 merge, class deleted 2026-08-10) came up over
+  /// onboarding as a `showDialog` ROUTE, `tap('Skip')` was swallowed, and both
+  /// tests reported `Found 0 widgets with text "Welcome back"` — a login-screen
+  /// error for a dialog problem. This function was written then, and it asked
+  /// `find.byType(Dialog)`.
   ///
   /// 🔬 2026-08-08, THE SECOND TIME — IDENTICAL SYMPTOM, AND THIS GUARD PASSED
   /// THROUGH IT. The P2.6 chassis merge replaced that route dialog with the
@@ -326,8 +327,12 @@ void main() {
   ///
   /// The prompt opens over whatever screen is showing the first time a LIVE
   /// build launches with no decision on disk — which is precisely this suite,
-  /// and only this suite: the gate keys off `backendLiveProvider`, so no demo
-  /// build and no widget test ever takes this branch.
+  /// and only this suite: the gate keys off `analyticsEnabledProvider`, which
+  /// resolves to the compile-time `AppConfig.isBackendLive`, so no demo build
+  /// takes this branch. (A widget test can, by overriding that provider —
+  /// `test/consent_prompt_real_surface_test.dart` does exactly that. What no
+  /// widget test can reach is the REAL first launch of a REAL live build, which
+  /// is what this line is actually about.)
   ///
   /// Answering it is not a workaround. The prompt is a real first-run screen and
   /// this is the only automated proof it appears at all. **"No thanks" on
@@ -655,16 +660,16 @@ void main() {
 
     // First launch of the run: the consent gate MUST ask. If this ever goes
     // false the DPDP prompt has stopped appearing and the analytics rail is
-    // silently fail-closed again — the defect ConsentGate was built to fix, and
-    // one that no other test in the tree can see (see assert-seams-wired.mjs).
+    // silently fail-closed again — the defect the consent gate was built to fix,
+    // and one that no other test in the tree can see (see assert-seams-wired.mjs).
     expect(
       await answerConsentIfPrompted(tester),
       isTrue,
       reason:
           'The analytics-consent prompt never appeared on a fresh live launch. '
-          'ConsentGate is the on-switch for the whole analytics rail; without '
-          'the dialog the recorder stays fail-closed and discards every event, '
-          'and nothing else in the suite would notice.',
+          '`AnalyticsGate` in app.dart is the on-switch for the whole analytics '
+          'rail; without the prompt the recorder stays fail-closed and discards '
+          'every event, and nothing else in the suite would notice.',
     );
 
     // …and hand the harness the id that decision was recorded under. This is the

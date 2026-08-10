@@ -94,6 +94,19 @@ function realTree() {
   // about it, so it is seeded explicitly, beside the reduction library the
   // guard imports for the code half.
   put('apps/subly/lib/l10n/app_en.arb');
+  // Limb 8's inputs, seeded for the same reason and worth stating precisely:
+  // `buildPosture._why` cites these three by BASENAME and line
+  // (`providers.dart:540-545`), and `CITED_RE` matches repo-relative paths only,
+  // so the derived set above genuinely cannot reach them. Leaving them out made
+  // every case in this file fail with "only 1 of 4 line citation(s) were
+  // evaluated" — the guard reporting, correctly, that the harness had starved it.
+  for (const rel of [
+    'apps/subly/lib/state/providers.dart',
+    'apps/subly/lib/state/analytics_providers.dart',
+    'apps/subly/lib/app.dart',
+  ]) {
+    put(rel);
+  }
   return root;
 }
 
@@ -331,6 +344,69 @@ describe('limb 6 — the UI anchor, which limb 5 cannot see', () => {
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /STALE ANCHOR/);
+      },
+    );
+  });
+});
+
+describe('limb 8 — a `file.dart:NNN` citation still points at what it describes', () => {
+  test('🔴 INSERTING LINES ABOVE THE CITED LINE FAILS — the drift no human re-walks', () => {
+    // The measured case, and it is not hypothetical: three of the four
+    // citations in `buildPosture._why` were 500–1300 lines out on 2026-08-10,
+    // and the FOURTH drifted from :376 to :396 the same day, in the very edit
+    // that shipped the prose telling a human to re-walk them. Ten inserted
+    // lines reproduce it exactly.
+    withTree(
+      (root) => {
+        const p = join(root, 'apps/subly/lib/app.dart');
+        writeFileSync(p, `${'// pad\n'.repeat(10)}${readFileSync(p, 'utf8')}`);
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /DRIFTED CITATION/);
+        assert.match(r.stderr, /const _ConsentPrompt\(\)/);
+      },
+    );
+  });
+
+  test('🔴 A RENAMED CONSTRUCT IS REPORTED AS A RENAME, NOT AS DRIFT', () => {
+    // Different defect, different repair: moving the number would be wrong when
+    // the thing the sentence describes has been renamed out of existence. The
+    // guard has to say which one it is or the fix is a guess.
+    withTree(
+      (root) => {
+        const p = join(root, 'apps/subly/lib/state/analytics_providers.dart');
+        writeFileSync(p, readFileSync(p, 'utf8').replaceAll('core.NoOpAnalytics()', 'core.SilentAnalytics()'));
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /STALE LINE ANCHOR/);
+        assert.match(r.stderr, /That is a RENAME, not a line shift/);
+      },
+    );
+  });
+
+  test('🔴 DELETING THE CITATION ITSELF FAILS — an anchor with nothing to check passes forever', () => {
+    withTree(
+      (root) =>
+        editDoc(root, DS, (j) => {
+          j.buildPosture._why = j.buildPosture._why.map((l) => l.replace(/app\.dart:\d+/g, 'app.dart'));
+        }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /no longer cites app\.dart:<line> at all/);
+      },
+    );
+  });
+
+  test('the real tree evaluates all four, so the limb is not vacuous', () => {
+    // The floor exists because a scan over zero citations prints exactly like a
+    // scan over four correct ones.
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.doesNotMatch(r.stderr, /line citation\(s\) were evaluated/);
       },
     );
   });

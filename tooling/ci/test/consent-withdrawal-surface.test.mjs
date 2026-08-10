@@ -33,6 +33,9 @@ const BRICK_SETTINGS = `${BRICK}/lib/features/settings/settings_screen.dart`;
 const SUBLY_SETTINGS = `${SUBLY}/lib/features/settings/settings_screen.dart`;
 const SUBLY_RAIL = `${SUBLY}/lib/state/analytics_providers.dart`;
 const BRICK_RAIL = `${BRICK}/lib/state/providers.dart`;
+/** Where the first-run prompt lives in both roots — limb 4's subject. */
+const SUBLY_APP = `${SUBLY}/lib/app.dart`;
+const BRICK_APP = `${BRICK}/lib/app.dart`;
 
 /** A real-tree copy carrying exactly what the guard reads: the workspace list
  *  and both roots' lib/ trees. Nothing else is read, so nothing else is copied. */
@@ -93,8 +96,11 @@ describe('the real tree', () => {
 describe('the row itself — limb 1', () => {
   test('🔴 DELETING THE SUBLY SETTINGS ROW FAILS, AND assert-seams-wired WOULD NOT', () => {
     // The measured P2.6b risk: a wholesale apply of the stamped settings screen
-    // removes this call. consent_prompt.dart still supplies seams-wired's
-    // caller, so that guard stays at exit 0 on this exact tree.
+    // removes this call. `lib/app.dart`'s first-run `_ConsentPrompt` still
+    // supplies seams-wired's caller, so that guard stays at exit 0 on this exact
+    // tree. (Until 2026-08-10 the caller named here was consent_prompt.dart's
+    // dialog-shaped ConsentGate — deleted that day, and the argument is
+    // unchanged because app.dart's prompt inherited its exact role.)
     withTree(
       (root) => edit(root, SUBLY_SETTINGS, (s) => s.replaceAll('recordAnalyticsConsent(', '_noopConsent(')),
       (r) => {
@@ -218,16 +224,128 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
   });
 });
 
+describe('the first-run prompt is scrollable — limb 4', () => {
+  test('🔴 REMOVING THE SUBLY PROMPT\'S SCROLL VIEW FAILS', () => {
+    // The real defect this limb was written for, reproduced on a copy of the
+    // real tree: measured at 360×640 @2.0 the prompt overflowed by 644 px (en)
+    // and 1180 px (ta) and laid "Allow" out at y 1140→1220 on a 640-tall
+    // screen — a first-run modal nobody could answer.
+    withTree(
+      (root) => edit(root, SUBLY_APP, (s) => s.replace('child: SingleChildScrollView(', 'child: SizedBox(')),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /_ConsentPrompt .* renders consentPrivacy with NO scroll view/);
+        assert.match(r.stderr, /360×640 with text scale 2\.0/);
+      },
+    );
+  });
+
+  test('🔴 AND FROM THE BRICK FAILS TOO — app #2 must not be born with it', () => {
+    withTree(
+      (root) => edit(root, BRICK_APP, (s) => s.replace('child: SingleChildScrollView(', 'child: SizedBox(')),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /renders consentPrivacy with NO scroll view/);
+      },
+    );
+  });
+
+  test('🔴 A SCROLL VIEW IN A DIFFERENT CLASS IN THE SAME FILE DOES NOT SATISFY IT', () => {
+    // THE CASE THAT PROVES THE LIMB IS NOT A FILE-WIDE GREP. `lib/app.dart`
+    // holds several widgets; a matcher over the file would have been satisfied
+    // by any of their scroll views while the prompt itself had none — the
+    // "assertion that cannot fail" this repository keeps paying for. Here the
+    // prompt loses its scroll view and a NEIGHBOURING class gains one in the
+    // same file, and the guard must still fail.
+    withTree(
+      (root) =>
+        edit(root, SUBLY_APP, (s) =>
+          s
+            .replace('child: SingleChildScrollView(', 'child: SizedBox(')
+            .replace(
+              'class _NotificationTapGate extends ConsumerStatefulWidget {',
+              'class _Decoy extends StatelessWidget {\n' +
+                '  const _Decoy();\n' +
+                '  @override\n' +
+                '  Widget build(BuildContext context) => const SingleChildScrollView(child: SizedBox());\n' +
+                '}\n\n' +
+                'class _NotificationTapGate extends ConsumerStatefulWidget {',
+            ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /_ConsentPrompt .* renders consentPrivacy with NO scroll view/);
+      },
+    );
+  });
+
+  test('a tree where NO widget renders the sentence is COVERAGE LOST, not a pass', () => {
+    // The scan losing its subject and the app having no defect print
+    // identically unless this is asserted.
+    withTree(
+      (root) => {
+        edit(root, SUBLY_APP, (s) => s.replaceAll('l10n.consentPrivacy', 'l10n.consentBody'));
+        edit(root, BRICK_APP, (s) => s.replaceAll('l10n.consentPrivacy', 'l10n.consentBody'));
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /NOT ONE widget class renders consentPrivacy/);
+      },
+    );
+  });
+
+  test('the generated l10n accessors are NOT mistaken for the prompt', () => {
+    // `AppLocalizations` declares `String get consentPrivacy;` inside a class,
+    // so a naive class scan finds it, finds no scroll view, and fails every app
+    // on a generated file. `Widget build(` is what separates a surface from an
+    // accessor — this case is why that clause exists.
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.doesNotMatch(r.stderr, /AppLocalizations/);
+        assert.match(r.stdout, /first-run prompt: _ConsentPrompt scrollable/);
+      },
+    );
+  });
+});
+
 describe('what this guard does NOT assert, said out loud', () => {
   test('the first-run grant surface is reported, never required', () => {
-    // Deleting consent_prompt.dart is a real defect — there would be no way to
-    // GRANT — but it is assert-seams-wired.mjs's defect, and duplicating it here
+    // Deleting the GRANT path is a real defect — there would be no way to say
+    // yes — but it is assert-seams-wired.mjs's defect, and duplicating it here
     // would be the redundant assertion this repo deletes.
+    //
+    // ⚠️ THIS CASE USED TO `rmSync(apps/subly/lib/features/consent)`, WHICH HAS
+    // NOT EXISTED SINCE 2026-08-10. With `force: true` that is a silent no-op,
+    // so the case was asserting exit 0 on an UNMUTATED tree — an assertion that
+    // cannot fail, which this repo treats as worse than none because it inflates
+    // apparent coverage. It now removes the grant call that really is there.
     withTree(
-      (root) => rmSync(join(root, SUBLY, 'lib/features/consent'), { recursive: true, force: true }),
+      (root) => edit(root, SUBLY_APP, (s) => s.replace('recordAnalyticsConsent(ref, granted: granted);', '')),
       (r) => {
         assert.equal(r.status, 0, r.stderr);
         assert.match(r.stdout, /caller\(s\) of recordAnalyticsConsent\( live OUTSIDE/);
+      },
+    );
+  });
+
+  test('👤 the missing policy link PRINTS and does not fail', () => {
+    // Owner-gated work is reported, never reddened — the rule apple-signing.mjs
+    // follows for OWNER_QUEUE A-4. And the note is DERIVED, so it stops by
+    // itself the day the key is wired up: proven by wiring it up.
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /👤 OWNER apps\/subly — consentReadPolicy/);
+      },
+    );
+    withTree(
+      (root) => edit(root, SUBLY_APP, (s) => s.replace('l10n.consentPrivacy', 'l10n.consentReadPolicy + l10n.consentPrivacy')),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.doesNotMatch(r.stdout, /👤 OWNER apps\/subly — consentReadPolicy/);
       },
     );
   });

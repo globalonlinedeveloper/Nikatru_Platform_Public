@@ -96,7 +96,7 @@
       "mutation": {
         "symbol": "lib/app.dart:AnalyticsGate",
         "observedRed": "the app root asks for consent, and Allow opens the rail",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
@@ -107,7 +107,7 @@
       "mutation": {
         "symbol": "lib/app.dart:brightness: Brightness.dark",
         "observedRed": "light and dark are genuinely different schemes",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     }
   ],

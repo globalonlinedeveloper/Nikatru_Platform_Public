@@ -94,9 +94,9 @@
   "@consentBody": {
     "description": "What the analytics consent actually covers."
   },
-  "consentPrivacy": "No name, no email, no advertising ID and no IP address — just a random code for this installation.",
+  "consentPrivacy": "No name, no email, no advertising ID and no IP address. Just a random code for this installation. You can change this any time in Settings.",
   "@consentPrivacy": {
-    "description": "States exactly what is NOT collected. Must stay accurate to the privacy policy."
+    "description": "THE CONSENT SENTENCE OF RECORD (owner decision 2026-08-09, decisions-log.md). States exactly what is NOT collected AND names the withdrawal route. The last clause is a PROMISE THE CHASSIS HAS TO KEEP: every stamped app inherits the analytics row in features/settings/settings_screen.dart, and assert-consent-withdrawal-surface.mjs fails the build if a stamp deletes it. Must stay accurate to the privacy policy. Consumed by app.dart's `_ConsentPrompt`."
   },
   "navHome": "Home",
   "@navHome": {

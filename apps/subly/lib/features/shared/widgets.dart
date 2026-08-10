@@ -503,9 +503,15 @@ class GradientButton extends StatelessWidget {
 /// the theme, so the brightness fix HAS to live in `build`. Null now means
 /// "resolve it", and an explicit [color] is still honoured verbatim in both
 /// brightnesses, because a caller that passes one is choosing an accent
-/// (`consent_prompt.dart` passes `AppColors.accent` for "Allow") rather than
-/// asking for default prose. Every call site that omitted it renders the
-/// identical `AppColors.ink` in light.
+/// (`settings_screen.dart:671` passes `AppColors.danger` for the delete-account
+/// row) rather than asking for default prose. Every call site that omitted it
+/// renders the identical `AppColors.ink` in light.
+///
+/// (That example read `consent_prompt.dart passes AppColors.accent for "Allow"`
+/// until that widget was deleted on 2026-08-10. The behaviour is unchanged and
+/// still has a real caller — but a doc comment naming a file nobody can open is
+/// how a symbol survives its last real caller, which is the exact defect that
+/// deletion was cleaning up.)
 class SoftButton extends StatelessWidget {
   const SoftButton({
     super.key,

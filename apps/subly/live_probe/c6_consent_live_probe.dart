@@ -16,7 +16,10 @@
 // DioEventTransport, against the real production endpoint. The only thing it
 // does not exercise is the tap that calls `applyConsentDecision`, and that call
 // is asserted by `tooling/ci/assert-seams-wired.mjs` plus the widget-level
-// wiring in consent_prompt.dart.
+// wiring in `lib/app.dart`'s `_ConsentPrompt` — which
+// `test/consent_prompt_real_surface_test.dart` drives by its real controls.
+// (This line named `consent_prompt.dart` until that unmounted widget was deleted
+// on 2026-08-10; the tap it describes was never in that file's live path.)
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_api_client/nikatru_api_client.dart';

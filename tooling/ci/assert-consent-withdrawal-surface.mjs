@@ -11,8 +11,14 @@
 // for the seam it owns: "is the analytics on-switch dead code". It is the wrong
 // question for withdrawal, and the difference is not academic —
 //
-//   · apps/subly/lib/features/consent/consent_prompt.dart:70 is a caller.
-//   · apps/subly/lib/features/settings/settings_screen.dart:197 is another.
+//   · apps/subly/lib/app.dart's `_ConsentPrompt._answer` is a caller — the
+//     FIRST-RUN prompt, shown once and never again.
+//   · apps/subly/lib/features/settings/settings_screen.dart is another.
+//     (Until 2026-08-10 the first example here was the dialog-shaped
+//     `ConsentGate` in features/consent/consent_prompt.dart. That widget had
+//     stopped being mounted months earlier and was deleted; the argument is
+//     unchanged, because the app.dart prompt inherited its exact role — a
+//     one-shot first-run surface — and satisfies seams-wired on its own.)
 //
 // Delete the SECOND one and seams-wired still prints ok, because the FIRST one
 // satisfies it. Re-measured against main @ f90c546 while auditing the Subly
@@ -66,6 +72,47 @@
 //      A toggle that cannot render "Off" is a button whose effect the user
 //      cannot see, and the sworn Data safety record describes a control the
 //      user can find and operate.
+//   4. THE FIRST-RUN PROMPT IS SCROLLABLE — added 2026-08-10, and limb 4 is
+//      about GRANTING, not withdrawing, which is why the reason is written out
+//      rather than assumed:
+//
+//      the withdrawal row this guard protects is only reachable by a user who
+//      got past the first-run question, and that question is a hit-test-opaque
+//      modal. Measured on the real app root: `_ConsentPrompt`'s
+//      `Column(mainAxisSize: min)` had no scroll view, so at 360×640 with text
+//      scale 2.0 — a scale `app.dart` CLAMPS TO AND THEREFORE PERMITS — it
+//      overflowed by 644 px in English and 1180 px in Tamil, laying "Allow" out
+//      at y 1140→1220 on a 640-tall screen. Both answers below the fold, no
+//      scroll, nothing behind the scrim tappable: the app is bricked on first
+//      launch for a user on the largest text, and because the recorder is
+//      fail-closed the silence looks exactly like someone who declined.
+//
+//      🔴 AND NO OTHER GUARD CAN ASK THIS. assert-responsive-coverage.mjs
+//      states its domain in its own header as (1) what a `builder:` in
+//      `lib/core/router.dart` returns and (2) `show*Sheet` under
+//      `lib/features/**`. The consent scrim is neither: it is mounted by
+//      `MaterialApp.router`'s builder, ABOVE the Navigator — the same fact that
+//      forced it to be an inline scrim instead of a `showDialog`. So the one
+//      surface every user must interact with before anything else sat outside
+//      the guard whose doctrine is "an unmeasured pane is an unpoliced one".
+//      This limb is that pane's floor, and it covers the BRICK too, so app #2
+//      is not born with the defect.
+//
+//      DERIVED, NOT NAMED: the subject is "the widget class that renders
+//      `consentPrivacy`", not a hardcoded `_ConsentPrompt`. A stamped app is
+//      free to rename or restyle the card; it is not free to render the
+//      sentence of record in something a large-text user cannot scroll. Finding
+//      no such class at all is COVERAGE LOST, not a pass.
+//
+// ── WHAT IS PRINTED RATHER THAN FAILED ──────────────────────────────────────
+// 👤 The live prompt carries no link to the privacy policy — the retired dialog
+// did. `consentReadPolicy` is therefore a reviewed, translated key with no
+// consumer, held pending an owner/legal decision. Whether a consent surface
+// links its notice is not a builder's call, so this guard REPORTS it on every
+// run rather than failing the build on work only the owner can close — the same
+// rule apple-signing.mjs follows for OWNER_QUEUE A-4. Derived from the tree (the
+// key is declared by the generated accessors and referenced nowhere else), so it
+// stops printing by itself on the day someone wires it up or deletes it.
 //
 // PARSED, NEVER GREPPED — comments AND string literals are blanked before any
 // match. The repo rule ("assert on parsed structure, never by grepping prose")
@@ -101,6 +148,19 @@ const SETTINGS_DIR = 'lib/features/settings';
 const RECORD = 'recordAnalyticsConsent';
 /** The provider the row renders from. */
 const STATE = 'analyticsConsentProvider';
+/** The sentence of record — and therefore how limb 4 finds the prompt widget
+ *  without knowing its class name. */
+const PROMISE_KEY = 'consentPrivacy';
+/** The policy link the live prompt does NOT have. Printed, never failed. */
+const POLICY_LINK_KEY = 'consentReadPolicy';
+/** Generated localisation accessors: they declare every key as a getter, so a
+ *  class in here "references" the sentence without rendering anything. */
+const GENERATED_L10N = 'lib/l10n/';
+/** Any of these makes a card reachable when its content is taller than the
+ *  viewport. Deliberately a set: `ListView` is as good an answer as
+ *  `SingleChildScrollView`, and this limb is about the property, not the
+ *  widget. */
+const SCROLLERS = /\bSingleChildScrollView\s*\(|\bListView\s*[.(]|\bCustomScrollView\s*\(|\bScrollable\s*\(/;
 
 const problems = [];
 const notes = [];
@@ -173,6 +233,34 @@ function callArgs(body, name) {
  *  Same anchor assert-seams-wired.mjs uses, for the same recorded reason. */
 const DECLARES = new RegExp(`(?:Future<void>\\s+)?${RECORD}\\s*\\(\\s*\\n?\\s*WidgetRef`);
 
+/**
+ * `[{ name, body }]` for every `class X { … }` in `body`, by brace matching.
+ *
+ * A regex over the whole file cannot answer limb 4's question: "does the class
+ * that renders the sentence also have a scroll view" is a claim about ONE class,
+ * and `lib/app.dart` is 600 lines of other widgets that contain scroll views of
+ * their own. Matching the file would pass on a prompt with no scroll view at all.
+ */
+function classBodies(body) {
+  const out = [];
+  const re = /\bclass\s+([A-Za-z_$][\w$]*)/g;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    const open = body.indexOf('{', m.index);
+    if (open === -1) continue;
+    let depth = 1;
+    let i = open + 1;
+    while (i < body.length && depth > 0) {
+      const c = body[i];
+      if (c === '{') depth++;
+      else if (c === '}') depth--;
+      i++;
+    }
+    if (depth === 0) out.push({ name: m[1], body: body.slice(open + 1, i - 1) });
+  }
+  return out;
+}
+
 /** The named argument's text, whitespace-collapsed, or null. */
 function namedArg(args, label) {
   const at = args.indexOf(`${label}:`);
@@ -226,6 +314,7 @@ if (roots.length < 2) {
 let railBearing = 0;
 let settingsFilesRead = 0;
 let settingsCallsFound = 0;
+let promptClassesFound = 0;
 const elsewhereCallers = [];
 
 for (const root of roots) {
@@ -255,6 +344,72 @@ for (const root of roots) {
     if (f.rel.startsWith(`${SETTINGS_DIR}/`)) continue;
     if (DECLARES.test(f.body)) continue;
     if (callArgs(f.body, RECORD).length) elsewhereCallers.push(`${root}/${f.rel}`);
+  }
+
+  // ── limb 4 · the first-run prompt is scrollable ───────────────────────────
+  // The subject is DERIVED: whichever widget class renders the sentence of
+  // record IS the prompt. `Widget build(` is what separates a surface from the
+  // generated `AppLocalizations` classes, which declare the same key as a
+  // getter and render nothing — matching those would fail every app on a file
+  // it has no business reading.
+  const promptClasses = [];
+  for (const f of libFiles) {
+    if (f.rel.startsWith(`/${GENERATED_L10N}`) || f.rel.includes(GENERATED_L10N)) continue;
+    for (const c of classBodies(f.body)) {
+      if (!new RegExp(`\\b${PROMISE_KEY}\\b`).test(c.body)) continue;
+      if (!/\bWidget\s+build\s*\(/.test(c.body)) continue;
+      promptClasses.push({ file: `${root}/${f.rel}`, name: c.name, body: c.body });
+    }
+  }
+  if (!promptClasses.length) {
+    coverageLost([
+      `${root} has an analytics rail and NOT ONE widget class renders ${PROMISE_KEY}.`,
+      'Limb 4 is gated on finding the first-run prompt from the tree rather than from a hardcoded class name,',
+      'so "no prompt found" means the derivation stopped working — the app cannot both have a consent rail and',
+      'have nowhere that asks. Reported as a broken scan, never as a pass.',
+    ]);
+  }
+  promptClassesFound += promptClasses.length;
+  for (const p of promptClasses) {
+    if (SCROLLERS.test(p.body)) continue;
+    problems.push(
+      `🔴 ${root}: ${p.name} (${p.file}) renders ${PROMISE_KEY} with NO scroll view. Measured on this exact ` +
+        'widget before the scroll view landed: at 360×640 with text scale 2.0 — which app.dart CLAMPS TO, so it ' +
+        'is a permitted scale and not an extreme — the column overflowed by 644 px in English and 1180 px in ' +
+        'Tamil, and "Allow" was laid out at y 1140→1220 on a 640-tall screen. Both answers are then off-screen ' +
+        'behind a hit-test-opaque scrim with no way to scroll to them, so first run is unanswerable and the app ' +
+        'is unusable. Wrap the card in a SingleChildScrollView. assert-responsive-coverage.mjs cannot ask this: ' +
+        "the scrim is mounted by MaterialApp.router's builder, outside that guard's routed-screen domain.",
+    );
+  }
+
+  // 👤 OWNER GAP — PRINTED, NEVER FAILED. See the header: linking the policy
+  // from a consent surface is an owner/legal call, and a guard that reddens CI
+  // on work only the owner can do is a guard people switch off.
+  // Declared = the TRACKED arb source carries the key — never the generated
+  // getter. gen-l10n output is gitignored factory-wide (#214), so a probe that
+  // read it answered one thing on a workstation (generated files present) and
+  // another in a guard-only CI job (absent): the same fixture passed here and
+  // failed there on an identical commit. The gen-l10n-untracked lesson, third
+  // occurrence — the arb is the artifact both environments actually share.
+  const l10nAbs = join(ROOT, root, 'lib', 'l10n');
+  const linkDeclared =
+    existsSync(l10nAbs) &&
+    listDir(l10nAbs).some(
+      (n) =>
+        n.endsWith('.arb') &&
+        new RegExp(`"${POLICY_LINK_KEY}"\\s*:`).test(readFileSync(join(l10nAbs, n), 'utf8')),
+    );
+  const linkUsed = libFiles.some(
+    (f) => !f.rel.includes(GENERATED_L10N) && new RegExp(`\\b${POLICY_LINK_KEY}\\b`).test(f.body),
+  );
+  if (linkDeclared && !linkUsed) {
+    notes.push(
+      `👤 OWNER ${root} — ${POLICY_LINK_KEY} ("Read the privacy policy") is a translated, reviewed key that NO ` +
+        'surface renders: the retired dialog-shaped prompt linked the policy and the live inline scrim does not. ' +
+        'Whether a consent surface links its notice is an owner/legal decision, so this prints rather than fails. ' +
+        'Wire it up or delete the key and its Tamil twin; either answer stops this line appearing.',
+    );
   }
 
   const settingsAbs = join(ROOT, root, ...SETTINGS_DIR.split('/'));
@@ -331,7 +486,10 @@ for (const root of roots) {
 
   notes.push(
     `ok   ${root} — ${calls.length} withdrawal call site(s) in ${SETTINGS_DIR} across ${settingsFiles.length} file(s); ` +
-      `granted: ${grantedArgs.map((g) => (g.granted ?? '(none)')).join(' · ')}`,
+      `granted: ${grantedArgs.map((g) => (g.granted ?? '(none)')).join(' · ')}; ` +
+      `first-run prompt: ${promptClasses
+        .map((p) => `${p.name} ${SCROLLERS.test(p.body) ? 'scrollable' : 'NOT SCROLLABLE'}`)
+        .join(' · ')}`,
   );
 }
 
@@ -353,6 +511,14 @@ if (railBearing < 2) {
 }
 if (settingsFilesRead === 0) {
   coverageLost([`zero settings .dart files were read across ${railBearing} rail-bearing root(s).`]);
+}
+if (promptClassesFound < railBearing) {
+  coverageLost([
+    `limb 4 found ${promptClassesFound} first-run prompt class(es) across ${railBearing} rail-bearing root(s).`,
+    'Every rail-bearing root must contribute at least one, because an app that asks for consent has somewhere',
+    'that asks. Fewer means the derivation (a widget class that renders the sentence AND declares `Widget',
+    'build(`) stopped matching — a scan that reaches nothing prints exactly like a tree with no defect.',
+  ]);
 }
 if (settingsCallsFound === 0 && problems.length === 0) {
   coverageLost([

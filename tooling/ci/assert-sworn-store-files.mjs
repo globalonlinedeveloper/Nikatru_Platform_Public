@@ -260,6 +260,67 @@ const UI_ANCHORS = [
   },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// limb 8 · LINE CITATIONS — `file.dart:540-545` must still point at the line it
+// describes.
+//
+// 🔴 WHY THIS EXISTS, WITH THE MEASUREMENT. On 2026-08-10 all four `file:line`
+// citations in data-safety.json's `buildPosture._why` were re-walked and THREE
+// WERE WRONG: the two providers.dart pointers were ~500 and ~1300 lines out
+// (they predate the P2.6 re-stamp), and the fourth named a file that had been
+// deleted. Every CLAIM those lines made was still true, which is exactly why
+// nothing went red — and then the repair shipped as a prose instruction telling
+// a future human to "re-walk these four before any submission". That note lasted
+// under a day: the very next edit to app.dart's consent gate moved the fourth
+// citation from :376 to :396, and only a hand re-measurement caught it.
+//
+// A line number is a pointer into a file other people edit. It is correct until
+// somebody inserts above it and NOTHING recomputes it — the same class as the
+// `ci.yml:NNNN` drift CLAUDE.md records, where one +35-line insert broke 203
+// citations. This repository's rule is to prefer a build-failing guard over a
+// note, so the four pointers are checked mechanically:
+//
+//   · the NUMBER is read out of the sworn document, never carried here — the
+//     document's own claim is the thing under test;
+//   · the cited line RANGE must contain the anchor, so a shift of even one line
+//     past the range fails;
+//   · the anchor must exist SOMEWHERE in the file too, so a renamed symbol is
+//     reported as a broken anchor rather than as drift (a different repair).
+//
+// Adding a row here should feel like adding a UI_ANCHOR: it is a claim that a
+// specific sentence in a sworn record depends on a specific line of code.
+// ─────────────────────────────────────────────────────────────────────────────
+const LINE_ANCHORS = [
+  {
+    doc: 'android-play/data-safety.json',
+    cite: 'providers.dart',
+    file: 'apps/{app}/lib/state/providers.dart',
+    anchor: 'InMemoryAuthRepository()',
+    why: 'the auth-repo branch the Account row is answered from',
+  },
+  {
+    doc: 'android-play/data-safety.json',
+    cite: 'providers.dart',
+    file: 'apps/{app}/lib/state/providers.dart',
+    anchor: 'SeedApiClient()',
+    why: 'the in-memory API client that makes "never leaves the device" true',
+  },
+  {
+    doc: 'android-play/data-safety.json',
+    cite: 'analytics_providers.dart',
+    file: 'apps/{app}/lib/state/analytics_providers.dart',
+    anchor: 'core.NoOpAnalytics()',
+    why: 'the analytics off-switch the Analytics rows are answered from',
+  },
+  {
+    doc: 'android-play/data-safety.json',
+    cite: 'app.dart',
+    file: 'apps/{app}/lib/app.dart',
+    anchor: 'const _ConsentPrompt()',
+    why: 'the consent prompt that gates every analytics answer on this form',
+  },
+];
+
 // ── the register decides WHAT is sworn ──────────────────────────────────────
 const reg = readJson(REGISTER_REL);
 if (!reg.json) {
@@ -434,6 +495,7 @@ const PATH_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.
 let copiesChecked = 0;
 let pathsChecked = 0;
 let anchorsChecked = 0;
+let lineCitesChecked = 0;
 const specsExercised = new Set();
 
 for (const app of apps) {
@@ -649,6 +711,56 @@ for (const app of apps) {
         );
       }
     }
+
+    // ── limb 8 · line citations still point at what they describe ───────────
+    const docText = strings(j)
+      .map(([, v]) => v)
+      .join('\n');
+    for (const la of LINE_ANCHORS) {
+      if (la.doc !== key) continue;
+      const laFile = la.file.replace('{app}', appId);
+      if (!existsSync(abs(laFile))) {
+        fail(`🔴 STALE LINE ANCHOR — ${laFile} does not exist, so the ${la.cite} citation in ${rel} checks nothing.`);
+        continue;
+      }
+      const src = readFileSync(abs(laFile), 'utf8').split('\n');
+      if (!src.some((l) => l.includes(la.anchor))) {
+        fail(
+          `🔴 STALE LINE ANCHOR — ${laFile} no longer contains ${JSON.stringify(la.anchor)} anywhere. That is a ` +
+            `RENAME, not a line shift, so re-point the anchor rather than the number: ${la.why}.`,
+        );
+        continue;
+      }
+      // The number is read out of the sworn document — its own claim is what is
+      // under test. `basename:N` or `basename:N-M`, whichever the prose uses.
+      const base = laFile.split('/').pop();
+      const cites = [
+        ...docText.matchAll(new RegExp(`${base.replace(/[.]/g, '\\.')}:(\\d+)(?:-(\\d+))?`, 'g')),
+      ];
+      if (!cites.length) {
+        fail(
+          `🔴 STALE LINE ANCHOR — ${rel} no longer cites ${base}:<line> at all, so the anchor for ` +
+            `${JSON.stringify(la.anchor)} is aimed at a sentence that is gone and would pass forever.`,
+        );
+        continue;
+      }
+      lineCitesChecked++;
+      const hit = cites.some(([, from, to]) => {
+        const a = Number(from);
+        const b = Number(to ?? from);
+        return src.slice(a - 1, b).some((l) => l.includes(la.anchor));
+      });
+      if (!hit) {
+        const where = src.findIndex((l) => l.includes(la.anchor)) + 1;
+        fail(
+          `🔴 DRIFTED CITATION — ${rel} cites ${cites
+            .map((c) => `${base}:${c[1]}${c[2] ? `-${c[2]}` : ''}`)
+            .join(', ')}, and NONE of those lines contains ${JSON.stringify(la.anchor)}. It is at ${base}:${where} ` +
+            `today. ${la.why}. A line number is a pointer into a file other people edit: it is correct until ` +
+            'somebody inserts above it, and nothing recomputes it. Fix the number in the sworn document.',
+        );
+      }
+    }
   }
 }
 
@@ -674,6 +786,24 @@ if (pathsChecked === 0) {
     'the cited-path limb matched ZERO repository paths across every declaration read.',
     'These files cite 55 paths today. Zero means the matcher stopped matching, not that the declarations',
     'stopped citing code — and a path check that matches nothing passes forever.',
+  ]);
+}
+// ⚠️ GATED ON `problems.length === 0`, AND THE GATE IS NOT A SOFTENING. A
+// declaration that has been overwritten by the brick template carries no line
+// citations at all, so this count is legitimately zero — and that tree ALREADY
+// fails, loudly, on the line floor and on `unresolved`. Ungated, this
+// `coverageLost` exits first and replaces "your sworn file was clobbered" with
+// "the scan found nothing", which is the wrong diagnosis of a correctly detected
+// defect. It cost a real failure in the fixture suite before the gate was added.
+// With everything else green, zero here really does mean the scan stopped
+// reaching — the case this check exists for.
+if (problems.length === 0 && lineCitesChecked < LINE_ANCHORS.length) {
+  coverageLost([
+    `only ${lineCitesChecked} of ${LINE_ANCHORS.length} line citation(s) were evaluated.`,
+    'Each one is a sworn sentence resting on a specific line of code, and the number it checks is read out of',
+    'the declaration itself — so an unevaluated row is a citation nobody is re-walking. Three of these four',
+    'were measurably wrong on 2026-08-10 while every claim they made was still true, which is why prose',
+    '("re-walk these before submission") was not accepted as the repair.',
   ]);
 }
 if (anchorsChecked === 0) {

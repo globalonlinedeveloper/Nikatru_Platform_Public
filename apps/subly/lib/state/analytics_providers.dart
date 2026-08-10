@@ -34,16 +34,17 @@ const String kPrivacyPolicyVersion = '2026-08-01';
 /// when it does.
 const String kInstallIdKey = 'nikatru.install_id';
 
-/// [AppConfig.isBackendLive], as a provider.
-///
-/// [pipeline C-6] Exists so the open-path WIDGET test can pump [ConsentGate]
-/// as a live build. `isBackendLive` is a compile-time constant, and that is
-/// exactly what let the gate ship broken: no test could ever take the live
-/// branch, so `showDialog` throwing above the router's Navigator went unseen
-/// while every logic test stayed green. Production never overrides this.
-final Provider<bool> backendLiveProvider = Provider<bool>(
-  (_) => AppConfig.isBackendLive,
-);
+// REMOVED 2026-08-10 — `backendLiveProvider` was declared here and, once the
+// dialog-shaped `ConsentGate` was deleted, read by nothing. It was minted for
+// [pipeline C-6] with a single purpose its own doc stated: "so the open-path
+// WIDGET test can pump ConsentGate as a live build". The widget lost its last
+// mount in the P2.6 chassis merge, the test went with it, and the provider was
+// left declaring an override point onto nothing — a second, never-read way to
+// ask `AppConfig.isBackendLive`, which is exactly the shape the note at the foot
+// of this file records for `logEvent(Ref, …)`. The live prompt keys off
+// [analyticsEnabledProvider] and always did; that is the one the surface tests
+// override. If a caller ever needs the raw compile-time flag again, read
+// `AppConfig.isBackendLive` directly or re-mint this WITH the caller.
 
 /// Non-secret key-value store (install id, consent decision, event queue).
 final FutureProvider<core.KeyValueStore> keyValueStoreProvider =

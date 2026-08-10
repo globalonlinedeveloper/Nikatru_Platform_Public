@@ -28,7 +28,9 @@
 // repository on a pre-existing product defect — a guard that goes red on arrival
 // teaches people to delete guards.
 //
-// PR #111 fixed the root cause: ConsentGate's `barrierDismissible: false` dialog
+// PR #111 fixed the root cause: `ConsentGate`'s `barrierDismissible: false` dialog
+// (that widget was superseded by the inline `_ConsentPrompt` in app.dart and the
+// class itself deleted 2026-08-10 — the history below is why the clause exists)
 // installed a ModalBarrier over onboarding and silently swallowed the `tap('Skip')`
 // beneath it, so both tests died several lines later reporting
 // `Found 0 widgets with text "Welcome back"` — a login-screen message for a dialog
