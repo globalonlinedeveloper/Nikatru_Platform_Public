@@ -660,7 +660,21 @@ const REQUIRED_COVERAGE = [
       // mutation this exists to catch — it compiles, analyzes clean, and puts
       // the card back in front of a user whose record has not been read.
       { file: HOME, re: /if\s*\(stored\s*==\s*null\)\s*return const SizedBox\.shrink\(\);/, what: 'the HYDRATION BARRIER — a record that has not been read yet is not a record that says nobody objected, and Art 21(3) has no grace period in it. Without this the card renders for the whole duration of the disk read and no settled widget test can see it' },
-      { file: HOME, re: /ref\.watch\(paywallLockedProvider\)/, what: 'a user who has ALREADY PAID must not be promoted to — this limb survived deletion with every promo test in both suites green until the review mutated the real tree' },
+      // 🔴 ANCHORED ON THE WHOLE CLAUSE, NOT ON `ref.watch(paywallLockedProvider)`.
+      // MEASURED 2026-08-10: the bare read shipped as this anchor and was BLIND
+      // to the only mutation it names. `home_screen.dart` already watches that
+      // provider for the PaywallGate's own `locked:` — a different feature, the
+      // one the file existed for before this card arrived — so deleting the
+      // card's paid-user check from BOTH real home screens left this guard at
+      // exit 0. Proven by mutating the real tree, which is the only thing that
+      // could have shown it: a fixture written beside the anchor encodes the
+      // same misunderstanding as the anchor.
+      //
+      // The clause is the anchor because the clause is the claim. `paywall.enabled`
+      // is in it for a reason of its own: `paywallLockedProvider` is false for
+      // everyone in an app that sells nothing, and "false for everyone" must not
+      // read as "everybody has paid".
+      { file: HOME, re: /\(cfg\?\.paywall\.enabled\s*\?\?\s*false\)\s*&&\s*!ref\.watch\(paywallLockedProvider\)/, what: 'a user who has ALREADY PAID must not be promoted to — this limb survived deletion with every promo test in both suites green until the review mutated the real tree' },
       { file: PROVIDERS, re: /if\s*\(!_recordRead\)\s*return;/, what: 'no write may land on a record we failed to read — an impression counter is the least important thing on this key and must never be what destroys the most important one' },
     ],
     why: 'a promotional surface whose off state and whose dead state are pixel-identical can only be told apart by an assertion',

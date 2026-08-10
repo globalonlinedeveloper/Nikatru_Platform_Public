@@ -1633,6 +1633,44 @@ final FutureProvider<core.ContentPack?> contentPackProvider =
     });
 `;
 
+  // [research/44 §7 rung 3] — the PROMO_CARD seam, wired 2026-08-10. Three
+  // brick-scoped needs, and the seam exists because its correct behaviour and
+  // its dead behaviour are pixel-identical: `features.promo_card_enabled` is
+  // absent from every served config, an absent key reads false, so the shipped
+  // card draws the same collapsed `SizedBox.shrink()` a deleted card draws.
+  //
+  // Split into THREE constants rather than one blob for the same reason the
+  // pack rail above is: the cases at the end of this describe delete each half
+  // on its own, and a single case removing all three would still pass with two
+  // of the needs neutered.
+  const BRICK_PROMO_MOUNT = 'children: <Widget>[const UpgradePromoCard()],\n';
+  const BRICK_PROMO_DECIDE = `
+final core.PromoGateDecision decision = ref
+    .watch(promoGateProvider)
+    .decide(
+      stored,
+      now: DateTime.now(),
+      featureEnabled: cfg?.feature(kPromoCardFeature) ?? false,
+      hasContent: offerings.isNotEmpty,
+    );
+`;
+  const BRICK_PROMO_MARK =
+    'ref.read(promoCardStateProvider.notifier).markShown(decision.state);\n';
+  // 🔴 THE DECLARATION, AND IT IS LOAD-BEARING RATHER THAN SCENERY. The
+  // `.markShown(` need carries a `declares:` filter, so the file holding
+  // `Future<void> markShown(` is dropped from the candidate set. In the real
+  // template that declaration lives in providers.dart and the CALL lives in the
+  // home body — a fixture that omitted the declaration would leave the filter
+  // with nothing to exclude and would agree with a guard whose caller check the
+  // declaration could satisfy. That is the exact trap this file already records
+  // for `recordAnalyticsConsent`, one seam later.
+  const BRICK_PROMO_DECL = `
+Future<void> markShown(core.PromoGateState decided) async {
+  if (!_recordRead) return;
+  await kv.write(_promoCardKey, decided.encode());
+}
+`;
+
   const brickFiles = ({
     reminders = BRICK_SCHEDULES,
     toggle = BRICK_TOGGLE_CALLS,
@@ -1642,14 +1680,19 @@ final FutureProvider<core.ContentPack?> contentPackProvider =
     review = BRICK_REVIEW,
     packLoader = BRICK_PACK_LOADER,
     packLoad = BRICK_PACK_LOAD,
+    promoMount = BRICK_PROMO_MOUNT,
+    promoDecide = BRICK_PROMO_DECIDE,
+    promoMark = BRICK_PROMO_MARK,
+    promoDecl = BRICK_PROMO_DECL,
     settingsExtra = '',
   } = {}) => ({
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}${packLoader}${packLoad}`,
+      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}${packLoader}${packLoad}${promoDecl}`,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
       toggle + settingsExtra,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart': money,
-    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart': gate,
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart':
+      gate + promoMount + promoDecide + promoMark,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart':
       checkout,
   });
@@ -1748,13 +1791,28 @@ Future<void> main() async {
       review = BRICK_REVIEW,
       packLoader = BRICK_PACK_LOADER,
       packLoad = BRICK_PACK_LOAD,
+      promoMount = BRICK_PROMO_MOUNT,
+      promoDecide = BRICK_PROMO_DECIDE,
+      promoMark = BRICK_PROMO_MARK,
+      promoDecl = BRICK_PROMO_DECL,
       settingsExtra = '',
     } = {},
   ) =>
     fixture(name, {
       ...filler(fillerCount),
       ...PACK_FILES,
-      ...brickFiles({ reminders, toggle, review, packLoader, packLoad, settingsExtra }),
+      ...brickFiles({
+        reminders,
+        toggle,
+        review,
+        packLoader,
+        packLoad,
+        promoMount,
+        promoDecide,
+        promoMark,
+        promoDecl,
+        settingsExtra,
+      }),
       'apps/subly/lib/state/analytics_providers.dart':
         `${record}\n${decl}\nconst String kPrivacyPolicyVersion = '${dartVersion}';\n`,
       'apps/subly/lib/features/consent/consent_prompt.dart': ui,
@@ -2199,6 +2257,73 @@ Future<void> main() async {
     assert.match(out, /no data-policy-version/);
   });
 
+  // ── [research/44 §7 rung 3] THE PROMO_CARD SEAM, one limb at a time ────────
+  //
+  // 🔴 THE ONLY SEAM IN THIS FILE WHOSE DEAD STATE AND WHOSE CORRECT STATE ARE
+  // THE SAME PIXELS. `features.promo_card_enabled` is absent from every config
+  // the portfolio serves and an absent key reads false, so a correctly wired
+  // card draws exactly the collapsed `SizedBox.shrink()` that an unmounted, an
+  // unwired and a deleted card draw. Nothing about removing any one of these
+  // three lines looks wrong from outside, and four capabilities in this repo
+  // have already shipped in precisely that state with no test going red.
+  //
+  // So each half is deleted on its own below. A single case that removed all
+  // three would still pass with two of the three needs neutered — which is the
+  // shape that let `pack_verifier` certify a verifier nothing constructed.
+  test('promo_card — FAILS when the card is no longer MOUNTED in the home body', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-promo-unmounted', { promoMount: '// the mount was deleted\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the card MOUNTED in the stamped home body NOT FOUND/);
+  });
+
+  test('promo_card — FAILS when nothing consults the PromoGate', () => {
+    // The mount survives, so the card is still on the screen — it has simply
+    // stopped asking whether it may be. The frequency cap, the dismissal latch
+    // and the Art 21 objection all come off the path together, and the surface
+    // goes on rendering.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-promo-undecided', {
+        promoDecide: '// the decision was deleted\n',
+        promoMark: '// …and with it the state it returned\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a real PromoGate decision on the render path NOT FOUND/);
+  });
+
+  test('promo_card — FAILS when the impression is never PERSISTED', () => {
+    // A cap nobody counts against never caps: the card would reappear on every
+    // launch forever, which India's CCPA Dark Patterns Guidelines call Nagging.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-promo-unrecorded', { promoMark: '// the write was deleted\n' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the impression persisted, so the frequency cap can ever bind NOT FOUND/);
+  });
+
+  // 🔴 AND THE `declares:` FILTER MUST STILL BITE. The need drops the file that
+  // DECLARES `Future<void> markShown(` from the candidate set, so a tree whose
+  // only `.markShown(` text is the declaration's own body — a method that calls
+  // nothing, in the file that defines it — must NOT satisfy the need. Without
+  // this case the filter is a line of configuration nothing exercises, and the
+  // seam would certify a persistence rail with zero callers: the identical
+  // caller-vs-declaration trap this guard already shipped once for
+  // `recordAnalyticsConsent`.
+  test('promo_card — the markShown DECLARATION alone is not a call site', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-promo-declonly', {
+        promoMark: '// no caller anywhere outside the declaring file\n',
+        promoDecl:
+          '\nFuture<void> markShown(core.PromoGateState d) async {\n' +
+          '  await other.markShown(d);\n}\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the impression persisted, so the frequency cap can ever bind NOT FOUND/);
+  });
+
   // The self-check. A guard whose scan silently stops reaching the tree would
   // pass every seam by finding nothing to contradict — the exact failure mode
   // that let check-migrations.mjs report clean over an incomplete set.
@@ -2265,6 +2390,14 @@ class Ed25519PackVerifier implements PackVerifier {
     // one caller, and "at most one" is satisfied by ZERO, so a fixture with no
     // caller at all fails for a reason unrelated to whatever it is testing.
     'Future<void> maybeAsk() async { await prompter.requestReview(); }\n' +
+    // [research/44 §7 rung 3] the promo_card seam's DECLARATION half. It is in
+    // this file, not the home body, because that is where the real template
+    // declares it — and the `.markShown(` need carries a `declares:` filter, so
+    // a fixture that declared it beside the call would model a tree the guard
+    // is written to reject.
+    'Future<void> markShown(core.PromoGateState decided) async {\n' +
+    '  if (!_recordRead) return;\n' +
+    '  await kv.write(_promoCardKey, decided.encode());\n}\n' +
     packLoader +
     packLoad;
 
@@ -2306,8 +2439,16 @@ class Ed25519PackVerifier implements PackVerifier {
     // its answer, and the checkout the gate can be got past.
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart':
       'final x = await ref.watch(entitlementTransportProvider).fetch(\n  appId: AppConfig.appId,\n  accessToken: t,\n);\n',
+    // …and the PROMO_CARD seam's other two halves — the mount and the decision —
+    // which live in the home body in the real template, next to the paywall gate
+    // they sit above. Same "isolate the verifier" reason as everything else in
+    // this object: without them every case below fails on a seam these tests are
+    // not about.
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart':
-      'Widget build(BuildContext c) => PaywallGate(\n  locked: ref.watch(paywallLockedProvider),\n  child: const SizedBox.shrink(),\n);\n',
+      'Widget build(BuildContext c) => PaywallGate(\n  locked: ref.watch(paywallLockedProvider),\n  child: const SizedBox.shrink(),\n);\n' +
+      'children: <Widget>[const UpgradePromoCard()],\n' +
+      'final d = ref.watch(promoGateProvider).decide(stored, hasContent: o.isNotEmpty);\n' +
+      'ref.read(promoCardStateProvider.notifier).markShown(d.state);\n',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart':
       'final CheckoutStart s = await rail.startCheckout(offering);\n',
   };
@@ -2593,6 +2734,16 @@ group('property: money-funnel-emitted-as-a-set', () {
   testWidgets('set', (t) async {});
   testWidgets('params', (t) async {});
 });
+// [research/44 §7 rung 3] — the promo card, whose OFF state and whose DEAD
+// state are the same collapsed \`SizedBox.shrink()\`. Three blocks because the
+// stamped app has to prove three separate things about itself: mounted and
+// zero-height with the flag absent, a real card once it is served, and a
+// dismissal that survives a relaunch over the same store.
+group('property: promo-card-fails-closed', () {
+  testWidgets('off', (t) async {});
+  testWidgets('on', (t) async {});
+  testWidgets('latched across a relaunch', (t) async {});
+});
 // [pipeline 10]D-8 — and the URL the update wall opens. \`kProbeUpdateUrl\` is
 // parsed by the guard itself: the injected value must differ from every
 // channel's compile-time default, or the property below passes with the runtime
@@ -2857,6 +3008,37 @@ class CatchUpNudgeController extends Notifier<DateTime?> {
   }
 }
 final NotifierProvider<CatchUpNudgeController, DateTime?> catchUpNudgeProvider = X();
+
+// [research/44 §7 rung 3] The promo card's PURE governor and its persisted
+// record. Both are in the fixture by name because this guard reconciles its
+// classification map against the tree in BOTH directions — a classified
+// provider the scan cannot see is a stale claim and fails — and because the
+// domain floor moved with them.
+final Provider<core.PromoGate> promoGateProvider = X();
+
+// 🔴 THE TWO LINES BELOW ARE THE PROPERTY, NOT PLUMBING, and both were found by
+// mutating the real tree rather than by reading it. Without the first, a
+// dismissal or a GDPR Art 21 objection that arrived from storage while an
+// impression was in flight is written straight back out as
+// \`"suppressed":false\` — the objection erased from disk in one launch. Without
+// the second, a record we FAILED to read is overwritten by an impression
+// counter, which is the least important thing on that key destroying the most
+// important one.
+class PromoCardController extends AsyncNotifier<core.PromoGateState> {
+  Future<void> markShown(core.PromoGateState decided) async {
+    if (!_recordRead) return;
+    final core.PromoGateState current = state.valueOrNull ?? decided;
+    if (current.dismissed || current.suppressed) return;
+    await kv.write(_promoCardKey, decided.encode());
+  }
+
+  Future<void> dismiss() async {
+    if (!_recordRead) return;
+    await kv.write(_promoCardKey, state.requireValue.dismissedNow().encode());
+  }
+}
+final AsyncNotifierProvider<PromoCardController, core.PromoGateState>
+    promoCardStateProvider = X();
 
 class ThemeModeController extends Notifier<ThemeMode> {
   Future<void> _hydrate() async {
@@ -3131,12 +3313,54 @@ final Provider<bool> paywallLockedProvider = X();
 Widget build(BuildContext context) => Column(
   children: <Widget>[
     const CatchUpNudgeBanner(),
+    const UpgradePromoCard(),
     Expanded(child: PaywallGate(
       locked: ref.watch(paywallLockedProvider),
       child: const SizedBox.shrink(),
     )),
   ],
 );
+
+// [research/44 §7 rung 3] THE PROMO CARD, and every line below is an anchor
+// rather than scenery. Its off state and its dead state are pixel-identical, so
+// each limb was found by MUTATING THE REAL TREE and watching both suites stay
+// green: the paid-user check, the hydration barrier and the record-read latch
+// all survived deletion with all 18 surface rows and all 7 property rows
+// passing. The mount above and these six lines are what a stamped app has to
+// carry for this surface to be tellable-apart from a deleted one.
+class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
+  Widget build(BuildContext context) {
+    final core.PromoGateState? stored =
+        ref.watch(promoCardStateProvider).valueOrNull;
+    // 🔴 THE HYDRATION BARRIER, anchored on the NULL TEST and not on
+    // \`valueOrNull\`: \`?? const PromoGateState()\` also contains \`valueOrNull\`
+    // and is precisely the mutation that puts the card in front of a user whose
+    // Art 21 objection has not been read off disk yet.
+    if (stored == null) return const SizedBox.shrink();
+    if (stored.dismissed || stored.suppressed) return const SizedBox.shrink();
+    // A user who has already paid is not promoted to.
+    if ((cfg?.paywall.enabled ?? false) && !ref.watch(paywallLockedProvider)) {
+      return const SizedBox.shrink();
+    }
+    final core.PromoGateDecision decision = ref
+        .watch(promoGateProvider)
+        .decide(
+          stored,
+          now: (widget.clock ?? DateTime.now)(),
+          featureEnabled: cfg?.feature(kPromoCardFeature) ?? false,
+          hasContent: offerings.isNotEmpty,
+        );
+    if (!decision.show) return const SizedBox.shrink();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(promoCardStateProvider.notifier).markShown(decision.state);
+    });
+    return PromoCard(
+      // ROSCA parity: the cancel entry rides on the SAME surface as the offer.
+      onManageAction: () => context.go('/manage-plan'),
+      onBuyAction: () => context.go('/paywall'),
+    );
+  }
+}
 
 class CatchUpNudgeBanner extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
@@ -4915,7 +5139,10 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // `OfflineNotice`, which had ZERO consumers, and its
       // `networkUnreachableProvider` joined the domain as an admitted gap —
       // reachable is not the same claim as behaviourally proven.
-      assert.match(out, /tracked domain: 46 chassis behaviour\(s\)/);
+      // 48 since 2026-08-10: research/44 §7 rung 3 added `promoGateProvider` and
+      // `promoCardStateProvider`, both DRIVEN by `promo-card-fails-closed`
+      // rather than admitted — which is why the gap count below does NOT move.
+      assert.match(out, /tracked domain: 48 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -4962,7 +5189,11 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      assert.match(out, /COVERAGE LOST — the domain parse found 45/);
+      // 47 = the 48 the fixture carries, minus the one this case deletes. The
+      // number moves with MIN_DOMAIN by construction: left at 45 it would have
+      // passed over a floor two behaviours slack, which is the drift this pair
+      // of assertions exists to make impossible.
+      assert.match(out, /COVERAGE LOST — the domain parse found 47/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
@@ -5035,6 +5266,145 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       });
       assert.equal(code, 1);
       assert.match(out, /'content-pack-consumed' is NOT asserted/);
+    });
+  });
+
+  // ── [research/44 §7 rung 3] — the PROMO CARD, whose off state and whose dead
+  //    state are the same collapsed `SizedBox.shrink()`. ──────────────────────
+  //
+  // 🔴 EIGHT ANCHORS AND EIGHT CASES, and the count is not thoroughness for its
+  // own sake: deleting any ONE of them leaves the other seven printing `ok`
+  // while the surface stops being what the sworn description says it is. The
+  // last three were added after an adversarial review MUTATED THE REAL TREE and
+  // found three limbs nothing depended on — the paid-user check came out with
+  // all 18 surface rows and all 7 property rows still green, the hydration
+  // barrier did not exist at all, and a corrupt record was overwritten with
+  // `"suppressed":false` in one launch. Each is broken on its own below,
+  // because a case that broke several at once would pass with the rest neutered.
+  describe('promo-card-fails-closed', () => {
+    const home = (from, to) => ({ home: goodHome.replace(from, to) });
+    const providers = (from, to) => ({ providers: goodProviders.replace(from, to) });
+
+    test('FAILS when the card is declared but never MOUNTED', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        // The class survives; only the placement goes. A surface nothing mounts
+        // cannot be turned on by a config edit and renders the same nothing.
+        cwd: build('sp-promo-unmounted', home('    const UpgradePromoCard(),\n', '')),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /'promo-card-fails-closed' is asserted but its IMPLEMENTATION is gone/);
+      assert.match(out, /MOUNTED in the stamped home body/);
+    });
+
+    test('FAILS when the on-switch stops being the CONFIG key', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        // `true` compiles, analyzes clean, and turns the card on for every
+        // install in the portfolio at once with no config edit anywhere.
+        cwd: build(
+          'sp-promo-hardcoded',
+          home('featureEnabled: cfg?.feature(kPromoCardFeature) ?? false,', 'featureEnabled: true,'),
+        ),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /the on-switch must be the CONFIG key/);
+    });
+
+    test('FAILS when an empty offer list stops being a refusal', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-promo-nocontent', home('hasContent: offerings.isNotEmpty,', 'hasContent: true,')),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /an eligible user and nothing to promote must be a REFUSAL/);
+    });
+
+    test('FAILS when the cancel entry leaves the offer surface — ROSCA parity', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build(
+          'sp-promo-nomanage',
+          home("onManageAction: () => context.go('/manage-plan'),", ''),
+        ),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /ROSCA parity/);
+    });
+
+    // 🔴 THE MUTATION THE ANCHOR WAS WRITTEN AGAINST. `?? const PromoGateState()`
+    // also contains `valueOrNull`, so an anchor pointed at the read rather than
+    // at the NULL TEST would accept this — and it puts a promotional card in
+    // front of a user holding an Art 21 objection for the whole duration of the
+    // disk read, a window every `pumpAndSettle()` hides.
+    test('FAILS when the hydration barrier degrades to a default record', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build(
+          'sp-promo-nohydration',
+          home(
+            'if (stored == null) return const SizedBox.shrink();',
+            'stored ??= const core.PromoGateState();',
+          ),
+        ),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /the HYDRATION BARRIER/);
+    });
+
+    test('FAILS when a user who has already PAID can still be promoted to', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        // Deleting the whole guard clause, which is how it survived: every
+        // promo test in both suites stayed green, because the row carrying its
+        // name asserted the card SHOWED, for an unpaid user.
+        cwd: build(
+          'sp-promo-paid',
+          home(
+            'if ((cfg?.paywall.enabled ?? false) && !ref.watch(paywallLockedProvider)) {\n      return const SizedBox.shrink();\n    }',
+            '',
+          ),
+        ),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /a user who has ALREADY PAID must not be promoted to/);
+    });
+
+    test('FAILS when an arriving latch is overwritten by the impression', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        // Writing the decision through verbatim erases a GDPR Art 21 objection
+        // that landed from storage while the impression was in flight.
+        cwd: build(
+          'sp-promo-latch',
+          providers('    if (current.dismissed || current.suppressed) return;\n', ''),
+        ),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /a latch that arrived from storage while an impression was in flight must WIN/);
+    });
+
+    // ⚠️ `replaceAll`, AND THE HONEST READING OF WHAT THAT MEANS. Both the real
+    // controller and this fixture guard TWO writes with `if (!_recordRead)
+    // return;`, and this is a PRESENCE anchor: it fails when no write is
+    // guarded, not when one of the two loses its guard. That is the limit of
+    // what a text anchor can claim here, and it is written down rather than
+    // implied — an anchor whose stated reach exceeds its real one is the same
+    // inflation as an assertion that cannot fail.
+    test('FAILS when a write can land on a record we failed to READ', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-promo-unread', {
+          providers: goodProviders.replaceAll('    if (!_recordRead) return;\n', ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /no write may land on a record we failed to read/);
+    });
+
+    test('FAILS when the inherited assertion group is dropped', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-promo-nogroup', {
+          propTest: goodTest.replace(
+            "group('property: promo-card-fails-closed'",
+            "group('property: promo-card-ish'",
+          ),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /'promo-card-fails-closed' is NOT asserted/);
     });
   });
 

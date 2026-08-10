@@ -40,7 +40,7 @@
 // `addTearDown`. flutter_test verifies that no SemanticsHandle outlives the test
 // BEFORE tear-downs run, so a handle released in a tear-down reports as leaked
 // and buries the real failure under a second, unrelated one. Same reasoning
-// `chassis_properties_test.dart:1307` records. [semantically] is that
+// `chassis_properties_test.dart:1340` records. [semantically] is that
 // try/finally, written once.
 //
 // ⚠️ AND THE MANUAL SCREEN-READER PASS IS DELIBERATELY NOT HERE. Driving

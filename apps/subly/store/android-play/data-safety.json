@@ -218,7 +218,7 @@
       "  isBackendLive        := isSupabaseConfigured && isApiConfigured",
       "and the app branches on them at four places that decide everything this form asks about:",
       "  providers.dart:540-545        isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
-      "  providers.dart:1470           !isApiConfigured -> SeedApiClient (in-memory, never leaves the device)",
+      "  providers.dart:1682           !isApiConfigured -> SeedApiClient (in-memory, never leaves the device)",
       "  analytics_providers.dart:235  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
       "  app.dart:396                  the consent prompt shows only when analyticsEnabledProvider is true",
       "",
