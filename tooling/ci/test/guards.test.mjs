@@ -2682,6 +2682,10 @@ group('property: auth-redirect-follows-session', () {
   testWidgets('jj', (t) async {});
   testWidgets('kk', (t) async {});
 });
+group('property: legal-reacceptance-gated', () {
+  testWidgets('lr1', (t) async {});
+  testWidgets('lr2', (t) async {});
+});
 group('property: profile-edit-works', () {
   test('ll', () {});
   test('mm', () {});
@@ -2903,6 +2907,22 @@ final Provider<bool> analyticsEnabledProvider = X();
 final FutureProvider<core.ConsentController> consentControllerProvider = X();
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
+// The legal gate's anchors, and all three are load-bearing for the
+// legal-reacceptance-gated property: the controller declaration is what
+// persists an acceptance at all, and the refresh listener must name the DERIVED
+// provider the redirect reads -- listening to legalAcceptanceProvider
+// underneath it re-runs the gate against a value Riverpod has not recomputed
+// yet, which is a gate that never fires and never fails a test.
+class LegalAcceptanceController extends Notifier<String?> {}
+final NotifierProvider<LegalAcceptanceController, String?> legalAcceptanceProvider = X();
+final Provider<bool?> legalReacceptanceNeededProvider = X();
+final Provider<Listenable> routerRefreshLegalProbe = Provider<Listenable>((ref) {
+  ref.listen<bool?>(
+    legalReacceptanceNeededProvider,
+    (bool? _, bool? __) => bump(),
+  );
+  return X();
+});
 final Provider<core.ConsentTransport> consentTransportProvider = X();
 final Provider<core.EventTransport> eventTransportProvider = X();
 final FutureProvider<core.Analytics> analyticsProvider = X();
@@ -3271,7 +3291,18 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       if (!onboarded) {
         return state.matchedLocation == '/onboarding' ? null : '/onboarding';
       }
-      if (!signedIn && !onAuthScreen) return '/sign-in';
+      final bool signedOutMayStay =
+          onAuthScreen || state.matchedLocation == '/reaccept-terms';
+      if (!signedIn && !signedOutMayStay) return '/sign-in';
+      final bool? mustReaccept = signedIn
+          ? ref.read(legalReacceptanceNeededProvider)
+          : false;
+      if (mustReaccept == null) return null;
+      if (mustReaccept) {
+        return state.matchedLocation == '/reaccept-terms'
+            ? null
+            : '/reaccept-terms';
+      }
       return null;
     },
   );
@@ -5139,10 +5170,20 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // `OfflineNotice`, which had ZERO consumers, and its
       // `networkUnreachableProvider` joined the domain as an admitted gap —
       // reachable is not the same claim as behaviourally proven.
-      // 48 since 2026-08-10: research/44 §7 rung 3 added `promoGateProvider` and
-      // `promoCardStateProvider`, both DRIVEN by `promo-card-fails-closed`
-      // rather than admitted — which is why the gap count below does NOT move.
-      assert.match(out, /tracked domain: 48 chassis behaviour\(s\)/);
+      // 48 since 2026-08-10: the cut-1 reversal's legal-gate riders added
+      // `legalAcceptanceProvider` and `legalReacceptanceNeededProvider`. They
+      // landed as ADMITTED GAPS on the stated ground that the stamped-app shape
+      // "could not be made green" — the bump fires and the router does not
+      // move. That was not a gap, it was the bug: the refresh signal was taken
+      // from the source provider instead of the derived one the redirect reads,
+      // so the gate never fired on a real launch. Fixed, and BOTH are now
+      // COVERED_BY `legal-reacceptance-gated`.
+      // 50 since 2026-08-10 (the merge): research/44 §7 rung 3 added
+      // `promoGateProvider` and `promoCardStateProvider`, both DRIVEN by
+      // `promo-card-fails-closed` rather than admitted — which is why the gap
+      // count below does NOT move. Both raises were computed as 46+2 on separate
+      // branches on the same day; the merged tree carries all four.
+      assert.match(out, /tracked domain: 50 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -5158,6 +5199,12 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // simply untrue: the rail is an interface precisely so a test can open
       // one. [10]D-8 drove `mustForceUpdateProvider`, the switch that had been
       // inert for 55 builds with nothing able to say so.
+      //
+      // 8 since 2026-08-10, and DOWN again for the same reason as the last two
+      // moves: the legal pair was reclassified out of the gap list once the
+      // defect its "gap" described was fixed. Both directions of the count are
+      // asserted over time on purpose — a number that only ever goes up is a
+      // list nobody is closing.
       assert.match(out, /8 chassis behaviour\(s\) a stamped app does NOT prove/);
       // A gap that is STILL a gap, named — so this assertion cannot be
       // satisfied by the list going empty.
@@ -5189,11 +5236,11 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      // 47 = the 48 the fixture carries, minus the one this case deletes. The
+      // 49 = the 50 the fixture carries, minus the one this case deletes. The
       // number moves with MIN_DOMAIN by construction: left at 45 it would have
-      // passed over a floor two behaviours slack, which is the drift this pair
+      // passed over a floor five behaviours slack, which is the drift this pair
       // of assertions exists to make impossible.
-      assert.match(out, /COVERAGE LOST — the domain parse found 47/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 49/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

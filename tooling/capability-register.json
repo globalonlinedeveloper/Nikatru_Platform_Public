@@ -501,24 +501,25 @@
         "apps/subly"
       ],
       "note": "[2]C-15, 2026-07-28. Before this the ONLY implementations lived inside apps/subly, so the brick wired no auth and no tokenProvider — every stamped app was born unable to authenticate. Ships SupabaseAuthRepository, a REAL InMemoryAuthRepository (wired, not mocked — a stub returning null from everything is the fail-closed shape [2]C-6 exists to catch), SecureSessionStorage (G-43: the SDK defaults to plaintext shared_preferences for the access AND refresh tokens), and AuthCapabilities, the declared six-platform matrix with Linux SUPPORTED — the contrary claim was checked against pub.dev and is false. 2026-08-01: `initNikatruAuth` — the function that passes SecureSessionStorage, and the ONLY reason apps/subly is now a consumer — had ZERO callers tree-wide, so the brick initialised the SDK nowhere (a backend-live stamp died at launch on `Supabase.instance`) and the one shipping app called `Supabase.initialize` bare, persisting its refresh token in plaintext. Both call sites now exist and assert-seams-wired counts the seam. `DELETE /v1/account` is stamped by the brick and its client hook is wired; the route refuses with 501 unless it can delete the IDENTITY record too, so a deletion is never reported that leaves the login working.",
-      "violations": [
+      "resolved": [
         {
           "path": "apps/subly/lib/data/auth/supabase_auth_repository.dart",
-          "kind": "seam-implemented-in-app",
-          "symbol": "AuthRepository",
-          "detail": "Subly's own Supabase implementation. NOT A NEW DEFECT — it is the SAME code that C-15 has now given a shared home. Until 2026-07-28 it was a HOMELESS sole implementation, which [2]C-3's lock explicitly routed here; creating packages/auth_supabase is what makes it detectably a fork, and the guards said so the moment the package landed. That is the register working, not a regression. 2026-08-01: the direct `package:supabase_flutter` import in main.dart is GONE — it now calls `initNikatruAuth` from this package. That was a dated declared exception to 39-CHASSIS cut 1 taken on security grounds only (G-43: the bare `Supabase.initialize` wrote the refresh token in plaintext, and the Windows Store submission makes the first desktop binary the first one to put that file on a real user's disk). The repository fork below is untouched.",
+          "wasKind": "seam-implemented-in-app",
           "declaredOn": "2026-07-28",
-          "fixOwner": "[2]C-3's de-forking increment",
-          "blockedBy": "39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting or moving this reverses an agreed cut, which the standing authorization does not cover — declared rather than moved, exactly as the notifications fork and the three adapter bypasses were."
-        },
+          "resolvedOn": "2026-08-10",
+          "detail": "CUT-1 REVERSAL (owner approval 2026-08-09: 'Cut-1 reversal APPROVED — supabase auth repository moves into the chassis'). The file is DELETED and apps/subly now constructs the chassis SupabaseAuthRepository from packages/auth_supabase. The violation entry is REMOVED rather than annotated, because a declared exception whose file no longer exists is an exemption over nothing: assert-no-seam-forks only prints a waiver when a matching suspect is found, so a stale path sat silent and dead while reading like a known-and-managed fork. That gap is now itself a guard limb (the stale-declaration self-check in assert-no-seam-forks.mjs), and removing this entry is what negative-tested it. What the fork cost while it stood: no expiry-driven token refresh, no single-flight refresh, and no kIsWeb OAuth launch-mode arm — three chassis fixes that never reached the one shipping app.",
+          "movedTo": "packages/auth_supabase/lib/src/supabase_auth_repository.dart"
+        }
+      ],
+      "violations": [
         {
           "path": "apps/subly/lib/data/auth/mock_auth_repository.dart",
           "kind": "seam-implemented-in-app",
           "symbol": "AuthRepository",
-          "detail": "Subly's mock. Superseded by InMemoryAuthRepository in packages/auth_supabase, which is a real implementation rather than a mock — it signs in, holds a session, emits on authStateChanges, expires and signs out.",
+          "detail": "Subly's demo repository, now TEST-ONLY. Superseded for the APP by InMemoryAuthRepository in packages/auth_supabase (a real implementation rather than a mock — it signs in, holds a session, emits on authStateChanges, expires and signs out), which is what authRepositoryProvider resolves in every non-live posture INCLUDING `--proof`, and has since before the cut-1 reversal (git show 255265b:apps/subly/lib/state/providers.dart:544). The only import of this file tree-wide is apps/subly/test/delete_account_test.dart.",
           "declaredOn": "2026-07-28",
           "fixOwner": "[2]C-3's de-forking increment",
-          "blockedBy": "Same cut-1 freeze."
+          "blockedBy": "🔄 CORRECTED 2026-08-10 — THE PREVIOUS REASON WAS FALSE AND WAS WRITTEN IN THE SAME INCREMENT AS THE GUARD AGAINST STALE WAIVERS. It claimed the `--proof` store-screenshot lane depended on this class's fictional profile `Alex Rivera`; the lane never builds this class, and InMemoryAuthRepository's demo identity carries no displayName at all (it gains one only through updateProfile), so that name cannot reach a captured frame. What actually blocks retirement is narrow and stated exactly: apps/subly/test/delete_account_test.dart drives the ADR-027 501-vs-502 deletion outcomes through this double, and re-pointing it needs InMemoryAuthRepository to be able to produce both refusals. That is a chassis change and belongs with [2]C-3's de-forking increment. NOTE for the next reader: assert-no-seam-forks' staleness limb adjudicates whether the PATH still exists, never whether this REASON is still true — re-measure it, do not inherit it."
         }
       ],
       "capabilityMatrix": {

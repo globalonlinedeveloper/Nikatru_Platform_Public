@@ -83,10 +83,14 @@ class _OnboardingSeen extends OnboardingSeenController {
 /// Signed in and stable — the shell case asserts chrome, not auth, so this is
 /// the smallest thing that stops the router's signed-out redirect bouncing us
 /// off /home.
-class _SignedInAuth implements core.AuthRepository {
+class _SignedInAuth extends core.AuthRepository {
   @override
   core.AuthUser? get currentUser =>
-      const core.AuthUser(id: 'dark', email: 'dark@test.dev');
+      const core.AuthUser(
+    id: 'dark',
+    email: 'dark@test.dev',
+    emailVerified: true,
+  );
 
   @override
   Stream<core.AuthUser?> authStateChanges() =>
@@ -149,6 +153,11 @@ Future<void> _pumpShell(WidgetTester tester, ThemeMode mode) async {
     overrides: <Override>[
       ...defaultWidthOverrides(),
       onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+      // This user has accepted the current terms. Stated, not defaulted: a
+      // signed-in user with no acceptance on record is sent to /reaccept-terms
+      // by the router, which is correct and is what every pre-clickwrap install
+      // sees once. The gate itself is driven in legal_gates_test.dart.
+      legalReacceptanceNeededProvider.overrideWithValue(false),
       authRepositoryProvider.overrideWithValue(_SignedInAuth()),
       analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
     ],

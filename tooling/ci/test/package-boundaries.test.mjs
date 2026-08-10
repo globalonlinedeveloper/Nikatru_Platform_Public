@@ -119,8 +119,14 @@ function tree({
   files[join(root, 'apps/subly/lib/services/notifications/notification_service.dart')] =
     sublyImports ??
     "import 'package:flutter_local_notifications/flutter_local_notifications.dart';\nimport 'package:timezone/timezone.dart' as tz;\n";
-  files[join(root, 'apps/subly/lib/data/auth/supabase_auth_repository.dart')] =
-    "import 'package:supabase_flutter/supabase_flutter.dart' as sb;\n";
+  // 🪦 `apps/subly/lib/data/auth/supabase_auth_repository.dart` STOOD HERE and
+  // is gone with the thing it modelled. The cut-1 reversal (owner 2026-08-09)
+  // deleted that file from the real tree, `KNOWN_BYPASSES` lost its
+  // `apps/subly|supabase_flutter` row in the same change, and leaving the
+  // fixture behind would make this "shaped like the real repository" tree carry
+  // an UNDECLARED bypass — the guard would fail on the fixture for a reason the
+  // real tree no longer has. A fixture that outlives its subject is the same
+  // defect as a waiver that outlives its violation.
   files[join(root, 'apps/subly/lib/data/api/dio_api_client.dart')] =
     "import 'package:dio/dio.dart';\nimport 'package:nikatru_api_client/nikatru_api_client.dart';\n";
   // …and the FOURTH, added 2026-08-01: `packages/purchases` declares
@@ -156,7 +162,17 @@ describe('assert-package-boundaries', () => {
     // flutter_lints must NOT be treated as a wrapped vendor.
     assert.doesNotMatch(out, /flutter_lints/);
     // The real debt is printed, every run.
-    assert.match(out, /6 grandfathered adapter bypass\(es\)/);
+    //
+    // 🔻 6 → 5 ON 2026-08-10, and the number moving DOWN is the point. The
+    // cut-1 reversal deleted `apps/subly`'s forked Supabase repository, which
+    // took the last direct `package:supabase_flutter` import in an app with it;
+    // the `apps/subly|supabase_flutter` grandfather row went in the same change
+    // (its own text had predicted this: "build the shared home, and the app copy
+    // becomes visible as a bypass the same hour"). A count pinned here rather
+    // than derived is deliberate — debt that shrinks silently is debt nobody is
+    // credited for paying, and debt that grows silently is the thing this list
+    // exists to prevent.
+    assert.match(out, /5 grandfathered adapter bypass\(es\)/);
   });
 
   // ── A · core stays pure Dart ───────────────────────────────────────────────

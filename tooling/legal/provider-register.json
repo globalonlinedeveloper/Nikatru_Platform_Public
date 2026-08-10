@@ -13,9 +13,16 @@
     "  · services/subly-api/src/routes/webhooks.ts declares POST /revenuecat. RevenueCat is named in no",
     "    published page and in no ADR.",
     "  · [ADR 004] LOCKED Paddle as the merchant of record on 2026-07-23. Paddle is named in none of",
-    "    privacy.html, terms.html or refund.html.",
+    "    privacy.html, terms.html or refund.html. ✅ HALF FIXED — terms.html §4 and refund.html §2/§4 now",
+    "    name Paddle and describe the merchant-of-record role ([ADR 039]). privacy.html still says only",
+    "    'a merchant of record' and is the remaining half, because that page is inside the policy-VERSION",
+    "    surface: correcting it is a version bump plus an archive snapshot (assert-policy-archive.mjs),",
+    "    which is one owner signature covering every privacy.html correction at once, not three.",
     "  · terms.html and refund.html say website purchases are processed by Razorpay, while privacy.html",
     "    says 'We do not sell anything directly from this website today'. The pages contradict each other.",
+    "    ✅ FIXED — the `website-seller-contradiction` gap was retired when the wording landed. All three",
+    "    pages now agree that nothing is sold directly from the website yet; the two that are not version-",
+    "    gated additionally name the seller that will take the payment.",
     "  · privacy.html says usage statistics AND CRASH REPORTS run on infrastructure provided by",
     "    Cloudflare. Crash reports run on Oracle Cloud (company/runbooks/glitchtip.md).",
     "",
@@ -350,17 +357,38 @@
       "tells": [
         "paddle"
       ],
-      "namedIn": [],
-      "privateRecord": "OWNER_QUEUE A-1 — the Paddle seller application, KYC and payout account. [ADR 004] holds the decision itself.",
+      "namedIn": [
+        "terms.html",
+        "refund.html"
+      ],
+      "privateRecord": "OWNER_QUEUE A-1 — the Paddle seller application, KYC and payout account. [ADR 004] holds the decision itself; [ADR 039] holds which channels it is the rail for.",
       "notes": [
-        "🔒 LOCKED as the primary merchant of record by [ADR 004] on 2026-07-23: 'Paddle = primary', with",
-        "Lemon Squeezy applied to in parallel as a backup. The lock is on the CHOICE; the seller account does",
-        "not exist and the ADR's own sequencing is 'build the complete product first, then apply'.",
+        "🔒 LOCKED as the primary merchant of record by [ADR 004] on 2026-07-23, and SCOPED by [ADR 039] on",
+        "2026-08-09: Paddle is the rail for every channel with no store tax — the web, the Microsoft Store",
+        "(Store Policies v7.19 §10.8.1/§10.8.6 permit a third-party purchase API for non-game PC apps at no",
+        "Store Fee), Windows/macOS/Linux direct downloads, Snap and APK sideload. Apple and Google Play use",
+        "their own billing, so Paddle is NOT the seller there. `packages/purchases/lib/src/",
+        "purchase_capabilities.dart` carries the same split with the same citations, per channel.",
         "",
-        "Named in NO published page. That is the `merchant-of-record-unnamed` gap below. It is not a code",
-        "defect — privacy.html already says 'this Policy will name the provider before we start' — but a",
-        "merchant of record is the legal seller, and terms.html and refund.html still name a different",
-        "company for the same purchases."
+        "[ADR 039] D6 also settles INDIA, which is why the pages can say 'in every country we sell to,",
+        "including India' rather than hedging: Paddle Billing ships India UPI AutoPay (renders on country=IN",
+        "+ INR checkouts; ₹15k recurring cap, our SKUs well under) and Paddle registers and remits Indian",
+        "OIDAR GST itself. ⚠️ THE UPI DETAIL IS RECORDED HERE AND DELIBERATELY NOT PUBLISHED: the ADR's own",
+        "rider is 'live-verify UPI renders for THIS account when checkout opens', so which payment METHODS a",
+        "buyer sees is an unverified vendor fact, while WHO THE SELLER IS is a decided one. The pages carry",
+        "the second and not the first.",
+        "",
+        "NAMED IN terms.html §4 AND refund.html §2/§4 since this change; both describe the role (legal",
+        "seller, takes the payment, remits the tax) and say the receipt names the contracting Paddle entity.",
+        "privacy.html still says only 'a merchant of record' — that is the narrowed `merchant-of-record-",
+        "unnamed` gap below, and it stays open because privacy.html is version-gated.",
+        "",
+        "⚠️ `status` STAYS `not-yet-applied`, AND NAMING PADDLE DID NOT CHANGE IT. The status is about the",
+        "SELLER ACCOUNT (OWNER_QUEUE A-1, private-SSoT material this file may not record), not about the",
+        "disclosure. The pages are written in the future tense for exactly that reason — 'we do not sell",
+        "anything directly from this website today; this is the arrangement that will apply when we do' —",
+        "so nothing published here asserts an account that does not exist. The day the row goes `live` the",
+        "both-pages rule in assert-policy-claims.mjs §3(c) is already satisfied instead of newly owed."
       ]
     },
     {
@@ -374,37 +402,68 @@
         "lemonsqueezy"
       ],
       "namedIn": [],
-      "privateRecord": "OWNER_QUEUE A-1 — applied to in parallel with Paddle.",
+      "privateRecord": null,
       "notes": [
-        "The parallel backup in [ADR 004], carried here for the same reason tooling/channel-register.json",
-        "carries deferred channels: the researched facts are recorded once instead of rediscovered under",
-        "time pressure. Not applied to, not wired, named in no page. If it ever becomes the live MoR it is",
-        "a `live` row and the both-pages rule applies to it unchanged."
+        "🔴 THE PARALLEL BET IS RETIRED. [ADR 039] D4 (2026-08-09): the 'apply to Lemon Squeezy in parallel'",
+        "clause of [ADR 004] is withdrawn — it was never evidenced, and the product is strategically",
+        "sunsetting under the Stripe acquisition. `privateRecord` dropped its A-1 pointer with it: there is",
+        "no application to point at.",
+        "",
+        "⚠️ THE ROW IS KEPT AND `status` STAYS `deferred`, WHICH IS A DECISION ABOUT THIS GUARD AND NOT A",
+        "HEDGE. assert-policy-claims.mjs §3(c) treats `deferred` as deliberately silent and every other",
+        "non-live status as 'being pursued, so the missing disclosure is a real gap that prints'. A retired",
+        "bet is the first kind, not the second: printing 'the backup merchant of record is not named in our",
+        "terms' on every CI run would be printing the absence of a decision nobody is taking. The row itself",
+        "survives for the reason tooling/channel-register.json keeps rows for channels we do not serve — the",
+        "researched facts are recorded once instead of rediscovered under time pressure, and a deletion",
+        "would leave the retirement invisible.",
+        "",
+        "Paddle-concentration risk is real and [ADR 039] D4 grades it medium-high (termination / fund-hold",
+        "class). The `MoRWebhookVerifier` seam makes a fallback a config change, but WHICH successor",
+        "(FastSpring / Polar / Creem / direct Stripe + a tax engine) is a queued owner decision and is",
+        "deliberately not answered by putting a name in this row."
       ]
     },
     {
       "id": "razorpay",
       "name": "Razorpay",
       "role": "payment_gateway",
-      "status": "named-but-not-wired",
+      "status": "not-named-not-wired",
       "reachableAt": null,
       "tells": [
         "razorpay"
       ],
-      "namedIn": [
-        "terms.html",
-        "refund.html"
-      ],
+      "namedIn": [],
       "privateRecord": null,
       "notes": [
-        "🔴 NAMED IN TWO PUBLISHED PAGES AND REACHABLE FROM NO CODE. terms.html §4 says website purchases",
-        "'are processed securely by Razorpay' and refund.html §2 and §4 route website refunds through it.",
-        "There is no Razorpay integration anywhere in this repository, no route, no key, no webhook — and",
-        "privacy.html now says we do not sell anything directly from this website at all.",
+        "WAS NAMED IN TWO PUBLISHED PAGES AND REACHABLE FROM NO CODE; the naming has been removed and the",
+        "code was never there. Until this change terms.html §4 said website purchases 'are processed",
+        "securely by Razorpay' and refund.html §2/§4 routed website refunds through it, while privacy.html",
+        "said we do not sell anything directly from this website at all. There is no Razorpay integration",
+        "anywhere in this repository — no route, no key, no webhook — so the pages named a payment path",
+        "that did not exist, for a purchase the same site said does not happen.",
         "",
-        "A gateway is also the WRONG SHAPE for what [ADR 004] decided: a gateway leaves us the seller and",
+        "A gateway is also the WRONG SHAPE for what [ADR 004] decided: a gateway leaves US the seller and",
         "leaves the worldwide sales-tax duty with us, which is the exact burden a merchant of record was",
-        "chosen to remove. Recorded, not resolved — see the `website-seller-contradiction` gap."
+        "chosen to remove.",
+        "",
+        "🔒 AND [ADR 039] D6 (2026-08-09) SETTLED IT ON MEASUREMENT RATHER THAN PREFERENCE: as a payment",
+        "aggregator Razorpay makes NIKATRU the domestic seller in India — net ~82% of sticker after our own",
+        "18% GST, against ~92.5% via Paddle on the annual SKU, plus a recurring B2C GST filing surface. That",
+        "is why the India clause on the pages names Paddle and not a domestic rail. RAZORPAY IS NOT THE APP",
+        "RAIL. Its recorded scope is unchanged by that lock and is narrow: a nikatru.com website-domestic",
+        "gateway, dashboard-hosted, with ZERO code in this repository.",
+        "",
+        "⚠️ THE ROW IS KEPT RATHER THAN DELETED so the removal is a recorded fact instead of an absence. If",
+        "the revisit trigger in [ADR 039] D6 ever fires (web-India above ~100 sales/month, or measurably",
+        "poor Paddle UPI acceptance) and a domestic rail is offered alongside the merchant of record, THIS",
+        "is the row that goes back to `namedIn` — and note that the both-pages rule in",
+        "assert-policy-claims.mjs applies to the merchant of record and NOT to a gateway, so nothing would",
+        "catch that silently. The re-disclosure is a human duty and this paragraph is where it is written.",
+        "",
+        "⚠️ WHETHER A RAZORPAY MERCHANT ACCOUNT EXISTS IS NOT RECORDED HERE and must not be: account state",
+        "is private-SSoT material (see the ⚠️ note at the top of this file). `not-named-not-wired` is a",
+        "statement about this repository and the published pages, and about nothing else."
       ]
     },
     {
@@ -427,7 +486,26 @@
         "",
         "It is `wired-not-live` rather than `live` because no store account exists to send it an event:",
         "every kind:store row in tooling/channel-register.json is served:false. The route works; nothing",
-        "calls it. That is precisely why it is easy to leave undisclosed until the day it matters."
+        "calls it. That is precisely why it is easy to leave undisclosed until the day it matters.",
+        "",
+        "🔒 [ADR 039] D5 LOCKED RevenueCat as the mobile-store IAP glue (2026-08-09) — one SDK for both",
+        "stores, hosted receipt and lifecycle handling, native Paddle Billing integration so every rail",
+        "resolves to ONE entitlement answer; $0 to $2,500 MTR, then 1% of tracked revenue. It enters the",
+        "codebase properly at the Play-Billing increment and at A-4; until then it is a dependency-in-",
+        "waiting with a built, dormant, bearer-verified, fail-closed webhook.",
+        "",
+        "🔴 `role` STAYS `iap_aggregator` AND THAT IS THE LOAD-BEARING PART OF THIS ROW. RevenueCat is NOT a",
+        "merchant of record and must never be recorded as one: the store is the seller for a store purchase",
+        "and Paddle is the seller everywhere else, while RevenueCat only normalises the resulting purchase",
+        "events into one entitlement feed. The register's own vocabulary draws the line — `iap_aggregator`",
+        "is 'holds purchase state, not payment instruments', `merchant_of_record` is 'the legal seller'. If",
+        "this row's role were ever flipped, assert-policy-claims.mjs §3(c) would immediately start demanding",
+        "that terms.html and refund.html name RevenueCat as a seller, which would be a false disclosure the",
+        "guard had asked for. Locked here in prose because no guard can hold a definition for us.",
+        "",
+        "It holds an `account_identifier` (the RevenueCat app_user_id) and `entitlement_record` data, so the",
+        "disclosure duty is privacy.html's third-party list, not the buyer-facing seller pages — carried as",
+        "the `iap-aggregator-unnamed` gap below."
       ]
     },
     {
@@ -491,22 +569,22 @@
       "resolution": "Split the sentence so each system names its own host. This is published legal copy — an agent can propose the wording, only the owner publishes it, and it belongs in the SAME version bump as the other two O-3 text corrections so the archive takes one snapshot rather than three."
     },
     {
-      "id": "website-seller-contradiction",
-      "ownerItem": "O-3",
-      "provider": "razorpay",
-      "page": "terms.html",
-      "what": "terms.html §4 states 'Purchases made on our website are processed securely by Razorpay' and refund.html §2/§4 route website refunds through Razorpay, while privacy.html §3 states 'We do not sell anything directly from this website today'. The three pages a buyer reads contradict each other about whether the website sells anything and who processes it. [ADR 004] locked a merchant of record, which is a different legal relationship from a gateway.",
-      "stillTrue": "processed securely by Razorpay",
-      "resolution": "Decide which rails a buyer is actually offered (open question: Paddle global only, or Paddle plus an India-domestic rail), then make all three pages say the same thing. The DECISION is the owner's; the register rows follow it."
-    },
-    {
       "id": "merchant-of-record-unnamed",
       "ownerItem": "O-3",
       "provider": "paddle",
       "page": "privacy.html",
-      "what": "[ADR 004] locked Paddle as the merchant of record on 2026-07-23. No published page names it. privacy.html describes 'a merchant of record' generically and commits to naming the provider before selling starts, which is honest — but terms.html and refund.html name Razorpay for the same purchases, so a reader gets a name, and it is the wrong one.",
+      "what": "[ADR 004] locked Paddle as the merchant of record and [ADR 039] scoped it to every channel with no store tax. terms.html §4 and refund.html §2/§4 now name Paddle and describe the role. privacy.html still says only 'a merchant of record' and commits to naming the provider before selling starts. ⚠️ THE GAP IS NARROWER THAN IT WAS AND THE NARROWING IS THE POINT: the defect it used to carry — two pages naming a DIFFERENT company for the same purchase — is fixed, and what remains is one page whose third-party list is generic where the other two are specific. A reader who compares them is no longer told two different sellers; they are told one seller and, in the privacy notice, a role.",
       "stillTrue": "a merchant of record",
-      "resolution": "Name Paddle once the seller account exists (OWNER_QUEUE A-1), in the same version bump as the other corrections. Until then the pages must at least not name a different company for the same transaction."
+      "resolution": "Name Paddle in privacy.html §3. 🔴 IT IS NOT THE SAME SIZE OF EDIT AS THE OTHER TWO WERE, WHICH IS WHY IT IS STILL OPEN: privacy.html is inside the policy-VERSION surface, so the edit is `data-policy-version` + `kPrivacyPolicyVersion` in apps/subly and in the brick + an archive snapshot under sites/nikatru/legal/<version>/en/ (assert-policy-archive.mjs, assert-seams-wired.mjs). terms.html and refund.html carry no version and were corrected without one. That is one owner signature covering EVERY outstanding privacy.html correction at once — this row, `crash-reports-infrastructure`, `identity-provider-unnamed`, `iap-aggregator-unnamed` and the direct-marketing section drafted in docs/legal/privacy-direct-marketing-draft.md — so the archive takes one snapshot rather than five."
+    },
+    {
+      "id": "iap-aggregator-unnamed",
+      "ownerItem": "O-3",
+      "provider": "revenuecat",
+      "page": "privacy.html",
+      "what": "privacy.html §3 lists app stores, Cloudflare and a merchant of record. It names no in-app-purchase aggregator, and [ADR 039] D5 LOCKED RevenueCat as the mobile-store IAP glue on 2026-08-09. RevenueCat already has the only route in this register that real code reaches (POST /v1/webhooks/revenuecat), and it holds an account identifier and entitlement records — so it is a processor a privacy notice owes a mention, not a seller the buyer-facing pages owe one. Nothing flows through it today because no store account exists to send it an event, which is exactly why the disclosure is easy to still be missing on the day one does.",
+      "stillTrue": "Depending on the app, these may include",
+      "resolution": "Name the IAP aggregator in §3 in the same version bump as the other privacy.html corrections — or, if the D5 lock is ever reversed before a store ships, retire this row with it. ⚠️ NOT a seller disclosure: naming RevenueCat in terms.html or refund.html would tell a buyer they contracted with it, and they did not. The trigger — 'the day any app records a store purchase' — is carried in tooling/legal/duty-matrix.json so it cannot rely on somebody remembering."
     },
     {
       "id": "identity-provider-unnamed",

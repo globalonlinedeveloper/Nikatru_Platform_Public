@@ -189,6 +189,14 @@ ProviderContainer _container(
 }) => ProviderContainer(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
+    // This user has accepted the current terms. Stated, not defaulted: a
+    // signed-in user with NO acceptance on record is sent to /reaccept-terms
+    // by the router (research/43 rider), which is correct and is what every
+    // pre-clickwrap install sees once. Without it every property here would
+    // measure the LEGAL gate instead of its own subject -- and a freshly
+    // stamped app would be born with a red property suite, which is the one
+    // thing a chassis may never do.
+    legalReacceptanceNeededProvider.overrideWithValue(false),
     // Only when a test needs a session in a state the default cannot reach
     // — an already-expired one, for instance.
     if (auth != null) authRepositoryProvider.overrideWithValue(auth),
@@ -274,6 +282,14 @@ ProviderContainer _analyticsContainer({
 }) => ProviderContainer(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
+    // This user has accepted the current terms. Stated, not defaulted: a
+    // signed-in user with NO acceptance on record is sent to /reaccept-terms
+    // by the router (research/43 rider), which is correct and is what every
+    // pre-clickwrap install sees once. Without it every property here would
+    // measure the LEGAL gate instead of its own subject -- and a freshly
+    // stamped app would be born with a red property suite, which is the one
+    // thing a chassis may never do.
+    legalReacceptanceNeededProvider.overrideWithValue(false),
     analyticsEnabledProvider.overrideWithValue(enabled),
     eventTransportProvider.overrideWithValue(events),
     consentTransportProvider.overrideWithValue(consent),
@@ -440,6 +456,14 @@ ProviderContainer _moneyContainer({
 }) => ProviderContainer(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
+    // This user has accepted the current terms. Stated, not defaulted: a
+    // signed-in user with NO acceptance on record is sent to /reaccept-terms
+    // by the router (research/43 rider), which is correct and is what every
+    // pre-clickwrap install sees once. Without it every property here would
+    // measure the LEGAL gate instead of its own subject -- and a freshly
+    // stamped app would be born with a red property suite, which is the one
+    // thing a chassis may never do.
+    legalReacceptanceNeededProvider.overrideWithValue(false),
     secureStoreProvider.overrideWithValue(secure ?? _MemSecureStore()),
     entitlementTransportProvider.overrideWithValue(server),
     // The paywall's on-switch is CFG-1 config, and a freshly stamped app is
@@ -4629,6 +4653,103 @@ void main() {
       // itself on the frame after it appears, on every device, with nothing in
       // the gate or the storage looking wrong.
       expect(find.byType(PromoCard), findsOneWidget);
+    });
+  });
+
+  // ── PROPERTY: legal-reacceptance-gated ────────────────────────────────────
+  // research/43's material-change rider, asserted on a STAMPED APP rather than
+  // only in the app that first grew it.
+  //
+  // 🔴 THIS GROUP EXISTS BECAUSE THE GATE SHIPPED BACKWARDS AND NOTHING WENT
+  // RED. Without a `signedIn` condition it fired for SIGNED-OUT visitors, who
+  // the auth rule above it then bounced straight back — `/sign-in` →
+  // `/reaccept-terms` → `/sign-in` → … past go_router's redirect limit, and the
+  // errorBuilder drew NotFoundScreen. Every stamped app would have been born
+  // unable to sign in, on every install, because a fresh install has no
+  // clickwrap record and therefore always owes an acceptance.
+  //
+  // ⚠️ AND IT WENT UNSEEN BECAUSE `_container` OVERRIDES
+  // `legalReacceptanceNeededProvider` TO `false` — the one value the gate
+  // cannot be wrong about. That override is correct for every OTHER property
+  // here (they are not about the legal gate and must not measure it), which is
+  // exactly why this group builds its own container and overrides nothing: the
+  // real provider hydrates through the real ConsentController over an empty
+  // store, which IS the fresh-install shape.
+  //
+  // Both directions, because a gate asserted in one is the fail-closed dead
+  // seam [pipeline C-6] exists to catch — here in its inverted form, where a
+  // gate that never fires would drop the whole rider silently.
+  group('property: legal-reacceptance-gated', () {
+    /// The fresh-install container: onboarding done, NOTHING accepted, and the
+    /// legal provider left alone.
+    ProviderContainer freshInstall() => ProviderContainer(
+      overrides: <Override>[
+        keyValueStoreProvider.overrideWith((_) async => _onboardedStore()),
+      ],
+    );
+
+    testWidgets('a SIGNED-OUT visitor still reaches the sign-in form', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = freshInstall();
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      // THE PREMISE, ASSERTED. An empty store owes an acceptance; if this ever
+      // answered false the expectation below would pass while proving nothing.
+      expect(
+        c.read(legalReacceptanceNeededProvider),
+        isTrue,
+        reason:
+            'a fresh install has no clickwrap record — without this the check '
+            'below is a tautology',
+      );
+      expect(
+        find.byType(TextField),
+        findsWidgets,
+        reason:
+            'a person with no session cannot owe an acceptance, and sending '
+            'them to the interstitial costs them the only screen that could '
+            'give them one — the redirect loop drew NotFoundScreen here',
+      );
+    });
+
+    // 🔴 THE OPEN HALF, and it is what stops the fix above from being "switch
+    // the gate off". A SESSION with nothing accepted must be stopped — and
+    // stopped on the first passive frame, with no navigation of any kind:
+    // the acceptance hydrates async, so this also proves the refresh path
+    // actually re-runs the redirect once the disk lands.
+    testWidgets('a SIGNED-IN user with nothing accepted is stopped', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = freshInstall();
+      addTearDown(c.dispose);
+      await c
+          .read(authRepositoryProvider)
+          .signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(Checkbox),
+        findsWidgets,
+        reason:
+            'the interstitial is the only screen in the chassis that asks for '
+            'a tick with no session question attached — a signed-in user with '
+            'no acceptance on record must not be past it',
+      );
+      expect(
+        find.byType(TextField),
+        findsNothing,
+        reason: 'they are signed in; this must not be the sign-in form',
+      );
     });
   });
 }

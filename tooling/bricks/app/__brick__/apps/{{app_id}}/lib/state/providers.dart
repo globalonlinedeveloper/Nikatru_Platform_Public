@@ -420,6 +420,28 @@ final Provider<core.EntitlementCache> entitlementCacheProvider =
 /// they were shown, which is the one thing the record exists to establish.
 const String kPrivacyPolicyVersion = '2026-08-01';
 
+/// 🔒 The Terms-of-Service version the sign-up clickwrap accepts.
+///
+/// ⚠️ NOT PINNED TO A PUBLISHED PAGE, and saying so is the point.
+/// `kPrivacyPolicyVersion` above is checked against `data-policy-version` on
+/// `sites/nikatru/privacy.html` by `assert-seams-wired.mjs`; `terms.html`
+/// carries no machine-readable version marker, so there is nothing an
+/// equivalent limb could compare against. A conditional check that passes when
+/// the marker is absent is the assertion-that-cannot-fail this factory refuses
+/// to stamp into every app it makes.
+///
+/// 🔴 BUMPING THIS PUTS AN INTERSTITIAL IN FRONT OF EVERY SIGNED-IN USER of
+/// every stamped app. That is re-acceptance working — a MATERIAL-CHANGE flag
+/// (research/43), never a version bump for its own sake.
+const String kTermsVersion = '2026-08-01';
+
+/// The pair the clickwrap accepts and the interstitial compares against. ONE
+/// constant, so no caller can compare half the question.
+const core.LegalVersions kLegalVersions = core.LegalVersions(
+  terms: kTermsVersion,
+  privacy: kPrivacyPolicyVersion,
+);
+
 /// The SHARED platform Worker: analytics ingest + the consent artifact ([ADR 020]).
 ///
 /// Deliberately NOT [AppConfig.apiBaseUrl] and deliberately NOT per-app — every
@@ -583,6 +605,73 @@ Future<core.ConsentArtifact> applyConsentDecision({
   // upload failure must never make the user's choice look rejected.
   await transport.send(appId: appId, artifact: artifact);
   return artifact;
+}
+
+/// Record the sign-up legal decisions: the BLOCKING terms acceptance and the
+/// EXPRESS marketing-email opt-in, as two separate artifacts.
+///
+/// Split out from the widget for the same reason [applyConsentDecision] is: the
+/// C-6 bug class is a decision path nothing ever calls, and a path reachable
+/// only through a widget tree and three async providers is one nobody writes a
+/// test for. Born into the template so a stamped app inherits the compliance
+/// shape rather than reinventing it once per app.
+///
+/// 🔴 TWO ARTIFACTS, NEVER ONE. Bundling them makes the marketing opt-in a limb
+/// of a consent the user cannot decline — the "optional consent riding on a
+/// mandatory one" shape research/43 declined — and it makes the signups KV's
+/// purpose limitation unprovable.
+///
+/// 🔴 THE DECLINE IS RECORDED TOO. `granted: false` for `marketing-email` is the
+/// evidence that the box existed and was left unticked; an ABSENT row proves
+/// nothing, because it is also what "we never asked" looks like. The artifact
+/// carries an anon id, never the address.
+///
+/// 🔴 `marketingEmail` IS NULLABLE, AND NULL IS NOT FALSE. Null means THIS
+/// SURFACE DID NOT ASK, so nothing is recorded for that purpose and the previous
+/// decision stands. The re-acceptance interstitial passes null: it shows no
+/// marketing box, and writing `granted: false` from it would silently
+/// unsubscribe somebody for accepting a terms change.
+///
+/// The terms artifact's `policyVersion` is the COMPOSITE stamp, because a
+/// terms-only change has to be visible to the re-acceptance check and cannot be
+/// if only the privacy version is written down.
+Future<core.ConsentArtifact> applyLegalAcceptance({
+  required core.ConsentController controller,
+  required core.ConsentTransport transport,
+  required String appId,
+  required String anonId,
+  required bool? marketingEmail,
+  core.LegalVersions versions = kLegalVersions,
+  String appVersion = kAnalyticsAppVersion,
+  String? platform,
+  DateTime? now,
+}) async {
+  final DateTime at = now ?? DateTime.now();
+  final String plat = platform ?? analyticsPlatformName();
+  final core.ConsentArtifact terms = await controller.record(
+    core.ConsentPurpose.terms,
+    granted: true,
+    policyVersion: versions.stamp,
+    anonId: anonId,
+    now: at,
+    appVersion: appVersion,
+    platform: plat,
+  );
+  // Best-effort by contract, exactly as the analytics decision is.
+  await transport.send(appId: appId, artifact: terms);
+  if (marketingEmail != null) {
+    final core.ConsentArtifact marketing = await controller.record(
+      core.ConsentPurpose.marketingEmail,
+      granted: marketingEmail,
+      policyVersion: versions.stamp,
+      anonId: anonId,
+      now: at,
+      appVersion: appVersion,
+      platform: plat,
+    );
+    await transport.send(appId: appId, artifact: marketing);
+  }
+  return terms;
 }
 
 /// Record the user's analytics decision, upload the artifact, and make the new
@@ -1652,6 +1741,206 @@ final NotifierProvider<OnboardingSeenController, bool?> onboardingSeenProvider =
       OnboardingSeenController.new,
     );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGAL ACCEPTANCE (research/43 riders, owner 2026-08-09)
+//
+// The clickwrap the user ticked at sign-up, and the interstitial that asks
+// again when the documents materially change. ONE store, ONE artifact, ONE
+// append-only trail: this reads the SAME `ConsentController` every other
+// purpose is recorded through rather than minting a second private key that can
+// drift from the record the server holds.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The `LegalVersions.stamp` the signed-in user last accepted.
+///
+/// 🔴 THREE STATES, EXACTLY AS [OnboardingSeenController] HAS THREE, AND FOR
+/// THE SAME MEASURED REASON — hydration is async and the router's redirect runs
+/// before the disk read lands:
+///   · `null`  — not known yet; the redirect DECLINES TO DECIDE. A `''` default
+///     flashes the interstitial at every launch for a user who accepted months
+///     ago, and nothing re-runs the redirect on its own.
+///   · `''`    — read, and nothing was ever accepted.
+///   · a stamp — read, and this is what they agreed to.
+///
+/// ⚠️ ONLY A GRANTED ARTIFACT COUNTS. Reading a `granted: false` terms artifact's
+/// version would turn "I declined" into "I accepted this version". The clickwrap
+/// never records a decline today — it blocks instead — but the store is
+/// append-only and shared, so the reader must not depend on a writer's manners.
+class LegalAcceptanceController extends Notifier<String?> {
+  bool _userChose = false;
+
+  /// Whether the identity stream has resolved at least once, and whether there
+  /// was a session when it did. Two plain bools: no identifier is kept here,
+  /// and that is the point — see [_reaskKey].
+  bool _sawSession = false;
+  bool _hadSession = false;
+
+  @override
+  String? build() {
+    // 🔴 A SESSION ENDING RETIRES THE ACCEPTANCE ON THIS DEVICE. Without it the
+    // acceptance is device-scoped while the router treats it as user-scoped,
+    // and on a shared or family device that difference admits somebody who
+    // never accepted anything: A signs up and accepts → A signs out → B signs
+    // in to a pre-clickwrap account → the gate compares A's stamp, answers "no
+    // re-acceptance needed", and B is inside the product having agreed to
+    // nothing, with a record on file saying somebody did.
+    //
+    // 🔴 WHY IT IS A SIGN-OUT MARKER AND NOT THE OBVIOUS "REMEMBER WHO
+    // ACCEPTED". Storing the accepting user's id beside this device's consent
+    // artifact is a PAID identifier next to a PSEUDONYMOUS one, which [ADR 020]
+    // forbids and `tooling/ci/assert-pseudonymity-firewall.mjs` fails the build
+    // on — it was written that way first and the guard caught it in both trees.
+    // The lock is not a formality: creating that mapping once retroactively
+    // reclassifies the whole analytics corpus as personal data, for every app,
+    // and deleting the pairing afterwards does not undo it. Nothing here
+    // records WHO accepted; it records only that a session ended, which is
+    // enough to make the next person answer for themselves.
+    //
+    // ⚠️ THE COST, STATED: a user who signs out and back in is asked once more.
+    // research/43 declined re-asking on EVERY sign-in, and this is not that —
+    // it is triggered by an explicit sign-out, never by a launch. Between the
+    // two errors, asking one returning user again and admitting a different
+    // person ungated, only the second is unrecoverable.
+    ref.listen<AsyncValue<core.AuthUser?>>(authUserProvider, (
+      AsyncValue<core.AuthUser?>? previous,
+      AsyncValue<core.AuthUser?> next,
+    ) {
+      if (next.isLoading) return;
+      final bool hasSession = next.valueOrNull != null;
+      // ⚠️ THE TRANSITION, NOT THE VALUE. `authUserProvider` resolves to null on
+      // every signed-out launch, and treating THAT as a sign-out would mark a
+      // re-ask before anybody had signed in — which is the "ask on every
+      // sign-in" pattern research/43 declined, arriving by accident.
+      final bool wasSignedIn = _sawSession && _hadSession;
+      _sawSession = true;
+      _hadSession = hasSession;
+      if (!wasSignedIn || hasSession) return;
+      _userChose = false;
+      state = '';
+      _markReask();
+    });
+    _hydrate();
+    return null;
+  }
+
+  /// Set when a session ENDS, cleared when somebody accepts.
+  ///
+  /// Holds the literal string `true` and nothing else. It deliberately carries
+  /// no user id, no address and no anon id: its only job is to make the next
+  /// person on this device answer the clickwrap for themselves, and any
+  /// identifier stored here would be the [ADR 020] pairing described above.
+  static const String _reaskKey = 'nikatru.legal.reask';
+
+  Future<void> _markReask() async {
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(_reaskKey, 'true');
+    } catch (_) {
+      // Best-effort. The in-memory `state = ''` above already gates THIS
+      // session; a failed write only means a relaunch forgets, which is the
+      // same direction every other decision in this class takes.
+    }
+  }
+
+  Future<void> _hydrate() async {
+    try {
+      final core.ConsentController c = await ref.read(
+        consentControllerProvider.future,
+      );
+      final core.ConsentStatus status = await c.hydrate(
+        core.ConsentPurpose.terms,
+      );
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final bool reask = (await kv.read(_reaskKey)) == 'true';
+      // 🔴 EVERY ASSIGNMENT BELOW THE GUARD, NONE ABOVE IT. The read above is
+      // an `await`, so a value assigned before this line would clobber a user
+      // who ticked the box while the disk was still being read — and a partial
+      // clobber is still a clobber.
+      if (_userChose) return; // the user got there first — never clobber
+      final core.ConsentArtifact? a = c.artifactOf(core.ConsentPurpose.terms);
+      // A session ended on this device since the last acceptance, so whoever is
+      // holding it now has to answer for themselves. The ARTIFACT is untouched:
+      // it is the append-only legal record and it is not this flag's business.
+      state = (!reask && status == core.ConsentStatus.granted && a != null)
+          ? a.policyVersion
+          : '';
+    } catch (_) {
+      // Unreadable store ⇒ ASK AGAIN. Resolving to '' rather than staying null
+      // matters: null blocks the decision forever and the user sees a spinner
+      // where the app should be. The cost is asymmetric in the same direction
+      // as onboarding's — asking twice is a nuisance, never asking means
+      // somebody is using the product under terms they were never shown.
+      if (!_userChose) state = '';
+    }
+  }
+
+  /// Record acceptance of [kLegalVersions] plus the express marketing decision,
+  /// and make the router's gate open.
+  ///
+  /// In memory FIRST, exactly as [OnboardingSeenController.set] is: the redirect
+  /// reads this synchronously the moment the screen navigates away, and a slow
+  /// write must not bounce the user straight back into the interstitial.
+  ///
+  /// [marketingEmail] null = THIS SURFACE DID NOT ASK — see [acceptTermsOnly].
+  Future<void> accept({required bool? marketingEmail}) async {
+    _userChose = true;
+    state = kLegalVersions.stamp;
+    try {
+      final core.ConsentController controller = await ref.read(
+        consentControllerProvider.future,
+      );
+      await applyLegalAcceptance(
+        controller: controller,
+        transport: ref.read(consentTransportProvider),
+        appId: AppConfig.appId,
+        anonId: await ref.read(installIdProvider.future),
+        marketingEmail: marketingEmail,
+      );
+      // The re-ask marker is cleared AFTER the artifact, so a half-written pair
+      // reads as "still owed" rather than "settled" over a record that is not
+      // there. Safe direction, same as everywhere else in this class.
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.remove(_reaskKey);
+    } catch (_) {
+      // Best-effort, and the in-memory state above is what the user experiences.
+      // A failed write means the interstitial returns next launch — the safe
+      // direction, and the same one every other decision here takes.
+    }
+  }
+
+  /// Re-accept the documents WITHOUT touching the marketing decision.
+  ///
+  /// The interstitial's entry point. A named method rather than
+  /// `accept(marketingEmail: null)` at the call site, because the thing being
+  /// prevented is somebody "tidying" that null into a `false` — which reads
+  /// harmless and silently unsubscribes every user who accepts a terms change.
+  ///
+  Future<void> acceptTermsOnly() => accept(marketingEmail: null);
+}
+
+final NotifierProvider<LegalAcceptanceController, String?>
+legalAcceptanceProvider = NotifierProvider<LegalAcceptanceController, String?>(
+  LegalAcceptanceController.new,
+);
+
+/// Whether the signed-in user must be shown the re-acceptance interstitial.
+///
+/// Null means "cannot tell yet" and the router must decline to decide.
+final Provider<bool?> legalReacceptanceNeededProvider = Provider<bool?>((ref) {
+  final String? accepted = ref.watch(legalAcceptanceProvider);
+  if (accepted == null) return null;
+  return core.needsLegalReacceptance(
+    acceptedStamp: accepted,
+    current: kLegalVersions,
+  );
+});
+
 /// A ChangeNotifier something outside it can fire. `notifyListeners` is
 /// protected, which is the right default and the wrong one for a bridge whose
 /// entire job is to be fired from elsewhere.
@@ -1671,9 +1960,47 @@ final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
     onboardingSeenProvider,
     (bool? _, bool? __) => onboarding.bump(),
   );
+  // 🔴 A THIRD SIGNAL, AND WITHOUT IT THE INTERSTITIAL IS A DEAD END. `redirect`
+  // fires on navigation, not on a provider settling, so a user who ticks the box
+  // on `/reaccept-terms` changes the gate's answer and nothing re-runs the gate
+  // — they sit on the screen they just completed. Same defect the auth signal
+  // was added for, one gate later. It also covers HYDRATION: the first redirect
+  // runs while the store is still being read and correctly declines to decide.
+  //
+  // 🔴 IT LISTENS TO THE PROVIDER THE REDIRECT READS — the DERIVED
+  // `legalReacceptanceNeededProvider`, NOT `legalAcceptanceProvider` underneath
+  // it. This line said `legalAcceptanceProvider` for one day and the gate did
+  // not work at all on a real launch. TRACED in the app tree (2026-08-10, probe
+  // prints inside this listener and inside the redirect):
+  //
+  //     PROBE legal listen fired null ->
+  //     PROBE redirect loc=/onboarding … reaccept=null      ← STALE
+  //     PROBE redirect loc=/home       … reaccept=null      ← STALE
+  //
+  // The bump fired and the redirect DID re-run — and read `null` both times,
+  // because the listener is called while the SOURCE notifier is publishing its
+  // new state and Riverpod has not yet recomputed the provider derived from it.
+  // A signed-in user with no acceptance on record then settled on home: gated in
+  // principle, ungated in fact, on every launch. A hand-called `router.refresh()`
+  // one frame later moved it, which is what made this look like a go_router or a
+  // pump-cadence problem — it is neither.
+  //
+  // ⚠️ THE ONBOARDING LIMB ABOVE NEVER HAD THE BUG, and the asymmetry is the
+  // diagnosis: the redirect reads `onboardingSeenProvider`, which is the very
+  // provider that limb listens to, so its listener cannot be early. The rule
+  // this encodes for any future signal added here: take the refresh signal from
+  // the SAME provider whose value the refreshed code reads. Listening one layer
+  // down buys a stale read with no symptom at the listen site.
+  final _Bump legal = _Bump();
+  ref.listen<bool?>(
+    legalReacceptanceNeededProvider,
+    (bool? _, bool? __) => legal.bump(),
+  );
   ref.onDispose(onboarding.dispose);
+  ref.onDispose(legal.dispose);
   return Listenable.merge(<Listenable>[
     ref.watch(authRefreshProvider),
     onboarding,
+    legal,
   ]);
 });

@@ -17,6 +17,31 @@ import 'package:nikatru_api_client/nikatru_api_client.dart';
 /// so `tooling/ci/assert-seams-wired.mjs` fails the build if the two drift.
 const String kPrivacyPolicyVersion = '2026-08-01';
 
+/// 🔒 The version of the Terms of Service the sign-up clickwrap accepts.
+///
+/// ⚠️ NOT PINNED TO THE PUBLISHED PAGE YET, AND SAYING SO IS THE POINT.
+/// `kPrivacyPolicyVersion` above is checked against `data-policy-version` on
+/// `sites/nikatru/privacy.html` by `assert-seams-wired.mjs`; `terms.html`
+/// carries NO machine-readable version marker, so there is nothing for an
+/// equivalent limb to compare against. Adding the attribute is a change to a
+/// published legal page and publishing sign-off is the owner's ([ADR 031]
+/// class B) — so it is recorded as an integration duty rather than half-guarded
+/// here. A conditional check that passes when the marker is absent is the
+/// assertion-that-cannot-fail this repository refuses to ship.
+///
+/// 🔴 BUMPING THIS PUTS AN INTERSTITIAL IN FRONT OF EVERY SIGNED-IN USER. That
+/// is the mechanism working, not a side effect — re-acceptance is a MATERIAL-
+/// CHANGE flag (research/43), never a version bump for its own sake. Ship a
+/// wording tidy-up without touching this line.
+const String kTermsVersion = '2026-08-01';
+
+/// The pair the sign-up clickwrap accepts and the interstitial compares
+/// against. ONE constant so no caller can compare half the question.
+const core.LegalVersions kLegalVersions = core.LegalVersions(
+  terms: kTermsVersion,
+  privacy: kPrivacyPolicyVersion,
+);
+
 /// G-12 first-party analytics wiring ([ADR 011]).
 ///
 /// The whole funnel is OFF until two things are true: a real backend is
@@ -175,6 +200,76 @@ Future<core.ConsentArtifact> applyConsentDecision({
   // upload failure must never make the user's choice look rejected.
   await transport.send(appId: appId, artifact: artifact);
   return artifact;
+}
+
+/// Record the sign-up legal decisions: the BLOCKING terms acceptance and the
+/// EXPRESS marketing-email opt-in, as two separate artifacts.
+///
+/// Split out from the widget for the same reason [applyConsentDecision] is: the
+/// bug class this whole area keeps producing is a decision path nothing ever
+/// calls, and a path reachable only through a widget tree and three async
+/// providers is one nobody writes a test for.
+///
+/// 🔴 TWO ARTIFACTS, NEVER ONE. Bundling them would make the marketing opt-in a
+/// limb of a consent the user could not decline — which is the "optional consent
+/// riding on a mandatory one" shape research/43 declined outright, and it would
+/// also make the shipped signups KV's purpose limitation unprovable.
+///
+/// 🔴 THE DECLINE IS RECORDED TOO, and that is deliberate. `granted: false` for
+/// `marketing-email` is the evidence that the box existed and was left unticked
+/// — an absent row proves nothing, because it is also what "we never asked"
+/// looks like. The artifact carries no PII (an anon id, never the address).
+///
+/// The terms artifact's `policyVersion` is the COMPOSITE stamp, not the privacy
+/// version alone: a terms-only change has to be visible to the re-acceptance
+/// check, and it cannot be if only one of the two is written down.
+///
+/// 🔴 `marketingEmail` IS NULLABLE, AND NULL IS NOT FALSE. Null means THIS
+/// SURFACE DID NOT ASK, so nothing is recorded for that purpose and whatever the
+/// user decided previously stands. The re-acceptance interstitial passes null:
+/// it shows no marketing box, and writing `granted: false` from it would
+/// silently unsubscribe somebody for accepting a terms change. A three-state
+/// argument here is what stops one screen speaking for a decision taken on
+/// another.
+Future<core.ConsentArtifact> applyLegalAcceptance({
+  required core.ConsentController controller,
+  required core.ConsentTransport transport,
+  required String appId,
+  required String anonId,
+  required bool? marketingEmail,
+  core.LegalVersions versions = kLegalVersions,
+  String appVersion = AppConfig.appVersion,
+  String? platform,
+  DateTime? now,
+}) async {
+  final DateTime at = now ?? DateTime.now();
+  final String plat = platform ?? _platformName();
+  final core.ConsentArtifact terms = await controller.record(
+    core.ConsentPurpose.terms,
+    granted: true,
+    policyVersion: versions.stamp,
+    anonId: anonId,
+    now: at,
+    appVersion: appVersion,
+    platform: plat,
+  );
+  // Best-effort by contract, exactly as the analytics decision is: the decision
+  // already applies on-device, and an upload failure must never make a user's
+  // choice look rejected. Sent in the order they were taken.
+  await transport.send(appId: appId, artifact: terms);
+  if (marketingEmail != null) {
+    final core.ConsentArtifact marketing = await controller.record(
+      core.ConsentPurpose.marketingEmail,
+      granted: marketingEmail,
+      policyVersion: versions.stamp,
+      anonId: anonId,
+      now: at,
+      appVersion: appVersion,
+      platform: plat,
+    );
+    await transport.send(appId: appId, artifact: marketing);
+  }
+  return terms;
 }
 
 /// Record the user's analytics decision, upload the artifact, and make the new

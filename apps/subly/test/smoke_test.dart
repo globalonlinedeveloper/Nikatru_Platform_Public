@@ -37,10 +37,14 @@ class _MemStore implements core.KeyValueStore {
 /// Signed in and stable — this smoke test asserts layout ownership, not auth
 /// behaviour, so the auth surface is the smallest thing that keeps the
 /// router's signed-out redirect from bouncing us off /home.
-class _SignedInAuth implements core.AuthRepository {
+class _SignedInAuth extends core.AuthRepository {
   @override
   core.AuthUser? get currentUser =>
-      const core.AuthUser(id: 'smoke', email: 'smoke@test.dev');
+      const core.AuthUser(
+    id: 'smoke',
+    email: 'smoke@test.dev',
+    emailVerified: true,
+  );
 
   @override
   Stream<core.AuthUser?> authStateChanges() =>
@@ -84,6 +88,11 @@ void main() {
       final ProviderContainer container = ProviderContainer(
         overrides: <Override>[
           onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+          // This user has accepted the current terms. Stated, not defaulted: a
+          // signed-in user with no acceptance on record is sent to /reaccept-terms
+          // by the router, which is correct and is what every pre-clickwrap install
+          // sees once. The gate itself is driven in legal_gates_test.dart.
+          legalReacceptanceNeededProvider.overrideWithValue(false),
           authRepositoryProvider.overrideWithValue(_SignedInAuth()),
           keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),

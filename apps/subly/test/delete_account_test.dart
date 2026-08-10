@@ -50,7 +50,7 @@ class _MemStore implements core.KeyValueStore {
 /// `requestAccountDeletion` builds from an `ApiException` — rather than a
 /// hand-written error, so a change to that mapping breaks these tests instead of
 /// leaving them agreeing with a copy of the old behaviour.
-class _FakeAuth implements core.AuthRepository {
+class _FakeAuth extends core.AuthRepository {
   _FakeAuth({this.deleteStatus});
 
   /// The HTTP status the server answers with, or null for a clean delete.
@@ -71,7 +71,13 @@ class _FakeAuth implements core.AuthRepository {
 
   @override
   core.AuthUser? get currentUser =>
-      signedIn ? const core.AuthUser(id: 'u1', email: 'a@b.test') : null;
+      signedIn
+      ? const core.AuthUser(
+          id: 'u1',
+          email: 'a@b.test',
+          emailVerified: true,
+        )
+      : null;
 
   /// 🔴 A REAL STREAM THAT REALLY EMITS ON SIGN-OUT. The first version of this
   /// fake returned `Stream.value(currentUser)` — a single-value stream that
@@ -143,6 +149,11 @@ Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
     ProviderScope(
       overrides: <Override>[
         onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+        // This user has accepted the current terms. Stated, not defaulted: a
+        // signed-in user with no acceptance on record is sent to /reaccept-terms
+        // by the router, which is correct and is what every pre-clickwrap install
+        // sees once. The gate itself is driven in legal_gates_test.dart.
+        legalReacceptanceNeededProvider.overrideWithValue(false),
         authRepositoryProvider.overrideWithValue(auth),
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
@@ -215,6 +226,11 @@ void main() {
     late final RestClient Function() readAsTheErasureClosureDoes;
     final ProviderContainer c = ProviderContainer(
       overrides: <Override>[
+        // This user has accepted the current terms. Stated, not defaulted: a
+        // signed-in user with no acceptance on record is sent to /reaccept-terms
+        // by the router, which is correct and is what every pre-clickwrap install
+        // sees once. The gate itself is driven in legal_gates_test.dart.
+        legalReacceptanceNeededProvider.overrideWithValue(false),
         authRepositoryProvider.overrideWith((Ref<core.AuthRepository> ref) {
           readAsTheErasureClosureDoes = () =>
               ref.read(platformRestClientProvider);
@@ -263,6 +279,11 @@ void main() {
       final ProviderContainer container = ProviderContainer(
         overrides: <Override>[
           onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+          // This user has accepted the current terms. Stated, not defaulted: a
+          // signed-in user with no acceptance on record is sent to /reaccept-terms
+          // by the router, which is correct and is what every pre-clickwrap install
+          // sees once. The gate itself is driven in legal_gates_test.dart.
+          legalReacceptanceNeededProvider.overrideWithValue(false),
           authRepositoryProvider.overrideWithValue(auth),
           keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),

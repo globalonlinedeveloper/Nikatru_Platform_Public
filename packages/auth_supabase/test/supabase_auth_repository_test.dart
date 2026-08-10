@@ -225,6 +225,147 @@ void main() {
       final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
       await expectLater(auth.deleteAccount(), throwsA(isA<core.AuthFailure>()));
     });
+
+    // 🔴 THE OUTCOME IS `notConfigured`, NOT A BARE `AuthFailure` CARRYING A
+    // SENTENCE, and this is the one place the deleted `apps/subly` fork was
+    // AHEAD of the chassis. The cut-1 reversal (owner, 2026-08-09) moved that
+    // improvement here rather than dropping it with the file.
+    //
+    // It matters because NO SCREEN RENDERS `message`: every one of them shows
+    // `outcome.plainMessage` ([ADR 027]), so the sentence that used to live in
+    // the chassis version went nowhere at all — and `unknown` invented at the
+    // screen is a different, weaker claim than `notConfigured` carried from the
+    // thrower. `notConfigured` is also exactly what the SERVER answers (501) for
+    // the same situation, so client and server now name one state one way.
+    test('the refusal names notConfigured — the outcome a screen can render',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      await expectLater(
+        auth.deleteAccount(),
+        throwsA(
+          isA<core.AccountDeletionFailure>().having(
+            (core.AccountDeletionFailure e) => e.outcome,
+            'outcome',
+            core.AccountDeletionOutcome.notConfigured,
+          ),
+        ),
+      );
+      expect(g.signOutCalls, 1);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // EMAIL VERIFICATION — the mapping and the two members the gate needs.
+  //
+  // Owner lock, 2026-08-09: verification is MANDATORY for email+password
+  // registration, because email is the matching key the one-identity lock merges
+  // social sign-ins on. The ROUTER half is pinned in
+  // apps/subly/test/legal_gates_test.dart; this is the provider half.
+  // ══════════════════════════════════════════════════════════════════════════
+  group('emailVerified', () {
+    test('an unconfirmed user maps to emailVerified FALSE', () {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      expect(
+        auth.currentUser!.emailVerified,
+        isFalse,
+        reason:
+            'absent ⇒ not verified. Every unreadable shape lands on the closed '
+            'side by construction, which is the direction core.AuthUser’s own '
+            'default is chosen for.',
+      );
+      expect(core.sessionIsUnverified(auth.currentUser), isTrue);
+    });
+
+    // 🔴 THE OPEN HALF, and it is what rules out a mapping that answers false
+    // for everybody — which would lock every real user out of the product while
+    // every "the gate refuses" assertion stayed green.
+    test('a CONFIRMED user maps to emailVerified TRUE', () {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('live', confirmedAt: '2026-08-01T00:00:00Z'),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      expect(auth.currentUser!.emailVerified, isTrue);
+      expect(core.sessionIsUnverified(auth.currentUser), isFalse);
+    });
+
+    // 🔴 `emailConfirmedAt`, NOT the deprecated `confirmedAt`. gotrue populates
+    // the deprecated field from EITHER the email or the PHONE confirmation, so a
+    // phone-confirmed account with an unproven address would read as verified —
+    // the exact hole the rule exists to close. This is the input that tells the
+    // two fields apart.
+    test('a PHONE-only confirmation does NOT count as an email confirmation',
+        () {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('live', phoneConfirmedAt: '2026-08-01T00:00:00Z'),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      expect(auth.currentUser!.emailVerified, isFalse);
+    });
+
+    test('reloadUser re-reads from the server and survives a failure',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      expect(await auth.reloadUser(), isNotNull);
+      expect(
+        g.refreshCalls,
+        1,
+        reason:
+            'confirmation happens in a MAIL CLIENT on a link this app never '
+            'sees, so nothing pushes the new state at a running app — the only '
+            'way "I have confirmed" can work is by asking the server again',
+      );
+
+      final _FakeGoTrue broken = _FakeGoTrue(
+        session: _session('live'),
+        failRefresh: true,
+      );
+      final SupabaseAuthRepository b = SupabaseAuthRepository(client: broken);
+      expect(
+        await b.reloadUser(),
+        isNotNull,
+        reason:
+            'the user pressed a button; a network blip must leave them on the '
+            'verify screen, not staring at an exception',
+      );
+    });
+
+    test('resendVerificationEmail takes the address from the SESSION',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      await auth.resendVerificationEmail();
+      expect(g.resendEmails, <String>['a@b.com']);
+
+      // Signed out ⇒ refuse. A resend that accepted an arbitrary address is a
+      // free mail cannon pointed at anybody.
+      final _FakeGoTrue out = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository o = SupabaseAuthRepository(client: out);
+      await expectLater(
+        o.resendVerificationEmail(),
+        throwsA(isA<core.AuthFailure>()),
+      );
+    });
+
+    // 🔴 THE TAKEOVER VECTOR, CLOSED AT THE PROVIDER. Identities merge by email;
+    // an unproven email is somebody else's account. Register with their address,
+    // leave it unconfirmed, wait for them to arrive through the Apple door.
+    test('linkAppleIdentity REFUSES on an unverified session', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      await expectLater(
+        auth.linkAppleIdentity(),
+        throwsA(
+          isA<core.AuthFailure>().having(
+            (core.AuthFailure e) => e.message,
+            'message',
+            contains('Confirm your email'),
+          ),
+        ),
+      );
+    });
   });
 
   // ── [G-43] The session must LAND IN THE SECURE STORE. ────────────────────
@@ -293,8 +434,33 @@ class _FakeGoTrue extends sb.GoTrueClient {
   int refreshCalls = 0;
   int signOutCalls = 0;
 
+  /// Every address a resend was aimed at. The assertion is that it can only
+  /// ever be the one on the SESSION.
+  final List<String> resendEmails = <String>[];
+
+  @override
+  Future<sb.ResendResponse> resend({
+    String? email,
+    String? phone,
+    required sb.OtpType type,
+    String? emailRedirectTo,
+    String? captchaToken,
+  }) async {
+    resendEmails.add(email ?? '(none)');
+    return sb.ResendResponse();
+  }
+
   @override
   sb.Session? get currentSession => session;
+
+  /// 🔴 OVERRIDDEN SEPARATELY, and the reason is a real trap. The real
+  /// GoTrueClient does NOT derive `currentUser` from `currentSession` — it
+  /// keeps its own field, populated by a network sign-in this fake never
+  /// performs. Without this the fake reports a live session and NO user, and
+  /// every `emailVerified` assertion below would read null rather than the
+  /// mapping under test.
+  @override
+  sb.User? get currentUser => session?.user;
 
   @override
   Future<sb.AuthResponse> refreshSession([String? refreshToken]) async {
@@ -336,7 +502,12 @@ String? _label(String? jwt) {
 /// A session whose access token is a real (unsigned) JWT carrying [expiry] in
 /// its `exp` claim — which is where `Session.expiresAt` reads it from, so an
 /// `expires_in` shortcut would be testing something the SDK does not consult.
-sb.Session _session(String token, {DateTime? expiry}) {
+sb.Session _session(
+  String token, {
+  DateTime? expiry,
+  String? confirmedAt,
+  String? phoneConfirmedAt,
+}) {
   final DateTime exp = expiry ?? DateTime.utc(2026, 8, 1, 13);
   String seg(Map<String, Object?> m) =>
       base64Url.encode(utf8.encode(jsonEncode(m))).replaceAll('=', '');
@@ -356,6 +527,11 @@ sb.Session _session(String token, {DateTime? expiry}) {
       userMetadata: const <String, dynamic>{},
       aud: 'authenticated',
       email: 'a@b.com',
+      // The two fields that look like the same answer and are not: gotrue
+      // populates the DEPRECATED `confirmedAt` from either confirmation, so a
+      // phone-only fixture is what tells the mapping apart.
+      emailConfirmedAt: confirmedAt,
+      phoneConfirmedAt: phoneConfirmedAt,
       createdAt: '2026-08-01T00:00:00Z',
     ),
   );

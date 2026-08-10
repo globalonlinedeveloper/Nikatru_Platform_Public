@@ -63,6 +63,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:subly/core/app_config.dart';
 import 'package:subly/core/e2e_keys.dart';
 import 'package:subly/data/auth/auth_models.dart';
+import 'package:subly/features/auth/legal_consent_fields.dart';
+import 'package:subly/features/auth/reaccept_terms_screen.dart';
 import 'package:subly/features/budget/budget_screen.dart';
 import 'package:subly/features/calendar/calendar_screen.dart';
 import 'package:subly/features/home/home_screen.dart';
@@ -202,6 +204,34 @@ void main() {
     await tester.tap(find.byKey(E2EKeys.loginSubmit));
     await pumpFor(tester, const Duration(seconds: 10));
 
+    // ── the re-acceptance interstitial, walked through, NEVER photographed ───
+    //
+    // 🔴 THE CAPTURE USER HAS NO CLICKWRAP RECORD. It is minted through the
+    // Supabase ADMIN API (`tooling/e2e/provision_user.mjs`), which never shows
+    // anybody a consent screen, so the router's gate parks it here after every
+    // sign-in and nothing below this line is reachable until it is answered.
+    // Without this the whole capture lane stops at a legal interstitial and the
+    // failure reads as "sign-in failed", which it is not.
+    //
+    // ⚠️ NO `captureFrame` HERE, DELIBERATELY. This is a legal gate, not a
+    // product surface: photographing it would put a terms-acceptance screen in
+    // a store listing's phone set. Conditional for the same reason every other
+    // step in this suite is — the browser profile can carry an acceptance from
+    // an earlier run.
+    if (find.byKey(ReacceptTermsScreen.acceptButton).evaluate().isNotEmpty) {
+      await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+      await pumpFor(tester, const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(ReacceptTermsScreen.acceptButton));
+      await pumpFor(tester, const Duration(seconds: 6));
+      expect(
+        find.byKey(ReacceptTermsScreen.acceptButton),
+        findsNothing,
+        reason:
+            'accepting the terms did not move the capture past the '
+            'interstitial, so every frame below would photograph it',
+      );
+    }
+
     expect(
       find.text('Go to dashboard'),
       findsOneWidget,
@@ -228,10 +258,18 @@ void main() {
     final Set<String> forbidden = accountIdentityNeedles(
       signedInWith: signInEmail,
       account: session,
-      // A demo build's profile name is `Alex Rivera` from MockAuthRepository —
-      // seed data, not an identity — and Home renders it. Refusing on it would
-      // fail the --proof lane forever over a leak that cannot exist. The ADDRESS
-      // limbs stay on in both postures; see store_capture_guard.dart.
+      // ⚠️ THE REASON THIS LINE USED TO GIVE WAS FALSE, AND THE LINE IS STILL
+      // RIGHT. It said a demo build's profile name is `Alex Rivera` from
+      // MockAuthRepository. It is not: this lane resolves the chassis
+      // `InMemoryAuthRepository` like every other non-live posture, and that
+      // identity carries NO displayName at all until `updateProfile` gives it
+      // one — so there is no demo profile name on any frame, fictional or
+      // otherwise. Keeping the limb off for a demo build is still correct, and
+      // now for a reason that is true: with no name on the session there is
+      // nothing for the profile limb to search for, and asserting over an empty
+      // needle is the unfailable check this file's own `isNotEmpty` guard
+      // below exists to refuse. The ADDRESS limbs stay on in both postures;
+      // see store_capture_guard.dart.
       includeProfileName: AppConfig.isBackendLive,
     );
     expect(

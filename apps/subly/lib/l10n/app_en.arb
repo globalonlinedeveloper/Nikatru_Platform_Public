@@ -1367,5 +1367,63 @@
   "promoCardDismissA11y": "Dismiss this offer",
   "@promoCardDismissA11y": {
     "description": "What a screen reader announces for the card's icon-only close control. An icon-only control with no accessible name is a dismissal a user cannot perform, which turns a dismissible card into an undismissable one for exactly the people least able to work around it."
+  },
+  "legalAcceptTerms": "I agree to the Terms of Service, and I have read the Privacy Policy.",
+  "@legalAcceptTerms": {
+    "description": "Consumed by features/auth/legal_consent_fields.dart. The BLOCKING sign-up clickwrap (research/43). ONE COMPLETE SENTENCE, with the two document links rendered as separate controls beneath it rather than as spans inside it — a rich-text 'I agree to the [Terms] and [Privacy Policy]' fixes English word order and leaves a translator splicing links into the middle of a clause whose verb belongs at the end. The wording distinguishes AGREEING to the terms from having READ the notice, which is the legal difference between the two documents."
+  },
+  "legalMarketingOptIn": "Email me occasional product news and offers. You can unsubscribe at any time.",
+  "@legalMarketingOptIn": {
+    "description": "Consumed by features/auth/legal_consent_fields.dart. The EXPRESS, OPTIONAL, DEFAULT-OFF marketing opt-in (research/44 rider, ADR 040). Must never be pre-ticked and must never block sign-up. Names the unsubscribe route in the same sentence because an opt-in that does not say how to leave is not an informed one."
+  },
+  "legalMustAcceptTerms": "Please accept the Terms of Service to create an account.",
+  "@legalMustAcceptTerms": {
+    "description": "Consumed by features/auth/login_screen.dart. Shown when the sign-up arm is submitted from the KEYBOARD (onSubmitted) with the terms box untouched — the button is already disabled, so this covers the path that does not go through the button."
+  },
+  "verifyEmailTitle": "Confirm your email",
+  "@verifyEmailTitle": {
+    "description": "Consumed by features/auth/verify_email_screen.dart. Title of the only screen an unverified session can reach."
+  },
+  "verifyEmailBody": "We sent a confirmation link to {email}. Open it to finish setting up your account.",
+  "@verifyEmailBody": {
+    "description": "Consumed by features/auth/verify_email_screen.dart. States the address the link went to, so a mistyped one is visible here rather than discovered by an email that never arrives.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "alex@example.com"
+      }
+    }
+  },
+  "verifyEmailSpamHint": "No email yet? Check your spam or junk folder.",
+  "@verifyEmailSpamHint": {
+    "description": "Consumed by features/auth/verify_email_screen.dart."
+  },
+  "verifyEmailContinue": "I have confirmed my email",
+  "@verifyEmailContinue": {
+    "description": "Consumed by features/auth/verify_email_screen.dart. Re-reads the user from the identity provider. The control exists because confirmation happens in a MAIL CLIENT on a link the app never sees, so nothing pushes the new state at a running app."
+  },
+  "verifyEmailResend": "Send the email again",
+  "@verifyEmailResend": {
+    "description": "Consumed by features/auth/verify_email_screen.dart. Resends to the address on the CURRENT session — the screen cannot aim it anywhere else."
+  },
+  "verifyEmailResent": "Sent. Have another look in your inbox.",
+  "@verifyEmailResent": {
+    "description": "Consumed by features/auth/verify_email_screen.dart. Shown inline rather than as a SnackBar: a successful confirmation REPLACES this page via the router gate, and a SnackBar on a page being torn down is a message nobody reads."
+  },
+  "verifyEmailStillUnverified": "Not confirmed yet. Open the link in the email, then try again.",
+  "@verifyEmailStillUnverified": {
+    "description": "Consumed by features/auth/verify_email_screen.dart. Still-unverified is a real answer, not an error — the router leaves the user here and this says why."
+  },
+  "reacceptTermsTitle": "Our terms have changed",
+  "@reacceptTermsTitle": {
+    "description": "Consumed by features/auth/reaccept_terms_screen.dart. The MATERIAL-CHANGE re-acceptance interstitial (research/43), shown when kTermsVersion or kPrivacyPolicyVersion has moved past what the user accepted."
+  },
+  "reacceptTermsBody": "We have updated our Terms of Service and Privacy Policy. Please review them and accept to carry on.",
+  "@reacceptTermsBody": {
+    "description": "Consumed by features/auth/reaccept_terms_screen.dart."
+  },
+  "reacceptTermsAccept": "Accept and continue",
+  "@reacceptTermsAccept": {
+    "description": "Consumed by features/auth/reaccept_terms_screen.dart. Disabled until the (unticked) box is ticked — the tick is the affirmative act, and a button that works without it makes the box decorative."
   }
 }

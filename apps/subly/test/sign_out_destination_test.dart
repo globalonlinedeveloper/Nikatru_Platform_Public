@@ -56,7 +56,7 @@ class _MemStore implements core.KeyValueStore {
 /// fires immediately and `signOut()`'s future completes ~100–300ms later. A fake
 /// whose `signOut` did both at once would close the race window and this test
 /// would pass against the broken code — proving nothing.
-class _RaceyAuth implements core.AuthRepository {
+class _RaceyAuth extends core.AuthRepository {
   _RaceyAuth({this.logoutLatency = const Duration(milliseconds: 250)});
 
   /// Stands in for the network leg of `POST /logout`.
@@ -70,7 +70,13 @@ class _RaceyAuth implements core.AuthRepository {
 
   @override
   core.AuthUser? get currentUser =>
-      signedIn ? const core.AuthUser(id: 'u1', email: 'a@b.test') : null;
+      signedIn
+      ? const core.AuthUser(
+          id: 'u1',
+          email: 'a@b.test',
+          emailVerified: true,
+        )
+      : null;
 
   @override
   Stream<core.AuthUser?> authStateChanges() => _authChanges.stream;
@@ -133,6 +139,11 @@ void main() {
       final ProviderContainer container = ProviderContainer(
         overrides: <Override>[
           onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+          // This user has accepted the current terms. Stated, not defaulted: a
+          // signed-in user with no acceptance on record is sent to /reaccept-terms
+          // by the router, which is correct and is what every pre-clickwrap install
+          // sees once. The gate itself is driven in legal_gates_test.dart.
+          legalReacceptanceNeededProvider.overrideWithValue(false),
           authRepositoryProvider.overrideWithValue(auth),
           keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
@@ -201,6 +212,11 @@ void main() {
         final ProviderContainer container = ProviderContainer(
           overrides: <Override>[
             onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+            // This user has accepted the current terms. Stated, not defaulted: a
+            // signed-in user with no acceptance on record is sent to /reaccept-terms
+            // by the router, which is correct and is what every pre-clickwrap install
+            // sees once. The gate itself is driven in legal_gates_test.dart.
+            legalReacceptanceNeededProvider.overrideWithValue(false),
             authRepositoryProvider.overrideWithValue(auth),
             keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
             analyticsConsentProvider.overrideWithValue(

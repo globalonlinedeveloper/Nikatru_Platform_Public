@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../features/auth/reaccept_terms_screen.dart';
 import '../features/auth/sign_in_screen.dart';
+import '../features/auth/verify_email_screen.dart';
 import '../features/firstrun/onboarding_screen.dart';
 import '../features/auth/sign_up_screen.dart';
 import '../features/home/home_screen.dart';
@@ -62,8 +64,81 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       final bool onAuthScreen =
           state.matchedLocation == '/sign-in' ||
           state.matchedLocation == '/sign-up';
+      // 🔴 A SEPARATE PREDICATE, AND THE `/reaccept-terms` ENTRY IS THE SECOND
+      // HALF OF A TWO-PART FIX. It is not redundant with the `signedIn`
+      // condition on the gate below. MEASURED in the app tree the same day this
+      // template was written (2026-08-10, real router, real provider): with the
+      // gate unconditioned and this list absent, a signed-out visitor on a
+      // fresh install went `/sign-in` → `/reaccept-terms` → (not signed in, not
+      // an auth screen) → `/sign-in` → … past go_router's redirect limit, and
+      // the errorBuilder rendered NotFoundScreen. EVERY STAMPED APP WOULD HAVE
+      // BEEN BORN UNABLE TO SIGN IN, on every install and again after every
+      // `kTermsVersion` bump.
+      // Conditioning the gate on `signedIn` is the real fix; this entry is the
+      // containment — the worst case if that condition is ever edited away is a
+      // visitor parked on an interstitial they can complete and leave, never a
+      // 404 with no way back to the form. Kept apart from [onAuthScreen]
+      // because that one also drives the signed-IN bounce below, where
+      // `/reaccept-terms` has a different answer.
+      final bool signedOutMayStay =
+          onAuthScreen || state.matchedLocation == '/reaccept-terms';
       // Signed out and heading somewhere gated → the sign-in screen.
-      if (!signedIn && !onAuthScreen) return '/sign-in';
+      if (!signedIn && !signedOutMayStay) return '/sign-in';
+
+      // ── EMAIL VERIFICATION, ABOVE EVERYTHING THE USER CAME FOR ───────────
+      // Owner lock, 2026-08-09: verification is MANDATORY for email+password
+      // registration, because email is the matching key the one-identity lock
+      // merges social sign-ins on — so an address nobody proved is a route into
+      // somebody else's Google/Apple account.
+      //
+      // 🔴 THE CLIENT HALF IS NOT REDUNDANT WITH THE SUPABASE DASHBOARD SWITCH.
+      // With "Confirm email" OFF, gotrue hands back a full session on sign-up
+      // and this gate is the ONLY refusal in the system. Stamped into the
+      // template rather than left to each app, because a security default that
+      // depends on every future app remembering it is one app #3 forgets.
+      //
+      // 🔴 ABOVE THE RE-ACCEPTANCE GATE ON PURPOSE. Reversed, an unverified user
+      // would be asked to accept the terms first — recording a legal acceptance
+      // against an identity nobody has proven.
+      if (core.sessionIsUnverified(auth.currentUser)) {
+        return state.matchedLocation == '/verify-email'
+            ? null
+            : '/verify-email';
+      }
+      // A verified user has no business on the waiting room; without this it is
+      // reachable by typing the URL.
+      if (state.matchedLocation == '/verify-email') return '/';
+
+      // ── MATERIAL-CHANGE RE-ACCEPTANCE (research/43) ──────────────────────
+      // `read`, not `watch`, for the same reason onboarding is read: watching
+      // rebuilds the ROUTER and throws away the stack.
+      //
+      // 🔴 NULL DECLINES TO DECIDE — the acceptance hydrates from disk async,
+      // and treating "not read yet" as "not accepted" flashes the interstitial
+      // at every launch. Same three-state shape, same measured reason, as
+      // `onboardingSeenProvider`.
+      //
+      // 🔴 `signedIn` IS LOAD-BEARING. A person with no session cannot owe an
+      // acceptance — there is nobody to have accepted. Unconditioned, this gate
+      // fires for signed-OUT visitors, who the rule above then bounces straight
+      // back: `/sign-in` → `/reaccept-terms` → `/sign-in` → … until go_router
+      // gives up and shows NotFoundScreen. See [signedOutMayStay] above for the
+      // measurement; a stamped app carrying that defect cannot be signed into
+      // on any install.
+      final bool? mustReaccept = signedIn
+          ? ref.read(legalReacceptanceNeededProvider)
+          : false;
+      if (mustReaccept == null) return null;
+      if (mustReaccept) {
+        return state.matchedLocation == '/reaccept-terms'
+            ? null
+            : '/reaccept-terms';
+      }
+      // Reached by a signed-out visitor too, now that `/reaccept-terms` is a
+      // [signedOutMayStay] location: they are handed to '/', which the
+      // signed-out rule turns into '/sign-in' on the next pass. It terminates.
+      if (state.matchedLocation == '/reaccept-terms') return '/';
+
       // Signed in and still on an auth screen → home. Without this, a user who
       // signs in stays looking at the form they just completed.
       if (signedIn && onAuthScreen) return '/';
@@ -100,6 +175,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/onboarding',
         builder: (BuildContext context, GoRouterState state) =>
             const OnboardingScreen(),
+      ),
+      // ── THE TWO GATE SCREENS ────────────────────────────────────────────
+      // Routed rather than dialog-shaped: both appear BECAUSE of a redirect, so
+      // a dialog here would be a pageless route on a page being replaced as it
+      // opens — the shape [ADR 027]'s deletion notice had to be rebuilt out of.
+      GoRoute(
+        path: '/verify-email',
+        builder: (BuildContext context, GoRouterState state) =>
+            const VerifyEmailScreen(),
+      ),
+      GoRoute(
+        path: '/reaccept-terms',
+        builder: (BuildContext context, GoRouterState state) =>
+            const ReacceptTermsScreen(),
       ),
       GoRoute(
         path: '/settings',
