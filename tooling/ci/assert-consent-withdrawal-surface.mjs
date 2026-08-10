@@ -386,9 +386,20 @@ for (const root of roots) {
   // 👤 OWNER GAP — PRINTED, NEVER FAILED. See the header: linking the policy
   // from a consent surface is an owner/legal call, and a guard that reddens CI
   // on work only the owner can do is a guard people switch off.
-  const linkDeclared = libFiles.some(
-    (f) => f.rel.includes(GENERATED_L10N) && new RegExp(`\\bget\\s+${POLICY_LINK_KEY}\\b`).test(f.body),
-  );
+  // Declared = the TRACKED arb source carries the key — never the generated
+  // getter. gen-l10n output is gitignored factory-wide (#214), so a probe that
+  // read it answered one thing on a workstation (generated files present) and
+  // another in a guard-only CI job (absent): the same fixture passed here and
+  // failed there on an identical commit. The gen-l10n-untracked lesson, third
+  // occurrence — the arb is the artifact both environments actually share.
+  const l10nAbs = join(ROOT, root, 'lib', 'l10n');
+  const linkDeclared =
+    existsSync(l10nAbs) &&
+    listDir(l10nAbs).some(
+      (n) =>
+        n.endsWith('.arb') &&
+        new RegExp(`"${POLICY_LINK_KEY}"\\s*:`).test(readFileSync(join(l10nAbs, n), 'utf8')),
+    );
   const linkUsed = libFiles.some(
     (f) => !f.rel.includes(GENERATED_L10N) && new RegExp(`\\b${POLICY_LINK_KEY}\\b`).test(f.body),
   );
