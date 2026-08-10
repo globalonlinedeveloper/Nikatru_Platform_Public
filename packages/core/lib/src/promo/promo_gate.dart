@@ -28,14 +28,25 @@
 /// caller, exactly as `PaywallGate(locked: …)` does, so design_system gains no
 /// domain dependency (research/44 §4.3).
 ///
-/// ⚠️ ONE OBJECTION, NOT TWO — FOR WHOEVER BUILDS research/44 RUNG 4. That rung
-/// adds a `promo` purpose to the existing `ConsentPurpose` rail so the
-/// append-only artifact trail, the server verification and the withdrawal
-/// surface all apply unchanged. When it lands, the objection must have exactly
-/// ONE home: either the rail becomes the source of truth and this latch is set
-/// from it, or the reverse. Two stores for one legal obligation is how a person
-/// objects on the rail, the card keeps rendering off a stale latch, and both
-/// halves report healthy. Wiring — not this file — is where that is decided.
+/// ⚠️ ONE OBJECTION, NOT TWO — **SETTLED, AND THE RAIL WON** (research/44 rung
+/// 4, landed). `ConsentPurpose.promo` is the source of truth; this latch is a
+/// PROJECTION of it, computed on every consult by `PromoObjection.applyTo` in
+/// `promo_objection.dart` and never written independently by an app. Two stores
+/// for one legal obligation is how a person objects on the rail, the card keeps
+/// rendering off a stale latch, and both halves report healthy — so the app-side
+/// call site is `PromoObjection.decide`, which projects and judges in one step.
+/// [PromoGateState.suppressed] stays a field here because this file must remain
+/// pure and un-plumbed; what changed is who is allowed to set it.
+///
+/// 🔴 AND [decide] BEING PUBLIC IS NOT AN INVITATION — SAID BY A GUARD, NOT BY
+/// THIS COMMENT. An earlier draft of this paragraph claimed the app-side call
+/// site "leaves no way" to reach [decide] unprojected. Nothing made that true:
+/// the method is public, and the very next increment reached it directly off a
+/// persisted record. `tooling/ci/assert-consent-withdrawal-surface.mjs` limbs 5
+/// and 6 now fail the build for a `.decide(` on a promo gate that does not go
+/// through `PromoObjection`, and for a promotional creative decided in a file
+/// that never names `PromoSurface`. A sentence in a doc comment is not an
+/// invariant; it is a hope with good grammar.
 ///
 /// ⚠️ IT IS ALSO NOT THE NOTIFICATION CAP, AND MUST NEVER READ IT. `AppConfig`
 /// types a weekly promotional-notification cap on both sides of the config

@@ -71,8 +71,14 @@ CREATE TABLE IF NOT EXISTS consent_artifacts (
   consent_id     TEXT NOT NULL,      -- client-generated UUIDv4 (idempotency key)
   app_id         TEXT NOT NULL,
   anon_id        TEXT NOT NULL,      -- same pseudonymous per-install id
-  purpose        TEXT NOT NULL,      -- 'analytics' | 'sync_backup' | …
-  granted        INTEGER NOT NULL,   -- 1 = granted, 0 = withdrawn
+  purpose        TEXT NOT NULL,      -- 'analytics' | 'sync_backup' | 'promo' | …
+  -- ⚠️ granted MEANS TWO DIFFERENT THINGS AND THE PURPOSE IS WHICH. For a
+  -- consent-basis purpose ('analytics') 0 = refused. For a legitimate-interest
+  -- purpose ('promo', GDPR Art 21) 0 = OBJECTED — the processing was lawful
+  -- until they said stop. Anything aggregating this column must branch on
+  -- `purpose`; summing it portfolio-wide counts refusals and objections as the
+  -- same event, which they are not. See services/platform/src/types.ts.
+  granted        INTEGER NOT NULL,   -- 1 = permitted, 0 = refused/objected
   policy_version TEXT NOT NULL,      -- which privacy policy was shown
   app_version    TEXT,
   platform       TEXT,

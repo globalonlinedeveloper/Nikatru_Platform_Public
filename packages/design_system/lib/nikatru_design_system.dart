@@ -13,3 +13,5 @@ export 'src/widgets/system_screens.dart';
 export 'src/widgets/force_update_gate.dart';
 export 'src/widgets/paywall_gate.dart';
 export 'src/widgets/promo_card.dart';
+export 'src/widgets/promo_objection_control.dart';
+export 'src/widgets/promo_surface.dart';

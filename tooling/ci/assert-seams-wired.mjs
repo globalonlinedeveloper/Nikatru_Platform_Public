@@ -165,8 +165,33 @@ const REQUIRED_COVERAGE = [
     wired: true,
     // The decision path itself, and the UI that triggers it. Both, because
     // deleting either one silently re-breaks the rail.
+    //
+    // 🔴 RE-POINTED 2026-08-10, AND THE RE-POINT IS THE INTERESTING PART.
+    // This need used to match the literal `ConsentPurpose.analytics,` followed
+    // by `granted:` — i.e. it read the call's FIRST ARGUMENT. research/44 rung 4
+    // made the purpose a PARAMETER of `applyConsentDecision` so the Art 21
+    // objection could reuse one decision path instead of forking it ([C-3]), and
+    // that literal stopped appearing at the call site. The guard went red, which
+    // is exactly right: it noticed the shape it reads had moved. The wrong fix
+    // would have been to relax it to `\.record\(` — that matches any purpose at
+    // all and would go on printing ok for a chassis that had quietly stopped
+    // recording ANALYTICS consent, which is the one thing this row is about.
+    //
+    // So it is two needs now, and neither is decorative:
+    //   1. the call exists — either naming the purpose literally (the shape any
+    //      app that has not parameterised it still has) or passing the parameter;
+    //   2. the parameter still DEFAULTS to analytics. Without (2), (1) is
+    //      satisfied by a path that records some other purpose entirely.
+    // Negative-tested by changing the default: (2) alone turns this row red.
     needs: [
-      { re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:/, label: 'a real record() call' },
+      {
+        re: /\.record\s*\(\s*(?:core\.)?ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:|\.record\s*\(\s*purpose\s*,[\s\S]{0,200}?granted:/,
+        label: 'a real record() call',
+      },
+      {
+        re: /(?:core\.)?ConsentPurpose\s+purpose\s*=\s*(?:core\.)?ConsentPurpose\.analytics/,
+        label: 'and analytics is still the purpose it defaults to',
+      },
       {
         re: /recordAnalyticsConsent\s*\(/,
         // Must be found somewhere OTHER than the file declaring it.
@@ -175,6 +200,14 @@ const REQUIRED_COVERAGE = [
       },
     ],
   },
+  // ⚠️ `recordPromoObjection` (the Art 21 objection, research/44 rung 4) is
+  // DELIBERATELY NOT A ROW HERE, and the omission is a decision rather than an
+  // oversight. `assert-consent-withdrawal-surface.mjs` already requires a real,
+  // reversible, state-reflecting caller inside lib/features/settings in BOTH
+  // roots — a strictly stronger question than "is anything calling it", asked of
+  // a named surface. A row here would restate it more weakly, and this repo
+  // deletes redundant assertions rather than collecting them: an assertion that
+  // cannot fail independently only inflates apparent coverage.
   {
     id: 'secure_session',
     what: 'initNikatruAuth — the only call that keeps the refresh token out of plaintext [G-43]',

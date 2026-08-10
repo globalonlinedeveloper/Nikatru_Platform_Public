@@ -216,6 +216,65 @@ class SettingsScreen extends ConsumerWidget {
               // make a withdrawal feel like a broken control.
               onChanged: (bool on) => recordAnalyticsConsent(ref, granted: on),
             ),
+
+            // ── PROMOTIONAL OFFERS — THE GDPR Art 21 OBJECTION ───────────────
+            // [research/44 rung 4] NOT a consent gate, and the difference is
+            // the whole design. In-app promotion of our own apps runs on
+            // LEGITIMATE INTEREST (Recital 47), so asking permission first
+            // would be friction that also implies the processing becomes
+            // unlawful when refused. What Art 21(2)/(3) makes absolute is the
+            // OBJECTION: "the data subject shall have the right to object at
+            // any time", after which "the personal data shall no longer be
+            // processed for such purposes."
+            //
+            // 🔴 THIS ROW IS THE SECOND HOME, NOT THE ONLY ONE. Art 21(4)
+            // wants the right presented "clearly and separately" at the LATEST
+            // at the time of the first communication, so the same control is
+            // built into `PromoSurface` and renders on the card itself. A
+            // person meeting their first offer has no reason to open Settings.
+            //
+            // It reads and writes the CONSENT RAIL (`ConsentPurpose.promo`),
+            // not a private flag: one append-only artifact trail, one server
+            // route, one place the objection lives. `PromoGateState.suppressed`
+            // is a projection of this value — see `PromoObjection`.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                l10n.promotionalOffers,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: Text(
+                l10n.promoObjectionExplain,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 16, 8),
+              // WATCHED, not read, for the same reason the analytics row above
+              // is: this is one of the two places the value changes, and a
+              // snapshot read leaves the control offering "Stop" after the
+              // person has already stopped it.
+              //
+              // 🔴 AND IT READS THE THIRD STATE TOO. `promoObjected` is
+              // fail-closed — it answers "objected" while the rail is still
+              // loading, which is right for a CARD and a lie in a CONTROL: it
+              // would tell someone who never objected "Offers are off" on every
+              // launch, and a tap in that window uploads a `granted: true`
+              // artifact recording a decision they never made. `known` is what
+              // keeps the row blank and untappable until the rail has spoken.
+              child: PromoObjectionControl(
+                objected: ref.watch(promoObjectedProvider),
+                known: ref.watch(promoObjectionKnownProvider),
+                onChanged: (bool objected) =>
+                    recordPromoObjection(ref, objected: objected),
+                stopLabel: l10n.promoStopOffers,
+                resumeLabel: l10n.promoResumeOffers,
+                objectedNotice: l10n.promoOffersOff,
+              ),
+            ),
             const Divider(),
 
             // ── SUBSCRIPTION ([pipeline 5]M-6 · M-9) ──────────────────────────

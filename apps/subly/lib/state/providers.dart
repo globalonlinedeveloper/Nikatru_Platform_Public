@@ -99,7 +99,7 @@ import '../data/subscriptions/subscription_repository.dart';
 import '../services/notifications/notification_service.dart';
 import 'analytics_providers.dart';
 
-/// 🔴 THE AMBIGUITY FIX — see note 1 in the header. These ten names are declared
+/// 🔴 THE AMBIGUITY FIX — see note 1 in the header. These names are declared
 /// by the chassis spine AND by `analytics_providers.dart`. They are declared
 /// ONCE, over there, and surfaced here so that a file importing either path
 /// reaches the same declaration.
@@ -127,7 +127,11 @@ export 'analytics_providers.dart'
         kPrivacyPolicyVersion,
         kTermsVersion,
         keyValueStoreProvider,
-        recordAnalyticsConsent;
+        privacySignalProvider,
+        promoObjectedProvider,
+        promoObjectionKnownProvider,
+        recordAnalyticsConsent,
+        recordPromoObjection;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SECTION A · CFG-1 RUNTIME CONFIG

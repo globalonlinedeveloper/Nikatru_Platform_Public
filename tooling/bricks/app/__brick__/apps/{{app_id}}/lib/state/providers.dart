@@ -500,6 +500,12 @@ final Provider<bool> analyticsEnabledProvider = Provider<bool>(
   (ref) => AppConfig.isBackendLive,
 );
 
+/// [pipeline K-15] The device-level opt-out (Global Privacy Control), as an
+/// overridable seam. On Web this reads `navigator.globalPrivacyControl`; on the
+/// other five platforms there is no such concept and it is always false.
+final Provider<core.PrivacySignal> privacySignalProvider =
+    Provider<core.PrivacySignal>((ref) => core.createPrivacySignal());
+
 /// The DPDP consent seam, hydrated from disk. Resolves to `unknown` — which
 /// blocks all collection — if the store is unreadable.
 final FutureProvider<core.ConsentController> consentControllerProvider =
@@ -514,9 +520,23 @@ final FutureProvider<core.ConsentController> consentControllerProvider =
       // nothing changes for them.
       final core.ConsentController c = core.ConsentController(
         store: kv,
-        privacySignal: core.createPrivacySignal(),
+        // A PROVIDER rather than a direct `createPrivacySignal()` call, for
+        // the reason this file gives about every other switch: on the VM the
+        // real signal is always false, so the honoured-GPC branch could not be
+        // driven by any test and would be a seam nobody has watched carry a
+        // payload. [research/44 rung 4] made that branch load-bearing for a
+        // second purpose, so it needed to become reachable.
+        privacySignal: ref.watch(privacySignalProvider),
       );
       await c.hydrate(core.ConsentPurpose.analytics);
+      // [research/44 rung 4] The GDPR Art 21 objection to in-app
+      // promotion rides the SAME controller. Hydrated here rather
+      // than lazily at the first promo consult: a lazy read decides
+      // the very first card against an unread store, and "we had not
+      // loaded it yet" is no defence for processing someone objected
+      // to. One extra key read at launch, no extra request, and born
+      // into every stamped app rather than remembered per app.
+      await c.hydrate(core.ConsentPurpose.promo);
       return c;
     });
 
@@ -529,6 +549,49 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
       return c?.statusOf(core.ConsentPurpose.analytics) ??
           core.ConsentStatus.unknown;
     });
+
+/// **Has this person objected to promotional processing?** (GDPR Art 21.)
+///
+/// The single read every promo surface consults. It answers `true` — objected —
+/// in three different situations, and they are kept three because collapsing
+/// them would hide the last one:
+///
+///   1. a stored `promo` artifact with `granted: false` — they used the control;
+///   2. a live GPC signal — an automated objection under Art 21(5), which
+///      [core.ConsentController] applies without writing an artifact;
+///   3. 🔴 **the controller has not resolved yet.** `valueOrNull` is null for the
+///      first frames of every launch, and a promo rendered in that window is
+///      rendered against an objection nobody has read yet.
+///      Unknown-because-unloaded is not the same as unknown-because-untouched,
+///      and only the second may show. This is the one place they are told apart:
+///      below this line `unknown` means "never objected" and PERMITS, because
+///      the surface runs on legitimate interest and not on consent.
+final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
+  final core.ConsentController? c = ref
+      .watch(consentControllerProvider)
+      .valueOrNull;
+  if (c == null) return true; // still loading — hold, do not show
+  return core.PromoObjection(c).objected;
+});
+
+/// **Has the rail been read yet?** — the third state [promoObjectedProvider]
+/// deliberately hides, exposed for the one caller that must not lose it.
+///
+/// 🔴 A GATE AND A CONTROL NEED OPPOSITE ANSWERS WHILE THE RAIL IS LOADING.
+/// Case 3 above falls closed because a promotional surface rendered against an
+/// unread objection is the outcome Art 21(3) forbids. A SETTINGS ROW that read
+/// the same boolean would tell a person who has never objected "Offers are off"
+/// on every launch — and a tap in that window calls `recordPromoObjection(ref,
+/// objected: false)`, which writes AND uploads a `promo granted: true` artifact
+/// recording a decision they never made. Falling closed protects someone from a
+/// card; it does not license a claim about what they chose.
+///
+/// So the control reads BOTH: [promoObjectedProvider] for the value and this for
+/// whether the value means anything yet. One derivation, two readings, and the
+/// asymmetry written down once instead of inferred twice.
+final Provider<bool> promoObjectionKnownProvider = Provider<bool>(
+  (ref) => ref.watch(consentControllerProvider).valueOrNull != null,
+);
 
 /// Whether the consent question has been ANSWERED — distinct from answered yes.
 ///
@@ -570,19 +633,27 @@ final Provider<core.EventTransport> eventTransportProvider =
 /// that nothing ever called [core.ConsentController.record], and a path only
 /// reachable through a widget tree and three async providers is one nobody
 /// writes a test for.
+/// ⚠️ ONE DECISION PATH FOR EVERY PURPOSE, NOT ONE PER PURPOSE. [purpose] is a
+/// parameter (defaulting to analytics, which is every pre-existing caller) so
+/// the `promo` objection inherits this function's whole contract — the
+/// append-only artifact, the policy-version stamp, the shared anon id, the
+/// best-effort upload — instead of a second copy that drifts from it.
+/// [pipeline C-3]: no capability exists twice, and in the template a fork is a
+/// fork per stamped app.
 Future<core.ConsentArtifact> applyConsentDecision({
   required core.ConsentController controller,
   required core.ConsentTransport transport,
   required String appId,
   required String anonId,
   required bool granted,
+  core.ConsentPurpose purpose = core.ConsentPurpose.analytics,
   core.Analytics? analytics,
   String appVersion = kAnalyticsAppVersion,
   String? platform,
   DateTime? now,
 }) async {
   final core.ConsentArtifact artifact = await controller.record(
-    core.ConsentPurpose.analytics,
+    purpose,
     granted: granted,
     policyVersion: kPrivacyPolicyVersion,
     anonId: anonId,
@@ -600,7 +671,16 @@ Future<core.ConsentArtifact> applyConsentDecision({
   //
   // Before the upload, not after: the user's right to have it dropped does not
   // depend on the network being up.
-  if (!granted) await analytics?.purge();
+  //
+  // 🔴 SCOPED TO THE PURPOSE THE OUTBOX BELONGS TO. The queue holds ANALYTICS
+  // events, so a `promo` objection must not empty it: objecting to being shown
+  // an offer says nothing about analytics the person separately consented to,
+  // and deleting it would destroy lawfully-held data on the strength of an
+  // unrelated control. The opposite mistake — purging on every purpose "to be
+  // safe" — is the one an untyped `if (!granted)` makes silently.
+  if (!granted && purpose == core.ConsentPurpose.analytics) {
+    await analytics?.purge();
+  }
   // Best-effort by contract. The decision already applies on-device, so an
   // upload failure must never make the user's choice look rejected.
   await transport.send(appId: appId, artifact: artifact);
@@ -707,6 +787,43 @@ Future<void> recordAnalyticsConsent(
     // denied decision and deletes the persisted copy, so the disk half dies
     // either way.
     analytics: ref.read(analyticsProvider).valueOrNull,
+  );
+  ref.invalidate(consentControllerProvider);
+}
+
+/// Record the GDPR **Art 21 objection** to promotional processing, upload the
+/// artifact, and make it visible to every promo surface. [objected] `true` =
+/// stop; `false` = the person turned offers back on themselves.
+///
+/// It is [recordAnalyticsConsent]'s twin down to the invalidate, and it is a
+/// separate function rather than a `purpose:` argument on that one for a reason
+/// worth stating: the two are wired to different controls with different legal
+/// bases, and one entry point would let a settings row pass the wrong purpose
+/// and silently move the wrong decision. The SHARED half is
+/// [applyConsentDecision], which is where the reuse belongs.
+///
+/// 🔴 `granted` IS INVERTED, ONCE, THROUGH A NAMED HELPER. The rail's field
+/// means *may this purpose be processed*, so an objection is `granted: false`.
+/// Spelling that inversion out at every call site is how one of them ends up
+/// spelled the other way round; `core.PromoObjection.grantedForObjection` is
+/// the one place it happens.
+Future<void> recordPromoObjection(
+  WidgetRef ref, {
+  required bool objected,
+}) async {
+  final core.ConsentController controller = await ref.read(
+    consentControllerProvider.future,
+  );
+  await applyConsentDecision(
+    controller: controller,
+    transport: ref.read(consentTransportProvider),
+    appId: AppConfig.appId,
+    // 🔒 The same install id every other artifact and event carries.
+    anonId: await ref.read(installIdProvider.future),
+    purpose: core.ConsentPurpose.promo,
+    granted: core.PromoObjection.grantedForObjection(objected: objected),
+    // No `analytics:` — see the purge note in [applyConsentDecision]. A promo
+    // objection has no outbox of its own and must not empty anyone else's.
   );
   ref.invalidate(consentControllerProvider);
 }

@@ -4,12 +4,45 @@ import '../storage/key_value_store.dart';
 import 'ids.dart';
 import 'privacy_signal.dart';
 
+/// What legal ground a purpose stands on — and therefore **which way silence
+/// falls**.
+///
+/// 🔴 THE WHOLE REASON THIS TYPE EXISTS. `ConsentStatus.unknown` means opposite
+/// things for the two bases, and writing that difference as a comment would put
+/// a legal rule where an `==` can quietly disagree with it:
+///
+///   * [consent] — nothing may happen until the person says yes. Unknown is a
+///     refusal. (Analytics: DPDP §6, GDPR Art 6(1)(a).)
+///   * [legitimateInterest] — the processing is lawful from the start and
+///     STOPS when the person objects. Unknown is permission. (In-app
+///     first-party promotion: GDPR Recital 47 + Art 21(2)/(3) — research/44 V4,
+///     which is explicit that adding a consent gate here would be *"legally
+///     unnecessary friction"* that *"wrongly implies the processing becomes
+///     unlawful when refused"*.)
+///
+/// Both bases share this file's machinery on purpose: one append-only artifact
+/// trail, one server route, one withdrawal surface. What differs is exactly one
+/// predicate, [ConsentController.permits], and it reads the basis rather than
+/// guessing from the purpose name.
+enum ConsentBasis {
+  /// Opt-IN. Unknown blocks.
+  consent,
+
+  /// Opt-OUT. Only an explicit objection blocks.
+  legitimateInterest,
+}
+
 /// What a consent decision covers. Consent is **per purpose**, never a single
 /// blanket flag — a user who accepts analytics has not thereby accepted cloud
 /// backup of their data.
 class ConsentPurpose {
-  const ConsentPurpose(this.value);
+  const ConsentPurpose(this.value, {this.basis = ConsentBasis.consent});
   final String value;
+
+  /// Which way [ConsentStatus.unknown] falls for this purpose. Defaults to
+  /// [ConsentBasis.consent] — the strict direction — so a purpose added without
+  /// thinking about it is opt-in rather than silently opt-out.
+  final ConsentBasis basis;
 
   static const ConsentPurpose analytics = ConsentPurpose('analytics');
   static const ConsentPurpose syncBackup = ConsentPurpose('sync_backup');
@@ -60,6 +93,26 @@ class ConsentPurpose {
   /// drew, and unlike the terms tick this one may NOT block the button.
   static const ConsentPurpose marketingEmail = ConsentPurpose(
     'marketing-email',
+  );
+
+  /// In-app promotion of our own apps — the GDPR **Art 21 objection**, carried
+  /// on the consent rail rather than in a second store of its own.
+  ///
+  /// 🔴 IT IS NOT A CONSENT GATE, AND THE BASIS IS THE POINT. research/44 V4:
+  /// *"Do NOT add a consent gate for first-party in-app promotion… **Do** add
+  /// the toggle."* So `unknown` (nobody has ever touched the control) permits,
+  /// `denied` (they objected) forbids absolutely, and `granted` is an objection
+  /// that was later withdrawn — a state Art 21 has to allow, because it gives a
+  /// person the right to object, not a duty to stay objected.
+  ///
+  /// It rides this rail rather than a private flag so that the append-only
+  /// artifact trail, the server verification and the withdrawal surface all
+  /// apply to it unchanged — which is also what stops the objection having two
+  /// homes. `PromoGateState.suppressed` is a projection of THIS value; see
+  /// `PromoObjection` in `src/promo/promo_objection.dart`.
+  static const ConsentPurpose promo = ConsentPurpose(
+    'promo',
+    basis: ConsentBasis.legitimateInterest,
   );
 
   @override
@@ -183,7 +236,26 @@ class ConsentController {
   /// suppress [ConsentPurpose.syncBackup] — treating one signal as blanket
   /// consent-withdrawal is the same error as a single blanket consent flag,
   /// which this file rejects at the top.
-  static const Set<String> _signalGovernedPurposes = <String>{'analytics'};
+  ///
+  /// 🔴 `promo` IS ON THIS LIST, AND FOR A STRONGER REASON THAN ANALYTICS IS.
+  /// GDPR **Art 21(5)**: *"the data subject may exercise his or her right to
+  /// object by automated means using technical specifications."* A direct-
+  /// marketing objection is the one right the Regulation names an automated
+  /// signal for, so a browser already sending one has objected — asking the same
+  /// person again through a toggle is asking them to say it twice. California
+  /// arrives at the same place from the other side: §1798.140(k) defines
+  /// cross-context behavioral advertising across *"distinctly branded"*
+  /// properties and **common ownership is not a carve-out** (research/44 V12),
+  /// so a portfolio promo surface is exactly what a GPC user is opting out of.
+  ///
+  /// ⚠️ It is a SUPPRESSION, not a stored objection. `hydrate` returns `denied`
+  /// without touching the artifact, so switching GPC off restores whatever the
+  /// person actually chose — the signal speaks for them while it is on, and
+  /// never writes in their name.
+  static const Set<String> _signalGovernedPurposes = <String>{
+    'analytics',
+    'promo',
+  };
 
   /// True when a device-level opt-out is speaking for [purpose] right now.
   ///
@@ -235,6 +307,29 @@ class ConsentController {
 
   /// The artifact currently in force for [purpose], or null.
   ConsentArtifact? artifactOf(ConsentPurpose purpose) => _cache[purpose.value];
+
+  /// **May processing for [purpose] happen right now?** — the one place the
+  /// opt-in/opt-out asymmetry is written down.
+  ///
+  /// [ConsentBasis.consent] ⇒ only `granted` permits: unknown is a refusal.
+  /// [ConsentBasis.legitimateInterest] ⇒ only `denied` forbids: unknown is
+  /// permission, because the basis is lawful until objected to (GDPR Recital 47
+  /// + Art 21(2)/(3)).
+  ///
+  /// ⚠️ [AnalyticsRecorder] deliberately does NOT call this, and that is not an
+  /// oversight to tidy up later. Its `hydrate` needs all THREE states kept
+  /// apart — `denied` deletes the persisted queue, `unknown` refuses to load it
+  /// but must not destroy it, because *"destroying a legitimate queue because a
+  /// read failed is not fail-closed, it is data loss."* Collapsing three states
+  /// to a boolean there would turn an unreadable store into deletion. This
+  /// predicate is for callers that genuinely have a two-way decision to make.
+  bool permits(ConsentPurpose purpose) {
+    final ConsentStatus s = statusOf(purpose);
+    return switch (purpose.basis) {
+      ConsentBasis.consent => s == ConsentStatus.granted,
+      ConsentBasis.legitimateInterest => s != ConsentStatus.denied,
+    };
+  }
 
   /// Record a NEW decision. Returns the artifact so the caller can ship it to
   /// the server. Persisting is best-effort: an in-memory grant still applies to
