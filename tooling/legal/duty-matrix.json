@@ -178,6 +178,17 @@
       "verification": "in-tree"
     },
     {
+      "id": "first-party-promotion-legal-basis",
+      "requirement": "K-3",
+      "duty": "Before any first-party promotional surface renders in a shipped app, the privacy notice states the legal basis for it, names the objection right and where the switch is, and the advertising sentence separates our own promotion from third-party ad networks.",
+      "status": "owner-gated",
+      "ownerItem": "O-3",
+      "trigger": "🔴 THE DAY A PROMOTIONAL SURFACE RENDERS TO A REAL USER IN A SHIPPED BUILD — not the day the component is written, and not the day a config key exists. [ADR 040] makes the published section THE gate on that surface. ⚠️ AND THE TRIGGER CANNOT BE DETECTED BY THE GUARD THAT SOUNDS LIKE IT SHOULD: the `no Nikatru app carries advertising` claim row in tooling/legal/policy-claims.json asserts `absent` over every pubspec.yaml, so it keys on a DEPENDENCY. A house-ad surface adds no dependency, so that row stays green while the sentence it defends becomes false. This row is the trigger the SDK scan structurally cannot be.",
+      "verification": "decision",
+      "decisionRecord": "knowledge/decisions/040-cross-promo-v1-lock.md — LOCKED 2026-08-10, decision 3: 'D2 (privacy-policy legal-basis section) is drafted, not flipped. ADR 031 class B stands: the agent produces the ready-to-sign diff; the section goes live only on owner signature. It remains THE gate on any promo surface rendering.' The reasoning is knowledge/research/44-CROSS-PROMOTION-HOUSE-ADS-OFFERS.md V2/V3/V4.",
+      "note": "DRAFTED, NOT PUBLISHED — docs/legal/privacy-direct-marketing-draft.md carries the exact section text, the exact reworded advertising sentence, the policy-claims.json rows that swear both, and the version-bump checklist, so the whole thing lands in ONE commit on signature. It is a document rather than an edit to sites/nikatru/privacy.html for a mechanical reason worth stating: privacy.html is inside the policy-VERSION surface, so ANY visible-text change there fails assert-policy-archive.mjs until the version is bumped and a snapshot is filed, and bumping the version is itself the signature act ([ADR 031] class B). A draft that sat half-applied in the live page would either be a red build or an unsigned publication. ⚠️ NO GUARD ASSERTS THIS ROW'S SUBSTANCE AND NONE CAN TODAY: the surface does not exist, so there is nothing to compare the notice to. What CAN fail is the pairing — assert-policy-claims.mjs enforces set-equality between the page's emphasised spans and the register, so rewording the advertising sentence forces its register row into the same commit. That is why the draft carries the rows and not just the prose."
+    },
+    {
       "id": "consented-text-retrievable",
       "requirement": "K-4",
       "duty": "For every policy version that has ever been in force, the exact bytes a user consented to are still servable at a stable URL.",
@@ -192,9 +203,20 @@
       "duty": "The pages a buyer reads name the actual seller and the actual payment path, and agree with each other.",
       "status": "owner-gated",
       "ownerItem": "O-3",
-      "trigger": "Before the first website sale. Today terms.html and refund.html name a payment gateway for purchases privacy.html says do not happen.",
+      "trigger": "Before the first sale on ANY channel. terms.html and refund.html now name Paddle as the merchant of record and split the channels by who takes the payment ([ADR 039]); privacy.html §3 still describes the role without naming anybody, and that page cannot be corrected without a policy-version bump.",
       "verification": "in-tree",
-      "note": "The guard is built and the four gaps print every run (tooling/legal/provider-register.json disclosureGaps). The remaining work is published wording plus one decision — which rails a buyer is offered."
+      "note": "The guard is built and the remaining gaps print every run (tooling/legal/provider-register.json disclosureGaps). ✅ TWO THINGS CLOSED: the `website-seller-contradiction` gap was RETIRED — the pages no longer name a gateway for a purchase privacy.html says does not happen — and the open decision this row used to carry ('which rails is a buyer offered') was ANSWERED by [ADR 039] D6 on measurement rather than preference: Paddle serves Indian buyers too, Razorpay is not the app rail. 🔴 WHAT REMAINS IS NOT WORDING. It is the seller account (A-1) and one owner signature on privacy.html, which is version-gated; the buyer-facing pages are already consistent with the register and with packages/purchases/lib/src/purchase_capabilities.dart, channel by channel. ⚠️ TWO WORDING ITEMS FOR THE OWNER'S EYE THAT WERE DELIBERATELY NOT CHANGED, because guessing at them would be worse than naming them: (1) terms.html §4 still ends 'Prices are inclusive of applicable taxes unless stated otherwise', and a merchant of record may present tax either inclusively or added at checkout depending on the buyer's country — whichever Paddle's checkout actually does for our SKUs is a LIVE-VERIFY item at A-1, not a fact this tree holds, and the bullet is left standing rather than rewritten from a guess; (2) refund.html §1 no longer lists a Microsoft order-history link, because [ADR 039] D1 puts Microsoft Store purchases on the Paddle rail and Microsoft therefore has no order to refund — the page's opening line ('who handles your refund depends on who sold you the product, and your receipt names them') is what keeps a buyer un-stranded if a store ever bills directly for a paid app listing."
+    },
+    {
+      "id": "iap-aggregator-disclosed-before-a-store-purchase",
+      "requirement": "K-5",
+      "duty": "The in-app-purchase aggregator that holds purchase state for store sales is disclosed in the privacy notice before it holds any — and is never described to a buyer as the seller, which it is not.",
+      "status": "owner-gated",
+      "ownerItem": "O-3",
+      "trigger": "🔴 THE DAY ANY APP RECORDS A REAL STORE PURCHASE — i.e. the first non-sandbox event to POST /v1/webhooks/revenuecat. It is not the day the SDK is added and it is not the day a store account is created; it is the first event carrying a real person's entitlement. Nothing today can send one (every kind:store row in tooling/channel-register.json is served:false), which is precisely why this is easy to still be missing on the day something can.",
+      "verification": "decision",
+      "decisionRecord": "knowledge/decisions/039-payment-rails-per-platform.md D5 — LOCKED 2026-08-09: RevenueCat is the mobile-store IAP glue, entering the codebase at the Play-Billing increment and at A-4.",
+      "note": "Two duties in one row because they fail in opposite directions and share one fact. (a) DISCLOSURE: RevenueCat holds an account identifier and entitlement records, so privacy.html §3 owes it a mention — carried as the `iap-aggregator-unnamed` gap, which prints every run. (b) THE ROLE, WHICH IS THE HALF A GUARD CAN GET WRONG FOR US: an aggregator is not a merchant of record. tooling/legal/provider-register.json keeps its `role` at `iap_aggregator`; flip that field and assert-policy-claims.mjs §3(c) would start DEMANDING that terms.html and refund.html name RevenueCat as the seller — a false disclosure the guard itself asked for. Recorded as `decision` rather than `primary-source`: what is asserted here is our own lock, and CI cannot open knowledge/ (gitignored), so the pointer is data and not an assertion."
     },
     {
       "id": "in-app-legal-links",
