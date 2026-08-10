@@ -39,6 +39,23 @@
 // extra-large: at 1500 nothing above this screen ever caps anything, at any
 // point in any tree it may be mounted in.
 //
+// ⚠️ THE 768 AND 1280 CASES CANNOT GO RED WITH THE PANE DELETED, and they are
+// here anyway. 768 is below the cap and 1280 is exactly on it, so both hold
+// either way — they pin the NO-OP BOUNDARY, i.e. that the cap never engages
+// early and never tightens a window it was not meant to. The falsifiable pair
+// is 1920 and 1500 above. This file shipped with neither of them, and the
+// coverage guard could not see the hole because it only asked whether a width
+// test existed, not which windows it pumped; `assert-responsive-coverage.mjs`
+// now reads the widths themselves.
+//
+// ⚠️ `pumpAt` PINS LAYOUT CONSTRAINTS, NOT `MediaQuery` — see its doc. Every
+// assertion in this file is constraint-derived (`offeredWidth`) and
+// `home_screen.dart` reads `MediaQuery` nowhere, so that is sufficient here.
+// Anything added below that asserts on a `MediaQuery`-derived number must pin
+// `tester.view.physicalSize` and `devicePixelRatio` as well, with their own
+// teardown — otherwise it measures the untouched 800×600 test view at every
+// surface above.
+//
 // ⚠️ NO TAP CASES IN THIS FILE, and the reason is not style. `pumpAt` builds a
 // bare `MaterialApp` with no router, and this screen's callbacks call
 // `context.go('/settings')`, `context.push('/notifications')`,
@@ -85,6 +102,19 @@ void main() {
         reason:
             'the hero card, the stat row and every RowCard must lay out clean '
             'on the narrowest phone',
+      );
+    });
+
+    testWidgets('at 768 the cap is still a no-op', (WidgetTester tester) async {
+      await pumpAt(tester, kTablet, const HomeScreen());
+      expect(offeredWidth(tester, inPane(ListView)), 768);
+    });
+
+    testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
+      await pumpAt(tester, kDesktop, const HomeScreen());
+      expect(
+        offeredWidth(tester, inPane(ListView)),
+        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
       );
     });
 

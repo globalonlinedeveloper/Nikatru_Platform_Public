@@ -5766,11 +5766,18 @@ describe('assert-responsive-coverage', () => {
   const TEST = 'apps/subly/test';
 
   // 🔴 THE FIXTURE MIRRORS THE SHAPE OF THE REAL TREE, NOT A MINIATURE OF IT.
-  // The guard carries a REQUIRED_COVERAGE floor of 16 surfaces and 14 width test
+  // The guard carries a REQUIRED_COVERAGE floor of 17 surfaces and 15 width test
   // files, so a three-screen fixture would fail every case for a reason that has
   // nothing to do with the behaviour under test — and a case that passes for the
   // wrong reason is the same defect as one that cannot fail. Same reason the
   // check-migrations and assert-stamp-properties fixtures above are full-size.
+  //
+  // 🔴 AND IT CARRIES A `PaywallScreen` AT THE REAL PATH, measured at two widths
+  // and not three. WIDTH_EXEMPT names that surface, and an exemption's own
+  // self-check is that the surface EXISTS in the covered set — so a fixture
+  // without one would fail every case here on the guard's own bookkeeping. The
+  // shape being modelled is the argued exemption, which is why the paywall
+  // fixture pumps kPhone and kTablet and stops.
   const N = 14;
   const ids = Array.from({ length: N }, (_, i) => i + 1);
   const screenFile = (i, dir = `s${i}`) => `${LIB}/features/${dir}/s${i}_screen.dart`;
@@ -5778,15 +5785,32 @@ describe('assert-responsive-coverage', () => {
   const sheetFile = (n) => `${LIB}/features/${n}/${n}_sheet.dart`;
   const sheetSrc = (fn) =>
     `Future<void> ${fn}(BuildContext context) {\n  return showModalBottomSheet<void>(context: context, builder: (_) => const SizedBox());\n}\n`;
+  const PAYWALL = `${LIB}/features/monetization/paywall_screen.dart`;
+  const HARNESS = `${TEST}/support/width_harness.dart`;
 
-  /** A test file that imports feature paths and pumps the named subjects. */
-  const testSrc = (imports, uses) =>
-    `${imports.map((p) => `import 'package:subly/${p}';`).join('\n')}\n\nvoid main() {\n` +
-    `${uses.map((u) => `  testWidgets('at 1920', (t) async { await pumpAt(t, kWide, ${u}); });`).join('\n')}\n}\n`;
+  /** The window vocabulary. The guard reads the required widths OUT of this file
+   *  rather than restating them, so the fixture must declare it or every surface
+   *  passes the width check by default — which is the empty-parse limb below. */
+  const harnessSrc =
+    `const Size kPhone = Size(375, 812);\n` +
+    `const Size kTablet = Size(768, 1024);\n` +
+    `const Size kDesktop = Size(1280, 900);\n` +
+    `const Size kWide = Size(1920, 1080);\n`;
+
+  /** A test file that imports feature paths and pumps the named subjects at
+   *  every required window class, plus kWide. */
+  const testSrc = (imports, uses, widths = ['kPhone', 'kTablet', 'kDesktop', 'kWide']) =>
+    `${imports.map((p) => `import 'package:subly/${p}';`).join('\n')}\n\nimport 'support/width_harness.dart';\n\nvoid main() {\n` +
+    `${uses
+      .flatMap((u) => widths.map((w) => `  testWidgets('at ${w}', (t) async { await pumpAt(t, ${w}, ${u}); });`))
+      .join('\n')}\n}\n`;
 
   /** The router. `extra` adds routes; `shell`/`error` model the two non-panes. */
   const routerSrc = ({ screens = ids, extra = '', shell = true, error = true, wrapped = [] } = {}) => {
-    const imports = screens.map((i) => `import '../features/s${i}/s${i}_screen.dart';`).join('\n');
+    const imports = screens
+      .map((i) => `import '../features/s${i}/s${i}_screen.dart';`)
+      .concat(`import '../features/monetization/paywall_screen.dart';`)
+      .join('\n');
     const plain = screens
       .filter((i) => !wrapped.includes(i))
       .map((i) => `    GoRoute(path: '/s${i}', builder: (_, __) => const S${i}Screen()),`)
@@ -5803,7 +5827,8 @@ describe('assert-responsive-coverage', () => {
     return (
       `${imports}\n\nfinal Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {\n  return GoRouter(\n` +
       (error ? `    errorBuilder: (BuildContext c, GoRouterState s) => NotFoundScreen(title: 'x'),\n` : '') +
-      `    routes: <RouteBase>[\n      GoRoute(path: '/', redirect: (_, __) => '/s1'),\n${plain}\n${gatedRoutes}\n${extra}\n` +
+      `    routes: <RouteBase>[\n      GoRoute(path: '/', redirect: (_, __) => '/s1'),\n` +
+      `      GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),\n${plain}\n${gatedRoutes}\n${extra}\n` +
       (shell
         ? `      StatefulShellRoute.indexedStack(\n        builder: (_, __, StatefulNavigationShell n) => AppShell(navigationShell: n),\n        branches: <StatefulShellBranch>[],\n      ),\n`
         : '') +
@@ -5811,15 +5836,25 @@ describe('assert-responsive-coverage', () => {
     );
   };
 
-  /** The whole app tree: N screens, 2 sheets, and 14 width tests covering all 16. */
+  /** The whole app tree: N screens + the paywall, 2 sheets, and 15 width tests
+   *  covering all 17. */
   const build = (name, over = {}, routerOpts = {}) => {
     const files = {
       [ROUTER]: routerSrc(routerOpts),
+      [HARNESS]: harnessSrc,
       [sheetFile('add')]: sheetSrc('showAddSheet'),
       [sheetFile('cancel')]: sheetSrc('showCancelSheet'),
+      [PAYWALL]: `class PaywallScreen extends StatelessWidget {\n  const PaywallScreen({super.key});\n}\n`,
+      // Two widths, not three — the surface WIDTH_EXEMPT argues about.
+      [`${TEST}/width_paywall_test.dart`]: testSrc(
+        ['features/monetization/paywall_screen.dart'],
+        ['const PaywallScreen()'],
+        ['kPhone', 'kTablet'],
+      ),
     };
     for (const i of ids) files[screenFile(i)] = screenSrc(i);
-    // 12 single-subject files + one two-subject file + one sheets file = 14.
+    // 12 single-subject files + one two-subject file + one sheets file + the
+    // paywall file above = 15.
     for (const i of ids.slice(0, 12)) {
       files[`${TEST}/width_s${i}_test.dart`] = testSrc([`features/s${i}/s${i}_screen.dart`], [`const S${i}Screen()`]);
     }
@@ -5837,8 +5872,9 @@ describe('assert-responsive-coverage', () => {
   test('PASSES when the routed set and the measured set are EQUAL', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
     assert.equal(code, 0);
-    assert.match(out, /16 surface\(s\) routed, 16 measured/);
+    assert.match(out, /17 surface\(s\) routed, 17 measured/);
     assert.match(out, /the two sets are EQUAL/);
+    assert.match(out, /every surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
   });
 
   test('PRINTS its exclusions with reasons on a PASSING run, never silently', () => {
@@ -5854,7 +5890,7 @@ describe('assert-responsive-coverage', () => {
   });
 
   test('FAILS naming the SCREEN when a routed screen has no width test', () => {
-    // A 15th routed screen with no test. The floor is untouched (17 >= 16) and
+    // A 15th routed screen with no test. The floor is untouched (18 >= 17) and
     // the test-file count is untouched, so the ONLY failure is the uncovered one.
     const dir = build(
       'rc-uncovered',
@@ -5884,6 +5920,92 @@ describe('assert-responsive-coverage', () => {
     assert.doesNotMatch(out, /UNCOVERED SURFACE/);
   });
 
+  // ── THE WIDTHS THE MEASUREMENT ACTUALLY PUMPS ───────────────────────────────
+  // Set equality asks whether a FILE exists. These ask what is in it, which is
+  // the gap `width_home_test.dart` sat in: present in both sets, green, and
+  // pumping neither 768 nor 1280.
+  test('FAILS naming the SURFACE and the WINDOW when a required width is absent', () => {
+    const dir = build('rc-width-gap', {
+      // The subject and its file are untouched — only the 768 case goes. Both
+      // sets still contain it, so the equality limb stays silent and this is
+      // the only complaint.
+      [`${TEST}/width_s3_test.dart`]: testSrc(
+        ['features/s3/s3_screen.dart'],
+        ['const S3Screen()'],
+        ['kPhone', 'kDesktop', 'kWide'],
+      ),
+    });
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /UNMEASURED WIDTH — `S3Screen`/);
+    assert.match(out, /not one case pumps kTablet \(768\)/);
+    assert.match(out, /widths it does pump are 375, 1280, 1920/);
+    assert.doesNotMatch(out, /UNCOVERED SURFACE/);
+    assert.doesNotMatch(out, /DEAD COVERAGE/);
+  });
+
+  test('a NAMED window class is not a PUMPED one — prose cannot satisfy the check', () => {
+    // 🔴 THE `r2_buckets` SHAPE, ONE LEVEL UP. Two real width tests carry the
+    // word `kTablet`/`kWide` inside an `expect` reason arguing why a case is
+    // ABSENT. If string literals were not stripped, an explanation of a missing
+    // measurement would count as the measurement.
+    const dir = build('rc-width-prose', {
+      [`${TEST}/width_s4_test.dart`]:
+        `import 'package:subly/features/s4/s4_screen.dart';\n\nimport 'support/width_harness.dart';\n\n` +
+        `void main() {\n` +
+        `  // kTablet is deliberately omitted, see below.\n` +
+        `  testWidgets('at kPhone', (t) async {\n` +
+        `    await pumpAt(t, kPhone, const S4Screen());\n` +
+        `    expect(x, y, reason: 'no kTablet case: pumpAt(t, kTablet, const S4Screen()) would be a no-op');\n` +
+        `  });\n` +
+        `  testWidgets('at kDesktop', (t) async { await pumpAt(t, kDesktop, const S4Screen()); });\n}\n`,
+    });
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /UNMEASURED WIDTH — `S4Screen`/);
+    assert.match(out, /not one case pumps kTablet \(768\)/);
+  });
+
+  test('FAILS as STALE when an exempted surface starts pumping the width anyway', () => {
+    // The exemption's own self-check, and the half that is easy to omit: an
+    // exception nobody can retire is a permanent hole with a reason attached.
+    const dir = build('rc-width-stale', {
+      [`${TEST}/width_paywall_test.dart`]: testSrc(
+        ['features/monetization/paywall_screen.dart'],
+        ['const PaywallScreen()'],
+        ['kPhone', 'kTablet', 'kDesktop'],
+      ),
+    });
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /STALE EXEMPTION — `PaywallScreen`/);
+    assert.match(out, /now pumps it/);
+  });
+
+  test('the argued width exemption is PRINTED on a passing run, never silently', () => {
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-width-excl') });
+    assert.equal(code, 0);
+    assert.match(out, /PaywallScreen is NOT required at kDesktop/);
+  });
+
+  test('COVERAGE LOST when the harness is gone — the required widths resolve to NOTHING', () => {
+    // Without this limb an unreadable harness makes every surface pass the
+    // width check by default, which prints as a clean run.
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-noharness', { [HARNESS]: null }) });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /no `const Size k… = Size\(w, h\)` declaration was found/);
+  });
+
+  test('FAILS when the harness stops declaring a window class the floor requires', () => {
+    const dir = build('rc-noclass', {
+      [HARNESS]: harnessSrc.replace('const Size kDesktop = Size(1280, 900);\n', ''),
+    });
+    const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
+    assert.equal(code, 1);
+    assert.match(out, /`kDesktop` is required of every responsive surface and .* no longer declares it/);
+  });
+
   test('COVERAGE LOST when the router is gone — the routed set parses EMPTY', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-norouter', { [ROUTER]: null }) });
     assert.equal(code, 1);
@@ -5894,7 +6016,11 @@ describe('assert-responsive-coverage', () => {
   test('COVERAGE LOST when no width test is found — the covered set parses EMPTY', () => {
     // Every width test removed. Without this limb the equality check would say
     // "no dead coverage" and mean nothing by it.
-    const over = { [`${TEST}/responsive_width_test.dart`]: null, [`${TEST}/width_sheets_test.dart`]: null };
+    const over = {
+      [`${TEST}/responsive_width_test.dart`]: null,
+      [`${TEST}/width_sheets_test.dart`]: null,
+      [`${TEST}/width_paywall_test.dart`]: null,
+    };
     for (const i of ids.slice(0, 12)) over[`${TEST}/width_s${i}_test.dart`] = null;
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-notests', over) });
     assert.equal(code, 1);
