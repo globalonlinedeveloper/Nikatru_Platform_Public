@@ -646,30 +646,42 @@ const REQUIRED_COVERAGE = {
   // ⚠️ `widthTestFiles` DID NOT MOVE. `width_auth_test.dart` still exists — it
   // lost its sign-in group and kept its sign-up one. A file count and a surface
   // count answer different questions and only one of them changed.
-  // 🔴 RAISED 15 → 16 ON 2026-08-11 (#286), BY EXACTLY THE ONE SURFACE THAT
-  // CHANGE ADDED. `/check-inbox` routed `CheckInboxScreen` — the destination
-  // for a sign-up that returns a user and NO SESSION, which the `/verify-email`
-  // gate cannot serve because `sessionIsUnverified` is false for a null user by
-  // design. That change recorded, and deliberately did not close, the slack
-  // below: it does not own the surfaces the floor had fallen behind.
+  // ═════════════════════════════════════════════════════════════════════════
+  // 🔴 SET TO THE TREE AS MEASURED ON 2026-08-11 — 18 SURFACES, 15 WIDTH TEST
+  // FILES. Not incremented, not inherited: this is the number
+  // `node tooling/ci/assert-responsive-coverage.mjs` printed on the merged tree
+  // on that date —
   //
-  // 🔴 RAISED 16 → 17 AND 14 → 15 ON 2026-08-11 — NOT BECAUSE ANYTHING WAS
-  // ADDED BY THIS CHANGE, BUT BECAUSE THE FLOOR HAD STOPPED BEING ONE. #280
-  // landed `verify_email_screen.dart` and `reaccept_terms_screen.dart` with
-  // their `width_legal_gates_test.dart`; this file last moved in #275 and did
-  // not follow. A floor under the tree is exactly the mutation the clause below
-  // describes and cannot catch: those two screens AND their test could have
-  // been deleted in one change today, both sets would have shrunk together, the
-  // equality would have printed EQUAL and this number would have printed
-  // nothing at all.
+  //     18 reachable surface(s) (16 routed screens, 2 modal sheets),
+  //     all measured by 15 width test file(s) at 375/768/1280
   //
-  // ⚠️ THE ARITHMETIC IS STATED BECAUSE THE TWO CHANGES CROSSED. This patch was
-  // measured against a tree WITHOUT `/check-inbox`, where the re-measurement
-  // read 17/15; #286 landed first and had already taken `surfaces` to 16. The
-  // numbers immediately below are therefore this patch's own measurement, and
-  // they are corrected to the merged tree in the commit that follows — see the
-  // dated re-measurement note replacing this block.
-  surfaces: 17,
+  // WHY IT IS A MEASUREMENT AND NOT AN INCREMENT. The floor had fallen two
+  // surfaces and one file behind the tree and nobody noticed, because a floor
+  // BELOW the tree is silent by construction — the clause below fires only when
+  // the tree drops under it. #280 landed `verify_email_screen.dart` and
+  // `reaccept_terms_screen.dart` with their `width_legal_gates_test.dart`;
+  // this file last moved in #275 and did not follow. So the slack was real:
+  // those two screens AND their test could have been deleted in one change,
+  // both sets would have shrunk together, the equality above would have printed
+  // EQUAL, and this number would have printed nothing at all.
+  //
+  // ⚠️ TWO CHANGES CROSSED HERE AND THE ARITHMETIC IS WRITTEN DOWN RATHER THAN
+  // TRUSTED. #286 (`/check-inbox`) raised `surfaces` 15 → 16 for the one
+  // surface it added, and recorded that it was deliberately NOT closing the
+  // rest — a change does not get to re-pin a floor to whatever the tree happens
+  // to measure when it did not add the things being counted. This change was
+  // measured separately, against a tree WITHOUT `/check-inbox`, and read 17/15.
+  // NEITHER number is the answer for the merged tree, and taking the higher of
+  // the two on faith would have left the floor one surface short with nothing
+  // to say so. The tree was re-measured after both had landed; 18/15 is that
+  // reading.
+  //
+  // ⚠️ A FLOOR IS ONLY A FLOOR ON THE DAY IT IS MEASURED. It cannot notice the
+  // tree growing past it, so raising it belongs in the same change that adds
+  // the surface — which is the step #280 skipped and the reason this block
+  // exists.
+  // ═════════════════════════════════════════════════════════════════════════
+  surfaces: 18,
   // 14 `width_*_test.dart` + `responsive_width_test.dart`.
   widthTestFiles: 15,
 };

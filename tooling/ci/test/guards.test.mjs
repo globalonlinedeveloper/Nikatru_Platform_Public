@@ -5766,11 +5766,18 @@ describe('assert-responsive-coverage', () => {
   const TEST = 'apps/subly/test';
 
   // 🔴 THE FIXTURE MIRRORS THE SHAPE OF THE REAL TREE, NOT A MINIATURE OF IT.
-  // The guard carries a REQUIRED_COVERAGE floor of 17 surfaces and 15 width test
+  // The guard carries a REQUIRED_COVERAGE floor of 18 surfaces and 15 width test
   // files, so a three-screen fixture would fail every case for a reason that has
   // nothing to do with the behaviour under test — and a case that passes for the
   // wrong reason is the same defect as one that cannot fail. Same reason the
   // check-migrations and assert-stamp-properties fixtures above are full-size.
+  //
+  // ⚠️ THIS TRACKS THE FLOOR AND MUST BE MOVED WITH IT. When the floor was
+  // re-measured 17 → 18 on 2026-08-11, `N` went 14 → 15 and the fixture's
+  // `responsive_width_test.dart` took a third subject, because every positive
+  // case here trips COVERAGE LOST the moment the fixture has fewer surfaces
+  // than the floor demands. A fixture sized to yesterday's floor fails for a
+  // reason that has nothing to do with what any of these cases assert.
   //
   // 🔴 AND IT CARRIES A `PaywallScreen` AT THE REAL PATH, measured at two widths
   // and not three. WIDTH_EXEMPT names that surface, and an exemption's own
@@ -5778,7 +5785,7 @@ describe('assert-responsive-coverage', () => {
   // without one would fail every case here on the guard's own bookkeeping. The
   // shape being modelled is the argued exemption, which is why the paywall
   // fixture pumps kPhone and kTablet and stops.
-  const N = 14;
+  const N = 15;
   const ids = Array.from({ length: N }, (_, i) => i + 1);
   const screenFile = (i, dir = `s${i}`) => `${LIB}/features/${dir}/s${i}_screen.dart`;
   const screenSrc = (i) => `class S${i}Screen extends StatelessWidget {\n  const S${i}Screen({super.key});\n}\n`;
@@ -5837,7 +5844,7 @@ describe('assert-responsive-coverage', () => {
   };
 
   /** The whole app tree: N screens + the paywall, 2 sheets, and 15 width tests
-   *  covering all 17. */
+   *  covering all 18. */
   const build = (name, over = {}, routerOpts = {}) => {
     const files = {
       [ROUTER]: routerSrc(routerOpts),
@@ -5859,8 +5866,8 @@ describe('assert-responsive-coverage', () => {
       files[`${TEST}/width_s${i}_test.dart`] = testSrc([`features/s${i}/s${i}_screen.dart`], [`const S${i}Screen()`]);
     }
     files[`${TEST}/responsive_width_test.dart`] = testSrc(
-      [`features/s13/s13_screen.dart`, `features/s14/s14_screen.dart`],
-      ['const S13Screen()', 'const S14Screen()'],
+      [`features/s13/s13_screen.dart`, `features/s14/s14_screen.dart`, `features/s15/s15_screen.dart`],
+      ['const S13Screen()', 'const S14Screen()', 'const S15Screen()'],
     );
     files[`${TEST}/width_sheets_test.dart`] = testSrc(
       ['features/add/add_sheet.dart', 'features/cancel/cancel_sheet.dart'],
@@ -5872,7 +5879,7 @@ describe('assert-responsive-coverage', () => {
   test('PASSES when the routed set and the measured set are EQUAL', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
     assert.equal(code, 0);
-    assert.match(out, /17 surface\(s\) routed, 17 measured/);
+    assert.match(out, /18 surface\(s\) routed, 18 measured/);
     assert.match(out, /the two sets are EQUAL/);
     assert.match(out, /every surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
   });
@@ -5890,16 +5897,16 @@ describe('assert-responsive-coverage', () => {
   });
 
   test('FAILS naming the SCREEN when a routed screen has no width test', () => {
-    // A 15th routed screen with no test. The floor is untouched (18 >= 17) and
+    // A 16th routed screen with no test. The floor is untouched (19 >= 18) and
     // the test-file count is untouched, so the ONLY failure is the uncovered one.
     const dir = build(
       'rc-uncovered',
-      { [screenFile(15)]: screenSrc(15) },
-      { screens: [...ids, 15] },
+      { [screenFile(16)]: screenSrc(16) },
+      { screens: [...ids, 16] },
     );
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /UNCOVERED SURFACE — `S15Screen`/);
+    assert.match(out, /UNCOVERED SURFACE — `S16Screen`/);
   });
 
   test('FAILS naming the SUBJECT when a width test measures an unrouted twin', () => {
