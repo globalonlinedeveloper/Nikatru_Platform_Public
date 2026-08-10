@@ -45,7 +45,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         email: _email.text.trim(),
         password: _password.text,
       );
-      // The redirect guard takes it from here — see SignInScreen.
+      // The redirect guard takes it from here — see LoginScreen, the form
+      // `/sign-in` builds (this comment named `SignInScreen`, the stamped twin
+      // Subly removed on 2026-08-10 when `/sign-in` became canonical).
     } on core.AuthFailure catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
@@ -62,7 +64,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.signUpTitle)),
-      // Same shape and same reasoning as SignInScreen: the error line lands
+      // Same shape and same reasoning as LoginScreen: the error line lands
       // under the fields, so vertical centring makes the form move at exactly
       // the wrong moment. Width comes from the chassis.
       body: SingleChildScrollView(

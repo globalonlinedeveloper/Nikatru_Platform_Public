@@ -249,7 +249,7 @@ void main() {
     (WidgetTester tester) async {
       // The trap this test exists for: `deleteAccount()` signs out whichever way
       // the request went, the auth stream fires, and go_router replaces the page
-      // stack with /login. A message posted to the screen being torn down —
+      // stack with /sign-in. A message posted to the screen being torn down —
       // SnackBar or pageless dialog — is raced by that teardown. Every other test
       // in this file pumps SettingsScreen bare, so none of them would notice.
       //

@@ -652,15 +652,16 @@ class SettingsScreen extends ConsumerWidget {
             // This used to `await signOut()` and then `context.go('/onboarding')`,
             // which raced the router's own redirect. gotrue notifies its
             // subscribers of `signedOut` BEFORE awaiting `POST /logout`, so the
-            // auth stream fires first and the router sends /settings → /login;
-            // the awaited continuation then resumed and pushed /onboarding on
-            // top. And because `/onboarding` sits inside the router's `authFlow`
+            // auth stream fires first and the router sends /settings → the auth
+            // route (spelled /login then, /sign-in since 2026-08-10); the
+            // awaited continuation then resumed and pushed /onboarding on top.
+            // And because `/onboarding` sits inside the router's `authFlow`
             // allowlist, the redirect does NOT correct it — so a user who tapped
-            // Log out was left in the first-run marketing carousel and had to tap
-            // Skip to reach the login form.
+            // Log out was left in the first-run marketing carousel and had to
+            // tap Skip to reach the login form.
             //
             // ⚠️ The nightly E2E polled for 'Welcome back' and returned on the
-            // first match, so it could pass on the /login frame the app was
+            // first match, so it could pass on the auth-route frame the app was
             // merely passing THROUGH. `test/sign_out_destination_test.dart`
             // asserts after a settle instead, at two different logout latencies —
             // and it taps `find.text('Log out')`, which is why the label is
@@ -1098,8 +1099,8 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
 ///
 /// 🔴 THE RESULT IS SHOWN IN THIS DIALOG RATHER THAN IN A SNACKBAR, and that is
 /// not styling. `deleteAccount()` signs out whichever way the request went, and
-/// a sign-out flips the router straight to `/login` — a `SnackBar` posted to the
-/// settings screen's `ScaffoldMessenger` would be raced by the teardown of the
+/// a sign-out flips the router straight to `/sign-in` — a `SnackBar` posted to
+/// the settings screen's `ScaffoldMessenger` would be raced by the teardown of the
 /// very screen that owns it. The one message a user must not miss is the one
 /// saying their data is gone and their login is not.
 ///

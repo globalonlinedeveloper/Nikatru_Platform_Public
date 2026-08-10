@@ -7,11 +7,33 @@
 //
 // Route inventory (the union — nothing live was lost, every stamped route is
 // reachable):
-//   FROM LIVE : /onboarding /login /scan /notifications /sub/:id
+//   FROM LIVE : /onboarding /scan /notifications /sub/:id
 //               /home /calendar /insights /budget /settings   (shell)
 //   FROM STAMP: / /sign-in /sign-up /paywall /manage-plan  + errorBuilder
 //   COLLISIONS: /onboarding (live screen wins) · /settings (live shell
 //               placement wins) · / (stamp entry kept as a redirect to /home)
+//
+// ── THE AUTH ROUTE IS `/sign-in`, AND IT IS THE ONLY ONE (owner, 2026-08-09) ─
+// P2.5 mounted BOTH `/login` (live) and `/sign-in` (stamp) and deferred the
+// choice as a product decision. It is now made: **`/sign-in` is canonical and
+// `/login` is a redirect onto it.** Two URLs for one gate is a fork that leaks
+// everywhere a link can be written — a marketing page, a password-reset mail, a
+// stale bookmark, a deep link built by a Worker — and each of them ages into a
+// different answer.
+//
+// 🔴 THE SCREEN DID NOT MOVE; ONLY THE URL DID. `/sign-in` builds the LIVE
+// `LoginScreen`, which is the screen a signed-out Subly user has always landed
+// on. It is the surface that carries the ADR-027 account-deletion notice (the
+// deletion outcome has NO other place to render — the sign-out redirect tears
+// down settings, its dialog and any SnackBar), the `E2EKeys.login*` anchors the
+// integration suite and the nightly E2E legs drive, and the localized
+// `_friendlyMessage` mapping that keeps a raw GoTrue exception off the screen.
+// Canonicalising the URL onto the stamped `SignInScreen` instead would have
+// dropped all three, so the stamped twin — unreachable the moment `/sign-in`
+// stopped building it — was REMOVED rather than left as a pane no user can
+// open. `assert-responsive-coverage.mjs`'s floor moved 16 → 15 in the same
+// change, which is exactly the deliberate, noisy way that guard requires a
+// surface to leave the app.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -20,7 +42,6 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../features/auth/login_screen.dart';
-import '../features/auth/sign_in_screen.dart';
 import '../features/auth/sign_up_screen.dart';
 import '../features/budget/budget_screen.dart';
 import '../features/calendar/calendar_screen.dart';
@@ -86,9 +107,9 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       if (loc == '/onboarding') return '/home';
 
       final bool loggedIn = auth.currentUser != null;
-      // The live allowlist, WIDENED by the two stamped auth paths. Without
-      // '/sign-in' and '/sign-up' here a signed-out user is bounced to '/login'
-      // and the stamped auth routes are mounted but unreachable.
+      // Every location a SIGNED-OUT user is allowed to stay on. `/login` is
+      // still in here even though it now renders nothing, and that is load
+      // bearing rather than leftover — see below.
       const List<String> authFlow = <String>[
         '/onboarding',
         '/login',
@@ -97,11 +118,27 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         '/scan',
       ];
 
-      if (!loggedIn && !authFlow.contains(loc)) return '/login';
-      if (loggedIn &&
-          (loc == '/login' || loc == '/sign-in' || loc == '/sign-up')) {
-        return '/home';
-      }
+      // 🔴 `/login` MUST STAY IN `authFlow`, OR THE DEEP LINK IS EATEN HERE.
+      // MEASURED, not reasoned (mutation M5, 2026-08-10): drop it and
+      // `/login?next=%2Fbudget&ref=mail` settles on a bare `/sign-in` with
+      // `{}` for a query. This guard returns a PATH; the route-level redirect
+      // returns a URI. So letting the guard fire on `/login` throws the query
+      // away one step before the redirect that would have carried it — and a
+      // lost `next=` is invisible, because the user is on the right screen and
+      // simply arrives somewhere they did not ask for afterwards. Leaving
+      // `/login` allowed makes the guard decline and hands the job to the
+      // route-level redirect below.
+      if (!loggedIn && !authFlow.contains(loc)) return '/sign-in';
+      // ⚠️ `/login` IS DELIBERATELY ABSENT FROM THIS LIST, and it was here
+      // until the mutation said otherwise. M4 (2026-08-10): removing it changed
+      // NO test outcome, because a signed-in user opening `/login` is
+      // canonicalised to `/sign-in` by the route-level redirect and bounced
+      // home by this very line on the next pass. A branch no input can reach is
+      // dead code that reads as a safety net, so it went rather than being kept
+      // "just in case" — the same rule this repo applied to the Ed25519 length
+      // checks. The behaviour is pinned by the signed-in limb of
+      // `test/auth_route_canonical_test.dart`.
+      if (loggedIn && (loc == '/sign-in' || loc == '/sign-up')) return '/home';
       return null;
     },
     // [pipeline C-13] A route that does not resolve must land somewhere the user
@@ -127,15 +164,30 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/onboarding',
         builder: (_, __) => const OnboardingScreen(),
       ),
-      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      // ── THE OLD AUTH URL, KEPT AS A REDIRECT ──────────────────────────────
+      // Not deleted. A route that 404s is worse than the duplication it
+      // replaced: every link already written against `/login` — a bookmark, a
+      // reset mail, a stale share — would land on `NotFoundScreen` instead of
+      // the form the person came to use. Deleting it is a decision for the day
+      // nobody holds such a link, and nothing here can know that day.
+      //
+      // 🔴 `state.uri.replace(path:)`, NOT the literal `'/sign-in'`. The whole
+      // URI comes in and only the PATH is rewritten, so `?next=/budget` and any
+      // `#fragment` survive the hop. Returning a bare string here is the exact
+      // shape that turns a working deep link into a silent trip to the home
+      // screen, and it is invisible in review because both spellings redirect.
+      GoRoute(
+        path: '/login',
+        redirect: (BuildContext context, GoRouterState state) =>
+            state.uri.replace(path: '/sign-in').toString(),
+      ),
       GoRoute(path: '/scan', builder: (_, __) => const ScanScreen()),
 
-      // ── STAMPED AUTH FLOW (chassis) ───────────────────────────────────────
-      // Kept alongside /login rather than replacing it: login_screen.dart is
-      // the live product surface and is test-protected
-      // (sign_out_destination_test.dart:154 expects LoginScreen after logout).
-      // Choosing ONE of the two is a P2.6b product decision, not a P2.5 one.
-      GoRoute(path: '/sign-in', builder: (_, __) => const SignInScreen()),
+      // ── THE CANONICAL AUTH FLOW ───────────────────────────────────────────
+      // `/sign-in` is the chassis path and `LoginScreen` is Subly's live form:
+      // the URL is the stamp's, the screen is the app's. The stamped
+      // `SignInScreen` twin went with this change — see the file header.
+      GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/sign-up', builder: (_, __) => const SignUpScreen()),
 
       // ── LIVE ROOT-NAVIGATOR ROUTES ────────────────────────────────────────

@@ -494,7 +494,7 @@ void main() {
   /// `Found 0 widgets with text "Skip"`. The suite had been depending on a bug.
   ///
   /// ⚠️ THIS WEAKENS NOTHING ABOUT WHERE THE APP LANDS. The router sends an
-  /// already-onboarded signed-out user `/onboarding → /home → /login`, so every
+  /// already-onboarded signed-out user `/onboarding → /home → /sign-in`, so every
   /// caller still asserts the SAME destination afterwards; only the question
   /// "was the carousel in the way" became conditional. The unconditional
   /// first-run proof lives in the first test, which is the one launch that is
@@ -591,7 +591,7 @@ void main() {
     final Finder shell = find.byType(AppShell);
     if (shell.evaluate().isEmpty) return false;
     // …and CONFIRM it, because a redirect in flight can paint the shell for a
-    // frame or two on the way to /login. Acting on that frame would drive
+    // frame or two on the way to /sign-in. Acting on that frame would drive
     // Settings on a screen that is being torn down, and this helper would
     // manufacture the very failure it exists to prevent.
     await pumpFor(tester, const Duration(seconds: 2));
@@ -634,7 +634,7 @@ void main() {
   ///
   /// Polls first because the route change is asynchronous and this is reached
   /// from two different starting points now (straight off the carousel, or off
-  /// the router's `/onboarding → /home → /login` bounce for a returning user),
+  /// the router's `/onboarding → /home → /sign-in` bounce for a returning user),
   /// then makes the SAME hard assertion as before. Strictly stronger than the
   /// fixed pump it replaces: nothing is accepted that was not accepted before.
   Future<void> expectLandedOnLogin(WidgetTester tester, String after) async {
@@ -760,7 +760,7 @@ void main() {
 
     // ── 02 Login ─────────────────────────────────────────────────────────────
     // Reached either straight off the carousel or, for a returning user, via the
-    // router's `/onboarding → /home → /login` bounce. Same destination, same
+    // router's `/onboarding → /home → /sign-in` bounce. Same destination, same
     // assertion, both ways.
     await expectLandedOnLogin(tester, 'the boot for the full-walk test');
     await shot('02-login');
@@ -1001,8 +1001,9 @@ void main() {
     await shot('17b-after-logout-tap');
     // signOut() is an async round-trip to Supabase; the router then refreshes
     // and redirects. A signed-out user on a non-auth route (/settings) lands on
-    // /login — NOT first-run onboarding — per the core/router.dart redirect (a
-    // signed-out user is only left on /onboarding|/login|/scan). Poll for it.
+    // /sign-in — NOT first-run onboarding — per the core/router.dart redirect (a
+    // signed-out user is only left on /onboarding|/sign-in|/scan; /login is a
+    // redirect onto /sign-in since 2026-08-10). Poll for it.
     expect(
       await waitFor(tester, find.text('Welcome back')),
       isTrue,
@@ -1019,7 +1020,7 @@ void main() {
     // ONCE, so it can be satisfied by a frame the app is merely passing
     // THROUGH. It was: the settings screen used to fire its own
     // `context.go('/onboarding')` after the router had already redirected to
-    // /login, and `/onboarding` is inside the router's `authFlow` allowlist so
+    // the auth route, and `/onboarding` is inside the router's `authFlow` allowlist so
     // nothing corrected it. This assertion passed on the transit frame while the
     // user ended up in the first-run carousel — the `17-signed-out` screenshot
     // from a GREEN run shows the carousel animating in over the login screen.

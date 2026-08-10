@@ -661,8 +661,8 @@ final StreamProvider<core.AuthUser?> authUserProvider =
 /// Turns the auth stream into something `GoRouter` will listen to.
 ///
 /// 🔴 [pipeline C-13] WITHOUT THIS, SIGNING IN LEAVES THE USER ON THE FORM.
-/// The stamped `sign_in_screen.dart` deliberately does not navigate — pushing
-/// from both the screen and the redirect guard is how two routes end up racing
+/// The auth FORM deliberately does not navigate — pushing from both the screen
+/// and the redirect guard is how two routes end up racing
 /// to be top of the stack — so `redirect` has to be TOLD to re-run. Found
 /// 2026-07-29 by driving the form in a widget test rather than by reading the
 /// code.
@@ -1404,8 +1404,9 @@ final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
 /// 🔴 WHERE THE DELETION OUTCOME LIVES ONCE THE SCREEN IS GONE.
 ///
 /// `deleteAccount()` signs out whichever way the request went; the auth stream
-/// fires, and go_router replaces the page stack with `/login`. A `SnackBar` — or
-/// a dialog, which is a PAGELESS ROUTE on the page being removed — goes with it.
+/// fires, and go_router replaces the page stack with `/sign-in`. A `SnackBar`
+/// — or a dialog, which is a PAGELESS ROUTE on the page being removed — goes
+/// with it.
 /// **Measured, not assumed:** the first version of this flow rendered the result
 /// in the dialog, and the router-driven test in `test/delete_account_test.dart`
 /// found zero widgets with the result key after the redirect settled. So the

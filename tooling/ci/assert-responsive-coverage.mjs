@@ -454,8 +454,22 @@ if (problems.length === 0) {
 // one.
 // ═══════════════════════════════════════════════════════════════════════════
 const REQUIRED_COVERAGE = {
-  // 14 routed screens + 2 modal sheets, measured on the tree of 2026-08-09.
-  surfaces: 16,
+  // 13 routed screens + 2 modal sheets, measured on the tree of 2026-08-10.
+  //
+  // 🔴 LOWERED 16 → 15 ON 2026-08-10, AND THIS IS THE REASON, WRITTEN BESIDE IT
+  // AS THIS CLAUSE DEMANDS. `/sign-in` became the canonical auth route that day
+  // and `/login` became a redirect onto it (owner decision; two URLs for one
+  // gate is a fork every written link ages into). The canonical route builds
+  // the LIVE `LoginScreen` — the surface carrying the ADR-027 deletion notice
+  // and the `E2EKeys.login*` anchors — so the stamped `SignInScreen` twin was
+  // left with no route at all and was DELETED rather than kept as an unopenable
+  // pane. One surface genuinely left the app; the floor moves with it, once,
+  // deliberately, and it is a floor again immediately.
+  //
+  // ⚠️ `widthTestFiles` DID NOT MOVE. `width_auth_test.dart` still exists — it
+  // lost its sign-in group and kept its sign-up one. A file count and a surface
+  // count answer different questions and only one of them changed.
+  surfaces: 15,
   // 13 `width_*_test.dart` + `responsive_width_test.dart`.
   widthTestFiles: 14,
 };

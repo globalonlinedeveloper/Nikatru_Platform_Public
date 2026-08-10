@@ -87,11 +87,12 @@
       "name": "sign in",
       "primaryAction": "submitting the sign-in form authenticates and moves the user off it",
       "test": "signing in through the FORM moves the user off it",
-      "effect": "lib/features/auth/sign_in_screen.dart:signInWithEmail",
+      "effect": "lib/features/auth/login_screen.dart:signInWithEmail",
+      "note": "🔴 RE-POINTED 2026-08-10, and it was ALREADY WRONG before `/sign-in` became canonical. This row named `sign_in_screen.dart` — the stamped twin — while the test it cites drives the LIVE `LoginScreen` through `E2EKeys.loginSubmit` (chassis_properties_test.dart says so in as many words: the union's signed-out form is the live LoginScreen, whose submit is a GradientButton, not the stamp's FilledButton). So the anchor pointed at an implementation the named test never executed, and deleting that file would not have reddened anything — the exact hollow-anchor shape N-5 exists to prevent. The stamped twin has since been removed with the route consolidation, which is what forced the row to be read rather than inherited. RE-EARNED, not re-labelled: the mutation below was run against the real tree on the day it is dated.",
       "mutation": {
-        "symbol": "lib/features/auth/sign_in_screen.dart:signInWithEmail",
+        "symbol": "lib/features/auth/login_screen.dart:signInWithEmail",
         "observedRed": "signing in through the FORM moves the user off it",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {

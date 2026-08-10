@@ -88,7 +88,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Future<void> _finish() async {
     await ref.read(onboardingSeenProvider.notifier).set(true);
     if (!mounted) return;
-    context.go('/login');
+    // The CANONICAL auth path (owner, 2026-08-09). `/login` still resolves —
+    // it redirects here — but a first-run hand-off that has to be rewritten by
+    // a redirect is a second answer to a settled question living in the app.
+    context.go('/sign-in');
   }
 
   /// [O3] An override REPLACES designed copy; designed copy is the FALLBACK —
