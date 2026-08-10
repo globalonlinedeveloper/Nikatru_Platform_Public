@@ -358,6 +358,66 @@ const REQUIRED_COVERAGE = [
     ],
   },
   {
+    id: 'user_state_reset',
+    what: 'the per-user state a sign-out has to drop — EntitlementCache.clear and the notification schedule',
+    wired: true,
+    // 🔴 ADDED 2026-08-11 AFTER THE SEAM WAS FOUND DEAD, and it is the purest
+    // example of this guard's subject so far: `EntitlementCache.clear()` was
+    // written, documented ("e.g. on sign-out"), exported and unit-tested, and
+    // had ZERO production call sites anywhere in the tree. The cache honours a
+    // cached Pro answer offline for up to `kEntitlementStalenessCeiling` — SEVEN
+    // DAYS — so the next person to sign in on a shared, borrowed or resold
+    // device inherited the previous one's subscription for a week. Nothing went
+    // red, because a cache that is never cleared behaves identically to one that
+    // has nothing to clear until a SECOND user appears, and no test has two.
+    //
+    // FOUR needs, because the seam has four separable halves and deleting any
+    // one leaves the others looking healthy:
+    //   · the entitlement cache is really dropped (the inherited-Pro half);
+    //   · the schedule is really cancelled (the deleted user who goes on being
+    //     reminded about an account that no longer exists);
+    //   · something on a SCREEN reaches it — a reset nobody calls is the same
+    //     dead capability one layer up, which is exactly how this one shipped;
+    //   · …and the CONTROL reaches that. ⚠️ THE FOURTH NEED EXISTS BECAUSE THE
+    //     THIRD ONE ALONE DID NOT FAIL. Measured on the real template before
+    //     this row shipped: reverting the tile to the fire-and-forget
+    //     `onTap: () => ref.read(authRepositoryProvider).signOut()` — the exact
+    //     defect this increment fixes — left `signOutAndForgetUser(` sitting
+    //     inside a `_signOut` helper that nothing called, and the row printed
+    //     three `ok`s. A handler with no caller is a dead capability wearing a
+    //     private method, and it is the same shape one layer down as the one
+    //     this seam is about.
+    //
+    // Scoped to the brick throughout: this is the CHASSIS's reset, inherited by
+    // every app the factory stamps, and a caller in apps/ would keep the row
+    // green with the template's own call deleted.
+    needs: [
+      {
+        re: /ref\.read\(entitlementCacheProvider\)\.clear\b/,
+        scope: BRICK_APP,
+        label: 'the entitlement cache really dropped on the chassis reset path',
+      },
+      {
+        re: /ref\.read\(notificationServiceProvider\)\.cancelAll\b/,
+        scope: BRICK_APP,
+        label: 'the notification schedule really cancelled with it',
+      },
+      {
+        re: /signOutAndForgetUser\(/,
+        // The reset lives in `providers.dart`; a match there is its own
+        // declaration, and a declaration says nothing about who calls it.
+        declares: /Future<void>\s+signOutAndForgetUser\(/,
+        scope: BRICK_APP,
+        label: 'a UI caller that ends a session through it',
+      },
+      {
+        re: /on(?:Tap|Pressed):\s*\(\)\s*=>\s*_signOut\(/,
+        scope: BRICK_APP,
+        label: 'the sign-out CONTROL routed through that awaited handler',
+      },
+    ],
+  },
+  {
     id: 'promo_card',
     what: 'the same-app upgrade card — a surface whose ENTIRE shipped state is "renders nothing"',
     wired: true,
@@ -503,6 +563,41 @@ const EXCLUSIVE_TRIGGERS = [
       'ReviewGate and nothing else can know whether the quota is worth spending. iOS discards requests past ' +
       'its quota SILENTLY, so a second caller does not produce a second prompt — it produces no prompt, and ' +
       'no error, on the launch that mattered.',
+  },
+  {
+    id: 'session_end',
+    // 🔴 ADDED 2026-08-11, AND IT IS THE ENCODING OF THE MISS THE
+    // `user_state_reset` ROW COULD NOT MAKE. That row proves SOMETHING reaches
+    // the forget; it is satisfied by the settings screen alone. Meanwhile
+    // `reaccept_terms_screen.dart` (Decline, which every signed-in user meets on
+    // a `kTermsVersion` bump) and `verify_email_screen.dart` ("the only way OUT
+    // of the gate") each ended a session with a bare `signOut()` and left the
+    // previous user's entitlement cache on the device — the exact reported
+    // symptom, reproducing through two controls while the row printed four
+    // `ok`s and a doc comment in providers.dart asserted there were "both
+    // paths". An at-least-one check cannot see a fifth caller that bypasses the
+    // seam; only an at-most bound can.
+    //
+    // MATCH THE CALL, NOT THE IDENTIFIER, same house rule as above: `signOut`
+    // appears as a DECLARATION on the interface, on every test double and on
+    // `mock_auth_repository.dart` (`Future<void> signOut() async` and a bare
+    // `await signOut();` inside the same class) — none of which has a receiver
+    // dot in front of it, so `\.signOut\(` reads call sites and nothing else.
+    re: /\.signOut\(/,
+    // The providers spine in each root, and nothing else. Both of that file's
+    // two call sites are deliberate: `signOutOnlyIfSessionIsGone` (the 401
+    // handler, which must decide before it ends anything) and
+    // `signOutAndForgetUser` (every user-facing control).
+    allowed: [
+      `${BRICK_APP}/lib/state/providers.dart`,
+      'apps/subly/lib/state/providers.dart',
+    ],
+    why:
+      'A session-ending control that calls signOut() directly skips `signOutAndForgetUser`, so the entitlement ' +
+      'cache (honoured offline for up to seven days) and the notification schedule outlive the user — the next ' +
+      'person to sign in on a shared, borrowed or resold device inherits the previous one\'s Pro. Nothing goes ' +
+      'red when that happens, because a cache that is never cleared behaves identically to one with nothing in ' +
+      'it until a SECOND user appears. Every control belongs behind the spine, not beside it.',
   },
 ];
 

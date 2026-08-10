@@ -128,12 +128,20 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
               // The only way OUT of the gate. A user who mistyped their address
               // has no other move — the account exists, they cannot reach the
               // app, and without this the app is a locked door with no handle.
+              //
+              // 🔴 THROUGH [signOutAndForgetUser], not `auth.signOut()`. It is a
+              // session-ending control like the one in settings, so it owes the
+              // device the same forget; it was left on the bare call and the
+              // previous user's cached Pro survived it. `_run` invokes this
+              // closure with nothing awaited before it, so the provider reads
+              // inside still happen while this element is mounted — the deadline
+              // [userStateDrops] exists for.
               TextButton(
                 key: VerifyEmailScreen.signOutButton,
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                        await auth.signOut();
+                        await signOutAndForgetUser(ref);
                         return null;
                       }),
                 child: Text(l10n.signOut),

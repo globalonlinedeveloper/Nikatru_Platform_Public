@@ -64,6 +64,15 @@ class _ReacceptTermsScreenState extends ConsumerState<ReacceptTermsScreen> {
   /// else in this flow: a SUCCESSFUL sign-out replaces this page via the
   /// router's gate, and a SnackBar riding on a page being torn down is a message
   /// nobody reads ([ADR 027]).
+  ///
+  /// 🔴 IT GOES THROUGH [signOutAndForgetUser], AND THAT IS THE FIX RATHER THAN
+  /// A TIDY-UP. This was `ref.read(authRepositoryProvider).signOut()`, so the
+  /// entitlement cache and the notification schedule survived it — and this is
+  /// the sign-out a PAYING user is most likely to reach, because a `kTermsVersion`
+  /// bump puts this interstitial in front of every signed-in account in the
+  /// world and Decline is the only way past it that is not "agree". The
+  /// inherited-Pro defect reproduced through this button unchanged while the
+  /// settings control was already fixed.
   Future<void> _signOut() async {
     if (_busy) return;
     setState(() {
@@ -71,7 +80,7 @@ class _ReacceptTermsScreenState extends ConsumerState<ReacceptTermsScreen> {
       _notice = null;
     });
     try {
-      await ref.read(authRepositoryProvider).signOut();
+      await signOutAndForgetUser(ref);
     } on core.AuthFailure catch (e) {
       if (mounted) setState(() => _notice = e.message);
     } catch (_) {

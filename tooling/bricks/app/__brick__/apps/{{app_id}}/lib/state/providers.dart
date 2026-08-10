@@ -1018,10 +1018,136 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 /// survives a good token means the server rejected a LIVE session (revoked, or a
 /// permissions problem); that is a failed request, not a reason to destroy local
 /// state the user can still use.
+///
+/// ⚠️ THIS PATH DOES NOT RUN THE PER-USER FORGET, and the omission is stated
+/// rather than left to be discovered. It takes a [core.AuthRepository] because
+/// it is called from inside [restClientProvider]'s `onUnauthorized`, where there
+/// is no `WidgetRef` to resolve [userStateDrops] from; wiring it would mean
+/// either a second copy of the drop list (the one thing that list exists to
+/// prevent) or a second reader shape. So a session that dies of a failed refresh
+/// still leaves the entitlement cache behind until the next deliberate sign-out.
+/// It is the narrowest of the leaks — nobody hands the device over on a 401 —
+/// and it is the only one left. Named here, and in [signOutAndForgetUser]'s doc,
+/// so the count in that doc stays honest.
 Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
   if (await auth.currentAccessToken() == null) {
     await auth.signOut();
   }
+}
+
+/// One user-scoped clear, with its provider read ALREADY DONE.
+typedef UserStateDrop = Future<void> Function();
+
+/// Everything on this device that belongs to the person who was signed in,
+/// RESOLVED — the read half, which is synchronous and has a deadline.
+///
+/// 🔴 `EntitlementCache.clear()` HAD ZERO PRODUCTION CALLERS. The cache exists
+/// so a paid user stays unlocked offline, and it honours a cached answer for up
+/// to [core.kEntitlementStalenessCeiling] — seven days. Nothing dropped it when
+/// a session ended, so the NEXT person to sign in on a shared, borrowed, resold
+/// or family device inherited the previous one's Pro for a week. `cancelAll()`
+/// was in the same state on this path: a user who deleted their account went on
+/// being reminded about it by a device that had forgotten nothing.
+///
+/// The LIST is the definition — one place that says what "user-scoped" means, so
+/// adding a per-user store is one line here rather than an omission in four
+/// screens. [pipeline C-6]: a fail-closed store nothing ever clears is a dead
+/// capability that reports healthy.
+///
+/// 🔴 THIS IS A SEPARATE FUNCTION FROM [forgetSignedInUser] BECAUSE READING A
+/// PROVIDER HAS A DEADLINE AND RUNNING A DROP DOES NOT — and the first shape of
+/// this fix got that wrong in the one way that made it do nothing.
+/// `WidgetRef.read` calls `_assertNotDisposed()`, which THROWS
+/// `StateError('Cannot use "ref" after the widget was disposed.')` in release
+/// (flutter_riverpod 2.6.1 `consumer.dart:548-551` — a real throw, not an
+/// `assert`). A sign-out emits on the auth stream BEFORE its network leg
+/// finishes, the router then replaces the shell the settings screen lives in,
+/// and that screen's element is gone — so a `ref.read` placed AFTER
+/// `await signOut()` threw on exactly the slow connection the fix was for:
+/// nothing was cleared, and the user was told a successful sign-out had failed.
+/// Resolve the drops FIRST, then await. Callers cannot get this wrong by
+/// accident any more, because [forgetSignedInUser] takes the resolved list and
+/// never a `ref`.
+List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
+  ref.read(entitlementCacheProvider).clear,
+  ref.read(notificationServiceProvider).cancelAll,
+];
+
+/// Run the resolved drops — the half that is allowed to take as long as it likes.
+///
+/// 🔴 EVERY DROP IS ATTEMPTED EVEN AFTER ONE THROWS, and the FIRST failure is
+/// rethrown once they all have been. Returning early leaves exactly the
+/// half-forgotten state this exists to prevent (cache gone, reminders still
+/// firing); swallowing restores the defect it fixes. The caller decides what to
+/// say about it — see the sign-out handler in `settings_screen.dart`.
+Future<void> forgetSignedInUser(List<UserStateDrop> drops) async {
+  Object? failure;
+  StackTrace? stack;
+  for (final UserStateDrop drop in drops) {
+    try {
+      await drop();
+    } catch (e, s) {
+      failure ??= e;
+      stack ??= s;
+    }
+  }
+  if (failure != null) Error.throwWithStackTrace(failure, stack!);
+}
+
+/// End the session AND forget the user — the whole of what a sign-out is.
+///
+/// 🔴 THE FORGET RUNS EVEN WHEN THE SIGN-OUT THREW, and that direction is
+/// chosen. `SecureSessionStorage.removePersistedSession` throws on purpose when
+/// it can neither delete the session nor tombstone it, so a throw here is the
+/// case where local state is MOST likely to outlive the user, not least. The
+/// cost of clearing for a session that turns out to have survived is one server
+/// read that puts the entitlement straight back.
+///
+/// 🔴 WHICH SESSION-ENDING PATHS RUN IT, COUNTED RATHER THAN ASSERTED. This doc
+/// said "both paths (the sign-out control and account deletion)" and there were
+/// FOUR user-facing ones in this template; the two it did not name went on
+/// leaking the previous user's Pro, and the sentence is how the next reader
+/// stops looking. All four go through this function or through
+/// [forgetSignedInUser] today:
+///   1. Settings → sign out (`settings_screen.dart`, `_signOut`);
+///   2. Settings → Delete account (the same file, after `deleteAccount()`);
+///   3. `reaccept_terms_screen.dart` → Decline, the way out of the mandatory
+///      interstitial every signed-in user meets on a `kTermsVersion` bump;
+///   4. `verify_email_screen.dart` → Sign out, which its own comment calls "the
+///      only way OUT of the gate".
+/// `assert-seams-wired.mjs`'s `session_end` exclusive trigger is what keeps that
+/// list true: this spine file is the ONLY place allowed to call `.signOut()`, so
+/// a fifth control cannot be added without either routing through here or
+/// turning the build red.
+///
+/// ⚠️ ONE PATH DELIBERATELY DOES NOT, and it is not a control:
+/// [signOutOnlyIfSessionIsGone], the 401 handler on [restClientProvider]. It
+/// takes a repository rather than a `WidgetRef` because it runs from inside a
+/// provider with no widget anywhere near it, so it cannot resolve the drops the
+/// way the four above do. Out of scope on purpose rather than by omission — see
+/// the note at its declaration.
+///
+/// A NAMED function for the same reason [signOutOnlyIfSessionIsGone] is: a test
+/// has to be able to drive it without a widget.
+Future<void> signOutAndForgetUser(WidgetRef ref) async {
+  // 🔴 BOTH READS HAPPEN HERE, BEFORE ANY AWAIT. See [userStateDrops].
+  final core.AuthRepository auth = ref.read(authRepositoryProvider);
+  final List<UserStateDrop> drops = userStateDrops(ref);
+  Object? failure;
+  StackTrace? stack;
+  try {
+    await auth.signOut();
+  } catch (e, s) {
+    failure = e;
+    stack = s;
+  }
+  try {
+    await forgetSignedInUser(drops);
+  } catch (e, s) {
+    failure ??= e;
+    stack ??= s;
+  }
+  if (failure != null) Error.throwWithStackTrace(failure, stack!);
 }
 
 /// What identity can actually do on THIS platform — declared, not assumed.
