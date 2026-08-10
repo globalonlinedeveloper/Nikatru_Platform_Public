@@ -28,9 +28,29 @@ import { defineConfig } from 'vitest/config';
 // ⚠️ `workerd` FIRST, then `browser`: they are separate conditions in jose's
 // export map and only the first is what Cloudflare's bundler selects. Listing
 // `browser` alone would test a third build nobody deploys.
+//
+// 🔴 BOTH BLOCKS ARE REQUIRED, and `ssr.resolve.conditions` is the one that does
+// the work under Vite 6+. Vitest executes test modules through Vite's SSR
+// pipeline, and from Vite 6 that pipeline stopped reading `resolve.conditions`
+// — it reads `ssr.resolve.conditions`, which defaults to the NODE conditions.
+// So on the vite 5 -> 7 bump (2026-08-10, the undici/vite/esbuild Dependabot
+// sweep) this file kept its `resolve` block, kept looking correct, and silently
+// went back to resolving jose's node build: the 7 erasure tests — the ones for
+// the one route here that refuses the HS256 fallback — turned red with a blanket
+// 401, because `createRemoteJWKSet` was fetching the JWKS over `node:https`
+// again and the stubbed `fetch` could not serve it.
+//
+// That is the negative test for the block below — deleting `ssr` reproduces
+// those 7 failures on vite 7. `resolve` is kept for the client-side/optimizer
+// path and so a downgrade to vite 5 is not silently unprotected.
 // ─────────────────────────────────────────────────────────────────────────────
 export default defineConfig({
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],
+  },
+  ssr: {
+    resolve: {
+      conditions: ['workerd', 'browser', 'import', 'default'],
+    },
   },
 });
