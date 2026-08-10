@@ -163,6 +163,24 @@
     ]
   },
 
+  "advertisingPurpose": {
+    "_why": [
+      "🔴 A ZERO NOBODY DECLARED IS A ZERO NOBODY IS ACCOUNTABLE FOR. \"Advertising or marketing\" is in the",
+      "vocabulary above and is used by NO answer row — which was true, unremarked and unchecked until",
+      "2026-08-09. Nothing recorded that the zero was deliberate, so nothing could tell it apart from a row",
+      "somebody forgot to tick, and the day a promo surface targets on a collected data type the purpose would",
+      "arrive on that row with no guard reading it as an advertising claim at all.",
+      "",
+      "It is declared here, counted by tooling/ci/assert-ads-declarations.mjs, and compared to",
+      "apps/subly/store/android-play/ads-declaration.json — which derives the SAME answer from format rather",
+      "than from packages. Three Play advertising questions, one derivation, no second opinion."
+    ],
+    "purpose": "Advertising or marketing",
+    "declaredOnRows": 0,
+    "basis": "No data type is collected for advertising or marketing. There is no ad SDK, no attribution SDK, no advertising identifier and — the half no dependency can prove — no promotional surface anywhere in the widget tree and no armed promotional lever in the served config. The format-keyed derivation lives in ads-declaration.json; this row is the Data safety form's half of the same question, and the two are compared on every run.",
+    "crossCheckedBy": "tooling/ci/assert-ads-declarations.mjs"
+  },
+
   "clientAbsenceRequiredFor": {
     "_why": [
       "🔴 REQUIRED_COVERAGE FOR THE `clientAbsence` LIMB, because the limb protects a claim that is INVISIBLE",

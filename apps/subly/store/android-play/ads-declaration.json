@@ -1,0 +1,171 @@
+{
+  "_readme": [
+    "THE PLAY CONSOLE 'APP CONTENT → ADS' DECLARATION — Subly, channel `android-play`.",
+    "",
+    "🔴 WHY THIS FILE EXISTS AT ALL, AND WHY IT IS THE THIRD SWORN FILE AND NOT A FIELD IN THE OTHER TWO.",
+    "Play asks three separate advertising questions, on three separate screens, and this repository could",
+    "answer only two of them. `content-rating.json` carries the IARC `contains-ads` claim; `data-safety.json`",
+    "carries the 'Advertising or marketing' PURPOSE vocabulary. The App content → Ads declaration — the one",
+    "that puts the 'Contains ads' badge on the store listing — had NO repo representation: no file, no",
+    "derivation, no guard. An answer nobody records is an answer somebody types into a console from memory.",
+    "",
+    "🔴 AND THE TWO THAT DID EXIST WERE BLIND TO THE ONLY THING THIS QUESTION IS ABOUT. Both derive from",
+    "`dependency-tells` — a pubspec walk for ad SDKs — while Google's ads declaration lists a YES trigger",
+    "that needs NO SDK at all: 'House ads: My app renders a small ad banner, interstitial ad, ad wall,",
+    "and/or widget' to promote your other apps. A house-ad surface is pure UI we render. It adds no",
+    "dependency, no permission and no manifest entry, so every dependency-keyed answer in this tree stays",
+    "GREEN while becoming FALSE. That is this repository's signature defect — a check that cannot fail for",
+    "the change it is nominally about — sitting under a sworn store declaration whose penalty is stated by",
+    "Google as suspension.",
+    "",
+    "SO THE DERIVATION HERE IS `format-tells`, NOT `dependency-tells`. tooling/ci/assert-ads-declarations.mjs",
+    "reads the SHIPPED TREE and asks the questions the console asks: does a promotional COMPONENT exist (a",
+    "widget-shaped declaration whose own name carries an advertising token)? does a served config payload",
+    "carry an armed promotional lever, or name an app that is not the host? It then compares that verdict to",
+    "ALL FOUR advertising claims this repository makes — this file, data-safety.json's advertising-purpose",
+    "rows, content-rating.json's `contains-ads`, and the advertising sentence published on privacy.html via",
+    "its tooling/legal/policy-claims.json row. One derivation, four consumers, no second opinion.",
+    "",
+    "⚠️ TODAY THE DOMAIN IS EMPTY, AND THE GUARD SAYS SO OUT LOUD RATHER THAN PRINTING A BARE 'ok'. There is",
+    "no promo component anywhere in `apps/`, `packages/` or the brick; the one promotional lever in the served",
+    "config (`max_promos_per_week`) ships DISARMED at 0. An empty domain is a true answer and a weak one — it",
+    "is why the scan asserts its own instrument (files walked, anchor symbols found) instead of asserting the",
+    "result, exactly as data-safety.json's iOS usage-key haystack does.",
+    "",
+    "⚠️ THE EXACT CONSOLE WORDING IS UNVERIFIED — see `console`. The declaration form renders inside the Play",
+    "Console. What IS quoted below, with URL and fetch date, is Google's public help page describing the",
+    "triggers and the More-Apps carve-out. This file records substantive claims about the app, not a mirror",
+    "of a form nobody here has opened.",
+    "",
+    "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER — the same disclaimer tooling/legal/README.md carries."
+  ],
+
+  "app": "subly",
+  "channel": "android-play",
+
+  "console": {
+    "location": "Play Console → App content → Ads",
+    "question": "Does your app contain ads?",
+    "wordingStatus": "UNVERIFIED",
+    "why": "The declaration form is rendered inside the Play Console after the app record exists and is not published on any page that could be fetched and cited. Inventing plausible form wording would make this file look like a filled-in form while being a guess about someone else's UI — the same refusal content-rating.json makes about the IARC questionnaire.",
+    "consequence": "The claims below are about the APP. Mapping them onto the console's actual fields is a human step, recorded in `humanOwned.mapAnswersToConsoleFields`."
+  },
+
+  "sources": {
+    "allowedHosts": ["support.google.com", "play.google.com", "developer.android.com"],
+    "houseAdsTrigger": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/9859455",
+      "fetched": "2026-08-09",
+      "quote": "House ads: My app renders a small ad banner, interstitial ad, ad wall, and/or widget"
+    },
+    "moreAppsCarveOut": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/9859455",
+      "fetched": "2026-08-09",
+      "quote": "The app displays a More Apps section in the main menu leading a user to your other apps"
+    },
+    "misrepresentationPenalty": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/9859455",
+      "fetched": "2026-08-09",
+      "quote": "If you misrepresent the presence of ads in your app(s), it's considered a violation of the Google Play policies and may result in your app(s) being suspended."
+    }
+  },
+
+  "containsAds": false,
+  "adFormats": [],
+  "promotesOtherApps": false,
+  "derivation": "format-tells",
+
+  "basis": "Nothing in the shipped tree renders an advertising or promotional surface. The format scan below walks every Dart file under the app, the shared packages and the brick template, finds every widget-shaped declaration, and looks for an advertising token in the DECLARED NAME — the property a house ad cannot hide, because a surface must be a widget to be rendered. It finds none. The served config payload carries no armed promotional lever and names no app other than the host. So all three Play advertising answers are false for the same reason, derived once, and the privacy page's advertising sentence is true as written.",
+
+  "formatScan": {
+    "_why": [
+      "THE DOMAIN IS DERIVED FROM FORMAT, WHICH IS WHAT GOOGLE ASKS ABOUT — not from ownership (promoting",
+      "our OWN apps is still a YES) and not from SDK presence (trigger 3 needs no SDK).",
+      "",
+      "🔴 THE SCAN ASSERTS ITS INSTRUMENT, NOT ITS RESULT. A zero here is only evidence if the walk still",
+      "reaches the tree and the matcher still matches widget declarations. `requiredCoverage` names symbols",
+      "that DO exist and must be found on every run: if the matcher stops matching, those anchors fail",
+      "instead of the domain quietly becoming empty for a reason that has nothing to do with the app.",
+      "",
+      "⚠️ `CatchUpNudgeBanner` IS THE CALIBRATION CASE AND IT MUST NOT FIRE. It is a banner, it sits in the",
+      "home body, and it is not an ad — it nudges the user about their OWN data. A rule keyed on 'banner'",
+      "would raise a false alarm on day one and be switched off within a week. The rule is therefore keyed on",
+      "an ADVERTISING token in the identifier (ad/ads/promo/interstitial/sponsored…) or on a cross-app pair",
+      "(more+apps, your+apps, cross+sell…), and the format word only classifies a hit that already fired."
+    ],
+    "roots": [
+      "apps/subly/lib",
+      "packages/design_system/lib",
+      "packages/core/lib",
+      "packages/purchases/lib",
+      "tooling/bricks/app/__brick__/apps/{{app_id}}/lib"
+    ],
+    "minFiles": 100,
+    "requiredCoverage": [
+      {
+        "file": "packages/design_system/lib/src/widgets/paywall_gate.dart",
+        "symbol": "PaywallGate",
+        "why": "The positive control for the widget-declaration matcher in the shared design system — the package a promo card would land in. If the matcher stops finding this class, it has stopped finding widget declarations, and an empty result would mean nothing."
+      },
+      {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart",
+        "symbol": "CatchUpNudgeBanner",
+        "why": "The positive control in the BRICK, which is where a promo surface would arrive for all fifty apps at once, and simultaneously the false-alarm calibration: this banner must be FOUND by the matcher and must NOT be flagged as advertising."
+      },
+      {
+        "file": "apps/subly/lib/features/home/home_screen.dart",
+        "symbol": "CatchUpNudgeBanner",
+        "why": "The same control in the shipped app, so the scan is proven to reach the app tree and the brick tree separately. A walk that lost one of the two would still find the other and look healthy."
+      }
+    ],
+    "configPayloads": ["services/platform/src/app-config-data.json"],
+    "appRegistry": "sites/_shared/_data/apps.json",
+    "disarmedLevers": {
+      "max_promos_per_week": "The promotional-notification cap, served at 0 and compiled in at 0 (packages/core/lib/src/config/app_config.dart). A promo-token config key whose value is disarmed is a LEVER, not a surface: it declares that the cap exists before the sender does. Raising it above zero is a promotional touch and makes this declaration re-derivable — the guard prints every disarmed lever it finds and fails on an armed one. The notification half of that rule (nothing outside app_config.dart may read the cap) belongs to tooling/ci/assert-adapter-capabilities.mjs and is deliberately not repeated here."
+    }
+  },
+
+  "crossChecks": {
+    "_why": "The four advertising claims this repository makes are answers to ONE question asked on four surfaces. Written independently they agree today and drift silently; derived from one scan they cannot. Each entry names the file, the exact row, and what the disagreement would mean.",
+    "dataSafetyPurpose": {
+      "file": "apps/subly/store/android-play/data-safety.json",
+      "purpose": "Advertising or marketing",
+      "expectRows": 0,
+      "blockPointer": "advertisingPurpose",
+      "why": "The purpose exists in the Play vocabulary and is used by zero answer rows. A promo surface that targets on any collected data type adds that purpose to the row it targets on — so a row acquiring it while `containsAds` is false is the two forms giving Google two different answers, and a `containsAds: true` with no row carrying the purpose is the same contradiction in the other direction. `blockPointer` names the block in that file where the zero is DECLARED rather than merely true: an undeclared zero is one nobody is accountable for, and it reads identically to a row somebody forgot to tick."
+    },
+    "contentRatingClaim": {
+      "file": "apps/subly/store/android-play/content-rating.json",
+      "claimId": "contains-ads",
+      "pointerField": "formatCrossCheck",
+      "why": "The IARC questionnaire's advertising answer. It derives from `dependency-tells`, which cannot see a house ad — this file is the format-keyed half, and the two answers must be identical because they are the same sentence sworn to two authorities. `pointerField` is required ON that claim so it can never again read as self-sufficient: a reviewer looking at the package tells must be told, in the claim itself, that they are not the whole answer."
+    },
+    "policyPage": {
+      "register": "tooling/legal/policy-claims.json",
+      "page": "privacy.html",
+      "pathResolution": "The file path is `siteRoot`/`page`, both read from the register — so this declaration does not carry a second copy of where the site lives, and a site move breaks one file rather than two silently disagreeing.",
+      "claim": "We do not use advertising networks or advertising SDKs, we do not share data with data brokers, and no Nikatru app carries advertising.",
+      "assertsAbsence": true,
+      "why": "🔴 THE PUBLISHED SENTENCE IS THE STRONGEST OF THE FOUR CLAIMS AND THE ONLY ONE A USER READS. Its final limb — no Nikatru app carries advertising — is a claim about FORMAT, and the register row that enforces it is a pubspec walk for ad SDKs, which a house ad passes. The three-way pin (this file ↔ the register row ↔ the emphasised span on the page) means the sentence cannot be reworded without editing this declaration in the same commit, and cannot stay as written once the format scan finds a promo surface. Publishing legal copy is [ADR 031] class B, owner-gated: the guard's job is to make the gate visible on the day it binds, not to open it."
+    }
+  },
+
+  "humanOwned": {
+    "_why": [
+      "Named individually so they are printed on every run instead of hiding inside an answer that looks",
+      "derived. tooling/ci/assert-ads-declarations.mjs PRINTS these rather than failing the build, per the",
+      "standing rule for owner-gated gaps ([pipeline C-6]): failing CI on work only a human can do blocks",
+      "everything else and teaches people to switch the guard off."
+    ],
+    "mapAnswersToConsoleFields": "The App content → Ads form is only visible inside the Play Console. When it is opened, each field must be matched to an answer above; a field matching none means this file is missing a row and must grow one before the declaration is submitted.",
+    "affirmNoPromotionalListingAssets": "A human must confirm that the screenshots, the feature graphic and the listing copy do not themselves depict or promote another app. A store asset is outside every scan in this repository — the format scan reads code, not PNGs — and a promotional screenshot is a promotional surface.",
+    "reDeriveWhenTheFirstPromoSurfaceLands": "The moment a promo component ships, this answer is re-derived, not re-worded: `containsAds` becomes true unless the surface is a main-menu More-Apps destination inside the carve-out quoted above, `adFormats` gains the rendered format, and the privacy-page sentence and its register row must be edited in the same commit — which is an owner signature, not an engineering edit."
+  },
+
+  "notCovered": [
+    "STORE LISTING ASSETS. The scan reads Dart and JSON; a promotional screenshot or feature graphic is invisible to it (see `humanOwned.affirmNoPromotionalListingAssets`).",
+    "REMOTE CONFIG WRITTEN STRAIGHT TO KV. The served payload in this repository is what the Worker bundles at build time; a `config:<app>` KV override is written outside the tree and no guard in CI can read it. An armed promotional lever could therefore arrive without a commit — which is a reason to keep the levers themselves in the tree, not a reason to believe the scan covers them.",
+    "THE COMPILED-IN DART DEFAULT for the promotional-notification cap, which tooling/ci/assert-adapter-capabilities.mjs owns end to end. Repeating it here would be a second opinion on a settled question, and a redundant assertion is the thing this repository deletes.",
+    "WHETHER GOOGLE HAS CHANGED THE DECLARATION since the fetch date recorded in `sources`. Nothing in CI notices a help page being edited."
+  ]
+}

@@ -32,6 +32,10 @@ const BRICK_STORE = 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/android-
 const SUBLY_STORE = 'apps/subly/store/android-play';
 const DS = `${SUBLY_STORE}/data-safety.json`;
 const CR = `${SUBLY_STORE}/content-rating.json`;
+/** The third sworn declaration (2026-08-09) — Play "App content → Ads". It is
+ *  in the derived set below for the same reason as the other two: it cites code,
+ *  so limb 5 resolves its paths and the fixture has to carry them. */
+const ADS = `${SUBLY_STORE}/ads-declaration.json`;
 const SETTINGS = 'apps/subly/lib/features/settings/settings_screen.dart';
 const REGISTER = 'tooling/channel-register.json';
 
@@ -49,10 +53,26 @@ const REGISTER = 'tooling/channel-register.json';
 const CITED_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|html|txt|xml|sql|arb|md)/g;
 function citedPaths() {
   const set = new Set();
-  for (const rel of [DS, CR]) {
+  for (const rel of [DS, CR, ADS]) {
     for (const m of readFileSync(join(REPO, rel), 'utf8').matchAll(CITED_RE)) set.add(m[0]);
   }
   return [...set];
+}
+
+/** How many sworn declarations the REGISTER declares — the same derivation the
+ *  guard makes, so the baseline assertion below cannot go stale the next time a
+ *  console artefact acquires a repo representation. It was hard-coded at 2 and
+ *  went stale within one increment, which is the failure mode this file is
+ *  otherwise entirely about. */
+function swornCount() {
+  const reg = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+  const perChannel = reg.storeMetadataContract?.perChannel ?? {};
+  let n = 0;
+  for (const [channel, contract] of Object.entries(perChannel)) {
+    if (channel.startsWith('_')) continue;
+    for (const f of contract?.additionalFiles ?? []) if (f.endsWith('.json')) n++;
+  }
+  return n;
 }
 
 /** A real-tree copy carrying exactly what the guard reads. */
@@ -102,7 +122,7 @@ describe('the real tree', () => {
       () => {},
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /2 sworn declaration\(s\) still answered/);
+        assert.match(r.stdout, new RegExp(`${swornCount()} sworn declaration\\(s\\) still answered`));
         assert.match(r.stdout, /cited path\(s\) resolve/);
         assert.match(r.stdout, /brick template\(s\) still blank/);
       },

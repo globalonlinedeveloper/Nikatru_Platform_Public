@@ -948,6 +948,31 @@ jobs:
       - name: The sworn store declarations have not regressed toward the stamp
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-sworn-store-files.mjs
+      # [research/44 §3 V3] THREE SWORN ADVERTISING CLAIMS KEYED ON PACKAGE
+      # TELLS, AND A FOURTH THAT DID NOT EXIST. privacy.html's "no Nikatru app
+      # carries advertising", content-rating's `contains-ads` and data-safety's
+      # unused "Advertising or marketing" purpose all rest on a pubspec walk for
+      # ad SDKs — while Google's own ads declaration lists a trigger that needs
+      # no SDK at all: "House ads: My app renders a small ad banner, interstitial
+      # ad, ad wall, and/or widget". A house ad is UI we render, so it adds no
+      # dependency and all three stay GREEN while becoming FALSE. The Play
+      # Console "App content → Ads" answer itself had no repo representation.
+      # This step derives the answer from FORMAT — the widget-shaped
+      # declarations in the app, the shared packages and the brick, plus the
+      # served config payload — and compares that ONE verdict to all four
+      # claims. Today it prints DOMAIN EMPTY with the counts that make the zero
+      # evidence rather than an absence of looking; mutation-measured on the real
+      # tree 2026-08-09 (a PromoBanner widget + a cross-app config key → four
+      # failures, including the owner-gated privacy-sentence limb).
+      # 🔴 THE SECOND REAL-TREE MUTATION IS WHY THE WIDGET RULE IS STRUCTURAL.
+      # The same widget on `HookConsumerWidget` was first reported "PROMOTIONAL
+      # MACHINERY, NO SURFACE" and the guard EXITED 0 — the shape rule was an
+      # enumerated prefix list, i.e. the same "a named list is not exhaustive"
+      # defect this step indicts in the declarations it checks. A fixture would
+      # never have caught it; only mutating the real tree did.
+      - name: The advertising declarations still describe the shipped tree
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-ads-declarations.mjs
       # [pipeline D-10] limb (i)'s script, exercised on EVERY push rather than
       # only when somebody dispatches submit-windows-store.yml. A release script
       # nobody runs rots exactly like a guard nobody feeds bad input to: it would

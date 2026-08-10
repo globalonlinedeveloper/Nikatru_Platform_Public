@@ -43,6 +43,7 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `screenshots/` | Phone screenshots | **captured** from a LIVE build by `tooling/store/capture-play-screenshots.mjs` | ✅ count, dimensions, aspect, format **and recorded posture** |
 | `data-safety.json` | **Data safety form** | derived from the code — see below | ✅ `assert-play-declarations.mjs` |
 | `content-rating.json` | **Content rating questionnaire** | the app's own content — see below | ✅ `assert-play-declarations.mjs` |
+| `ads-declaration.json` | **App content → Ads** | derived from the shipped **format** — the widget tree and the served config, not the pubspec | ✅ `assert-ads-declarations.mjs` |
 
 **The brick vars are the generation mechanism, the app is the instance.** The
 `app_brick` (`tooling/bricks/app/brick.yaml`) already declares `category` and
@@ -86,7 +87,7 @@ is stamped with a name longer than 30 characters the build fails — instead of 
 Play Console rejecting it after a human has already worked through a submission
 form. That is the whole point of putting the number in the register.
 
-## The two sworn declarations — `data-safety.json` and `content-rating.json`
+## The three sworn declarations — `data-safety.json`, `content-rating.json`, `ads-declaration.json`
 
 These are **not listing copy**. They are declarations about *what the code does*,
 and Google puts the accuracy on us:
@@ -96,8 +97,11 @@ and Google puts the accuracy on us:
 > — `support.google.com/googleplay/android-developer/answer/10144311`, fetched 2026-08-04
 
 🔴 **So they are derived from the tree, not typed from memory.**
-`tooling/ci/assert-play-declarations.mjs` fails the build when they drift. What
-actually bites, in the order it would catch a real drift:
+`tooling/ci/assert-play-declarations.mjs` fails the build when the first two
+drift; `tooling/ci/assert-ads-declarations.mjs` owns the third **and the
+advertising limb of the other two**, because that one question is not answerable
+from a pubspec (see below). What actually bites, in the order it would catch a
+real drift:
 
 | The drift | What fails |
 |---|---|
@@ -112,6 +116,8 @@ actually bites, in the order it would catch a real drift:
 | An erasure route or the web deletion page disappears | the *"users can request deletion"* answer loses what backs it |
 | The two forms answer *sharing* or *children* differently | Play asks both twice, months apart; the rating answers are **derived** from the Data safety ones |
 | An IARC rating is written down | ratings are **assigned** by the rating authorities — one without a certificate and a citation is a guess wearing the costume of a result |
+| **A promotional surface lands with no SDK behind it** | `assert-ads-declarations.mjs` — the *format* scan. Every advertising answer here used to key on `dependency-tells`, and Google's own trigger list includes one that needs no dependency at all: *"House ads: My app renders a small ad banner, interstitial ad, ad wall, and/or widget"*. A house ad is UI we render, so a pubspec walk stays green while the answer becomes false |
+| **The advertising sentence on `privacy.html` is reworded, or the ads answers disagree with each other** | the same guard's four-way cross-check — this file's answer, `data-safety.json`'s advertising-purpose row count, `content-rating.json`'s `contains-ads`, and the published sentence pinned to its `policy-claims.json` row |
 
 ✅ **Both `null` answers were settled on 2026-08-04** and the guard no longer
 prints `THE FORM CANNOT BE SUBMITTED YET`. Both had been recorded as needing
@@ -154,6 +160,14 @@ column to type into the console.
   representation"*; it now does.
 - ✅ **Content rating questionnaire** → `content-rating.json` in this directory.
   It records the **answers**, never a rating — see below.
+- ✅ **App content → Ads** → `ads-declaration.json` in this directory, since
+  2026-08-09. It is the answer that puts the **"Contains ads" badge** on the
+  listing, and it had no repo representation at all until then — no file, no
+  derivation, no guard — while the two declarations above answered *their*
+  advertising questions from package tells that cannot see a house ad
+  (research/44 §3 V3). Today it answers **no**, and
+  `assert-ads-declarations.mjs` prints `DOMAIN EMPTY` with the counts that make
+  that a measurement rather than a silence.
 - ✅ **Account deletion URL** — `https://nikatru.com/delete-account.html`, carried
   in `data-safety.json` → `dataSecurity.deletionRequestSupported` and checked to
   resolve to a page this repo actually serves. Play requires **both** halves and

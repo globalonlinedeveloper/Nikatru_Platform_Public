@@ -28,9 +28,11 @@ is the point: the console is a copy of this directory, never the other way round
 
 - `data-safety.json` — the Data safety form.
 - `content-rating.json` — the IARC content-rating questionnaire.
+- `ads-declaration.json` — the App content → Ads declaration, the answer that
+  puts the **"Contains ads" badge** on the listing.
 
-🔴 **BOTH ARE SWORN DECLARATIONS ABOUT WHAT THE CODE DOES, and both are stamped
-UNANSWERED.** Google holds the developer responsible for their accuracy. A
+🔴 **ALL THREE ARE SWORN DECLARATIONS ABOUT WHAT THE CODE DOES, and all three are
+stamped UNANSWERED.** Google holds the developer responsible for their accuracy. A
 template cannot answer them, because the answer depends on code this app has not
 written yet — so every answer is `null` and every one is listed in
 `unresolved` with the artefact that settles it. `null` here means *nobody has
@@ -38,10 +40,22 @@ answered this yet*, and it is a real answer: a confidently wrong Data safety
 label is worse than an obviously incomplete one, and this repository has already
 deleted one invented compliance number for firing on correct input.
 
+🔴 **AND THE THIRD ONE IS NOT ANSWERABLE FROM A PUBSPEC — DO NOT TRY.** The other
+two answer their advertising questions from `dependency-tells`, and Google's own
+trigger list contains one that needs no dependency at all: *"House ads: My app
+renders a small ad banner, interstitial ad, ad wall, and/or widget"*. A house ad
+is UI we render — no SDK, no package, no permission — so a package-keyed answer
+stays green while becoming false. `ads-declaration.json` is derived from
+**format**: this app's widget tree and its served config. Name this app's `lib`
+roots and at least one widget symbol that really exists, so an empty result
+cannot be an instrument failure wearing the costume of a clean answer.
+
 **The form cannot be submitted while an `unresolved` row remains.** Answer them
 against this app's real code and cite the page you read, exactly as
-`apps/subly/store/android-play/data-safety.json` does; then
-`tooling/ci/assert-play-declarations.mjs` can be pointed at this app too.
+`apps/subly/store/android-play/data-safety.json` and
+`apps/subly/store/android-play/ads-declaration.json` do; then
+`tooling/ci/assert-play-declarations.mjs` and
+`tooling/ci/assert-ads-declarations.mjs` can be pointed at this app too.
 
 ## Graphics
 

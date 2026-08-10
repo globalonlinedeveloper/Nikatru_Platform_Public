@@ -189,6 +189,34 @@ const SWORN_SPECS = new Map([
       entryKeys: [],
     },
   ],
+  [
+    // The THIRD sworn declaration (2026-08-09) — Play Console "App content →
+    // Ads". Its answers are keyed on FORMAT, not on packages, which is why it
+    // exists at all: a house-ad surface adds no dependency, so the other two
+    // declarations' `dependency-tells` stay green while becoming false.
+    // assert-ads-declarations.mjs owns "is the answer still TRUE of the tree";
+    // this spec owns the same duller question as the two above — "is it still
+    // an ANSWERED declaration at all".
+    'android-play/ads-declaration.json',
+    {
+      // `_readme` measured 38 live / 26 in the brick template.
+      minReadme: 30,
+      minCitations: 3,
+      /** The scan's own subject and its positive controls. `requiredCoverage` is
+       *  the measured hole in the FORMAT derivation: emptying it leaves the
+       *  widget-declaration matcher with nothing proving it still matches, and
+       *  an empty domain then reads identically to a broken instrument. */
+      nonEmptyArrays: ['formatScan.roots', 'formatScan.requiredCoverage', 'notCovered'],
+      // `crossChecks` measured 4 keys (3 + `_why`), `humanOwned` 4 (3 + `_why`).
+      // The cross-checks are the whole point of the file — one derivation, four
+      // consumers — and deleting the block silently un-relates them.
+      minKeys: [{ at: 'crossChecks', min: 3 }, { at: 'humanOwned', min: 3 }],
+      // The two answers Google actually asks for. A null here is a store
+      // question going unanswered while every dependency-keyed guard is green.
+      booleans: ['containsAds', 'promotesOtherApps'],
+      entryKeys: [{ at: 'formatScan.requiredCoverage', keys: ['file', 'symbol', 'why'] }],
+    },
+  ],
 ]);
 
 /**
@@ -537,13 +565,27 @@ for (const app of apps) {
         const cited = m[0];
         if (seen.has(cited)) continue;
         seen.add(cited);
-        // The brick's own template placeholder is not a path on disk.
-        const resolvedPath = cited.replace('{{app_id}}', appId).replace('{app}', appId);
+        // A citation may name the file IN THIS APP (`apps/{app}/…`, a template
+        // placeholder standing for the app being checked) or the file IN THE
+        // BRICK (`tooling/bricks/app/__brick__/apps/{{app_id}}/…`, where the
+        // braces are a LITERAL DIRECTORY NAME on disk). Both are real citations
+        // and either resolution is enough.
+        //
+        // 🔴 SUBSTITUTION ALONE WAS WRONG, and it only became visible with the
+        // third sworn declaration (2026-08-09). ads-declaration.json's format
+        // scan anchors on a widget in the BRICK — which is where a promo surface
+        // arrives for all fifty apps at once — and substituting `{{app_id}}` →
+        // `subly` turned a citation of a file that exists into
+        // `…/__brick__/apps/subly/…`, which never will. The repair accepts
+        // either reading rather than guessing which one was meant; both name a
+        // file that is really there, which is all this limb claims.
+        const candidates = [cited.replace('{{app_id}}', appId).replace('{app}', appId), cited];
         pathsChecked++;
-        if (!existsSync(abs(resolvedPath))) {
+        if (!candidates.some((c) => existsSync(abs(c)))) {
           fail(
-            `${rel} \`${pointer}\` cites ${cited}, which does not exist. A sworn sentence resting on a file that ` +
-              'was renamed is a false record, and these strings are read by nothing else in the tree.',
+            `${rel} \`${pointer}\` cites ${cited}, which does not exist (tried ${candidates.join(' and ')}). A sworn ` +
+              'sentence resting on a file that was renamed is a false record, and these strings are read by nothing ' +
+              'else in the tree.',
           );
         }
       }
