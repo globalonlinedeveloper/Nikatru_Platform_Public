@@ -1,0 +1,64 @@
+{
+  "_readme": [
+    "THE PLAY CONSOLE 'APP CONTENT → ADS' DECLARATION — {{{short_name}}}, channel `android-play`. STAMPED UNANSWERED.",
+    "",
+    "This is the repo-native source of truth. The Play Console is a COPY of it, exactly as [10]D-5 says of",
+    "the listing text. Required present and non-empty by tooling/channel-register.json ->",
+    "storeMetadataContract.perChannel[\"android-play\"].additionalFiles.",
+    "",
+    "🔴 THE ANSWER IS DECIDED BY FORMAT, NOT BY OWNERSHIP AND NOT BY SDK PRESENCE. Promoting your OWN apps",
+    "is still a YES: Google's trigger list includes 'House ads: My app renders a small ad banner,",
+    "interstitial ad, ad wall, and/or widget'. It needs no ad SDK, no dependency and no permission — so the",
+    "dependency-keyed answers in data-safety.json and content-rating.json cannot see it, and this file is",
+    "the format-keyed half. The narrow NO carve-out is a main-menu destination: 'The app displays a More",
+    "Apps section in the main menu leading a user to your other apps'.",
+    "",
+    "🔴 EVERY ANSWER BELOW IS `null`, AND null IS A REAL ANSWER MEANING \"NOBODY HAS ANSWERED THIS YET\".",
+    "It is deliberately NOT filled with a plausible value. A template cannot know what this app renders — it",
+    "was generated the moment the app was stamped, before a line of product code existed — and a confidently",
+    "wrong sworn declaration is worse than an obviously incomplete one. Google: misrepresenting the presence",
+    "of ads 'may result in your app(s) being suspended.'",
+    "",
+    "⚠️ THE FORM CANNOT BE SUBMITTED WHILE AN `unresolved` ROW REMAINS. Answer each against THIS app's real",
+    "widget tree and its served config, cite the page you read (host and fetch date), and model the finished",
+    "file on apps/subly/store/android-play/ads-declaration.json — which carries the worked example, the",
+    "format scan's required-coverage anchors and the four-way cross-check that",
+    "tooling/ci/assert-ads-declarations.mjs evaluates.",
+    "",
+    "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER. Rows record what this repository can OBSERVE."
+  ],
+  "app": "{{app_id}}",
+  "channel": "android-play",
+  "console": {
+    "location": "Play Console → App content → Ads",
+    "question": "Does your app contain ads?",
+    "wordingStatus": "UNVERIFIED",
+    "why": "The declaration form renders inside the Play Console and is not on a public page that could be fetched and cited. Record what the console actually asks when it is first opened for this app."
+  },
+  "sources": {
+    "allowedHosts": [
+      "support.google.com",
+      "play.google.com",
+      "developer.android.com"
+    ],
+    "cited": []
+  },
+  "containsAds": null,
+  "adFormats": null,
+  "promotesOtherApps": null,
+  "derivation": null,
+  "unresolved": [
+    {
+      "question": "containsAds — does this app render any advertising or promotional surface?",
+      "why": "Answer it from the app's WIDGET TREE, not from its pubspec. A house ad is UI we render: no SDK, no dependency, no permission. Walk the shipped screens for a promotional component and record what format it renders as."
+    },
+    {
+      "question": "promotesOtherApps — does anything in this app point at another app in the portfolio?",
+      "why": "A cross-app promo carries the ads label unless it is a main-menu More-Apps destination; a same-app upgrade card matches none of the triggers and carries no label. They are two components with two declaration consequences and must not share one widget or one config key."
+    },
+    {
+      "question": "the format scan's roots and required-coverage anchors",
+      "why": "The scan is only evidence while it still reaches this app's tree and its matcher still matches widget declarations. Name this app's lib roots and at least one widget symbol that DOES exist, so an empty result cannot be an instrument failure wearing the costume of a clean answer."
+    }
+  ]
+}
