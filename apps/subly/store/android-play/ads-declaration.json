@@ -26,11 +26,26 @@
     "rows, content-rating.json's `contains-ads`, and the advertising sentence published on privacy.html via",
     "its tooling/legal/policy-claims.json row. One derivation, four consumers, no second opinion.",
     "",
-    "⚠️ TODAY THE DOMAIN IS EMPTY, AND THE GUARD SAYS SO OUT LOUD RATHER THAN PRINTING A BARE 'ok'. There is",
-    "no promo component anywhere in `apps/`, `packages/` or the brick; the one promotional lever in the served",
-    "config (`max_promos_per_week`) ships DISARMED at 0. An empty domain is a true answer and a weak one — it",
-    "is why the scan asserts its own instrument (files walked, anchor symbols found) instead of asserting the",
-    "result, exactly as data-safety.json's iOS usage-key haystack does.",
+    "⚠️ THE DOMAIN IS NO LONGER EMPTY, AND THE ANSWERS DID NOT MOVE — THAT IS A DERIVATION, NOT AN OVERSIGHT.",
+    "The same-app upgrade card shipped (research/44 §7 rung 3 · [ADR 040] v1): `UpgradePromoCard` in the app",
+    "and in the brick, over `PromoCard` in the design system. It promotes THE APP THE USER IS ALREADY IN —",
+    "its buy control navigates to the host's own `/paywall` route, its copy is the host's own Pro — and Play's",
+    "three YES triggers are ads (1-2) and 'House ads … to promote my OTHER apps' (3). A same-app upgrade card",
+    "matches none of them (research/44 §3 V2, which resolved exactly this by splitting the component in two),",
+    "so `containsAds` stays false, `adFormats` stays empty and `promotesOtherApps` stays false. Answering yes",
+    "would put a 'Contains ads' badge on a listing that carries no ads, and an overstated sworn declaration is",
+    "as inaccurate as an understated one. The guard PRINTS every same-app surface it finds, with the host",
+    "evidence that classified it, so this answer is re-checkable rather than remembered.",
+    "",
+    "🔒 AND THE PUBLISHED SENTENCE IS A DIFFERENT QUESTION, WHICH IS WHY CI IS RED ON THIS BRANCH. 'No Nikatru",
+    "app carries advertising' is falsified by first-party promotion too, and rewording it is [ADR 031] class B",
+    "owner work (research/44 §7 rung 5) — THE gate on any promo surface rendering ([ADR 040] §3). The card",
+    "ships dormant behind `features.promo_card_enabled` (absent ⇒ off) and the guard keeps failing on the",
+    "sentence until an owner signs. The ownership split moves what we swear to Google; it does not open that.",
+    "",
+    "⚠️ THE ONE PROMOTIONAL LEVER IN THE SERVED CONFIG (`max_promos_per_week`) STILL SHIPS DISARMED AT 0.",
+    "The scan asserts its own instrument (files walked, anchor symbols found) instead of asserting the result,",
+    "exactly as data-safety.json's iOS usage-key haystack does.",
     "",
     "⚠️ THE EXACT CONSOLE WORDING IS UNVERIFIED — see `console`. The declaration form renders inside the Play",
     "Console. What IS quoted below, with URL and fetch date, is Google's public help page describing the",
@@ -75,7 +90,7 @@
   "promotesOtherApps": false,
   "derivation": "format-tells",
 
-  "basis": "Nothing in the shipped tree renders an advertising or promotional surface. The format scan below walks every Dart file under the app, the shared packages and the brick template, finds every widget-shaped declaration, and looks for an advertising token in the DECLARED NAME — the property a house ad cannot hide, because a surface must be a widget to be rendered. It finds none. The served config payload carries no armed promotional lever and names no app other than the host. So all three Play advertising answers are false for the same reason, derived once, and the privacy page's advertising sentence is true as written.",
+  "basis": "Nothing in the shipped tree renders an ADVERTISING surface. The format scan below walks every Dart file under the app, the shared packages and the brick template, finds every widget-shaped declaration, and looks for an advertising token in the DECLARED NAME — the property a house ad cannot hide, because a surface must be a widget to be rendered. What it finds is the SAME-APP upgrade card and nothing else: five widget-shaped declarations carrying `promo`, every one of them promoting the host app `subly` (the buy control navigates to the host's own `/paywall` route; no literal in any of them names another registered app, another app's domain, or a store listing that is not the host's), none of them named with advertising vocabulary (ad/advert/sponsored/interstitial) and none of them rendered in one of the ad shapes Google enumerates (banner, interstitial, ad wall). Play's three YES triggers are ads served by a network, ads we serve ourselves, and house ads promoting MY OTHER APPS; a same-app upgrade card matches none (research/44 §3 V2). The served config payload carries no armed promotional lever and names no app other than the host. So all three Play advertising answers are false, derived once from ownership plus format — and the privacy page's advertising sentence is NOT true as written, which is a separate, owner-gated question the guard fails on until it is reworded.",
 
   "formatScan": {
     "_why": [
@@ -91,7 +106,17 @@
       "home body, and it is not an ad — it nudges the user about their OWN data. A rule keyed on 'banner'",
       "would raise a false alarm on day one and be switched off within a week. The rule is therefore keyed on",
       "an ADVERTISING token in the identifier (ad/ads/promo/interstitial/sponsored…) or on a cross-app pair",
-      "(more+apps, your+apps, cross+sell…), and the format word only classifies a hit that already fired."
+      "(more+apps, your+apps, cross+sell…), and the format word only classifies a hit that already fired.",
+      "",
+      "🔴 AND `UpgradePromoCard` IS THE SECOND CALIBRATION CASE, ADDED THE DAY IT SHIPPED. It MUST be found",
+      "(it is an anchor below) and it must NOT make `containsAds` true. Deriving the Play answer from the",
+      "token `promo` alone was over-broad in exactly the direction the paragraph above warns about: it",
+      "classified the deliberately label-free same-app card as advertising. The guard now asks WHO a",
+      "promotional surface promotes — a cross-app name pair, a payload key or value naming a non-host app id,",
+      "or a literal inside the declaration naming another registered app, its domain or a store listing that",
+      "is not the host's — and only advertising vocabulary or an ad SHAPE (banner/interstitial/wall) can make",
+      "a same-app surface a trigger on its own. The rule lives in the guard because it is Google-shaped; what",
+      "is app-shaped is `app` above, which names the host every ownership question is asked against."
     ],
     "roots": [
       "apps/subly/lib",
@@ -116,6 +141,16 @@
         "file": "apps/subly/lib/features/home/home_screen.dart",
         "symbol": "CatchUpNudgeBanner",
         "why": "The same control in the shipped app, so the scan is proven to reach the app tree and the brick tree separately. A walk that lost one of the two would still find the other and look healthy."
+      },
+      {
+        "file": "apps/subly/lib/features/home/home_screen.dart",
+        "symbol": "UpgradePromoCard",
+        "why": "🔴 THE SUBJECT OF THE ANSWERS ABOVE. `containsAds: false` is now a claim ABOUT a promotional surface — that it is same-app — rather than a claim that none exists, and a claim about something the matcher can no longer find is unfalsifiable. Anchoring the card makes renaming or moving it a COVERAGE LOST instead of a silent return to an empty domain, which reads identically in the pass line."
+      },
+      {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart",
+        "symbol": "UpgradePromoCard",
+        "why": "The same subject in the BRICK, where the card arrives for all fifty apps at once. The app and the brick twin can diverge in one commit, so each is anchored separately."
       }
     ],
     "configPayloads": ["services/platform/src/app-config-data.json"],
@@ -159,7 +194,8 @@
     ],
     "mapAnswersToConsoleFields": "The App content → Ads form is only visible inside the Play Console. When it is opened, each field must be matched to an answer above; a field matching none means this file is missing a row and must grow one before the declaration is submitted.",
     "affirmNoPromotionalListingAssets": "A human must confirm that the screenshots, the feature graphic and the listing copy do not themselves depict or promote another app. A store asset is outside every scan in this repository — the format scan reads code, not PNGs — and a promotional screenshot is a promotional surface.",
-    "reDeriveWhenTheFirstPromoSurfaceLands": "The moment a promo component ships, this answer is re-derived, not re-worded: `containsAds` becomes true unless the surface is a main-menu More-Apps destination inside the carve-out quoted above, `adFormats` gains the rendered format, and the privacy-page sentence and its register row must be edited in the same commit — which is an owner signature, not an engineering edit."
+    "reDeriveWhenTheFirstPromoSurfaceLands": "DONE ONCE, AND THE RULE IT LEAVES BEHIND. The first promo component landed on 2026-08-10 (the same-app upgrade card) and this answer was re-derived rather than re-worded: it stayed false because Play's triggers are ads and \"my other apps\", and the card is neither. The rule for the NEXT one: `containsAds` becomes true when a promotional surface is CROSS-APP (unless it is a main-menu More-Apps destination inside the carve-out quoted above), when its name carries advertising vocabulary, or when it renders in one of the ad shapes Google names (banner, interstitial, ad wall); `adFormats` then gains that format. The published advertising sentence is falsified by ANY promotional surface, same-app included, so it and its register row must be edited in the same commit — an owner signature, not an engineering edit, and it is outstanding NOW.",
+    "answerD3BeforeAnyCrossAppSurface": "🔒 research/44 decision D3 — whether a cross-app promo carries the Play ads label or is built as a main-menu More-Apps destination inside the carve-out — is DEFERRED, not defaulted ([ADR 040] §2: v1 is same-app only, gated on app #2 existing). The guard will fail `containsAds` the moment a cross-app surface appears, which is the correct behaviour and is NOT the decision: flipping this file to `true` is one of the two answers D3 chooses between, and choosing it silently under CI pressure would settle an owner question with a commit."
   },
 
   "notCovered": [

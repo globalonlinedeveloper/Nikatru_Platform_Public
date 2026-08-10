@@ -25,9 +25,33 @@
 //     CustomPainter) and the same mutation fails with three findings; the tree
 //     was restored and the guard is back to exit 0, 182 widget-shaped (was 180 —
 //     the two CustomPainters were being missed as well).
+//   · 🔴 AND THE THIRD REAL-TREE MEASUREMENT IS WHY THE RULE GREW AN OWNERSHIP
+//     LIMB. 2026-08-10, on the branch that lands the SAME-APP upgrade card: the
+//     guard fired `containsAds`, `adFormats [] vs [card]` and the privacy
+//     sentence. The first two were WRONG — deriving the Play answer from the
+//     token `promo` alone classified a card that promotes the app the user is
+//     already in as advertising, and answering yes would put a "Contains ads"
+//     badge on a listing that carries none (research/44 §3 V2: "A same-app
+//     upgrade card matches none of the three triggers"). The third is CORRECT
+//     and owner-gated, and still fires. Both directions were then measured on
+//     the real tree with the ownership limb in place:
+//       – `"promo_target_app_id": "lingo"` added to
+//         services/platform/src/app-config-data.json → containsAds +
+//         promotesOtherApps red ON TOP of the standing privacy finding, naming
+//         the armed cross-app lever as the evidence. Restored.
+//       – a `crossPromoTarget` const holding
+//         `https://play.google.com/store/apps/details?id=com.nikatru.lingo`
+//         added inside the REAL `_UpgradePromoCardState` and referenced by the
+//         card's `key` → containsAds + promotesOtherApps + adFormats ([] vs
+//         [card]) red, naming the listing URL that does not name the host app.
+//         `flutter analyze` on the mutated file: NO ISSUES FOUND — so the red
+//         is a caught mutation and not a compile error wearing its clothes,
+//         which is the failure mode this repo has recorded three times.
+//         Restored; the guard returns to the privacy finding alone.
 // The fixtures below then cover the limbs a real-tree mutation cannot reach
 // without breaking other guards (a narrowed root, a missing anchor, a Play
-// vocabulary that lost the advertising purpose).
+// vocabulary that lost the advertising purpose) and the cross-app shapes the
+// one-app catalogue cannot express today.
 //
 // Run:  node --test "tooling/ci/test/ads-declarations.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,6 +99,12 @@ function tree(over = {}) {
     payload = {},
     registry = null,
     claimsRegister = {},
+    // The published sentence's limb is OWNER-GATED and fires on any promotional
+    // surface, same-app included — so a case about the PLAY answers turns it off
+    // to read them alone. Turning it off is itself a declared answer
+    // (`assertsAbsence: false` = "this page no longer promises absence"), not a
+    // suppression: the guard requires the field to be a boolean either way.
+    assertsAbsence = true,
     pageHtml = `<html><body><p><b>${SENTENCE}</b></p></body></html>`,
     additionalFiles = ['data-safety.json', 'content-rating.json', 'ads-declaration.json'],
     workspace = ['apps/app1', 'packages/core'],
@@ -144,7 +174,7 @@ function tree(over = {}) {
         register: 'tooling/legal/policy-claims.json',
         page: 'privacy.html',
         claim: SENTENCE,
-        assertsAbsence: true,
+        assertsAbsence,
         why: 'the published half of the same question',
       },
     },
@@ -327,12 +357,29 @@ describe('(A) the promotional COMPONENT — the half no dependency walk can see'
     assert.match(out, /SponsoredSlot \(HookWidget\)/);
   });
 
-  test('🔴 a CustomPainter promo surface fires — it paints pixels, its name just breaks the convention', () => {
+  // A CustomPainter is a SURFACE, not machinery — it paints pixels, and its name
+  // is the one that breaks the `…Widget` convention. Asserted through the
+  // same-app print rather than through `containsAds`, because this painter
+  // promotes nobody in particular: the surface question and the ownership
+  // question are separate, and pinning this case to the Play answer is what made
+  // the guard over-broad in the first place.
+  test('🔴 a CustomPainter promo surface is a SURFACE, not machinery', () => {
     const { code, out } = run(
       tree({ dart: { 'apps/app1/lib/x.dart': 'class PromoPainter extends CustomPainter {}\n' } }),
     );
     assert.equal(code, 1, out);
-    assert.match(out, /PromoPainter \(CustomPainter\)/);
+    assert.match(out, /SAME-APP PROMOTIONAL SURFACE, NO PLAY TRIGGER — PromoPainter \(CustomPainter\)/);
+    assert.doesNotMatch(out, /PROMOTIONAL MACHINERY, NO SURFACE — PromoPainter/);
+    // …and it is a surface for the limb that matters: the published sentence.
+    assert.match(out, /The sentence is now FALSE as published/);
+  });
+
+  test('🔴 an ADVERTISING-named CustomPainter is a Play trigger as well as a surface', () => {
+    const { code, out } = run(
+      tree({ dart: { 'apps/app1/lib/x.dart': 'class SponsoredPainter extends CustomPainter {}\n' } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /SponsoredPainter \(CustomPainter\) in apps\/app1\/lib\/x\.dart — advertising vocabulary "sponsored"/);
   });
 
   // The other direction, so the structural rule is not just "fires on more
@@ -411,6 +458,241 @@ describe('(B) the served CONFIG payload', () => {
   test('the one-app catalogue declares its own constant-false limb out loud', () => {
     const { out } = run(tree());
     assert.match(out, /CROSS-APP VALUE LIMB IS CONSTANT-FALSE TODAY/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (C) WHO DOES IT PROMOTE — the limb that decides the PLAY answers.
+//
+// 🔴 THE RECORDED DEFECT THIS FAMILY EXISTS FOR. Until 2026-08-10 the guard
+// derived `containsAds` from the token `promo` in ANY component name, so the
+// same-app upgrade card [ADR 040] locked as v1 — the one deliberately built to
+// carry NO ads label — was classified as advertising. research/44 §3 V2 is
+// explicit: "A same-app upgrade card matches none of the three triggers (it
+// promotes *this* app, not 'my other apps') and carries no ads label." An
+// overstated sworn declaration is inaccurate in the same way an understated one
+// is; it just puts the badge on instead of leaving it off.
+//
+// Two properties are pinned here in opposite directions, and both are needed —
+// a rule that only ever fired less would be as wrong as the one it replaced:
+//   · a SAME-APP surface must not move the Play answers;
+//   · a CROSS-APP one, an ADVERTISING-named one and an AD-SHAPED one must.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('(C) same-app vs cross-app — the ownership limb', () => {
+  // The shipped shape, reduced: a card that promotes the app the user is in and
+  // navigates to that app's own paywall route.
+  const sameAppCard = {
+    'apps/app1/lib/promo.dart':
+      'class UpgradePromoCard extends StatelessWidget {\n' +
+      '  Widget build(BuildContext c) => Btn(onTap: () => c.go("/paywall"), manage: () => c.go("/manage-plan"));\n' +
+      '}\n',
+  };
+
+  test('🔴 THE REGRESSION: a same-app upgrade card leaves every Play answer alone', () => {
+    const { code, out } = run(tree({ dart: sameAppCard, assertsAbsence: false }));
+    assert.equal(code, 0, out);
+    assert.match(out, /SAME-APP PROMOTIONAL SURFACE, NO PLAY TRIGGER — UpgradePromoCard/);
+    assert.match(out, /navigates to the in-app route "\/paywall"/);
+  });
+
+  test('the same-app print carries the D3 deferral, so nobody reads it as the badge decision', () => {
+    const { out } = run(tree({ dart: sameAppCard, assertsAbsence: false }));
+    assert.match(out, /D3 — whether a CROSS-APP surface carries the badge — is deliberately DEFERRED, not defaulted/);
+    assert.match(out, /ADR 040/);
+  });
+
+  // The state this repository is actually in on the branch that ships the card:
+  // ONE finding, and it is the owner's.
+  test('🔴 the same card still falsifies the published sentence — and that is the ONLY finding', () => {
+    const { code, out } = run(tree({ dart: sameAppCard }));
+    assert.equal(code, 1, out);
+    assert.match(out, /The sentence is now FALSE as published/);
+    assert.doesNotMatch(out, /answers `containsAds: false`/);
+    assert.doesNotMatch(out, /declares adFormats/);
+    assert.doesNotMatch(out, /answers `promotesOtherApps: false` and the scan derived true/);
+    assert.equal(out.split('\nFAIL ').length - 1, 1, out);
+  });
+
+  test('🔴 a CROSS-APP name — Google\'s own "More Apps" words — trips both Play answers', () => {
+    const { code, out } = run(
+      tree({ dart: { 'apps/app1/lib/x.dart': 'class MoreAppsPanel extends StatelessWidget {}\n' } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /answers `containsAds: false`/);
+    assert.match(out, /cross-app \(more\+apps\)/);
+    assert.match(out, /`promotesOtherApps: false` and the scan derived true/);
+  });
+
+  test('🔴 a promo card whose COPY names another registered app is cross-app', () => {
+    const { code, out } = run(
+      tree({
+        registry: [{ slug: 'app1' }, { slug: 'app2' }],
+        dart: {
+          'apps/app1/lib/promo.dart':
+            'class PromoCard extends StatelessWidget {\n  static const t = "Try app2, our new one";\n}\n',
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /names the registered app "app2"/);
+    assert.match(out, /answers `containsAds: false`/);
+  });
+
+  test('🔴 a promo card linking to another registered app\'s DOMAIN is cross-app', () => {
+    const { code, out } = run(
+      tree({
+        registry: [
+          { slug: 'app1', url: 'https://app1.example.com' },
+          { slug: 'lingo', url: 'https://learn.example.com' },
+        ],
+        dart: {
+          'apps/app1/lib/promo.dart':
+            'class PromoCard extends StatelessWidget {\n  static const t = "https://learn.example.com/pro";\n}\n',
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /links to another registered app's domain learn\.example\.com/);
+  });
+
+  // 🔴 THE HALF THAT CAN FIRE WITH ONE APP IN THE CATALOGUE. The slug and domain
+  // limbs are constant-false until app #2 exists (the guard prints exactly that);
+  // a store-listing URL naming somebody else is checkable today, which is what
+  // keeps the cross-app limb from being unfalsifiable for the whole of v1.
+  test('🔴 a store-listing URL that does not name the host is cross-app, with ONE app registered', () => {
+    const { code, out } = run(
+      tree({
+        dart: {
+          'apps/app1/lib/promo.dart':
+            'class PromoCard extends StatelessWidget {\n' +
+            '  static const t = "https://play.google.com/store/apps/details?id=com.nikatru.lingo";\n' +
+            '}\n',
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /links to a store listing that does not name the host app "app1"/);
+    assert.match(out, /answers `containsAds: false`/);
+  });
+
+  test('the HOST\'s own listing is not a cross-app tell — a rate-us link is not a house ad', () => {
+    const { code, out } = run(
+      tree({
+        assertsAbsence: false,
+        dart: {
+          'apps/app1/lib/promo.dart':
+            'class PromoCard extends StatelessWidget {\n' +
+            '  static const t = "https://play.google.com/store/apps/details?id=com.nikatru.app1";\n' +
+            '}\n',
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /links to the HOST app's own store listing/);
+  });
+
+  test('a `{{app_id}}` listing URL in the BRICK is the host, not another app', () => {
+    const { code, out } = run(
+      tree({
+        assertsAbsence: false,
+        dart: {
+          'apps/app1/lib/promo.dart':
+            'class PromoCard extends StatelessWidget {\n' +
+            '  static const t = "https://play.google.com/store/apps/details?id=com.nikatru.{{app_id}}";\n' +
+            '}\n',
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  // ADVERTISING vocabulary, not PROMOTION vocabulary: triggers 1-2 are ads
+  // whoever they sell for and say nothing about "other apps".
+  test('🔴 an ad-NAMED surface trips even when everything in it points at the host', () => {
+    const { code, out } = run(
+      tree({
+        dart: {
+          'apps/app1/lib/x.dart':
+            'class AdSlot extends StatelessWidget {\n  Widget build(BuildContext c) => Btn(onTap: () => c.go("/paywall"));\n}\n',
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /advertising vocabulary "ad"/);
+  });
+
+  test('🔴 an AD SHAPE trips — banner, interstitial and wall are the formats Google names', () => {
+    const { code, out } = run(
+      tree({ dart: { 'apps/app1/lib/x.dart': 'class PromoBanner extends StatelessWidget {}\n' } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /an ad-shaped format "banner"/);
+  });
+
+  test('a `card` is a format, not an ad shape — the complement of the case above', () => {
+    const { code, out } = run(
+      tree({ assertsAbsence: false, dart: { 'apps/app1/lib/x.dart': 'class PromoCard extends StatelessWidget {}\n' } }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /ad-shaped format/);
+  });
+
+  test('adFormats is derived from the AD surfaces only — a same-app card contributes no format', () => {
+    const { code, out } = run(
+      tree({
+        dart: {
+          'apps/app1/lib/promo.dart':
+            'class UpgradePromoCard extends StatelessWidget {}\nclass MoreAppsBanner extends StatelessWidget {}\n',
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /declares adFormats \[\(none\)\] and the scan derived \[banner\]/);
+    assert.doesNotMatch(out, /derived \[banner, card\]/);
+  });
+
+  // 🔴 ATTRIBUTION, AND IT IS NOT THE FILE. The literal that decides ownership
+  // must be inside the promotional declaration itself — a `Widget build(…)`
+  // method matches as a declaration in its own right, so a naive "next match"
+  // span ends a widget class AT ITS OWN BUILD METHOD and loses the route it
+  // navigates to. Measured on the real tree before the brace-matched span landed.
+  test('another app named in a DIFFERENT declaration in the same file is not this card\'s tell', () => {
+    const { code, out } = run(
+      tree({
+        assertsAbsence: false,
+        registry: [{ slug: 'app1' }, { slug: 'app2' }],
+        dart: {
+          'apps/app1/lib/promo.dart':
+            'class Footer extends StatelessWidget {\n  static const credit = "app2";\n}\n' +
+            'class PromoCard extends StatelessWidget {\n' +
+            '  Widget build(BuildContext c) => Btn(onTap: () => c.go("/paywall"));\n' +
+            '}\n',
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /SAME-APP PROMOTIONAL SURFACE, NO PLAY TRIGGER — PromoCard/);
+  });
+
+  test('the route INSIDE the build method is still attributed to the card', () => {
+    const { out } = run(tree({ dart: sameAppCard, assertsAbsence: false }));
+    assert.match(out, /UpgradePromoCard[^⬜]*navigates to the in-app route "\/manage-plan"/);
+  });
+
+  test('an armed SAME-APP lever is a promotional touch, not a Play ads trigger', () => {
+    const { code, out } = run(tree({ assertsAbsence: false, payload: { defaults: { max_promos_per_week: 3 } } }));
+    assert.equal(code, 0, out);
+  });
+
+  test('🔴 an armed ADVERTISING-named lever IS a Play ads trigger', () => {
+    const { code, out } = run(tree({ assertsAbsence: false, payload: { defaults: { ads_enabled: true } } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /an ARMED advertising lever/);
+  });
+
+  test('the missing positive control is PRINTED, not papered over', () => {
+    const { out } = run(tree({ dart: sameAppCard, assertsAbsence: false }));
+    assert.match(out, /NO POSITIVE CONTROL FOR THE CROSS-APP LIMB EXISTS IN THIS TREE/);
   });
 });
 

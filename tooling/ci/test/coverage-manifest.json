@@ -1,6 +1,6 @@
 {
   "adapter-capabilities.test.mjs": 28,
-  "ads-declarations.test.mjs": 43,
+  "ads-declarations.test.mjs": 62,
   "alert-disposition.test.mjs": 27,
   "analytics-contract.test.mjs": 45,
   "analytics-liveness.test.mjs": 28,
