@@ -23,7 +23,7 @@
   ],
 
   "$flutter_comment": [
-    "3.44.8 IS CORRECT. The macOS release build failing is NOT a version problem — the full story:",
+    "3.44.9 IS CORRECT. The macOS release build failing is NOT a version problem — the full story:",
     "",
     "SYMPTOM — `flutter build macos --release` only (iOS, Android, Windows, Linux, Web all fine):",
     "  Unexpected object (Class with illegal cid, full-aot):",
@@ -79,7 +79,7 @@
     "Leaving a standing prohibition against something already done, as the last line a reader acts",
     "on, is how an authorised change gets audited as an unauthorised one."
   ],
-  "flutter": "3.44.8",
+  "flutter": "3.44.9",
   "node": "24",
   "java": "17",
   "melos": "8.2.2",

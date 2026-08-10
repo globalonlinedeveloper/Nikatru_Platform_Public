@@ -69,7 +69,7 @@ permissions:
   checks: read
 
 env:
-  FLUTTER_VERSION: '3.44.8'
+  FLUTTER_VERSION: '3.44.9'
 
 jobs:
   # Same shape and same reason as submit-play.yml's and submit-windows-store.yml's

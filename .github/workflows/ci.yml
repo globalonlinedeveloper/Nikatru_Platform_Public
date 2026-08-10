@@ -751,7 +751,7 @@ jobs:
       - name: Every shared table declares how its rows are attributed
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-prod-provenance.mjs
-      # One declaration for every build version. Before this, "3.44.8" appeared in
+      # One declaration for every build version. Before this, "3.44.9" appeared in
       # six places and node 24 in eight; wsl-setup.sh carried the comment "keep in
       # lockstep with *.yml", i.e. maintained by hope. The guard compares PARSED
       # values, so it can see the site that drifted. [pipeline F-2]
@@ -1819,7 +1819,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
-          flutter-version: 3.44.8
+          flutter-version: 3.44.9
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -2214,7 +2214,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
-          flutter-version: 3.44.8
+          flutter-version: 3.44.9
       - name: Activate melos
         run: dart pub global activate melos 8.2.2
       # Flutter members require the Flutter tool for root workspace resolution
