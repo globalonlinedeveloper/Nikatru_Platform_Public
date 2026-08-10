@@ -50,11 +50,54 @@
 // 5. A record step for a STORE environment with no `--listing-url` — the static
 //    mirror of record-deployment.mjs's runtime refusal, so it is caught in CI
 //    rather than in the middle of the one submission that mattered.
-// 6. A record step that the job can SKIP: a step-level `if:`, or
+// 6. A record step that the job can SKIP: a NARROWING step-level `if:`, or
 //    `continue-on-error: true`. "Ends without writing one" is D-9's own wording,
 //    and a conditional step is exactly how a job ends without writing one while
 //    the YAML still contains the call. (A JOB-level `if:` is fine and is not
 //    flagged — it gates the publish step and the record step together.)
+//
+// ── 🔴 RULE 6 COULD NOT FAIL AGAINST THE REAL TREE UNTIL 2026-08-09 ──────────
+// `stepGuards` set `inStep = true` on the first `- name:`/`- uses:`/`- run:`/
+// `- id:` it met and `break`-ed on the SECOND, so it only ever inspected a job's
+// FIRST STEP and returned `[]` for every line after it. A record step is the
+// LAST step of every deploy job in this repository, so the rule was dead on
+// every real lane. Mutation-proven on the shipping tree: giving deploy-web.yml's
+// record step `if: github.actor == 'nobody'` — a condition that is never true —
+// still printed `ok  publish records`.
+//
+// 📌 AND ITS FOUR FIXTURE TESTS ALL PASSED, because the fixture job's record
+// step is its ONLY step. This is `assert-seams-wired.mjs` repeating exactly:
+// a fixture written by the hand that wrote the scan encodes the same
+// misunderstanding, and only mutating the REAL tree exposes it. The fixture for
+// rule 6 now puts the record step LAST, behind two other steps, which is the
+// shape every real lane has.
+//
+// ── WHAT RULE 6 NOW ALLOWS, AND WHY THAT IS NOT A WEAKENING ─────────────────
+// One `if:` form is accepted: `always() && steps.<id>.outcome == 'success'`
+// (any number of such conjuncts), where every `<id>` is declared by a step
+// EARLIER in the same job. That form is a STRICT WIDENING of the default
+// condition every step inherits. The default is `success()` — "every preceding
+// step is green" — which already implies those earlier steps are green, so
+// every run that recorded before still records, and runs that deployed and then
+// failed later record too. There is no input on which it records less.
+//
+// It exists because the narrow reading of rule 6 cost a real deploy its
+// provenance. deploy-web run 144 (2026-08-08) uploaded to Cloudflare Pages
+// successfully, lost the CDN propagation race in the post-deploy smoke 51 s
+// later, and therefore SKIPPED the record on the inherited `success()` — leaving
+// a build that served real users with nothing in the ledger naming it, repaired
+// afterwards by a hand-written attestation (PR #266). A provenance record must
+// be conditioned on the ACT it describes, never on a later verdict about that
+// act.
+//
+// Everything else still fails, and each of these has a test:
+//   · `always()` alone            — would record a deploy step that FAILED.
+//   · `github.ref == …`, `success() && …`, any non-conjunct — narrowing.
+//   · `steps.<id>.outcome != 'skipped'`, `!= 'failure'` — not the accepted
+//     predicate; a weaker one is a wider door than this rule wants to hold open.
+//   · an id no earlier step declares — GitHub resolves `steps.typo.outcome` to
+//     null rather than erroring, so the record silently never runs and the job
+//     is green. A renamed `id:` on the deploy step is exactly that mistake.
 //
 // ── THE FLOOR ────────────────────────────────────────────────────────────────
 // REQUIRED_COVERAGE is derived from the register, never typed, and every part of
@@ -156,24 +199,88 @@ function jobRunLines(job) {
   return job.logical.filter((l) => /(^|\s)run:\s*\S/.test(l.text));
 }
 
-/** Does the step containing this line carry its own `if:` or
- *  `continue-on-error: true`? Steps begin with `- name:` / `- uses:` / `- run:` /
- *  `- id:`; anything between that marker and the line belongs to the step. */
-function stepGuards(job, lineNumber) {
-  const found = [];
-  let inStep = false;
-  for (const l of job.logical) {
-    if (/^\s*-\s+(name|uses|run|id):/.test(l.text)) {
-      if (inStep) break;
-      inStep = true;
-      found.length = 0;
+/**
+ * Every STEP of a job, in order — its opening `- <key>:` line, the lines that
+ * belong to it, its `id:`, its step-level `if:` and its `continue-on-error:`.
+ *
+ * 🔴 THIS REPLACED A SCAN THAT COULD ONLY EVER SEE A JOB'S FIRST STEP (see the
+ * header). The list starts at the job's own `steps:` key, so `needs:` block
+ * entries and `strategy.matrix` values can never be mistaken for steps, and the
+ * step's key column is LOCKED to the first step's — which is what keeps an `id:`
+ * or an `if:` nested inside a `with:` mapping from being read as the step's own.
+ *
+ * It lives here rather than in workflow-scan.mjs because it has exactly one
+ * consumer. The day a second guard needs steps, move it there rather than
+ * copying it — the four disagreeing copies of `RECORD_CALL` written up in that
+ * file are what a second copy becomes.
+ */
+function stepsOf(job) {
+  const at = job.logical.findIndex((l) => /^ {4}steps:\s*$/.test(l.text));
+  if (at === -1) return [];
+  const steps = [];
+  let indent = null;
+  for (const l of job.logical.slice(at + 1)) {
+    const open = l.text.match(/^(\s*)-\s+[A-Za-z_][A-Za-z0-9_-]*:/);
+    if (open && (indent === null || open[1].length === indent)) {
+      indent = open[1].length;
+      steps.push({ n: l.n, lines: [], id: null, stepIf: null, continueOnError: null });
     }
-    if (!inStep) continue;
-    if (/^\s*if:\s*\S/.test(l.text)) found.push({ n: l.n, kind: 'a step-level `if:`' });
-    if (/^\s*continue-on-error:\s*true\b/.test(l.text)) found.push({ n: l.n, kind: '`continue-on-error: true`' });
-    if (l.n === lineNumber) return found;
+    const cur = steps[steps.length - 1];
+    if (!cur) continue;
+    cur.lines.push(l);
+    // A step key sits either on the `- ` line itself or two columns right of it.
+    const key = l.text.match(/^(\s*)(?:-\s+)?([A-Za-z_][A-Za-z0-9_-]*):\s*(\S.*?)?\s*$/);
+    if (!key) continue;
+    const onDash = /^\s*-\s/.test(l.text);
+    if (!onDash && key[1].length !== indent + 2) continue;
+    if (key[2] === 'id' && cur.id === null) cur.id = (key[3] ?? '').replace(/^['"]|['"]$/g, '');
+    if (key[2] === 'if' && cur.stepIf === null && key[3]) cur.stepIf = { n: l.n, cond: key[3] };
+    if (key[2] === 'continue-on-error' && cur.continueOnError === null && /^true\b/.test(key[3] ?? '')) {
+      cur.continueOnError = { n: l.n };
+    }
   }
-  return [];
+  return steps;
+}
+
+/** One conjunct of the accepted widening form. `==` and `===` are both legal
+ *  GitHub expression syntax; the quotes may be single or double. */
+const OUTCOME_SUCCESS = /^steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outcome\s*===?\s*(['"])success\2$/;
+
+/**
+ * Is this step-level `if:` the one form D-9 tolerates on a record step — a
+ * STRICT WIDENING of the inherited `success()` — or is it a narrowing that lets
+ * the job end without writing a record? Returns `null` when it is acceptable,
+ * or the reason it is not. See the header for the argument.
+ */
+function narrowingReason(cond) {
+  const body = cond.trim().replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '').trim();
+  const parts = body.split('&&').map((s) => s.trim());
+  if (parts[0] !== 'always()') {
+    return `it does not begin with \`always()\`, so it can only ever run on FEWER inputs than the \`success()\` every step inherits`;
+  }
+  if (parts.length < 2) {
+    return 'a bare `always()` records even when the deploy step FAILED, which files a ledger entry for something that never shipped';
+  }
+  const ids = [];
+  for (const p of parts.slice(1)) {
+    const m = p.match(OUTCOME_SUCCESS);
+    if (!m) return `the conjunct \`${p}\` is not \`steps.<id>.outcome == 'success'\``;
+    ids.push(m[1]);
+  }
+  return { ids };
+}
+
+/** The step a given line belongs to, plus the ids every EARLIER step declares.
+ *  `null` when the line belongs to no step at all — which means this parse has
+ *  lost the job's step structure, and the caller must treat it as COVERAGE LOST
+ *  rather than as "no guards found". Returning an empty list for a line it could
+ *  not place is precisely how the previous version reported a dead rule as a
+ *  passing one. */
+function stepContext(job, lineNumber) {
+  const steps = stepsOf(job);
+  const i = steps.findIndex((s) => s.lines.some((l) => l.n === lineNumber));
+  if (i === -1) return null;
+  return { step: steps[i], index: i, total: steps.length, priorIds: new Set(steps.slice(0, i).map((s) => s.id).filter(Boolean)) };
 }
 
 /** Every `record-deployment.mjs <env> …` call in one job, one per shell segment.
@@ -198,7 +305,7 @@ function recordCalls(job, appSlugs = APP_SLUGS) {
           written: m[1],
           state: (seg.match(/--state\s+(\S+)/) ?? [])[1] ?? null,
           listingUrl: (seg.match(/--listing-url\s+(\S+)/) ?? [])[1] ?? null,
-          guards: stepGuards(job, line.n),
+          ctx: stepContext(job, line.n),
         });
       }
     }
@@ -229,6 +336,69 @@ function openJob(wf, jobName, why) {
 // ── 1. SERVED CHANNELS — the deploy lane must record what it shipped ─────────
 const seenRecordLines = new Set();
 let deployRecordCalls = 0;
+/** Rule 6's own coverage. `stepsGraded` counts the record steps this parse
+ *  actually located and graded — it is the number the previous version could
+ *  never have raised above 0 on the real tree, so it is the number that proves
+ *  the rule is alive. `wideningsAccepted` counts the accepted `always() &&
+ *  steps.<id>.outcome == 'success'` conditions, printed rather than swallowed. */
+let stepsGraded = 0;
+let wideningsAccepted = 0;
+
+/**
+ * RULE 6, for one record call — the served lane's and the store submission's
+ * record steps are graded by the same function on purpose. "A job that ships and
+ * then ends without a record" is one failure with two spellings, and two copies
+ * of the rule would be two chances for one of them to quietly stop applying.
+ *
+ * `subject` names the step in the failure text; `what` names the thing recorded.
+ */
+function gradeSkippability(rel, jobName, call, subject, what) {
+  if (call.ctx === null) {
+    coverageLost([
+      `${rel}: the record call for ${what} at :${call.n} belongs to no step this parse could find.`,
+      'Rule 6 (a skippable record step) is graded from the step containing the call, so a call this reader',
+      'cannot place is a rule it cannot apply — and it would otherwise report "no guards found", which is',
+      'the exact shape the previous `stepGuards` shipped in for a month. Fix the step splitter, not the workflow.',
+    ]);
+  }
+  stepsGraded++;
+  if (call.ctx.step.continueOnError) {
+    problems.push(
+      `[10]D-9 · ${rel}:${call.ctx.step.continueOnError.n} — ${subject} carries \`continue-on-error: true\`, so the ` +
+        'job can finish GREEN having shipped and not recorded. D-9\'s wording is "ends without writing one fails"; ' +
+        "swallowing the recorder's own failure is how a job ends without writing one while the call is still in the YAML.",
+    );
+  }
+  if (!call.ctx.step.stepIf) return;
+  const verdict = narrowingReason(call.ctx.step.stepIf.cond);
+  if (typeof verdict === 'string') {
+    problems.push(
+      `[10]D-9 · ${rel}:${call.ctx.step.stepIf.n} — ${subject} carries a NARROWING step-level \`if:\` ` +
+        `(\`${call.ctx.step.stepIf.cond}\`): ${verdict}. So the job can finish having shipped and not recorded, ` +
+        'which is D-9\'s "ends without writing one". The one accepted form is ' +
+        "`always() && steps.<publishing-step-id>.outcome == 'success'` — a strict WIDENING of the `success()` every " +
+        'step inherits, so the record follows the ACT rather than a later verdict about the act.',
+    );
+    return;
+  }
+  const unknown = verdict.ids.filter((id) => !call.ctx.priorIds.has(id));
+  if (unknown.length) {
+    problems.push(
+      `[10]D-9 · ${rel}:${call.ctx.step.stepIf.n} — ${subject} is conditioned on step id(s) ` +
+        `\`${unknown.join('`, `')}\` that NO EARLIER step in job "${jobName}" declares ` +
+        `(earlier ids: ${[...call.ctx.priorIds].map((i) => `\`${i}\``).join(', ') || 'none'}). GitHub resolves ` +
+        '`steps.<unknown>.outcome` to null instead of erroring, so this record would silently never be written and ' +
+        'the run would still be green — a renamed or deleted `id:` on the publishing step is exactly that.',
+    );
+    return;
+  }
+  wideningsAccepted++;
+  prints.push(
+    `[10]D-9 · ${rel}:${call.ctx.step.stepIf.n} — ${what} is recorded on \`${call.ctx.step.stepIf.cond}\`: a WIDENING ` +
+      'of the inherited `success()` (that step being green was already required), so the record survives a ' +
+      'post-deploy smoke that fails after the bytes shipped. Run 144, 2026-08-08.',
+  );
+}
 
 for (const row of servedRows) {
   const envs = expandEnvironments(row);
@@ -259,13 +429,7 @@ for (const row of servedRows) {
       );
       continue;
     }
-    for (const g of hit.guards) {
-      problems.push(
-        `[10]D-9 · ${wf.rel}:${g.n} — the step recording "${env}" carries ${g.kind}, so the job can finish ` +
-          'having deployed and not recorded. D-9\'s wording is "ends without writing one fails"; a skippable ' +
-          'record step is precisely how a job ends without writing one while the call is still in the YAML.',
-      );
-    }
+    gradeSkippability(wf.rel, row.lane.job, hit, `the step recording "${env}"`, `"${env}"`);
   }
 }
 
@@ -341,12 +505,7 @@ for (const row of submittableRows) {
       );
       continue;
     }
-    for (const g of record.guards) {
-      problems.push(
-        `[10]D-9 · ${wf.rel}:${g.n} — the record step for a real "${row.id}" submission carries ${g.kind}, ` +
-          'so the job can submit and then end without writing the record.',
-      );
-    }
+    gradeSkippability(wf.rel, sub.job, record, `the record step for a real "${row.id}" submission`, `the "${row.id}" submission`);
   }
 
   // Rules 4 and 5 apply to EVERY record call in a submission workflow, whether
@@ -430,8 +589,78 @@ if (missedInsideLanes.length > 0) {
   ]);
 }
 
+// ── RULE 6b · A NULL-RESOLVING `if:` ON *ANY* RECORD STEP, LANE OR NOT ───────
+// 🔴 RULE 6 ONLY REACHES REGISTER-DECLARED CHANNEL LANES, AND THE 2026-08-09
+// CHANGE PUT LOAD-BEARING CONDITIONS OUTSIDE THEM. deploy-workers.yml's two
+// record steps write `serviceEnvironments` (the Workers), which no channel row
+// declares — so they are printed by the flat scan above and graded by nothing.
+// They now carry `always() && steps.deploy.outcome == 'success'`, which means a
+// renamed or deleted `id:` on either wrangler deploy step would resolve
+// `steps.deploy.outcome` to NULL, skip the record forever, and leave the run
+// green. That is the identical failure rule 6 exists to prevent, one file over.
+//
+// This limb is deliberately NARROWER than rule 6 and carries no policy: it does
+// not demand any particular condition, and it never objects to a workflow for
+// what it chose to record. It asserts one thing that is unconditionally a bug —
+// an `if:` naming a step id that no EARLIER step in the same job declares. There
+// is no tree in which that expression does what its author meant, so it cannot
+// produce a false red on a correct workflow, which is why it can be applied to
+// every record call in the repository rather than only to declared lanes.
+const STEP_OUTCOME_REF = /steps\.([A-Za-z_][A-Za-z0-9_-]*)\.(outcome|conclusion)/g;
+let danglingChecked = 0;
+for (const wf of parseAllWorkflows(ROOT)) {
+  for (const job of wf.jobs.values()) {
+    for (const call of recordCalls(job)) {
+      if (!call.ctx?.step?.stepIf) continue;
+      danglingChecked++;
+      const cond = call.ctx.step.stepIf.cond;
+      STEP_OUTCOME_REF.lastIndex = 0;
+      const referenced = [...new Set([...cond.matchAll(STEP_OUTCOME_REF)].map((m) => m[1]))];
+      const dangling = referenced.filter((id) => !call.ctx.priorIds.has(id));
+      if (dangling.length === 0) continue;
+      problems.push(
+        `[10]D-9 · ${wf.rel}:${call.ctx.step.stepIf.n} — the step recording "${call.environment}" is conditioned on ` +
+          `step id(s) \`${dangling.join('`, `')}\` that NO EARLIER step in job "${job.name}" declares ` +
+          `(earlier ids: ${[...call.ctx.priorIds].map((i) => `\`${i}\``).join(', ') || 'none'}). GitHub resolves ` +
+          '`steps.<unknown>.outcome` to null rather than erroring, so this record would silently never be written ' +
+          'and the run would still be GREEN. This limb covers every record call in the tree, including the ' +
+          '`serviceEnvironments` ones no channel row declares — rule 6 above cannot see those.',
+      );
+    }
+  }
+}
+
+// ── RULE 6's FLOOR ───────────────────────────────────────────────────────────
+// The load-bearing half of this floor is inside `gradeSkippability`: a record
+// call whose containing step this parse cannot LOCATE is COVERAGE LOST, not
+// "no guards found". That is the exact regression the old `stepGuards` shipped —
+// it saw a job's first step only, and a record step is the last step of every
+// real lane — so a step splitter that ever narrows back to the first step makes
+// `stepContext` return null and fails the build instead of printing ok.
+//
+// This second half catches the other shape: every required environment recorded,
+// no problems found, and yet nothing graded — i.e. the rule ran over nothing
+// while the guard was about to print a pass.
+if (problems.length === 0 && stepsGraded === 0) {
+  coverageLost([
+    `rule 6 graded 0 record step(s) while ${REQUIRED_COVERAGE.requiredEnvironments} environment(s) are required and no`,
+    'problem was found — so the rule ranged over nothing and this run was about to print ok. That is the state it was',
+    "actually in until 2026-08-09, when `if: github.actor == 'nobody'` on the real record step still passed.",
+  ]);
+}
+
 // ── REPORT ───────────────────────────────────────────────────────────────────
 for (const p of prints) console.log(`⬜ ${p}`);
+console.log(
+  `⬜ RULE 6 (a record step the job can SKIP) graded ${stepsGraded} record step(s); ${wideningsAccepted} carry the one ` +
+    "accepted widening `always() && steps.<id>.outcome == 'success'`. Recorded failing input, run against the REAL " +
+    "tree 2026-08-09: giving deploy-web.yml's record step `if: github.actor == 'nobody'` ⇒ exit 1.",
+);
+console.log(
+  `⬜ RULE 6b (an \`if:\` naming a step id nothing declares) checked ${danglingChecked} conditioned record step(s) ` +
+    'across EVERY workflow, including the `serviceEnvironments` ones rule 6 cannot see. Recorded failing input, run ' +
+    "against the REAL tree 2026-08-09: renaming deploy-workers.yml's `id: deploy` to `id: deployy` ⇒ exit 1.",
+);
 console.log(
   `⬜ SUBMISSION-RECORD LIMB: ${publishing} of ${rehearsals + publishing} submission invocation(s) can perform a REAL ` +
     `submission${publishing === 0 ? ' — so the "must write a record" branch has NO instances today and passes over nothing' : ''}. ` +

@@ -313,18 +313,20 @@ describe('check-prod-provenance — the monitor limb', () => {
     { run_number: 119, head_sha: '2594564aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
   ];
 
-  function run(rowsByTable, runs = RUNS) {
+  function run(rowsByTable, runs = RUNS, deployments = null) {
     const dir = mkdtempSync(join(tmpdir(), 'nikatru-monitor-'));
     try {
       const rowsFile = join(dir, 'rows.json');
       const runsFile = join(dir, 'runs.json');
       writeFileSync(rowsFile, JSON.stringify(rowsByTable));
       writeFileSync(runsFile, JSON.stringify(runs));
-      return spawnSync(
-        process.execPath,
-        [MONITOR, '--root', REPO, '--rows-file', rowsFile, '--runs-file', runsFile],
-        { cwd: REPO, encoding: 'utf8' },
-      );
+      const argv = [MONITOR, '--root', REPO, '--rows-file', rowsFile, '--runs-file', runsFile];
+      if (deployments !== null) {
+        const deploymentsFile = join(dir, 'deployments.json');
+        writeFileSync(deploymentsFile, JSON.stringify(deployments));
+        argv.push('--deployments-file', deploymentsFile);
+      }
+      return spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8' });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -361,7 +363,7 @@ describe('check-prod-provenance — the monitor limb', () => {
   test('a well-formed version for a run that never happened does not resolve', () => {
     const r = run({ events: [{ marker: '1.0.9999+deadbee', n: 3 }] });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /no SUCCESSFUL run numbered 9999/);
+    assert.match(r.stderr, /no run numbered 9999/);
   });
 
   test('a version claiming a run that shipped a DIFFERENT commit does not resolve', () => {
@@ -439,5 +441,236 @@ describe('check-prod-provenance — the monitor limb', () => {
   test('fixture mode announces itself so it can never pass as a real ops-watch run', () => {
     const r = run({});
     assert.match(r.stdout, /OFFLINE FIXTURE MODE/);
+  });
+});
+
+// ── THE DEPLOYMENT WITNESS ───────────────────────────────────────────────────
+// Modelled on the REAL incident, not on an invented one. deploy-web run 144
+// (2026-08-08) deployed successfully and then failed its post-deploy smoke, so
+// the RUN concluded `failure` while the bundle served real users — whose rows
+// carried `1.0.144+40c0787`. The version, the sha and the run number below are
+// the actual ones; the fix under test is that a GitHub Deployment for that
+// commit is enough to attribute them, without a hand-written attestation.
+describe('check-prod-provenance — a failed run that DID deploy', () => {
+  const SHA144 = '40c0787a41f9ee7f5befdcb380646ae717f4a9f7';
+  const RUNS = [
+    { run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab', conclusion: 'success' },
+    { run_number: 144, head_sha: SHA144, conclusion: 'failure' },
+  ];
+  const ROWS = { consent_artifacts: [{ marker: '1.0.144+40c0787', n: 1 }] };
+
+  function run(rowsByTable, runs, deployments) {
+    const dir = mkdtempSync(join(tmpdir(), 'nikatru-witness-'));
+    try {
+      const f = (name, v) => { const p = join(dir, name); writeFileSync(p, JSON.stringify(v)); return p; };
+      const argv = [MONITOR, '--root', REPO, '--rows-file', f('rows.json', rowsByTable), '--runs-file', f('runs.json', runs)];
+      if (deployments !== null) argv.push('--deployments-file', f('deployments.json', deployments));
+      return spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test('THE INCIDENT: a failed run with a GitHub Deployment for its sha RESOLVES', () => {
+    const r = run(ROWS, RUNS, [SHA144]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /consent_artifacts\s+1 row\(s\), 0 unattributable/);
+  });
+
+  test('and it says so out loud — an acceptance on the weaker footing is never silent', () => {
+    const r = run(ROWS, RUNS, [SHA144]);
+    assert.match(r.stdout, /deployment-witnessed build accepted: 1\.0\.144\+40c0787/);
+    assert.match(r.stdout, /run 144 concluded `failure`/);
+  });
+
+  test('THE NEGATIVE CASE: the same failed run with NO deployment stays unattributable', () => {
+    const r = run(ROWS, RUNS, []);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /NO GitHub Deployment names 40c0787/);
+    assert.match(r.stderr, /nothing witnesses that this build was ever published/);
+  });
+
+  test('a deployment for some OTHER commit does not witness this build', () => {
+    const r = run(ROWS, RUNS, ['1111111111111111111111111111111111111111']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /NO GitHub Deployment names 40c0787/);
+  });
+
+  test('BOTH HALVES OR NEITHER: a deployment cannot lend a sha to a run number it never had', () => {
+    // The version claims run 101; run 101 really shipped e138f5b. A deployment
+    // for 40c0787 must not rescue `1.0.101+40c0787` — run numbers are what
+    // version strings are ORDERED by, so the run-number leg is not optional.
+    const r = run({ events: [{ marker: '1.0.101+40c0787', n: 2 }] }, RUNS, [SHA144]);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /run 101 shipped e138f5b, not 40c0787/);
+  });
+
+  test('a run that is merely CANCELLED is not deployed either, absent a witness', () => {
+    const cancelled = [{ run_number: 145, head_sha: SHA144, conclusion: 'cancelled' }];
+    const r = run({ events: [{ marker: '1.0.145+40c0787', n: 1 }] }, cancelled, []);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /run 145 concluded `cancelled`/);
+  });
+
+  test('the successful-run path is untouched — no deployment ledger needed for it', () => {
+    const r = run({ consent_artifacts: [{ marker: '1.0.101+e138f5b', n: 1 }] }, RUNS, []);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /deployment-witnessed/);
+  });
+
+  test('the census names both witnesses so a shrinking ledger is visible', () => {
+    const r = run(ROWS, RUNS, [SHA144]);
+    assert.match(r.stdout, /2 completed lane run\(s\), 1 successful/);
+    assert.match(r.stdout, /1 commit\(s\) with a GitHub Deployment/);
+  });
+
+  test('a fixture with no --deployments-file reads as NO second witness, never as a permissive one', () => {
+    const r = run(ROWS, RUNS, null);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /deployment ledger: NOT READ \(fixture mode\)/);
+    assert.match(r.stderr, /NO GitHub Deployment names 40c0787/);
+  });
+});
+
+// ── WITNESS (b)'s SUBJECT: WHICH ENVIRONMENTS THE LEDGER IS READ FROM ────────
+// 🔴 THESE EXIST BECAUSE THE EXPANSION WAS UNREACHABLE. `servedEnvironments()`
+// is consulted on ONE line — the live branch of `deployedShas` — and that line
+// sits behind `githubRuns`, which needs a credential no test has. So the tests
+// above, which cover the resolver thoroughly, covered the environment set NOT AT
+// ALL: it could have expanded to the wrong name, or to nothing, and every one of
+// them would still be green. Its `CouldNotLook` was an assertion no input could
+// make fail, which this repository's own rule calls worse than none.
+//
+// `--emit-served-environments` reaches the SAME function the live read calls —
+// not a copy — so these grade the thing that runs.
+describe('check-prod-provenance — the environments witness (b) is read from', () => {
+  const CHANNELS = 'tooling/channel-register.json';
+  const CATALOGUE = 'sites/_shared/_data/apps.json';
+
+  function emit(build) {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-served-envs-'));
+    try {
+      build(root);
+      return spawnSync(process.execPath, [MONITOR, '--root', root, '--emit-served-environments'], { cwd: REPO, encoding: 'utf8' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  const write = (root, rel, value) => {
+    mkdirSync(join(root, dirname(rel)), { recursive: true });
+    writeFileSync(join(root, rel), JSON.stringify(value, null, 2));
+  };
+
+  test('THE REAL TREE: the emitted environment is the one deploy-web.yml actually records', () => {
+    // The binding that matters. `record-deployment.mjs <env>` in the lane and
+    // this reader's expansion are two sides of one name, and nothing else in the
+    // tree holds them together — a rename on either side would make the ledger
+    // read from an environment nobody writes, and witness (b) would go silently
+    // empty (every failed-run build unattributable, with no error).
+    const r = spawnSync(process.execPath, [MONITOR, '--emit-served-environments'], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const emitted = r.stdout.trim().split('\n').map((s) => s.trim()).filter(Boolean);
+    assert.ok(emitted.length > 0, 'the real tree must expand to at least one environment');
+
+    // COMMENT LINES ARE DROPPED FIRST, and that is not tidiness — this file
+    // NAMES `record-deployment.mjs` in its prose four times, so a naive match
+    // reads the next English word ("writes") as an environment. Caught by this
+    // very test on its first run; a scan of a file this heavily commented must
+    // strip the commentary before it reads the executable text.
+    // Two normalisations, and this test earned BOTH by failing on them:
+    //  · COMMENT LINES GO FIRST. This file names `record-deployment.mjs` in its
+    //    prose four times, so a naive match reads the next English word
+    //    ("writes") as an environment.
+    //  · `${{ … }}` EXPRESSIONS COLLAPSE BEFORE THE MATCH, NEVER AFTER. The real
+    //    call is `record-deployment.mjs ${{ matrix.app }}-web …`, and `\S+`
+    //    stops at the space INSIDE the expression — so a substitution applied to
+    //    the captured text only ever sees `${{`.
+    const lane = readFileSync(join(REPO, '.github', 'workflows', 'deploy-web.yml'), 'utf8')
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n')
+      .replace(/\$\{\{\s*matrix\.app\s*\}\}/g, '{app}')
+      .replace(/\$\{\{[^}]*\}\}/g, 'EXPR');
+
+    const templates = [...lane.matchAll(/record-deployment\.mjs\s+(\S+)/g)].map((m) => m[1]);
+    assert.ok(templates.length > 0, 'deploy-web.yml must still call record-deployment.mjs');
+    const slugs = JSON.parse(readFileSync(join(REPO, 'sites', '_shared', '_data', 'apps.json'), 'utf8')).map((a) => a.slug);
+    assert.ok(slugs.length > 0, 'the app catalogue must name at least one app');
+    for (const t of templates) {
+      for (const s of slugs) {
+        const env = t.replace('{app}', s);
+        assert.ok(
+          emitted.includes(env),
+          `deploy-web.yml records "${env}" but the ledger reader does not read it (reads: ${emitted.join(', ')})`,
+        );
+      }
+    }
+  });
+
+  test('`{app}` expands over EVERY app — a second app is a second environment', () => {
+    const r = emit((root) => {
+      write(root, CHANNELS, { channels: [{ id: 'web', served: true, deploymentEnvironment: '{app}-web' }] });
+      write(root, CATALOGUE, [{ slug: 'subly' }, { slug: 'drift' }]);
+    });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(r.stdout.trim().split('\n').sort(), ['drift-web', 'subly-web']);
+  });
+
+  test('THE NEGATIVE CASE: a register that expands to NOTHING is exit 2, never an empty ledger', () => {
+    // An empty environment set makes githubDeployments return an empty sha set,
+    // which reads exactly like "nothing was ever deployed" — so every build from
+    // a failed run would be called unattributable and nothing would say why.
+    const r = emit((root) => {
+      write(root, CHANNELS, { channels: [{ id: 'web', served: true }] });
+      write(root, CATALOGUE, [{ slug: 'subly' }]);
+    });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /COULD NOT LOOK/);
+    assert.match(r.stderr, /witness \(b\) would be silently empty/);
+  });
+
+  test('a served channel with apps but NO app in the tree is exit 2, not a silent empty', () => {
+    const r = emit((root) => {
+      write(root, CHANNELS, { channels: [{ id: 'web', served: true, deploymentEnvironment: '{app}-web' }] });
+      write(root, CATALOGUE, []);
+    });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /witness \(b\) would be silently empty/);
+  });
+
+  test('an UNSERVED channel lends no environment — a Worker deploy is not an app publish', () => {
+    // A Worker deployed at some commit says nothing about whether the app bundle
+    // at that commit ever reached a browser. If service environments counted,
+    // any Worker deploy would witness every app build sharing its sha.
+    const r = emit((root) => {
+      write(root, CHANNELS, {
+        channels: [
+          { id: 'web', served: true, deploymentEnvironment: '{app}-web' },
+          { id: 'windows-store', served: false, deploymentEnvironment: '{app}-windows-store' },
+        ],
+      });
+      write(root, CATALOGUE, [{ slug: 'subly' }]);
+    });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(r.stdout.trim().split('\n'), ['subly-web']);
+  });
+
+  test('with no catalogue the apps/ directory is the floor — the reader still works', () => {
+    const r = emit((root) => {
+      write(root, CHANNELS, { channels: [{ id: 'web', served: true, deploymentEnvironment: '{app}-web' }] });
+      mkdirSync(join(root, 'apps', 'subly'), { recursive: true });
+    });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(r.stdout.trim().split('\n'), ['subly-web']);
+  });
+
+  test('a channel whose environment names no app is taken literally, not dropped', () => {
+    const r = emit((root) => {
+      write(root, CHANNELS, { channels: [{ id: 'web', served: true, deploymentEnvironment: 'the-one-site' }] });
+      write(root, CATALOGUE, [{ slug: 'subly' }]);
+    });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(r.stdout.trim().split('\n'), ['the-one-site']);
   });
 });

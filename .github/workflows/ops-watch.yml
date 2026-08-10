@@ -294,8 +294,23 @@ jobs:
     name: Every row in production traces to a released build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # `actions: read`      — the released-build set comes from the release lane's
+    #                        own run history.
+    # `deployments: read`  — ADDED 2026-08-09. The reader now consults the GitHub
+    #                        Deployment ledger as the SECOND WITNESS for a build
+    #                        whose run failed after its deploy step succeeded
+    #                        (deploy-web run 144); it is also what the
+    #                        manual-deploys.json attestations are validated
+    #                        against. Naming any permission on a job sets every
+    #                        unnamed one to `none`, so an unlisted scope here is
+    #                        a REFUSAL, not a default — and this reader turns a
+    #                        refused read into exit 2 ("I could not look"), which
+    #                        would redden ops-watch every night rather than fail
+    #                        quietly. Granting it is the least-privilege answer:
+    #                        the job genuinely reads deployments now.
     permissions:
       actions: read
+      deployments: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

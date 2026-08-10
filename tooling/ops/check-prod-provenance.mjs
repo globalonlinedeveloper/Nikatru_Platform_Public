@@ -49,15 +49,52 @@
 //       unfalsifiable, and 04-backend-platform.md's own evidence block still
 //       says `consent_artifacts` 0 because nothing ever looked again.
 //
+// ── THE SECOND WITNESS: A RUN THAT FAILED CAN STILL HAVE DEPLOYED ───────────
+// 🔴 A RUN'S CONCLUSION IS A FACT ABOUT THE RUN, NOT ABOUT WHAT REACHED USERS,
+// and reading it as the latter cost this repository a real incident. deploy-web
+// run 144 (2026-08-08) uploaded to Cloudflare Pages successfully and then lost
+// the CDN propagation race in its post-deploy smoke, so the RUN concluded
+// `failure` while the bundle was live and serving. Rows written by real people
+// carried `1.0.144+40c0787`, no successful run numbered 144 existed, and this
+// monitor correctly — and uselessly — called them unattributable. The repair was
+// a hand-written attestation in tooling/ops/manual-deploys.json.
+//
+// So a build now resolves on EITHER of two footings:
+//   (a) its run number belongs to a SUCCESSFUL run of a served release lane
+//       whose head commit is the build's own metadata — the original rule, and
+//       the common case; or
+//   (b) its run number belongs to a run of ANY conclusion whose head commit is
+//       the build's own metadata, AND a GitHub DEPLOYMENT exists for that commit
+//       on a served environment.
+//
+// (b) is the SAME PAIR OF INDEPENDENT WITNESSES manual-deploys.json demands, and
+// it is not a weakening: a GitHub Deployment on `<app>-web` is written by exactly
+// one thing — tooling/ci/record-deployment.mjs, inside the lane job, which is the
+// only job in the repository holding `deployments: write`. Since 2026-08-09 that
+// step is conditioned on the deploy step succeeding rather than on the smoke
+// passing (see the block on it in deploy-web.yml), so the witness exists
+// precisely when bytes reached the origin. Nothing here trusts the run's own
+// verdict about itself.
+//
+// ⚠️ THE RUN-NUMBER LEG IS STILL REQUIRED IN (b). A deployment alone would let
+// any sha resolve any run number, and run numbers are what version strings are
+// ORDERED by. Both halves, or neither.
+//
 // Usage:
 //   node tooling/ops/check-prod-provenance.mjs
 //   node tooling/ops/check-prod-provenance.mjs --root <dir>
 //   node tooling/ops/check-prod-provenance.mjs --rows-file f.json --runs-file r.json
 //     → OFFLINE FIXTURE MODE, for tests. It announces itself loudly; that line
-//       must never appear in a real ops-watch log.
+//       must never appear in a real ops-watch log. `--deployments-file d.json`
+//       (an array of sha strings) supplies witness (b) in that mode.
+//   node tooling/ops/check-prod-provenance.mjs --emit-served-environments
+//     → prints the deployment environments witness (b) is read from, one per
+//       line, and exits. Needs no credential, so it is the ONLY way a test can
+//       reach that expansion — see the block on it in main().
 //
 // Env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID (D1 read)
-//      GITHUB_TOKEN or GH_TOKEN, GITHUB_REPOSITORY (release-lane run history)
+//      GITHUB_TOKEN or GH_TOKEN, GITHUB_REPOSITORY (release-lane run history and
+//      the deployment ledger)
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -100,11 +137,16 @@ const readJson = (rel) => {
 // shape deploy-web.yml composes and assert-app-versioning.mjs enforces. So a
 // version string resolves iff:
 //   · its release line (major.minor) is one an app in this workspace declares,
-//   · its patch equals the run number of a SUCCESSFUL run of a SERVED release
+//   · its patch equals the run number of a COMPLETED run of a SERVED release
 //     lane, and
-//   · its build metadata is that run's head commit.
+//   · its build metadata is that run's head commit, and
+//   · that run either SUCCEEDED, or left a GitHub Deployment behind on a served
+//     environment — witness (b) in the header. The third bullet said "a
+//     SUCCESSFUL run" until 2026-08-09 and that reading is what called run 144's
+//     live bundle unattributable; a run's conclusion is a fact about the run,
+//     not about what reached users.
 // Nothing is listed here. `dev` (the dart-define default when APP_VERSION is
-// absent) and `c6-localprobe` (the C-6 live probe's literal) fail all three.
+// absent) and `c6-localprobe` (the C-6 live probe's literal) fail all of them.
 function releaseLines() {
   const appsDir = join(ROOT, 'apps');
   if (!existsSync(appsDir)) return new Set();
@@ -125,36 +167,123 @@ function servedLaneWorkflows() {
   return [...new Set(rows.map((c) => c.lane.workflow.split('/').pop()))];
 }
 
-async function githubRuns(workflowFile) {
+/** The app slugs `{app}` expands over. The published catalogue is the SSoT (it
+ *  is what assert-publish-records.mjs builds the required environment set from),
+ *  with the workspace directories as the floor so this reader still works on a
+ *  tree that carries apps and no catalogue. */
+function appSlugs() {
+  const cat = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+  if (existsSync(cat)) {
+    try {
+      const parsed = JSON.parse(readFileSync(cat, 'utf8'));
+      const slugs = (Array.isArray(parsed) ? parsed : []).map((a) => a?.slug).filter((s) => typeof s === 'string');
+      if (slugs.length) return slugs;
+    } catch { /* falls through to the directory floor */ }
+  }
+  const appsDir = join(ROOT, 'apps');
+  if (!existsSync(appsDir)) return [];
+  return readdirSync(appsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+}
+
+/** `{app}-web` × the apps — the environments a served RELEASE channel's lane
+ *  records into, and therefore the only ones whose GitHub Deployments witness
+ *  that an app build was PUBLISHED. Service environments (the Workers) are
+ *  deliberately excluded: a Worker deploy at some commit says nothing about
+ *  whether the app bundle at that commit ever reached a browser. */
+function servedEnvironments() {
+  const reg = readJson(CHANNELS_REL);
+  const slugs = appSlugs();
+  const envs = new Set();
+  for (const c of reg.channels ?? []) {
+    if (c?.served !== true || typeof c?.deploymentEnvironment !== 'string') continue;
+    if (!c.deploymentEnvironment.includes('{app}')) { envs.add(c.deploymentEnvironment); continue; }
+    for (const s of slugs) envs.add(c.deploymentEnvironment.replace('{app}', s));
+  }
+  if (envs.size === 0) {
+    throw new CouldNotLook(
+      'no served channel in ' + CHANNELS_REL + ' expands to a deployment environment, so the GitHub Deployment ' +
+        'ledger could not be read and witness (b) would be silently empty — which reads exactly like "no deploy ' +
+        'was ever recorded" and would call every failed-run build unattributable.',
+    );
+  }
+  return [...envs];
+}
+
+// Named `ghJson` rather than `gh` because the manual-deploys block below
+// declares its own local `gh`; two helpers with one name in one file is how a
+// later edit ends up calling the wrong one.
+const ghJson = async (repo, token, path, what) => {
+  const res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-prod-provenance' },
+  });
+  if (!res.ok) throw new CouldNotLook(`the GitHub API returned ${res.status} ${what}`);
+  try {
+    return await res.json();
+  } catch (e) {
+    throw new CouldNotLook(`the GitHub API response ${what} was not JSON (${e.message})`);
+  }
+};
+
+function githubCredentials() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const repo = process.env.GITHUB_REPOSITORY || gitRemoteRepo();
   if (!token) throw new CouldNotLook('neither GITHUB_TOKEN nor GH_TOKEN is set, so the released-build set cannot be derived');
   if (!repo) throw new CouldNotLook('the repository could not be resolved (GITHUB_REPOSITORY unset and no origin remote)');
+  return { token, repo };
+}
+
+/** EVERY COMPLETED RUN of a served release lane, not only the successful ones —
+ *  a run that failed after its deploy step succeeded is the case witness (b)
+ *  exists for, and filtering it out here would put it beyond reach. */
+async function githubRuns(workflowFile) {
+  const { token, repo } = githubCredentials();
   const out = [];
   for (let page = 1; page <= 10; page++) {
-    const url =
-      `https://api.github.com/repos/${repo}/actions/workflows/${workflowFile}/runs` +
-      `?status=success&per_page=100&page=${page}`;
-    const res = await fetch(url, {
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
-        'user-agent': 'nikatru-prod-provenance',
-      },
-    });
-    if (!res.ok) throw new CouldNotLook(`the GitHub API returned ${res.status} listing runs of ${workflowFile}`);
-    let body;
-    try {
-      body = await res.json();
-    } catch (e) {
-      throw new CouldNotLook(`the GitHub API response for ${workflowFile} was not JSON (${e.message})`);
-    }
+    const body = await ghJson(
+      repo,
+      token,
+      `/actions/workflows/${workflowFile}/runs?status=completed&per_page=100&page=${page}`,
+      `listing runs of ${workflowFile}`,
+    );
     const runs = body?.workflow_runs;
     if (!Array.isArray(runs)) throw new CouldNotLook(`the GitHub API response for ${workflowFile} carried no workflow_runs array`);
+    // A run with no `conclusion` would silently take the resolver's benefit-of-
+    // the-doubt default below, which is the one direction that weakens without
+    // announcing itself. Live data always carries one; a shape change must be
+    // "could not look", never "looked and it was fine".
+    for (const r of runs) {
+      if (typeof r?.conclusion !== 'string') {
+        throw new CouldNotLook(
+          `run ${r?.run_number ?? '?'} of ${workflowFile} carries no \`conclusion\`, so this reader cannot tell a ` +
+            'successful lane run from a failed one and would treat both as released',
+        );
+      }
+    }
     out.push(...runs);
     if (runs.length < 100) break;
   }
   return out;
+}
+
+/** Every commit that has a GitHub Deployment on a served environment — the
+ *  ledger tooling/ci/record-deployment.mjs writes, and the second witness. */
+async function githubDeployments(environments) {
+  const { token, repo } = githubCredentials();
+  const shas = new Set();
+  for (const environment of environments) {
+    for (let page = 1; page <= 10; page++) {
+      const body = await ghJson(
+        repo,
+        token,
+        `/deployments?environment=${encodeURIComponent(environment)}&per_page=100&page=${page}`,
+        `listing deployments of ${environment}`,
+      );
+      if (!Array.isArray(body)) throw new CouldNotLook(`the GitHub API response listing deployments of ${environment} was not an array`);
+      for (const d of body) if (typeof d?.sha === 'string') shas.add(d.sha.toLowerCase());
+      if (body.length < 100) break;
+    }
+  }
+  return shas;
 }
 
 function gitRemoteRepo() {
@@ -164,19 +293,45 @@ function gitRemoteRepo() {
   return m ? m[1] : null;
 }
 
-/** `1.0.101+e138f5b` → resolvable iff the line, the run number and the sha all line up. */
-function makeReleasedBuildResolver(lines, runs) {
-  const byNumber = new Map(runs.map((r) => [String(r.run_number), r.head_sha]));
+/**
+ * `1.0.101+e138f5b` → resolvable iff the line and the run number and the sha all
+ * line up, AND that run either SUCCEEDED or left a GitHub Deployment behind.
+ *
+ * `deployedShas` is the deployment ledger (witness (b) in the header); pass
+ * `null` where it cannot be read, and only successful runs resolve. `onWitness`
+ * is called once per build that resolved on (b) alone, so an acceptance that
+ * rests on the weaker footing PRINTS instead of passing silently — the same
+ * discipline the manual-deploys register follows.
+ *
+ * A run entry with no `conclusion` is read as successful: that is the shape of
+ * every historic `--runs-file` fixture, and live runs are floored above so the
+ * default can never be reached from real data.
+ */
+function makeReleasedBuildResolver(lines, runs, deployedShas = null, onWitness = () => {}) {
+  const byNumber = new Map(runs.map((r) => [String(r.run_number), r]));
   return (value) => {
     if (typeof value !== 'string' || value.length === 0) return 'no app_version at all — the build defaults to `dev` only when APP_VERSION is unset, so an empty value is a row written by something that is not a build';
     const m = value.match(/^(\d+)\.(\d+)\.(\d+)\+([0-9a-fA-F]{7,40})$/);
     if (!m) return `\`${value}\` is not the shape a shipped build produces (<release_line>.<run_number>+<sha7>)`;
     const line = `${m[1]}.${m[2]}`;
     if (!lines.has(line)) return `release line ${line} is declared by no app in apps/*/pubspec.yaml`;
-    const head = byNumber.get(m[3]);
-    if (!head) return `no SUCCESSFUL run numbered ${m[3]} exists on any served release lane`;
+    const run = byNumber.get(m[3]);
+    if (!run) return `no run numbered ${m[3]} exists on any served release lane`;
+    const head = String(run.head_sha ?? '').toLowerCase();
     if (!head.startsWith(m[4].toLowerCase())) return `run ${m[3]} shipped ${head.slice(0, 7)}, not ${m[4]}`;
-    return null;
+    const conclusion = run.conclusion ?? 'success';
+    if (conclusion === 'success') return null;
+    if (deployedShas?.has(head)) {
+      onWitness(
+        `${value} — run ${m[3]} concluded \`${conclusion}\`, and a GitHub Deployment for ${head.slice(0, 7)} on a ` +
+          'served environment witnesses that it shipped anyway (a deploy step that succeeded before a later step failed)',
+      );
+      return null;
+    }
+    return (
+      `run ${m[3]} concluded \`${conclusion}\` and NO GitHub Deployment names ${head.slice(0, 7)} on a served ` +
+      'environment, so nothing witnesses that this build was ever published'
+    );
   };
 }
 
@@ -255,6 +410,27 @@ async function queryD1(dbId, sql) {
 
 // ── main ────────────────────────────────────────────────────────────────────
 async function main() {
+  // ── `--emit-served-environments` · THE ONE WAY WITNESS (b)'s SUBJECT IS
+  //    REACHABLE WITHOUT A GITHUB TOKEN ───────────────────────────────────────
+  // `servedEnvironments()` is consulted on exactly one line — the live branch of
+  // `deployedShas` — and that line sits BEHIND `githubRuns`, which needs a
+  // credential. So every test of this file reached it never: its expansion was
+  // unexercised and its `CouldNotLook` was an assertion no input could make
+  // fail, which this repository's own rule calls worse than none. This flag is
+  // the same `--emit` idiom assert-release-lane-generic.mjs, assert-app-
+  // versioning.mjs and assert-catalog-reachable.mjs already use, and it exists
+  // for the same reason they do: the reader that USES the fact and the reader
+  // that is TESTED on it must be one function, or the test grades a copy.
+  //
+  // It runs before the migration read on purpose — the environment set has no
+  // dependency on the schema, and a `--root` fixture written to exercise this
+  // expansion should not first have to carry a valid migrations directory.
+  if (args.includes('--emit-served-environments')) {
+    for (const e of servedEnvironments()) console.log(e);
+    process.exitCode = 0;
+    return;
+  }
+
   const register = readJson(REGISTER_REL);
   const rules = register.tables ?? {};
   const migrationsRel = register.migrationsDir;
@@ -281,8 +457,9 @@ async function main() {
 
   const rowsFile = flag('--rows-file');
   const runsFile = flag('--runs-file');
-  if (rowsFile || runsFile) {
-    console.log('!!  OFFLINE FIXTURE MODE — --rows-file/--runs-file is set. This must NEVER appear in a real ops-watch log.');
+  const deploymentsFile = flag('--deployments-file');
+  if (rowsFile || runsFile || deploymentsFile) {
+    console.log('!!  OFFLINE FIXTURE MODE — --rows-file/--runs-file/--deployments-file is set. This must NEVER appear in a real ops-watch log.');
   }
 
   // Resolver contexts. Each throws CouldNotLook rather than resolving nothing.
@@ -291,7 +468,19 @@ async function main() {
     : (await Promise.all(servedLaneWorkflows().map(githubRuns))).flat();
   const lines = releaseLines();
   if (lines.size === 0) throw new CouldNotLook('no apps/*/pubspec.yaml declares a version, so no release line is known');
-  if (runs.length === 0) throw new CouldNotLook('no successful run of any served release lane was found, so the released-build set is EMPTY');
+  if (runs.length === 0) throw new CouldNotLook('no completed run of any served release lane was found, so the released-build set is EMPTY');
+
+  // ── witness (b): the GitHub Deployment ledger ─────────────────────────────
+  // Read for real on a live run; from a fixture file in offline mode; and NEVER
+  // fabricated. `null` — the state a fixture with no --deployments-file is in —
+  // means "no second witness available", so only successful runs resolve, which
+  // is exactly the behaviour every pre-existing fixture was written against.
+  const deployedShas = deploymentsFile
+    ? new Set(JSON.parse(readFileSync(deploymentsFile, 'utf8')).map((s) => String(s).toLowerCase()))
+    : runsFile
+      ? null
+      : await githubDeployments(servedEnvironments());
+  const witnessed = [];
 
   // ── attested manual deploys — tooling/ops/manual-deploys.json ─────────────
   // A deploy that shipped outside its lane is attributable ONLY through this
@@ -331,14 +520,19 @@ async function main() {
         if (!Array.isArray(deps) || deps.length === 0) {
           attViolations.push(`manual-deploys.json: no GitHub Deployment exists for ${d.environment} @ ${String(d.sha).slice(0, 7)} — record-deployment.mjs never ran, so this attestation has no second witness`); continue;
         }
-        attested.push({ run_number: Number(m[3]), head_sha: String(d.sha).toLowerCase() });
+        // `conclusion: 'success'` is explicit rather than defaulted: the two
+        // witnesses above ARE this entry's validation, so it must not be sent
+        // back through the deployment-ledger check a second time.
+        attested.push({ run_number: Number(m[3]), head_sha: String(d.sha).toLowerCase(), conclusion: 'success' });
         console.log(`⬜  attested manual deploy accepted: ${d.version} (${d.environment}, ${d.deployedAt}) — commit and GitHub Deployment both verified`);
       }
     }
   }
 
   const resolverFns = {
-    'released-build': makeReleasedBuildResolver(lines, [...runs, ...attested]),
+    'released-build': makeReleasedBuildResolver(lines, [...runs, ...attested], deployedShas, (note) => {
+      if (!witnessed.includes(note)) witnessed.push(note);
+    }),
     'live-environment': (v) =>
       v === 'live' ? null : v == null ? 'no environment at all — the rail could not attribute this row to a money world' : `environment is \`${v}\`, not \`live\``,
     'cron-job': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `job \`${v}\` is declared by no \`export const <NAME>_JOB\` in services/platform/src`))(cronJobNames()),
@@ -382,6 +576,15 @@ async function main() {
 
   const grandTotal = census.reduce((a, c) => a + c.total, 0);
   console.log(`⬜  MONITOR · [pipeline B-17] · ${census.length} table(s) enumerated from ${migrationsRel} (${filesRead} migration file(s)), ${grandTotal} row(s) in ${register.database}`);
+  console.log(
+    `⬜  released-build set: ${runs.length} completed lane run(s), ${runs.filter((r) => (r.conclusion ?? 'success') === 'success').length} successful · ` +
+      `deployment ledger: ${deployedShas === null ? 'NOT READ (fixture mode)' : `${deployedShas.size} commit(s) with a GitHub Deployment on a served environment`}`,
+  );
+  // An acceptance resting on the weaker footing is announced, never silent — the
+  // same rule the manual-deploys register follows. A build that resolves ONLY
+  // because a failed run left a deployment behind is a build somebody should be
+  // able to see in the log without going looking.
+  for (const w of witnessed) console.log(`⬜  deployment-witnessed build accepted: ${w}`);
   for (const c of census) {
     console.log(`    ${c.bad === 0 ? 'ok ' : '✗  '} ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s), ${c.bad} unattributable   [${c.marker} · ${c.resolver}]`);
   }
