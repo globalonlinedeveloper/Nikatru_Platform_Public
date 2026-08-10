@@ -135,10 +135,21 @@ List<Color> _paintedTextColors(WidgetTester tester) {
 }
 
 /// The fill of every decorated `Container` on screen.
+// ⚠️ CIRCLES ARE EXCLUDED, AND THE EXCLUSION IS DATED EVIDENCE, NOT TIDINESS.
+// This assertion hunts CARD SURFACES painted light on the dark scaffold. The
+// calendar's today-cell renders a 4px CIRCLE dot in `Colors.white` — an
+// ON-GRADIENT indicator (calendar_screen.dart documents why it must not follow
+// the scheme), and `Colors.white == AppColors.surface` by value. The dot only
+// exists when TODAY's date carries a seeded renewal, so this suite passed every
+// day until 2026-08-10 (a fixture renews on day 10) and then failed everywhere
+// at once — a date-dependent false positive that blocked every merge for a
+// morning. A 4px decoration is not a surface; a real white CARD is still a
+// rectangle and still caught (negative-proven the day this line landed).
 List<Color?> _containerFills(WidgetTester tester) => tester
     .widgetList<Container>(find.byType(Container))
     .map((Container c) => c.decoration)
     .whereType<BoxDecoration>()
+    .where((BoxDecoration d) => d.shape != BoxShape.circle)
     .map((BoxDecoration d) => d.color)
     .toList();
 

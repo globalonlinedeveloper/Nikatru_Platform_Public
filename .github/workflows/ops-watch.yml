@@ -17,7 +17,7 @@ name: Ops watch
 # GlitchTip heartbeat → alert rule → email) has exactly this shape; it is being
 # copied, not reinvented.
 #
-# SCHEDULE: 07:30 UTC. The Cloudflare cron it watches runs at 06:00 UTC, so this
+# SCHEDULE: 07:30 + 19:30 UTC (+ a 08:50 slot). The watched cron runs 06:00 UTC, so this
 # reads a table that has had 90 minutes to settle — inside the 1.5x staleness
 # ceiling the reader applies, and far enough after that a slow run is not read as
 # a dead one.
@@ -38,6 +38,10 @@ on:
     # fired and that is a fact the workflow can read; deriving "is it Monday"
     # from a timestamp inside a shell step is a calculation that can be wrong.
     - cron: '45 7 * * 1' # Mondays, 15 minutes after the daily run has settled
+    # DENSIFIED 2026-08-10 (owner "go", admin-merge #2): one red scheduled run froze every
+    # merge ~18h across two 36h scheduled-only clocks. Two slots halve that worst case.
+    - cron: '50 8 * * *' # mid-morning slot (also healed the 2026-08-10 freeze same-day)
+    - cron: '30 19 * * *' # evening slot — the standing densify
 
 permissions: {}
 
