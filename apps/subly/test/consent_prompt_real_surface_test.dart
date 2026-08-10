@@ -6,9 +6,12 @@
 // actually mounts is the inline scrim `AnalyticsGate` stacks over the router
 // (`lib/app.dart`). One test drove it — `chassis_properties_test.dart`'s "the
 // app root asks for consent, and Allow opens the rail" — and it taps ALLOW ONLY.
-// The single "No thanks" tap in the tree (`consent_gate_open_path_test.dart`)
-// belongs to the RETIRED dialog-shaped `ConsentGate`, a widget the app no longer
-// mounts: it can pass forever while the live refusal path is broken.
+// The only other "No thanks" tap in the tree belonged to
+// `consent_gate_open_path_test.dart`, driving the RETIRED dialog-shaped
+// `ConsentGate` — a widget the app had stopped mounting — so it could pass
+// forever while the live refusal path was broken. That is the exact false-green
+// this file was written to end, and on 2026-08-10 the widget and its test were
+// deleted outright, which ends it the other way too.
 //
 // So every claim below was, until this file, either unasserted or asserted only
 // against a widget nobody sees:
@@ -24,11 +27,16 @@
 //     TAP — those two fields were only ever proven by calling
 //     `applyConsentDecision` directly, which is the seam, not the surface.
 //
-// 🔴 FINDERS ARE THE CONTROLS, NOT THE BODY COPY. The prompt's privacy sentence
-// is under an unresolved owner decision (`consentPrivacy` vs the live dialog's
-// `consentPrivacyLive`); pinning a test to either would make a copy decision
-// break a behavioural lane. The two BUTTONS are stable, and their widget types
-// carry the equal-prominence rule the prompt exists to honour.
+// 🔴 FINDERS ARE THE CONTROLS, NOT THE BODY COPY — AND THAT STAYS TRUE NOW THE
+// COPY IS SETTLED. The privacy sentence was under an unresolved owner decision
+// when this file was written (`consentPrivacy` vs the dialog's
+// `consentPrivacyLive`); the owner resolved it on 2026-08-09 in favour of the
+// wording that names the withdrawal route, and the two keys were collapsed into
+// one. This file still does not pin it: copy is `l10n_screens_test.dart`'s
+// subject, behaviour is this one's, and a behavioural lane that a copy edit can
+// turn red teaches people to edit the lane. The two BUTTONS are stable, and
+// their widget types carry the equal-prominence rule the prompt exists to
+// honour.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

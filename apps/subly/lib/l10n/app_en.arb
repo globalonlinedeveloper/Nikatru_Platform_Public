@@ -94,9 +94,9 @@
   "@consentBody": {
     "description": "What the analytics consent actually covers."
   },
-  "consentPrivacy": "No name, no email, no advertising ID and no IP address — just a random code for this installation.",
+  "consentPrivacy": "No name, no email, no advertising ID and no IP address. Just a random code for this installation. You can change this any time in Settings.",
   "@consentPrivacy": {
-    "description": "States exactly what is NOT collected. Must stay accurate to the privacy policy."
+    "description": "THE CONSENT SENTENCE OF RECORD (owner decision 2026-08-09, decisions-log.md). States exactly what is NOT collected AND names the withdrawal route. The last clause is the one the PUBLISHED POLICY already makes — sites/nikatru/privacy.html: 'You can turn usage statistics off at any time in the app's Settings' — so the wording it replaced was the one that under-stated the policy, not the other way round. Kept honest by features/settings/settings_screen.dart, which assert-consent-withdrawal-surface.mjs pins. Consumed by app.dart's `_ConsentPrompt` — the inline scrim, which is the only consent surface the app mounts."
   },
   "navHome": "Home",
   "@navHome": {
@@ -1098,13 +1098,9 @@
       }
     }
   },
-  "consentPrivacyLive": "No name, no email, no advertising ID and no IP address. Just a random code for this installation. You can change this any time in Settings.",
-  "@consentPrivacyLive": {
-    "description": "Consumed by consent_prompt.dart:97-99. 🔴 THE LIVE DIALOG COPY, VERBATIM. Users consented under THIS text, so it is carried across unchanged rather than folded into the chassis `consentPrivacy`, whose wording differs. Changing consent copy is an owner/legal decision, not a refactor. 👤 OWNER: reconcile the two against privacy.html (P4 work order §8 decision 2)."
-  },
   "consentReadPolicy": "Read the privacy policy",
   "@consentReadPolicy": {
-    "description": "Consumed by consent_prompt.dart:106. Opens the published privacy policy from inside the consent dialog."
+    "description": "🔴 CURRENTLY HAS NO CONSUMER, DELIBERATELY, AND IT IS KEPT RATHER THAN DELETED. Its only call site was the retired dialog-shaped `ConsentGate` (deleted 2026-08-10 with the rest of that widget); the live inline prompt in app.dart shows the title, body, privacy sentence and the two buttons, and NO link to the policy. Adding that link is a consent-surface change, which is an owner/legal call and not a refactor — so the gap is reported here and in the session notes rather than closed by a builder, and the reviewed Tamil value is held ready for the day it is. 👤 OWNER: decide whether the live prompt links the policy; if the answer is no, delete this key and its Tamil twin."
   },
   "forgotPasswordShort": "Forgot password?",
   "@forgotPasswordShort": {

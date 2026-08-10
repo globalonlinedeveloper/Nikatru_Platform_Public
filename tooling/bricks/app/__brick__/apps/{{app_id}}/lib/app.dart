@@ -298,10 +298,28 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
     // `showDialog` here has no Navigator to push onto. An inline scrim also
     // disappears reactively the moment the decision is recorded, with no
     // post-frame callback and no "did I already ask?" bookkeeping to get wrong.
+    //
+    // 🔴 AN INLINE SCRIM IS NOT MODAL BY ITSELF, AND THE TWO LINES BELOW ARE
+    // WHAT BUY BACK WHAT `ModalRoute` USED TO GIVE FREE — measured on the
+    // stamped app, not assumed. Before them, with the prompt up, a walk of the
+    // compiled semantics tree found the screen BEHIND the scrim fully exposed,
+    // its buttons still carrying live tap actions. Semantic taps dispatch
+    // straight to the widget and DO NOT hit-test, so the opaque `ColoredBox`
+    // stops a finger and stops nothing for TalkBack or VoiceOver: a
+    // screen-reader user could drive the app underneath a modal they were never
+    // told they were inside.
+    //
+    // `excluding:` rather than conditionally WRAPPING, on purpose: the widget
+    // types stay in the tree across the answer, so recording the decision does
+    // not remount the whole app subtree and throw away the router's state.
+    final bool asking = enabled && !decided;
     return Stack(
       children: <Widget>[
-        widget.child,
-        if (enabled && !decided) const _ConsentPrompt(),
+        ExcludeFocus(
+          excluding: asking,
+          child: ExcludeSemantics(excluding: asking, child: widget.child),
+        ),
+        if (asking) const _ConsentPrompt(),
       ],
     );
   }
@@ -411,61 +429,106 @@ class _ConsentPrompt extends ConsumerWidget {
     final ThemeData theme = Theme.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Positioned.fill(
-      child: ColoredBox(
-        color: Colors.black54,
-        // KEEPS `Center`, takes only the WIDTH from the chassis. This is a
-        // modal scrim over a dimmed app: sitting in the middle of the screen is
-        // the design, not an accident, so `ContentPane` (which pins to the top)
-        // would be the wrong primitive here. The 420 literal is gone either
-        // way — that was the copy, repeated in five other files.
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
-              child: Material(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        l10n.consentTitle(AppConfig.appName),
-                        style: theme.textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(l10n.consentBody, style: theme.textTheme.bodyMedium),
-                      const SizedBox(height: 8),
-                      Text(
-                        l10n.consentPrivacy,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 16),
-                      // Both answers get the same size and weight ON PURPOSE. A
-                      // prominent "Allow" beside a faint "No thanks" is the dark
-                      // pattern consent rules exist to stop, and it also poisons
-                      // the data with pressured yeses.
-                      Row(
+      // 🔴 THE DIALOG ROLE, RESTORED BY HAND. `ModalRoute` sets `scopesRoute`
+      // on every pushed route; an inline scrim is not a route and gets none of
+      // it, so a screen reader had no way to say a decision was being asked
+      // for. With the background excluded above, this node is the whole
+      // accessible tree while the question is open.
+      child: Semantics(
+        scopesRoute: true,
+        namesRoute: true,
+        explicitChildNodes: true,
+        label: l10n.consentTitle(AppConfig.appName),
+        child: ColoredBox(
+          color: Colors.black54,
+          // KEEPS `Center`, takes only the WIDTH from the chassis. This is a
+          // modal scrim over a dimmed app: sitting in the middle of the screen
+          // is the design, not an accident, so `ContentPane` (which pins to the
+          // top) would be the wrong primitive here. The 420 literal is gone
+          // either way — that was the copy, repeated in five other files.
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: AppBreakpoints.form,
+                ),
+                child: Material(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  // Clipped because the content now scrolls: without it the
+                  // first and last lines paint over the rounded corners as they
+                  // pass under them.
+                  clipBehavior: Clip.antiAlias,
+                  // 🔴 SCROLLABLE, AND THIS IS A DEFECT REPAIR WITH A NUMBER ON
+                  // IT — NOT DEFENSIVE PADDING. `Column(mainAxisSize: min)`
+                  // inside `Center` is unbounded in the way that matters: it
+                  // takes the height it wants and overflows the screen when the
+                  // text is large. Measured on the real app at the largest text
+                  // this chassis PERMITS (`maxScaleFactor: 2.0` in the builder
+                  // above — 2.0 is in range by design, not an extreme):
+                  //   · 360×640 @2.0 en → RenderFlex overflowed by 644 px
+                  //   · 360×640 @2.0 ta → 1180 px
+                  // and the "Allow" button's rect came back at y 1140→1220 on a
+                  // 640-tall screen, i.e. entirely below the fold with no way to
+                  // reach it. The control was clean at the same size with the
+                  // scrim off, so the overflowing box was this Column and not a
+                  // screen beneath it. An unanswerable modal is worse than an
+                  // ugly one: `ColoredBox` is hit-test-opaque, so the app was
+                  // unusable, and because the recorder is fail-closed the
+                  // silence would have looked exactly like a user who declined.
+                  //
+                  // KEEP THE SCROLL VIEW. A stamped app is free to restyle this
+                  // card; deleting the scroll view re-opens the defect, and
+                  // `assert-consent-withdrawal-surface.mjs` limb 4 fails the
+                  // build for every root if it goes.
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => _answer(ref, granted: false),
-                              child: Text(l10n.consentDecline),
-                            ),
+                          Text(
+                            l10n.consentTitle(AppConfig.appName),
+                            style: theme.textTheme.titleLarge,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: () => _answer(ref, granted: true),
-                              child: Text(l10n.consentAllow),
-                            ),
+                          const SizedBox(height: 12),
+                          Text(
+                            l10n.consentBody,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            l10n.consentPrivacy,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 16),
+                          // Both answers get the same size and weight ON
+                          // PURPOSE. A prominent "Allow" beside a faint "No
+                          // thanks" is the dark pattern consent rules exist to
+                          // stop, and it also poisons the data with pressured
+                          // yeses.
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => _answer(ref, granted: false),
+                                  child: Text(l10n.consentDecline),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: () => _answer(ref, granted: true),
+                                  child: Text(l10n.consentAllow),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

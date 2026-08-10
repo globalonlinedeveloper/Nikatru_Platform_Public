@@ -297,7 +297,11 @@ class AppConfig {
   ///
   /// Its four consumers are also the four rows `store/android-play/
   /// data-safety.json` swears to: `providers.dart` auth repo, `providers.dart`
-  /// api client, `analytics_providers.dart` analytics, `consent_prompt.dart`.
+  /// api client, `analytics_providers.dart` analytics, and the first-run consent
+  /// prompt — `app.dart`'s `_ConsentPrompt`, which is where the fourth row moved
+  /// when the unmounted `consent_prompt.dart` was deleted on 2026-08-10. The
+  /// sworn document cites live line numbers; this comment deliberately does not,
+  /// because it is a list of consumers and not a citation.
   static bool get isBackendLive => isSupabaseConfigured && isApiConfigured;
 
   // ── CFG-1 launch fetch ────────────────────────────────────────────────────

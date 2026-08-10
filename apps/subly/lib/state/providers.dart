@@ -100,9 +100,10 @@ import 'analytics_providers.dart';
 /// The list is EXPLICIT rather than a blanket `export 'analytics_providers.dart';`
 /// so that the set is auditable: if the chassis grows an eleventh colliding
 /// symbol, this list is where the collision has to be acknowledged rather than
-/// absorbed. `backendLiveProvider` and `kInstallIdKey` are deliberately NOT
-/// here — they are Subly-only and reachable through the direct import that
-/// every live consumer already carries.
+/// absorbed. `kInstallIdKey` is deliberately NOT here — it is Subly-only and
+/// reachable through the direct import that every live consumer already
+/// carries. (`backendLiveProvider` used to be named alongside it; it was deleted
+/// 2026-08-10 with the `ConsentGate` that was its only reader.)
 export 'analytics_providers.dart'
     show
         analyticsConsentProvider,

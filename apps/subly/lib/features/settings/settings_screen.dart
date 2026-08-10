@@ -9,7 +9,9 @@
 // GREEN on every guard and still destroys product surfaces:
 //   · the consent-WITHDRAWAL row (DPDP §6(3)) — guard-invisible, because
 //     `assert-seams-wired:171` only needs *a* caller of `recordAnalyticsConsent(`
-//     and `consent_prompt.dart:70` still supplies one; and test-invisible,
+//     and `app.dart`'s first-run `_ConsentPrompt._answer` still supplies one
+//     (it was `consent_prompt.dart:70` until that dead widget was deleted on
+//     2026-08-10 — the argument is unchanged, only the file); and test-invisible,
 //     because `consent_withdrawal_test.dart:59` pumps its own harness widget;
 //   · Export data (CSV) — zero test references tree-wide, and its deletion
 //     silently falsifies `data-safety.json`'s export declaration;
@@ -438,9 +440,14 @@ class SettingsScreen extends ConsumerWidget {
             // artifact, never an edit of the old one.
             //
             // `assert-seams-wired.mjs:171` stays green without it because
-            // `consent_prompt.dart:70` is also a caller, and
-            // `consent_withdrawal_test.dart:59` pumps its own harness rather
-            // than this screen. P2.7 owes a guard that names THIS file.
+            // `app.dart`'s first-run `_ConsentPrompt._answer` is also a caller
+            // (it was `consent_prompt.dart:70` until that unmounted widget was
+            // deleted on 2026-08-10), and `consent_withdrawal_test.dart:59`
+            // pumps its own harness rather than this screen.
+            //
+            // ✅ THE GUARD P2.7 OWED NOW EXISTS:
+            // `tooling/ci/assert-consent-withdrawal-surface.mjs` fails the build
+            // if this row leaves, for the brick and for every apps/* alike.
             _sectionLabel(l10n.privacy),
             Container(
               decoration: cardDecoration(context),

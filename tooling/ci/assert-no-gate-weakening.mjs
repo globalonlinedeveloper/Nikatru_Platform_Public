@@ -199,13 +199,46 @@ const dartFiles = [];
 const optionFiles = [];
 const testConfigFiles = [];
 const rootsSeen = new Set();
+/** Tracked but not on disk — see `onDisk` below. Printed, never silent. */
+const missing = [];
+/**
+ * 🔴 TRACKED IS NOT THE SAME AS PRESENT, AND THE GAP IS ROUTINE RATHER THAN
+ * EXOTIC. The domain comes from `git ls-files`, which lists what the INDEX
+ * knows; a file deleted in the working tree and not yet staged is still on that
+ * list. That is the exact state `git apply` of any deletion-bearing patch
+ * leaves behind, and it is what a half-finished rebase looks like too.
+ *
+ * Before this filter every clause below did a bare `readFileSync` and the guard
+ * died on the first such path with an unhandled
+ * `Error: ENOENT … consent_prompt.dart` and exit 1 — reproduced 2026-08-10 by
+ * deleting one tracked file without staging it. Exit 1 with a Node stack is
+ * indistinguishable at a glance from a real gate-weakening failure, and it cost
+ * a reviewer a false positive: red before `git add -A`, green after.
+ *
+ * Skipping is safe BECAUSE the coverage assertions below are set against the
+ * scan, not against the index: a file that genuinely leaves the tree still has
+ * to move REQUIRED_COVERAGE, so this cannot become a way to hide one.
+ */
+const onDisk = (rel) => {
+  if (existsSync(join(ROOT, rel))) return true;
+  missing.push(rel);
+  return false;
+};
 for (const rel of tracked) {
   const c = classify(rel);
   if (!c) continue;
+  if (!onDisk(rel)) continue;
   rootsSeen.add(c.root);
   if (rel.endsWith('.dart')) dartFiles.push({ rel, ...c });
   else if (rel.endsWith('/analysis_options.yaml')) optionFiles.push({ rel, ...c });
   else if (rel.endsWith('/dart_test.yaml')) testConfigFiles.push({ rel, ...c });
+}
+if (missing.length) {
+  console.log(
+    `note ${missing.length} tracked path(s) are not on disk and were skipped ` +
+      `(${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', …' : ''}). This is what a deletion applied but ` +
+      'not yet staged looks like; the REQUIRED_COVERAGE floors below still see it if coverage really left.',
+  );
 }
 
 if (dartFiles.length === 0) {

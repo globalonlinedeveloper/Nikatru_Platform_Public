@@ -469,10 +469,16 @@ void main() {
     testWidgets('an EXPLICIT color is honoured verbatim in both brightnesses', (
       WidgetTester tester,
     ) async {
-      // `consent_prompt.dart` passes `color: AppColors.accent` for "Allow". A
-      // caller that names a colour is choosing an accent, not asking for the
-      // default prose colour, so the brightness branch must not overrule it —
-      // otherwise this widget's own dark fix would flatten a deliberate accent.
+      // `settings_screen.dart:671` passes `color: AppColors.danger` for the
+      // delete-account row. A caller that names a colour is choosing an accent,
+      // not asking for the default prose colour, so the brightness branch must
+      // not overrule it — otherwise this widget's own dark fix would flatten a
+      // deliberate accent.
+      //
+      // (This case was justified by `consent_prompt.dart passes AppColors.accent
+      // for "Allow"` until 2026-08-10, when that widget was deleted. The
+      // justification was RE-POINTED rather than the case deleted: the caller it
+      // named is gone, the behaviour it protects is not.)
       for (final ThemeMode mode in <ThemeMode>[
         ThemeMode.light,
         ThemeMode.dark,

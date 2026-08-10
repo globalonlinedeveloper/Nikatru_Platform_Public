@@ -59,15 +59,23 @@ import '../l10n/app_localizations.dart';
 import '../state/money_providers.dart';
 import '../state/providers.dart';
 
-/// The root Navigator's key — public, not an implementation detail, because
-/// [pipeline C-6] ConsentGate is installed via `MaterialApp.router`'s `builder`,
-/// which Flutter inserts ABOVE this Navigator. A dialog launched from up there
-/// has no Navigator ancestor of its own, so the consent prompt borrows this
-/// key's context to reach the real Navigator (see consent_prompt.dart).
+/// The root Navigator's key — public, not an implementation detail, because the
+/// routes below that must cover the shell rather than sit inside it
+/// (`parentNavigatorKey:`, four of them) have to name the Navigator they are
+/// pushed onto, and a shell route's own Navigator is the wrong one.
+///
+/// 🔴 ITS ORIGINAL REASON IS GONE, AND SAYING SO IS THE POINT. This comment used
+/// to explain that [pipeline C-6]'s `ConsentGate` — installed via
+/// `MaterialApp.router`'s `builder`, which Flutter inserts ABOVE this Navigator
+/// — borrowed the key's context so `showDialog` had somewhere to push. That
+/// widget lost its last mount in the P2.6 chassis merge (the consent question is
+/// now an inline scrim inside `AnalyticsGate`, which needs no Navigator at all)
+/// and was deleted 2026-08-10. The key survives on the four uses below, which
+/// are reason enough on their own — but a symbol kept alive by a comment
+/// describing a deleted caller is a symbol nobody dares touch.
 ///
 /// 🔴 CARRIED FROM app_router.dart UNCHANGED. The stamped router declares no
-/// navigatorKey at all; dropping this breaks consent_prompt.dart:61 and
-/// consent_gate_open_path_test.dart:39, which anchor on the real key.
+/// navigatorKey at all, so dropping this line un-roots those four routes.
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Router is built once (authRepositoryProvider is a stable instance) and
