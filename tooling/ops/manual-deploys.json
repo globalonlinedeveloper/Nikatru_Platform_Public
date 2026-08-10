@@ -7,7 +7,16 @@
     "fails either check FAILS the run — a bad attestation is worse than an unattributed row.",
     "Every accepted entry prints on every run. This register exists because run numbers are never",
     "reissued: a manual restore that reuses a failed run number is version-monotonic but",
-    "provenance-orphaned (learned 2026-08-08, the deploy-rail deadlock)."
+    "provenance-orphaned (learned 2026-08-08, the deploy-rail deadlock).",
+    "",
+    "⚠️ NARROWED 2026-08-09, AND THE ENTRIES BELOW ARE DELIBERATELY NOT DELETED. check-prod-provenance.mjs",
+    "now resolves a build automatically when its run number belongs to a run of ANY conclusion whose head",
+    "commit matches, AND a GitHub Deployment exists for that commit on a served environment — the same two",
+    "witnesses, read from the machine record instead of typed here. So the IN-LANE case (1.0.144, a deploy",
+    "that succeeded before a later step failed) no longer needs an entry, and deploy-web.yml now writes that",
+    "Deployment whenever the deploy step succeeded rather than only when the smoke passed. What still needs",
+    "an entry is a deploy that happened OUTSIDE any lane run at all. The rows below stay because they carry",
+    "the WHY — a machine witness says a thing shipped and never says why a human had to ship it that way."
   ],
   "deploys": [
     {

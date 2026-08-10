@@ -87,7 +87,9 @@ on:
       - 'tooling/smoke/smoke-web-artifact.mjs'
       # [pipeline 14]O-7's post-deploy smoke, listed for the same reason and
       # subject to the same non-enforcement: it is the step that decides whether
-      # the deployment record below is allowed to be written at all.
+      # this lane goes green. (Until 2026-08-09 it also decided whether the
+      # deployment record got written; it no longer does — the record follows
+      # the DEPLOY step, see the block on it at the bottom of this file.)
       - 'tooling/ops/post-deploy-smoke.mjs'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
@@ -383,7 +385,16 @@ jobs:
         working-directory: .
         run: node tooling/ci/assert-catalog-reachable.mjs --emit-url ${{ matrix.app }} >> "$GITHUB_OUTPUT"
 
+      # `id:` IS LOAD-BEARING, NOT DECORATION. The record step at the bottom of
+      # this job keys off `steps.deploy.outcome`, so the bytes reaching
+      # Cloudflare is the fact that decides whether a provenance record gets
+      # written. Renaming or removing this id silently turns that condition into
+      # `steps..outcome == 'success'` — an expression GitHub evaluates to false
+      # rather than erroring — so the record would stop being written and the run
+      # would still be green. tooling/ci/assert-publish-records.mjs refuses a
+      # record step whose `if:` names a step id that this job does not declare.
       - name: Deploy to Cloudflare Pages
+        id: deploy
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -406,8 +417,18 @@ jobs:
       # the wrong project, shipped nothing, or was rolled back by the platform
       # produced a green tick AND a deployment record naming the new SHA.
       #
-      # IT RUNS BEFORE THE RECORD, DELIBERATELY. Recording first and verifying
-      # second would leave a marker asserting a state that was never true.
+      # IT STILL RUNS BEFORE THE RECORD, BUT IT NO LONGER GATES IT — AMENDED
+      # 2026-08-09. This note used to read "recording first and verifying second
+      # would leave a marker asserting a state that was never true", and the
+      # ordering is unchanged. What changed is the CONDITION on the record step
+      # below: it now keys off the DEPLOY step's outcome, so a smoke that fails
+      # after the bytes shipped no longer erases the ledger entry for them. Run
+      # 144 (2026-08-08) is why — see the long block on that step. The two
+      # questions are genuinely different: this one asks "does the live surface
+      # answer with this build YET", the record answers "which bytes are on that
+      # origin". A propagation race can make the first false while the second
+      # stays true, and the marker that goes missing in that window is the one
+      # an incident needs.
       #
       # ⚠️ THE JOIN KEY IS THE RUN NUMBER, NOT THE SHA. `version.json` carries
       # `build_number`; the SHA appears only inside `main.dart.js`. The build
@@ -439,7 +460,52 @@ jobs:
       # assert-publish-records.mjs performs to decide which environments a served
       # channel's lane MUST record. The `-web` half is a literal because this
       # file IS the web channel; the `{app}` half never is.
+      #
+      # ── 🔴 THE RECORD FOLLOWS THE DEPLOY, NOT THE SMOKE (2026-08-09) ─────────
+      # MEASURED FAILURE, run 144 (2026-08-08): `Deploy to Cloudflare Pages`
+      # SUCCEEDED at 16:08:58Z, the post-deploy smoke above gave up 51 s later
+      # while the CDN was still propagating, and this step — on the default
+      # `success()` condition every step inherits — was therefore SKIPPED. The
+      # bundle was live and served real users (a consent artifact and two events
+      # carrying 1.0.144+40c0787 arrived 42 minutes later), and nothing in the
+      # ledger said so. Runs 145/146 were concurrency-cancelled, so that
+      # unrecorded build stayed live, and the daily provenance monitor correctly
+      # reported real people's rows as unattributable. Repairing it took a
+      # retroactive attestation (PR #266) — a hand-written entry standing in for
+      # a machine record that a five-word condition would have produced.
+      #
+      # 📌 THE GENERALISABLE POINT: A PROVENANCE RECORD MUST BE CONDITIONED ON
+      # THE ACT IT DESCRIBES, NEVER ON A LATER VERDICT ABOUT THAT ACT. This step
+      # answers "which bytes are on that origin" — a question the wrangler upload
+      # settles by itself. The smoke answers a different question ("do those
+      # bytes ANSWER yet") and may be wrong about the first one, because a smoke
+      # can fail for reasons that have nothing to do with what was uploaded:
+      # propagation, a flaky DNS hop, an edge cache. Making the record wait on it
+      # meant every such failure produced the one state this whole ledger exists
+      # to abolish — something live that nothing can name.
+      #
+      # ⚠️ IT DOES NOT SOFTEN THE SMOKE. A failed step still fails the job; an
+      # `if: always()` step running afterwards cannot rescue it. So the run is
+      # still RED and still demands a human, and the difference is only that the
+      # red run now leaves a traceable deploy behind instead of an orphan.
+      #
+      # ⚠️ IT IS A STRICT WIDENING, WHICH IS WHY IT IS SAFE. The default
+      # condition is `success()` — every preceding step green, WHICH INCLUDES
+      # `deploy`. So every run that recorded before still records, plus the runs
+      # that deployed and then failed later. There is no input on which this
+      # records LESS. `steps.deploy.outcome` (not `conclusion`) is the raw result
+      # before any `continue-on-error` rewriting; the two are identical here
+      # because that step carries none, and `outcome` is the form e2e.yml's purge
+      # steps already use.
+      #
+      # ⚠️ `always()` INCLUDES CANCELLATION, and that is wanted here rather than
+      # tolerated. The job-level `concurrency: cancel-in-progress` above means a
+      # newer push can cancel this leg mid-run — and runs 145 and 146 were
+      # cancelled exactly that way on 2026-08-08 while 144's bundle stayed live.
+      # A leg cancelled AFTER its upload succeeded has still published something,
+      # so it must still say what. `!cancelled()` would re-open the hole.
       - name: Record the deployed SHA
+        if: always() && steps.deploy.outcome == 'success'
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
