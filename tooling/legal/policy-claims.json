@@ -259,12 +259,22 @@
     },
     {
       "page": "terms.html",
-      "claim": "Razorpay",
-      "type": "known-gap",
-      "ownerItem": "O-3",
-      "providers": ["razorpay"],
-      "why": "terms.html §4 tells a buyer their website purchase is processed by Razorpay. There is no Razorpay integration in this repository, privacy.html says nothing is sold from the website today, and [ADR 004] locked a merchant of record — a different legal relationship, in which the provider is the seller and we are not. The correction is published copy: OWNER_QUEUE O-3, and it belongs in the same version bump as the other two.",
-      "stillTrue": "processed securely by Razorpay"
+      "claim": "Paddle",
+      "type": "code",
+      "providers": ["paddle"],
+      "assert": {
+        "kind": "present",
+        "files": ["services/platform/src/lib/mor/registry.ts"],
+        "pattern": "MOR_VERIFIERS[^=]*=\\s*\\[[^\\]]*paddleVerifier",
+        "why": "REPLACED THE `Razorpay` known-gap ROW. §4 previously told a buyer their website purchase was 'processed securely by Razorpay' — a company no code in this repository reaches, for a purchase the same site said does not happen, in a legal relationship a gateway is not ([ADR 004] locked a merchant of record; [ADR 039] D6 then confirmed Paddle serves Indian buyers too and that Razorpay is NOT the app rail). The page now names Paddle, so the pairing can be a real one: `MOR_VERIFIERS` is the merchant-of-record webhook registry, it is DATA rather than a URL shape (see the `_money` note in provider-register.json), and `paddleVerifier` is the only rail in it. Remove Paddle from that array and the page names a seller no money route can verify a webhook from — which is exactly when this row should go red. ⚠️ THIS ASSERTS THE RAIL IS REGISTERED, NOT THAT A SELLER ACCOUNT EXISTS: account state is private-SSoT material (OWNER_QUEUE A-1) and no in-tree guard can or should observe it."
+      }
+    },
+    {
+      "page": "terms.html",
+      "claim": "merchant of record",
+      "type": "provider",
+      "providers": ["paddle"],
+      "note": "The ROLE, published beside the name for the first time. It is the operative disclosure rather than decoration: a merchant of record is the legal SELLER, so §4 now tells a buyer that Paddle — not Nikatru — is their counterparty, takes the payment and remits the sales tax. `tooling/legal/provider-register.json` roles.merchant_of_record is the same sentence in the register. Deliberately NOT a second `code` row: the terms.html `Paddle` row above already asserts the registry, and two rows asserting one fact inflates the apparent strength of this file (the honest-limitation rule in the preamble)."
     },
     {
       "page": "terms.html",
@@ -289,7 +299,22 @@
       "page": "refund.html",
       "claim": "Microsoft Store",
       "type": "provider",
-      "providers": ["microsoft-store"]
+      "providers": ["microsoft-store"],
+      "note": "⚠️ THE SPAN MOVED SECTIONS AND THAT IS THE SUBSTANCE OF THE CHANGE, not a reformat. §1 used to send a Microsoft Store buyer to account.microsoft.com for a refund. [ADR 039] D1 puts the Microsoft Store on the Paddle rail (Store Policies v7.19 §10.8.1/§10.8.6 permit a third-party purchase API for non-game PC apps; `packages/purchases/lib/src/purchase_capabilities.dart` carries the same citation on `windowsStore.channelPermitted: true`), so Microsoft never takes the payment and has no order to refund. The store is still named — it is still how the app is distributed — but it is named in §2, beside the seller that actually took the money."
+    },
+    {
+      "page": "refund.html",
+      "claim": "Paddle",
+      "type": "provider",
+      "providers": ["paddle"],
+      "note": "§2 previously read 'Purchases on our website (via Razorpay)' and §4 issued refunds through that company. Both now name Paddle, and §2 says plainly that Paddle rather than Nikatru is the legal seller and the one that issues the refund. Typed `provider` and not `code`: the terms.html `Paddle` row carries the single registry assertion, and a duplicate here would report two proofs of one fact."
+    },
+    {
+      "page": "refund.html",
+      "claim": "merchant of record",
+      "type": "provider",
+      "providers": ["paddle"],
+      "note": "Same role disclosure as the terms.html row. It is on BOTH pages by design and by rule: assert-policy-claims.mjs §3(c) requires a merchant-of-record row to be named in terms.html AND refund.html, because those are the two documents a buyer reads about the same purchase, and a buyer told one seller in one and another in the other has been told the wrong counterparty."
     },
     {
       "page": "refund.html",
