@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME · WIDTH — the assertion `home_screen.dart` asked for BY NAME.
 //
-// That file's `ContentPane` carries the comment `⬜ NOT YET POLICED`: "until it
+// That file's `ContentPane` carried the comment `⬜ NOT YET POLICED`: "until it
 // lands, this wrapper can be deleted with every test still green". This file is
-// what lands. The block below is the one pre-drafted in
+// what landed, and that comment now reads `✅ POLICED` and points here. The
+// block below is the one pre-drafted in
 // `knowledge/plans/prefab-artifacts/p26b-home/width-behaviour.md` §4, with its
 // imports adapted to `support/width_harness.dart` (the harness was extracted
 // from `responsive_width_test.dart` after that draft was written, so the draft's
