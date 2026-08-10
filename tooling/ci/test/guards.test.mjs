@@ -2980,6 +2980,14 @@ final NotifierProvider<ThemeModeController, ThemeMode> themeModeProvider = X();
 final Provider<core.EntitlementCache> entitlementCacheProvider = X();
 final Provider<bool> analyticsEnabledProvider = X();
 final FutureProvider<core.ConsentController> consentControllerProvider = X();
+// [research/44 rung 4], 2026-08-10 — the GPC seam and the two reads of the
+// Art 21 objection. Present here for the reason the networkUnreachableProvider
+// comment above gives: assert-stamp-properties checks its classification map in
+// BOTH directions, so a provider the real chassis carries and this fixture does
+// not would make the fixture the thing being tested.
+final Provider<core.PrivacySignal> privacySignalProvider = X();
+final Provider<bool> promoObjectedProvider = X();
+final Provider<bool> promoObjectionKnownProvider = X();
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the
@@ -5258,7 +5266,13 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // `promo-card-fails-closed` rather than admitted — which is why the gap
       // count below does NOT move. Both raises were computed as 46+2 on separate
       // branches on the same day; the merged tree carries all four.
-      assert.match(out, /tracked domain: 50 chassis behaviour\(s\)/);
+      // 53 since 2026-08-10: research/44 rung 4 added `privacySignalProvider`
+      // (the GPC seam), `promoObjectedProvider` (DRIVEN — the stamped home
+      // screen renders through PromoSurface(objected: …) since the D2
+      // signature) and `promoObjectionKnownProvider` (an admitted gap: no
+      // chassis property pumps Settings). So the gap count below moves by TWO
+      // and the domain by three.
+      assert.match(out, /tracked domain: 53 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -5280,7 +5294,17 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // defect its "gap" described was fixed. Both directions of the count are
       // asserted over time on purpose — a number that only ever goes up is a
       // list nobody is closing.
-      assert.match(out, /8 chassis behaviour\(s\) a stamped app does NOT prove/);
+      //
+      // 10 since 2026-08-10 (rung 4), and this one goes UP honestly rather than
+      // being talked down. `privacySignalProvider` and
+      // `promoObjectionKnownProvider` are both really asserted — in
+      // promo_objection_surface_test.dart, in both roots — and neither is
+      // reached by a CHASSIS property, because the property suite never
+      // overrides the GPC seam and never pumps the Settings screen. Counting
+      // them as covered because a test somewhere touches them is exactly the
+      // inflation the two moves above were corrections FOR. The third addition,
+      // `promoObjectedProvider`, is genuinely driven and does not appear here.
+      assert.match(out, /10 chassis behaviour\(s\) a stamped app does NOT prove/);
       // A gap that is STILL a gap, named — so this assertion cannot be
       // satisfied by the list going empty.
       assert.match(out, /featureFlagsProvider/);
@@ -5315,7 +5339,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // number moves with MIN_DOMAIN by construction: left at 45 it would have
       // passed over a floor five behaviours slack, which is the drift this pair
       // of assertions exists to make impossible.
-      assert.match(out, /COVERAGE LOST — the domain parse found 49/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 52/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

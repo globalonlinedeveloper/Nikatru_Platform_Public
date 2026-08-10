@@ -988,7 +988,25 @@ const REQUIRED_COVERAGE = [
   {
     key: 'analytics-consent-gated',
     group: /group\(\s*'property: analytics-consent-gated'/,
-    sources: [{ file: PROVIDERS, re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted/, what: 'the template must really call ConsentController.record' }],
+    // 🔴 RE-POINTED 2026-08-10, the third guard to move for the same edit and
+    // for the same reason. This read the literal `ConsentPurpose.analytics,`
+    // followed by `granted: granted` — i.e. the call's FIRST ARGUMENT. research
+    // /44 rung 4 made the purpose a PARAMETER of `applyConsentDecision` so the
+    // Art 21 objection reuses one decision path instead of forking it ([C-3]),
+    // and that literal left the call site. The anchor now accepts either shape:
+    // the argument spelled out (any app that has not parameterised it) or the
+    // parameter passed through — and the second alternative is bounded by
+    // `granted: granted` exactly as the first was, so `controller.record(` alone
+    // never satisfies it. Relaxing to `\.record\(` would have matched the terms
+    // and marketing-email calls further down the same file, which are different
+    // purposes entirely and say nothing about the analytics rail.
+    sources: [
+      {
+        file: PROVIDERS,
+        re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted|\.record\(\s*\n?\s*purpose\s*,[\s\S]{0,200}?granted:\s*granted/,
+        what: 'the template must really call ConsentController.record',
+      },
+    ],
     why: 'a stamped app must refuse without consent AND deliver with it',
   },
   {
@@ -1186,7 +1204,10 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // 46+2+2 and taking either side's number verbatim would have silently lowered it
 // by two — a ratchet quietly slackened is the failure this comment block exists
 // to prevent.
-const MIN_DOMAIN = 50;
+// 53 since 2026-08-10: research/44 rung 4 added `privacySignalProvider`,
+// `promoObjectedProvider` and `promoObjectionKnownProvider` to the stamped
+// chassis. Raised with the tree, same reason as every line above it.
+const MIN_DOMAIN = 53;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1301,6 +1322,16 @@ const COVERED_BY = {
   // bug stops being either once it is fixed.
   legalAcceptanceProvider: 'legal-reacceptance-gated',
   legalReacceptanceNeededProvider: 'legal-reacceptance-gated',
+  // [research/44 rung 4] The Art 21 objection, read on the RENDER path. DRIVEN,
+  // not constructed, and the distinction is checkable: since the D2 signature
+  // the stamped home screen renders the creative through
+  // `PromoSurface(objected: ref.watch(promoObjectedProvider), …)`, and
+  // `PromoSurface` returns `SizedBox.shrink()` when `objected` is true. So a
+  // provider that answered wrongly in either direction turns
+  // `promo-card-fails-closed` red — "the flag SERVED TRUE opens the path" needs
+  // it false, and "a GDPR Art 21 objection outranks a live campaign" needs it to
+  // be able to say true.
+  promoObjectedProvider: 'promo-card-fails-closed',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what
@@ -1325,6 +1356,8 @@ const UNASSERTED = {
   packageVersionProvider: '2026-08-07 · SUBSTITUTED rather than driven by `update-url-resolved-from-config`: the real provider reads a platform channel a widget test has not got and answers null BY DESIGN, which is what made the wall fail open and kept it unproven. The property overrides it to raise the wall; the plugin read itself is still asserted nowhere',
   featureFlagsProvider: '2026-07-28 · rollout bucketing is unasserted in the stamp; core tests the maths, nothing tests that a stamped app buckets',
   analyticsConsentProvider: '2026-07-28 · the UI-facing read; consentDecidedProvider is the limb the property test drives, and it is the one that decides whether to prompt',
+  privacySignalProvider: '2026-08-10 · the Global Privacy Control seam (K-15), added as an OVERRIDABLE provider by research/44 rung 4 precisely so the honoured-GPC branch is reachable at all — on the VM the real signal is always false, so the branch could otherwise be driven by nothing. It IS driven, in promo_objection_surface_test.dart in both roots ("a device signal alone means ZERO renders, and writes nothing"), which is a stamped-app file. What is missing is a CHASSIS PROPERTY: the property suite never overrides it, so the stamp does not prove it about ITSELF. Recorded rather than counted, because "asserted somewhere in the root" and "asserted by the lane that runs on every stamp" are different claims and this file keeps the difference.',
+  promoObjectionKnownProvider: '2026-08-10 · the third state — has the rail been READ yet — that keeps the Settings row blank and untappable while consent is loading, so a tap in that window cannot upload a `granted: true` artifact recording a decision nobody made. Asserted in promo_objection_surface_test.dart ("🔴 THE ROW CLAIMS NOTHING WHILE THE RAIL IS STILL LOADING"); no chassis property reaches it, because the property suite never pumps the Settings screen. The gap is the SUITE\'s shape, not the provider\'s: closing it means a stamped-app property that opens Settings, which is worth writing and is not written.',
   // ⚠️ A NOTE FOR WHOEVER ADDS THE NEXT ENTRY HERE, kept because it is the most
   // expensive lesson this map has produced. `legalAcceptanceProvider` and
   // `legalReacceptanceNeededProvider` were written into this list on 2026-08-10
