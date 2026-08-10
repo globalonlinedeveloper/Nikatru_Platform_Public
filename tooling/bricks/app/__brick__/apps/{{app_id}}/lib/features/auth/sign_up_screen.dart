@@ -94,7 +94,22 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       await ref
           .read(legalAcceptanceProvider.notifier)
           .accept(marketingEmail: _marketingEmail);
-      // The redirect guard takes it from here — see SignInScreen.
+      // 🔴 A SIGN-UP DOES NOT ALWAYS PRODUCE A SESSION, AND THE REDIRECT GUARD
+      // CANNOT SEE THE CASE WHERE IT DOES NOT. With "Confirm email" ON, gotrue
+      // returns a user and NO session, so `currentUser` stays null — and the
+      // router's verification gate is `sessionIsUnverified`, which answers
+      // FALSE for a null user BY DESIGN. Nothing fires, nothing moves, and the
+      // person who has just registered is left looking at the form they
+      // completed with no word about the mail now sitting in their inbox.
+      //
+      // So this screen navigates for exactly that state and for no other. When
+      // a session DID appear the guard is still the only thing that moves the
+      // user — pushing from both places is how two routes race for the top of
+      // the stack.
+      if (!mounted) return;
+      if (auth.currentUser == null) {
+        context.go('/check-inbox', extra: _email.text.trim());
+      }
     } on core.AuthFailure catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {

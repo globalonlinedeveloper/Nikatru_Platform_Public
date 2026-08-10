@@ -163,6 +163,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await ref
             .read(legalAcceptanceProvider.notifier)
             .accept(marketingEmail: _marketingEmail);
+        // 🔴 A SIGN-UP DOES NOT ALWAYS HAND BACK A SESSION, AND THE LINE BELOW
+        // USED TO ASSUME IT DOES. With "Confirm email" ON, gotrue returns a
+        // user and NO session, so `currentUser` stays null — and `/scan` is on
+        // the signed-out allowlist, so `context.go('/scan')` really did land a
+        // brand-new registrant, signed out and told nothing, on a receipt
+        // scanner. The router could not rescue them either: its gate is
+        // `sessionIsUnverified`, which answers FALSE for a null user by design.
+        // MEASURED: 2 of the 4 accounts on the live project are unconfirmed
+        // with `last_sign_in_at` NULL.
+        if (auth.currentUser == null) {
+          if (mounted) context.go('/check-inbox', extra: email);
+          return;
+        }
       } else {
         await auth.signInWithEmail(
           email: _email.text.trim(),

@@ -97,6 +97,7 @@ const TAP_OBSERVER = 'lib/state/notification_tap_observer.dart';
 const PROVIDERS = 'lib/state/providers.dart';
 const SETTINGS = 'lib/features/settings/settings_screen.dart';
 const ROUTER = 'lib/core/router.dart';
+const SIGN_UP = 'lib/features/auth/sign_up_screen.dart';
 const MAIN = 'lib/main.dart';
 const HOME = 'lib/features/home/home_screen.dart';
 // The stamped WEB SHELL. App-relative on purpose: every app carries its own
@@ -1148,6 +1149,32 @@ const REQUIRED_COVERAGE = [
       { file: PROVIDERS, re: /class LegalAcceptanceController extends Notifier<String\?>/, what: 'the chassis must own the acceptance record; a gate with nothing persisted behind it asks at every launch forever' },
     ],
     why: 'research/43: a material change to the terms has to be re-accepted, and the gate that does it shipped both backwards (blocking the way IN) and inert (never re-running after hydration) without a single test going red',
+  },
+  {
+    // ── A SIGN-UP THAT RETURNS NO SESSION HAS SOMEWHERE TO GO ───────────────
+    //
+    // 🔴 THE DEFECT LIVED IN THE GAP BETWEEN TWO CORRECT PIECES, WHICH IS WHY
+    // NOTHING WAS RED. With Supabase's "Confirm email" ON, `signUp` returns a
+    // user and NO SESSION, so `currentUser` stays null and every gate in the
+    // router reads the registrant as SIGNED OUT — including the verification
+    // gate, whose test is `sessionIsUnverified`, and that answers FALSE for a
+    // null user BY DESIGN. The screen worked, the gate worked, and the person
+    // who had just registered was left with no word about the mail in their
+    // inbox. Measured on the live project: 2 of 4 accounts unconfirmed with
+    // `last_sign_in_at` NULL. The sign-up screen even carried a comment
+    // asserting the OPPOSITE ("that guard lands them on /verify-email"), which
+    // is why nobody looked.
+    //
+    // Three anchors, because three separate edits each restore the stranding on
+    // their own and the property test cannot tell you WHICH one went.
+    key: 'sessionless-signup-reaches-check-inbox',
+    group: /group\(\s*'property: sessionless-signup-reaches-check-inbox'/,
+    sources: [
+      { file: SIGN_UP, re: /if \(auth\.currentUser == null\) \{\s*context\.go\('\/check-inbox', extra:/, what: 'the sign-up screen must navigate for the NO-SESSION case specifically — unconditional navigation races the redirect guard for the session case, and no navigation at all is the stranding this closes' },
+      { file: ROUTER, re: /path: '\/check-inbox'/, what: 'the destination must be MOUNTED; a screen file with no route is a pane no user can open, and the sign-up screen would navigate into the errorBuilder' },
+      { file: ROUTER, re: /matchedLocation == '\/check-inbox'/, what: 'the destination must be on the SIGNED-OUT allowlist — its whole audience has no session, so without this entry the auth rule bounces them to /sign-in the instant the sign-up screen sends them here' },
+    ],
+    why: 'a registration that produces no session is the DEFAULT shape once "Confirm email" is on, and the app said nothing at all about it — the screen, the gate and the router were each correct and none of them owned the gap between them',
   },
 ];
 

@@ -95,10 +95,24 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       await ref
           .read(legalAcceptanceProvider.notifier)
           .accept(marketingEmail: _marketingEmail);
-      // The redirect guard takes it from here — see LoginScreen, the form
-      // `/sign-in` builds (this comment named `SignInScreen`, the stamped twin
-      // Subly removed on 2026-08-10 when `/sign-in` became canonical). With
-      // "Confirm email" on, that guard lands them on `/verify-email`.
+      // 🔴 THIS IS WHERE THE COMMENT WAS WRONG, AND IT IS WHY NOBODY LOOKED.
+      // It read: "With 'Confirm email' on, that guard lands them on
+      // `/verify-email`." It does not, and it cannot. With that switch ON,
+      // gotrue returns a user and NO SESSION, so `currentUser` stays null — and
+      // the guard's test is `sessionIsUnverified`, which answers FALSE for a
+      // null user BY DESIGN (`identity_assurance.dart`: a signed-out visitor is
+      // not unverified). Nothing fired, nothing moved, and this screen simply
+      // re-enabled its button. MEASURED: 2 of the 4 accounts on the live
+      // project are unconfirmed with `last_sign_in_at` NULL.
+      //
+      // So this screen navigates for exactly that state and for no other. When
+      // a session DID appear the guard is still the only thing that moves the
+      // user — pushing from both places is how two routes race for the top of
+      // the stack.
+      if (!mounted) return;
+      if (auth.currentUser == null) {
+        context.go('/check-inbox', extra: _email.text.trim());
+      }
     } on core.AuthFailure catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {

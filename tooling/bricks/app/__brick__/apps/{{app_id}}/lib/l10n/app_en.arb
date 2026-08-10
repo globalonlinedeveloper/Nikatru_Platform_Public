@@ -559,6 +559,28 @@
   "@verifyEmailStillUnverified": {
     "description": "Consumed by features/auth/verify_email_screen.dart. Still-unverified is a real answer, not an error — the router leaves the user here and this says why."
   },
+  "checkInboxTitle": "Check your inbox",
+  "@checkInboxTitle": {
+    "description": "Consumed by features/auth/check_inbox_screen.dart. The destination for a sign-up that returned a user and NO SESSION (Supabase 'Confirm email' ON). Distinct from verifyEmailTitle, which serves a session whose address is unconfirmed — this person is signed OUT, so the router's sessionIsUnverified gate never fires for them."
+  },
+  "checkInboxBody": "We sent a confirmation link to {email}. Open it to activate your account.",
+  "@checkInboxBody": {
+    "description": "Consumed by features/auth/check_inbox_screen.dart. Names the address so a mistyped one is visible here — it is the only screen in this flow that can show it, because there is no session to read it back from.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "you@example.com"
+      }
+    }
+  },
+  "checkInboxThenSignIn": "Once you have opened the link, come back and sign in. Your account is not active until then.",
+  "@checkInboxThenSignIn": {
+    "description": "Consumed by features/auth/check_inbox_screen.dart. States the SECOND step: confirming happens in a mail client, often on another device, so the app cannot carry the user through it and must say what to do afterwards."
+  },
+  "checkInboxBackToSignIn": "Back to sign in",
+  "@checkInboxBackToSignIn": {
+    "description": "Consumed by features/auth/check_inbox_screen.dart. The primary action, because signing in is the next thing this app can do for them. Without it the screen is a dead end, which is the defect it exists to remove."
+  },
   "reacceptTermsTitle": "Our terms have changed",
   "@reacceptTermsTitle": {
     "description": "Consumed by features/auth/reaccept_terms_screen.dart. The MATERIAL-CHANGE re-acceptance interstitial (research/43), shown when kTermsVersion or kPrivacyPolicyVersion has moved past what the user accepted."

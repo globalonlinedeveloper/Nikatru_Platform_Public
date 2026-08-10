@@ -42,6 +42,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../features/auth/check_inbox_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/reaccept_terms_screen.dart';
 import '../features/auth/sign_up_screen.dart';
@@ -80,6 +81,16 @@ import '../state/providers.dart';
 /// 🔴 CARRIED FROM app_router.dart UNCHANGED. The stamped router declares no
 /// navigatorKey at all, so dropping this line un-roots those four routes.
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+/// The address a confirmation mail was just sent to, as carried by
+/// `context.go('/check-inbox', extra: …)`.
+///
+/// An empty string is treated as absent: a sign-up cannot have mailed nowhere,
+/// so the honest answer for one is the same as for a missing address.
+String? _pendingAddress(GoRouterState state) {
+  final Object? extra = state.extra;
+  return extra is String && extra.isNotEmpty ? extra : null;
+}
 
 /// Router is built once (authRepositoryProvider is a stable instance) and
 /// refreshed on auth changes.
@@ -127,6 +138,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         '/sign-in',
         '/sign-up',
         '/scan',
+        // 🔴 ITS WHOLE AUDIENCE IS SIGNED OUT, WHICH IS WHY IT HAS TO BE HERE.
+        // With "Confirm email" ON, `signUp` returns a user and NO SESSION, so
+        // the person who has just registered fails `loggedIn` like any visitor.
+        // Left out of this list they are bounced to `/sign-in` the instant the
+        // sign-up screen sends them here — the stranding this destination
+        // exists to end, arriving one line later.
+        '/check-inbox',
         // 🔴 THE SECOND HALF OF A TWO-PART FIX, and not redundant with the
         // `loggedIn` condition on the gate below. MEASURED (2026-08-10, real
         // router, real provider): with the gate unconditioned and this entry
@@ -274,6 +292,30 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // `SignInScreen` twin went with this change — see the file header.
       GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/sign-up', builder: (_, __) => const SignUpScreen()),
+
+      // ── THE NO-SESSION HALF OF EMAIL CONFIRMATION ─────────────────────────
+      // Reached from BOTH sign-up doors — `SignUpScreen` and `LoginScreen`'s
+      // toggle — when `signUp` returns a user but no session. `/verify-email`
+      // cannot serve this person: its gate is `sessionIsUnverified`, which
+      // answers FALSE for a null user by design, so it never fires and they
+      // were left on whatever screen the code happened to name.
+      //
+      // 🔴 THE ADDRESS TRAVELS AS ROUTE STATE, NEVER IN THE PATH OR A QUERY.
+      // An email address in a URL is a real address in browser history, in a
+      // referrer and in every log the page's assets touch. `extra` is carried
+      // by the navigation and by nothing else.
+      //
+      // The redirect is what makes the builder's `!` total: no address, no
+      // screen. It also answers the person who types this URL having signed up
+      // for nothing — they are sent to the form rather than shown "we sent a
+      // link to " with a blank where the address should be.
+      GoRoute(
+        path: '/check-inbox',
+        redirect: (BuildContext context, GoRouterState state) =>
+            _pendingAddress(state) == null ? '/sign-in' : null,
+        builder: (BuildContext context, GoRouterState state) =>
+            CheckInboxScreen(email: _pendingAddress(state)!),
+      ),
 
       // ── THE TWO GATE SCREENS ──────────────────────────────────────────────
       // Routed rather than dialog-shaped, and that is a decision this repo has
