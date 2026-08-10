@@ -40,6 +40,22 @@
     "and the file was restored. The `sign out` row's date moved for the same reason its clause exists:",
     "lib/core/router.dart changed after 2026-08-02, so the record described code that had moved.",
     "",
+    "🔄 2026-08-10 (UTC) — SEVEN ROWS RE-RUN AND RE-DATED, not one. The auth/router work of",
+    "2026-08-09..10 moved six implementation files under apps/subly/lib, and every mutation record",
+    "anchored to one of them expired at once: sign out · finish onboarding · edit profile · consent",
+    "prompt · dark mode · home · budget. `apps/subly/dod-flip-draft.json` measured ONE stale row on",
+    "2026-08-09 (`edit profile`) and its checklist step 1 was written for that one; the count was true",
+    "when measured and false by the time it merged. THE COUNT WAS NEVER THE POINT — the expiry clause",
+    "does not care how many rows it takes down, and a record that says `1` where the tree says `7` is",
+    "the same failure as a record that says `done` where the tree says `stamped`.",
+    "",
+    "Each of the seven was re-earned the way the six above were: the mutation named in `mutation.symbol`",
+    "was applied to the REAL tree (never a fixture), `flutter analyze` was run and held at the tree's",
+    "standing 28 infos with ZERO errors and ZERO warnings — so the red is an ASSERTION and not a compile",
+    "error — the named test was observed red through its own `expect`, and the file was restored to",
+    "byte-identical. The failing assertion is quoted verbatim in each row's `note`. Suite before and",
+    "after: 492 passed, 0 failed.",
+    "",
     "⚠️ THIS RECORD IS NOT YET GRADED. assert-app-dod.mjs EXEMPTs `apps/subly` by name",
     "(39-CHASSIS §4 cut 1), so nothing below can fail a build today. Two things are true at once and",
     "the flip has to handle both in ONE commit: sites/_shared/_data/apps.json already advertises this",
@@ -100,10 +116,11 @@
       "primaryAction": "ending the session puts the user back on the sign-in form",
       "test": "signing out puts the user back on the form",
       "effect": "lib/core/router.dart:refreshListenable",
+      "note": "🔄 RE-RUN 2026-08-10 (UTC): router.dart moved with the /sign-in canonicalisation, so the 2026-08-08 record described a file that had changed. Deleting the `refreshListenable:` line left the sign-out redirect with nothing to fire on, and chassis_properties_test.dart:1651 went red — 'Expected: at least one matching candidate / Actual: _TypeWidgetFinder:<Found 0 widgets with type \"TextField\": []>', reason 'the session ended and the user was left inside the app'.",
       "mutation": {
         "symbol": "lib/core/router.dart:refreshListenable: ref.watch(routerRefreshProvider)",
         "observedRed": "signing out puts the user back on the form",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
@@ -111,10 +128,11 @@
       "primaryAction": "the last onboarding step records the choice and first run does not come back",
       "test": "finishing it moves the user on, and it does not come back",
       "effect": "lib/features/onboarding/onboarding_screen.dart:onboardingSeenProvider",
+      "note": "🔄 RE-RUN 2026-08-10 (UTC). Flipping the recorded value to `set(false)` — rather than deleting the write, which would have left the provider import unused and turned the red into an analyzer finding — sends the router's gate straight back to the carousel. chassis_properties_test.dart:2178 went red: 'Which: means one was found but none were expected', reason 'skipping left the user exactly where they were'.",
       "mutation": {
-        "symbol": "lib/features/onboarding/onboarding_screen.dart:onboardingSeenProvider",
+        "symbol": "lib/features/onboarding/onboarding_screen.dart:_finish → ref.read(onboardingSeenProvider.notifier).set(true)",
         "observedRed": "finishing it moves the user on, and it does not come back",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
@@ -122,10 +140,11 @@
       "primaryAction": "saving a display name reaches the identity seam and the UI shows the new value",
       "test": "editing it in the REAL app updates what the user sees",
       "effect": "lib/features/settings/settings_screen.dart:updateProfile",
+      "note": "🔄 RE-RUN 2026-08-10 (UTC). This is the row dod-flip-draft.json's checklist step 1 was written for, and it was the only one that file measured; six others had expired with it. Deleting the `updateProfile` call from `_saveProfile` leaves the Save button popping its own dialog and nothing else — chassis_properties_test.dart:2059 went red with the reason it was written for: 'the name was typed and saved and the screen still shows the old value — which is what a save button wired to nothing looks like'.",
       "mutation": {
-        "symbol": "lib/features/settings/settings_screen.dart:updateProfile",
+        "symbol": "lib/features/settings/settings_screen.dart:_saveProfile → ref.read(authRepositoryProvider).updateProfile(displayName:)",
         "observedRed": "editing it in the REAL app updates what the user sees",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
@@ -133,10 +152,11 @@
       "primaryAction": "the app root asks for analytics consent and Allow really opens the rail",
       "test": "the app root asks for consent, and Allow opens the rail",
       "effect": "lib/app.dart:AnalyticsGate",
+      "note": "🔄 RE-RUN 2026-08-10 (UTC): app.dart moved when the dead dialog-shaped ConsentGate was deleted. UNMOUNTING the gate — not deleting the class, which would only have been a compile error — is the mutation that matters, because the retired ConsentGate is exactly the widget that went on compiling and passing its tests after it stopped being mounted. chassis_properties_test.dart:3503 went red: reason 'no consent prompt in the app root ⇒ nothing ever calls ConsentController.record ⇒ every event is silently discarded'.",
       "mutation": {
-        "symbol": "lib/app.dart:AnalyticsGate",
+        "symbol": "lib/app.dart:MaterialApp.router builder → AnalyticsGate(child:)",
         "observedRed": "the app root asks for consent, and Allow opens the rail",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
@@ -144,10 +164,11 @@
       "primaryAction": "the dark theme is a genuinely dark scheme, not the light one under another name",
       "test": "light and dark are genuinely different schemes",
       "effect": "lib/app.dart:darkTheme",
+      "note": "🔄 RE-RUN 2026-08-10 (UTC), same file and same cause as the consent row. Flipping the seed's brightness to `Brightness.light` makes darkTheme the light one under another name — the whole property — and chassis_properties_test.dart:1038 went red on the values themselves: 'Expected: Brightness:<Brightness.dark> / Actual: Brightness:<Brightness.light>'.",
       "mutation": {
         "symbol": "lib/app.dart:brightness: Brightness.dark",
         "observedRed": "light and dark are genuinely different schemes",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
@@ -155,10 +176,11 @@
       "primaryAction": "the app lands on the dashboard and its header renders the product, with the localised welcome as the signed-out fallback",
       "test": "home body renders the product with the welcome fallback",
       "effect": "lib/features/home/home_screen.dart:welcomeTo",
+      "note": "🔄 RE-RUN 2026-08-10 (UTC). Replacing the signed-out fallback with an empty string leaves the header rendering nothing where the product name belongs, and smoke_test.dart:82 went red: 'Actual: _TextContainingWidgetFinder:<Found 0 widgets with text containing Welcome to: []>'.",
       "mutation": {
         "symbol": "lib/features/home/home_screen.dart:l10n.welcomeTo(AppConfig.appName)",
         "observedRed": "home body renders the product with the welcome fallback",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
@@ -188,10 +210,11 @@
       "primaryAction": "the budget screen resolves the budget through the repository and renders the ring plus a bar per category, rather than sitting on its spinner",
       "test": "at 1920 the list stops at AppBreakpoints.kMaxBodyWidth",
       "effect": "lib/features/budget/budget_screen.dart:budgetProvider",
+      "note": "🔄 RE-RUN 2026-08-10 (UTC). The provider was made to return a future that never completes (`Completer<BudgetInfo>().future`), which is what 'sitting on its spinner' looks like from the widget tree — the repository watch was KEPT so the mutation costs no analyzer finding, and a first attempt that dropped it added a real `unused_import` warning, which would have made the red ambiguous. width_budget_test.dart:81 went red one step before the width assertion: 'Actual: _TypeWidgetFinder:<Found 0 widgets with type \"ContentPane\": []>', reason 'this screen has no ContentPane at all, so there is no width cap to measure'.",
       "mutation": {
-        "symbol": "lib/features/budget/budget_screen.dart:budgetProvider",
+        "symbol": "lib/features/budget/budget_screen.dart:budgetProvider → ref.watch(subscriptionRepositoryProvider).budget()",
         "observedRed": "at 1920 the list stops at AppBreakpoints.kMaxBodyWidth",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {
