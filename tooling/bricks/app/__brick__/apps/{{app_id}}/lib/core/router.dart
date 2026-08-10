@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../features/auth/check_inbox_screen.dart';
 import '../features/auth/reaccept_terms_screen.dart';
 import '../features/auth/sign_in_screen.dart';
 import '../features/auth/verify_email_screen.dart';
@@ -15,6 +16,16 @@ import '../features/monetization/paywall_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../state/providers.dart';
 import '../features/settings/settings_screen.dart';
+
+/// The address a confirmation mail was just sent to, as carried by
+/// `context.go('/check-inbox', extra: …)`.
+///
+/// An empty string is treated as absent: a sign-up cannot have mailed nowhere,
+/// so the honest answer for one is the same as for a missing address.
+String? _pendingAddress(GoRouterState state) {
+  final Object? extra = state.extra;
+  return extra is String && extra.isNotEmpty ? extra : null;
+}
 
 /// The app router. A [Provider] so screens and tests can override it.
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
@@ -80,8 +91,16 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // 404 with no way back to the form. Kept apart from [onAuthScreen]
       // because that one also drives the signed-IN bounce below, where
       // `/reaccept-terms` has a different answer.
+      // 🔴 `/check-inbox` IS IN HERE BECAUSE ITS WHOLE AUDIENCE IS SIGNED OUT.
+      // With "Confirm email" ON, `signUp` returns a user and NO SESSION, so the
+      // person who has just registered is signed out by every test this router
+      // makes. Left out of this list they are bounced to `/sign-in` the instant
+      // the sign-up screen sends them here — which is the stranding this
+      // destination exists to end, arriving one line later.
       final bool signedOutMayStay =
-          onAuthScreen || state.matchedLocation == '/reaccept-terms';
+          onAuthScreen ||
+          state.matchedLocation == '/reaccept-terms' ||
+          state.matchedLocation == '/check-inbox';
       // Signed out and heading somewhere gated → the sign-in screen.
       if (!signedIn && !signedOutMayStay) return '/sign-in';
 
@@ -189,6 +208,27 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/reaccept-terms',
         builder: (BuildContext context, GoRouterState state) =>
             const ReacceptTermsScreen(),
+      ),
+      // ── THE NO-SESSION HALF OF EMAIL CONFIRMATION ────────────────────────
+      // Reached from the sign-up screen when `signUp` returns a user but no
+      // session. `/verify-email` cannot serve this person: its gate is
+      // `sessionIsUnverified`, which answers FALSE for a null user by design.
+      //
+      // 🔴 THE ADDRESS TRAVELS AS ROUTE STATE, NEVER IN THE PATH OR A QUERY.
+      // An email address in a URL is a real address in browser history, in a
+      // referrer and in every log the page's assets touch. `extra` is carried
+      // by the navigation and by nothing else.
+      //
+      // The redirect is what makes the builder's `!` total: no address, no
+      // screen. It also answers the person who types this URL having signed up
+      // for nothing — they are sent to the form rather than shown "we sent a
+      // link to " with a blank where the address should be.
+      GoRoute(
+        path: '/check-inbox',
+        redirect: (BuildContext context, GoRouterState state) =>
+            _pendingAddress(state) == null ? '/sign-in' : null,
+        builder: (BuildContext context, GoRouterState state) =>
+            CheckInboxScreen(email: _pendingAddress(state)!),
       ),
       GoRoute(
         path: '/settings',

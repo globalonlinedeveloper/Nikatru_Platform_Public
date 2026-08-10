@@ -51,6 +51,11 @@ import 'package:{{app_id.snakeCase()}}/app.dart';
 import 'package:{{app_id.snakeCase()}}/l10n/app_localizations.dart';
 import 'package:{{app_id.snakeCase()}}/core/app_config.dart';
 import 'package:{{app_id.snakeCase()}}/core/router.dart';
+// The two anchors the sessionless-sign-up property drives: the tick box that
+// blocks the button, and the button.
+import 'package:{{app_id.snakeCase()}}/features/auth/check_inbox_screen.dart';
+import 'package:{{app_id.snakeCase()}}/features/auth/legal_consent_fields.dart';
+import 'package:{{app_id.snakeCase()}}/features/auth/sign_up_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/firstrun/onboarding_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/home/home_screen.dart';
 // [pipeline 11]E-6. The paywall is the screen that emits the four money events,
@@ -4764,6 +4769,153 @@ void main() {
       );
     });
   });
+
+  // ── PROPERTY: sessionless-signup-reaches-check-inbox ──────────────────────
+  // A registration that produces NO SESSION has a destination, and it names the
+  // address the mail went to.
+  //
+  // 🔴 THE HOLE THIS CLOSES IS IN THE GAP BETWEEN TWO CORRECT PIECES. With
+  // Supabase's "Confirm email" ON, `signUp` returns a user and no session, so
+  // `currentUser` stays null and every gate in the router reads the registrant
+  // as SIGNED OUT — including the verification gate, whose test is
+  // `sessionIsUnverified`, and that answers FALSE for a null user BY DESIGN
+  // (`identity_assurance.dart`: a visitor with no session is not "unverified").
+  // The screen worked. The gate worked. Nothing connected them, and the person
+  // who had just registered was left looking at the form they completed with no
+  // word about the mail in their inbox. MEASURED on the live project the
+  // chassis's own app runs against: 2 of 4 accounts unconfirmed, with
+  // `last_sign_in_at` NULL.
+  //
+  // ⚠️ BOTH DIRECTIONS, and the second is not decoration. Asserted only in the
+  // no-session case, this passes just as well against a screen that sends EVERY
+  // sign-up to `/check-inbox` — which would park the "Confirm email" OFF user
+  // in a waiting room for a mail that is never coming. The chassis has to be
+  // right for both dashboard settings, because which one an app uses is not a
+  // decision this template gets to make.
+  group('property: sessionless-signup-reaches-check-inbox', () {
+    /// Fill the registration form and submit it. Assumes `/sign-up`.
+    Future<void> register(WidgetTester tester) async {
+      await tester.enterText(find.byType(TextField).at(0), 'newcomer@b.test');
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+      await _turns(tester);
+      await tester.tap(find.byKey(SignUpScreen.submitButton));
+      await _turnsAndSettleRoute(tester);
+    }
+
+    /// Mount the app and walk to `/sign-up` the way a user does — through the
+    /// sign-in screen's own link, which is also the only door the chassis has.
+    Future<void> openSignUp(WidgetTester tester, ProviderContainer c) async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+      // The SHIPPED label, resolved the way the app resolves it. A test that
+      // re-types the sentence goes on passing after the arb changes.
+      final AppLocalizations l10n = lookupAppLocalizations(const Locale('en'));
+      await tester.tap(find.text(l10n.needAccount));
+      await _turnsAndSettleRoute(tester);
+      expect(
+        find.byKey(SignUpScreen.submitButton),
+        findsOneWidget,
+        reason:
+            'the premise: without the registration form on screen the '
+            'assertions below would be measuring a tap that went nowhere',
+      );
+    }
+
+    testWidgets('no session ⇒ /check-inbox, naming the address', (
+      WidgetTester tester,
+    ) async {
+      final _ConfirmationRequiredAuth auth = _ConfirmationRequiredAuth();
+      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
+      addTearDown(c.dispose);
+
+      await openSignUp(tester, c);
+      await register(tester);
+
+      // The premise again, one layer down: the seam really registered somebody.
+      expect(auth.signUps, <String>['newcomer@b.test']);
+      expect(
+        find.byType(CheckInboxScreen),
+        findsOneWidget,
+        reason:
+            'the screen navigated NOWHERE before this property existed, and '
+            'the router could not rescue it: sessionIsUnverified is false for '
+            'a null user by design',
+      );
+      expect(
+        find.textContaining('newcomer@b.test'),
+        findsOneWidget,
+        reason:
+            'naming the address is the job — there is no session to read it '
+            'back from, so this screen is the only place a typo is visible',
+      );
+      expect(
+        find.byKey(CheckInboxScreen.backToSignInButton),
+        findsOneWidget,
+        reason: 'a waiting room with no way out is a dead end',
+      );
+    });
+
+    testWidgets('but a session DID appear ⇒ the guard still owns the move', (
+      WidgetTester tester,
+    ) async {
+      // The chassis default `InMemoryAuthRepository` signs the new user in, so
+      // this arm needs no double at all — it is the "Confirm email" OFF shape.
+      final ProviderContainer c = _container(_onboardedStore());
+      addTearDown(c.dispose);
+
+      await openSignUp(tester, c);
+      await register(tester);
+
+      expect(
+        find.byType(CheckInboxScreen),
+        findsNothing,
+        reason:
+            'with a session there is no mail to wait for; parking this user '
+            'here is the same defect pointed the other way',
+      );
+      expect(
+        find.byType(HomeScreen),
+        findsOneWidget,
+        reason:
+            'the redirect guard is the only thing that may move a user who has '
+            'a session — a screen pushing as well would race it',
+      );
+    });
+  });
+}
+
+/// A repository that registers the account and hands back NO SESSION — the
+/// shape gotrue produces with "Confirm email" ON.
+///
+/// 🔴 `currentUser` STAYS NULL AFTER A SUCCESSFUL SIGN-UP, and that is the whole
+/// fixture. `signUpWithEmail` returning a [core.AuthUser] while the synchronous
+/// snapshot the router reads stays null is not a contrivance: the return value
+/// is `res.user` and the snapshot is `res.session?.user`, and on this path those
+/// are different things.
+class _ConfirmationRequiredAuth extends core.AuthRepository {
+  final List<String> signUps = <String>[];
+
+  @override
+  core.AuthUser? get currentUser => null;
+
+  @override
+  Stream<core.AuthUser?> authStateChanges() =>
+      const Stream<core.AuthUser?>.empty();
+
+  @override
+  Future<core.AuthUser> signUpWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    signUps.add(email);
+    return core.AuthUser(id: 'u1', email: email);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// Records event NAMES with no consent gate and no transport — for the rules

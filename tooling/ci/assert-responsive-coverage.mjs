@@ -469,7 +469,28 @@ const REQUIRED_COVERAGE = {
   // ⚠️ `widthTestFiles` DID NOT MOVE. `width_auth_test.dart` still exists — it
   // lost its sign-in group and kept its sign-up one. A file count and a surface
   // count answer different questions and only one of them changed.
-  surfaces: 15,
+  // 🔴 RAISED 15 → 16 ON 2026-08-11, BY EXACTLY THE ONE SURFACE THAT CHANGE
+  // ADDED. `/check-inbox` routed `CheckInboxScreen` — the destination for a
+  // sign-up that returns a user and NO SESSION, which the `/verify-email` gate
+  // cannot serve because `sessionIsUnverified` is false for a null user by
+  // design.
+  //
+  // 👤 AND THE FLOOR IS STILL BEHIND THE TREE, WHICH IS WORTH SAYING RATHER
+  // THAN QUIETLY CLOSING. The same run measures **18** surfaces and **15**
+  // width test files, so both numbers below were already two and one short
+  // before `/check-inbox` existed — surfaces landed without the ratchet
+  // following them. That slack is real: two surfaces could be deleted today
+  // with their tests and this floor would not notice. It is left for a change
+  // that owns those surfaces to raise deliberately, because a floor moved to
+  // whatever the tree happens to measure — by somebody who did not add the
+  // things it now counts — is exactly the "re-pinned to today's number" habit
+  // the sibling floors in this repo warn against.
+  //
+  // ⚠️ `widthTestFiles` DID NOT MOVE, for the same reason it did not move when
+  // the count went 16 → 15: the new measurement is a third GROUP inside
+  // `width_legal_gates_test.dart`, beside the two gate screens it already
+  // measures. A file count and a surface count answer different questions.
+  surfaces: 16,
   // 13 `width_*_test.dart` + `responsive_width_test.dart`.
   widthTestFiles: 14,
 };

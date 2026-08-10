@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// THE TWO GATE SCREENS · WIDTH — `ContentPane.form` (420) on both.
+// THE THREE GATE SCREENS · WIDTH — `ContentPane.form` (420) on all of them.
 //
 // `/verify-email` and `/reaccept-terms` landed with the cut-1 reversal's auth
-// riders, and `assert-responsive-coverage.mjs` failed the build the moment they
-// were routed with nothing measuring them. That is the guard behaving exactly as
+// riders, and `/check-inbox` — the destination for a sign-up that returns no
+// session — joined them afterwards. `assert-responsive-coverage.mjs` failed the
+// build the moment any of them were routed with nothing measuring them. That is the guard behaving exactly as
 // designed: a routed pane with no width test is an UNPOLICED pane, because "the
 // content grew to fill a 1920 px display" throws no exception, clips no pixel
 // and fails no other assertion.
@@ -39,6 +40,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subly/features/auth/check_inbox_screen.dart';
 import 'package:subly/features/auth/reaccept_terms_screen.dart';
 import 'package:subly/features/auth/verify_email_screen.dart';
 
@@ -78,6 +80,52 @@ void main() {
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kDesktop, const VerifyEmailScreen());
+      expect(
+        offeredWidth(tester, inPane(Column)),
+        lessThanOrEqualTo(AppBreakpoints.form),
+      );
+    });
+  });
+
+  // The THIRD gate screen, and the one whose copy is longest: an address is
+  // interpolated into the first sentence, so the widest thing on this pane is a
+  // string nobody here chooses. A cap is the only thing that bounds it.
+  group('the check-inbox interstitial is capped at form width', () {
+    testWidgets('at 375 the cap is a no-op and the long address wraps', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(
+        tester,
+        kPhone,
+        const CheckInboxScreen(email: 'a-fairly-long-address@example.test'),
+      );
+      expect(offeredWidth(tester, inPane(Column)), 375 - 48);
+      expect(
+        tester.takeException(),
+        isNull,
+        reason:
+            'an unbroken address is the one token on this screen that cannot '
+            'be re-worded, so 327 px is where it has to be shown to wrap',
+      );
+    });
+
+    testWidgets('at 768 the form cap has ALREADY engaged', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kTablet, const CheckInboxScreen(email: 'a@b.test'));
+      expect(
+        offeredWidth(tester, inPane(Column)),
+        AppBreakpoints.form,
+        reason:
+            'the falsifiable case: delete its ContentPane.form and the Column '
+            'is offered 768 - 48 = 720 here',
+      );
+    });
+
+    testWidgets('at 1280 it is still 420, not a desktop-wide row', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kDesktop, const CheckInboxScreen(email: 'a@b.test'));
       expect(
         offeredWidth(tester, inPane(Column)),
         lessThanOrEqualTo(AppBreakpoints.form),
