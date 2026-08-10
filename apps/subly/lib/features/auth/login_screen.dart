@@ -212,12 +212,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // 🔴 THE FORM CAP, and this is the screen the argument for it is
           // easiest to see on: an email field, a password field and a button,
           // stretched edge to edge across a 1280 px window. `ContentPane.form`
-          // (420) is the same idiom `features/auth/sign_in_screen.dart:78`
+          // (420) is the same idiom `features/auth/sign_up_screen.dart:70`
           // already uses, and the same 420 that was hand-written six times
           // before the chassis owned it.
           //
           // ⚠️ THE PADDING STAYS ON THE SCROLL VIEW, OUTSIDE THE CAP — matching
-          // sign_in_screen, not the onboarding twin. So the cap engages at
+          // sign_up_screen, not the onboarding twin. So the cap engages at
           // 420 + 56 = 476 px, well below a tablet, and the width measured
           // inside the pane is `min(surface - 56, 420)`.
           //

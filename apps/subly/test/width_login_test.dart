@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// WIDTH AND BRIGHTNESS — THE LOGIN SCREEN (`/login`).
+// WIDTH AND BRIGHTNESS — THE LOGIN SCREEN (`/sign-in`, the canonical auth
+// route since 2026-08-10; `/login` redirects onto it).
 //
 // Two properties, both of which were live defects on the same screen, and both
 // of which are invisible to every other test in this suite because neither
@@ -9,9 +10,11 @@
 //     and a button, stretched edge to edge across a 1280 px window. The
 //     arithmetic here is DIFFERENT from `width_onboarding_test.dart`'s and the
 //     difference is deliberate: this screen keeps its 28/28 padding on the
-//     SCROLL VIEW, outside the cap (matching `features/auth/sign_in_screen.dart`
-//     — the app's other sign-in surface), so the width inside the pane is
-//     `min(surface - 56, 420)` rather than `min(surface, 420) - 56`.
+//     SCROLL VIEW, outside the cap (matching `features/auth/sign_up_screen.dart`
+//     — the app's other auth surface, and the only other one since the stamped
+//     `sign_in_screen.dart` twin went with the 2026-08-10 route
+//     consolidation), so the width inside the pane is `min(surface - 56, 420)`
+//     rather than `min(surface, 420) - 56`.
 //
 //     🔴 THAT MAKES 768 THE FALSIFYING CASE, AND IT IS FALSIFIED EARLY: the cap
 //     engages the moment the surface passes 420 + 56 = 476 px — a large phone in

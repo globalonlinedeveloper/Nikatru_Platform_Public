@@ -1502,9 +1502,12 @@ void main() {
   // ── PROPERTY: auth-redirect-follows-session ───────────────────────────────
   // [pipeline C-13] A user who signs in must END UP SOMEWHERE ELSE.
   //
-  // 🔴 THEY DID NOT. `sign_in_screen.dart` deliberately does not navigate, on
-  // the grounds that the router's redirect guard moves the user the moment the
-  // session appears. It does not: `redirect` re-runs when the router is TOLD to,
+  // 🔴 THEY DID NOT. The auth FORM deliberately does not navigate, on the
+  // grounds that the router's redirect guard moves the user the moment the
+  // session appears. (The brick still spells that form `sign_in_screen.dart`;
+  // Subly's is `login_screen.dart`, the one `/sign-in` builds since the
+  // 2026-08-10 route consolidation removed the stamped twin from this app.)
+  // It does not: `redirect` re-runs when the router is TOLD to,
   // and nothing in the brick was watching `authStateChanges()`. So a stamped app
   // signed the user in and went on showing them the form they had just
   // completed. The seam worked. The guard worked. Nothing joined them.

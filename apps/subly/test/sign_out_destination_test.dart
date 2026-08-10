@@ -20,7 +20,7 @@ import 'package:subly/state/providers.dart';
 /// ```
 ///
 /// while `core/router.dart` independently redirects a signed-out user off
-/// `/settings` to `/login`. Two navigations, one tap. Which one won depended on
+/// `/settings` to `/sign-in`. Two navigations, one tap. Which one won depended on
 /// whether the awaited continuation resumed before or after the router's
 /// refresh — and `/onboarding` is inside the router's `authFlow` allowlist, so
 /// when the explicit `go` won, **the router did not correct it**. The user was
@@ -29,7 +29,7 @@ import 'package:subly/state/providers.dart';
 ///
 /// 🔬 WHY THE NIGHTLY E2E DID NOT CATCH IT FOR WEEKS, which is the reusable
 /// lesson: that suite polls `find.text('Welcome back')` every 200ms and returns
-/// the instant it matches ONCE. `/login` really does render on the way past, so
+/// the instant it matches ONCE. The form really does render on the way past, so
 /// the poll could pass on a state the app was merely TRANSITING. The screenshot
 /// from a PASSING run shows the onboarding carousel animating in over the login
 /// screen. **A polling assertion about a final destination can be satisfied by a
@@ -160,7 +160,7 @@ void main() {
 
       // Settle PAST the logout latency. This is the assertion the nightly E2E
       // could not make: it polled and stopped at the first match, so it could
-      // return true during the /login frame and never see what came next.
+      // return true during the auth-route frame and never see what came next.
       await tester.pumpAndSettle(const Duration(seconds: 1));
 
       expect(auth.signOutCalls, 1, reason: 'the tap must reach the repository');
@@ -169,7 +169,7 @@ void main() {
         find.byType(LoginScreen),
         findsOneWidget,
         reason:
-            'a signed-out user belongs on /login — the router redirects them '
+            'a signed-out user belongs on /sign-in — the router redirects them '
             'there from any route outside authFlow',
       );
       expect(
@@ -200,7 +200,7 @@ void main() {
         final _RaceyAuth auth = _RaceyAuth(logoutLatency: latency);
         final ProviderContainer container = ProviderContainer(
           overrides: <Override>[
-          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+            onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
             authRepositoryProvider.overrideWithValue(auth),
             keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
             analyticsConsentProvider.overrideWithValue(
@@ -231,7 +231,7 @@ void main() {
         expect(
           find.byType(LoginScreen),
           findsOneWidget,
-          reason: 'logout latency $latency must still land on /login',
+          reason: 'logout latency $latency must still land on /sign-in',
         );
         expect(
           find.byType(OnboardingScreen),
