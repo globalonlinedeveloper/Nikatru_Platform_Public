@@ -2761,6 +2761,10 @@ group('property: legal-reacceptance-gated', () {
   testWidgets('lr1', (t) async {});
   testWidgets('lr2', (t) async {});
 });
+group('property: sessionless-signup-reaches-check-inbox', () {
+  testWidgets('ci1', (t) async {});
+  testWidgets('ci2', (t) async {});
+});
 group('property: profile-edit-works', () {
   test('ll', () {});
   test('mm', () {});
@@ -3353,6 +3357,28 @@ abstract class AuthRepository {
   // was unusable, so a fixture carrying only the guard would agree with a broken
   // check — the refresh signal is the limb that was missing.
   const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
+  // The sign-up door, and the THIRD anchor of
+  // `sessionless-signup-reaches-check-inbox`. App-relative for the same reason
+  // as the paywall and the tap observer: the screen is stamped INTO each app,
+  // so any one app can drop the no-session branch — and strand every new
+  // registrant it serves — without touching the brick.
+  //
+  // ⚠️ THE `currentUser == null` TEST IS THE WHOLE POINT and the fixture carries
+  // it verbatim. Navigating unconditionally races the redirect guard for the
+  // session case, and not navigating at all is the stranding the property
+  // exists to close; a fixture that merely mentioned `/check-inbox` would agree
+  // with both of those broken shapes.
+  const SIGN_UP = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_up_screen.dart';
+  const goodSignUp = `
+Future<void> _submit() async {
+  final AuthUser? auth = await ref.read(authRepositoryProvider).signUp(email, password);
+  if (!mounted) return;
+  if (auth.currentUser == null) {
+    context.go('/check-inbox', extra: email);
+    return;
+  }
+}
+`;
   // [pipeline C-13] The carousel. Its copy must fall back to the l10n string,
   // never to the key — AppConfig.text() returns the key itself when unset.
   const ONBOARDING = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/firstrun/onboarding_screen.dart';
@@ -3370,12 +3396,17 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     refreshListenable: ref.watch(routerRefreshProvider),
+    routes: <RouteBase>[
+      GoRoute(path: '/check-inbox', builder: (c, s) => const CheckInboxScreen()),
+    ],
     redirect: (BuildContext context, GoRouterState state) {
       if (!onboarded) {
         return state.matchedLocation == '/onboarding' ? null : '/onboarding';
       }
       final bool signedOutMayStay =
-          onAuthScreen || state.matchedLocation == '/reaccept-terms';
+          onAuthScreen ||
+          state.matchedLocation == '/check-inbox' ||
+          state.matchedLocation == '/reaccept-terms';
       if (!signedIn && !signedOutMayStay) return '/sign-in';
       final bool? mustReaccept = signedIn
           ? ref.read(legalReacceptanceNeededProvider)
@@ -3747,11 +3778,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
+    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     // [13]T-9 Omittable on its own, because "the observer file is not there at
@@ -4572,6 +4603,10 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       (over.settings ?? goodSettings) + (over.legalLinks ?? goodLegalLinks),
     [`${dir}/lib/features/home/home_screen.dart`]: over.home ?? goodHome,
     [`${dir}/lib/core/router.dart`]: over.router ?? goodRouter,
+    // The sign-up door, app-relative for the same reason as the paywall below:
+    // a stamped app can drop its own no-session branch and strand every new
+    // registrant it serves without the brick changing at all.
+    [`${dir}/lib/features/auth/sign_up_screen.dart`]: over.signUp ?? goodSignUp,
     [`${dir}/lib/main.dart`]: over.brickMain ?? goodMain,
     // [13]T-9. App-relative for the same reason as the paywall entry below: the
     // tap loop is stamped INTO each app, so any one app can sever its own
@@ -5196,6 +5231,72 @@ onTap: () => _openUrl(AppConfig.refundUrl),
         }),
       });
       assert.equal(code, 0, 'if this ever goes red the guard got smarter — update the comment above, and the property test header');
+    });
+  });
+
+  // A REGISTRATION THAT PRODUCES NO SESSION MUST LAND SOMEWHERE.
+  //
+  // With Supabase "Confirm email" on, `signUp` returns a user and no session, so
+  // every gate reads the new registrant as signed OUT — including the
+  // verification gate, whose test is `sessionIsUnverified` and which answers
+  // false for a null user by design. The screen, the gate and the router were
+  // each correct; nobody owned the gap between them.
+  //
+  // 🔴 THREE ANCHORS, THREE CASES, BECAUSE EACH ONE RESTORES THE STRANDING
+  // ALONE AND THE PROPERTY TEST CANNOT SAY WHICH WENT. The real-tree mutations
+  // came first; these encode them at fixture level so the requirement stays
+  // falsifiable here too — a property whose anchors no case can break is a
+  // heading that survives its own feature's deletion.
+  describe('a sessionless sign-up reaches /check-inbox', () => {
+    test('FAILS when the property is not asserted at all', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-ci-noprop', {
+          propTest: goodTest.replace("group('property: sessionless-signup-reaches-check-inbox', () {\n  testWidgets('ci1', (t) async {});\n  testWidgets('ci2', (t) async {});\n});\n", ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /property 'sessionless-signup-reaches-check-inbox' is NOT asserted/);
+    });
+
+    // The mutation that looks harmless: navigate every time. It races the
+    // redirect guard for the session case, which is why the condition — not the
+    // navigation — is what the anchor pins.
+    test('FAILS when the sign-up screen navigates UNCONDITIONALLY', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-ci-uncond', {
+          signUp: goodSignUp.replace("  if (auth.currentUser == null) {\n    context.go('/check-inbox', extra: email);\n    return;\n  }\n", "  context.go('/check-inbox', extra: email);\n"),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /IMPLEMENTATION is gone/);
+      assert.match(out, /NO-SESSION case specifically/);
+    });
+
+    test('FAILS when the destination is not MOUNTED', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-ci-unrouted', {
+          router: goodRouter.replace("path: '/check-inbox'", "path: '/inbox-check'"),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /IMPLEMENTATION is gone/);
+      assert.match(out, /must be MOUNTED/);
+    });
+
+    // The subtlest of the three: the route exists and the screen is reachable in
+    // principle, but its whole audience has no session — so without the
+    // allowlist entry the auth rule bounces them to /sign-in the instant the
+    // sign-up screen sends them there, and the stranding is back with the route
+    // still present.
+    test('FAILS when the destination is off the SIGNED-OUT allowlist', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-ci-notallowed', {
+          router: goodRouter.replace("          state.matchedLocation == '/check-inbox' ||\n", ''),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /IMPLEMENTATION is gone/);
+      assert.match(out, /SIGNED-OUT allowlist/);
     });
   });
 
