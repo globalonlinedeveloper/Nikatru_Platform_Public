@@ -1252,6 +1252,22 @@ jobs:
       - name: Analytics consent can be WITHDRAWN, not only given
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-consent-withdrawal-surface.mjs
+      # Change `bool _acceptedTerms = false;` to `= true` and EVERYTHING STILL
+      # WORKS: the screen renders, the button is live, sign-up succeeds, an
+      # acceptance artifact is written, every test passes -- and the app is
+      # unlawful in every market it ships to (Planet49/EDPB, DPDP Rules 2025,
+      # CPRA dark patterns all land on that line). There is no exception to
+      # raise and no pixel to notice, which is exactly why it is a build guard
+      # rather than a note. Covers BOTH trees: the brick has no Dart suite, so a
+      # pre-ticked box stamped into every future app is invisible to
+      # `flutter test` in both roots. Also pins the terms tick as BLOCKING in
+      # both positions (button + early return; the keyboard's onSubmitted:
+      # reaches the handler without the button) and forbids the OPTIONAL
+      # marketing opt-in from gating sign-up (GDPR Art 7(4) conditionality).
+      # research/43 SPLIT verdict + research/44 rider, owner 2026-08-09.
+      - name: No sign-up consent box is born ticked, and the terms tick blocks
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-signup-consent-shape.mjs
       # A capability with no declared home is how THREE notification
       # implementations got written — nobody set out to write three, there was
       # just no place to look that would have said one already existed. And a

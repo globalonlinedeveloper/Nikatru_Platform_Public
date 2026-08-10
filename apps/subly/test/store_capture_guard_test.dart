@@ -79,10 +79,15 @@ void main() {
       expect(needles, contains('Rajasekar Selvam'));
     });
 
-    // The --proof lane signs into MockAuthRepository, whose profile name is the
-    // fictional 'Alex Rivera'. Refusing on it would fail the mechanism-proof
-    // lane forever over a leak that cannot exist, and a guard that blocks
-    // correct work is a guard somebody switches off.
+    // ⚠️ THE CLAIM HERE WAS FALSE AND THE CASE IS STILL WORTH KEEPING. This
+    // said the `--proof` lane signs into MockAuthRepository; it does not —
+    // `authRepositoryProvider` resolves the chassis `InMemoryAuthRepository` in
+    // every non-live posture, and that identity has no displayName at all.
+    // What the case actually pins is the FUNCTION's contract rather than the
+    // lane's wiring: `includeProfileName: false` must drop the name limb and
+    // must NOT drop the address limbs. That is a real property of
+    // `accountIdentityNeedles`, it is what the demo posture relies on, and it
+    // is falsifiable — which is more than the sentence it replaces was.
     test('leaves a demo build\'s fictional profile name alone', () {
       final Set<String> needles = accountIdentityNeedles(
         signedInWith: 'demo@nikatru.com',

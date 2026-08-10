@@ -18,9 +18,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
     Future<void> Function()? requestServerDeletion,
     DateTime Function()? clock,
     this.refreshSkew = const Duration(seconds: 30),
-  })  : _injected = client,
-        _requestServerDeletion = requestServerDeletion,
-        _now = clock ?? (() => DateTime.now().toUtc());
+  }) : _injected = client,
+       _requestServerDeletion = requestServerDeletion,
+       _now = clock ?? (() => DateTime.now().toUtc());
 
   final sb.GoTrueClient? _injected;
 
@@ -48,12 +48,26 @@ class SupabaseAuthRepository implements core.AuthRepository {
 
   sb.GoTrueClient get _auth => _injected ?? sb.Supabase.instance.client.auth;
 
+  /// 🔴 `emailConfirmedAt`, NOT THE DEPRECATED `confirmedAt`, AND NOT
+  /// `identities`. gotrue keeps three things that look like this answer and only
+  /// one of them is it:
+  ///   · `confirmedAt` is deprecated and gotrue populates it from EITHER the
+  ///     email or the PHONE confirmation, so a phone-confirmed account with an
+  ///     unproven address would read as verified — the exact hole the rule
+  ///     exists to close;
+  ///   · `identities` being non-empty says an identity row exists, which it does
+  ///     from the instant of sign-up, confirmed or not.
+  ///
+  /// Absent ⇒ NOT verified. Every unreadable shape lands on the closed side by
+  /// construction (`!= null` on a nullable timestamp), which is the direction
+  /// `core.AuthUser.emailVerified`'s own default is chosen for.
   core.AuthUser? _map(sb.User? u) => u == null
       ? null
       : core.AuthUser(
           id: u.id,
           email: u.email ?? '',
           displayName: u.userMetadata?['full_name'] as String?,
+          emailVerified: u.emailConfirmedAt != null,
         );
 
   @override
@@ -117,6 +131,72 @@ class SupabaseAuthRepository implements core.AuthRepository {
 
   @override
   Future<void> signOut() => _auth.signOut();
+
+  /// 🔴 THE ADDRESS COMES FROM THE SESSION, NEVER FROM A CALLER. gotrue's
+  /// `resend` takes an arbitrary email; passing one through from a screen would
+  /// make this a mail cannon anybody can aim, and it would let an unverified
+  /// session redirect its own confirmation to a second inbox.
+  ///
+  /// [sb.OtpType.signup] specifically — `emailChange` is a different mail with a
+  /// different link, and sending it to a user who has not confirmed their
+  /// ORIGINAL address confirms nothing.
+  @override
+  Future<void> resendVerificationEmail() async {
+    final String? email = _auth.currentUser?.email;
+    if (email == null || email.isEmpty) {
+      throw core.AuthFailure('Sign in first, then we can resend the email.');
+    }
+    await _auth.resend(type: sb.OtpType.signup, email: email);
+  }
+
+  /// 🔴 `refreshSession()`, NOT A LOCAL RE-READ. Confirmation happens in a mail
+  /// client on a link this app never sees, so the in-memory user says
+  /// "unverified" indefinitely — and the JWT carries the claim too, so a fresh
+  /// TOKEN is what the Worker needs as well as a fresh user object.
+  ///
+  /// The SDK emits `tokenRefreshed` on its own stream, so `authStateChanges()`
+  /// carries the new user without this doing anything extra — which is the half
+  /// the router reads.
+  ///
+  /// Returns the CURRENT user rather than throwing when the refresh fails: the
+  /// user pressed "I've confirmed", and a network blip must leave them on the
+  /// verify screen, not staring at an exception.
+  @override
+  Future<core.AuthUser?> reloadUser() async {
+    try {
+      final sb.AuthResponse res = await _auth.refreshSession();
+      return _map(res.user) ?? currentUser;
+    } catch (_) {
+      return currentUser;
+    }
+  }
+
+  /// 🔴 REFUSES ON AN UNVERIFIED SESSION, AND THAT REFUSAL IS THE FEATURE.
+  /// Identities merge by email; an unproven email is somebody else's account.
+  /// `core.mayLinkIdentity` states the rule once so this and every future
+  /// provider answer it the same way — see `identity_assurance.dart` for the
+  /// three-step takeover it closes.
+  ///
+  /// Supabase's own default is verified-only linking, and this does not lean on
+  /// it: a dashboard setting is mutable and the control that calls this lives
+  /// here.
+  @override
+  Future<void> linkAppleIdentity() async {
+    if (!core.mayLinkIdentity(currentUser)) {
+      throw core.AuthFailure(
+        'Confirm your email address before linking another sign-in method.',
+      );
+    }
+    // Same web-vs-native launch rule as signInWithApple above, and for the same
+    // reason: a popup is blocked by default in several browsers and breaks
+    // outright in embedded webviews and standalone PWAs [G-43].
+    await _auth.linkIdentity(
+      sb.OAuthProvider.apple,
+      authScreenLaunchMode: kIsWeb
+          ? sb.LaunchMode.platformDefault
+          : sb.LaunchMode.externalApplication,
+    );
+  }
 
   /// 🔴 REFRESHES ON EXPIRY, and that is the whole point of this override.
   ///
@@ -236,9 +316,20 @@ class SupabaseAuthRepository implements core.AuthRepository {
     Object? failure;
     try {
       if (_requestServerDeletion == null) {
-        failure = core.AuthFailure(
-          'Account deletion is not available yet: the server route is not '
-          'wired. Your account has NOT been deleted.',
+        // 🔴 AN `AccountDeletionFailure(notConfigured)`, NOT A BARE
+        // `AuthFailure` CARRYING A SENTENCE. Carried in from the app-side fork
+        // when 39-CHASSIS cut 1 was reversed (owner, 2026-08-09) — this is the
+        // one place the fork was AHEAD of the chassis, so the reversal moved it
+        // here rather than dropping it.
+        //
+        // The sentence that used to live here went NOWHERE: every screen
+        // renders `outcome.plainMessage`, so a `message` no UI reads is a cause
+        // written into a void ([ADR 027]). `notConfigured` is also the exact
+        // outcome the SERVER returns (501) for the same situation — nothing was
+        // deleted, and the user was signed out of this device — so the client
+        // and the server now name one state one way.
+        failure = core.AccountDeletionFailure(
+          core.AccountDeletionOutcome.notConfigured,
         );
       } else {
         await _requestServerDeletion();

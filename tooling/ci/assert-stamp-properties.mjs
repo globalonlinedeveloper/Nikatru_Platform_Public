@@ -1045,6 +1045,37 @@ const REQUIRED_COVERAGE = [
     ],
     why: 'a force-update wall whose destination is frozen at build time cannot be repointed by the builds that need it most, which is the whole reason the kill-switch exists',
   },
+  {
+    key: 'legal-reacceptance-gated',
+    group: /group\(\s*'property: legal-reacceptance-gated'/,
+    sources: [
+      // 🔴 THE `signedIn`/`loggedIn` CONDITION. Without it the gate fires for
+      // signed-OUT visitors, whom the auth rule bounces straight back:
+      // /sign-in → /reaccept-terms → /sign-in → … past go_router's redirect
+      // limit, errorBuilder draws NotFoundScreen, and the app cannot be signed
+      // into on ANY install — every install owes an acceptance, because nobody
+      // has a clickwrap record yet. Anchored on the ternary rather than on the
+      // gate existing: the gate existed the whole time the app was unusable.
+      // `signedIn|loggedIn`: the template calls it `signedIn` and apps/subly
+      // calls it `loggedIn`. Spelling only — and EXEMPT_APPS means only the
+      // brick is scanned today, so pinning the template's spelling alone would
+      // quietly stop asserting the moment Phase 5 drops Subly's exemption.
+      { file: ROUTER, re: /(?:signedIn|loggedIn)\s*\n?\s*\?\s*ref\.read\(legalReacceptanceNeededProvider\)\s*\n?\s*:\s*false/, what: 'the re-acceptance gate must be conditioned on there being a SESSION — a person with no session cannot owe an acceptance, and firing on them costs the sign-in form itself' },
+      // The containment half. Belt to the braces above, and cheap: with it the
+      // worst case if that condition is ever edited away is a visitor parked on
+      // an interstitial they can complete, never a 404 with no way back.
+      { file: ROUTER, re: /matchedLocation == '\/reaccept-terms'/, what: 'a signed-out visitor must be ALLOWED to sit on /reaccept-terms rather than be bounced off it, or the two rules send each other in a circle' },
+      // 🔴 THE REFRESH SIGNAL, AND IT MUST NAME THE DERIVED PROVIDER. Listening
+      // to `legalAcceptanceProvider` (the source) fires the bump while Riverpod
+      // is still publishing that source's new state, so the redirect re-runs
+      // and reads a STALE null from the derived provider — traced, with the
+      // router settling on home for a signed-in user who owes an acceptance.
+      // Gated in principle, ungated in fact, on every launch.
+      { file: PROVIDERS, re: /ref\.listen<bool\?>\(\s*legalReacceptanceNeededProvider,/, what: 'the refresh signal must be taken from the SAME provider the redirect reads — listening one layer down re-runs the gate against a value that has not been recomputed yet, which is a gate that never fires and never fails a test' },
+      { file: PROVIDERS, re: /class LegalAcceptanceController extends Notifier<String\?>/, what: 'the chassis must own the acceptance record; a gate with nothing persisted behind it asks at every launch forever' },
+    ],
+    why: 'research/43: a material change to the terms has to be re-accepted, and the gate that does it shipped both backwards (blocking the way IN) and inert (never re-running after hydration) without a single test going red',
+  },
 ];
 
 // ── THE TRACKED DOMAIN — what "every" ranges over. ──────────────────────────
@@ -1086,7 +1117,12 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // PURPOSE — left at 45, deleting a behaviour would leave exactly 45 and the
 // floor would stop catching the deletion it exists to catch. A ratchet that
 // does not follow the thing it measures is a ratchet that has stopped.
-const MIN_DOMAIN = 46;
+// 48 since 2026-08-10: the cut-1 reversal's legal-gate riders added
+// `legalAcceptanceProvider` and `legalReacceptanceNeededProvider`. Raised with
+// the tree for the reason stated above and not restated as a rule of thumb —
+// left at 46, deleting BOTH of them would leave exactly 46 and the floor would
+// stop catching the deletion it exists to catch.
+const MIN_DOMAIN = 48;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1176,6 +1212,25 @@ const COVERED_BY = {
   // stamped app, and taps its button. This was "the switch that was inert for 55
   // builds" and nothing had ever raised it.
   mustForceUpdateProvider: 'update-url-resolved-from-config',
+  // ── research/43's legal gate. RECLASSIFIED 2026-08-10 from UNASSERTED, and
+  //    the move is the finding rather than tidying.
+  //
+  // The entry that stood here for a day said the stamped-app shape "could NOT
+  // be made green" because the bump fires and the router does not move, and
+  // carried it to integration as an open risk. That trace was a real defect
+  // being written down as a gap: `routerRefreshProvider` listened to
+  // `legalAcceptanceProvider` while the redirect read the DERIVED
+  // `legalReacceptanceNeededProvider`, so the bump arrived one recomputation
+  // early and the redirect re-ran against a stale null. Signed-in users with no
+  // acceptance on record settled on home — gated in principle, ungated in fact.
+  //
+  // Both providers are now DRIVEN by the property, not constructed: it pumps
+  // the app over an empty store with NOTHING overridden and NAVIGATES NOWHERE,
+  // so the interstitial can only appear if the refresh path really re-runs the
+  // gate. An admitted gap is not a permanent one — and a gap that is really a
+  // bug stops being either once it is fixed.
+  legalAcceptanceProvider: 'legal-reacceptance-gated',
+  legalReacceptanceNeededProvider: 'legal-reacceptance-gated',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what
@@ -1200,6 +1255,22 @@ const UNASSERTED = {
   packageVersionProvider: '2026-08-07 · SUBSTITUTED rather than driven by `update-url-resolved-from-config`: the real provider reads a platform channel a widget test has not got and answers null BY DESIGN, which is what made the wall fail open and kept it unproven. The property overrides it to raise the wall; the plugin read itself is still asserted nowhere',
   featureFlagsProvider: '2026-07-28 · rollout bucketing is unasserted in the stamp; core tests the maths, nothing tests that a stamped app buckets',
   analyticsConsentProvider: '2026-07-28 · the UI-facing read; consentDecidedProvider is the limb the property test drives, and it is the one that decides whether to prompt',
+  // ⚠️ A NOTE FOR WHOEVER ADDS THE NEXT ENTRY HERE, kept because it is the most
+  // expensive lesson this map has produced. `legalAcceptanceProvider` and
+  // `legalReacceptanceNeededProvider` were written into this list on 2026-08-10
+  // with a careful, honest, entirely accurate trace: the bump fires, the router
+  // does not move, a hand-called `router.refresh()` does move it, the onboarding
+  // bump in the same harness works. Every observation was true and the
+  // conclusion — "a stamped-app property here would assert the harness rather
+  // than the app" — was wrong. The trace WAS the bug: the refresh signal was
+  // taken from the source provider instead of the derived one the redirect
+  // reads, so the gate never fired on a real launch. The pair now sits in
+  // COVERED_BY above.
+  //
+  // The rule that follows: an entry here must name what a stamped app cannot
+  // DEMONSTRATE, never what it appears unable to DO. "The property will not go
+  // green" is a symptom, and this file is the last place a symptom should be
+  // allowed to settle as an explanation.
 };
 
 // ── strip Dart comments (STRINGS KEPT) before scanning the test file ─────────

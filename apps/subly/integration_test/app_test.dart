@@ -26,6 +26,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 
 import 'package:subly/core/e2e_keys.dart';
+import 'package:subly/features/auth/legal_consent_fields.dart';
+import 'package:subly/features/auth/reaccept_terms_screen.dart';
 import 'package:subly/features/budget/budget_screen.dart';
 import 'package:subly/features/calendar/calendar_screen.dart';
 import 'package:subly/features/home/home_screen.dart';
@@ -635,6 +637,58 @@ void main() {
     return true;
   }
 
+  /// Ticks and accepts the re-acceptance interstitial IF the router put us on
+  /// it, and says whether it did.
+  ///
+  /// 🔴 EVERY SIGN-IN IN THIS SUITE NOW LANDS HERE FIRST, and leaving it out
+  /// would have broken the nightly and the store-capture lane on the same day
+  /// the legal gate shipped. The users this suite signs in as are minted through
+  /// the SUPABASE ADMIN API (`tooling/e2e/provision_user.mjs`), so they have
+  /// never seen a clickwrap and hold no acceptance record — which makes the
+  /// interstitial not an edge case here but the guaranteed next screen after
+  /// every successful sign-in.
+  ///
+  /// ⚠️ CONDITIONAL, LIKE ITS THREE SIBLINGS ABOVE, AND FOR THE SAME REASON.
+  /// Three tests share one browser profile, so the acceptance the FIRST test
+  /// records is still on disk for the second: asserting the screen is present
+  /// would fail on every run after the first. `skipOnboardingIfShown`,
+  /// `signOutIfSignedIn` and the consent decision are all handled this way, and
+  /// this is the fourth piece of inherited state, not a special case.
+  ///
+  /// The gate itself is asserted where it can be asserted honestly — in
+  /// `test/legal_gates_test.dart` and the `legal-reacceptance-gated` chassis
+  /// property, both of which control the store. This helper's job is to get a
+  /// live walk past a screen a real user also has to get past.
+  Future<bool> acceptTermsIfShown(WidgetTester tester) async {
+    final Finder accept = find.byKey(ReacceptTermsScreen.acceptButton);
+    if (accept.evaluate().isEmpty) return false;
+    expectNothingCoveringTheApp('the re-acceptance interstitial');
+    await shot('02b-reaccept-terms');
+    await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+    await pumpFor(tester, const Duration(milliseconds: 300));
+    expect(
+      tester.widget<FilledButton>(accept).onPressed,
+      isNotNull,
+      reason:
+          'the tick did not enable the accept button, so the clickwrap cannot '
+          'be completed and nothing past this screen is reachable. On screen: '
+          '${onScreen(tester)}',
+    );
+    await tester.tap(accept);
+    // The acceptance is written and POSTed, then the router's gate re-runs and
+    // replaces this page. Generous, because that round trip is a real network
+    // call against the live Worker.
+    await pumpFor(tester, const Duration(seconds: 6));
+    expect(
+      find.byKey(ReacceptTermsScreen.acceptButton),
+      findsNothing,
+      reason:
+          'accepting did not move the user off the interstitial — the gate is '
+          'a dead end rather than a door. On screen: ${onScreen(tester)}',
+    );
+    return true;
+  }
+
   /// The login screen, waited for rather than assumed — then asserted.
   ///
   /// Polls first because the route change is asynchronous and this is reached
@@ -775,6 +829,11 @@ void main() {
     await tester.tap(find.byKey(E2EKeys.loginSubmit));
     // GoTrue sign-in + navigation to /scan.
     await pumpFor(tester, const Duration(seconds: 10));
+
+    // ── 02b Re-acceptance ────────────────────────────────────────────────────
+    // The admin-API user this suite signs in as holds no clickwrap record, so
+    // the router's gate puts them here before anything else. See the helper.
+    await acceptTermsIfShown(tester);
 
     // ── 03 Scan ──────────────────────────────────────────────────────────────
     await shot('03-scan');
@@ -1155,6 +1214,11 @@ void main() {
     await pumpFor(tester, const Duration(milliseconds: 500));
     await tester.tap(find.byKey(E2EKeys.loginSubmit));
     await pumpFor(tester, const Duration(seconds: 10));
+
+    // The delete-leg user is a SECOND admin-API user with its own empty
+    // acceptance record, so it meets the interstitial independently of whatever
+    // the full-walk user accepted earlier in the same browser profile.
+    await acceptTermsIfShown(tester);
 
     expect(
       find.text('Go to dashboard'),

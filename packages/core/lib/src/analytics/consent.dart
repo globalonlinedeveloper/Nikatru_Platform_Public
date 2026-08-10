@@ -14,6 +14,54 @@ class ConsentPurpose {
   static const ConsentPurpose analytics = ConsentPurpose('analytics');
   static const ConsentPurpose syncBackup = ConsentPurpose('sync_backup');
 
+  /// Acceptance of the Terms of Service + acknowledgement of the privacy
+  /// notice, taken at sign-up as an UNTICKED blocking clickwrap (research/43).
+  ///
+  /// Recorded through the same append-only trail as every other purpose so the
+  /// question "what did this person agree to, and which version" has ONE
+  /// answer. The artifact's `policyVersion` carries `LegalVersions.stamp` —
+  /// both documents, not just the privacy one — because a terms-only change has
+  /// to be visible to the re-acceptance check.
+  static const ConsentPurpose terms = ConsentPurpose('terms');
+
+  /// Express opt-in to MARKETING EMAIL, and nothing else (research/44 rider,
+  /// [ADR 040]).
+  ///
+  /// 🔴 COLLECTION ONLY. No sender exists, no list exists, and nothing reads
+  /// this yet. It is taken now because consent has to be contemporaneous with
+  /// the signup it belongs to — retro-fitting it later means either emailing
+  /// people who never opted in or re-asking everybody. It is its OWN purpose,
+  /// never a limb of [analytics] or [terms]: the shipped signups KV is
+  /// purpose-limited and repurposing it is exactly what the purpose split
+  /// forbids.
+  ///
+  /// ⚠️ AND THE RECORD AS SHIPPED CANNOT BE JOINED TO A MAILBOX. Say it here,
+  /// beside the justification, because the justification alone reads as though
+  /// this row is ready to act on. [ConsentArtifact] carries `consentId`,
+  /// `purpose`, `granted`, `policyVersion`, `anonId`, `ts`, `appVersion` and
+  /// `platform` — no user id and no address, and `applyLegalAcceptance` passes
+  /// the INSTALL id on purpose ("carries no PII, an anon id, never the
+  /// address"). So a future sender holding these rows knows that SOMEBODY on
+  /// install X opted in, and has no way to learn who. On today's shape the
+  /// honest reading is that the "re-ask everybody" branch is where this lands
+  /// either way.
+  ///
+  /// That is not an argument for deleting the row — a granted/declined pair
+  /// taken at the right moment is evidence the box existed and was answered,
+  /// which is worth having whichever way the list is eventually built. It IS an
+  /// argument for deciding, before any list exists, whether marketing consent
+  /// becomes an identifiable record (and inherits the erasure obligation that
+  /// comes with one) or stays pseudonymous and is re-asked. OWNER DECISION,
+  /// open: `assert-data-inventory` already prints RETENTION UNDECIDED for these
+  /// stores, and this is the same question arriving one purpose earlier.
+  ///
+  /// DEFAULT OFF, and the checkbox that produces it may never be pre-ticked —
+  /// the same Planet49/EDPB · DPDP Rules 2025 · CPRA line the research verdict
+  /// drew, and unlike the terms tick this one may NOT block the button.
+  static const ConsentPurpose marketingEmail = ConsentPurpose(
+    'marketing-email',
+  );
+
   @override
   String toString() => value;
 }
@@ -161,8 +209,9 @@ class ConsentController {
       if (raw == null || raw.isEmpty) return ConsentStatus.unknown;
       final Object? decoded = jsonDecode(raw);
       if (decoded is! Map) return ConsentStatus.unknown;
-      final ConsentArtifact? a =
-          ConsentArtifact.tryFromJson(decoded.cast<String, Object?>());
+      final ConsentArtifact? a = ConsentArtifact.tryFromJson(
+        decoded.cast<String, Object?>(),
+      );
       if (a == null) return ConsentStatus.unknown;
       _cache[purpose.value] = a;
       return a.granted ? ConsentStatus.granted : ConsentStatus.denied;

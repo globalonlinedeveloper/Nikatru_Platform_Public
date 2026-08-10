@@ -227,8 +227,18 @@ const KNOWN_BYPASSES = {
     '2026-07-28 · Subly predates the notifications adapter and does not depend on nikatru_notifications at all — it rolled its own NotificationService. The straightest of the three bypasses.',
   'apps/subly|timezone':
     '2026-07-28 · same NotificationService; timezone arrives with flutter_local_notifications and leaves with it.',
-  'apps/subly|supabase_flutter':
-    '2026-07-28 · NOT A NEW BYPASS — the same import that has always been there, reclassified the moment [2]C-15 created `packages/auth_supabase` to wrap it. Before that no adapter existed, so there was nothing to go around. Subly is frozen by 39-CHASSIS cut 1; moving it reverses an agreed cut. This entry appearing IS the guard working: build the shared home, and the app copy becomes visible as a bypass the same hour.',
+  // 🪦 `apps/subly|supabase_flutter` LIVED HERE AND IS RESOLVED, NOT MOVED.
+  // Its own text said the entry appearing "IS the guard working: build the
+  // shared home, and the app copy becomes visible as a bypass the same hour" —
+  // and it named the blocker, 39-CHASSIS cut 1. The owner reversed that cut on
+  // 2026-08-09, `apps/subly/lib/data/auth/supabase_auth_repository.dart` was
+  // deleted, and with it the last direct `package:supabase_flutter` import in
+  // the app. The entry is DELETED rather than annotated, because the stale-list
+  // check below is the whole reason this dictionary can be trusted: a bypass
+  // waiver over an import that no longer exists reads as managed debt and is
+  // really a standing permit to re-introduce it. The guard failed on exactly
+  // that the hour the fork went, which is what a self-checking exemption list
+  // is for.
   'apps/subly|dio':
     '2026-07-28 · Subly DOES depend on nikatru_api_client (it imports ApiException from it) but supplies its own DioApiClient transport. Narrower than the other two: the seam types are used, the transport is duplicated.',
   // 🔴 THE `supabase_flutter` SHAPE, EXACTLY, AND A SECOND TIME. These are not

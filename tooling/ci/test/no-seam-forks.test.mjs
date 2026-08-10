@@ -173,6 +173,58 @@ describe('parse structure, not prose', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// A WAIVER THAT MATCHES NOTHING (limb added 2026-08-10, with the cut-1 reversal)
+//
+// The reversal deleted `apps/subly/lib/data/auth/supabase_auth_repository.dart`
+// and its violation entry stayed behind — matching nothing, printing nothing,
+// failing nothing, because the waiver loop only ever speaks when a suspect is
+// FOUND. Stale is silent by construction, which is this repository's recurring
+// shape: a check that quietly stopped checking. Worse than untidy, it is a
+// standing re-entry permit — put a fork back at that path and it is waived on
+// sight with nobody deciding to.
+//
+// 🔬 THE FIRST VERSION OF THIS LIMB FAILED ON THE REAL TREE FOR THE WRONG
+// REASON, and the last case here is that bug. `AnalyticsFunnel` is declared as a
+// `capability-implemented-in-app` violation; it is not a registered SEAM, so the
+// scan cannot see it at all and "not a suspect" says nothing about it. A guard
+// reporting the limits of its own reach as a defect in the tree is exactly what
+// the register's coverage rules exist to stop.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a declared violation must still describe something', () => {
+  test('a waiver whose FILE is gone fails, and names the path', () => {
+    const { code, out } = run(tree({
+      violations: [{ path: 'apps/a/lib/deleted.dart', symbol: 'NotificationService', detail: 'known', fixOwner: 'C-3' }],
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/a\/lib\/deleted\.dart — the file does not exist/);
+    assert.match(out, /match NOTHING in the tree/);
+  });
+
+  test('a waiver whose file survived but no longer implements the seam fails', () => {
+    const { code, out } = run(tree({
+      // The file is real; the fork was extracted out of it and something else
+      // was left behind. The waiver now covers a file that is not a fork.
+      extra: { 'apps/a/lib/f.dart': 'class SomethingElse {}\n' },
+      violations: [{ path: 'apps/a/lib/f.dart', symbol: 'NotificationService', detail: 'known', fixOwner: 'C-3' }],
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /nothing in it declares or re-implements `NotificationService` any more/);
+  });
+
+  test('a waiver for a NON-SEAM capability is left alone — the scan cannot see it', () => {
+    // `AnalyticsFunnel` is not in the register's `seams`, so it is not a
+    // contract and never appears in `suspects`. Failing here would be the guard
+    // measuring its own blind spot. The file must exist; that half still applies.
+    const { code, out } = run(tree({
+      extra: { 'apps/a/lib/funnel.dart': 'class AnalyticsFunnel {}\n' },
+      violations: [{ path: 'apps/a/lib/funnel.dart', symbol: 'AnalyticsFunnel', kind: 'capability-implemented-in-app', detail: 'known', fixOwner: 'C-3' }],
+    }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /match NOTHING in the tree/);
+  });
+});
+
 describe('the guard knows when it is not looking', () => {
   test('COVERAGE LOST when the register yields too few contracts', () => {
     const root = tree();

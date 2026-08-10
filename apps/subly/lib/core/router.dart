@@ -39,10 +39,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../features/auth/login_screen.dart';
+import '../features/auth/reaccept_terms_screen.dart';
 import '../features/auth/sign_up_screen.dart';
+import '../features/auth/verify_email_screen.dart';
 import '../features/budget/budget_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/detail/subscription_detail_screen.dart';
@@ -124,6 +127,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         '/sign-in',
         '/sign-up',
         '/scan',
+        // 🔴 THE SECOND HALF OF A TWO-PART FIX, and not redundant with the
+        // `loggedIn` condition on the gate below. MEASURED (2026-08-10, real
+        // router, real provider): with the gate unconditioned and this entry
+        // absent, a signed-out visitor on a fresh install went `/sign-in` →
+        // `/reaccept-terms` → (not logged in, not in this list) → `/sign-in` →
+        // … past go_router's redirect limit, and the errorBuilder rendered
+        // NotFoundScreen — `SETTLED AT: /reaccept-terms`, `"Page not found"
+        // ×1`, `"Welcome" ×0`. THE APP COULD NOT BE SIGNED INTO AT ALL, on
+        // every install today and again after every `kTermsVersion` bump.
+        // Conditioning the gate on `loggedIn` is the real fix. This entry is
+        // the containment: with it, the worst case if that condition is ever
+        // edited away is a visitor parked on an interstitial they can complete
+        // and leave — never a 404 with no way back to the form.
+        '/reaccept-terms',
       ];
 
       // 🔴 `/login` MUST STAY IN `authFlow`, OR THE DEEP LINK IS EATEN HERE.
@@ -137,6 +154,66 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // `/login` allowed makes the guard decline and hands the job to the
       // route-level redirect below.
       if (!loggedIn && !authFlow.contains(loc)) return '/sign-in';
+
+      // ── EMAIL VERIFICATION, AND IT SITS ABOVE EVERYTHING A USER CAME FOR ──
+      // Owner lock, 2026-08-09: verification is MANDATORY for email+password
+      // registration, because email is the matching key the one-identity lock
+      // merges on — so an unproven address is a route into somebody else's
+      // Google/Apple account.
+      //
+      // 🔴 THE CLIENT HALF IS NOT REDUNDANT WITH THE SUPABASE DASHBOARD SWITCH.
+      // With "Confirm email" OFF, gotrue hands back a full session on sign-up
+      // and this gate is the ONLY thing between an unproven address and the
+      // product. The e2e suite cannot stand in for it either: it mints its users
+      // through the admin API, which bypasses confirmation entirely, so a green
+      // nightly says nothing at all about this. `test/legal_gates_test.dart`
+      // is the assertion — group (a), which drives this gate in both
+      // directions through the real router.
+      //
+      // 🔴 ABOVE THE RE-ACCEPTANCE GATE ON PURPOSE. Both send the user
+      // somewhere that is not where they asked to go, and if the order were
+      // reversed an unverified user would be asked to accept the terms first —
+      // recording a legal acceptance against an identity nobody has proven.
+      if (core.sessionIsUnverified(auth.currentUser)) {
+        return loc == '/verify-email' ? null : '/verify-email';
+      }
+      // A verified user has no business on the waiting room. Without this the
+      // screen is reachable by typing the URL and shows "check your inbox" to
+      // somebody who already did.
+      if (loc == '/verify-email') return '/home';
+
+      // ── MATERIAL-CHANGE RE-ACCEPTANCE (research/43) ───────────────────────
+      // Shown when `kTermsVersion`/`kPrivacyPolicyVersion` have moved past what
+      // the user accepted. `read`, not `watch`, for the same reason onboarding
+      // is read: watching rebuilds the ROUTER and throws away the stack.
+      //
+      // 🔴 NULL DECLINES TO DECIDE. The acceptance is hydrated from disk async;
+      // treating "not read yet" as "not accepted" flashes the interstitial at
+      // every launch for a user who accepted months ago — the exact defect
+      // `OnboardingSeenController`'s three states were introduced to fix, and
+      // the reason `routerRefreshProvider` now listens to this provider too.
+      // 🔴 `loggedIn` IS LOAD-BEARING HERE, AND ITS ABSENCE MADE THE APP
+      // UNUSABLE. A person with no session cannot owe an acceptance — there is
+      // nobody to have accepted. Without this condition the gate fired for
+      // SIGNED-OUT visitors, who are then bounced straight back by the
+      // signed-out rule above: `/sign-in` → `/reaccept-terms` → `/sign-in` → …
+      // until go_router gives up and the errorBuilder renders NotFoundScreen.
+      // That is every install today (nobody has a clickwrap record yet) and
+      // every install again after any `kTermsVersion` bump. Pinned in BOTH
+      // directions by the signed-out group in `test/legal_gates_test.dart`,
+      // which drives the REAL `legalReacceptanceNeededProvider` over an empty
+      // store rather than overriding it to the one value that cannot fail.
+      final bool? mustReaccept = loggedIn
+          ? ref.read(legalReacceptanceNeededProvider)
+          : false;
+      if (mustReaccept == null) return null;
+      if (mustReaccept) {
+        return loc == '/reaccept-terms' ? null : '/reaccept-terms';
+      }
+      // Reached by a signed-out visitor too, now that `/reaccept-terms` is in
+      // `authFlow`: they are handed to '/home', which the signed-out rule turns
+      // into '/sign-in' on the next pass. Two hops, and it terminates.
+      if (loc == '/reaccept-terms') return '/home';
       // ⚠️ `/login` IS DELIBERATELY ABSENT FROM THIS LIST, and it was here
       // until the mutation said otherwise. M4 (2026-08-10): removing it changed
       // NO test outcome, because a signed-in user opening `/login` is
@@ -197,6 +274,27 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // `SignInScreen` twin went with this change — see the file header.
       GoRoute(path: '/sign-in', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/sign-up', builder: (_, __) => const SignUpScreen()),
+
+      // ── THE TWO GATE SCREENS ──────────────────────────────────────────────
+      // Routed rather than dialog-shaped, and that is a decision this repo has
+      // already paid to learn: a dialog is a PAGELESS ROUTE, and the account-
+      // deletion notice had to be rebuilt as an inline widget because a page
+      // change carried its dialog away ([ADR 027]). Both of these appear
+      // BECAUSE of a redirect, so a dialog here would be a pageless route on a
+      // page that is being replaced as it opens.
+      //
+      // Above the shell (`parentNavigatorKey`) for the same reason the paywall
+      // is: a bottom nav bar under a gate is a way around the gate.
+      GoRoute(
+        path: '/verify-email',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, __) => const VerifyEmailScreen(),
+      ),
+      GoRoute(
+        path: '/reaccept-terms',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, __) => const ReacceptTermsScreen(),
+      ),
 
       // ── LIVE ROOT-NAVIGATOR ROUTES ────────────────────────────────────────
       // parentNavigatorKey pins these ABOVE the shell so they cover the nav bar.

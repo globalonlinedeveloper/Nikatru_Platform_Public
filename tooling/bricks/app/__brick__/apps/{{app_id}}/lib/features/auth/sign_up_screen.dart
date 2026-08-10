@@ -6,10 +6,18 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import 'legal_consent_fields.dart';
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
+///
+/// 🔴 CARRIES THE BLOCKING TERMS CLICKWRAP AND THE EXPRESS MARKETING OPT-IN
+/// (research/43 + research/44 riders, owner 2026-08-09). Both boxes arrive
+/// UNTICKED; the terms box blocks the button and the marketing box may not.
+/// See `legal_consent_fields.dart` for why they are two different legal animals.
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key});
+
+  static const Key submitButton = Key('signUpSubmit');
 
   @override
   ConsumerState<SignUpScreen> createState() => _SignUpScreenState();
@@ -21,6 +29,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool _busy = false;
   String? _error;
 
+  /// 🔴 BOTH FALSE, ALWAYS. `assert-signup-consent-shape.mjs` fails the build
+  /// if either initialiser ever says `true` — a pre-ticked consent is a dark
+  /// pattern under Planet49/EDPB, DPDP Rules 2025 and CPRA alike, and it is the
+  /// one mistake here that no test would notice because the flow still works.
+  bool _acceptedTerms = false;
+  bool _marketingEmail = false;
+
   @override
   void dispose() {
     _email.dispose();
@@ -29,7 +44,11 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   Future<void> _signUp(core.AuthRepository auth, AppLocalizations l10n) async {
-    if (_busy) return;
+    // 🔴 THE SECOND HALF OF THE CLICKWRAP. Disabling the button is the visible
+    // rule; this is the one that holds when the button is not the only way in —
+    // `onSubmitted:` on the password field reaches here from the keyboard, and
+    // an enter key that bypasses a legal gate is still a bypass.
+    if (_busy || !_acceptedTerms) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -45,6 +64,36 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         email: _email.text.trim(),
         password: _password.text,
       );
+      // 🔴 AFTER THE ACCOUNT EXISTS, and the order was the other way round for
+      // a day. Recording first was justified as "a user through the door with
+      // no record of what they agreed to is the outcome to avoid" — true, and
+      // not what recording first buys. What it bought was the opposite error,
+      // and the opposite error is the unrecoverable one:
+      //
+      //   · the consent trail is APPEND-ONLY and keyed by `anon_id`, never by
+      //     user id. A sign-up that then throws — address already registered, a
+      //     server-side password rejection, a dropped connection — left a
+      //     permanent `terms granted:true` and `marketing granted:true` for a
+      //     registration that never happened, and an account deletion (keyed by
+      //     user id) can never reach those rows to erase them.
+      //   · worse, `accept()` sets the device stamp SYNCHRONOUSLY at its first
+      //     line. So a failed sign-up satisfied the re-acceptance gate, and the
+      //     same person could sign IN to a pre-clickwrap account with the gate
+      //     already open — on the strength of an acceptance for an account that
+      //     does not exist.
+      //
+      // The other direction costs a re-ask: if this write fails after a
+      // successful sign-up, the gate stops them at the next launch and asks
+      // again. Recoverable, and the direction every other decision in this
+      // chassis takes.
+      //
+      // ⚠️ NO FRAME CAN BE PAINTED BETWEEN THESE TWO STATEMENTS, which is why
+      // the interstitial does not flash. `accept()` sets the in-memory stamp
+      // before its own first `await`, and Flutter drains the microtask queue —
+      // including this continuation — before it pumps a frame.
+      await ref
+          .read(legalAcceptanceProvider.notifier)
+          .accept(marketingEmail: _marketingEmail);
       // The redirect guard takes it from here — see SignInScreen.
     } on core.AuthFailure catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -94,8 +143,24 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 ),
               ],
               const SizedBox(height: 20),
+              LegalConsentFields(
+                termsAccepted: _acceptedTerms,
+                marketingAccepted: _marketingEmail,
+                enabled: !_busy,
+                onTermsChanged: (bool v) => setState(() => _acceptedTerms = v),
+                onMarketingChanged: (bool v) =>
+                    setState(() => _marketingEmail = v),
+              ),
+              const SizedBox(height: 20),
+              // 🔴 DISABLED UNTIL THE TERMS BOX IS TICKED — and NOT until the
+              // marketing box is. An optional consent that gates the service is
+              // GDPR Art 7(4) conditionality, which research/43 declined as
+              // legally unavailable rather than as a preference.
               FilledButton(
-                onPressed: _busy ? null : () => _signUp(auth, l10n),
+                key: SignUpScreen.submitButton,
+                onPressed: (_busy || !_acceptedTerms)
+                    ? null
+                    : () => _signUp(auth, l10n),
                 child: Text(l10n.signUp),
               ),
               const SizedBox(height: 16),

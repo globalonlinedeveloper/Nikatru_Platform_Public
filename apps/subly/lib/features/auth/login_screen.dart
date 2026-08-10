@@ -13,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
+import 'legal_consent_fields.dart';
 
 /// The six neutral colours this screen paints with, resolved for the current
 /// brightness.
@@ -93,6 +94,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
   bool _signUp = false;
 
+  /// 🔴 THIS SCREEN IS A SIGN-UP SURFACE TOO, AND THAT IS WHY THE CLICKWRAP IS
+  /// HERE AS WELL AS ON `SignUpScreen`.
+  ///
+  /// `/sign-up` is not the only door: the toggle at the foot of this form flips
+  /// `_signUp` and `_submit` then calls `signUpWithEmail`. Putting the tick box
+  /// only on the dedicated screen would have left a fully working, completely
+  /// unblocked registration path one tap away — a consent gate with a second
+  /// entrance is not a gate, and this one is the entrance most users take,
+  /// because `/sign-in` is where the router sends every signed-out visitor.
+  ///
+  /// Both FALSE, always. `assert-signup-consent-shape.mjs` fails the build if
+  /// either initialiser says otherwise.
+  bool _acceptedTerms = false;
+  bool _marketingEmail = false;
+
   @override
   void dispose() {
     _email.dispose();
@@ -111,6 +127,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _snack(l10n.authInvalidEmail);
       return;
     }
+    // The clickwrap's second half — the button is disabled, and this holds when
+    // the button is not the only way in. Sign-IN is untouched: consent is taken
+    // once, at registration, and re-asking an existing user on every sign-in is
+    // the pattern research/43 declined.
+    if (_signUp && !_acceptedTerms) {
+      _snack(l10n.legalMustAcceptTerms);
+      return;
+    }
+    // Parity with `sign_up_screen.dart`, which has had this check since it was
+    // written. The server is the authority on password rules; this is the one
+    // rule we can state exactly, and stating it here saves a round trip to be
+    // told the same thing. Sign-IN is exempt: an existing account may predate
+    // any rule we impose now, and refusing to even attempt the sign-in would
+    // lock its owner out on a client-side opinion.
+    if (_signUp && _password.text.length < 8) {
+      _snack(l10n.passwordTooShort);
+      return;
+    }
     setState(() => _loading = true);
     final auth = ref.read(authRepositoryProvider);
     try {
@@ -119,6 +153,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           email: _email.text.trim(),
           password: _password.text,
         );
+        // 🔴 AFTER THE ACCOUNT EXISTS — same ordering and same reason as
+        // `sign_up_screen.dart`, which carries the full note. The short version:
+        // the consent trail is append-only and keyed by `anon_id`, so an
+        // acceptance banked for a sign-up that then throws can never be erased
+        // by an account deletion — and because `accept()` sets the device stamp
+        // synchronously, it also opened the re-acceptance gate for whatever
+        // account this person signed into next.
+        await ref
+            .read(legalAcceptanceProvider.notifier)
+            .accept(marketingEmail: _marketingEmail);
       } else {
         await auth.signInWithEmail(
           email: _email.text.trim(),
@@ -315,13 +359,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                   ),
+                // ⚠️ SIGN-UP ONLY. Rendering the boxes on the sign-IN arm would
+                // ask a returning user to re-accept on every visit, which is
+                // the pattern research/43 declined — and it would put a
+                // marketing box in front of somebody who already answered it.
+                if (_signUp) ...<Widget>[
+                  const SizedBox(height: 18),
+                  LegalConsentFields(
+                    termsAccepted: _acceptedTerms,
+                    marketingAccepted: _marketingEmail,
+                    enabled: !_loading,
+                    onTermsChanged: (bool v) =>
+                        setState(() => _acceptedTerms = v),
+                    onMarketingChanged: (bool v) =>
+                        setState(() => _marketingEmail = v),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 GradientButton(
                   key: E2EKeys.loginSubmit,
                   label: _loading
                       ? l10n.pleaseWait
                       : (_signUp ? l10n.signUp : l10n.signIn),
-                  onPressed: _loading ? null : _submit,
+                  // Disabled while the sign-up arm is showing and the terms box
+                  // is untouched. `_signUp &&` is load-bearing: without it the
+                  // sign-IN button would be dead for every returning user,
+                  // which is a gate on the wrong door.
+                  onPressed: (_loading || (_signUp && !_acceptedTerms))
+                      ? null
+                      : _submit,
                 ),
                 const SizedBox(height: 20),
                 Row(

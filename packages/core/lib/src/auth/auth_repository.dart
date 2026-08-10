@@ -41,6 +41,78 @@ abstract class AuthRepository {
 
   Future<void> signOut();
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // EMAIL VERIFICATION (owner lock, 2026-08-09 late) — the three members the
+  // "check your inbox" screen needs, and no more.
+  //
+  // 🔴 THEY CARRY DEFAULT BODIES, AND EACH DEFAULT IS THE HONEST ANSWER FOR THE
+  // KIND OF THING THAT INHERITS IT. Ten classes conform to this interface and
+  // eight of them are TEST DOUBLES driving one screen apiece; making each hand-
+  // write three stubs is noise that rots, and the first person to paste
+  // `async {}` into `resendVerificationEmail` writes a button that silently
+  // does nothing. A default that REFUSES cannot be mistaken for a default that
+  // works. Both real implementations override all three, and
+  // `packages/auth_supabase/test/` drives the overrides rather than these.
+  //
+  // ⚠️ A DEFAULT BODY ONLY REACHES A CLASS THAT `extends` THIS ONE. Dart's
+  // `implements` copies the SIGNATURES and none of the bodies, so a double
+  // written `implements AuthRepository` does not compile against a member it
+  // has not written out. That is why the test doubles in `apps/subly/test/`
+  // extend rather than implement: one word, and the double inherits refusals it
+  // was never going to be asked for instead of eight files of stubs. The two
+  // REAL implementations keep `implements` on purpose — a provider must state
+  // its answer to every one of these, and inheriting a refusal by accident is
+  // exactly the dead-seam shape [pipeline C-6] exists to catch.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /// Send the confirmation mail again, to the address on the CURRENT session.
+  ///
+  /// Takes no argument on purpose: a resend that accepted an arbitrary address
+  /// is a free mail cannon pointed at anybody, and it would also let an
+  /// unverified session re-aim its own confirmation at a different inbox.
+  ///
+  /// Throws [AuthFailure] when nobody is signed in, when the provider refused,
+  /// or when the implementation has no such capability at all.
+  Future<void> resendVerificationEmail() async {
+    throw AuthFailure(
+      'Resending the confirmation email is not available here.',
+    );
+  }
+
+  /// Re-read the user from the provider and return the fresh copy.
+  ///
+  /// This is what makes "I've confirmed my email" work. Confirmation happens in
+  /// a MAIL CLIENT, on a link this app never sees, so nothing pushes the new
+  /// state at a running app — the session in memory says unverified until
+  /// something asks the server again.
+  ///
+  /// Implementations MUST emit the fresh user on [authStateChanges] as well as
+  /// returning it: the router's gate reads [currentUser], and a screen that
+  /// learns the answer while the router does not is a user staring at "check
+  /// your inbox" after they already did.
+  ///
+  /// The default returns [currentUser] unchanged — correct for an implementation
+  /// with no server behind it, and never a false "now verified".
+  Future<AuthUser?> reloadUser() async => currentUser;
+
+  /// Attach an Apple identity to the account that is ALREADY signed in.
+  ///
+  /// Distinct from [signInWithApple], which is a door in. This is the explicit
+  /// link-in-settings path the one-identity lock names for the Apple
+  /// hide-my-email case, where the relay address cannot match by email and
+  /// silent forking is the alternative.
+  ///
+  /// 🔴 IMPLEMENTATIONS MUST REFUSE UNLESS `mayLinkIdentity` PASSES. Linking is
+  /// merging, merging is by email, and an unproven email is somebody else's
+  /// account. See `identity_assurance.dart` for the three-step attack this
+  /// closes.
+  ///
+  /// Completes via redirect/deep link like [signInWithApple]; the result
+  /// arrives on [authStateChanges], not as a return value.
+  Future<void> linkAppleIdentity() async {
+    throw AuthFailure('Linking another sign-in method is not available here.');
+  }
+
   /// The bearer token attached to every API call (the JWT the Worker verifies).
   /// Null when signed out.
   ///
