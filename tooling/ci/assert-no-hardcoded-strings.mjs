@@ -29,10 +29,12 @@
 // PERSON — `Text('…')` and the labelling parameters — which is a domain small
 // enough to be exact and large enough to matter.
 //
-// The ENFORCED domain is the brick template, and only the brick template. That
-// is not modesty about the rule; it is where the rule is nearly free. A literal
-// fixed here never reaches the 50 apps the factory will stamp, and a literal
-// fixed in one stamped app fixes one app.
+// The ENFORCED domain was the brick template, and only the brick template. That
+// was not modesty about the rule; it is where the rule is nearly free. A literal
+// fixed there never reaches the 50 apps the factory will stamp, and a literal
+// fixed in one stamped app fixes one app. `apps/subly/lib` joined it on
+// 2026-08-11 for the other reason a rule becomes free — the tree ran out of
+// literals (see the 2026-08-11 note below).
 //
 // ── 2026-08-08 · THE CANARY IS A FIXTURE NOW, NOT A PRODUCT TREE ────────────
 // The brick is clean, so this guard's coverage claim rests entirely on a tree
@@ -69,6 +71,26 @@
 // families still have their own evidence in the fixture — which is the property
 // the per-family check below actually needs, and the one a total would hide.
 // `expected-families.txt` is untouched: it declares matchers, not canaries.
+//
+// ── 2026-08-11 · apps/subly IS ENFORCED NOW, AND THE WINDOW IS WHY ───────────
+// Retiring the canary above left this app scanned by NOTHING: its own DoD §4-E
+// note said so in as many words — "no guard counts literals here". The retrofit
+// then did its job, and the tree that measured 59 hits on the day it stopped
+// being a canary measures FIVE.
+//
+// Five is the whole argument. A guard is adopted at the moment the tree is clean
+// and the cost of the last mile is a handful of lines; every month it waits, the
+// screens grow new literals nobody counted and the adoption cost climbs back out
+// of reach. That is how apps/subly came to be excluded in the first place, and
+// how a `$2.99` sat in shipping code for months while the owner had decided
+// $4.99 — assert-no-price-literals.mjs exists because the obvious guard was
+// looking somewhere else.
+//
+// The five remaining are all DATA INTERPOLATION (`'${s.category} · $usage'`),
+// which is not a translation defect at all, so they are dispatched by a matcher
+// EXEMPTION rather than by a waiver — an exemption is falsifiable (add prose
+// beside the interpolation and it counts again), a waiver is not. Exactly one
+// literal needs a named allowlist entry, and it carries its reason.
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { listDir } from './tree-walk.mjs';
@@ -79,6 +101,49 @@ const problems = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
+
+/**
+ * THE TREES THIS GUARD ENFORCES. A LIST, for the same reason the canary is one:
+ * a domain that grows by adding an object rather than by rewriting the loop is a
+ * domain somebody actually grows.
+ *
+ * The brick is where the rule is nearly free — a literal fixed there never
+ * reaches the 50 apps the factory will stamp. `apps/subly/lib` is where the rule
+ * is nearly free RIGHT NOW, which is a different and perishable reason, so it is
+ * recorded next to the entry rather than left to be re-derived later.
+ */
+const ENFORCED_ROOTS = [
+  {
+    root: BRICK,
+    why: 'the brick template — every app the factory stamps inherits this file, so a literal fixed here is fixed 50 times',
+    remedy: 'Move it to lib/l10n/app_en.arb and read it through AppLocalizations. Every app the factory stamps inherits this file, and retrofitting l10n across 50 shipped apps is the expensive path (architecture.md §16).',
+  },
+  {
+    root: 'apps/subly/lib',
+    why: "the factory's first app, and the tree the retrofit just emptied — adopted at 5 remaining literals, because the cost of adopting this rule only ever goes up",
+    remedy: "Add the key to apps/subly/lib/l10n/app_en.arb (and app_ta.arb — l10n_parity_test.dart asserts parity in BOTH directions), run `flutter gen-l10n`, and read it through AppLocalizations.",
+  },
+];
+
+/**
+ * ⚠️ THE ONLY WAIVER, AND IT IS KEYED TO AN EXACT LITERAL AT AN EXACT PATH.
+ *
+ * A waiver by DIRECTORY or by file would silently cover the next literal that
+ * lands beside it — which is precisely how `apps/subly` came to be excluded
+ * wholesale and how a wrong price hid inside the exclusion. Keyed this narrowly,
+ * a new literal at the same path is still a failure.
+ *
+ * AND AN UNUSED ENTRY IS A FAILURE TOO (asserted below). A waiver that no longer
+ * matches anything is an exemption nobody can see the input for — dead weight
+ * that makes the enforced domain look narrower than it is.
+ */
+const ALLOWED = [
+  {
+    file: 'apps/subly/lib/features/auth/login_screen.dart',
+    literal: 'debug: $detail',
+    why: 'guarded by `if (kDebugMode && detail != null)`. kDebugMode is a const, so the tree-shaker removes this whole branch from every release artifact — it is E2E diagnostic output (E2EKeys.accountDeletionNoticeDetail), read by `flutter drive`, never by a user. [ADR 027]',
+  },
+];
 
 // The fixture this guard owns. Three parts, each asserted below, each explained
 // where it lives: `dirty/` carries the violations, `quiet/` carries one near
@@ -126,6 +191,24 @@ const NOT_USER_FACING = [
   { re: /^(?:https?:|mailto:|tel:|package:|asset|assets\/)/i, why: 'a URL or asset path' },
   { re: /^\{\{.*\}\}$/, why: 'a mustache token — substituted at stamp time' },
   { re: /^[^a-zA-Z]*$/, why: 'no letters at all (punctuation, digits, symbols)' },
+  // 🔴 THE EXEMPTION THAT LET apps/subly BE ENFORCED (2026-08-11). Every one of
+  // that tree's five surviving hits is a composition of values — `'${s.category}
+  // · $usage'`, `'$_pct%'` — where the literal parts carry no letters at all.
+  // There is no prose to translate; the words come from the data and were
+  // localised where the data was made.
+  //
+  // NARROW BY CONSTRUCTION, and the falsifying input is easy to write: one
+  // letter outside an interpolation and it counts again, so `'Welcome, $name'`
+  // and `'debug: $detail'` are both still failures. It requires at least one
+  // interpolation, which is what keeps it from swallowing the plain
+  // no-letters-at-all case above rather than duplicating it.
+  //
+  // A nested brace inside `${…}` simply does not match, which fails CLOSED —
+  // the literal is enforced. That is the safe direction to be wrong in.
+  {
+    re: /^(?:[^a-zA-Z$]*(?:\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*))+[^a-zA-Z$]*$/,
+    why: 'composed only of interpolations — every letter comes from a value, so there is no prose here to translate',
+  },
 ];
 
 /** Every literal sitting in a position a person reads from, WITHOUT the
@@ -184,17 +267,39 @@ function scanRaw(dir) {
  *  addresses, keys and colours rather than prose. */
 const scan = (dir) => scanRaw(dir).filter((h) => !NOT_USER_FACING.some((x) => x.re.test(h.literal)));
 
-// ── The brick: must be clean. ───────────────────────────────────────────────
-if (!existsSync(join(ROOT, BRICK))) {
-  problems.push(`COVERAGE LOST — ${BRICK} does not exist, so this guard scanned the one tree it exists to protect and found nothing to protect.`);
-} else {
-  const hits = scan(BRICK);
-  for (const h of hits) {
+// ── The enforced trees: must be clean. ──────────────────────────────────────
+const waived = new Set();
+for (const { root, why, remedy } of ENFORCED_ROOTS) {
+  if (!existsSync(join(ROOT, root))) {
+    problems.push(`COVERAGE LOST — ${root} does not exist, so this guard scanned a tree it exists to protect and found nothing to protect. (${why})`);
+    continue;
+  }
+  let counted = 0;
+  for (const h of scan(root)) {
+    const waiver = ALLOWED.find((a) => a.file === h.file && a.literal === h.literal);
+    if (waiver) {
+      waived.add(waiver);
+      continue;
+    }
+    counted++;
+    problems.push(`${h.file} shows a hardcoded string in ${h.what}: "${h.literal}". ${remedy}`);
+  }
+  if (counted === 0) ok(`${root} shows no hardcoded user-facing strings`);
+}
+
+// A waiver that matches nothing is an exemption with no visible input — the same
+// defect the quiet fixture exists to prevent one level down, and the reason the
+// old wholesale `apps/subly` exclusion could sit in this file printing a notice
+// while filtering nothing.
+for (const a of ALLOWED) {
+  if (!waived.has(a)) {
     problems.push(
-      `${h.file} shows a hardcoded string in ${h.what}: "${h.literal}". Move it to lib/l10n/app_en.arb and read it through AppLocalizations. Every app the factory stamps inherits this file, and retrofitting l10n across 50 shipped apps is the expensive path (architecture.md §16).`,
+      `COVERAGE LOST — the allowlist entry for "${a.literal}" in ${a.file} matched NOTHING. Either the literal was fixed — in which case delete the entry in the same change — or it moved, and the waiver is now covering nothing while reading like a live exemption.`,
     );
   }
-  if (hits.length === 0) ok('the brick template shows no hardcoded user-facing strings');
+}
+if (ALLOWED.length > 0 && waived.size === ALLOWED.length) {
+  ok(`${ALLOWED.length} named allowlist entr(y/ies), every one still matching the literal it was written for`);
 }
 
 // ── COVERAGE SELF-CHECK, and this one is not optional. ──────────────────────
@@ -362,5 +467,7 @@ if (problems.length) {
   console.error('\nassert-no-hardcoded-strings: FAILED');
   process.exitCode = 1;
 } else {
-  console.log('\nassert-no-hardcoded-strings: ok — the brick is clean, and the matchers are proven to still match');
+  console.log(
+    `\nassert-no-hardcoded-strings: ok — ${ENFORCED_ROOTS.length} enforced tree(s) are clean, and the matchers are proven to still match`,
+  );
 }

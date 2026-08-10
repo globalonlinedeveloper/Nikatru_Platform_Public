@@ -10,11 +10,17 @@
 // forever, and the obvious guard (`assert-no-hardcoded-strings.mjs`) excludes
 // `apps/subly` wholesale, i.e. excludes the evidence file.
 //
-// ⚠️ `apps/subly` IS NOT EXCLUDABLE HERE, and the distinction is the point: the
-// `assert-no-hardcoded-strings.mjs` freeze covers the l10n retrofit — an
-// enormous, scheduled, cosmetic body of work. It does not cover a price literal
+// ⚠️ `apps/subly` IS NOT EXCLUDABLE HERE, and the distinction was the point: the
+// `assert-no-hardcoded-strings.mjs` freeze covered the l10n retrofit — an
+// enormous, scheduled, cosmetic body of work. It never covered a price literal
 // that contradicts a decided one, which is a money defect wearing the same
 // clothes.
+//
+// 🔄 THAT FREEZE ENDED 2026-08-11: `assert-no-hardcoded-strings.mjs` now ENFORCES
+// on `apps/subly/lib`. This guard is not thereby redundant — a price is not a
+// `Text(…)` or a labelling parameter, it is a value inside a service, and the
+// two guards look at different positions in different files. Two limbs of the
+// same rule would be; these are two rules.
 //
 // TWO LIMBS:
 //   A · NEGATIVE — no price-shaped string literal in shipping source.

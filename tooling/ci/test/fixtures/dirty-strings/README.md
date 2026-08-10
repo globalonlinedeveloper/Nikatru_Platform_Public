@@ -5,8 +5,8 @@ It is input to one CI guard, and every string in it is deliberate.
 
 ## Why a fixture at all
 
-`assert-no-hardcoded-strings.mjs` enforces on the brick template, which is **clean**.
-Every enforcement assertion there therefore passes over an empty result set — which is
+`assert-no-hardcoded-strings.mjs` enforces on the brick template and on `apps/subly/lib`,
+and **both are clean**. Every enforcement assertion therefore passes over an empty result set — which is
 indistinguishable from a scanner that has quietly stopped matching. This stage has
 already shipped three checks that ranged over nothing and printed `ok`. So the matchers
 are proven against a tree **known** to contain violations, and the clean result only
@@ -20,9 +20,11 @@ hostage to a **product** decision. Subly's l10n retrofit — Phase 4 of
 counts, so the guard would have gone **red by improvement**: the build breaks *because*
 somebody did the right thing, and the rational response to that is to weaken the guard.
 
-A fixture owned by the guard cannot be cleaned by product work. `apps/subly/lib` is kept
-as a **second** canary for now; its entry in the guard carries a dated note naming the
-increment that retires it.
+A fixture owned by the guard cannot be cleaned by product work. `apps/subly/lib` was kept
+as a **second** canary until the retrofit landed, and then changed sides entirely: from
+2026-08-11 it is an **enforced** tree, not a canary. The retrofit that would have turned
+the old arrangement red by improvement is exactly what made enforcement affordable —
+59 hits when it stopped being a canary, 5 when it became a subject.
 
 ## The three parts, all asserted
 

@@ -87,6 +87,7 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 let seq = 0;
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
+const SUBLY = 'apps/subly/lib';
 const FIXTURE = 'tooling/ci/test/fixtures/dirty-strings';
 
 // A clean brick: every visible string comes from l10n.
@@ -143,6 +144,7 @@ class Q extends StatelessWidget {
       Text('https://nikatru.com/privacy'),
       Text('{{app_id}}'),
       Text(' — '),
+      Text('\${s.category} · \$usage'),
     ]);
   }
 }
@@ -151,14 +153,33 @@ class Q extends StatelessWidget {
 /** The declaration the guard holds its own matcher list against. */
 const FAMILIES = '# comments and blanks are ignored\n\nText(…)\na labelling parameter\n';
 
-// ⚠️ NO `subly` PARAMETER, since 2026-08-08. `tree()` used to plant a dirty
-// `apps/subly/lib/legacy_screen.dart` in every fixture root because the guard
-// required one; it now scans no product tree at all, and leaving the parameter
-// would have every case below feeding the guard a directory it never opens —
-// input that looks like coverage and is not. The one case that still needs an
-// `apps/subly` tree writes it itself, in the open.
+// ⚠️ THE `subly` PARAMETER IS BACK, and it means the OPPOSITE of what it meant
+// before 2026-08-08. It used to plant a DIRTY `apps/subly/lib` because the guard
+// needed a known-dirty canary there; from 2026-08-11 that tree is ENFORCED, so
+// the default is CLEAN and a dirty one is a failure. Same directory, opposite
+// obligation — which is why the cases below assert on both.
+const CLEAN_SUBLY = `
+class SublyHome extends StatelessWidget {
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Column(children: [
+      Text(l10n.homeTitle),
+      Text('\${s.category} · \$usage'),
+    ]);
+  }
+}
+`;
+
+/** The one literal the guard's ALLOWED list waives, at the path it waives it
+ *  for. A fixture root without it makes the waiver stale, which is itself a
+ *  failure — so it is planted by default and removed deliberately. */
+const ALLOWLISTED_FILE = `${SUBLY}/features/auth/login_screen.dart`;
+const ALLOWLISTED = "const probe = Text('debug: $detail');\n";
+
 function tree({
   brick = CLEAN_BRICK,
+  subly = CLEAN_SUBLY,
+  allowlisted = ALLOWLISTED,
   fixture = dirtyTree(),
   quiet = QUIET,
   families = FAMILIES,
@@ -167,6 +188,8 @@ function tree({
   const root = join(TMP, `r${seq++}`);
   const files = {};
   if (!omitBrick) files[`${BRICK}/features/home/home_screen.dart`] = brick;
+  if (subly !== null) files[`${SUBLY}/features/home/home_screen.dart`] = subly;
+  if (allowlisted !== null) files[ALLOWLISTED_FILE] = allowlisted;
   if (fixture !== null) files[`${FIXTURE}/dirty/legacy_screen.dart`] = fixture;
   if (quiet !== null) files[`${FIXTURE}/quiet/not_user_facing.dart`] = quiet;
   if (families !== null) files[`${FIXTURE}/expected-families.txt`] = families;
@@ -234,7 +257,7 @@ describe('assert-no-hardcoded-strings', () => {
   test('passes when the brick reads everything from l10n', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /the brick template shows no hardcoded user-facing strings/);
+    assert.match(out, new RegExp(`${BRICK.replace(/[{}]/g, '\\$&')} shows no hardcoded user-facing strings`));
     assert.match(out, /matchers verified against a known-dirty tree/);
     assert.match(out, /matcher families are exactly those/);
     assert.match(out, /exemptions still exempt/);
@@ -244,11 +267,100 @@ describe('assert-no-hardcoded-strings', () => {
   // the surviving canary reports, and the retired one is GONE rather than
   // quietly still being read. Asserting only the first half would pass against a
   // guard that still scanned apps/subly and merely stopped printing about it.
-  test('reports the fixture canary and no longer touches any product tree', () => {
+  //
+  // ⚠️ `apps/subly` IS in the output again since 2026-08-11 — on the other side
+  // of the ledger. So the assertion is not "it is absent" but "it is not a
+  // canary", which is the distinction that actually matters and the one a plain
+  // absence check could never express.
+  test('reports one canary, and apps/subly is an ENFORCED tree rather than one', () => {
     const { out } = run(tree());
     assert.match(out, new RegExp(`known-dirty tree: \\d+ literal\\(s\\) found in ${FIXTURE}/dirty`));
     assert.equal([...out.matchAll(/known-dirty tree:/g)].length, 1, out);
-    assert.doesNotMatch(out, /apps\/subly/, 'a retired canary is still named in the output');
+    assert.match(out, new RegExp(`${SUBLY} shows no hardcoded user-facing strings`));
+    assert.doesNotMatch(out, new RegExp(`known-dirty tree: \\d+ literal\\(s\\) found in ${SUBLY}`));
+  });
+
+  // ── THE DOMAIN, 2026-08-11 ────────────────────────────────────────────────
+  // apps/subly was excluded wholesale, then a canary, then nothing at all — and
+  // "nothing at all" is what its own DoD §4-E note recorded: "no guard counts
+  // literals here". These cases are the claim that it is counted now.
+  describe('apps/subly is enforced, not merely mentioned', () => {
+    test('FAILS on an English literal in a Subly screen', () => {
+      const { code, out } = run(tree({ subly: `${CLEAN_SUBLY}\nconst probe = Text('Renewal calendar');\n` }));
+      assert.equal(code, 1, 'a new literal landed in a Subly screen and nothing said so');
+      assert.match(out, new RegExp(`${SUBLY}/features/home/home_screen.dart shows a hardcoded string in Text\\(…\\): "Renewal calendar"`));
+      // The remedy has to name THIS app's arb pair — the brick's advice would
+      // send the author to a file that does not exist here.
+      assert.match(out, /app_ta\.arb/);
+    });
+
+    test('FAILS on a hardcoded label parameter in a Subly screen', () => {
+      const { code, out } = run(tree({ subly: `${CLEAN_SUBLY}\nconst probe = AppTile(label: 'Budget & goals');\n` }));
+      assert.equal(code, 1);
+      assert.match(out, /a labelling parameter: "Budget & goals"/);
+    });
+
+    test('FAILS when the enforced Subly tree is gone — a domain that can vanish is not a domain', () => {
+      const { code, out } = run(tree({ subly: null, allowlisted: null }));
+      assert.equal(code, 1);
+      assert.match(out, new RegExp(`COVERAGE LOST — ${SUBLY} does not exist`));
+    });
+  });
+
+  // ── The one waiver, and why it is keyed to a literal rather than a path ────
+  describe('the allowlist is narrow and cannot go stale quietly', () => {
+    test('the waived literal is silent, and the guard says how many waivers are live', () => {
+      const { code, out } = run(tree());
+      assert.equal(code, 0, out);
+      assert.match(out, /1 named allowlist entr\(y\/ies\), every one still matching/);
+    });
+
+    // 🔴 THE FAILURE A PATH-KEYED WAIVER COULD NOT HAVE. The waived file gains a
+    // second literal; a directory or file exclusion would have covered it in
+    // silence, which is precisely how `$2.99` sat in apps/subly for months.
+    test('a NEW literal in the waived file still counts', () => {
+      const { code, out } = run(tree({ allowlisted: `${ALLOWLISTED}const oops = Text('Sign in failed');\n` }));
+      assert.equal(code, 1, 'a waiver keyed to a path would have swallowed this');
+      assert.match(out, /"Sign in failed"/);
+      // …and the waiver itself is still live, so this is not a stale-entry hit.
+      assert.match(out, /every one still matching/);
+    });
+
+    test('FAILS when the waived literal is gone — a waiver for nothing reads like a live exemption', () => {
+      const { code, out } = run(tree({ allowlisted: '// the debug notice was removed\n' }));
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — the allowlist entry for "debug: \$detail"/);
+      assert.match(out, /matched NOTHING/);
+    });
+  });
+
+  // ── The exemption that made the adoption affordable, and its limits ────────
+  describe('a literal made only of interpolations is not prose', () => {
+    for (const [label, literal] of [
+      ['two interpolations and a separator', '${s.category} · ${s.plan}'],
+      ['one interpolation and a percent sign', '$_pct%'],
+      ['a bare interpolation', '${subs.length}'],
+    ]) {
+      test(`stays quiet on ${label}`, () => {
+        const { code, out } = run(tree({ subly: `${CLEAN_SUBLY}\nconst x = Text('${literal}');\n` }));
+        assert.equal(code, 0, `fired on ${label}: ${out}`);
+      });
+    }
+
+    // 🔴 THE FALSIFYING INPUT. An exemption you cannot write the failing case for
+    // is a hole, not a filter — so here it is, twice, in the two shapes that
+    // actually occur: a word before the interpolation, and a word between two.
+    for (const [label, literal] of [
+      ['prose before an interpolation', 'Renews in ${s.category}'],
+      ['prose between two interpolations', '${a} of ${b}'],
+      ['a debug prefix', 'trace: $detail'],
+    ]) {
+      test(`FAILS on ${label} — one letter outside an interpolation and it counts`, () => {
+        const { code, out } = run(tree({ subly: `${CLEAN_SUBLY}\nconst x = Text('${literal}');\n` }));
+        assert.equal(code, 1, `the interpolation exemption swallowed ${label}`);
+        assert.match(out, /shows a hardcoded string/);
+      });
+    }
   });
 
   describe('a string shown to a person must come from l10n', () => {
@@ -372,7 +484,7 @@ const b = Text('Hardcoded right after a URL');
       assert.equal(code, 1);
       assert.match(out, new RegExp(`COVERAGE LOST — the matchers found only 0 hardcoded string\\(s\\) in ${FIXTURE}/dirty`));
       // …and the enforcement half still said "clean", which is the point.
-      assert.match(out, /the brick template shows no hardcoded user-facing strings/);
+      assert.match(out, new RegExp(`${BRICK.replace(/[{}]/g, '\\$&')} shows no hardcoded user-facing strings`));
     });
 
     test('FAILS when the fixture canary is deleted outright', () => {
@@ -387,14 +499,20 @@ const b = Text('Hardcoded right after a URL');
     // punishing the work it exists to encourage. It must now pass, and it fails
     // against the pre-retirement guard, so it is a real negative test of the
     // retirement rather than a restatement of it.
+    // ⚠️ The second half of this assertion changed on 2026-08-11: a cleaned
+    // apps/subly must still pass, but it is no longer ABSENT from the output —
+    // it is reported clean as an enforced tree. "Passes" and "is not read at
+    // all" were indistinguishable while the tree was excluded, and they are the
+    // difference between the guard covering this app and not.
     test('PASSES once apps/subly/lib is cleaned — the retrofit must not turn this red', () => {
       const root = tree();
-      const p = join(root, 'apps/subly/lib/legacy_screen.dart');
+      const p = join(root, `${SUBLY}/legacy_screen.dart`);
       mkdirSync(dirname(p), { recursive: true });
       writeFileSync(p, `${CLEAN_BRICK}\n// every literal here now comes from l10n\n`);
       const { code, out } = run(root);
       assert.equal(code, 0, out);
-      assert.doesNotMatch(out, /apps\/subly/);
+      assert.match(out, new RegExp(`${SUBLY} shows no hardcoded user-facing strings`));
+      assert.doesNotMatch(out, new RegExp(`COVERAGE LOST.*${SUBLY}`));
     });
 
     test('FAILS when the brick tree it protects is gone', () => {
@@ -413,7 +531,7 @@ const b = Text('Hardcoded right after a URL');
       assert.equal(code, 1, 'a 30-hit total hid a family that matched nothing');
       assert.match(out, /COVERAGE LOST — the "a labelling parameter" matcher found NOTHING/);
       // …and the enforcement half still said "clean", which is the point.
-      assert.match(out, /the brick template shows no hardcoded user-facing strings/);
+      assert.match(out, new RegExp(`${BRICK.replace(/[{}]/g, '\\$&')} shows no hardcoded user-facing strings`));
     });
 
     // 🔴 THE MEASUREMENT THE RETIREMENT RESTS ON, taken against the REAL repo
