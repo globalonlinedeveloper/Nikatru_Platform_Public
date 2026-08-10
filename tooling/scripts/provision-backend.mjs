@@ -43,13 +43,29 @@
 // Credentials are read from the ENVIRONMENT only; this script never opens
 // `.claude/secrets.env` itself.
 //
-// ⚠️ DO NOT `source` THAT FILE. It is named like an env file but is not one — it
-// carries free-form notes alongside the KEY=VALUE lines, so `. .claude/secrets.env`
-// tries to EXECUTE them and spills unrelated credentials into terminal output
-// (observed 2026-07-29). Extract only what you need:
+// ⚠️ EXTRACT THE ONE KEY YOU NEED; DO NOT `source` THE WHOLE FILE.
+//
+// This warning used to say the file "is not a pure env file" and that sourcing it
+// EXECUTES free-form notes. That WAS true and it was not theoretical — on
+// 2026-07-29 sourcing it spilled unrelated credentials into terminal output. It is
+// no longer true: the vault was restructured on 2026-08-10 into pure `KEY=VALUE`
+// plus `#` comments, and `set -a; . .claude/secrets.env` now exits 0 and sets 40
+// variables. The incident is kept because it is the REASON for the idiom below,
+// not because the defect is still there — a warning that asserts a fixed defect
+// gets disbelieved, and then so does the advice attached to it.
+//
+// The idiom stands on least exposure alone: this script needs two values, and
+// sourcing puts all forty into the environment of everything it then spawns.
 //
 //   export CLOUDFLARE_API_TOKEN=$(grep -m1 '^CLOUDFLARE_API_TOKEN=' .claude/secrets.env | cut -d= -f2-)
 //   export CLOUDFLARE_ACCOUNT_ID=$(grep -m1 '^CLOUDFLARE_ACCOUNT_ID=' .claude/secrets.env | cut -d= -f2-)
+//
+// 🔴 AND STRIP THE QUOTES. The values are quoted, so a bare `cut -d= -f2-` yields
+// `"…"` and sends `Bearer "…"`, which Cloudflare answers 400 code 6111 — a reply
+// that reads exactly like a revoked token and cost two sessions on that wrong
+// conclusion. Append `| sed -e "s/^['\\"]//" -e "s/['\\"]$//"`. Verified against
+// the live API on 2026-08-10 after the restructure: /user/tokens/verify → 200,
+// success true, status active.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
