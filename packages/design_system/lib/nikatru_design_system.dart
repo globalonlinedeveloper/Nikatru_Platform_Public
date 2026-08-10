@@ -12,3 +12,4 @@ export 'src/widgets/content_pane.dart';
 export 'src/widgets/system_screens.dart';
 export 'src/widgets/force_update_gate.dart';
 export 'src/widgets/paywall_gate.dart';
+export 'src/widgets/promo_card.dart';

@@ -1337,5 +1337,35 @@
         "example": "3"
       }
     }
+  },
+  "promoCardLabel": "OFFER FROM THIS APP",
+  "@promoCardLabel": {
+    "description": "The visible promotional label on the in-app upgrade card. ONE label plus a distinct container is what satisfies Apple 2.5.18, Microsoft Store 10.10.4, Play's native-ads trigger and India's Disguised Advertisement pattern at once — a promotional surface may never be styled as app content. It is deliberately not the word 'Ad': this card promotes THIS app, which matches none of Play's three ads-declaration triggers (research/44 V2), so the honest word is 'offer'. Overridable per app via AppConfig.copy['promo.card.label']."
+  },
+  "promoCardTitle": "Get the full experience",
+  "@promoCardTitle": {
+    "description": "Headline of the same-app upgrade card. Overridable via AppConfig.copy['promo.card.title'] (and ['promo.card.title.b'] for the B variant), so a campaign changes wording with no release."
+  },
+  "promoCardBody": "Everything unlocked, on every device you sign in on.",
+  "@promoCardBody": {
+    "description": "Body of the same-app upgrade card. States a benefit and makes NO claim about urgency, scarcity or a discount: false urgency is unfair in all circumstances under UCPD Annex I(7) and is named by India's CCPA Dark Patterns Guidelines 2023. Overridable via AppConfig.copy['promo.card.body']."
+  },
+  "promoCardPrice": "{price}, billed per {term}",
+  "@promoCardPrice": {
+    "description": "🔴 AN ABSOLUTE PRICE AND NOTHING ELSE. {price} is DERIVED from the rail's own amount and currency (Offering.formattedPrice) — never typed — and there is no 'was', no percentage and no 'save X'. Directive 98/6/EC Art 6a and CJEU C-330/23 require any announced reduction to be computed against the lowest price of the prior 30 days, and this repository holds no price history, so the comparison cannot be made and must not be shown.",
+    "placeholders": {
+      "price": {
+        "type": "String",
+        "example": "$4.99"
+      },
+      "term": {
+        "type": "String",
+        "example": "month"
+      }
+    }
+  },
+  "promoCardDismissA11y": "Dismiss this offer",
+  "@promoCardDismissA11y": {
+    "description": "What a screen reader announces for the card's icon-only close control. An icon-only control with no accessible name is a dismissal a user cannot perform, which turns a dismissible card into an undismissable one for exactly the people least able to work around it."
   }
 }

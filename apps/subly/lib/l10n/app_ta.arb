@@ -268,5 +268,10 @@
   "a11yBudgetRingOver": "நிதித்திட்டத்தை மீறியது. {budget} இல் {spent}, {percent}.",
   "a11yScanRing": "வருடல் முன்னேற்றம் {percent}.",
   "a11yAccountSettings": "கணக்கும் அமைப்புகளும்",
-  "a11yPageIndicator": "பக்கம் {current} / {total}"
+  "a11yPageIndicator": "பக்கம் {current} / {total}",
+  "promoCardLabel": "இந்தச் செயலியின் சலுகை",
+  "promoCardTitle": "முழு அனுபவத்தைப் பெறுங்கள்",
+  "promoCardBody": "நீங்கள் உள்நுழையும் ஒவ்வொரு சாதனத்திலும் அனைத்தும் திறக்கப்படும்.",
+  "promoCardPrice": "{price}, ஒரு {term} க்கு கட்டணம்",
+  "promoCardDismissA11y": "இந்தச் சலுகையை மூடு"
 }

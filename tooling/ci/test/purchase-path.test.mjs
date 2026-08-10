@@ -560,3 +560,106 @@ describe('assert-purchase-path — the client money rail', () => {
     assert.match(`${r.stdout}${r.stderr}`, /COVERAGE LOST/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §E2 — THE PROMOTIONAL SURFACE'S ROSCA PARITY AND ITS ONE-RAIL RULE.
+//
+// 🔴 ADDED 2026-08-10 AFTER AN ADVERSARIAL REVIEW POINTED OUT THAT THE LIMB
+// SHIPPED WITH NO CHECKED-IN CASE. Its three branches HAD been negative-tested
+// by mutating the real tree — this repo's stronger standard, and the reviewer
+// independently reproduced one of them — but a mutation nobody records is one
+// the next edit does not have to survive, and `assert-guard-coverage.mjs` could
+// not see the gap: its coverage is FILE-level, so a brand-new limb inside a
+// file that already had cases is invisible to it.
+//
+// The FIFTH row is the one that keeps the other four honest. This clause ranges
+// over "every file that constructs a `PromoCard(`", and the day nothing does,
+// all four failure branches become unreachable while the guard still prints ok.
+// That is the empty-antecedent shape this repository has been bitten by; the
+// guard answers it with a printed note, and the note is asserted here.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-purchase-path — §E2 the promo surface', () => {
+  const PROMO_HOME = `
+class HomeScreen extends ConsumerStatefulWidget {
+  const HomeScreen({super.key});
+}
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  Widget build(BuildContext context) => AppScaffold(
+    onDestinationSelected: (int i) {
+      if (i == 2) {
+        context.go('/settings');
+        return;
+      }
+    },
+  );
+}
+class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
+  Widget build(BuildContext context) => PromoCard(
+    show: true,
+    onPrimaryAction: () => context.go('/paywall'),
+    onManageAction: () => context.go('/manage-plan'),
+  );
+}
+`;
+
+  test('PASSES on a promo surface that offers both, and SAYS it found one', () => {
+    // Both halves. An exit-code-only assertion passes just as happily on a scan
+    // that reached no promo file at all, which is the failure this whole clause
+    // is built around.
+    const r = run({ home: PROMO_HOME });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 promo surface\(s\): each offers \/paywall AND \/manage-plan/);
+  });
+
+  test('FAILS when the promo surface has no /manage-plan — ROSCA parity', () => {
+    // `PromoCard` makes `onManageAction` REQUIRED, so this cannot be an absent
+    // control; it is a present control that navigates nowhere, which is what a
+    // type cannot catch and this limb can.
+    const r = run({
+      home: PROMO_HOME.replace("onManageAction: () => context.go('/manage-plan'),", 'onManageAction: () {},'),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PROMO SURFACE WITHOUT A CANCEL ENTRY/);
+  });
+
+  test('FAILS when the promo surface has no buy path either', () => {
+    const r = run({
+      home: PROMO_HOME.replace("onPrimaryAction: () => context.go('/paywall'),", 'onPrimaryAction: null,'),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PROMO SURFACE WITH NO BUY PATH/);
+  });
+
+  test('FAILS when the promo surface opens a checkout of its own', () => {
+    // ADR 038/039 lock ONE merchant of record. A second rail here is either a
+    // second MoR — with its own EU VAT/OSS, UK VAT and Indian GST posture for a
+    // sole proprietorship — or an external checkout steer on an Apple/Play
+    // build, which guideline 3.1.1 makes a documented rejection cause.
+    const r = run({
+      home: PROMO_HOME.replace(
+        "onPrimaryAction: () => context.go('/paywall'),",
+        "onPrimaryAction: () => launchUrl(Uri.parse('https://pay.example.invalid/x')),",
+      ),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /SECOND CHECKOUT RAIL ON A PROMO SURFACE/);
+  });
+
+  test('a `PromoCard(` in a COMMENT is not a promo surface', () => {
+    // The r2_buckets lesson: this guard's own explanation of the rule contains
+    // the token the rule matches. A prose match here would demand a cancel
+    // entry from a paragraph.
+    const r = run({ home: `${HOME}\n// Never build a PromoCard( without a manage entry.\n` });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /note DOMAIN EMPTY/);
+  });
+
+  test('with NO promo surface anywhere the emptiness is PRINTED, not passed over', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /note DOMAIN EMPTY — no file under the stamped chassis constructs a `PromoCard\(`/);
+    // …and the ok line for the clause must NOT appear, or "ranged over nothing"
+    // and "checked and found good" would read identically in the log.
+    assert.doesNotMatch(r.out, /promo surface\(s\): each offers/);
+  });
+});

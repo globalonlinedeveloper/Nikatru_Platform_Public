@@ -324,6 +324,57 @@ const REQUIRED_COVERAGE = [
       },
     ],
   },
+  {
+    id: 'promo_card',
+    what: 'the same-app upgrade card — a surface whose ENTIRE shipped state is "renders nothing"',
+    wired: true,
+    // 🔴 THE HARDEST SEAM IN THIS FILE TO KEEP HONEST, BECAUSE ITS CORRECT
+    // BEHAVIOUR AND ITS DEAD BEHAVIOUR ARE PIXEL-IDENTICAL.
+    // `features.promo_card_enabled` is absent from every config the portfolio
+    // serves and an absent feature key reads false, so every stamped app draws
+    // a collapsed `SizedBox.shrink()` where this card is. That is EXACTLY what
+    // an unmounted, unwired, deleted card also draws. Four capabilities in this
+    // repo shipped in precisely that state and none of them failed a test.
+    //
+    // THREE needs, because the seam has three separable halves and deleting any
+    // one re-breaks it while the other two keep looking healthy:
+    //   · the widget is MOUNTED in the stamped home body (not merely exported);
+    //   · something really DECIDES — the pure governor is consulted, so the
+    //     frequency cap, the dismissal latch and the GDPR Art 21 objection are
+    //     on the path rather than beside it;
+    //   · the impression is PERSISTED, because a cap nobody counts against
+    //     never caps and India's CCPA Dark Patterns Guidelines call the result
+    //     Nagging.
+    //
+    // Scoped to the brick throughout: this is the CHASSIS's card, inherited by
+    // every app the factory stamps, and a caller in apps/ would keep this green
+    // with the template's own mount deleted.
+    needs: [
+      {
+        // ⚠️ NO `declares` FILTER, DELIBERATELY, AND IT COST A RED TO NOTICE.
+        // `declares` drops the file that DECLARES the symbol — and here the
+        // declaration and the mount are the same file, exactly as
+        // `CatchUpNudgeBanner`'s are: the home body owns both. Filtering it out
+        // made this need unsatisfiable by a correctly wired tree. The anchor is
+        // safe without it because it matches a CONST CONSTRUCTION, which
+        // `class UpgradePromoCard extends …` cannot look like.
+        re: /const UpgradePromoCard\(\)/,
+        scope: BRICK_APP,
+        label: 'the card MOUNTED in the stamped home body',
+      },
+      {
+        re: /promoGateProvider\)\s*\n?\s*\.decide\(|promoGateProvider\)\.decide\(/,
+        scope: BRICK_APP,
+        label: 'a real PromoGate decision on the render path',
+      },
+      {
+        re: /\.markShown\(/,
+        declares: /Future<void>\s+markShown\(/,
+        scope: BRICK_APP,
+        label: 'the impression persisted, so the frequency cap can ever bind',
+      },
+    ],
+  },
 ];
 
 // 🔒 THE FLOOR THAT STOPS A DEAD SEAM BEING CERTIFIED LIVE.

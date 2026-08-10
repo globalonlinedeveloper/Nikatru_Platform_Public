@@ -471,6 +471,73 @@ let permitted = [];
       }
     }
 
+    // ── E2 · A PROMOTIONAL SURFACE CARRIES THE SAME PARITY, AND OPENS NO
+    //         CHECKOUT OF ITS OWN — [research/44 §4.3, V13, V14] ────────────
+    //
+    // The limb above measures SETTINGS, which is the right origin for the ROSCA
+    // comparison and the wrong one for this question: an offer card is a
+    // shortcut placed in front of a user who did not go looking for it, and
+    // research/44 records the rule as "an offer shortcut to upgrade and a
+    // matching manage/cancel entry land TOGETHER". `PromoCard` makes both
+    // `manageLabel` and `onManageAction` required, so a card with no cancel
+    // entry does not compile — but a required callback can still be `() {}`,
+    // which is a control that is present and goes nowhere. This asserts the
+    // navigation.
+    //
+    // The second clause is the one with money on it. ADR 038/039 lock ONE
+    // merchant of record and one hosted rail; a promo surface that launched its
+    // own URL would either be a second checkout (a second MoR, with its own
+    // EU VAT/OSS, UK VAT and Indian GST posture — research/44 V14) or an
+    // external steer on `ios-appstore`/`macos-appstore`/`android-play`, which
+    // 3.1.1 makes a documented rejection cause (V13). The card must route to
+    // `/paywall` and let the rail decide.
+    const promoFiles = files.filter((f) => /\bPromoCard\s*\(/.test(code(readFileSync(f, 'utf8'))));
+    if (promoFiles.length === 0) {
+      // PRINTED, not failed: the promo surface is a research/44 rung and this
+      // repository does not fail a build for a feature nobody has built. What it
+      // will not do is let the clause read as satisfied when its domain is empty.
+      console.log(
+        'note DOMAIN EMPTY — no file under the stamped chassis constructs a `PromoCard(`, so the promo ' +
+          'ROSCA-adjacency and no-second-rail clauses below ranged over nothing. If a promo surface has ' +
+          'shipped, this scan has stopped reaching it.',
+      );
+    }
+    for (const f of promoFiles) {
+      const rel = f.replace(ROOT, '').replace(/\\/g, '/').replace(/^\//, '');
+      const src = code(readFileSync(f, 'utf8'));
+      if (!/context\.go\('\/manage-plan'\)/.test(src)) {
+        problems.push(
+          `PROMO SURFACE WITHOUT A CANCEL ENTRY — ${rel} builds a \`PromoCard(\` and never navigates to ` +
+            "'/manage-plan'. research/44 §4.3: an offer shortcut to upgrade and a matching manage/cancel entry " +
+            'land TOGETHER. `PromoCard` requires the callback, so this is the other half — a required callback ' +
+            'that navigates nowhere is a control that is present and does not work.',
+        );
+      }
+      if (!/context\.go\('\/paywall'\)/.test(src)) {
+        problems.push(
+          `PROMO SURFACE WITH NO BUY PATH — ${rel} builds a \`PromoCard(\` and never navigates to '/paywall'. ` +
+            'The card is then an advertisement with no destination, and the ROSCA comparison above has no ' +
+            'left-hand side on this surface.',
+        );
+      }
+      const secondRail = /launchUrl\s*\(|RailConfig\.fill\s*\(|Uri\.parse\s*\(\s*'https:/.exec(src);
+      if (secondRail) {
+        problems.push(
+          `SECOND CHECKOUT RAIL ON A PROMO SURFACE — ${rel} builds a \`PromoCard(\` and also carries ` +
+            `\`${secondRail[0].trim()}\`. Every offer link resolves to the apex buy surface through the ONE ` +
+            'hosted rail (ADR 038 · research/44 V14): anything else is either a second merchant of record — ' +
+            'with its own EU VAT/OSS, UK VAT and Indian GST posture for a sole proprietorship — or an external ' +
+            'checkout steer on ios-appstore/macos-appstore/android-play, which guideline 3.1.1 makes a ' +
+            'documented rejection cause (V13). Navigate to /paywall and let the rail decide.',
+        );
+      }
+    }
+    if (promoFiles.length > 0 && problems.length === 0) {
+      ok(
+        `${promoFiles.length} promo surface(s): each offers /paywall AND /manage-plan, and none opens a checkout of its own`,
+      );
+    }
+
     // ── F · RESTORE — [5]M-10 ─────────────────────────────────────────────
     // On this rail the entitlement is a server row keyed (user_id, app_id), so
     // signing in IS the restore. The CONTROL still has to exist, and it has to

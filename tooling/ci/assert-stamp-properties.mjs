@@ -625,6 +625,47 @@ const REQUIRED_COVERAGE = [
     why: 'a paywall that is not driven by a real server answer is either a wall nobody paid past or a product given away',
   },
   {
+    key: 'promo-card-fails-closed',
+    group: /group\(\s*'property: promo-card-fails-closed'/,
+    // 🔴 THE PROPERTY WHOSE CORRECT BEHAVIOUR IS INVISIBLE. `features.
+    // promo_card_enabled` is absent from every config this portfolio serves and
+    // an absent feature key reads false, so the shipped card draws a collapsed
+    // `SizedBox.shrink()` — identical, from outside, to a card nobody mounted,
+    // a card somebody deleted, and a card that never worked. The stamped app has
+    // to prove BOTH halves about itself: mounted-and-zero-height with the flag
+    // absent, and a real labelled card with a derived price once it is served.
+    //
+    // EIGHT anchors, because deleting any one leaves the other seven healthy
+    // while the surface stops being what it claims. The last three were added
+    // 2026-08-10 after an adversarial review MUTATED THE REAL TREE and found
+    // three limbs nothing depended on:
+    //   · the paid-user check could be deleted with all 18 surface rows and all
+    //     7 property rows still green — the row carrying its name asserted the
+    //     card SHOWED, for an UNPAID user;
+    //   · the hydration barrier did not exist, so a device holding an Art 21
+    //     objection was shown a promotional card for the length of the disk
+    //     read (measured: t+0 through t+20 ms against a 40 ms store) and every
+    //     widget test hid that window behind `pumpAndSettle()`;
+    //   · a corrupt record fell back to the empty default AND was then
+    //     overwritten with `"suppressed":false`, erasing the objection from
+    //     disk in one launch.
+    sources: [
+      { file: HOME, re: /const UpgradePromoCard\(\)/, what: 'the card must be MOUNTED in the stamped home body — a surface nothing mounts cannot be turned on by a config edit, and it renders the same nothing either way' },
+      { file: HOME, re: /featureEnabled:\s*cfg\?\.feature\(kPromoCardFeature\)/, what: 'the on-switch must be the CONFIG key, read with its absent-means-false default — research/44 §4.5: an app that has never reached the network shows no promo' },
+      { file: HOME, re: /hasContent:\s*offerings\.isNotEmpty/, what: 'an eligible user and nothing to promote must be a REFUSAL, not a silent show — research/44 opens its DO-NOT-BUILD list with the empty directory that is "wired, guarded, green and useless"' },
+      { file: HOME, re: /onManageAction:\s*\(\)\s*=>\s*context\.go\('\/manage-plan'\)/, what: 'ROSCA parity — the cancel entry rides on the same surface as the offer, not one level below it' },
+      { file: PROVIDERS, re: /if\s*\(current\.dismissed\s*\|\|\s*current\.suppressed\)\s*return;/, what: 'a latch that arrived from storage while an impression was in flight must WIN — writing the decision through verbatim erased a GDPR Art 21 objection from disk, which the property test caught' },
+      // ⚠️ ANCHORED ON THE NULL TEST, NOT ON `valueOrNull`. `?? const
+      // PromoGateState()` also contains `valueOrNull` and is precisely the
+      // mutation this exists to catch — it compiles, analyzes clean, and puts
+      // the card back in front of a user whose record has not been read.
+      { file: HOME, re: /if\s*\(stored\s*==\s*null\)\s*return const SizedBox\.shrink\(\);/, what: 'the HYDRATION BARRIER — a record that has not been read yet is not a record that says nobody objected, and Art 21(3) has no grace period in it. Without this the card renders for the whole duration of the disk read and no settled widget test can see it' },
+      { file: HOME, re: /ref\.watch\(paywallLockedProvider\)/, what: 'a user who has ALREADY PAID must not be promoted to — this limb survived deletion with every promo test in both suites green until the review mutated the real tree' },
+      { file: PROVIDERS, re: /if\s*\(!_recordRead\)\s*return;/, what: 'no write may land on a record we failed to read — an impression counter is the least important thing on this key and must never be what destroys the most important one' },
+    ],
+    why: 'a promotional surface whose off state and whose dead state are pixel-identical can only be told apart by an assertion',
+  },
+  {
     key: 'ui-invariants-inherited',
     group: /group\(\s*'property: ui-invariants-inherited'/,
     sources: [
@@ -1086,7 +1127,11 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // PURPOSE — left at 45, deleting a behaviour would leave exactly 45 and the
 // floor would stop catching the deletion it exists to catch. A ratchet that
 // does not follow the thing it measures is a ratchet that has stopped.
-const MIN_DOMAIN = 46;
+// 48 since 2026-08-10: research/44 §7 rung 3 added `promoGateProvider` and
+// `promoCardStateProvider`. RAISED WITH THE TREE, for the reason the line above
+// gives — a floor left behind the tree stops catching the deletion it exists to
+// catch.
+const MIN_DOMAIN = 48;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1176,6 +1221,12 @@ const COVERED_BY = {
   // stamped app, and taps its button. This was "the switch that was inert for 55
   // builds" and nothing had ever raised it.
   mustForceUpdateProvider: 'update-url-resolved-from-config',
+  // [research/44 §7 rung 3]. DRIVEN, not merely constructed: the property
+  // serves the feature flag for real, taps the card's own decline control, and
+  // reads back the latched record from the stamp's own storage — then relaunches
+  // over the same store and asserts the card stays gone.
+  promoGateProvider: 'promo-card-fails-closed',
+  promoCardStateProvider: 'promo-card-fails-closed',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what
