@@ -80,13 +80,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { stripSourceComments } from './text-reductions.mjs';
+import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 
 const ROOT = process.argv[2] ?? process.cwd();
 const APP = 'apps/subly';
 const ROUTER_REL = `${APP}/lib/core/router.dart`;
 const FEATURES_REL = `${APP}/lib/features`;
 const TEST_REL = `${APP}/test`;
+const HARNESS_REL = `${TEST_REL}/support/width_harness.dart`;
 
 const problems = [];
 const notes = [];
@@ -407,10 +408,14 @@ if (covered.size === 0) {
   );
 }
 
+// Both sets are now built. Everything below reads them rather than the tree,
+// so one parse failure above must not be reported as seventeen findings here.
+const parsedCleanly = problems.length === 0;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // (C) SET EQUALITY, BOTH DIRECTIONS
 // ═══════════════════════════════════════════════════════════════════════════
-if (problems.length === 0) {
+if (parsedCleanly) {
   const uncovered = [...routed.keys()].filter((k) => !covered.has(k)).sort();
   for (const key of uncovered) {
     const { file, symbol, via } = routed.get(key);
@@ -439,6 +444,164 @@ if (problems.length === 0) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// (E) WHICH WINDOWS THE MEASUREMENT ACTUALLY PUMPS
+//
+// 🔴 SET EQUALITY ONLY ASKS WHETHER A FILE EXISTS, AND A FILE IS NOT A
+// MEASUREMENT. `width_home_test.dart` shipped with three cases — 375, 1500,
+// 1920 — and NO 768 and NO 1280, the only surface in the app measured at
+// neither. Both sets contained `home_screen.dart#HomeScreen`, the equality
+// printed EQUAL, and the two window classes between a phone and an ultra-wide
+// display went unmeasured inside a green tree. `home` was excluded from the
+// Phase-3 port (`knowledge/plans/p3-portspecs/MANIFEST.md`) and its width test
+// was backfilled later at one width; nothing downstream noticed the difference
+// between "ported" and "backfilled" because nothing downstream read the widths.
+//
+// So the covered set is re-read for WHAT IT PUMPS, and the required widths are
+// the harness's own named window classes — [kPhone], [kTablet], [kDesktop].
+// Not [kWide]: 1920 is the case that can go red for a `kMaxBodyWidth` screen and
+// is meaningless for one capped at `pane`, so requiring it would force an
+// assertion that cannot fail onto half the domain. The three required ones are
+// the CLASSES a layout branches on, and a surface unmeasured in one of them has
+// no width decision there whatever its file count says.
+//
+// 🔴 THE NUMBERS ARE READ OUT OF THE HARNESS, NEVER RESTATED HERE. If this file
+// carried its own 375/768/1280 and the harness moved `kTablet` to 800, the
+// requirement would go on being satisfied by a constant nothing pumps. The
+// harness is the vocabulary; this guard quotes it.
+//
+// ⚠️ STRING LITERALS ARE STRIPPED AS WELL AS COMMENTS, and that is not
+// belt-and-braces: `width_scan_test.dart` and `width_insights_test.dart` both
+// carry the word `kWide` inside an `expect` REASON explaining why the screen
+// needs no such case. Comment-stripping alone leaves those, so a prose
+// explanation of an ABSENT case would have satisfied the check for it — the
+// `r2_buckets` defect verbatim, in a file arguing the opposite of what it was
+// credited with.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Window class → width, read from the harness's own `const Size` declarations. */
+const windowClasses = new Map();
+if (existsSync(join(ROOT, HARNESS_REL))) {
+  for (const m of read(HARNESS_REL).matchAll(
+    /\bconst\s+Size\s+(k[A-Za-z0-9_$]*)\s*=\s*(?:const\s+)?Size\(\s*(\d+(?:\.\d+)?)\s*,/g,
+  )) {
+    windowClasses.set(m[1], Number(m[2]));
+  }
+}
+const REQUIRED_WIDTHS = ['kPhone', 'kTablet', 'kDesktop'];
+
+// ── THE ONE ARGUED EXEMPTION ───────────────────────────────────────────────
+// Same shape and same discipline as NOT_A_PANE: a claim about a specific
+// surface, printed every run, and self-checked twice below — an entry for a
+// surface that is not covered fails, and an entry for a width the test DOES
+// pump fails as stale.
+const WIDTH_EXEMPT = new Map([
+  [
+    `${APP}/lib/features/monetization/paywall_screen.dart#PaywallScreen`,
+    new Map([
+      [
+        'kDesktop',
+        'is capped at `AppBreakpoints.pane` (480), not at `kMaxBodyWidth` — so the cap has ALREADY engaged ' +
+          'at 768 and the file asserts the flat 480 there and again at 1920. 1280 is not a boundary for a ' +
+          '480 cap the way it is for a 1280 one; a case there would assert the same constant, bound the ' +
+          'same way, between two surfaces that already bracket it.',
+      ],
+    ]),
+  ],
+]);
+
+const pumpedCache = new Map();
+/** The surface widths a width test file actually pumps.
+ *
+ *  A size reaches a case one of two ways — a harness window constant in an
+ *  argument position (`pumpAt(tester, kTablet, …)`, `setSurface(tester, kPhone)`,
+ *  and this app's own `_openSheetAt(tester, kDesktop)`), or a `Size(w, h)`
+ *  written inline (`home`'s 1500). Both are counted; the argument-position bound
+ *  is what keeps a constant merely NAMED from counting as one pumped. */
+function widthsPumpedBy(name) {
+  if (pumpedCache.has(name)) return pumpedCache.get(name);
+  const code = stripStringLiterals(read(`${TEST_REL}/${name}`));
+  const out = new Set();
+  for (const [windowClass, width] of windowClasses) {
+    if (new RegExp(`[(,]\\s*${windowClass}\\s*[,)]`).test(code)) out.add(width);
+  }
+  // `\bSize\(` and not `Size\(`: `tester.getSize(...)` is not a size literal.
+  for (const m of code.matchAll(/\bSize\(\s*(\d+(?:\.\d+)?)\s*,/g)) out.add(Number(m[1]));
+  pumpedCache.set(name, out);
+  return out;
+}
+
+if (windowClasses.size === 0) {
+  coverageLost(
+    `no \`const Size k… = Size(w, h)\` declaration was found in ${HARNESS_REL}, so the required widths ` +
+      'resolved to NOTHING and every surface would have passed the width check by default. The harness ' +
+      'moved, or its window classes are now spelled some other way.',
+  );
+}
+for (const windowClass of REQUIRED_WIDTHS) {
+  if (!windowClasses.has(windowClass)) {
+    problems.push(
+      `\`${windowClass}\` is required of every responsive surface and ${HARNESS_REL} no longer declares it. ` +
+        'A requirement naming a constant that does not exist ranges over nothing and reports clean.',
+    );
+  }
+}
+
+if (parsedCleanly && windowClasses.size > 0) {
+  for (const key of WIDTH_EXEMPT.keys()) {
+    if (!covered.has(key)) {
+      problems.push(
+        `\`${key}\` is exempted from a required width but it is not in the covered set at all. An exemption ` +
+          'for a surface nothing measures reports judgement over nothing — it moved, or it is gone.',
+      );
+    }
+  }
+
+  for (const key of [...covered.keys()].sort()) {
+    const [file, symbol] = key.split('#');
+    const pumped = new Set();
+    for (const name of covered.get(key)) for (const w of widthsPumpedBy(name)) pumped.add(w);
+    const exempt = WIDTH_EXEMPT.get(key) ?? new Map();
+
+    for (const windowClass of REQUIRED_WIDTHS) {
+      const width = windowClasses.get(windowClass);
+      if (pumped.has(width)) continue;
+      if (exempt.has(windowClass)) continue;
+      problems.push(
+        `UNMEASURED WIDTH — \`${symbol}\` (${file}) is measured by ${covered.get(key).join(', ')}, and not ` +
+          `one case pumps ${windowClass} (${width}). The widths it does pump are ` +
+          `${[...pumped].sort((a, b) => a - b).join(', ') || '(none this parse could read)'}. A width test ` +
+          'file is not a width measurement: the set equality above sees the file and cannot see which ' +
+          'windows it opens. Add the case, or argue the omission in WIDTH_EXEMPT.',
+      );
+    }
+
+    for (const [windowClass, why] of exempt) {
+      if (!windowClasses.has(windowClass)) continue; // already reported above
+      if (pumped.has(windowClasses.get(windowClass))) {
+        problems.push(
+          `STALE EXEMPTION — \`${symbol}\` (${file}) is exempted from ${windowClass} on the grounds that it ` +
+            `${why} — but ${covered.get(key).join(', ')} now pumps it. The case exists; delete the ` +
+            'exemption so the width is required of it like every other surface.',
+        );
+      }
+    }
+  }
+
+  if (problems.length === 0) {
+    ok(
+      `every surface is pumped at ${REQUIRED_WIDTHS.map((w) => `${w} (${windowClasses.get(w)})`).join(', ')}` +
+        `${WIDTH_EXEMPT.size ? ` — ${WIDTH_EXEMPT.size} argued exemption(s), printed below` : ''}`,
+    );
+  }
+}
+
+for (const [key, widths] of WIDTH_EXEMPT) {
+  for (const [windowClass, why] of widths) {
+    notes.push(`⬜ ${key.split('#')[1]} is NOT required at ${windowClass} — it ${why}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // (F) REQUIRED_COVERAGE — the floor set equality cannot see
 //
 // 🔴 THIS IS NOT REDUNDANT WITH THE EQUALITY ABOVE, AND THE MUTATION THAT
@@ -454,7 +617,21 @@ if (problems.length === 0) {
 // one.
 // ═══════════════════════════════════════════════════════════════════════════
 const REQUIRED_COVERAGE = {
-  // 13 routed screens + 2 modal sheets, measured on the tree of 2026-08-10.
+  // 15 routed screens + 2 modal sheets, measured on the tree of 2026-08-11.
+  //
+  // 🔴 RAISED 15 → 17 AND 14 → 15 ON 2026-08-11 — NOT BECAUSE ANYTHING WAS ADDED
+  // TODAY, BUT BECAUSE THE FLOOR HAD STOPPED BEING ONE. #280 landed
+  // `verify_email_screen.dart` and `reaccept_terms_screen.dart` with their
+  // `width_legal_gates_test.dart`; this file last moved in #275 and did not
+  // follow. A floor two under the tree is exactly the mutation the clause below
+  // describes and cannot catch: those two screens AND their test could have been
+  // deleted in one change today, both sets would have shrunk together, the
+  // equality would have printed EQUAL and this number would have printed nothing
+  // at all. Re-measured against the tree rather than incremented by hand.
+  //
+  // ⚠️ A FLOOR IS ONLY A FLOOR ON THE DAY IT IS MEASURED. It has no way to
+  // notice the tree growing past it, so raising it belongs in the same change
+  // that adds the surface — which is the step #280 skipped.
   //
   // 🔴 LOWERED 16 → 15 ON 2026-08-10, AND THIS IS THE REASON, WRITTEN BESIDE IT
   // AS THIS CLAUSE DEMANDS. `/sign-in` became the canonical auth route that day
@@ -469,30 +646,44 @@ const REQUIRED_COVERAGE = {
   // ⚠️ `widthTestFiles` DID NOT MOVE. `width_auth_test.dart` still exists — it
   // lost its sign-in group and kept its sign-up one. A file count and a surface
   // count answer different questions and only one of them changed.
-  // 🔴 RAISED 15 → 16 ON 2026-08-11, BY EXACTLY THE ONE SURFACE THAT CHANGE
-  // ADDED. `/check-inbox` routed `CheckInboxScreen` — the destination for a
-  // sign-up that returns a user and NO SESSION, which the `/verify-email` gate
-  // cannot serve because `sessionIsUnverified` is false for a null user by
-  // design.
+  // ═════════════════════════════════════════════════════════════════════════
+  // 🔴 SET TO THE TREE AS MEASURED ON 2026-08-11 — 18 SURFACES, 15 WIDTH TEST
+  // FILES. Not incremented, not inherited: this is the number
+  // `node tooling/ci/assert-responsive-coverage.mjs` printed on the merged tree
+  // on that date —
   //
-  // 👤 AND THE FLOOR IS STILL BEHIND THE TREE, WHICH IS WORTH SAYING RATHER
-  // THAN QUIETLY CLOSING. The same run measures **18** surfaces and **15**
-  // width test files, so both numbers below were already two and one short
-  // before `/check-inbox` existed — surfaces landed without the ratchet
-  // following them. That slack is real: two surfaces could be deleted today
-  // with their tests and this floor would not notice. It is left for a change
-  // that owns those surfaces to raise deliberately, because a floor moved to
-  // whatever the tree happens to measure — by somebody who did not add the
-  // things it now counts — is exactly the "re-pinned to today's number" habit
-  // the sibling floors in this repo warn against.
+  //     18 reachable surface(s) (16 routed screens, 2 modal sheets),
+  //     all measured by 15 width test file(s) at 375/768/1280
   //
-  // ⚠️ `widthTestFiles` DID NOT MOVE, for the same reason it did not move when
-  // the count went 16 → 15: the new measurement is a third GROUP inside
-  // `width_legal_gates_test.dart`, beside the two gate screens it already
-  // measures. A file count and a surface count answer different questions.
-  surfaces: 16,
-  // 13 `width_*_test.dart` + `responsive_width_test.dart`.
-  widthTestFiles: 14,
+  // WHY IT IS A MEASUREMENT AND NOT AN INCREMENT. The floor had fallen two
+  // surfaces and one file behind the tree and nobody noticed, because a floor
+  // BELOW the tree is silent by construction — the clause below fires only when
+  // the tree drops under it. #280 landed `verify_email_screen.dart` and
+  // `reaccept_terms_screen.dart` with their `width_legal_gates_test.dart`;
+  // this file last moved in #275 and did not follow. So the slack was real:
+  // those two screens AND their test could have been deleted in one change,
+  // both sets would have shrunk together, the equality above would have printed
+  // EQUAL, and this number would have printed nothing at all.
+  //
+  // ⚠️ TWO CHANGES CROSSED HERE AND THE ARITHMETIC IS WRITTEN DOWN RATHER THAN
+  // TRUSTED. #286 (`/check-inbox`) raised `surfaces` 15 → 16 for the one
+  // surface it added, and recorded that it was deliberately NOT closing the
+  // rest — a change does not get to re-pin a floor to whatever the tree happens
+  // to measure when it did not add the things being counted. This change was
+  // measured separately, against a tree WITHOUT `/check-inbox`, and read 17/15.
+  // NEITHER number is the answer for the merged tree, and taking the higher of
+  // the two on faith would have left the floor one surface short with nothing
+  // to say so. The tree was re-measured after both had landed; 18/15 is that
+  // reading.
+  //
+  // ⚠️ A FLOOR IS ONLY A FLOOR ON THE DAY IT IS MEASURED. It cannot notice the
+  // tree growing past it, so raising it belongs in the same change that adds
+  // the surface — which is the step #280 skipped and the reason this block
+  // exists.
+  // ═════════════════════════════════════════════════════════════════════════
+  surfaces: 18,
+  // 14 `width_*_test.dart` + `responsive_width_test.dart`.
+  widthTestFiles: 15,
 };
 if (routed.size > 0 && routed.size < REQUIRED_COVERAGE.surfaces) {
   coverageLost(
@@ -546,5 +737,6 @@ if (problems.length) {
 console.log(
   `\nassert-responsive-coverage: ok — ${routed.size} reachable surface(s) (${routed.size - featureDartFiles.filter((f) => surfacesIn(f).some((s) => s.startsWith('show'))).length} routed screens, ` +
     `${featureDartFiles.filter((f) => surfacesIn(f).some((s) => s.startsWith('show'))).length} modal sheets), ` +
-    `all measured by ${testFiles.length} width test file(s); ${excluded.length} exclusion(s) printed`,
+    `all measured by ${testFiles.length} width test file(s) at ${REQUIRED_WIDTHS.map((w) => windowClasses.get(w)).join('/')}; ` +
+    `${excluded.length} exclusion(s) printed`,
 );
