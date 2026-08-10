@@ -65,10 +65,12 @@ const screens = reg.screens ?? [];
 // A floor, not `> 0`: the register has held 16 since it was written, and a list
 // somebody trims to three would otherwise read as a clean pass.
 // 24 since 2026-08-10: research/44 §7 rung 3 added `monetization.promo-card`.
+// 25 since 2026-08-11: `auth.password-reset` split out of `auth.callbacks` when
+// the reset link finally had somewhere to land.
 // RAISED WITH THE TREE ON PURPOSE — left at 23, deleting a screen would leave
 // exactly 23 and this floor would stop catching the deletion it exists to
 // catch. A ratchet that does not follow the thing it measures has stopped.
-const MIN_SCREENS = 24;
+const MIN_SCREENS = 25;
 if (screens.length < MIN_SCREENS) {
   problems.push(
     `COVERAGE LOST — the register declares only ${screens.length} screen(s), expected >= ${MIN_SCREENS}. DoD §4-A names the full set; a register somebody has trimmed asserts less while looking identical.`,
@@ -340,7 +342,9 @@ if (screens.length > 0 && present === 0) {
 // as MIN_SCREENS above and check-migrations.mjs's REQUIRED_COVERAGE.
 // 23 since 2026-08-10 — `monetization.promo-card` landed `present` with a
 // reachability proof. Same ratchet rule as MIN_SCREENS above.
-const MIN_PRESENT = 23;
+// 24 since 2026-08-11 — `auth.password-reset` landed `present`, reachable
+// through the router's recovery gate.
+const MIN_PRESENT = 24;
 const REQUIRED_COVERAGE = { reachableExempt: 0 };
 if (present > 0 && present < MIN_PRESENT) {
   problems.push(

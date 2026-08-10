@@ -1,3 +1,4 @@
+import 'auth_event.dart';
 import 'auth_models.dart';
 
 /// The auth seam. Swapping identity providers = writing one more implementation
@@ -18,6 +19,35 @@ abstract class AuthRepository {
   /// Emits on sign-in / sign-out / token refresh.
   Stream<AuthUser?> authStateChanges();
 
+  /// The same changes, carrying WHY each one happened — see [AuthEvent].
+  ///
+  /// 🔴 THE ROUTER CANNOT DO ITS JOB FROM [authStateChanges] ALONE, and password
+  /// recovery is the proof. A user who follows a reset link is handed a real
+  /// session, so on that stream their arrival is indistinguishable from an
+  /// ordinary sign-in — same user, same emission — and the app sends them to the
+  /// home screen instead of to the form they came for. The reason exists only at
+  /// the instant of delivery; nothing downstream can reconstruct it.
+  ///
+  /// ⚠️ THE DEFAULT IS DERIVED FROM [authStateChanges], NOT A REFUSAL, AND THAT
+  /// IS DELIBERATE — the opposite choice from the three members below. A stream
+  /// that throws is a listener that dies on its first event, and a
+  /// `Stream.empty()` default is the [pipeline C-6] dead seam exactly: the
+  /// router would compile, run, and never route anybody anywhere, in silence.
+  /// So an implementation that says nothing about reasons still reports real
+  /// arrivals and departures — and can NEVER report
+  /// [AuthEventKind.passwordRecovery], because the mapping below has no way to
+  /// produce it. The honest degradation is "every arrival is an ordinary
+  /// sign-in", which is the closed side of the only question a caller asks.
+  ///
+  /// Both real implementations override this. A test double that does not still
+  /// drives every gate that keys off sign-in and sign-out.
+  Stream<AuthEvent> authEvents() => authStateChanges().map(
+        (AuthUser? user) => AuthEvent(
+          user == null ? AuthEventKind.signedOut : AuthEventKind.signedIn,
+          user,
+        ),
+      );
+
   Future<AuthUser> signInWithEmail({
     required String email,
     required String password,
@@ -37,7 +67,55 @@ abstract class AuthRepository {
   /// and PWAs launched standalone (G-43).
   Future<void> signInWithApple();
 
+  /// Send the "set a new password" mail.
+  ///
+  /// ⚠️ WHERE THE EMAILED LINK POINTS IS NOT A PARAMETER HERE, and the omission
+  /// is the design. The destination is a property of the BUILD (which origin
+  /// this binary was served from, which scheme it registered), never of the
+  /// screen that happens to call this — so it is injected once, where the
+  /// implementation is constructed. A caller that could pass a URL is a caller
+  /// that can point our recovery mail at anything.
+  ///
+  /// Says NOTHING about whether the address has an account, by design and by
+  /// contract: returning normally either way is what keeps this from being an
+  /// account-enumeration oracle. The screen's message must be equally silent.
   Future<void> sendPasswordReset(String email);
+
+  /// Set a NEW password on the session in hand, and return the fresh user.
+  ///
+  /// 🔴 THE HALF THAT DID NOT EXIST. [sendPasswordReset] shipped, real mail was
+  /// delivered, and there was nowhere for the link to land: no member here, no
+  /// implementation, no route. A user who forgot their password could ask for
+  /// help and then had no way to accept it. A send with no completion is not a
+  /// password-reset feature; it is a mail generator.
+  ///
+  /// Called from TWO situations that this contract deliberately does not
+  /// distinguish, because the provider call is identical in both:
+  ///   · a RECOVERY session, created by following the emailed link — see
+  ///     [AuthEventKind.passwordRecovery], which is how the app knows;
+  ///   · an ordinary signed-in user changing their password from settings.
+  ///
+  /// ⚠️ THIS CONTRACT PROMISES NO RE-AUTHENTICATION. Whether the provider
+  /// demands the current password, or a fresh login, is the PROVIDER's setting
+  /// (`security_update_password_require_reauthentication` on Supabase) and it is
+  /// the integrator's live act. With it off, a session that has been stolen can
+  /// rotate the password without proving anything — so an app that offers this
+  /// from settings, on a project with that switch off, has built a session-theft
+  /// escalation. The recovery path does not have that problem: the session it
+  /// runs on was minted seconds earlier by somebody holding the mailbox.
+  ///
+  /// Implementations MUST refuse when there is no session at all, rather than
+  /// silently doing nothing: an expired or already-used link is the single
+  /// commonest way this is reached, and "nothing happened" is the one outcome
+  /// the user cannot tell from success.
+  ///
+  /// Throws [AuthFailure] when there is no session, when the provider refused
+  /// the password, or when the implementation has no such capability. The
+  /// default body is that last case — see the block below for why a refusing
+  /// default is the right one for a member eight test doubles inherit.
+  Future<AuthUser> updatePassword({required String newPassword}) async {
+    throw AuthFailure('Setting a new password is not available here.');
+  }
 
   Future<void> signOut();
 

@@ -75,7 +75,12 @@ import 'package:nikatru_api_client/nikatru_api_client.dart';
 // `PrefsKeyValueStore`-class collisions out (see the barrel note below), not
 // because a twin exists.
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
-    show AuthCapabilities, InMemoryAuthRepository, SupabaseAuthRepository;
+    show
+        AuthCapabilities,
+        InMemoryAuthRepository,
+        SupabaseAuthRepository,
+        passwordResetArrivalOf,
+        passwordResetRedirectUrl;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 // `show` for the same class of reason: the barrel also exports
@@ -570,9 +575,166 @@ final Provider<AuthRepository> authRepositoryProvider =
           ? SupabaseAuthRepository(
               requestServerDeletion: () =>
                   requestAccountDeletion(ref.read(platformRestClientProvider)),
+              // 🔴 UNSET, THE RESET LINK RESOLVES TO THE PROJECT'S SITE URL —
+              // one URL shared by every app the portfolio's single Supabase
+              // project authenticates. gotrue does not error on an absent
+              // `redirect_to`; it substitutes, so the mail sends, the link
+              // works, and the only difference is which app the person lands
+              // in. Invisible from inside this one.
+              //
+              // Read off the RUNNING ORIGIN so a Pages preview and a localhost
+              // run each send their own users back to themselves. Null off web:
+              // no native target here registers a URI scheme yet, and a
+              // fabricated one is not on the allow-list, so gotrue would fall
+              // back to the Site URL anyway with the reason hidden.
+              passwordResetRedirectTo: passwordResetRedirectUrl(
+                isWeb: kIsWeb,
+                base: Uri.base,
+              ),
             )
           : InMemoryAuthRepository(),
     );
+
+/// Whether a PASSWORD-RECOVERY session is in flight.
+///
+/// 🔴 NOTHING ELSE CAN ANSWER THIS. A user who follows a reset link is handed a
+/// real session, so `currentUser`, `currentSession()` and `authStateChanges()`
+/// report an ordinary sign-in — indistinguishable from somebody typing their
+/// password. The reason rides on the `AuthEvent` at the instant it is delivered
+/// and the Supabase adapter used to map it away, which is why a reset link could
+/// only ever land the user on the home screen.
+///
+/// ⚠️ THE ARMS THAT DO NOTHING ARE AS DELIBERATE AS THE TWO THAT DO:
+///   · `passwordRecovery` ARMS it; the gate then holds the user on
+///     `/reset-password` however they navigate;
+///   · `signedOut` RELEASES it, and is the ONLY release. `ResetPasswordScreen`
+///     signs out to leave, so finishing and abandoning take one exit rather than
+///     two that must be kept in step;
+///   · `userUpdated` must NOT release it — it fires the moment the new password
+///     lands, and releasing there tears the confirmation page down under the
+///     user before they can read it ([ADR 027]'s lesson again);
+///   · `signedIn` must NOT release it — gotrue can follow a recovery with an
+///     ordinary arrival event, and releasing on one drops somebody out of the
+///     form mid-typing.
+///
+/// A plain synchronous `bool`, not an `AsyncValue`: the redirect guard that
+/// reads it cannot await, which is the same reason the seam exposes
+/// `currentUser` separately from `currentSession()`.
+class PasswordRecoveryController extends Notifier<bool> {
+  @override
+  bool build() {
+    final AuthRepository auth = ref.watch(authRepositoryProvider);
+    final StreamSubscription<core.AuthEvent> sub = auth.authEvents().listen((
+      core.AuthEvent event,
+    ) {
+      if (event.startsPasswordRecovery) {
+        state = true;
+      } else if (event.kind == core.AuthEventKind.signedOut) {
+        state = false;
+      }
+    });
+    ref.onDispose(sub.cancel);
+    return false;
+  }
+}
+
+final NotifierProvider<PasswordRecoveryController, bool>
+passwordRecoveryProvider = NotifierProvider<PasswordRecoveryController, bool>(
+  PasswordRecoveryController.new,
+);
+
+/// The URL this build was launched with.
+///
+/// A PROVIDER rather than a direct `Uri.base` read, for one reason: `Uri.base`
+/// is a property of the process, so a test that needs a reset-link arrival could
+/// not otherwise construct one, and the arrival path would be exactly the
+/// fail-closed-and-untested limb [pipeline C-6] is about.
+final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
+
+/// What a password-reset link left in the URL, and what became of it.
+///
+/// 🔴 THIS EXISTS BECAUSE THE DEAD-LINK STATE WAS UNREACHABLE FROM THE FAILURE
+/// IT EXPLAINS. `ResetPasswordScreen` shipped with a careful explanation for an
+/// unusable link, `/reset-password` was added to `signedOutMayStay` so a
+/// signed-out visitor could stand there to read it — and nothing ever put them
+/// there. The ONLY thing that routed to that screen was
+/// `AuthEventKind.passwordRecovery`, which is the SUCCESS event; a link that
+/// cannot be exchanged emits an error and never that. So three tests proved a
+/// state production could not produce, and the screen's own comment called it
+/// "the state the feature reaches most often in the field".
+///
+/// TWO INDEPENDENT SOURCES, because the failure has two shapes and neither one
+/// covers the other:
+///
+///   1. THE LAUNCH URL. gotrue's failure redirect answers `303` to
+///      `…/?nk_auth=reset#error=access_denied&error_code=otp_expired` — measured
+///      live against the real project on 2026-08-11, not inferred. The query
+///      survives; the FRAGMENT does not, so with the hash URL strategy the route
+///      the link asked for is gone and go_router has nothing to match: the
+///      errorBuilder renders `NotFoundScreen`, which is worse than the
+///      unexplained `/sign-in` the entry in `signedOutMayStay` was added to
+///      prevent. Reading the marker off the query is what turns that 404 into
+///      the sentence.
+///
+///   2. THE EVENT STREAM. A link that reaches the SDK with a code but no PKCE
+///      verifier — the reset requested on one device and opened on another, or
+///      site data cleared in between — throws inside the exchange and surfaces
+///      as a stream ERROR. That was a FATAL CRASH in production (GlitchTip
+///      SUBLY-8, 2026-08-10T18:09:25Z, release subly@1.0.189+4d85ad7,
+///      `mechanism: runZonedGuarded, handled: false`). The seam now delivers it
+///      as `AuthEventKind.recoveryLinkFailed`, and this is what holds it.
+///
+/// ⚠️ `signedOut` IS DELIBERATELY NOT A RELEASE HERE, unlike in
+/// [passwordRecoveryProvider], and the difference is a race rather than a
+/// preference. This state can be set by the LAUNCH URL, before any event at all,
+/// while `supabase_flutter` emits `initialSession` — which maps to `signedOut`
+/// when a cold start restored nothing — at a moment whose order against the
+/// deep-link handler is not guaranteed. Releasing on it would let the arrival
+/// this launch actually carried be erased by a routine startup emission,
+/// intermittently. [clear] is the release, and `ResetPasswordScreen` calls it on
+/// the way out: the exit is one deliberate act instead of two that must agree.
+class PasswordResetArrivalController
+    extends Notifier<core.PasswordResetArrivalReport> {
+  @override
+  core.PasswordResetArrivalReport build() {
+    final AuthRepository auth = ref.watch(authRepositoryProvider);
+    final StreamSubscription<core.AuthEvent> sub = auth.authEvents().listen((
+      core.AuthEvent event,
+    ) {
+      if (event.recoveryLinkIsUnusable) {
+        state = core.PasswordResetArrivalReport(
+          core.PasswordResetArrival.unusable,
+          problem: event.problem ?? core.AuthLinkProblem.unknown,
+        );
+      } else if (event.startsPasswordRecovery) {
+        state = const core.PasswordResetArrivalReport(core.PasswordResetArrival.pending);
+      }
+    });
+    ref.onDispose(sub.cancel);
+    return passwordResetArrivalOf(ref.watch(launchUriProvider));
+  }
+
+  /// The one release. Called by the screen when the user leaves it, so a dead
+  /// link does not park them on `/reset-password` for the rest of the session.
+  void clear() => state = core.PasswordResetArrivalReport.none;
+}
+
+final NotifierProvider<PasswordResetArrivalController, core.PasswordResetArrivalReport>
+passwordResetArrivalProvider =
+    NotifierProvider<
+      PasswordResetArrivalController,
+      core.PasswordResetArrivalReport
+    >(PasswordResetArrivalController.new);
+
+/// Whether the router should hold the user on `/reset-password`.
+///
+/// ONE READ for the two states that mean it, so the gate cannot drift from the
+/// screen: an armed recovery (the success path) or an arrival that has not been
+/// dismissed (the failure path, and the moments before the exchange resolves).
+bool shouldHoldForPasswordReset({
+  required bool recovering,
+  required core.PasswordResetArrival arrival,
+}) => recovering || arrival != core.PasswordResetArrival.none;
 
 /// The authenticated client for the SHARED platform Worker (`/v1/...`).
 ///
@@ -2016,12 +2178,41 @@ final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
     legalReacceptanceNeededProvider,
     (bool? _, bool? _) => legal.bump(),
   );
+  // 🔴 A FOURTH SIGNAL, AND WITHOUT IT THE RECOVERY GATE NEVER FIRES ON A REAL
+  // LAUNCH. The recovery event arrives while the user sits on whatever screen
+  // the browser opened — nobody navigates — so `redirect` is never consulted and
+  // the gate might as well not be written. The same defect the auth signal was
+  // added for when a session appeared, and the legal signal one gate later.
+  //
+  // Listens to `passwordRecoveryProvider` — the provider the redirect READS —
+  // per the rule the legal limb had to learn from a traced stale read: a
+  // listener one layer down is called while the source is still publishing.
+  final _Bump recovery = _Bump();
+  ref.listen<bool>(
+    passwordRecoveryProvider,
+    (bool? _, bool _) => recovery.bump(),
+  );
+  // 🔴 A FIFTH SIGNAL, and it is the failure half of the fourth. The recovery
+  // ARRIVAL can change without any session change at all: the seam turns a
+  // failed exchange into `recoveryLinkFailed` (GlitchTip SUBLY-8, which used to
+  // be a fatal crash), and nobody navigates when that lands either. Same rule as
+  // every limb above — listen to the provider the redirect READS.
+  final _Bump resetArrival = _Bump();
+  ref.listen<core.PasswordResetArrivalReport>(
+    passwordResetArrivalProvider,
+    (core.PasswordResetArrivalReport? _, core.PasswordResetArrivalReport _) =>
+        resetArrival.bump(),
+  );
   ref.onDispose(onboarding.dispose);
   ref.onDispose(legal.dispose);
+  ref.onDispose(recovery.dispose);
+  ref.onDispose(resetArrival.dispose);
   return Listenable.merge(<Listenable>[
     ref.watch(authRefreshProvider),
     onboarding,
     legal,
+    recovery,
+    resetArrival,
   ]);
 });
 

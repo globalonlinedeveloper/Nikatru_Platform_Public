@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
@@ -17,12 +19,35 @@ class SupabaseAuthRepository implements core.AuthRepository {
     sb.GoTrueClient? client,
     Future<void> Function()? requestServerDeletion,
     DateTime Function()? clock,
+    this.passwordResetRedirectTo,
     this.refreshSkew = const Duration(seconds: 30),
-  }) : _injected = client,
-       _requestServerDeletion = requestServerDeletion,
-       _now = clock ?? (() => DateTime.now().toUtc());
+  })  : _injected = client,
+        _requestServerDeletion = requestServerDeletion,
+        _now = clock ?? (() => DateTime.now().toUtc());
 
   final sb.GoTrueClient? _injected;
+
+  /// Where the emailed password-reset link sends the user back to.
+  ///
+  /// 🔴 NULL MEANS "THE PROJECT'S SITE URL", WHICH IS A REAL DESTINATION AND
+  /// USUALLY THE WRONG ONE. gotrue substitutes `site_url` when no `redirect_to`
+  /// is given, and this project's Site URL is app #1's web home — so with this
+  /// left null, app #2's reset mail sends its users into app #1. Nothing about
+  /// that is visible from inside app #2: the mail sends, the link works, and the
+  /// person lands somewhere else entirely.
+  ///
+  /// Injected rather than computed here because the answer is a property of the
+  /// BUILD, not of this class: on web it is the origin this binary was served
+  /// from (see `passwordResetRedirectUrl`), and on a native target it is a
+  /// custom scheme that must be registered with the OS and added to the
+  /// project's redirect allow-list before it resolves at all. Neither is
+  /// knowable from inside the adapter.
+  ///
+  /// ⚠️ THE VALUE MUST BE ON THE PROJECT'S REDIRECT ALLOW-LIST. gotrue does not
+  /// error on a URL that is not: it silently falls back to the Site URL, which
+  /// is the same observable behaviour as passing null. A misconfigured
+  /// allow-list therefore looks exactly like a working one.
+  final String? passwordResetRedirectTo;
 
   /// How far AHEAD of the real expiry a token counts as expired.
   ///
@@ -74,8 +99,91 @@ class SupabaseAuthRepository implements core.AuthRepository {
   core.AuthUser? get currentUser => _map(_auth.currentUser);
 
   @override
-  Stream<core.AuthUser?> authStateChanges() =>
-      _auth.onAuthStateChange.map((sb.AuthState s) => _map(s.session?.user));
+  Stream<core.AuthUser?> authStateChanges() => _auth.onAuthStateChange
+      .map((sb.AuthState s) => _map(s.session?.user))
+      // 🔴 THE ERROR IS DROPPED HERE AND REPORTED ON [authEvents], WHICH IS NOT
+      // A SHRUG. `onAuthStateChange` carries ERRORS as well as states, and this
+      // stream's type — "who is signed in" — has nothing it could truthfully say
+      // about a failed arrival. Leaving the error on it does not report it
+      // either: an unhandled stream error goes to the zone and, in this app,
+      // straight to GlitchTip as a FATAL crash (SUBLY-8). So the typed report
+      // goes out on the event stream, where there is a member for it, and this
+      // one keeps answering only the question it is named after.
+      .handleError((Object _) {});
+
+  /// 🔴 THIS LINE USED TO BE `authStateChanges` AND NOTHING ELSE, AND THE
+  /// DISCARDED HALF WAS AN ENTIRE FEATURE. `onAuthStateChange` delivers an
+  /// `AuthState` — a session AND the `AuthChangeEvent` that produced it — and
+  /// the map above keeps the session and drops the event on the floor. So a user
+  /// arriving on a password-recovery link was reported to every listener as an
+  /// ordinary sign-in, because after the mapping that is literally all they
+  /// were. The router then did the correct thing with the wrong information and
+  /// sent them to the home screen.
+  ///
+  /// The reason exists ONLY at delivery. There is no later read — not
+  /// `currentUser`, not the session, not the JWT — that can tell a recovery
+  /// session from a normal one, so a discarded event is information the app can
+  /// never get back.
+  /// 🔴 AND THE ERROR CHANNEL IS AN EVENT, NOT A CRASH. This was
+  /// `.map(_event)` and nothing else, which is why GlitchTip SUBLY-8 exists:
+  /// a `?code=` arriving in a browser with no PKCE verifier makes
+  /// `exchangeCodeForSession` throw `AuthException(Code verifier could not be
+  /// found in local storage)` (`gotrue_client.dart:386-390`);
+  /// `supabase_flutter`'s `_handleDeeplink` catches it and re-emits it as a
+  /// STREAM ERROR via `notifyException` (`supabase_auth.dart:290-296` →
+  /// `gotrue_client.dart:1586-1592`); and a `.map`ped stream with no `onError`
+  /// hands that to the zone. `mechanism: runZonedGuarded, handled: false,
+  /// level: fatal` — a production crash for the ordinary act of opening the mail
+  /// on a phone when the reset was requested on a laptop.
+  ///
+  /// `handleError` converts it into the one thing the app can act on: a typed
+  /// [core.AuthEventKind.recoveryLinkFailed] that the router turns into a
+  /// sentence. Nothing is swallowed — the failure is louder than it was, because
+  /// before this it reached a crash reporter and never reached the user.
+  @override
+  Stream<core.AuthEvent> authEvents() =>
+      _auth.onAuthStateChange.map(_event).transform(
+            StreamTransformer<core.AuthEvent, core.AuthEvent>.fromHandlers(
+              handleData: (core.AuthEvent e, EventSink<core.AuthEvent> sink) =>
+                  sink.add(e),
+              handleError: (
+                Object error,
+                StackTrace stack,
+                EventSink<core.AuthEvent> sink,
+              ) =>
+                  sink.add(
+                core.AuthEvent(
+                  core.AuthEventKind.recoveryLinkFailed,
+                  null,
+                  problem: core.authLinkProblemOf(error),
+                ),
+              ),
+            ),
+          );
+
+  /// Maps one SDK `AuthState` onto the seam's [core.AuthEvent].
+  ///
+  /// ⚠️ THE DEFAULT ARM DECIDES BY SESSION, NOT BY EVENT NAME, and that is what
+  /// keeps `initialSession` honest: it fires at every cold start whether or not
+  /// a session was restored, so mapping it to a bare `signedIn` would announce
+  /// an arrival to a signed-OUT app on every launch. Anything unrecognised —
+  /// including an event a future SDK adds — lands here too, and the worst it can
+  /// say is "somebody signed in" or "nobody is signed in". It can never
+  /// fabricate a recovery, which is the one arm with consequences.
+  core.AuthEvent _event(sb.AuthState s) {
+    final core.AuthUser? user = _map(s.session?.user);
+    final core.AuthEventKind kind = switch (s.event) {
+      sb.AuthChangeEvent.passwordRecovery =>
+        core.AuthEventKind.passwordRecovery,
+      sb.AuthChangeEvent.signedOut => core.AuthEventKind.signedOut,
+      sb.AuthChangeEvent.tokenRefreshed => core.AuthEventKind.tokenRefreshed,
+      sb.AuthChangeEvent.userUpdated => core.AuthEventKind.userUpdated,
+      _ => user == null
+          ? core.AuthEventKind.signedOut
+          : core.AuthEventKind.signedIn,
+    };
+    return core.AuthEvent(kind, user);
+  }
 
   @override
   Future<core.AuthUser> signInWithEmail({
@@ -125,9 +233,53 @@ class SupabaseAuthRepository implements core.AuthRepository {
     );
   }
 
+  /// 🔴 `redirectTo:` IS THE ARGUMENT THAT WAS MISSING, and without it the link
+  /// resolves to the PROJECT's Site URL — one URL shared by every app in the
+  /// portfolio. See [passwordResetRedirectTo] for why the value is injected.
+  ///
+  /// ⚠️ THIS CALL MINTS A PKCE VERIFIER AND KEEPS IT HERE. gotrue generates a
+  /// code challenge inside `resetPasswordForEmail` and stores the verifier in
+  /// THIS client's local storage under the `passwordRecovery` key. The emailed
+  /// link carries only the challenge, so the exchange can only be completed by
+  /// the same installation that made this call — a link opened on a second
+  /// device, or in a different browser, or in a browser when the request came
+  /// from a desktop build, arrives with nothing to match and cannot mint a
+  /// session. That is a property of the flow, not a bug to be worked around
+  /// here; the reset screen's job is to say so plainly when it happens.
   @override
   Future<void> sendPasswordReset(String email) =>
-      _auth.resetPasswordForEmail(email);
+      _auth.resetPasswordForEmail(email, redirectTo: passwordResetRedirectTo);
+
+  /// 🔴 REFUSES WITH NO SESSION RATHER THAN LETTING THE SDK THROW ITS OWN TYPE.
+  /// `updateUser` raises `AuthSessionMissingException` — a Supabase class — and
+  /// this seam's contract is that nothing above the data layer ever catches a
+  /// vendor type. The refusal is also the COMMONEST real outcome, not an edge
+  /// case: a recovery link that has expired, been used already, or been opened
+  /// on a device that never held the PKCE verifier leaves exactly this state.
+  ///
+  /// The `AuthException` remap keeps the SERVER's English in [core.AuthFailure.
+  /// message] on purpose. Screens match on that text to choose a localized
+  /// sentence (`login_screen.dart`'s `_friendlyMessage`), so translating it here
+  /// would break the matching — the mapping is from a vendor TYPE to ours, not
+  /// from their words to ours.
+  @override
+  Future<core.AuthUser> updatePassword({required String newPassword}) async {
+    if (_auth.currentSession == null) {
+      throw core.AuthFailure(
+        'Your reset link is no longer valid. Ask for a new one.',
+      );
+    }
+    try {
+      final sb.UserResponse res = await _auth.updateUser(
+        sb.UserAttributes(password: newPassword),
+      );
+      final core.AuthUser? u = _map(res.user);
+      if (u == null) throw core.AuthFailure('Could not set your new password');
+      return u;
+    } on sb.AuthException catch (e) {
+      throw core.AuthFailure(e.message);
+    }
+  }
 
   @override
   Future<void> signOut() => _auth.signOut();

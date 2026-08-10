@@ -245,6 +245,106 @@ void main() {
     });
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // PASSWORD RESET — the demo identity's half.
+  //
+  // 🔴 THIS IS THE ONLY PLACE THE RECOVERY PATH CAN BE OPENED WITHOUT A LIVE
+  // PROJECT AND A REAL MAILBOX. Every non-web artifact `build-platforms.yml`
+  // produces runs on this repository, and every widget test in `apps/subly`
+  // that does not override the seam resolves it — so a recovery gate whose only
+  // input is a Supabase event would be the [pipeline C-6] dead shape: it
+  // compiles, it never fires, and every closed-side test stays green.
+  // ══════════════════════════════════════════════════════════════════════════
+  group('InMemoryAuthRepository — password reset', () {
+    late InMemoryAuthRepository auth;
+    setUp(() => auth = InMemoryAuthRepository());
+    tearDown(() => auth.dispose());
+
+    test('a reset request is RECORDED — there is no mailbox to send to',
+        () async {
+      await auth.sendPasswordReset('a@b.com');
+      expect(auth.passwordResetsRequested, <String>['a@b.com']);
+    });
+
+    // 🔴 THE WHOLE POINT OF THE EVENT SEAM, in three lines: a recovery arrival
+    // and an ordinary sign-in put the SAME value on `authStateChanges()`. The
+    // only thing that can tell them apart is the event.
+    test('recovery and sign-in are INDISTINGUISHABLE on authStateChanges',
+        () async {
+      final List<core.AuthUser?> users = <core.AuthUser?>[];
+      final List<core.AuthEvent> events = <core.AuthEvent>[];
+      final StreamSubscription<core.AuthUser?> a =
+          auth.authStateChanges().listen(users.add);
+      final StreamSubscription<core.AuthEvent> b = auth.authEvents().listen(
+            events.add,
+          );
+      addTearDown(a.cancel);
+      addTearDown(b.cancel);
+
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      await auth.signOut();
+      auth.deliverPasswordRecovery('a@b.com');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        users.first,
+        users.last,
+        reason:
+            'same id, same email, same verification — the user stream cannot '
+            'see the difference, which is exactly why the router could not',
+      );
+      expect(events.map((core.AuthEvent e) => e.kind), <core.AuthEventKind>[
+        core.AuthEventKind.signedIn,
+        core.AuthEventKind.signedOut,
+        core.AuthEventKind.passwordRecovery,
+      ]);
+      expect(events.last.startsPasswordRecovery, isTrue);
+    });
+
+    test('updatePassword records the VALUE and reports userUpdated', () async {
+      auth.deliverPasswordRecovery('a@b.com');
+      final List<core.AuthEvent> events = <core.AuthEvent>[];
+      final StreamSubscription<core.AuthEvent> sub = auth.authEvents().listen(
+            events.add,
+          );
+      addTearDown(sub.cancel);
+
+      await auth.updatePassword(newPassword: 'correct-horse');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(auth.passwordsSet, <String>['correct-horse']);
+      expect(
+        events.single.kind,
+        core.AuthEventKind.userUpdated,
+        reason: 'the session did not change, only the record did. Reporting a '
+            'sign-in here would look like a second arrival; reporting a '
+            'sign-out would tear the success screen down under the user',
+      );
+    });
+
+    // 🔴 IT REFUSES A PASSWORD ITS OWN SIGN-IN WOULD ACCEPT, and the asymmetry
+    // is the feature: a demo identity that took `'a'` would let a reset screen
+    // ship with no length check and every widget test still pass.
+    test('a short password is refused, using the SHARED floor', () async {
+      auth.deliverPasswordRecovery('a@b.com');
+      await expectLater(
+        auth.updatePassword(newPassword: 'sevench'),
+        throwsA(isA<core.AuthFailure>()),
+      );
+      expect(auth.passwordsSet, isEmpty);
+      expect('sevench'.length, core.kMinPasswordLength - 1);
+    });
+
+    // The expired / already-used / wrong-device link, at the seam.
+    test('with no session at all it refuses rather than doing nothing',
+        () async {
+      await expectLater(
+        auth.updatePassword(newPassword: 'correct-horse'),
+        throwsA(isA<core.AuthFailure>()),
+      );
+    });
+  });
+
   // ── The six-platform matrix. ──────────────────────────────────────────────
   group('AuthCapabilities', () {
     test('the host platform declares its identity capabilities', () {

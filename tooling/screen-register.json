@@ -253,11 +253,28 @@
     },
     {
       "id": "auth.callbacks",
-      "what": "Password reset, email verification and the OAuth callback — the screens a link outside the app lands on.",
+      "what": "The OAuth callback — the screen a browser redirect lands on. 🔻 NARROWED 2026-08-11: this entry used to also cover password reset, which now has its own `auth.password-reset` row because it shipped. ⚠️ It also still names email verification, and that claim is STALE in the other direction — `VerifyEmailScreen` shipped 2026-08-09 and is reached by the router's own gate rather than by a link. Left as found rather than silently corrected by an increment that does not own it; flagged so the next pass on this register fixes it deliberately.",
       "status": "blocked",
       "blockedBy": "app_links (deep-link handling)",
-      "detail": "Each of these is entered by following a link from an EMAIL or a browser redirect, so none can be reached without deep-link handling. `app_links` 7.2.1 supports all six platforms (verified against pub.dev 2026-07-28) and would earn its place under [2]C-4 as native-binary — it ships platform code — but it is not a dependency yet. ⚠️ Web carries two traps recorded in AuthCapabilities: the token arrives in the URL FRAGMENT so query parsing fails SILENTLY, and app_links on web reports only the INITIAL link.",
+      "detail": "Entered by following a browser redirect back into a NATIVE binary, which is the half `app_links` is genuinely required for. `app_links` 7.2.1 supports all six platforms (verified against pub.dev 2026-07-28) and would earn its place under [2]C-4 as native-binary — it ships platform code — but it is not a dependency yet, and no target here registers a URI scheme. ⚠️ Web carries two traps recorded in AuthCapabilities: the token arrives in the URL FRAGMENT so query parsing fails SILENTLY, and app_links on web reports only the INITIAL link.",
       "declaredOn": "2026-07-28"
+    },
+    {
+      "id": "auth.password-reset",
+      "what": "Set a new password — where the emailed reset link lands.",
+      "status": "present",
+      "declaredOn": "2026-08-11",
+      "detail": "🔴 SPLIT OUT OF `auth.callbacks` BECAUSE IT NO LONGER NEEDS DEEP LINKS. `app_links` is required to catch a redirect back into a NATIVE binary; on web the SDK reads `?code=` off the query itself, so the whole flow completes with no new dependency. That is why this row can be `present` while its former parent stays `blocked`. Before 2026-08-11 `sendPasswordReset` was implemented and a real recovery mail had been delivered (2026-08-03) with NO `updatePassword` on the seam, no route, and no `redirectTo` — help that could be asked for and not accepted. ⚠️ PKCE keeps the code verifier in the installation that REQUESTED the link, so a link opened on a second device cannot complete the exchange; the screen's dead-link state is the answer to that, not a workaround for it. 🔴 AND THAT STATE WAS UNREACHABLE FROM THE FAILURE IT EXPLAINS UNTIL 2026-08-11: the only thing that routed to this screen was the SUCCESS event, so an expired or cross-device link landed on `/` and was bounced to `/sign-in`, and the same arrival with a `?code=` and no verifier CRASHED (GlitchTip SUBLY-8, fatal, uncaught out of runZonedGuarded). Both halves now land here: the redirect carries an `nk_auth=reset` marker in the QUERY, which gotrue preserves on its failure redirect while REPLACING the fragment (measured live against the project on 2026-08-11), and the seam turns the stream error into `AuthEventKind.recoveryLinkFailed`. ⚠️ OWNER/INTEGRATOR ACTION, NOT CODE: the exact redirect the build now sends is `https://<origin>/?nk_auth=reset#/reset-password` and it must stay on the project's redirect allow-list — a redirect that is not on it does not error, gotrue silently substitutes the Site URL, so a misconfigured list is indistinguishable from a working one.",
+      "anchor": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/reset_password_screen.dart",
+        "symbol": "ResetPasswordScreen",
+        "kind": "class"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart",
+        "pattern": "'/reset-password';",
+        "why": "the REDIRECT GUARD is what reaches this screen, and it is reached from an EVENT rather than from a URL — which is the whole reason this row exists. A recovery session is an ordinary session (same user, same token, same emission on `authStateChanges`), so the guard cannot infer it; `authEvents()` carries `AuthEventKind.passwordRecovery` and `passwordRecoveryProvider` holds it — and the FAILURE half is reached the same way, from `passwordResetArrivalProvider`, which reads the launch URL's marker and the seam's `recoveryLinkFailed` event. ⚠️ PRESENCE IS NOT ENFORCEMENT and this pattern proves only that the guard names the route: that the gate actually FIRES, and that `routerRefreshProvider` re-runs it when the event lands with nobody navigating, is proven by driving the real router in `apps/subly/test/password_reset_test.dart` — found by running it, not by reading it."
+      }
     },
     {
       "id": "settings.sign-out",

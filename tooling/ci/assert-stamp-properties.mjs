@@ -738,7 +738,15 @@ const REQUIRED_COVERAGE = [
     key: 'auth-seam-wired',
     group: /group\(\s*'property: auth-seam-wired'/,
     sources: [
-      { file: PROVIDERS, re: /final Provider<core\.AuthRepository> authRepositoryProvider/, what: 'the brick must wire an AuthRepository — before C-15 it wired none, so every stamped app was born unable to sign anyone in' },
+      // ⚠️ `\s+`, NOT A LITERAL SPACE, AND IT WENT RED TO PROVE IT MATTERS. This
+      // read `AuthRepository> authRepositoryProvider` with one space, and on
+      // 2026-08-11 `dart format` moved the break: growing the provider's body by
+      // one argument was enough for the formatter to wrap after the TYPE rather
+      // than after the `=`, so the declaration became two lines and this anchor
+      // stopped matching a line that had not changed in meaning at all. An
+      // anchor whose truth depends on the formatter's line-breaking is an anchor
+      // that fails on whitespace and passes on a deletion.
+      { file: PROVIDERS, re: /final Provider<core\.AuthRepository>\s+authRepositoryProvider/, what: 'the brick must wire an AuthRepository — before C-15 it wired none, so every stamped app was born unable to sign anyone in' },
       // NOT just `tokenProvider:` — the acceptance is that it reaches the SHARED
       // client, so both halves are anchored.
       { file: PROVIDERS, re: /tokenProvider:\s*ref\.watch\(authTokenProvider\)/, what: 'the token provider must reach the shared RestClient, or the app authenticates and no request ever carries a token' },
@@ -777,6 +785,39 @@ const REQUIRED_COVERAGE = [
       { file: PROVIDERS, re: /Listenable\.merge\(<Listenable>\[\s*ref\.watch\(authRefreshProvider\)/, what: 'the merged refresh must still carry the AUTH signal — the onboarding flag was added to it, and dropping auth from the merge would restore the original bug in a place nobody would look' },
     ],
     why: 'a stamped app signed the user in and went on showing them the sign-in form; the seam and the guard both worked and nothing joined them',
+  },
+  {
+    key: 'password-recovery-routes',
+    group: /group\(\s*'property: password-recovery-routes'/,
+    sources: [
+      // 🔴 THE MAPPING, AND IT IS THE WHOLE FEATURE. `authStateChanges()` maps
+      // `AuthState` down to `AuthUser?`, so the `AuthChangeEvent` that produced
+      // it is discarded at the seam — and a user arriving on a recovery link is
+      // then byte-for-byte an ordinary sign-in. The reason exists ONLY at
+      // delivery; no later read of the user, the session or the JWT can
+      // reconstruct it.
+      { file: 'packages/auth_supabase/lib/src/supabase_auth_repository.dart', re: /sb\.AuthChangeEvent\.passwordRecovery\s*=>\s*core\.AuthEventKind\.passwordRecovery/, what: 'the adapter must carry the recovery event across the seam — mapped away, a reset link is indistinguishable from a sign-in and the router sends the user home' },
+      { file: PROVIDERS, re: /class PasswordRecoveryController extends Notifier<bool>/, what: 'something must HOLD the recovery reason: the event is a single instant and the redirect guard is consulted long afterwards' },
+      { file: PROVIDERS, re: /if\s*\(event\.startsPasswordRecovery\)/, what: 'the controller must arm on the recovery event itself — a controller subscribed to the stream and switching on nothing is a gate that never fires' },
+      { file: PROVIDERS, re: /core\.AuthEventKind\.signedOut\)\s*\{\s*state = false/, what: 'and it must CLEAR on sign-out, which is the only release: without it a user who finishes the reset is held on the screen forever, because every location they try answers /reset-password' },
+      // The refresh signal. Same defect as `auth-redirect-follows-session` two
+      // gates later, and worse here: the recovery event arrives while the user
+      // sits still, so NOTHING navigates and the gate is never consulted at all.
+      { file: PROVIDERS, re: /ref\.listen<bool>\(\s*passwordRecoveryProvider/, what: 'the router must be TOLD when the recovery flag changes — redirect fires on navigation, and a reset link arrives with the user sitting on whatever screen the browser opened' },
+      { file: ROUTER, re: /ref\.read\(passwordRecoveryProvider\)/, what: 'the redirect guard must READ the flag — a provider nothing consults is a screen no link can reach' },
+      { file: ROUTER, re: /'\/reset-password'/, what: 'the route must exist: sendPasswordReset shipped, real mail was delivered, and there was no path for the link to land on' },
+      // 🔴 THE FAILURE HALF, ADDED 2026-08-11. Everything above proves the
+      // SUCCESS path. A link that cannot be exchanged emits an error and never
+      // `passwordRecovery`, so none of it fires — the dead-link screen was
+      // unreachable from the failure it explains, and the same arrival with a
+      // `?code=` and no PKCE verifier was an UNCAUGHT FATAL (GlitchTip SUBLY-8).
+      // These four are what make the other direction real.
+      { file: 'packages/auth_supabase/lib/src/supabase_auth_repository.dart', re: /handleError:/, what: 'the adapter must convert the stream ERROR into an event — `supabase_flutter` re-emits a failed exchange through `notifyException`, and an unhandled stream error is a fatal crash, not a message to anybody' },
+      { file: PROVIDERS, re: /class PasswordResetArrivalController/, what: 'something must HOLD the failed arrival, for the same reason the recovery flag is held: the error is one instant and the redirect guard is consulted afterwards' },
+      { file: PROVIDERS, re: /passwordResetArrivalOf\(ref\.watch\(launchUriProvider\)\)/, what: 'and it must read the LAUNCH URL — the failure redirect replaces the fragment with its error parameters, so the route the link asked for is gone and only the query says what this arrival was' },
+      { file: ROUTER, re: /passwordResetArrivalProvider/, what: 'the redirect guard must read the arrival too — reading only the success flag is what made the explanation reachable by typing the URL and by nothing else' },
+    ],
+    why: 'password reset shipped with only its REQUEST half — a working sendPasswordReset, a delivered mail, and no updatePassword, no route and no redirectTo, so a user who forgot their password could ask for help and not accept it',
   },
   {
     key: 'account-deletion-works',
@@ -1246,6 +1287,19 @@ const COVERED_BY = {
   authTokenProvider: 'auth-seam-wired',
   restClientProvider: 'auth-seam-wired',
   authCapabilitiesProvider: 'auth-seam-wired',
+  // Driven, not constructed: the property delivers a real recovery event through
+  // the real repository and asserts the app moves to the reset screen with
+  // nothing having navigated — then types a password and asserts the seam got
+  // that exact value.
+  passwordRecoveryProvider: 'password-recovery-routes',
+  // The FAILURE half of the same property, driven the same way: the chassis test
+  // delivers a real unusable arrival through the real repository and asserts the
+  // app lands on the explanation with nothing having navigated.
+  passwordResetArrivalProvider: 'password-recovery-routes',
+  // Overridable so that arrival can be constructed at all: `Uri.base` is a
+  // property of the process, so without this the failure path could only ever be
+  // reached by hand — which is exactly how it came to be untested.
+  launchUriProvider: 'password-recovery-routes',
   // Driven, not merely constructed: the property signs in through the real form
   // and asserts the user ends up somewhere else.
   authRefreshProvider: 'auth-redirect-follows-session',

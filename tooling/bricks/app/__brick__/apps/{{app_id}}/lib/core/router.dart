@@ -6,6 +6,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../features/auth/check_inbox_screen.dart';
 import '../features/auth/reaccept_terms_screen.dart';
+import '../features/auth/reset_password_screen.dart';
 import '../features/auth/sign_in_screen.dart';
 import '../features/auth/verify_email_screen.dart';
 import '../features/firstrun/onboarding_screen.dart';
@@ -97,12 +98,69 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // makes. Left out of this list they are bounced to `/sign-in` the instant
       // the sign-up screen sends them here — which is the stranding this
       // destination exists to end, arriving one line later.
+      //
+      // 🔴 `/reset-password` IS IN HERE FOR A REASON THE OTHERS DO NOT SHARE,
+      // and dropping it turns the commonest failure of this feature into a
+      // silent one. A reset link that has expired, been used already, or been
+      // opened where the PKCE code verifier was never stored mints NO SESSION —
+      // so the person arrives signed out, and without this entry the guard
+      // bounces them to `/sign-in` with no explanation at all. They came from
+      // their inbox, followed the instruction, and the app answers by showing
+      // them the same form they could not get past. The screen's dead-link state
+      // get past.
+      //
+      // ⚠️ THIS ENTRY IS NECESSARY AND WAS NEVER SUFFICIENT, which is what the
+      // review caught: it lets a signed-out visitor STAND here, and nothing
+      // used to PUT them here. `passwordResetArrivalProvider` is what does —
+      // it reads the marker gotrue preserves in the query and the seam's
+      // `recoveryLinkFailed` event, and the recovery gate below acts on both.
+      // Without that provider this allowance is a room with no door to it.
       final bool signedOutMayStay =
           onAuthScreen ||
           state.matchedLocation == '/reaccept-terms' ||
-          state.matchedLocation == '/check-inbox';
+          state.matchedLocation == '/check-inbox' ||
+          state.matchedLocation == '/reset-password';
       // Signed out and heading somewhere gated → the sign-in screen.
       if (!signedIn && !signedOutMayStay) return '/sign-in';
+
+      // ── PASSWORD RECOVERY, ABOVE THE VERIFICATION GATE ───────────────────
+      // 🔴 THE ONLY THING THAT KNOWS WHY THE APP WAS OPENED. A recovery session
+      // is an ordinary session — same user, same token — so nothing further down
+      // can tell this person apart from somebody who just signed in, and they
+      // would be handed the home screen instead of the form they came for. The
+      // distinction survives only because `authEvents()` carries it and
+      // `passwordRecoveryProvider` holds it; see that provider.
+      //
+      // 🔴 ABOVE THE VERIFICATION GATE ON PURPOSE. Following the recovery link
+      // PROVES the mailbox — it is the same proof `/verify-email` is asking
+      // for — so bouncing this user to "check your inbox" sends them back to the
+      // inbox they just came from, and the Resend button there sends a SIGN-UP
+      // confirmation, which is the wrong mail entirely. Above the re-acceptance
+      // gate for the ordinary reason: nobody should be asked to agree to terms
+      // as the price of getting back into their account.
+      //
+      // 🔴 AND THE ARRIVAL IS READ ALONGSIDE IT, WHICH IS WHAT MAKES THE
+      // FAILURE PATH REACHABLE AT ALL. `passwordRecoveryProvider` arms on the
+      // SUCCESS event and on nothing else, so a link that cannot be exchanged —
+      // expired, already spent, or opened where the PKCE verifier was never
+      // stored — routed nowhere: the person landed on `/`, was bounced to
+      // `/sign-in`, and the screen that explains their exact situation was
+      // unreachable from the situation. `passwordResetArrivalProvider` reads the
+      // launch URL and the seam's `recoveryLinkFailed` event, so BOTH halves of
+      // the feature land here now. See `shouldHoldForPasswordReset`.
+      if (shouldHoldForPasswordReset(
+        recovering: ref.read(passwordRecoveryProvider),
+        arrival: ref.read(passwordResetArrivalProvider).arrival,
+      )) {
+        return state.matchedLocation == '/reset-password'
+            ? null
+            : '/reset-password';
+      }
+      // A signed-IN user with no recovery in flight has no business here — the
+      // screen would offer a silent password rotation on whatever session is in
+      // hand. Conditioned on `signedIn` so the signed-OUT dead-link case above
+      // still reaches its explanation.
+      if (signedIn && state.matchedLocation == '/reset-password') return '/';
 
       // ── EMAIL VERIFICATION, ABOVE EVERYTHING THE USER CAME FOR ───────────
       // Owner lock, 2026-08-09: verification is MANDATORY for email+password
@@ -229,6 +287,15 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             _pendingAddress(state) == null ? '/sign-in' : null,
         builder: (BuildContext context, GoRouterState state) =>
             CheckInboxScreen(email: _pendingAddress(state)!),
+      ),
+      // Where a password-reset link lands. Reachable by a SIGNED-OUT visitor on
+      // purpose — see `signedOutMayStay` above — because a link that could not
+      // complete its exchange leaves exactly that state, and it is the state
+      // this screen exists to explain.
+      GoRoute(
+        path: '/reset-password',
+        builder: (BuildContext context, GoRouterState state) =>
+            const ResetPasswordScreen(),
       ),
       GoRoute(
         path: '/settings',

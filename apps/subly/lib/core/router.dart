@@ -45,6 +45,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import '../features/auth/check_inbox_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/reaccept_terms_screen.dart';
+import '../features/auth/reset_password_screen.dart';
 import '../features/auth/sign_up_screen.dart';
 import '../features/auth/verify_email_screen.dart';
 import '../features/budget/budget_screen.dart';
@@ -159,6 +160,22 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         // edited away is a visitor parked on an interstitial they can complete
         // and leave — never a 404 with no way back to the form.
         '/reaccept-terms',
+        // 🔴 IN HERE FOR A REASON THE OTHERS DO NOT SHARE, and removing it turns
+        // the commonest failure of password reset into a silent one. A link that
+        // has expired, been used, or been opened where the PKCE code verifier
+        // was never stored mints NO SESSION — the person arrives SIGNED OUT.
+        // Without this entry the guard bounces them to `/sign-in` with no
+        // explanation: they came from their inbox, did exactly as instructed,
+        // and the app answers by showing them the form they already could not
+        // get past.
+        //
+        // ⚠️ THIS ENTRY IS NECESSARY AND WAS NEVER SUFFICIENT, which is what the
+        // review caught: it lets a signed-out visitor STAND here, and nothing
+        // used to PUT them here. `passwordResetArrivalProvider` is what does —
+        // it reads the marker gotrue preserves in the query and the seam's
+        // `recoveryLinkFailed` event, and the recovery gate below acts on both.
+        // Without that provider this allowance is a room with no door to it.
+        '/reset-password',
       ];
 
       // 🔴 `/login` MUST STAY IN `authFlow`, OR THE DEEP LINK IS EATEN HERE.
@@ -172,6 +189,50 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // `/login` allowed makes the guard decline and hands the job to the
       // route-level redirect below.
       if (!loggedIn && !authFlow.contains(loc)) return '/sign-in';
+
+      // ── PASSWORD RECOVERY, AND IT SITS ABOVE THE VERIFICATION GATE ────────
+      // 🔴 THE ONLY THING IN THE APP THAT KNOWS WHY IT WAS OPENED. A recovery
+      // session is an ordinary session — same user, same token, same emission on
+      // `authStateChanges()` — so every gate below this one would see somebody
+      // who has just signed in and hand them the home screen. The person came
+      // to set a password. The distinction survives only because `authEvents()`
+      // now carries it and `passwordRecoveryProvider` holds it; the Supabase
+      // adapter used to map it away, which is why this feature had no landing
+      // point at all.
+      //
+      // 🔴 ABOVE THE VERIFICATION GATE ON PURPOSE, AND FOR A DIFFERENT REASON
+      // THAN THE ONE THAT PUTS VERIFICATION ABOVE RE-ACCEPTANCE. Following the
+      // recovery link IS proof of the mailbox — the same proof `/verify-email`
+      // exists to collect — so bouncing this user there sends them back to the
+      // inbox they just came from, and the Resend button on that screen sends a
+      // SIGN-UP confirmation, which is the wrong mail entirely. It is above
+      // re-acceptance for the plainer reason: agreeing to terms must not be the
+      // price of getting back into an account.
+      //
+      // `read`, not `watch` — watching rebuilds the ROUTER and throws away the
+      // stack, the same rule the onboarding and legal reads follow.
+      // `routerRefreshProvider` is what re-runs this when the event lands.
+      //
+      // 🔴 AND THE ARRIVAL IS READ ALONGSIDE IT, WHICH IS WHAT MAKES THE
+      // FAILURE PATH REACHABLE AT ALL. `passwordRecoveryProvider` arms on the
+      // SUCCESS event and on nothing else, so a link that cannot be exchanged —
+      // expired, already spent, or opened where the PKCE verifier was never
+      // stored — routed nowhere: the person landed on `/`, was bounced to
+      // `/sign-in`, and the screen that explains their exact situation was
+      // unreachable from the situation. `passwordResetArrivalProvider` reads the
+      // launch URL and the seam's `recoveryLinkFailed` event, so BOTH halves of
+      // the feature land here now. See `shouldHoldForPasswordReset`.
+      if (shouldHoldForPasswordReset(
+        recovering: ref.read(passwordRecoveryProvider),
+        arrival: ref.read(passwordResetArrivalProvider).arrival,
+      )) {
+        return loc == '/reset-password' ? null : '/reset-password';
+      }
+      // A signed-IN user with no recovery in flight has no business here: the
+      // screen would offer a silent password rotation on whatever session is in
+      // hand. 🔴 CONDITIONED ON `loggedIn` so the signed-OUT dead-link case
+      // above still reaches its explanation instead of being bounced.
+      if (loggedIn && loc == '/reset-password') return '/home';
 
       // ── EMAIL VERIFICATION, AND IT SITS ABOVE EVERYTHING A USER CAME FOR ──
       // Owner lock, 2026-08-09: verification is MANDATORY for email+password
@@ -336,6 +397,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/reaccept-terms',
         parentNavigatorKey: rootNavigatorKey,
         builder: (_, __) => const ReacceptTermsScreen(),
+      ),
+
+      // ── WHERE A PASSWORD-RESET LINK LANDS ─────────────────────────────────
+      // Above the shell for the same reason the two gates above are: a bottom
+      // nav bar under a gate is a way around the gate, and this one holds a
+      // person who cannot get into their account any other way.
+      //
+      // Reachable by a SIGNED-OUT visitor on purpose (see `/reset-password` in
+      // `authFlow`): a link whose exchange could not complete leaves exactly
+      // that state, and explaining it is what this screen is for.
+      GoRoute(
+        path: '/reset-password',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, __) => const ResetPasswordScreen(),
       ),
 
       // ── LIVE ROOT-NAVIGATOR ROUTES ────────────────────────────────────────
