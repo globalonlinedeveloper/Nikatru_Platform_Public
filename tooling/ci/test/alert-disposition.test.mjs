@@ -12,7 +12,7 @@
 // same misunderstanding as the guard you write.
 //
 // ── THE MUTATION THAT MATTERS, ALSO RUN IN PLACE ON THE REAL TREE ───────────
-// 2026-08-07, against the committed tooling/ops/register.json:503 — the clause
+// 2026-08-07, against the committed tooling/ops/register.json:640 — the clause
 // `+ the reused issue titled 'Scheduled duty is not reporting healthy'` was
 // deleted from the live file, the guard was run for real against the live GitHub
 // API, and it exited 1 with:
@@ -27,6 +27,19 @@
 // then restored from the pre-mutation buffer and `git status --porcelain
 // tooling/ops/register.json` returned empty — byte-identical, not merely
 // equivalent. M1 below is that same mutation, automated against a copy.
+//
+// ⚠️ THAT LINE NUMBER WAS 503 AND POINTED AT THE WRONG ROW FOR WEEKS. It was
+// CORRECT when written — at 6302a59 the register was 2190 lines and :503 held
+// exactly the clause above — and then inserts above it moved the clause to :584
+// without moving the citation, so :503 came to name the `duty.workflow.e2e.yml`
+// row instead: a different duty, a different issue, and a reader following it
+// would have "verified" the wrong thing. This retirement adds 56 more lines
+// above it. Re-derived BY CONTENT rather than by arithmetic — the clause was
+// searched for, found at :640, and the number set to where it actually is.
+//
+// 🔴 A LINE NUMBER IS A POINTER INTO A FILE OTHER PEOPLE EDIT, and nothing
+// recomputes it. It is correct only until somebody inserts above it, and it
+// fails SILENTLY: it still resolves, to a real line, that says something else.
 //
 // ── LIMB B IS TESTED FOR THE OPPOSITE PROPERTY ─────────────────────────────
 // Limb A is tested for its ability to FAIL. Limb B is tested for its refusal to:
