@@ -401,10 +401,10 @@ jobs:
           # PINNED 2026-07-28. Without this the action resolves wrangler from the
           # package.json in workingDirectory — and a Flutter app has none, so it
           # installed the version baked into the action's own bundle
-          # (3.90.0, live-proven in run 30292045671) while both Workers lock 4.114.0.
+          # (3.90.0, live-proven in run 30292045671) while both Workers locked 4.114.0.
           # Must equal tooling/versions.json "wrangler"; assert-version-consistency
           # fails the build if it drifts, or if this line disappears. [pipeline F-2, F-11]
-          wranglerVersion: '4.114.0'
+          wranglerVersion: '4.120.0'
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/${{ matrix.app }}
           command: pages deploy build/web --project-name=${{ matrix.app }} --branch=main
