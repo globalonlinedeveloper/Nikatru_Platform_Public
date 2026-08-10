@@ -4430,13 +4430,25 @@ void main() {
       );
 
       // A second container over the SAME storage: a relaunch.
-      final ProviderContainer second = await signedIn(
+      //
+      // 🔴 NAMED `c2`, NOT `second`, AND THE REASON IS MECHANICAL. This file is
+      // a TEMPLATE whose stamped output is checked by `dart format
+      // --set-exit-if-changed`, and the token below expands to the app's own
+      // name — so this line's LENGTH is a function of the app id. With
+      // `second` the collapsed call is 78 columns at `Probe` and 81 at
+      // `Probeapi`, so the formatter collapses it for one CI variant and wraps
+      // it for the other: NO source form satisfies both, and a trailing comma
+      // does not pin it (the tall-style formatter stopped treating one as a
+      // wrap hint). Four characters shorter and every id the factory stamps
+      // formats identically. Measured, not guessed — the probeapi stamp was the
+      // only place the deviation appeared.
+      final ProviderContainer c2 = await signedIn(
         promoEnabled: true,
         store: store,
       );
-      addTearDown(second.dispose);
+      addTearDown(c2.dispose);
       await tester.pumpWidget(
-        UncontrolledProviderScope(container: second, child: const {{app_id.pascalCase()}}App()),
+        UncontrolledProviderScope(container: c2, child: const {{app_id.pascalCase()}}App()),
       );
       await _turnsAndSettleRoute(tester);
       expect(find.byType(PromoCard), findsNothing);

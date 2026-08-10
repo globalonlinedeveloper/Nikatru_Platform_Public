@@ -4188,13 +4188,20 @@ void main() {
       );
 
       // A second container over the SAME storage: a relaunch.
-      final ProviderContainer second = await signedIn(
+      //
+      // 🔴 NAMED `c2` TO MATCH THE TEMPLATE, WHERE IT IS LOAD-BEARING. In
+      // tooling/bricks the same line's LENGTH is a function of the stamped app
+      // id, and at `second` the formatter collapses it for one CI stamp variant
+      // and wraps it for the other. `Subly` is short enough that either form is
+      // stable here — which is exactly why the divergence would go unnoticed in
+      // this copy and fail in the brick's.
+      final ProviderContainer c2 = await signedIn(
         promoEnabled: true,
         store: store,
       );
-      addTearDown(second.dispose);
+      addTearDown(c2.dispose);
       await tester.pumpWidget(
-        UncontrolledProviderScope(container: second, child: const SublyApp()),
+        UncontrolledProviderScope(container: c2, child: const SublyApp()),
       );
       await _turnsAndSettleRoute(tester);
       expect(find.byType(PromoCard), findsNothing);
