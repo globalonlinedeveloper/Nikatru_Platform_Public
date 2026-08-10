@@ -37,9 +37,12 @@
 //                        got round to deleting it" and "we deliberately retain
 //                        this" are the same word.
 //   `period`             requires a positive `periodDays`.
-//   `ttl`                requires the TTL to be IN THE CODE at the row's anchor —
-//                        this guard reads `expirationTtl` at the anchor file
-//                        rather than believing the claim.
+//   `ttl`                requires the TTL to be IN THE CODE at the row's anchor,
+//                        AND requires `mechanism.ttlSource` — the exact source
+//                        text that sets THIS store's expiry — to appear verbatim
+//                        there. One anchor can hold several puts under several
+//                        rules (subscribe.js holds two), so "the file mentions
+//                        expirationTtl" is a fact about the file, not the row.
 //   `cache`             re-fetchable, holds no personal data.
 //   `period-undeclared`  requires `ownerGated` + an `ownerGap`, and PRINTS on
 //                        every run. Declaring a retention period is a POLICY
@@ -251,16 +254,47 @@ function main() {
   }
 
   // (iv) a `ttl` rule must be true IN THE CODE, not merely claimed
+  //
+  // 🔴 TWO ROWS SHARING ONE ANCHOR IS WHY `ttlSource` EXISTS, and it is not a
+  // hypothetical: sites/nikatru/functions/api/subscribe.js writes TWO KV values
+  // with two different retention rules — the rate-limit key and the signup
+  // record — so `anchor contains "expirationTtl"` is satisfied for the signup
+  // row by the RATE-LIMIT's TTL. Under that check alone the signup row's period
+  // could be deleted from the code, or the register could claim 365 days while
+  // the file wrote 30, and this guard would print ok. An assertion that cannot
+  // fail is worse than none, because it inflates apparent coverage.
+  //
+  // So a `ttl` row names the LINE that makes its own claim true, and that string
+  // must appear VERBATIM in the anchor. The register's number is then READ OFF
+  // the code rather than asserted beside it.
   for (const r of rows) {
     if (r.rule !== 'ttl') continue;
     const anchor = r?.mechanism?.anchor;
+    const ttlSource = r?.mechanism?.ttlSource;
     const p = anchor ? join(ROOT, anchor) : null;
+    if (typeof ttlSource !== 'string' || ttlSource.trim() === '') {
+      errors.push(
+        `${r.id} — \`rule: ttl\` with no \`mechanism.ttlSource\`. Name the exact source text that sets THIS store's ` +
+          'expiry: an anchor can hold several puts under several rules, so "the file mentions expirationTtl somewhere" ' +
+          'is a fact about the file, not about this row.',
+      );
+      continue;
+    }
     if (!p || !existsSync(p)) {
       errors.push(`${r.id} — \`rule: ttl\` whose anchor \`${anchor}\` does not exist, so the claim cannot be checked against anything.`);
-    } else if (!readFileSync(p, 'utf8').includes('expirationTtl')) {
+      continue;
+    }
+    const src = readFileSync(p, 'utf8');
+    if (!src.includes('expirationTtl')) {
       errors.push(
         `${r.id} — \`rule: ttl\` and \`${anchor}\` contains no \`expirationTtl\`. The rule is a claim about the code; ` +
           'reading the code is the only thing that makes it a rule rather than an intention.',
+      );
+    } else if (!src.includes(ttlSource)) {
+      errors.push(
+        `${r.id} — \`rule: ttl\` declares \`ttlSource: ${JSON.stringify(ttlSource)}\` and \`${anchor}\` does not contain that text. ` +
+          'Either the code stopped setting this expiry, or it now sets a DIFFERENT one and this row is still asserting the ' +
+          'old period — a register that states a retention period the code does not implement is the exact drift this limb exists to catch.',
       );
     }
   }

@@ -58,9 +58,15 @@ has an `ip` column. There is no route from a row to a person, so there is nobody
 
 **Contactable — a specific set of people.**
 - **Supabase auth** — email addresses of every account across the portfolio.
-- **the `nikatru-signups` KV namespace** — the newsletter signups. ⚠️ This is the one store in the
-  portfolio holding a contactable identity **with no declared retention period**, so its population
-  is *everyone who ever signed up*, which is a different and larger set than "current users".
+- **the `nikatru-signups` KV namespace** — the newsletter signups. ⚠️ **Its population is still
+  *everyone who ever signed up*, which is a different and larger set than "current users" — and a
+  declared retention period does NOT change that yet.** A period exists as of 2026-08-09 (365 days,
+  `SIGNUP_RETENTION_DAYS` in `sites/nikatru/functions/api/subscribe.js`), but Workers KV fixes a
+  key's expiry **at write time**: every key written before that date carries no expiry and never
+  will. So the set shrinks only for signups taken after 2026-08-09, and only after a year has
+  passed. 🔴 **Do not assume the retention period bounds this list.** Enumerate the namespace
+  (`wrangler kv key list --binding SIGNUPS`, prefix `sub:`) and count what is actually there —
+  ageing the old keys out is an operator action nobody has performed yet.
 
 **And the crash rail is neither.** GlitchTip fills `user.ip_address` **server-side** despite
 `sendDefaultPii = false`, so a breach of the telemetry host has a different notifiable population

@@ -25,6 +25,13 @@
 // That case is correct in both states; the two forced-variant cases below cover
 // both branches regardless of what is shipped.
 //
+// ✅ AND THAT DAY CAME, ON THE SAME DAY: the owner declared 365 days on
+// 2026-08-09, the constant moved `null` -> `365`, and this suite needed NO edit
+// to stay correct — which is the property the paragraph above was written for.
+// What WAS added is the case below that pins the register's number to the
+// code's, because "a period exists" and "the period is 365" are different
+// claims and only the first was held.
+//
 // NEGATIVE-TESTED (2026-08-09, real mutations of the real file, restored after):
 //   N1 call site reverted to `put(key, JSON.stringify(record))`
 //        -> "declares 30 day(s) and the put carried no options" (the wiring test
@@ -34,6 +41,19 @@
 //        -> "must be the same two-argument put the site makes today" (arity 3)
 //   N3 `SECONDS_PER_DAY` changed 86400 -> 3600
 //        -> conversion case red: expected 2592000, got 108000
+//   N5 register `mechanism.ttlSource` moved to 180 while the code says 365
+//        -> "the register claims 180 day(s) and … declares 365" (the new case;
+//           every other case in this file stayed GREEN under that mutation,
+//           which is the whole reason it was added)
+//   N6 the shipped constant moved 365 -> null with the register left at `ttl`
+//        -> "the code declares no period; the register must still say so."
+//   N7 a SECOND `const SIGNUP_RETENTION_DAYS = 180;` injected at column 0 inside
+//      a block comment ABOVE the real one — so the register's `ttlSource` is
+//      still present verbatim and only the FIRST-DECLARED number differs
+//        -> "the register claims 365 day(s) and … declares 180". Run because the
+//           verbatim check alone would have made the number comparison an
+//           assertion with no reachable failing input, and one of those is worse
+//           than none: it inflates the coverage this row is credited with.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,6 +118,16 @@ async function loadReal() {
   return import(pathToFileURL(SUBSCRIBE).href);
 }
 
+/** The register row that owns this store. Read fresh rather than cached: it is
+ *  the other half of every claim below, and a missing row is a seam with no
+ *  recorded owner rather than a test that quietly has nothing to compare. */
+function signupRow() {
+  const reg = JSON.parse(readFileSync(join(REPO, 'tooling/ops/register.json'), 'utf8'));
+  const row = (reg.rows ?? []).find((r) => r.id === 'retention.kv.nikatru-signups.signup');
+  assert.ok(row, 'retention.kv.nikatru-signups.signup is gone from the register — the seam has no recorded owner.');
+  return row;
+}
+
 /** What the shipped file declares today: `null`, or a number. */
 function declaredPeriod() {
   const m = SRC.match(DECL_RE);
@@ -142,12 +172,13 @@ describe('signupPutOptions — the pure half', () => {
     // ⚠️ NOT `signupPutOptions(undefined)`. That argument triggers the DEFAULT
     // PARAMETER and so returns whatever the file currently declares — it is the
     // "use the shipped period" call, not the "no period" one. Asserting it
-    // returns undefined passes today only because the shipped value is null,
-    // and would go red the day the owner declares a period: a test that turns
-    // the intended one-line change into a two-line one. Caught by running the
-    // owner's change as a mutation (N4 in the header) rather than by reading.
-    // The default-parameter path is covered by the shipped-file case below,
-    // which derives its expectation instead of pinning it.
+    // returned undefined would have passed only while the shipped value was
+    // null, and would have gone red the day the owner declared a period: a test
+    // that turns the intended one-line change into a two-line one. Caught by
+    // running the owner's change as a mutation (N4 in the header) rather than
+    // by reading — and the shipped value IS 365 now, so that mutation is simply
+    // the tree. The default-parameter path is covered by the shipped-file case
+    // below, which derives its expectation instead of pinning it.
   });
 
   test('a positive number of days converts to seconds', async () => {
@@ -245,9 +276,7 @@ describe('the shipped file', () => {
     // The coupling that stops the two halves drifting: if the owner declares a
     // period in the code, the register row must stop calling it undeclared (and
     // assert-retention-coverage.mjs then verifies the TTL by reading the file).
-    const reg = JSON.parse(readFileSync(join(REPO, 'tooling/ops/register.json'), 'utf8'));
-    const row = (reg.rows ?? []).find((r) => r.id === 'retention.kv.nikatru-signups.signup');
-    assert.ok(row, 'retention.kv.nikatru-signups.signup is gone from the register — the seam has no recorded owner.');
+    const row = signupRow();
     const declared = declaredPeriod();
     if (declared === null) {
       assert.equal(row.rule, 'period-undeclared', 'the code declares no period; the register must still say so.');
@@ -259,5 +288,47 @@ describe('the shipped file', () => {
           'Move the row to `rule: "ttl"` so the guard verifies it against the code.',
       );
     }
+  });
+
+  test('the register row and the code agree on WHAT THE PERIOD IS, not merely that there is one', async () => {
+    // 🔴 THE STRONGER HALF, AND IT IS NOT REDUNDANT. The case above passes for
+    // ANY non-undeclared rule; a register claiming 30 days while this file
+    // writes 365 would satisfy it completely. What closes that is
+    // `mechanism.ttlSource` — the register naming the exact source line — which
+    // assert-retention-coverage.mjs requires to appear VERBATIM in the anchor.
+    // That guard limb had to be built with this activation: subscribe.js writes
+    // TWO KV values, so the rate-limit put's own `expirationTtl` already
+    // satisfied the older "the anchor mentions expirationTtl" check on the
+    // signup row's behalf — an assertion that could not fail.
+    const row = signupRow();
+    const declared = declaredPeriod();
+    const ttlSource = row?.mechanism?.ttlSource;
+
+    if (declared === null) {
+      assert.equal(
+        ttlSource,
+        undefined,
+        'the code declares no period, so the register must not name a line that sets one.',
+      );
+      return;
+    }
+
+    assert.equal(row.rule, 'ttl', 'a declared period is enforced here as a KV TTL, so the row reads `rule: "ttl"`.');
+    assert.ok(
+      typeof ttlSource === 'string' && ttlSource.trim() !== '',
+      '`rule: ttl` with no `mechanism.ttlSource` — the register would be asserting a period no guard can read off the code.',
+    );
+    assert.ok(
+      SRC.includes(ttlSource),
+      `the register names \`${ttlSource}\` as the line that sets this TTL and ${SUBSCRIBE_REL} does not contain it.`,
+    );
+    const m = ttlSource.match(DECL_RE);
+    assert.ok(m, `\`mechanism.ttlSource\` must BE the \`SIGNUP_RETENTION_DAYS\` declaration, got ${JSON.stringify(ttlSource)}.`);
+    assert.equal(
+      Number(m[1].trim()),
+      declared,
+      `the register claims ${m[1].trim()} day(s) and ${SUBSCRIBE_REL} declares ${declared}. One of them is a promise ` +
+        'about how long a contactable email address is kept, and they cannot both be it.',
+    );
   });
 });

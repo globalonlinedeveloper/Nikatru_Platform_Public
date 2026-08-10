@@ -498,9 +498,8 @@
       "personalData": true,
       "holds": "Launch-notification signups: `sub:<email>` → { email, ts }. AND, under a separate `rl:` prefix, a short-lived per-fingerprint rate-limit counter. The email address is stored in plain text and is the only directly-identifying value anywhere in this repository.",
       "retention": {
-        "kind": "undecided",
-        "ownerItem": "O-3",
-        "reason": "🔴 THE SHARPEST GAP IN THIS FILE. sites/nikatru/functions/api/subscribe.js writes the SIGNUP record with no expirationTtl, while the rate-limit key beside it correctly carries one — against privacy.html's promise to keep information 'only for as long as necessary'. It is NOT fixed here on purpose: setting a TTL on this namespace silently deletes the owner's real launch list after whatever number an agent picks, and no number is derivable from anything in this tree. What is needed is a decision (a period, or a written 'kept until launch, then deleted'), not a guess."
+        "kind": "ttl",
+        "reason": "DECIDED BY THE OWNER 2026-08-09: 365 days. sites/nikatru/functions/api/subscribe.js sets it in one place — `const SIGNUP_RETENTION_DAYS = 365;` — and the signup put now carries `expirationTtl` exactly as the rate-limit key beside it always did. This was THE SHARPEST GAP IN THIS FILE and it was deliberately left open until then: setting a TTL on this namespace silently deletes the owner's real launch list after whatever number an agent picks, and no number was derivable from anything in this tree, so what was needed was a decision and not a guess. tooling/ops/register.json → retention.kv.nikatru-signups.signup carries the machine-checked half (`rule: ttl` + a `ttlSource` that assert-retention-coverage.mjs must find verbatim in the code), and tooling/ci/test/signup-retention.test.mjs asserts the put really carries the TTL. ⚠️ KEYS WRITTEN BEFORE 2026-08-09 KEEP NO EXPIRY — Workers KV fixes expiry at write time, so ageing those out is an operator action against the namespace, not something this code does."
       },
       "erasure": {
         "kind": "no-route",

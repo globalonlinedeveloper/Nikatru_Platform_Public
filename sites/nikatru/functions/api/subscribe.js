@@ -103,41 +103,55 @@ async function fingerprint(secret, text) {
 const RATE_LIMIT = 12; // max signups per fingerprint per hour
 const RATE_WINDOW_SECONDS = 3600;
 
-// ── SIGNUP RETENTION — THE WIRING IS BUILT, THE VALUE IS NOT ─────────────────
+// ── SIGNUP RETENTION — DECLARED: 365 DAYS (OWNER, 2026-08-09) ────────────────
 // 🔑 THE NUMBER ON THE `SIGNUP_RETENTION_DAYS` LINE IS THE OWNER'S POLICY CALL,
-// NOT AN ENGINEERING ONE. tooling/ops/register.json →
-// retention.kv.nikatru-signups.signup records why, and it is the reason this
-// ships dormant rather than filled in: the published privacy policy says
-// information is kept "only for as long as necessary", no number is derivable
-// from anything in this tree, and an agent picking 180 or 365 would be WRITING
-// POLICY under the appearance of fixing a bug — while silently deleting the
-// owner's real launch list once the period passed.
+// NOT AN ENGINEERING ONE — and it has now been made. Why it shipped as `null`
+// until 2026-08-09 stays written down, because it is the reason this line is
+// safe to trust: the published privacy policy says information is kept "only
+// for as long as necessary", no number is derivable from anything in this tree,
+// and an agent picking 180 or 365 would have been WRITING POLICY under the
+// appearance of fixing a bug — while silently deleting the owner's real launch
+// list once the period passed. So the engineering half was built dormant and
+// the policy half was left as ONE VALUE. This is that value, and the decision
+// behind it is recorded in company/decisions/decisions-log.md (2026-08-09).
 //
-// So the half that IS engineering is done here, and the half that is policy is
-// left as one value. `null` means no expiry, which is exactly what ships today.
+// WHAT HOLDS THIS NUMBER TO THE REST OF THE SYSTEM — change it and all of these
+// move with it, or the build goes red rather than the claim going stale:
+//   · tooling/ops/register.json → retention.kv.nikatru-signups.signup carries
+//     `rule: "ttl"` and a `mechanism.ttlSource` that must appear VERBATIM in
+//     this file, so the register's declared period is READ OFF THIS LINE rather
+//     than asserted beside it (tooling/ci/assert-retention-coverage.mjs).
+//   · tooling/ci/test/signup-retention.test.mjs loads THIS module and asserts
+//     the put really carries `expirationTtl: days × 86400`, and that the
+//     register row and this constant agree that a period exists.
+//   · tooling/legal/data-inventory.json → `kv:nikatru-signups` declares
+//     retention `ttl` and names this file as the code that sets the expiry.
 //
-// TO ACTIVATE: change `null` on the next line to a positive number of days.
-// That is the entire change — one value, in one place. Every signup written
-// afterwards carries the TTL, and the register row's `rule` moves from
-// `period-undeclared` to `ttl` (assert-retention-coverage.mjs then verifies the
-// TTL by reading THIS file, so the claim stays checked against the code).
-//
-// ⚠️ IT APPLIES TO SUBSEQUENT WRITES ONLY. Workers KV fixes a key's expiry at
-// write time, so keys already stored keep no expiry; ageing those out is an
-// operator action against the namespace, not something this code path does.
-const SIGNUP_RETENTION_DAYS = null;
+// ⚠️ IT APPLIES TO SUBSEQUENT WRITES ONLY, AND THAT IS NOT A DETAIL. Workers KV
+// fixes a key's expiry at WRITE time, so every signup stored BEFORE this line
+// changed still carries no expiry and will never acquire one by itself. Ageing
+// those out is an operator action against the namespace (re-put or delete by
+// key), not something this code path does — and until it happens the store
+// still holds contactable addresses with no bound, which is exactly the fact
+// docs/runbooks/breach-response.md's notifiable-population step turns on.
+const SIGNUP_RETENTION_DAYS = 365;
 
 const SECONDS_PER_DAY = 86400;
 
-/** KV put options for a signup record, or `undefined` while no period is declared.
+/** KV put options for a signup record, or `undefined` if no period is declared.
  *
  *  ⚠️ RETURNS `undefined` RATHER THAN `{ expirationTtl: undefined }`, and the
- *  call site spreads it away entirely, so the dormant path is the SAME TWO-ARG
- *  `put(key, value)` the site makes today. If the inert state were an options
- *  object with an undefined field, "leaving the period undeclared changes
- *  nothing" would be a claim resting on how KV treats that field rather than a
- *  property of this file — and the whole point of the seam is that switching it
- *  on is the only thing that changes behaviour. */
+ *  call site spreads it away entirely, so a period of `null` is a plain two-arg
+ *  `put(key, value)` — byte for byte the call this site made before a period
+ *  existed. That branch is dormant now that 365 days are declared, and it is
+ *  kept (and tested) because it is what makes REVERTING the period a one-value
+ *  change too: if the inert state were an options object with an undefined
+ *  field, "no declared period changes nothing" would be a claim resting on how
+ *  KV treats that field rather than a property of this file.
+ *
+ *  🔴 `0`, negatives and non-numbers fall to `undefined` DELIBERATELY. KV reads
+ *  a tiny or absent TTL as "expire almost immediately", so a fat-fingered `0`
+ *  must mean NO EXPIRY — never "delete the launch list now". */
 export function signupPutOptions(days = SIGNUP_RETENTION_DAYS) {
   return typeof days === "number" && Number.isFinite(days) && days > 0
     ? { expirationTtl: Math.round(days * SECONDS_PER_DAY) }
@@ -209,9 +223,11 @@ export async function onRequestPost({ request, env }) {
     const existing = await env.SIGNUPS.get(key);
     if (!existing) {
       const record = { email, ts: new Date().toISOString() };
-      // The spread is what keeps the dormant seam inert: with no declared
-      // period this is `put(key, value)` and nothing more. See
-      // SIGNUP_RETENTION_DAYS above — one value turns it into a TTL'd write.
+      // With the declared period this is a three-argument put carrying
+      // `expirationTtl`; with none it collapses back to `put(key, value)` and
+      // nothing more. See SIGNUP_RETENTION_DAYS above — the period is the only
+      // thing that decides which, and both shapes are held by
+      // tooling/ci/test/signup-retention.test.mjs.
       const ttl = signupPutOptions();
       await env.SIGNUPS.put(key, JSON.stringify(record), ...(ttl ? [ttl] : []));
     }

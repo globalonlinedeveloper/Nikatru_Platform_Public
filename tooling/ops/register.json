@@ -271,10 +271,22 @@
       "than absent: a row that declares `rule: period` must ALSO name `deletingJob` — the acceptance's",
       "'by a job' half — so the day a period is declared the job requirement lands with it instead of",
       "waiting for somebody to remember to write new code. `_maxUndeclared` is a CEILING that ratchets",
-      "down; a fourth undeclared period fails. And the executed-query count prints on every run, so an",
-      "empty domain announces itself instead of reading as nineteen checked stores."
+      "down. And the executed-query count prints on every run, so an empty domain announces itself",
+      "instead of reading as nineteen checked stores.",
+      "",
+      "RATCHETED 3 -> 2 ON 2026-08-09, and the ratchet is the point of the number: the owner declared",
+      "the signup KV's period (365 days), retention.kv.nikatru-signups.signup moved to `rule: ttl`, and",
+      "the ceiling came down with it. A THIRD undeclared period now fails. Leaving the ceiling at 3",
+      "after a gap closes is how a cap silently buys back the room it just gave up — the closed gap",
+      "would fund a new one, and the count would still read 'within the ceiling'.",
+      "",
+      "TWO REMAIN, AND BOTH ARE THE SAME KIND OF ASK — one number each, from the owner:",
+      "retention.d1.platform_db.events and retention.d1.platform_db.provider_notifications. They print",
+      "on every run of assert-retention-coverage.mjs and assert-ops-register.mjs with the decision",
+      "written out in their `ownerGap`. `provider_notifications` is the sharper of the two: it holds",
+      "buyer personal data verbatim AND sits outside the user_id-derived erasure sweep."
     ],
-    "_maxUndeclared": 3
+    "_maxUndeclared": 2
   },
   "_requiredCoverage": {
     "_why": [
@@ -1876,7 +1888,7 @@
         "cloudflare"
       ],
       "ownerGated": true,
-      "ownerGap": "The retention PERIOD is a policy decision. ⚠️ Note the trap this row exists to avoid: the table holds ZERO rows today, so any 'no rows older than the period' query is VACUOUSLY GREEN. That is a fact about traffic, not about retention, which is why the coverage limb is enumeration-driven and never row-driven.",
+      "ownerGap": "⬜ OWNER DECISION OUTSTANDING — ONE NUMBER: how many days of analytics events are kept. The retention PERIOD is a policy decision, not an engineering one. 📌 SURFACED 2026-08-09: this is now ONE OF THE LAST TWO undeclared periods in the portfolio (the other is retention.d1.platform_db.provider_notifications) — the signup KV's was declared the same day at 365 days, and `_retentionCoverage._maxUndeclared` ratcheted to 2, so no third gap can join these. ⚠️ Note the trap this row exists to avoid: the table holds ZERO rows today, so any 'no rows older than the period' query is VACUOUSLY GREEN. That is a fact about traffic, not about retention, which is why the coverage limb is enumeration-driven and never row-driven. 🔴 Also open and UNVERIFIED: D1 may not reclaim space after a DELETE, so a period here is harder to undo than it looks.",
       "source": "verified"
     },
     {
@@ -1944,7 +1956,7 @@
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half only)"
       },
       "ownerGated": true,
-      "ownerGap": "🔴 Personal data, verbatim, with no declared period AND outside the user_id-derived erasure sweep (services/platform/src/routes/account.ts). Owner/stage 8: declare the period and decide whether erasure must reach a table whose whole purpose is to be the unaltered evidence of a payment."
+      "ownerGap": "🔴 OWNER DECISION OUTSTANDING, AND THIS IS THE SHARPER OF THE TWO LEFT: personal data, verbatim, with no declared period AND outside the user_id-derived erasure sweep (services/platform/src/routes/account.ts). Owner/stage 8: declare the period and decide whether erasure must reach a table whose whole purpose is to be the unaltered evidence of a payment. 📌 SURFACED 2026-08-09 — with the signup KV's period declared (365 days) and `_retentionCoverage._maxUndeclared` ratcheted to 2, the only undeclared periods left in the portfolio are this row and retention.d1.platform_db.events. Of the two, this one holds a buyer's name, email and billing country in the clear, so it is the one where 'as long as necessary' currently means forever."
     },
     {
       "kind": "retention",
@@ -2200,7 +2212,8 @@
         "anchor": "sites/nikatru/functions/api/subscribe.js",
         "record": "the expirationTtl on the put",
         "failingValue": "a put without expirationTtl",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+        "readBy": "tooling/ci/assert-retention-coverage.mjs",
+        "ttlSource": "expirationTtl: RATE_WINDOW_SECONDS"
       },
       "accessProviders": [
         "cloudflare"
@@ -2211,23 +2224,24 @@
       "id": "retention.kv.nikatru-signups.signup",
       "kind": "retention",
       "store": "kv:nikatru-signups:sub-prefix",
-      "what": "🔴 THE SIGNUP RECORDS THEMSELVES — an email address and a timestamp, written with NO expirationTtl. This is the store O-17 was written about, and the drafted acceptance excluded it by construction because it quantified over 'every store WITH a retention rule'.",
-      "rule": "period-undeclared",
-      "detector": "tooling/ci/assert-retention-coverage.mjs — this row is in _requiredCoverage, so it cannot leave the domain by having no rule.",
-      "response": "🔴 The PERIOD is the missing half and it is a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 days would be WRITING POLICY under the appearance of fixing a bug. Owner declares the period; the expirationTtl then follows in one line — and as of 2026-08-09 that line EXISTS rather than being described: sites/nikatru/functions/api/subscribe.js:128 (`SIGNUP_RETENTION_DAYS`), inert at `null`, both branches held by tooling/ci/test/signup-retention.test.mjs.",
+      "what": "THE SIGNUP RECORDS THEMSELVES — an email address and a timestamp. This is the store O-17 was written about, and the drafted acceptance excluded it by construction because it quantified over 'every store WITH a retention rule'. Every signup written since 2026-08-09 carries a 365-day expirationTtl; see the ownerGap for the keys written BEFORE that, which do not.",
+      "rule": "ttl",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — this row is in _requiredCoverage, so it cannot leave the domain by having no rule, and its `ttl` limb reads `mechanism.ttlSource` out of the anchor rather than believing this row.",
+      "response": "n/a for new records — the store expires them itself. The PERIOD was the missing half and it was a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 would have been WRITING POLICY under the appearance of fixing a bug. DECLARED BY THE OWNER 2026-08-09 at 365 days (company/decisions/decisions-log.md); the engineering half had been built dormant the same day, so the decision cost exactly one value at sites/nikatru/functions/api/subscribe.js (`SIGNUP_RETENTION_DAYS`), with both branches held by tooling/ci/test/signup-retention.test.mjs.",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-kv",
         "anchor": "sites/nikatru/functions/api/subscribe.js",
-        "record": "the namespace itself",
-        "failingValue": "a sub: key older than the declared period — once a period exists",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half)"
+        "record": "the expirationTtl on the signup put, computed from `SIGNUP_RETENTION_DAYS` in the anchor",
+        "failingValue": "the anchor declaring a period this row's `ttlSource` does not match (the register claiming one number while the code writes another), or the signup put losing its options argument so the declared period reaches no key",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, which is what stops this row's period from being a claim written beside the code. tooling/ci/test/signup-retention.test.mjs then loads the module and asserts the put actually carries `expirationTtl: days x 86400`.",
+        "ttlSource": "const SIGNUP_RETENTION_DAYS = 365;"
       },
       "accessProviders": [
         "cloudflare"
       ],
       "ownerGated": true,
-      "ownerGap": "🔴 THIS IS THE ONE STORE IN THE PORTFOLIO HOLDING A CONTACTABLE IDENTITY WITH NO EXPIRY. It is also, with Supabase auth, one of the two stores that determine the notifiable population in a breach — the D1 tables are pseudonymous and notifiable only by public notice. Owner: declare the period. ✅ THE ENGINEERING HALF IS NOW BUILT AND DORMANT (2026-08-09), so what is left is only the decision: set `SIGNUP_RETENTION_DAYS` at sites/nikatru/functions/api/subscribe.js:128 from `null` to a positive number of days. That is the whole code change — one value, one line, one place. While it reads `null` the write is the same two-argument `put(key, value)` the site has always made, so the seam costs nothing until it is switched on. Then move this row's `rule` from `period-undeclared` to `ttl`: assert-retention-coverage.mjs's ttl limb verifies the TTL by READING the anchor, so that move is what puts the activated period under a guard rather than under a claim — and tooling/ci/test/signup-retention.test.mjs fails if the code and this row disagree about whether a period exists.",
+      "ownerGap": "🔴 THE KEYS WRITTEN BEFORE 2026-08-09 STILL HAVE NO EXPIRY, AND NO CODE PATH WILL GIVE THEM ONE. Workers KV fixes a key's expiry at WRITE time, so the declared 365 days reaches subsequent writes only — ageing out the existing `sub:` keys is an OPERATOR action against the namespace (re-put or delete by key), which is why this row stays owner-gated after the period was declared. Until that is done this store still holds contactable addresses with no bound, and it remains — with Supabase auth — one of the two stores that determine the notifiable population in a breach (docs/runbooks/breach-response.md step 2); the D1 tables are pseudonymous and notifiable only by public notice. ✅ THE PERIOD ITSELF IS DECIDED AND UNDER A GUARD: owner, 2026-08-09, 365 days.",
       "source": "verified"
     },
     {

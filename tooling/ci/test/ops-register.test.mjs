@@ -64,6 +64,13 @@
 //   N1  a 13th `expires: null` row                -> "and the ceiling is 12"
 //   N2  `expiryKnownAt` stripped from origin-ca   -> "must carry `expiryKnownAt`"
 //   N3  a 4th `period-undeclared` row             -> "and the ceiling is 3"
+//       ⚠️ THE CEILING IS NOW 2, ratcheted 2026-08-09 when the signup KV's
+//       period was declared (365 days) and its row moved to `rule: ttl`. N3 was
+//       re-run against the new number the same day — signup row flipped back to
+//       `period-undeclared` -> "3 retention row(s) carry `rule: period-undeclared`
+//       and the ceiling is 2", problem count 3 -> 4, restored byte-identical and
+//       back to 3. The ratchet is not decoration: leaving a cap at its old value
+//       after a gap closes lets the closed gap fund a new one silently.
 //   N4  the signup KV declares a period, no job   -> "`rule: period` with no `deletingJob`"
 //   N5  `recordQuery` deleted from e2e.yml's row  -> "no `mechanism.recordQuery.reader`"
 //   N6  a 6th duty declared `unreachable`         -> "and the ceiling is 5"

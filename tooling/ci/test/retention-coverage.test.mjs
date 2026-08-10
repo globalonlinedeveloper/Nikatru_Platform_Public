@@ -30,6 +30,21 @@
 //   R6 a rule whose store is gone                       -> "the domain SHRINKING is a failure"
 //   6/6 caught, none crashed, every restore byte-identical and green again.
 //
+// ⚠️ FOUR MORE, 2026-08-09, when the signup KV's period was declared and its row
+// moved to `rule: ttl`. That move is what exposed R4 as too weak to hold it:
+// subscribe.js writes TWO KV values under TWO retention rules, so the RATE-LIMIT
+// put's `expirationTtl` already satisfied "the anchor mentions expirationTtl"
+// for the signup row — the new row's limb could not have failed on its own.
+// `mechanism.ttlSource` (the exact source text that sets THIS store's expiry)
+// is the repair, and these are its real-tree mutations:
+//
+//   R7  register `ttlSource` says 180, the code says 365 -> "does not contain that text"
+//   R8  the code moved to 180, the register still says 365 -> same, from the other side
+//   R9  the code reverted to `null` (period deleted)     -> same — a deleted period
+//                                                          can no longer read as covered
+//   R10 the rate-limit row's `ttlSource` removed         -> "with no `mechanism.ttlSource`"
+//   4/4 caught, every restore byte-identical, guard re-verified green after each.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -218,36 +233,45 @@ describe('assert-retention-coverage — the EXTERNAL half no tree walk can reach
 });
 
 describe('assert-retention-coverage — a `ttl` rule is read from the CODE, not believed', () => {
+  /** A ttl row over `functions/sub.js`. `ttlSource` defaults to the line the
+   *  passing fixture writes, so each test overrides only the thing it is about. */
+  const ttlRow = ({ mechanism: mech = {}, ...rest } = {}) => ({
+    ...retentionRow('kv:external:rl'),
+    id: 'retention.kv.external',
+    rule: 'ttl',
+    keepWhy: undefined,
+    ...rest,
+    mechanism: {
+      substrate: 'cloudflare-kv',
+      anchor: 'functions/sub.js',
+      record: 'the ttl',
+      failingValue: 'a put without one',
+      readBy: 'this guard',
+      ttlSource: 'expirationTtl: 600',
+      ...mech,
+    },
+  });
+
+  const withSub = (body) => (s, r) => {
+    mkdirSync(join(r, 'functions'), { recursive: true });
+    writeFileSync(join(r, 'functions/sub.js'), body);
+    s.requiredIds = ['retention.kv.external'];
+  };
+
   test('a ttl rule whose anchor has no expirationTtl FAILS', () => {
     const root = makeRepo((s, r) => {
-      mkdirSync(join(r, 'functions'), { recursive: true });
-      writeFileSync(join(r, 'functions/sub.js'), 'await env.KV.put(key, value);\n');
-      s.requiredIds = ['retention.kv.external'];
-      s.rows.push({
-        ...retentionRow('kv:external:rl'),
-        id: 'retention.kv.external',
-        rule: 'ttl',
-        keepWhy: undefined,
-        mechanism: { substrate: 'cloudflare-kv', anchor: 'functions/sub.js', record: 'the ttl', failingValue: 'a put without one', readBy: 'this guard' },
-      });
+      withSub('await env.KV.put(key, value);\n')(s, r);
+      s.rows.push(ttlRow());
     });
     const r = run(root);
     assert.equal(r.code, 1);
     assert.match(r.out, /contains no `expirationTtl`/);
   });
 
-  test('a ttl rule whose anchor DOES carry expirationTtl passes', () => {
+  test('a ttl rule whose anchor DOES carry the declared expiry passes', () => {
     const root = makeRepo((s, r) => {
-      mkdirSync(join(r, 'functions'), { recursive: true });
-      writeFileSync(join(r, 'functions/sub.js'), 'await env.KV.put(key, value, { expirationTtl: 600 });\n');
-      s.requiredIds = ['retention.kv.external'];
-      s.rows.push({
-        ...retentionRow('kv:external:rl'),
-        id: 'retention.kv.external',
-        rule: 'ttl',
-        keepWhy: undefined,
-        mechanism: { substrate: 'cloudflare-kv', anchor: 'functions/sub.js', record: 'the ttl', failingValue: 'a put without one', readBy: 'this guard' },
-      });
+      withSub('await env.KV.put(key, value, { expirationTtl: 600 });\n')(s, r);
+      s.rows.push(ttlRow());
     });
     const r = run(root);
     assert.equal(r.code, 0, r.out);
@@ -256,17 +280,63 @@ describe('assert-retention-coverage — a `ttl` rule is read from the CODE, not 
   test('a ttl rule anchored at a file that does not exist FAILS rather than passing unchecked', () => {
     const root = makeRepo((s) => {
       s.requiredIds = ['retention.kv.external'];
-      s.rows.push({
-        ...retentionRow('kv:external:rl'),
-        id: 'retention.kv.external',
-        rule: 'ttl',
-        keepWhy: undefined,
-        mechanism: { substrate: 'cloudflare-kv', anchor: 'functions/gone.js', record: 'the ttl', failingValue: 'x', readBy: 'y' },
-      });
+      s.rows.push(ttlRow({ mechanism: { anchor: 'functions/gone.js' } }));
     });
     const r = run(root);
     assert.equal(r.code, 1);
     assert.match(r.out, /does not exist, so the claim cannot be checked/);
+  });
+
+  test('a ttl rule with NO ttlSource FAILS — the field is what makes the limb row-specific', () => {
+    const root = makeRepo((s, r) => {
+      withSub('await env.KV.put(key, value, { expirationTtl: 600 });\n')(s, r);
+      s.rows.push(ttlRow({ mechanism: { ttlSource: undefined } }));
+    });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /with no `mechanism\.ttlSource`/);
+  });
+
+  test('an empty ttlSource is not a declaration', () => {
+    const root = makeRepo((s, r) => {
+      withSub('await env.KV.put(key, value, { expirationTtl: 600 });\n')(s, r);
+      s.rows.push(ttlRow({ mechanism: { ttlSource: '   ' } }));
+    });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /with no `mechanism\.ttlSource`/);
+  });
+
+  // 🔴 THE CASE THE REAL REPOSITORY IS. Two stores, two retention rules, ONE
+  // anchor: sites/nikatru/functions/api/subscribe.js writes the rate-limit key
+  // AND the signup record. Under the old check — "the anchor mentions
+  // expirationTtl" — the rate-limit put satisfied the SIGNUP row, so the signup
+  // row's ttl limb could not fail on its own and the register could have
+  // claimed any period at all. This is that fixture, and it must be RED.
+  test('a sibling rule\'s expirationTtl does NOT satisfy this row — one anchor, two stores', () => {
+    const root = makeRepo((s, r) => {
+      withSub('await env.KV.put(rl, "1", { expirationTtl: RATE_WINDOW_SECONDS });\nawait env.KV.put(sub, rec);\n')(s, r);
+      s.rows.push(ttlRow({ mechanism: { ttlSource: 'const SIGNUP_RETENTION_DAYS = 365;' } }));
+    });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /does not contain that text/);
+    assert.match(r.out, /still asserting the old period/);
+  });
+
+  test('two ttl rows over one anchor each pass on THEIR OWN declared line', () => {
+    const root = makeRepo((s, r) => {
+      withSub('await env.KV.put(rl, "1", { expirationTtl: RATE_WINDOW_SECONDS });\nconst SIGNUP_RETENTION_DAYS = 365;\n')(s, r);
+      s.requiredIds = ['retention.kv.external', 'retention.kv.external2'];
+      s.rows.push(ttlRow({ mechanism: { ttlSource: 'expirationTtl: RATE_WINDOW_SECONDS' } }));
+      s.rows.push({
+        ...ttlRow({ mechanism: { ttlSource: 'const SIGNUP_RETENTION_DAYS = 365;' } }),
+        id: 'retention.kv.external2',
+        store: 'kv:external:sub',
+      });
+    });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
   });
 });
 

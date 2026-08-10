@@ -149,7 +149,7 @@
       "page": "privacy.html",
       "claim": "Launch-notification signups",
       "type": "descriptive",
-      "why": "A section heading. The store it describes (nikatru-signups) has a row in tooling/legal/data-inventory.json, and that row carries the retention question this heading's paragraph raises."
+      "why": "A section heading. The store it describes (nikatru-signups) has a row in tooling/legal/data-inventory.json, and that row carries the retention answer this heading's paragraph used to only raise as a question: retention `ttl`, 365 days, declared by the owner 2026-08-09 and read out of sites/nikatru/functions/api/subscribe.js by tooling/ci/assert-retention-coverage.mjs. ⚠️ The published paragraph still says only 'as long as necessary' — that is WIDER than what the code now does, which is the safe direction for a notice to be wrong in, but naming the period on the page is an owner-signed copy change and is not made here."
     },
     {
       "page": "privacy.html",
