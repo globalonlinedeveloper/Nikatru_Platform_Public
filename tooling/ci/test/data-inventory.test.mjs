@@ -12,6 +12,17 @@
 // ⚠️ A FIXTURE AGREES WITH WHATEVER MISUNDERSTANDING WROTE IT. These are the
 // regression net; the mutation run against the real tree is the proof.
 //
+// 2026-08-09 — the `ttl` limb, added with the first row that uses that kind
+// (kv:nikatru-signups, once the owner declared 365 days). REAL-TREE MUTATION:
+// `expirationTtl` renamed to `expirationTTL` throughout
+// sites/nikatru/functions/api/subscribe.js — the row's only writer —
+//   -> exit 1, "declares retention `ttl` and not one of its `writtenBy` files
+//      sets an expiry". Restored byte-identical, guard re-verified exit 0.
+// The limb exists because `ttl` is the only retention kind that asserts
+// something about CODE, and until that row it had never been exercised: a `ttl`
+// row whose writers set nothing keeps the record forever while printing NOTHING,
+// which is strictly worse than the `undecided` it replaced.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -255,6 +266,30 @@ describe('retention is declared, never invented', () => {
     const r = run(fixture({ stores }));
     assert.equal(r.status, 1);
     assert.match(out(r), /is not in the register's own/);
+  });
+
+  // 🔴 `ttl` is the one kind that asserts something about CODE. Before the
+  // signup KV's period was declared (2026-08-09) no row used it, so this half
+  // of the vocabulary — "the row names the code that sets the expiry" — had
+  // never been checked once. These two cases are what make it a relationship.
+  test('`ttl` whose writers set NO expiry FAILS — worse than `undecided`, because it prints nothing', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    stores[3].retention = { kind: 'ttl', reason: 'the store expires it' };
+    // The fixture's subscribe.js writes with a plain two-argument put.
+    const r = run(fixture({ stores }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /declares retention `ttl` and not one of its `writtenBy` files sets an expiry/);
+  });
+
+  test('`ttl` passes once the named writer really sets one', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    stores[3].retention = { kind: 'ttl', reason: 'the store expires it' };
+    const subscribe = `export async function onRequestPost({ env }) {
+  await env.SIGNUPS.put('sub:x', '{}', { expirationTtl: 31536000 });
+}
+`;
+    const r = run(fixture({ stores, subscribe }));
+    assert.equal(r.status, 0, out(r));
   });
 });
 

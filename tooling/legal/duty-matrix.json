@@ -225,7 +225,7 @@
       "artefact": "tooling/ci/assert-data-inventory.mjs",
       "trigger": "Every new table, binding or Pages-Function store. A store with no row fails the build.",
       "verification": "in-tree",
-      "note": "Two rows declare retention `undecided` and print every run: platform_db.events and the nikatru-signups KV. Both need a decision, not a guess."
+      "note": "As of 2026-08-09 THREE rows declare retention `undecided` and print every run: platform_db.provider_notifications, platform_db.unclaimed_payments and platform_db.events. Each needs a decision, not a guess. (This note previously said two and named the nikatru-signups KV as one of them: the KV's period was declared that day — 365 days, `kind: ttl`, verified against the code — and the note had already been undercounting the money-rail rows. The live list is whatever assert-data-inventory.mjs prints; this sentence is a dated snapshot of it, not a second source.)"
     },
     {
       "id": "rights-complaint-actionable",

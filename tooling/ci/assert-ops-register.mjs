@@ -615,6 +615,11 @@ export function evaluate(reg, tree, nowMs) {
   const nullExpiries = [];
   let retentionRows = 0;
   let periodDeclared = 0;
+  /** Rows whose period is enforced by the STORE (a KV TTL) rather than by a
+   *  sweeping job. Counted separately from `periodDeclared` because they need no
+   *  `deletingJob` — and printed, so "0 declare a PERIOD" can never again read as
+   *  "nothing in this portfolio expires", which stopped being true on 2026-08-09. */
+  let ttlEnforced = 0;
   const periodUndeclared = [];
 
   for (const r of rows) {
@@ -906,6 +911,7 @@ export function evaluate(reg, tree, nowMs) {
       if (r.rule === 'keep' && !nonEmpty(r.keepWhy)) {
         bad(`${id} — \`rule: keep\` with no \`keepWhy\`. A keep with no written reason is how "we never got round to it" becomes a policy.`);
       }
+      if (r.rule === 'ttl') ttlEnforced++;
       if (r.rule === 'period') {
         periodDeclared++;
         if (!(Number.isInteger(r.periodDays) && r.periodDays > 0)) {
@@ -1009,12 +1015,16 @@ export function evaluate(reg, tree, nowMs) {
     prints.push(
       `[14]O-17 — ${retentionRows} retention row(s) · ${periodDeclared} declare a PERIOD, so the ` +
         `"zero rows older than the period" limb ranges over ${periodDeclared} store(s) · ` +
+        `${ttlEnforced} enforce a period as a TTL the store applies itself (read out of the code by ` +
+        'tooling/ci/assert-retention-coverage.mjs) · ' +
         `${periodUndeclared.length} period UNDECLARED (ceiling ${capUndeclared ?? '?'})`,
     );
     if (periodDeclared === 0) {
       prints.push(
-        '[14]O-17 — 🔴 THE DELETING-JOB LIMB RANGES OVER ZERO STORES ON THIS RUN. No row declares a period, so ' +
-          'nothing above could have failed on retention. The undeclared periods and who owns each:',
+        '[14]O-17 — 🔴 THE DELETING-JOB LIMB RANGES OVER ZERO STORES ON THIS RUN. No row declares `rule: period`, so ' +
+          'nothing in THIS guard could have failed on retention. (A `ttl` row is a declared period too — it just needs no ' +
+          'job, because the store expires the record itself, and assert-retention-coverage.mjs checks that against the ' +
+          'code.) The periods still undeclared, and who owns each:',
       );
       for (const l of periodUndeclared) prints.push(`[14]O-17 —     · ${l}`);
     }

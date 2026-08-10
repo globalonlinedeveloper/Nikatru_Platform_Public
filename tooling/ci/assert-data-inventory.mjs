@@ -574,6 +574,34 @@ for (const s of stores) {
       );
     }
   }
+
+  // 🔴 `ttl` IS THE ONE RETENTION KIND THAT MAKES A CLAIM ABOUT CODE, and until
+  // 2026-08-09 no row in this register used it — so the second half of the
+  // vocabulary's own sentence ("the row names the code that sets the expiry")
+  // had never once been checked. The day the signup KV's period was declared it
+  // became load-bearing, on the one row holding a plain email address.
+  //
+  // A `ttl` row whose writers set no expiry is strictly worse than `undecided`:
+  // `undecided` prints on every run and this would print nothing, so the store
+  // would be kept forever under a label saying it expires itself.
+  //
+  // ⚠️ `expirationTtl` is Workers KV's spelling, and Workers KV is the only
+  // self-expiring substrate this inventory has. A row that claims `ttl` on some
+  // future substrate with a different spelling is the case that extends this
+  // check — not the case that removes it.
+  if (s.retention?.kind === 'ttl') {
+    const setsExpiry = writers.some((w) => {
+      const abs = join(repoRoot, ...w.split('/'));
+      return existsSync(abs) && readFileSync(abs, 'utf8').includes('expirationTtl');
+    });
+    if (!setsExpiry) {
+      problems.push(
+        `${where} declares retention \`ttl\` and not one of its \`writtenBy\` files sets an expiry (none contains ` +
+          '`expirationTtl`). That kind means the store expires the record itself; with nothing in the code doing so, the ' +
+          'record is kept indefinitely under a label that says the opposite — and unlike `undecided`, it prints nothing.',
+      );
+    }
+  }
 }
 
 // Gated on `problems.length === 0` for the reason spelled out at the tablesFound
