@@ -120,7 +120,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { evaluate, evaluateRunRecords, cadenceDays, parseJsonc, findWranglerConfigs, stripComments } from '../assert-ops-register.mjs';
+import { evaluate, evaluateRunRecords, cadenceDays, parseJsonc, findWranglerConfigs, stripComments, DURABLE_ID } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-ops-register.mjs');
@@ -1924,4 +1924,101 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
         'with an `unverifiedWhy` is how this register records that, and it is counted and printed.',
     );
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A RETIRED ROW IS OUT OF BOTH LIVE SETS, OR IT IS NOT RETIRED.
+//
+// `_retiredRows` is a RECORD and no guard reads it — that is the point of
+// retiring rather than editing in place, and tooling/legal/provider-register.json
+// says exactly the same of `retiredDisclosureGaps`. What CAN go wrong is half a
+// retirement, and the two halves fail very differently:
+//
+//   the ID left in `_requiredCoverage.ids` — assert-ops-register.mjs already
+//       fails ("_requiredCoverage names `x` and no row has that id"), so that
+//       half is held by the guard and needs nothing here.
+//   the ROW left in `rows`                 — NOTHING fails. Every limb keeps
+//       enforcing a store this same file records as gone, and its `ownerGap`
+//       keeps printing on every run, asking the owner for work already done.
+//
+// That second state is not hypothetical: it is retention.kv.ratel-cache's whole
+// history. The namespace was deleted, nothing re-read the account, and the row
+// went on being enforced and printed until 2026-08-11. A record saying "retired"
+// beside a row still being enforced is worse than no record, because it reads as
+// the cleanup having happened.
+//
+// The evidence limb reuses the guard's own DURABLE_ID rather than a second regex
+// with the same idea in it: "we decided to stop tracking it" is a deletion, and
+// only a reading of the thing ITSELF — timestamped, re-runnable — makes it a
+// retirement. Retiring must never become the cheap way to shrink the domain.
+//
+// NEGATIVE-TESTED ON THE REAL TREE, not on a fixture — the mutations and their
+// output are in the increment report.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-ops-register — a retired row is gone from BOTH live sets, with evidence', () => {
+  const REAL = JSON.parse(
+    readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'),
+  );
+  // 🔴 NO `?? []` HERE, AND THE FIRST DRAFT HAD ONE. With the default, deleting
+  // `_retiredRows.rows` outright left `retired` an empty array — the shape test
+  // below passed on it, the per-entry tests ranged over nothing, and the suite
+  // printed 153 green. Measured, not reasoned about: mutation M5 against the real
+  // register was CAUGHT ONLY after this line lost its default. A fallback on the
+  // value being checked is how an assertion stops being able to fail.
+  const retiredRaw = REAL._retiredRows?.rows;
+  const retired = Array.isArray(retiredRaw) ? retiredRaw : [];
+  const liveIds = new Set(REAL.rows.map((r) => r.id));
+  const requiredIds = new Set(REAL._requiredCoverage.ids);
+
+  /** Same reasoning as PINNED above, one register-section over: an ENTRY deleted
+   *  from `_retiredRows` takes with it the only evidence of how long the row
+   *  stood and what made it stop, and nothing else in the tree would notice.
+   *  Adding a retirement is free; erasing one is a deliberate edit to this file. */
+  const PINNED_RETIRED = ['retention.kv.ratel-cache'];
+
+  test('`_retiredRows.rows` exists as an array, so the limbs below have a domain', () => {
+    assert.ok(Array.isArray(retiredRaw), '`_retiredRows.rows` is missing or is not an array.');
+  });
+
+  for (const id of PINNED_RETIRED) {
+    test(`the retirement of \`${id}\` is still recorded — history is not erased on a later edit`, () => {
+      assert.ok(
+        retired.some((e) => e?.id === id),
+        `${id} was retired and its record is gone. Deleting the entry removes the dated evidence that the ` +
+          'store it covered no longer exists, which is the only thing separating a retirement from a deletion.',
+      );
+    });
+  }
+
+  for (const entry of retired) {
+    const id = entry?.id ?? '<no id>';
+
+    test(`\`${id}\` is retired, so it is NOT in \`rows\``, () => {
+      assert.ok(
+        !liveIds.has(id),
+        `${id} is recorded as retired AND is still a live row. Every guard would keep enforcing it — ` +
+          'and if it is owner-gated, keep printing its gap — while this file says it was retired.',
+      );
+    });
+
+    test(`\`${id}\` is retired, so it is NOT in \`_requiredCoverage.ids\``, () => {
+      assert.ok(
+        !requiredIds.has(id),
+        `${id} is recorded as retired and is still named in _requiredCoverage.ids, which requires a row ` +
+          'to exist for it. The two halves of the retirement disagree.',
+      );
+    });
+
+    test(`\`${id}\` carries a date, a reason, and evidence a later reader can re-check`, () => {
+      assert.match(entry.retiredOn ?? '', /^\d{4}-\d{2}-\d{2}$/, `${id} — \`retiredOn\` must be an ISO date.`);
+      assert.ok((entry.retiredWhy ?? '').trim().length > 0, `${id} — \`retiredWhy\` is empty.`);
+      assert.match(
+        entry.evidence ?? '',
+        DURABLE_ID,
+        `${id} — \`evidence\` carries nothing a later reader can look up. The same rule the guard applies ` +
+          'to drill evidence: a timestamp, a run id, an issue number — not an adjective.',
+      );
+      assert.equal(entry.row?.id, id, `${id} — the preserved \`row\` must be the row that was retired, verbatim.`);
+    });
+  }
 });
