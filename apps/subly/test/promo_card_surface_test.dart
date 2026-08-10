@@ -263,18 +263,45 @@ void main() {
           .widgetList<Text>(find.byType(Text))
           .map((Text t) => t.data ?? '')
           .toList();
-      for (final String needle in <String>[
-        '%',
-        'was ',
-        'save',
-        'Save',
-        'off',
-      ]) {
+      // 🔴 WORD-BOUNDED, SINCE 2026-08-10, AND THE LOOSENING IS NOT A WEAKENING.
+      // These were bare substrings, and `'off'` matched the word **offers** the
+      // moment research/44 rung 4 put `PromoSurface`'s Art 21 control on the
+      // card: "Stop showing offers" failed a check about DISCOUNTS. A test that
+      // fires on the objection control is a test that would be silenced by
+      // deleting it — the opposite of what it is for. `\boff\b` still catches
+      // "50% off" and no longer catches "offers"; `\bsave\b` still catches
+      // "save 30%" and no longer catches "saved".
+      //
+      // ⚠️ AND THE PATTERNS CARRY A POSITIVE CONTROL BELOW, because narrowing a
+      // matcher is exactly the edit that can quietly stop it matching anything
+      // at all — which reads identically to clean copy.
+      final List<RegExp> forbidden = <RegExp>[
+        RegExp(r'%'),
+        RegExp(r'\bwas\b', caseSensitive: false),
+        RegExp(r'\bsave\b', caseSensitive: false),
+        RegExp(r'\boff\b', caseSensitive: false),
+      ];
+      const List<String> mustStillCatch = <String>[
+        '25% off',
+        'was \$9.99',
+        'Save 30%',
+        'HALF OFF today',
+      ];
+      for (final String control in mustStillCatch) {
         expect(
-          shown.where((String s) => s.contains(needle)),
+          forbidden.any((RegExp re) => re.hasMatch(control)),
+          isTrue,
+          reason:
+              'the discount matchers stopped matching "$control" — a narrowed '
+              'pattern that catches nothing prints exactly like clean copy',
+        );
+      }
+      for (final RegExp re in forbidden) {
+        expect(
+          shown.where((String s) => re.hasMatch(s)),
           isEmpty,
           reason:
-              'a price-comparison or urgency claim ("$needle") appeared on '
+              'a price-comparison or urgency claim (${re.pattern}) appeared on '
               'a surface that has no price history to compute it from',
         );
       }

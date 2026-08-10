@@ -1504,6 +1504,15 @@ describe('record-deployment (offline paths)', () => {
 // prove it has an on-switch. Every check below has a recorded failing case,
 // because a guard nobody has watched fail is a guard nobody should trust (F-10).
 describe('assert-seams-wired', () => {
+  // 🔴 TWO NEEDS SINCE 2026-08-10, AND THE SECOND LINE IS THE WHOLE POINT OF
+  // THE FIRST STILL MEANING ANYTHING. research/44 rung 4 turned the purpose into
+  // a PARAMETER of `applyConsentDecision` so the Art 21 objection reuses one
+  // decision path rather than forking it ([C-3]). That made `.record(purpose,`
+  // an acceptable shape — and a chassis that had quietly stopped recording
+  // ANALYTICS consent would then satisfy "a real record() call" with a path that
+  // records something else entirely. The seam gained a second need, "the
+  // parameter still DEFAULTS to analytics", so the fixture carries it.
+  const PURPOSE_DEFAULT = 'core.ConsentPurpose purpose = core.ConsentPurpose.analytics,';
   const RECORD_CALL = `
 final x = () async {
   await controller.record(
@@ -1512,6 +1521,9 @@ final x = () async {
     policyVersion: kPrivacyPolicyVersion,
   );
 };
+Future<void> applyConsentDecision({
+  ${PURPOSE_DEFAULT}
+}) async {}
 const String kPrivacyPolicyVersion = '2026-07-26';
 `;
   const UI_CALLER = `onPressed: () => recordAnalyticsConsent(ref, granted: true),`;
@@ -1644,7 +1656,25 @@ final FutureProvider<core.ContentPack?> contentPackProvider =
   // on its own, and a single case removing all three would still pass with two
   // of the needs neutered.
   const BRICK_PROMO_MOUNT = 'children: <Widget>[const UpgradePromoCard()],\n';
+  // The ARGUMENT form — what the brick actually ships since the D2 signature
+  // wired the render path through `PromoObjection` (research/44 rung 4). The
+  // fixture follows the tree rather than the other way round; a fixture frozen
+  // on a shape nothing ships is a test of history.
   const BRICK_PROMO_DECIDE = `
+final core.PromoGateDecision decision = core.PromoObjection(consent)
+    .decide(
+      ref.watch(promoGateProvider),
+      stored,
+      now: DateTime.now(),
+      featureEnabled: cfg?.feature(kPromoCardFeature) ?? false,
+      hasContent: offerings.isNotEmpty,
+    );
+`;
+  // The RECEIVER form — the pre-rung-4 shape, kept because an app stamped
+  // before the objection landed still has it and must not read as "no decision
+  // on the render path". Exercised by its own case below, or the second half of
+  // that alternation would be a branch no test enters.
+  const BRICK_PROMO_DECIDE_RECEIVER = `
 final core.PromoGateDecision decision = ref
     .watch(promoGateProvider)
     .decide(
@@ -1834,6 +1864,27 @@ Future<void> main() async {
     assert.equal(code, 0);
     assert.match(out, /a real record\(\) call/);
     assert.match(out, /policy version pinned/);
+  });
+
+  // 🔴 THE RECORDED FAILING CASE FOR THE SECOND CONSENT NEED, added with the
+  // need itself. r4 re-pointed this seam and shipped no case that could fail on
+  // the new limb alone — and a limb with no failing case is the assertion this
+  // repository refuses to trust. Here the record() call is untouched and only
+  // the DEFAULT moves, so need (1) still passes and the row must still go red;
+  // if it ever goes green, the parameterised path has stopped proving that
+  // analytics is what a plain `applyConsentDecision()` records.
+  test('FAILS when the purpose parameter stops defaulting to analytics', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-purpose-default-moved', {
+        record: RECORD_CALL.replace(PURPOSE_DEFAULT, 'core.ConsentPurpose purpose = core.ConsentPurpose.promo,'),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /analytics is still the purpose it defaults to/);
+    // …and the FIRST need is untouched, or this case would be proving the
+    // wrong thing — a fixture that broke both limbs would pass this assertion
+    // while telling us nothing about the one under test.
+    assert.match(out, /ok\s+consent — a real record\(\) call/);
   });
 
   test('FAILS when the deploy stops supplying GLITCHTIP_DSN — the original defect', () => {
@@ -2293,6 +2344,19 @@ Future<void> main() async {
     assert.match(out, /a real PromoGate decision on the render path NOT FOUND/);
   });
 
+  test('promo_card — the PRE-RUNG-4 receiver form still counts as a decision', () => {
+    // `promoGateProvider).decide(` is what an app stamped before the Art 21
+    // objection landed still carries. The need is an alternation over both real
+    // shapes, so this case enters the branch the default fixture no longer
+    // does — otherwise half the regex would be code no test executes, which is
+    // indistinguishable from a typo in it.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-promo-receiver-form', { promoDecide: BRICK_PROMO_DECIDE_RECEIVER }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /a real PromoGate decision on the render path/);
+  });
+
   test('promo_card — FAILS when the impression is never PERSISTED', () => {
     // A cap nobody counts against never caps: the card would reappear on every
     // launch forever, which India's CCPA Dark Patterns Guidelines call Nagging.
@@ -2424,8 +2488,19 @@ class Ed25519PackVerifier implements PackVerifier {
     // isolate the verifier rather than failing for an unrelated reason.
     'packages/telemetry/lib/src/telemetry_bootstrap.dart':
       'options.enableAutoSessionTracking = false;\n',
+    // 🔴 CARRIES THE PURPOSE-DEFAULT LINE SINCE 2026-08-10, and it is not
+    // padding. research/44 rung 4 made the purpose a PARAMETER of
+    // `applyConsentDecision` so the Art 21 objection reuses one decision path
+    // ([C-3]) instead of forking it, and the consent seam gained a second need
+    // in the same commit: not just "a record() call exists" but "the parameter
+    // still DEFAULTS to analytics". Without the second, the first is satisfied
+    // by a path that records some other purpose entirely. The fixture has to
+    // carry the shape the guard now reads, or every test in this family fails
+    // on the consent row while claiming to be about the verifier, the review
+    // prompt or the pinned keys — which is precisely what happened when this
+    // line was one need short.
     'apps/subly/lib/state/analytics_providers.dart':
-      "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
+      "await c.record(core.ConsentPurpose.analytics,\n granted: granted,\n);\nFuture<void> applyConsentDecision({\n  core.ConsentPurpose purpose = core.ConsentPurpose.analytics,\n}) async {}\nFuture<void> recordAnalyticsConsent(\n  WidgetRef ref, {\n  required bool granted,\n}) async {}\nconst String kPrivacyPolicyVersion = '2026-07-26';\n",
     'apps/subly/lib/features/consent/consent_prompt.dart': 'recordAnalyticsConsent(ref, granted: true);',
     'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart': brickProviders(),

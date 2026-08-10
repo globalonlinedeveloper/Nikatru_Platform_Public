@@ -326,6 +326,24 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
         .valueOrNull;
     if (stored == null) return const SizedBox.shrink();
 
+    // ── THE SECOND HALF OF THE SAME BARRIER — THE CONSENT RAIL ─────────────
+    // `PromoGateState.suppressed` is a PROJECTION of `ConsentPurpose.promo`,
+    // never an independent fact (`PromoObjection`'s library comment). So the
+    // record above is only half the input: a person who objected on this
+    // device, or whose browser is sending a GPC signal this session, is
+    // "objected" whether or not the latch on disk has caught up. Reading the
+    // record without the rail is the two-stores defect — both halves report
+    // healthy while the card keeps rendering to somebody who exercised an
+    // absolute right to stop it (Art 21(2)/(3)).
+    //
+    // Same fail-closed shape as the record barrier immediately above, and for
+    // the same measured reason: a rail we have not finished reading is not a
+    // rail that says nobody objected.
+    final core.ConsentController? consent = ref
+        .watch(consentControllerProvider)
+        .valueOrNull;
+    if (consent == null) return const SizedBox.shrink();
+
     // ── THE LATCHES OUTRANK THE LATCH ──────────────────────────────────────
     // Checked before `_showing`, deliberately: a dismissal or a GDPR Art 21
     // objection raised while the card is on screen must take it off the screen,
@@ -345,9 +363,14 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
     final List<Offering> offerings = rail.offerings;
 
     if (!_showing) {
-      final core.PromoGateDecision decision = ref
-          .watch(promoGateProvider)
+      // 🔴 THROUGH `PromoObjection`, NEVER STRAIGHT AT THE GATE. It projects
+      // the rail onto the record first and cannot be skipped — a GPC objection
+      // (Art 21(5)) writes no artifact at all and reaches the gate by no other
+      // route. `assert-consent-withdrawal-surface.mjs` limb 5 fails the build
+      // for any `.decide(` on a promo gate whose expression does not name it.
+      final core.PromoGateDecision decision = core.PromoObjection(consent)
           .decide(
+            ref.watch(promoGateProvider),
             stored,
             now: (widget.clock ?? DateTime.now)(),
             featureEnabled: cfg?.feature(kPromoCardFeature) ?? false,
@@ -400,33 +423,53 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
 
     final bool canSell = rail.canStartCheckout;
 
-    return PromoCard(
+    // ── THE FRAME, AND THE CREATIVE INSIDE IT ──────────────────────────────
+    // `PromoSurface` carries the two things that attach to the FIRST
+    // promotional communication and that a creative increment forgets because
+    // they are not part of the creative: the promotional label (Apple 2.5.18 ·
+    // Microsoft 10.10.4 · Play's native-ads trigger · India's Disguised
+    // Advertisement) and the Art 21(4) on-card objection, "presented clearly
+    // and separately", where somebody meeting their first offer will actually
+    // see it. It offers no constructor argument that switches either off, so
+    // the card cannot render without them — which is the whole reason it is a
+    // frame rather than two more parameters on `PromoCard`.
+    return PromoSurface(
       show: true,
-      label: copy('label', l10n.promoCardLabel),
-      title: copy('title', l10n.promoCardTitle),
-      message: copy('body', l10n.promoCardBody),
-      // DERIVED from the rail's own amount and currency. Absolute, always: no
-      // percentage, no "was", no countdown — see the class doc and
-      // research/44 V6.
-      priceLabel: l10n.promoCardPrice(
-        offering.formattedPrice,
-        offering.term.wire,
+      objected: ref.watch(promoObjectedProvider),
+      onObjectionChanged: (bool objected) =>
+          recordPromoObjection(ref, objected: objected),
+      promotionalLabel: l10n.promoLabel,
+      stopLabel: l10n.promoStopOffers,
+      resumeLabel: l10n.promoResumeOffers,
+      objectedNotice: l10n.promoOffersOff,
+      child: PromoCard(
+        show: true,
+        label: copy('label', l10n.promoCardLabel),
+        title: copy('title', l10n.promoCardTitle),
+        message: copy('body', l10n.promoCardBody),
+        // DERIVED from the rail's own amount and currency. Absolute, always: no
+        // percentage, no "was", no countdown — see the class doc and
+        // research/44 V6.
+        priceLabel: l10n.promoCardPrice(
+          offering.formattedPrice,
+          offering.term.wire,
+        ),
+        primaryActionLabel: canSell ? l10n.paywallUpgrade : null,
+        onPrimaryAction: canSell ? () => context.go('/paywall') : null,
+        // 🔒 ROSCA PARITY, IN THIS CARD, NOT A LEVEL DOWN. `PromoCard` makes
+        // both of these `required`, so a promo surface that offers a way to
+        // start paying and no equally-adjacent way to stop does not compile —
+        // and `assert-purchase-path.mjs` asserts this file really navigates to
+        // the cancel surface, because a required callback can still be `() {}`.
+        manageLabel: l10n.managePlanTitle,
+        onManageAction: () => context.go('/manage-plan'),
+        // Neutral decline copy. "Not now" — never "No thanks, I don't want to
+        // save", which is the confirm-shaming India's CCPA Dark Patterns
+        // Guidelines 2023 name outright.
+        dismissLabel: l10n.notNow,
+        onDismiss: () => ref.read(promoCardStateProvider.notifier).dismiss(),
+        dismissSemanticLabel: l10n.promoCardDismissA11y,
       ),
-      primaryActionLabel: canSell ? l10n.paywallUpgrade : null,
-      onPrimaryAction: canSell ? () => context.go('/paywall') : null,
-      // 🔒 ROSCA PARITY, IN THIS CARD, NOT A LEVEL DOWN. `PromoCard` makes both
-      // of these `required`, so a promo surface that offers a way to start
-      // paying and no equally-adjacent way to stop does not compile — and
-      // `assert-purchase-path.mjs` asserts this file really navigates to the
-      // cancel surface, because a required callback can still be `() {}`.
-      manageLabel: l10n.managePlanTitle,
-      onManageAction: () => context.go('/manage-plan'),
-      // Neutral decline copy. "Not now" — never "No thanks, I don't want to
-      // save", which is the confirm-shaming India's CCPA Dark Patterns
-      // Guidelines 2023 name outright.
-      dismissLabel: l10n.notNow,
-      onDismiss: () => ref.read(promoCardStateProvider.notifier).dismiss(),
-      dismissSemanticLabel: l10n.promoCardDismissA11y,
     );
   }
 }

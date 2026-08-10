@@ -396,7 +396,25 @@ const REQUIRED_COVERAGE = [
         label: 'the card MOUNTED in the stamped home body',
       },
       {
-        re: /promoGateProvider\)\s*\n?\s*\.decide\(|promoGateProvider\)\.decide\(/,
+        // 🔴 RE-POINTED 2026-08-10, THE SAME WAY AND FOR THE SAME REASON AS THE
+        // CONSENT SEAM ABOVE. This read `promoGateProvider).decide(` — the gate
+        // as the RECEIVER. The D2 signature wired the render path through
+        // `PromoObjection`, which takes the gate as an ARGUMENT instead:
+        //
+        //     core.PromoObjection(consent).decide(ref.watch(promoGateProvider), …)
+        //
+        // so the old shape stopped appearing and this row went red. That is the
+        // guard working — it noticed the shape it reads had moved. The wrong fix
+        // would have been to relax it to `\.decide\(`, which any of three
+        // unrelated seams satisfies (`CatchUpNudge`, `ReviewGate`, this one).
+        //
+        // So it is an alternation over the two REAL shapes, receiver-form and
+        // argument-form, and nothing wider. Whether the sanctioned form was used
+        // is a different question and is NOT restated here:
+        // assert-consent-withdrawal-surface.mjs limb 5 owns it and asks it of
+        // every app root, which is strictly stronger than anything this row
+        // could add. [pipeline C-3] — no capability exists twice.
+        re: /promoGateProvider\)\s*\n?\s*\.decide\(|promoGateProvider\)\.decide\(|\.decide\(\s*\n?\s*ref\.watch\(promoGateProvider\)/,
         scope: BRICK_APP,
         label: 'a real PromoGate decision on the render path',
       },

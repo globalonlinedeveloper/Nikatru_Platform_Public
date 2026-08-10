@@ -515,9 +515,9 @@
   "@usageStatisticsOff": {
     "description": "Sub-label shown when analytics consent is not granted. Says what is NOT happening, because that is the claim the user is relying on."
   },
-  "promotionalOffers": "Promotional offers",
+  "promotionalOffers": "Offers and promotions",
   "@promotionalOffers": {
-    "description": "Heading for the GDPR Art 21 objection row. Named for what it governs (offers), not for the mechanism (consent), because the user is looking for the thing they saw on screen."
+    "description": "Heading for the GDPR Art 21 objection row. 🔴 THE VALUE IS THE PAGE'S WORDS, NOT THE OTHER WAY ROUND. sites/nikatru/privacy.html §3 (owner-signed 2026-08-10) tells the reader \"Open the app's Settings and turn Offers and promotions off\", and r4 had shipped this string as \"Promotional offers\" — a person following the published instruction would look for a heading that was not there. The page is the promise and is [ADR 031] class B owner copy; an app label is class A, so the app moved. Changed in apps/subly and in the brick, en and ta together. Named for what it governs (offers), not for the mechanism (consent), because the user is looking for the thing they read about."
   },
   "promoObjectionExplain": "You can stop seeing offers for our apps at any time. Nothing else changes.",
   "@promoObjectionExplain": {
