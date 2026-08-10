@@ -59,6 +59,21 @@
 // declared surface set rather than adding an exemption; a per-app waiver here
 // is a per-app permission to delete the row.
 //
+// ── 2026-08-10 · A SECOND RAIL, SAME HOLE: THE Art 21 OBJECTION ─────────────
+// research/44 rung 4 adds `ConsentPurpose.promo` and a stop-offers control. It
+// is NOT a consent gate — in-app first-party promotion runs on legitimate
+// interest — but the deletion story is identical and slightly worse: an
+// objection row that vanishes leaves a lawful basis with no way to refuse it,
+// and GDPR Art 21(2)/(3) makes that refusal absolute. Worse, because the
+// analytics row at least has a prompt as a second witness, whereas the promo
+// control's only other home is the promotional card itself, which is precisely
+// the thing a person who has objected never sees again.
+//
+// The promo limbs are DERIVED the same way and are silent on a tree that has no
+// promo rail, so this guard keeps passing on any app or template that has not
+// adopted rung 4. What it will not tolerate is HALF an adoption: a root that
+// writes objections and offers nowhere to make one.
+//
 // ── THE LIMBS ───────────────────────────────────────────────────────────────
 //   1. A CALL, NOT A DECLARATION, INSIDE lib/features/settings. The `declares`
 //      exclusion is not sugar: assert-seams-wired.mjs shipped with its caller
@@ -103,6 +118,39 @@
 //      free to rename or restyle the card; it is not free to render the
 //      sentence of record in something a large-text user cannot scroll. Finding
 //      no such class at all is COVERAGE LOST, not a pass.
+//
+//   5. THE PROMOTIONAL DECISION GOES THROUGH THE RAIL — added 2026-08-10 with
+//      rung 4's on-card half, because the on-card half is the one nothing could
+//      enforce and a comment claimed to.
+//
+//      `PromoObjection.decide` projects the objection off the consent rail onto
+//      `PromoGateState.suppressed` and only then consults the gate. Its own doc
+//      calls itself *"the only sanctioned way"* to reach `PromoGate.decide` —
+//      and NOTHING MADE THAT TRUE. `PromoGate.decide` is public, and a sibling
+//      increment building the promo CARD did exactly the predicted thing:
+//      `ref.watch(promoGateProvider).decide(stored, …)` against a record read
+//      straight off disk, which is the two-stores defect the rail was chosen to
+//      close. A person objects on the rail, the card keeps rendering off a stale
+//      latch, and BOTH HALVES REPORT HEALTHY.
+//
+//      So: in an app root, every `.decide(` whose receiver is a promo gate must
+//      have `PromoObjection` in the same expression. `CatchUpNudge().decide(` and
+//      `ReviewGate.decide(` are untouched — the receiver is classified, not the
+//      method name, or this limb would own three seams it knows nothing about.
+//   6. AND IT RENDERS THROUGH THE FRAME. `PromoSurface` exists so the
+//      promotional label (Apple 2.5.18 · Microsoft 10.10.4 · Play's native-ads
+//      trigger · India's Disguised Advertisement) and the Art 21(4) on-card
+//      objection cannot ship without the creative — there is no constructor
+//      argument that switches either off. A card rendered outside it has neither,
+//      and the widget test proving "the frame cannot omit the control" says
+//      nothing about a creative that never entered the frame. So a file that
+//      decides a promotion must also name `PromoSurface`.
+//
+//      🔴 THIS IS THE [pipeline C-6] RULE APPLIED TO ITS OWN AUTHOR. A
+//      fail-closed seam with no proven open path reports healthy; so does an
+//      invariant whose enforcement is a sentence in a doc comment. The claim was
+//      written before the guard, the sibling chip violated it inside a day, and
+//      the fix is not a stronger sentence.
 //
 // ── WHAT IS PRINTED RATHER THAN FAILED ──────────────────────────────────────
 // 👤 The live prompt carries no link to the privacy policy — the retired dialog
@@ -161,6 +209,25 @@ const GENERATED_L10N = 'lib/l10n/';
  *  `SingleChildScrollView`, and this limb is about the property, not the
  *  widget. */
 const SCROLLERS = /\bSingleChildScrollView\s*\(|\bListView\s*[.(]|\bCustomScrollView\s*\(|\bScrollable\s*\(/;
+/** The chassis's one Art 21 objection writer — research/44 rung 4. */
+const PROMO_RECORD = 'recordPromoObjection';
+/** The provider the stop-offers control renders from. */
+const PROMO_STATE = 'promoObjectedProvider';
+/** The only sanctioned road to `PromoGate.decide` — limb 5. */
+const SANCTIONED = 'PromoObjection';
+/** The frame that carries the label and the on-card objection — limb 6. */
+const FRAME = 'PromoSurface';
+/**
+ * Does this expression reach a PROMO gate?
+ *
+ * Case-insensitive on purpose, and that is the whole classifier: it catches the
+ * type (`core.PromoGate(`, `PromoGateState`) and the Riverpod provider that
+ * holds one (`promoGateProvider`), which is the form the real bypass took. It
+ * does NOT catch `CatchUpNudge().decide(` or `ReviewGate.decide(`, which is the
+ * point — the method name `.decide(` is shared by three unrelated seams and
+ * matching on it would make this limb the owner of two it knows nothing about.
+ */
+const PROMO_GATE_REF = /promogate/i;
 
 const problems = [];
 const notes = [];
@@ -261,6 +328,35 @@ function classBodies(body) {
   return out;
 }
 
+/** Same shape, same reason, for the objection writer. */
+const PROMO_DECLARES = new RegExp(`(?:Future<void>\\s+)?${PROMO_RECORD}\\s*\\(\\s*\\n?\\s*WidgetRef`);
+
+/**
+ * Every `.decide(` in `body`, with the expression that RECEIVES it.
+ *
+ * The receiver is everything back to the nearest statement boundary (`;`, `{` or
+ * `}`), which is what makes this a claim about WHICH gate rather than about the
+ * word "decide". The real bypass spans four lines —
+ *
+ *     ref
+ *       .watch(promoGateProvider)
+ *       .decide(
+ *
+ * — so a same-line regex would have classified it as "not a promo gate" and
+ * printed ok. That is the failure this helper exists to not have.
+ */
+function decideReceivers(body) {
+  const out = [];
+  const re = /\.decide\s*\(/g;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    let i = m.index;
+    while (i > 0 && !';{}'.includes(body[i - 1])) i--;
+    out.push({ index: m.index, receiver: body.slice(i, m.index) });
+  }
+  return out;
+}
+
 /** The named argument's text, whitespace-collapsed, or null. */
 function namedArg(args, label) {
   const at = args.indexOf(`${label}:`);
@@ -315,6 +411,10 @@ let railBearing = 0;
 let settingsFilesRead = 0;
 let settingsCallsFound = 0;
 let promptClassesFound = 0;
+let promoRailBearing = 0;
+let promoCallsFound = 0;
+let promoGateRoots = 0;
+let promoDecidesFound = 0;
 const elsewhereCallers = [];
 
 for (const root of roots) {
@@ -328,12 +428,73 @@ for (const root of roots) {
       'which is not the same as a root with no consent rail, and prints identically.',
     ]);
   }
+  // ── limbs 5 + 6 · the promotional creative cannot bypass the rail ──────────
+  // DELIBERATELY ABOVE THE ANALYTICS `continue` BELOW. A root can grow a promo
+  // card before (or without) an analytics rail, and that root is the WORST case,
+  // not the exempt one — skipping it is how the objection would go unchecked in
+  // exactly the tree that needed checking.
+  //
+  // Silent on a root with no promo gate at all: an app that promotes nothing
+  // owes nothing here, and saying so FROM THE TREE rather than from a list is
+  // what stops the filter becoming a waiver somebody adds themselves to.
+  const gateFiles = libFiles.filter((f) => PROMO_GATE_REF.test(f.body));
+  if (gateFiles.length) {
+    promoGateRoots++;
+    let decidesHere = 0;
+    for (const f of libFiles) {
+      for (const d of decideReceivers(f.body)) {
+        if (!PROMO_GATE_REF.test(d.receiver)) continue; // ReviewGate, CatchUpNudge…
+        decidesHere++;
+        promoDecidesFound++;
+        if (!d.receiver.includes(SANCTIONED)) {
+          problems.push(
+            `🔴 ${root}/${f.rel} reaches PromoGate.decide WITHOUT ${SANCTIONED}. The objection lives on the ` +
+              `consent rail (ConsentPurpose.promo) and \`PromoGateState.suppressed\` is a PROJECTION of it; a ` +
+              'decision made straight off the persisted record is made against whatever was last written to ' +
+              'disk. That is the two-stores defect: the person objects on the rail, this card keeps rendering ' +
+              `off a stale latch, and both halves report healthy. Go through \`${SANCTIONED}(consent).decide(` +
+              'gate, stored, …)`, which projects first and cannot be skipped. A GPC objection (Art 21(5)) writes ' +
+              'no artifact at all and reaches the gate through no other route.',
+          );
+        }
+        if (!new RegExp(`\\b${FRAME}\\b`).test(f.body)) {
+          problems.push(
+            `🔴 ${root}/${f.rel} decides a promotion and never names ${FRAME}. The creative must render as that ` +
+              "frame's child: the frame is where the promotional label lives (Apple 2.5.18, Microsoft 10.10.4, " +
+              "Play's native-ads trigger, India's Disguised Advertisement) and where the Art 21(4) on-card " +
+              'objection lives, and it offers no constructor argument to switch either off. A card rendered ' +
+              'beside it instead of inside it has neither, and the widget test proving the frame cannot omit ' +
+              'the control says nothing about a creative that never entered the frame.',
+          );
+        }
+      }
+    }
+    if (decidesHere === 0) {
+      coverageLost([
+        `${root} names a promo gate in ${gateFiles.length} lib file(s) and NOT ONE \`.decide(\` was classified as one.`,
+        'Limbs 5 and 6 hang entirely off that classification, so zero matches means the classifier stopped',
+        'matching rather than the tree being clean — the two print identically and only one of them is a fact',
+        `about the app. Files that named it: ${gateFiles.map((f) => f.rel).join(', ')}.`,
+      ]);
+    }
+  }
+
   const declaresRail = libFiles.some((f) => DECLARES.test(f.body));
+  const declaresPromoRail = libFiles.some((f) => PROMO_DECLARES.test(f.body));
   if (!declaresRail) {
+    if (declaresPromoRail) {
+      coverageLost([
+        `${root} declares ${PROMO_RECORD} but NOT ${RECORD}.`,
+        'Every limb below hangs off the analytics derivation, so this root would be skipped entirely and its',
+        'Art 21 objection row would go unchecked while the guard printed a reassuring note. That is a hole in',
+        'the scan, not a fact about the app — split the derivations before shipping an app in this shape.',
+      ]);
+    }
     notes.push(`note ${root} declares no ${RECORD} — no analytics rail, so no withdrawal surface is owed (derived from ${libFiles.length} lib/ file(s), not from a list).`);
     continue;
   }
   railBearing++;
+  if (declaresPromoRail) promoRailBearing++;
 
   // Every caller OUTSIDE the settings tree. Not asserted on — the first-run
   // prompt is a legitimate and necessary grant surface. Printed because it is
@@ -484,6 +645,65 @@ for (const root of roots) {
     );
   }
 
+  // ── the Art 21 objection, same three questions ───────────────────────────
+  // Silent when the root has no promo rail: an app that promotes nothing owes
+  // no objection surface, and saying so FROM THE TREE rather than from a list
+  // is what stops the filter becoming a waiver somebody adds themselves to.
+  if (declaresPromoRail) {
+    const promoCalls = [];
+    for (const f of settingsFiles) {
+      if (PROMO_DECLARES.test(f.body)) {
+        problems.push(
+          `${root}/${f.rel} DECLARES ${PROMO_RECORD}. Moving the declaration into the settings tree satisfies the ` +
+            "call check with the function's own signature — the defect assert-seams-wired.mjs shipped with, which " +
+            'all six of its fixture tests passed against.',
+        );
+        continue;
+      }
+      for (const c of callArgs(f.body, PROMO_RECORD)) promoCalls.push({ file: `${root}/${f.rel}`, args: c.args });
+    }
+    promoCallsFound += promoCalls.length;
+
+    if (!promoCalls.length) {
+      problems.push(
+        `🔴 ${root}: declares ${PROMO_RECORD} and there is NO call to it in ${SETTINGS_DIR}. GDPR Art 21(2)/(3) ` +
+          'makes the objection to direct marketing ABSOLUTE — "the data subject shall have the right to object at ' +
+          'any time" — and Art 21(4) wants it presented clearly and separately at the latest at the first ' +
+          'communication. The promotional card carries the control too, but that one disappears the moment it is ' +
+          'used: a person who objected never sees the card again, so the card can never be the way back. Without ' +
+          'this row the objection is a one-way door and the withdrawal of it is unreachable.',
+      );
+    } else {
+      // Both directions must be reachable. `objected:` fixed to a literal is
+      // the promo twin of limb 2: a control that can only ever STOP satisfies
+      // the call check and is not a toggle.
+      const objectedArgs = promoCalls.map((c) => ({ file: c.file, objected: namedArg(c.args, 'objected') }));
+      for (const g of objectedArgs.filter((g) => g.objected === null)) {
+        problems.push(
+          `${g.file} calls ${PROMO_RECORD}( with no \`objected:\` argument, so the call cannot be judged as ` +
+            'objecting or withdrawing.',
+        );
+      }
+      const reversible = objectedArgs.filter((g) => g.objected !== null && g.objected !== 'true');
+      if (!reversible.length && objectedArgs.length) {
+        problems.push(
+          `🔴 ${root}: every ${PROMO_RECORD}( call in ${SETTINGS_DIR} passes \`objected: true\` ` +
+            `(${objectedArgs.map((g) => g.objected).join(' · ')}). Art 21 gives a person the right to object, not ` +
+            'a duty to stay objected; a control that only travels one way is a trap, not a control. The live row ' +
+            'passes the control\'s own callback value.',
+        );
+      }
+    }
+
+    if (!settingsFiles.some((f) => new RegExp(`\\b${PROMO_STATE}\\b`).test(f.body))) {
+      problems.push(
+        `${root}/${SETTINGS_DIR} never reads ${PROMO_STATE}, so the stop-offers control cannot render its own ` +
+          'state — and the objected state is exactly the one a user needs to see, because the promotional surface ' +
+          'that would otherwise confirm it is gone.',
+      );
+    }
+  }
+
   notes.push(
     `ok   ${root} — ${calls.length} withdrawal call site(s) in ${SETTINGS_DIR} across ${settingsFiles.length} file(s); ` +
       `granted: ${grantedArgs.map((g) => (g.granted ?? '(none)')).join(' · ')}; ` +
@@ -526,6 +746,84 @@ if (settingsCallsFound === 0 && problems.length === 0) {
     'That combination means the call matcher stopped matching rather than the rows being present.',
   ]);
 }
+// The promo rail is OPTIONAL (a tree that has not adopted research/44 rung 4
+// owes nothing), but a HALF adoption is not. The brick is app #2 through #50 and
+// the shipping app is the one a re-stamp overwrites; reaching only one of them
+// re-creates half the hole this file exists to close — the same argument the
+// analytics floor above makes, applied to the rail that arrived later.
+if (promoRailBearing === 1) {
+  coverageLost([
+    `exactly ONE root carries the Art 21 objection rail (${PROMO_RECORD}).`,
+    'Adopting it in the brick alone leaves the app in the field without the control; adopting it in the app',
+    'alone means every app the factory stamps from here is born without one. Land both, or neither.',
+  ]);
+}
+if (promoRailBearing >= 2 && promoCallsFound === 0 && problems.length === 0) {
+  coverageLost([
+    'the objection rail is declared in every root, zero settings call sites were found, and NO problem was',
+    'recorded — the three cannot all be true. The promo call matcher has stopped matching.',
+  ]);
+}
+
+// ── 👤 OWNER · THE NOTICE BEHIND THE ARTIFACTS ──────────────────────────────
+// PRINTED, NEVER FAILED. Every promo artifact is stamped with
+// `kPrivacyPolicyVersion` so it says WHICH notice the person was objecting
+// under — and the pinned notice does not describe promotional processing, the
+// legitimate-interest basis, or the right to object. GDPR Art 13(1)(c)/(d) and
+// Art 21(4) require both to be IN the notice.
+//
+// It fails nothing because publishing legal copy is ADR 031 class B — owner
+// work — and a guard that reddens CI on work only the owner can do is a guard
+// people switch off (the rule apple-signing.mjs follows for OWNER_QUEUE A-4).
+//
+// 🔬 IT IS DERIVED FROM THREE TREES, SO IT CLEARS ITSELF. The purposes come
+// from core's `ConsentBasis.legitimateInterest`, the version from the app's own
+// constant, the words from the published file. Publish a notice that describes
+// the basis and this line stops appearing with no edit here — and if a future
+// purpose is added on that basis, it starts appearing with no edit either.
+// assert-policy-claims.mjs cannot ask this: it quantifies over `<b>` spans on
+// published pages, never over the app's consent purposes.
+try {
+  const consentSrc = readFileSync(join(ROOT, 'packages/core/lib/src/analytics/consent.dart'), 'utf8');
+  const liPurposes = [...consentSrc.matchAll(/ConsentPurpose\s*\(\s*'([a-z_]+)'[^)]*ConsentBasis\.legitimateInterest/g)].map((m) => m[1]);
+  const versionSrc = readFileSync(join(ROOT, 'apps/subly/lib/state/analytics_providers.dart'), 'utf8');
+  const version = versionSrc.match(/kPrivacyPolicyVersion\s*=\s*'([^']+)'/)?.[1];
+  // The extractor losing its grip and the tree genuinely having no
+  // legitimate-interest purpose print IDENTICALLY unless this is asked. The
+  // file naming the basis while the extractor finds none is the first shape.
+  if (!liPurposes.length && /ConsentBasis\.legitimateInterest/.test(consentSrc)) {
+    console.log(
+      '👤 OWNER consent.dart NAMES ConsentBasis.legitimateInterest and the purpose extractor matched none — the ' +
+        'notice check below has stopped deriving its own subject. Fix the extractor; a silent zero here reads ' +
+        'exactly like "no purpose needs a notice", which is the opposite claim.',
+    );
+  }
+  if (liPurposes.length && version) {
+    const policyPath = `sites/nikatru/legal/${version}/en/privacy.html`;
+    const policy = existsSync(join(ROOT, policyPath))
+      ? readFileSync(join(ROOT, policyPath), 'utf8').toLowerCase()
+      : null;
+    const describes = policy !== null && /legitimate interest/.test(policy) && /object/.test(policy);
+    if (!describes) {
+      console.log(
+        `👤 OWNER the pinned notice ${policyPath}${policy === null ? ' DOES NOT EXIST' : ' describes neither a legitimate-interest basis nor a right to object'}, ` +
+          `and ${liPurposes.length} purpose(s) run on that basis (${liPurposes.join(', ')}). Every artifact those ` +
+          `purposes write is stamped policyVersion '${version}' so it records WHICH notice the person was objecting ` +
+          'under — and that notice does not mention the processing. GDPR Art 13(1)(c)/(d) requires the basis to be ' +
+          'stated and Art 21(4) requires the right to object to be brought to the reader\'s attention IN it. This is ' +
+          'owner-editable legal copy (ADR 031 class B), so it prints rather than fails — but it must land before a ' +
+          'real promotional card goes on screen, not before this machinery merges. Do NOT bump the version to fix ' +
+          'this line: assert-seams-wired.mjs pins it to the PUBLISHED notice, and bumping without publishing makes ' +
+          'every artifact cite a document that does not exist.',
+      );
+    }
+  }
+} catch {
+  console.log(
+    '👤 OWNER could not derive the notice check (core consent.dart or the app policy constant did not parse). ' +
+      'Printed rather than swallowed: a check that silently stopped checking is this repository\'s recurring defect.',
+  );
+}
 
 for (const n of notes) console.log(n);
 console.log(
@@ -553,6 +851,19 @@ if (problems.length) {
     `\nok   consent withdrawal — ${railBearing} of ${roots.length} root(s) carry an analytics rail and every one ` +
       `of them ships a state-reflecting, withdrawal-capable control in ${SETTINGS_DIR} ` +
       `(${settingsCallsFound} call site(s) across ${settingsFilesRead} settings file(s))`,
+  );
+  console.log(
+    promoRailBearing === 0
+      ? `ok   Art 21 objection — no root declares ${PROMO_RECORD}, so none owes a stop-offers control (research/44 rung 4 not adopted here)`
+      : `ok   Art 21 objection — ${promoRailBearing} root(s) carry the promo rail and every one ships a ` +
+          `state-reflecting, reversible stop-offers control in ${SETTINGS_DIR} (${promoCallsFound} call site(s))`,
+  );
+  console.log(
+    promoGateRoots === 0
+      ? `ok   promotional creative — no root names a promo gate, so none can bypass ${SANCTIONED} or ${FRAME} ` +
+          '(rung 3 not adopted here; this line starts asserting by itself the day a card lands)'
+      : `ok   promotional creative — ${promoGateRoots} root(s) decide a promotion, ${promoDecidesFound} call ` +
+          `site(s), every one through ${SANCTIONED} and in a file that renders through ${FRAME}`,
   );
   console.log('\nassert-consent-withdrawal-surface: ok');
 }

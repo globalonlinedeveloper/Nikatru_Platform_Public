@@ -165,8 +165,33 @@ const REQUIRED_COVERAGE = [
     wired: true,
     // The decision path itself, and the UI that triggers it. Both, because
     // deleting either one silently re-breaks the rail.
+    //
+    // 🔴 RE-POINTED 2026-08-10, AND THE RE-POINT IS THE INTERESTING PART.
+    // This need used to match the literal `ConsentPurpose.analytics,` followed
+    // by `granted:` — i.e. it read the call's FIRST ARGUMENT. research/44 rung 4
+    // made the purpose a PARAMETER of `applyConsentDecision` so the Art 21
+    // objection could reuse one decision path instead of forking it ([C-3]), and
+    // that literal stopped appearing at the call site. The guard went red, which
+    // is exactly right: it noticed the shape it reads had moved. The wrong fix
+    // would have been to relax it to `\.record\(` — that matches any purpose at
+    // all and would go on printing ok for a chassis that had quietly stopped
+    // recording ANALYTICS consent, which is the one thing this row is about.
+    //
+    // So it is two needs now, and neither is decorative:
+    //   1. the call exists — either naming the purpose literally (the shape any
+    //      app that has not parameterised it still has) or passing the parameter;
+    //   2. the parameter still DEFAULTS to analytics. Without (2), (1) is
+    //      satisfied by a path that records some other purpose entirely.
+    // Negative-tested by changing the default: (2) alone turns this row red.
     needs: [
-      { re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:/, label: 'a real record() call' },
+      {
+        re: /\.record\s*\(\s*(?:core\.)?ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:|\.record\s*\(\s*purpose\s*,[\s\S]{0,200}?granted:/,
+        label: 'a real record() call',
+      },
+      {
+        re: /(?:core\.)?ConsentPurpose\s+purpose\s*=\s*(?:core\.)?ConsentPurpose\.analytics/,
+        label: 'and analytics is still the purpose it defaults to',
+      },
       {
         re: /recordAnalyticsConsent\s*\(/,
         // Must be found somewhere OTHER than the file declaring it.
@@ -175,6 +200,14 @@ const REQUIRED_COVERAGE = [
       },
     ],
   },
+  // ⚠️ `recordPromoObjection` (the Art 21 objection, research/44 rung 4) is
+  // DELIBERATELY NOT A ROW HERE, and the omission is a decision rather than an
+  // oversight. `assert-consent-withdrawal-surface.mjs` already requires a real,
+  // reversible, state-reflecting caller inside lib/features/settings in BOTH
+  // roots — a strictly stronger question than "is anything calling it", asked of
+  // a named surface. A row here would restate it more weakly, and this repo
+  // deletes redundant assertions rather than collecting them: an assertion that
+  // cannot fail independently only inflates apparent coverage.
   {
     id: 'secure_session',
     what: 'initNikatruAuth — the only call that keeps the refresh token out of plaintext [G-43]',
@@ -321,6 +354,75 @@ const REQUIRED_COVERAGE = [
         declares: /Future<CheckoutStart>\s+startCheckout\(/,
         scope: BRICK_APP,
         label: 'a checkout the gate can be got past',
+      },
+    ],
+  },
+  {
+    id: 'promo_card',
+    what: 'the same-app upgrade card — a surface whose ENTIRE shipped state is "renders nothing"',
+    wired: true,
+    // 🔴 THE HARDEST SEAM IN THIS FILE TO KEEP HONEST, BECAUSE ITS CORRECT
+    // BEHAVIOUR AND ITS DEAD BEHAVIOUR ARE PIXEL-IDENTICAL.
+    // `features.promo_card_enabled` is absent from every config the portfolio
+    // serves and an absent feature key reads false, so every stamped app draws
+    // a collapsed `SizedBox.shrink()` where this card is. That is EXACTLY what
+    // an unmounted, unwired, deleted card also draws. Four capabilities in this
+    // repo shipped in precisely that state and none of them failed a test.
+    //
+    // THREE needs, because the seam has three separable halves and deleting any
+    // one re-breaks it while the other two keep looking healthy:
+    //   · the widget is MOUNTED in the stamped home body (not merely exported);
+    //   · something really DECIDES — the pure governor is consulted, so the
+    //     frequency cap, the dismissal latch and the GDPR Art 21 objection are
+    //     on the path rather than beside it;
+    //   · the impression is PERSISTED, because a cap nobody counts against
+    //     never caps and India's CCPA Dark Patterns Guidelines call the result
+    //     Nagging.
+    //
+    // Scoped to the brick throughout: this is the CHASSIS's card, inherited by
+    // every app the factory stamps, and a caller in apps/ would keep this green
+    // with the template's own mount deleted.
+    needs: [
+      {
+        // ⚠️ NO `declares` FILTER, DELIBERATELY, AND IT COST A RED TO NOTICE.
+        // `declares` drops the file that DECLARES the symbol — and here the
+        // declaration and the mount are the same file, exactly as
+        // `CatchUpNudgeBanner`'s are: the home body owns both. Filtering it out
+        // made this need unsatisfiable by a correctly wired tree. The anchor is
+        // safe without it because it matches a CONST CONSTRUCTION, which
+        // `class UpgradePromoCard extends …` cannot look like.
+        re: /const UpgradePromoCard\(\)/,
+        scope: BRICK_APP,
+        label: 'the card MOUNTED in the stamped home body',
+      },
+      {
+        // 🔴 RE-POINTED 2026-08-10, THE SAME WAY AND FOR THE SAME REASON AS THE
+        // CONSENT SEAM ABOVE. This read `promoGateProvider).decide(` — the gate
+        // as the RECEIVER. The D2 signature wired the render path through
+        // `PromoObjection`, which takes the gate as an ARGUMENT instead:
+        //
+        //     core.PromoObjection(consent).decide(ref.watch(promoGateProvider), …)
+        //
+        // so the old shape stopped appearing and this row went red. That is the
+        // guard working — it noticed the shape it reads had moved. The wrong fix
+        // would have been to relax it to `\.decide\(`, which any of three
+        // unrelated seams satisfies (`CatchUpNudge`, `ReviewGate`, this one).
+        //
+        // So it is an alternation over the two REAL shapes, receiver-form and
+        // argument-form, and nothing wider. Whether the sanctioned form was used
+        // is a different question and is NOT restated here:
+        // assert-consent-withdrawal-surface.mjs limb 5 owns it and asks it of
+        // every app root, which is strictly stronger than anything this row
+        // could add. [pipeline C-3] — no capability exists twice.
+        re: /promoGateProvider\)\s*\n?\s*\.decide\(|promoGateProvider\)\.decide\(|\.decide\(\s*\n?\s*ref\.watch\(promoGateProvider\)/,
+        scope: BRICK_APP,
+        label: 'a real PromoGate decision on the render path',
+      },
+      {
+        re: /\.markShown\(/,
+        declares: /Future<void>\s+markShown\(/,
+        scope: BRICK_APP,
+        label: 'the impression persisted, so the frequency cap can ever bind',
       },
     ],
   },

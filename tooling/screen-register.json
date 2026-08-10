@@ -365,6 +365,22 @@
       }
     },
     {
+      "id": "monetization.promo-card",
+      "what": "The same-app upgrade card in the home body: a labelled, dismissible promotional surface quoting an absolute price derived from the rail.",
+      "status": "present",
+      "declaredOn": "2026-08-10",
+      "detail": "BUILT 2026-08-10 (research/44 §7 rung 3). SAME-APP ONLY, and that is a store-declaration fact rather than a product preference: Google Play's house-ad trigger is worded \"to promote MY OTHER APPS\", so a card promoting the app the user is already in matches none of the three YES triggers and carries no ads label (research/44 V2). The cross-app version is a SEPARATE component with a SEPARATE config key, deferred until app #2 exists (rung 6). Prices are ABSOLUTE ONLY — no percentage, no \"was\", no countdown — because Directive 98/6/EC Art 6a and CJEU C-330/23 require a reduction to be computed against the lowest price of the prior 30 days and this repository holds no price history (V6). The card consults PurchaseCapabilities.canStartCheckout before drawing a buy control and never opens a URL of its own: every offer link resolves to the apex buy surface through the one hosted rail (ADR 038 · V14).",
+      "anchor": {
+        "file": "packages/design_system/lib/src/widgets/promo_card.dart",
+        "symbol": "PromoCard"
+      },
+      "reachable": {
+        "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart",
+        "pattern": "const UpgradePromoCard()",
+        "why": "🔴 THE HARD PART OF THIS ROW IS THAT ITS SHIPPED STATE IS INVISIBLE. features.promo_card_enabled is absent from every config the portfolio serves and an absent feature key reads false, so the card renders a collapsed SizedBox.shrink() in every app today — which is indistinguishable, from the outside, from a surface nobody ever mounted. The two are opposite facts: one is a campaign switched off, the other is the [2]C-6 dead feature. The pattern therefore matches the MOUNT in the stamped home body rather than anything visible, and the chassis property test property: promo-card-fails-closed asserts BOTH halves — mounted-and-zero-height with the flag absent, and a real labelled card with a derived price once the flag is served."
+      }
+    },
+    {
       "id": "system.review-prompt",
       "what": "Ask for a store review at a good moment.",
       "status": "present",

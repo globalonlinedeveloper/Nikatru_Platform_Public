@@ -515,6 +515,30 @@
   "@usageStatisticsOff": {
     "description": "Sub-label shown when analytics consent is not granted. Says what is NOT happening, because that is the claim the user is relying on."
   },
+  "promotionalOffers": "Offers and promotions",
+  "@promotionalOffers": {
+    "description": "Heading for the GDPR Art 21 objection row. 🔴 THE VALUE IS THE PAGE'S WORDS, NOT THE OTHER WAY ROUND. sites/nikatru/privacy.html §3 (owner-signed 2026-08-10) tells the reader \"Open the app's Settings and turn Offers and promotions off\", and r4 had shipped this string as \"Promotional offers\" — a person following the published instruction would look for a heading that was not there. The page is the promise and is [ADR 031] class B owner copy; an app label is class A, so the app moved. Changed in apps/subly and in the brick, en and ta together. Named for what it governs (offers), not for the mechanism (consent), because the user is looking for the thing they read about."
+  },
+  "promoObjectionExplain": "You can stop seeing offers for our apps at any time. Nothing else changes.",
+  "@promoObjectionExplain": {
+    "description": "Art 21(4) requires the right to object to be presented clearly and separately. The second sentence is load-bearing: it says objecting costs nothing, so the control is not read as a trade."
+  },
+  "promoStopOffers": "Stop showing offers",
+  "@promoStopOffers": {
+    "description": "The objection action. NEVER confirm-shaming ('No thanks, I don't want to save money') — India's CCPA Dark Patterns Guidelines 2023 forbid it and research/44 V5 lists it as forbidden in all configurations."
+  },
+  "promoResumeOffers": "Show offers again",
+  "@promoResumeOffers": {
+    "description": "The way back. Art 21 gives a right to object, not a duty to stay objected, so a one-way control would be a trap."
+  },
+  "promoOffersOff": "Offers are off",
+  "@promoOffersOff": {
+    "description": "The objected state, stated as an effect. A control whose state the user cannot see is a button that appears to do nothing."
+  },
+  "promoLabel": "Promotion",
+  "@promoLabel": {
+    "description": "THE ONE STRING THE STORES ACTUALLY MANDATE. It is the visible label on PromoSurface, and one word satisfies Apple 2.5.18 ('must clearly indicate that they are an ad'), Microsoft 10.10.4 ('clearly distinguishable from other content'), Play's native-ads trigger and India's Disguised Advertisement dark pattern at once. It exists here with no consumer yet BECAUSE the first promotional card is the caller: PromoSurface's English default would otherwise ship untranslated, and a Tamil user would meet the one word a reviewer checks for in English."
+  },
   "connectedAccounts": "Connected accounts",
   "@connectedAccounts": {
     "description": "Placeholder row for future account linking. Currently inert — see the OPEN QUESTION in MANIFEST.md."
@@ -1337,6 +1361,36 @@
         "example": "3"
       }
     }
+  },
+  "promoCardLabel": "OFFER FROM THIS APP",
+  "@promoCardLabel": {
+    "description": "The visible promotional label on the in-app upgrade card. ONE label plus a distinct container is what satisfies Apple 2.5.18, Microsoft Store 10.10.4, Play's native-ads trigger and India's Disguised Advertisement pattern at once — a promotional surface may never be styled as app content. It is deliberately not the word 'Ad': this card promotes THIS app, which matches none of Play's three ads-declaration triggers (research/44 V2), so the honest word is 'offer'. Overridable per app via AppConfig.copy['promo.card.label']."
+  },
+  "promoCardTitle": "Get the full experience",
+  "@promoCardTitle": {
+    "description": "Headline of the same-app upgrade card. Overridable via AppConfig.copy['promo.card.title'] (and ['promo.card.title.b'] for the B variant), so a campaign changes wording with no release."
+  },
+  "promoCardBody": "Everything unlocked, on every device you sign in on.",
+  "@promoCardBody": {
+    "description": "Body of the same-app upgrade card. States a benefit and makes NO claim about urgency, scarcity or a discount: false urgency is unfair in all circumstances under UCPD Annex I(7) and is named by India's CCPA Dark Patterns Guidelines 2023. Overridable via AppConfig.copy['promo.card.body']."
+  },
+  "promoCardPrice": "{price}, billed per {term}",
+  "@promoCardPrice": {
+    "description": "🔴 AN ABSOLUTE PRICE AND NOTHING ELSE. {price} is DERIVED from the rail's own amount and currency (Offering.formattedPrice) — never typed — and there is no 'was', no percentage and no 'save X'. Directive 98/6/EC Art 6a and CJEU C-330/23 require any announced reduction to be computed against the lowest price of the prior 30 days, and this repository holds no price history, so the comparison cannot be made and must not be shown.",
+    "placeholders": {
+      "price": {
+        "type": "String",
+        "example": "$4.99"
+      },
+      "term": {
+        "type": "String",
+        "example": "month"
+      }
+    }
+  },
+  "promoCardDismissA11y": "Dismiss this offer",
+  "@promoCardDismissA11y": {
+    "description": "What a screen reader announces for the card's icon-only close control. An icon-only control with no accessible name is a dismissal a user cannot perform, which turns a dismissible card into an undismissable one for exactly the people least able to work around it."
   },
   "legalAcceptTerms": "I agree to the Terms of Service, and I have read the Privacy Policy.",
   "@legalAcceptTerms": {

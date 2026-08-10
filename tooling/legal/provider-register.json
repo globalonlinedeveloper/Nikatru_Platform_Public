@@ -138,7 +138,8 @@
     "payment_gateway": "processes a card payment on our behalf. NOT the seller — we remain the seller, and the tax duty stays with us.",
     "iap_aggregator": "normalises store purchase events into one entitlement feed. Holds purchase state, not payment instruments.",
     "infrastructure": "runs or hosts the Services. Sees traffic and whatever the Services store, and is disclosed as a processor rather than as a seller.",
-    "identity": "authenticates users and holds account credentials."
+    "identity": "authenticates users and holds account credentials.",
+    "email_delivery": "sends the transactional email the Services generate — sign-in links, verification. Holds the recipient address in order to deliver to it, and is disclosed as a processor. NOT a marketing channel: a mailing list is a separate purpose with its own consent (ConsentPurpose.marketingEmail) and would be its own disclosure."
   },
   "dataCategories": {
     "_why": [
@@ -359,7 +360,8 @@
       ],
       "namedIn": [
         "terms.html",
-        "refund.html"
+        "refund.html",
+        "privacy.html"
       ],
       "privateRecord": "OWNER_QUEUE A-1 — the Paddle seller application, KYC and payout account. [ADR 004] holds the decision itself; [ADR 039] holds which channels it is the rail for.",
       "notes": [
@@ -476,7 +478,9 @@
         "revenuecat",
         "revenue cat"
       ],
-      "namedIn": [],
+      "namedIn": [
+        "privacy.html"
+      ],
       "privateRecord": null,
       "notes": [
         "🔴 THE ONLY PROVIDER IN THIS REGISTER THAT REAL CODE REACHES, AND IT IS NAMED IN NO PAGE.",
@@ -517,7 +521,9 @@
       "tells": [
         "supabase"
       ],
-      "namedIn": [],
+      "namedIn": [
+        "privacy.html"
+      ],
       "privateRecord": null,
       "notes": [
         "The auth vendor. services/platform/wrangler.jsonc declares SUPABASE_URL and the brick's",
@@ -540,7 +546,9 @@
       "tells": [
         "oracle"
       ],
-      "namedIn": [],
+      "namedIn": [
+        "privacy.html"
+      ],
       "privateRecord": "company/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
       "receives": [
         "crash_report"
@@ -556,44 +564,87 @@
         "paragraph (that crash reports are NOT sent to a third-party analytics product, and are received by",
         "software we run ourselves) is true and stays true under either host."
       ]
+    },
+    {
+      "id": "resend",
+      "name": "Resend",
+      "role": "email_delivery",
+      "status": "live",
+      "reachableAt": null,
+      "tells": [
+        "resend"
+      ],
+      "namedIn": [
+        "privacy.html"
+      ],
+      "privateRecord": "company/vendors/resend.md — the account, the API key and the sending domain. The SMTP wiring itself is recorded in company/vendors/supabase.md ([ADR 029]).",
+      "notes": [
+        "🔴 THIS ROW IS A FOUND DISCLOSURE GAP, AND THE FINDING IS THAT THERE WAS NO GAP ROW. Resend has",
+        "delivered every Supabase auth email since auth mail went live — smtp.resend.com, sending as",
+        "auth@mail.nikatru.com ([ADR 029]) — so it has held every user's email address that whole time. It",
+        "appeared in NEITHER this register NOR sites/nikatru/privacy.html until 2026-08-10. The other four",
+        "privacy.html corrections signed that day each had a `disclosureGaps` row printing on every CI run;",
+        "this one had nothing, because a provider absent from the register is absent from everything the",
+        "register drives. That is the difference between a gap that is TRACKED and a gap that is INVISIBLE,",
+        "and it is recorded here rather than quietly closed: nothing in this repository would have raised",
+        "it, and nothing in this repository will raise the next one either. The guards check the list",
+        "against the pages, never the list against reality — adding a vendor without adding its row is",
+        "still a silent hole, and only a person comparing the two closes it.",
+        "",
+        "It is deliberately NOT in retiredDisclosureGaps: no gap row ever existed, and inventing one would",
+        "fabricate a history in which the omission was known and scheduled. It was not.",
+        "",
+        "⚠️ SCOPE BOUNDARY, STATED SO IT IS NOT MISTAKEN FOR COVERAGE: assert-sink-disclosure.mjs quantifies",
+        "over `infrastructure` rows with status `live`, and this row is `email_delivery`. The categories",
+        "Resend holds are therefore NOT checked against the published denials by that guard. The role is",
+        "the right one — Resend hosts nothing — and borrowing `infrastructure` to pick up the limb would be",
+        "putting a false claim in the register to satisfy a check. What DOES bind is assert-policy-claims",
+        ".mjs: `namedIn` forces this row's tells to appear in privacy.html's visible text on every run, so",
+        "the disclosure cannot silently disappear once made.",
+        "",
+        "TRANSACTIONAL ONLY. The privacy sentence names sign-in and account-verification messages and claims",
+        "no marketing channel, because there is none: ConsentPurpose.marketingEmail is collection-only, with",
+        "no sender and no list ([ADR 040] decision 5). Describing a channel we do not operate would be a",
+        "promise to keep true for nothing."
+      ]
     }
   ],
-  "disclosureGaps": [
+  "disclosureGaps": [],
+  "retiredDisclosureGaps": [
+    {
+      "_note": "🔴 RETIRED, NOT DELETED — 2026-08-10, by the owner signature that bumped sites/nikatru/privacy.html to version 2026-08-10. All four were live rows in `disclosureGaps` until that commit, and each one is a sentence that was WRONG or MISSING on a published legal page for weeks; deleting the record would delete the only evidence of how long. assert-policy-claims.mjs reads `disclosureGaps` ONLY, so nothing in this array is checked — which is exactly why each row carries `closedBy`, naming the span that now says the true thing and the tooling/legal/policy-claims.json row that pairs it. If a future edit drops one of those spans, THAT row fails; this list is a record, not a guard, and does not pretend to be one."
+    },
     {
       "id": "crash-reports-infrastructure",
-      "ownerItem": "O-3",
       "provider": "oracle-cloud",
       "page": "privacy.html",
-      "what": "privacy.html §3 says usage statistics AND crash reports are 'received and stored by software we run ourselves, on infrastructure provided by Cloudflare as our hosting provider'. Usage statistics do run on Cloudflare. Crash reports run on an Oracle Cloud VM. One sentence covers two systems on two providers and is wrong about the second.",
-      "stillTrue": "infrastructure provided by Cloudflare as our hosting provider",
-      "resolution": "Split the sentence so each system names its own host. This is published legal copy — an agent can propose the wording, only the owner publishes it, and it belongs in the SAME version bump as the other two O-3 text corrections so the archive takes one snapshot rather than three."
+      "was": "One sentence said usage statistics AND crash reports were 'received and stored by software we run ourselves, on infrastructure provided by Cloudflare as our hosting provider'. Usage statistics do run on Cloudflare. Crash reports run on an Oracle Cloud VM, so the sentence covered two systems on two providers and was wrong about the second.",
+      "closedBy": "§4 now splits it: usage statistics name Cloudflare, crash reports name Oracle Cloud. Paired by the `Oracle Cloud` provider row in tooling/legal/policy-claims.json, and oracle-cloud.namedIn now lists privacy.html so the disclosure is re-checked against the page text on every run.",
+      "closedIn": "2026-08-10"
     },
     {
       "id": "merchant-of-record-unnamed",
-      "ownerItem": "O-3",
       "provider": "paddle",
       "page": "privacy.html",
-      "what": "[ADR 004] locked Paddle as the merchant of record and [ADR 039] scoped it to every channel with no store tax. terms.html §4 and refund.html §2/§4 now name Paddle and describe the role. privacy.html still says only 'a merchant of record' and commits to naming the provider before selling starts. ⚠️ THE GAP IS NARROWER THAN IT WAS AND THE NARROWING IS THE POINT: the defect it used to carry — two pages naming a DIFFERENT company for the same purchase — is fixed, and what remains is one page whose third-party list is generic where the other two are specific. A reader who compares them is no longer told two different sellers; they are told one seller and, in the privacy notice, a role.",
-      "stillTrue": "a merchant of record",
-      "resolution": "Name Paddle in privacy.html §3. 🔴 IT IS NOT THE SAME SIZE OF EDIT AS THE OTHER TWO WERE, WHICH IS WHY IT IS STILL OPEN: privacy.html is inside the policy-VERSION surface, so the edit is `data-policy-version` + `kPrivacyPolicyVersion` in apps/subly and in the brick + an archive snapshot under sites/nikatru/legal/<version>/en/ (assert-policy-archive.mjs, assert-seams-wired.mjs). terms.html and refund.html carry no version and were corrected without one. That is one owner signature covering EVERY outstanding privacy.html correction at once — this row, `crash-reports-infrastructure`, `identity-provider-unnamed`, `iap-aggregator-unnamed` and the direct-marketing section drafted in docs/legal/privacy-direct-marketing-draft.md — so the archive takes one snapshot rather than five."
+      "was": "§3 described the merchant-of-record ROLE and committed to naming the provider before selling started, while terms.html and refund.html already named Paddle. One page generic where two were specific.",
+      "closedBy": "§4 names Paddle beside the role. Paired by the `Paddle` provider row in tooling/legal/policy-claims.json; paddle.namedIn now lists all three pages.",
+      "closedIn": "2026-08-10"
     },
     {
       "id": "iap-aggregator-unnamed",
-      "ownerItem": "O-3",
       "provider": "revenuecat",
       "page": "privacy.html",
-      "what": "privacy.html §3 lists app stores, Cloudflare and a merchant of record. It names no in-app-purchase aggregator, and [ADR 039] D5 LOCKED RevenueCat as the mobile-store IAP glue on 2026-08-09. RevenueCat already has the only route in this register that real code reaches (POST /v1/webhooks/revenuecat), and it holds an account identifier and entitlement records — so it is a processor a privacy notice owes a mention, not a seller the buyer-facing pages owe one. Nothing flows through it today because no store account exists to send it an event, which is exactly why the disclosure is easy to still be missing on the day one does.",
-      "stillTrue": "Depending on the app, these may include",
-      "resolution": "Name the IAP aggregator in §3 in the same version bump as the other privacy.html corrections — or, if the D5 lock is ever reversed before a store ships, retire this row with it. ⚠️ NOT a seller disclosure: naming RevenueCat in terms.html or refund.html would tell a buyer they contracted with it, and they did not. The trigger — 'the day any app records a store purchase' — is carried in tooling/legal/duty-matrix.json so it cannot rely on somebody remembering."
+      "was": "§3 named no in-app-purchase aggregator, though [ADR 039] D5 locked RevenueCat on 2026-08-09 and it holds an account identifier and entitlement records.",
+      "closedBy": "§4 names RevenueCat explicitly as a PROCESSOR acting on our behalf and explicitly not as the seller. Paired by the `RevenueCat` provider row in tooling/legal/policy-claims.json. ⚠️ The duty row `iap-aggregator-disclosed-before-a-store-purchase` in tooling/legal/duty-matrix.json KEEPS its trigger: the disclosure landing is not the same fact as the first real store purchase arriving.",
+      "closedIn": "2026-08-10"
     },
     {
       "id": "identity-provider-unnamed",
-      "ownerItem": "O-3",
       "provider": "supabase",
       "page": "privacy.html",
-      "what": "privacy.html §3 lists app stores, Cloudflare and a merchant of record. It names no identity provider, and Supabase is wired as one. Nothing is stored under it today because no shipped app offers accounts, so this is a disclosure that has to land BEFORE the first account is created rather than a disclosure that is currently wrong.",
-      "stillTrue": "Depending on the app, these may include",
-      "resolution": "Name the identity provider in §3 in the same version bump, or record that accounts are not offered. The trigger — 'the day any app creates a user account' — is carried in tooling/legal/duty-matrix.json so it cannot rely on somebody remembering."
+      "was": "§3 named no identity provider although Supabase is wired as one. Nothing was stored under it because no shipped app offers accounts — a disclosure that had to land BEFORE the first account, not one that was already wrong.",
+      "closedBy": "§4 names Supabase as the store of account credentials and sign-in sessions. Paired by the `Supabase` provider row in tooling/legal/policy-claims.json.",
+      "closedIn": "2026-08-10"
     }
   ]
 }

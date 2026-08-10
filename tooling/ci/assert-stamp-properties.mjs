@@ -625,6 +625,61 @@ const REQUIRED_COVERAGE = [
     why: 'a paywall that is not driven by a real server answer is either a wall nobody paid past or a product given away',
   },
   {
+    key: 'promo-card-fails-closed',
+    group: /group\(\s*'property: promo-card-fails-closed'/,
+    // 🔴 THE PROPERTY WHOSE CORRECT BEHAVIOUR IS INVISIBLE. `features.
+    // promo_card_enabled` is absent from every config this portfolio serves and
+    // an absent feature key reads false, so the shipped card draws a collapsed
+    // `SizedBox.shrink()` — identical, from outside, to a card nobody mounted,
+    // a card somebody deleted, and a card that never worked. The stamped app has
+    // to prove BOTH halves about itself: mounted-and-zero-height with the flag
+    // absent, and a real labelled card with a derived price once it is served.
+    //
+    // EIGHT anchors, because deleting any one leaves the other seven healthy
+    // while the surface stops being what it claims. The last three were added
+    // 2026-08-10 after an adversarial review MUTATED THE REAL TREE and found
+    // three limbs nothing depended on:
+    //   · the paid-user check could be deleted with all 18 surface rows and all
+    //     7 property rows still green — the row carrying its name asserted the
+    //     card SHOWED, for an UNPAID user;
+    //   · the hydration barrier did not exist, so a device holding an Art 21
+    //     objection was shown a promotional card for the length of the disk
+    //     read (measured: t+0 through t+20 ms against a 40 ms store) and every
+    //     widget test hid that window behind `pumpAndSettle()`;
+    //   · a corrupt record fell back to the empty default AND was then
+    //     overwritten with `"suppressed":false`, erasing the objection from
+    //     disk in one launch.
+    sources: [
+      { file: HOME, re: /const UpgradePromoCard\(\)/, what: 'the card must be MOUNTED in the stamped home body — a surface nothing mounts cannot be turned on by a config edit, and it renders the same nothing either way' },
+      { file: HOME, re: /featureEnabled:\s*cfg\?\.feature\(kPromoCardFeature\)/, what: 'the on-switch must be the CONFIG key, read with its absent-means-false default — research/44 §4.5: an app that has never reached the network shows no promo' },
+      { file: HOME, re: /hasContent:\s*offerings\.isNotEmpty/, what: 'an eligible user and nothing to promote must be a REFUSAL, not a silent show — research/44 opens its DO-NOT-BUILD list with the empty directory that is "wired, guarded, green and useless"' },
+      { file: HOME, re: /onManageAction:\s*\(\)\s*=>\s*context\.go\('\/manage-plan'\)/, what: 'ROSCA parity — the cancel entry rides on the same surface as the offer, not one level below it' },
+      { file: PROVIDERS, re: /if\s*\(current\.dismissed\s*\|\|\s*current\.suppressed\)\s*return;/, what: 'a latch that arrived from storage while an impression was in flight must WIN — writing the decision through verbatim erased a GDPR Art 21 objection from disk, which the property test caught' },
+      // ⚠️ ANCHORED ON THE NULL TEST, NOT ON `valueOrNull`. `?? const
+      // PromoGateState()` also contains `valueOrNull` and is precisely the
+      // mutation this exists to catch — it compiles, analyzes clean, and puts
+      // the card back in front of a user whose record has not been read.
+      { file: HOME, re: /if\s*\(stored\s*==\s*null\)\s*return const SizedBox\.shrink\(\);/, what: 'the HYDRATION BARRIER — a record that has not been read yet is not a record that says nobody objected, and Art 21(3) has no grace period in it. Without this the card renders for the whole duration of the disk read and no settled widget test can see it' },
+      // 🔴 ANCHORED ON THE WHOLE CLAUSE, NOT ON `ref.watch(paywallLockedProvider)`.
+      // MEASURED 2026-08-10: the bare read shipped as this anchor and was BLIND
+      // to the only mutation it names. `home_screen.dart` already watches that
+      // provider for the PaywallGate's own `locked:` — a different feature, the
+      // one the file existed for before this card arrived — so deleting the
+      // card's paid-user check from BOTH real home screens left this guard at
+      // exit 0. Proven by mutating the real tree, which is the only thing that
+      // could have shown it: a fixture written beside the anchor encodes the
+      // same misunderstanding as the anchor.
+      //
+      // The clause is the anchor because the clause is the claim. `paywall.enabled`
+      // is in it for a reason of its own: `paywallLockedProvider` is false for
+      // everyone in an app that sells nothing, and "false for everyone" must not
+      // read as "everybody has paid".
+      { file: HOME, re: /\(cfg\?\.paywall\.enabled\s*\?\?\s*false\)\s*&&\s*!ref\.watch\(paywallLockedProvider\)/, what: 'a user who has ALREADY PAID must not be promoted to — this limb survived deletion with every promo test in both suites green until the review mutated the real tree' },
+      { file: PROVIDERS, re: /if\s*\(!_recordRead\)\s*return;/, what: 'no write may land on a record we failed to read — an impression counter is the least important thing on this key and must never be what destroys the most important one' },
+    ],
+    why: 'a promotional surface whose off state and whose dead state are pixel-identical can only be told apart by an assertion',
+  },
+  {
     key: 'ui-invariants-inherited',
     group: /group\(\s*'property: ui-invariants-inherited'/,
     sources: [
@@ -933,7 +988,25 @@ const REQUIRED_COVERAGE = [
   {
     key: 'analytics-consent-gated',
     group: /group\(\s*'property: analytics-consent-gated'/,
-    sources: [{ file: PROVIDERS, re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted/, what: 'the template must really call ConsentController.record' }],
+    // 🔴 RE-POINTED 2026-08-10, the third guard to move for the same edit and
+    // for the same reason. This read the literal `ConsentPurpose.analytics,`
+    // followed by `granted: granted` — i.e. the call's FIRST ARGUMENT. research
+    // /44 rung 4 made the purpose a PARAMETER of `applyConsentDecision` so the
+    // Art 21 objection reuses one decision path instead of forking it ([C-3]),
+    // and that literal left the call site. The anchor now accepts either shape:
+    // the argument spelled out (any app that has not parameterised it) or the
+    // parameter passed through — and the second alternative is bounded by
+    // `granted: granted` exactly as the first was, so `controller.record(` alone
+    // never satisfies it. Relaxing to `\.record\(` would have matched the terms
+    // and marketing-email calls further down the same file, which are different
+    // purposes entirely and say nothing about the analytics rail.
+    sources: [
+      {
+        file: PROVIDERS,
+        re: /ConsentPurpose\.analytics\s*,[\s\S]{0,200}?granted:\s*granted|\.record\(\s*\n?\s*purpose\s*,[\s\S]{0,200}?granted:\s*granted/,
+        what: 'the template must really call ConsentController.record',
+      },
+    ],
     why: 'a stamped app must refuse without consent AND deliver with it',
   },
   {
@@ -1122,7 +1195,19 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // the tree for the reason stated above and not restated as a rule of thumb —
 // left at 46, deleting BOTH of them would leave exactly 46 and the floor would
 // stop catching the deletion it exists to catch.
-const MIN_DOMAIN = 48;
+// 50 since 2026-08-10: research/44 §7 rung 3 added `promoGateProvider` and
+// `promoCardStateProvider`. RAISED WITH THE TREE, for the reason the lines above
+// give — a floor left behind the tree stops catching the deletion it exists to
+// catch. 🔴 THE TWO RAISES LANDED ON THE SAME DAY ON DIFFERENT BRANCHES AND BOTH
+// READ "48": each was 46+2, computed against a tree that did not yet contain the
+// other's pair. A floor is a measurement of the merged tree, so the merge is
+// 46+2+2 and taking either side's number verbatim would have silently lowered it
+// by two — a ratchet quietly slackened is the failure this comment block exists
+// to prevent.
+// 53 since 2026-08-10: research/44 rung 4 added `privacySignalProvider`,
+// `promoObjectedProvider` and `promoObjectionKnownProvider` to the stamped
+// chassis. Raised with the tree, same reason as every line above it.
+const MIN_DOMAIN = 53;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1212,6 +1297,12 @@ const COVERED_BY = {
   // stamped app, and taps its button. This was "the switch that was inert for 55
   // builds" and nothing had ever raised it.
   mustForceUpdateProvider: 'update-url-resolved-from-config',
+  // [research/44 §7 rung 3]. DRIVEN, not merely constructed: the property
+  // serves the feature flag for real, taps the card's own decline control, and
+  // reads back the latched record from the stamp's own storage — then relaunches
+  // over the same store and asserts the card stays gone.
+  promoGateProvider: 'promo-card-fails-closed',
+  promoCardStateProvider: 'promo-card-fails-closed',
   // ── research/43's legal gate. RECLASSIFIED 2026-08-10 from UNASSERTED, and
   //    the move is the finding rather than tidying.
   //
@@ -1231,6 +1322,16 @@ const COVERED_BY = {
   // bug stops being either once it is fixed.
   legalAcceptanceProvider: 'legal-reacceptance-gated',
   legalReacceptanceNeededProvider: 'legal-reacceptance-gated',
+  // [research/44 rung 4] The Art 21 objection, read on the RENDER path. DRIVEN,
+  // not constructed, and the distinction is checkable: since the D2 signature
+  // the stamped home screen renders the creative through
+  // `PromoSurface(objected: ref.watch(promoObjectedProvider), …)`, and
+  // `PromoSurface` returns `SizedBox.shrink()` when `objected` is true. So a
+  // provider that answered wrongly in either direction turns
+  // `promo-card-fails-closed` red — "the flag SERVED TRUE opens the path" needs
+  // it false, and "a GDPR Art 21 objection outranks a live campaign" needs it to
+  // be able to say true.
+  promoObjectedProvider: 'promo-card-fails-closed',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what
@@ -1255,6 +1356,8 @@ const UNASSERTED = {
   packageVersionProvider: '2026-08-07 · SUBSTITUTED rather than driven by `update-url-resolved-from-config`: the real provider reads a platform channel a widget test has not got and answers null BY DESIGN, which is what made the wall fail open and kept it unproven. The property overrides it to raise the wall; the plugin read itself is still asserted nowhere',
   featureFlagsProvider: '2026-07-28 · rollout bucketing is unasserted in the stamp; core tests the maths, nothing tests that a stamped app buckets',
   analyticsConsentProvider: '2026-07-28 · the UI-facing read; consentDecidedProvider is the limb the property test drives, and it is the one that decides whether to prompt',
+  privacySignalProvider: '2026-08-10 · the Global Privacy Control seam (K-15), added as an OVERRIDABLE provider by research/44 rung 4 precisely so the honoured-GPC branch is reachable at all — on the VM the real signal is always false, so the branch could otherwise be driven by nothing. It IS driven, in promo_objection_surface_test.dart in both roots ("a device signal alone means ZERO renders, and writes nothing"), which is a stamped-app file. What is missing is a CHASSIS PROPERTY: the property suite never overrides it, so the stamp does not prove it about ITSELF. Recorded rather than counted, because "asserted somewhere in the root" and "asserted by the lane that runs on every stamp" are different claims and this file keeps the difference.',
+  promoObjectionKnownProvider: '2026-08-10 · the third state — has the rail been READ yet — that keeps the Settings row blank and untappable while consent is loading, so a tap in that window cannot upload a `granted: true` artifact recording a decision nobody made. Asserted in promo_objection_surface_test.dart ("🔴 THE ROW CLAIMS NOTHING WHILE THE RAIL IS STILL LOADING"); no chassis property reaches it, because the property suite never pumps the Settings screen. The gap is the SUITE\'s shape, not the provider\'s: closing it means a stamped-app property that opens Settings, which is worth writing and is not written.',
   // ⚠️ A NOTE FOR WHOEVER ADDS THE NEXT ENTRY HERE, kept because it is the most
   // expensive lesson this map has produced. `legalAcceptanceProvider` and
   // `legalReacceptanceNeededProvider` were written into this list on 2026-08-10

@@ -83,7 +83,7 @@ class BudgetScreen extends ConsumerWidget {
 
     // 🔀 P3 PORT — THE WIDTH DECISION THIS SCREEN NEVER HAD.
     //
-    // Same defect and same fix as home's `ContentPane` (home_screen.dart:109).
+    // Same defect and same fix as home's `ContentPane` (home_screen.dart:119).
     // `AppScaffold` caps the body at `kMaxBodyWidth` only in its EXTRA-LARGE
     // class (>=1600), so between 1200 and 1599 every category bar grew to the
     // full window — a 1550 px progress meter with a name at one edge and a

@@ -29,12 +29,14 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
+import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
 import '../../core/format/currency.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
@@ -64,6 +66,14 @@ class HomeScreen extends ConsumerWidget {
         // a nudge. MOUNTED EXACTLY ONCE IN THE APP — chassis_properties_test
         // pumps the whole SublyApp and asserts findsOneWidget.
         CatchUpNudgeBanner(),
+        // [research/44 §7 rung 3] The same-app upgrade card, the TWIN of the
+        // brick's. In the stamped chassis it sits directly above `PaywallGate`
+        // in the home body; here the gate moved to the router's Insights branch
+        // with [ADR 037]'s Variant B, so the equivalent position is this one —
+        // the same slot in the same Column, immediately under the nudge banner
+        // and above the product dashboard. It renders NOTHING while
+        // `features.promo_card_enabled` is absent, which it is.
+        UpgradePromoCard(),
         Expanded(child: _HomeDashboard()),
       ],
     );
@@ -756,6 +766,271 @@ class CatchUpNudgeBanner extends ConsumerWidget {
           child: Text(l10n.catchUpDismiss),
         ),
       ],
+    );
+  }
+}
+
+/// The SAME-APP upgrade card — [research/44 §7 rung 3].
+///
+/// 🔴 SAME-APP IS THE WHOLE DECLARATION ARGUMENT, NOT A PRODUCT CHOICE. This
+/// card promotes the app the user is already inside. Google Play's third
+/// ads-declaration trigger — the one that needs no SDK — is worded *"House ads:
+/// My app renders a small ad banner, interstitial ad, ad wall, and/or widget"*
+/// **to promote my other apps**, and this matches none of the three, so no ads
+/// label and no "Contains ads" badge follow from it (research/44 V2). The
+/// cross-app version is a SEPARATE component with a SEPARATE config key,
+/// deferred until app #2 exists (rung 6); the two may never share a widget or a
+/// flag, because their declaration consequences differ.
+///
+/// ## What it reads, and what each read is for
+/// * `features.promo_card_enabled` — the on-switch. **Absent reads FALSE**
+///   (`AppConfig.feature`'s `orElse`), so a stamped app that has never reached
+///   the network shows nothing. This is the state of every app in the portfolio
+///   today.
+/// * `AppConfig.copy` — the words, so a campaign is a config edit and not a
+///   release. Falls back to l10n and **never to the key**: `AppConfig.text`
+///   returns the key itself when unset, and a fresh stamp has no overrides, so
+///   a purely config-driven card would greet its first user with
+///   `promo.card.title`. Same trap, same fix, as the onboarding carousel.
+/// * `flags.promo_card_variant` — which wording this install sees, bucketed on
+///   the SAME `installIdProvider` value the analytics cohort uses. Two
+///   independently minted ids makes every experiment permanently unanalysable.
+/// * the rail's `Offering` — the price, DERIVED. There is no price literal in
+///   this file and `tooling/ci/assert-no-price-literals.mjs` fails the build if
+///   one appears.
+/// * `PurchaseRail.canStartCheckout` — whether to offer to sell at all. False
+///   on `ios-appstore`, `macos-appstore` and `android-play` (ADR 039 D3 ·
+///   research/44 V13), where the card still renders and simply carries no buy
+///   button. Steering to an external checkout on those three is a documented
+///   rejection cause.
+/// * `paywallLockedProvider` — a user who has already paid is not promoted to.
+///   The rule the `CatchUpNudgeBanner` beside it established, applied to money:
+///   a nudge the user paid to see is not a nudge.
+///
+/// ## What it deliberately does NOT do
+/// **It opens no URL.** The buy control navigates to `/paywall`, which is where
+/// the ONE hosted rail lives; every offer link therefore resolves to the apex
+/// buy surface (ADR 038) through the merchant of record this portfolio is
+/// locked to. A second checkout — a `pay.rev.cat` link, a per-app subdomain,
+/// anything this widget launched itself — would be a second merchant of record
+/// with its own VAT/GST posture (research/44 V14). `assert-purchase-path.mjs`
+/// fails the build if this file grows a launcher.
+///
+/// **It emits no impression or click event.** research/44 §4.4 is explicit that
+/// v1 ships UNMEASURED and that this is the one irreversible decision in the
+/// programme: the locked taxonomy carries no cross-promo event, adding one
+/// takes a portfolio session-capacity cut of 25–50% against the binding D1
+/// rows-written ceiling, and the choice is owner decision D6. So the variant is
+/// resolved with the PURE `core.resolveFlag` rather than through
+/// `featureFlagsProvider`, whose `ObservedFeatureFlags` wrapper would emit
+/// `variant_exposed` on first read. That read is a genuine gap and it is
+/// PRINTED on every run by `assert-flag-exposure.mjs` rather than left to be
+/// discovered — when D6 says measure, this line moves to the observed reader
+/// and the guard's ceiling comes back down.
+class UpgradePromoCard extends ConsumerStatefulWidget {
+  const UpgradePromoCard({this.clock, super.key});
+
+  /// Injectable ONLY so the cooldown boundary is reachable from a test — a test
+  /// process cannot choose what `DateTime.now()` reports. Same reasoning as
+  /// [CatchUpNudgeBanner]'s, and the same reason `core.PromoGate` takes `now`.
+  final DateTime Function()? clock;
+
+  @override
+  ConsumerState<UpgradePromoCard> createState() => _UpgradePromoCardState();
+}
+
+class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
+  /// 🔴 THE DECISION IS LATCHED FOR THE LIFE OF THIS PRESENTATION, AND WITHOUT
+  /// IT THE CARD DELETES ITSELF ON THE FRAME AFTER IT APPEARS.
+  ///
+  /// `PromoGate.decide` is pure and idempotent, and the impression is recorded
+  /// by PERSISTING its returned state. That write republishes
+  /// `promoCardStateProvider`, which rebuilds this widget, which re-decides —
+  /// now from a record that says "shown just now" — and gets
+  /// `shownTooRecently`. So a card that correctly decided to show would vanish
+  /// within one frame, on every device, and nothing about the gate or the
+  /// persistence would look wrong.
+  bool _showing = false;
+
+  /// The app's override for [key], then its variant override, then the chassis
+  /// default.
+  ///
+  /// Empty is treated as absent: a config shipping `""` is a config somebody
+  /// half-edited, and a blank card is worse than the default one.
+  String _copy(core.AppConfig? cfg, String key, {required String fallback}) {
+    final String? override = cfg?.copy[key];
+    return (override == null || override.trim().isEmpty) ? fallback : override;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;
+    // ── THE HYDRATION BARRIER, AND IT IS THE FIRST DECISION FOR A REASON
+    // 🔴 A RECORD WE HAVE NOT READ YET IS NOT A RECORD THAT SAYS "NOBODY
+    // OBJECTED". The first version of this widget read a SYNCHRONOUS
+    // `PromoGateState` that started at the empty default and hydrated behind
+    // it, so a device holding `"suppressed": true` was shown a promotional
+    // card for the whole duration of the disk read — measured on the real
+    // tree at t+0, t+5, t+10 and t+20 ms against a 40 ms store, off screen
+    // only by t+60. Nothing failed, because every widget test in this repo
+    // calls `pumpAndSettle()` first and that is exactly the window being
+    // skipped. Art 21(3) — "the personal data shall no longer be processed
+    // for such purposes" — has no grace period in it, so neither does this.
+    //
+    // `valueOrNull == null` states the rule ONCE for both shapes of
+    // not-knowing — still reading, and could not read — which is the whole
+    // reason the controller is an `AsyncNotifier`: a barrier that lives in the
+    // TYPE cannot be forgotten by the next caller of this provider.
+    final core.PromoGateState? stored = ref
+        .watch(promoCardStateProvider)
+        .valueOrNull;
+    if (stored == null) return const SizedBox.shrink();
+
+    // ── THE SECOND HALF OF THE SAME BARRIER — THE CONSENT RAIL ─────────────
+    // `PromoGateState.suppressed` is a PROJECTION of `ConsentPurpose.promo`,
+    // never an independent fact (`PromoObjection`'s library comment). So the
+    // record above is only half the input: a person who objected on this
+    // device, or whose browser is sending a GPC signal this session, is
+    // "objected" whether or not the latch on disk has caught up. Reading the
+    // record without the rail is the two-stores defect — both halves report
+    // healthy while the card keeps rendering to somebody who exercised an
+    // absolute right to stop it (Art 21(2)/(3)).
+    //
+    // Same fail-closed shape as the record barrier immediately above, and for
+    // the same measured reason: a rail we have not finished reading is not a
+    // rail that says nobody objected.
+    final core.ConsentController? consent = ref
+        .watch(consentControllerProvider)
+        .valueOrNull;
+    if (consent == null) return const SizedBox.shrink();
+
+    // ── THE LATCHES OUTRANK THE LATCH ──────────────────────────────────────
+    // Checked before `_showing`, deliberately: a dismissal or a GDPR Art 21
+    // objection raised while the card is on screen must take it off the screen,
+    // not wait for the next launch. Art 21(3) — "the personal data shall no
+    // longer be processed for such purposes" — has no grace period in it.
+    if (stored.dismissed || stored.suppressed) return const SizedBox.shrink();
+
+    // A user who has already paid is not promoted to. `paywallLockedProvider`
+    // is only meaningful for an app that HAS a paywall; for one that sells
+    // nothing it is false for everyone, which must not read as "everybody has
+    // paid".
+    if ((cfg?.paywall.enabled ?? false) && !ref.watch(paywallLockedProvider)) {
+      return const SizedBox.shrink();
+    }
+
+    final PurchaseRail rail = ref.watch(purchaseRailProvider);
+    final List<Offering> offerings = rail.offerings;
+
+    if (!_showing) {
+      // 🔴 THROUGH `PromoObjection`, NEVER STRAIGHT AT THE GATE. It projects
+      // the rail onto the record first and cannot be skipped — a GPC objection
+      // (Art 21(5)) writes no artifact at all and reaches the gate by no other
+      // route. `assert-consent-withdrawal-surface.mjs` limb 5 fails the build
+      // for any `.decide(` on a promo gate whose expression does not name it.
+      final core.PromoGateDecision decision = core.PromoObjection(consent)
+          .decide(
+            ref.watch(promoGateProvider),
+            stored,
+            now: (widget.clock ?? DateTime.now)(),
+            featureEnabled: cfg?.feature(kPromoCardFeature) ?? false,
+            // 🔴 THE [pipeline C-6] LIMB. An eligible user and nothing to
+            // promote is `nothingToShow`, not `show` — research/44's
+            // DO-NOT-BUILD list opens with the empty portfolio directory:
+            // "wired, guarded, green and useless". A card with no price to
+            // quote is that shape one size down.
+            hasContent: offerings.isNotEmpty,
+          );
+      if (!decision.show) return const SizedBox.shrink();
+      _showing = true;
+      // Persisted on RENDER, not on decide. The gate is pure, so the write is
+      // the moment of truth — and it is deferred to after this frame because a
+      // provider mutation during build is a rebuild inside a build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(promoCardStateProvider.notifier).markShown(decision.state);
+      });
+    }
+
+    // Belt and braces after the latch: a config that loses its offerings mid
+    // session leaves nothing to quote, and `offerings.first` on an empty list
+    // is a crash on the home screen.
+    if (offerings.isEmpty) return const SizedBox.shrink();
+    // The rail's OWN order, the same order the paywall lists them in. Picking
+    // "the cheapest" would need a currency comparison this repo cannot make —
+    // amounts are minor units of whatever currency the rail sent.
+    final Offering offering = offerings.first;
+
+    // ── THE VARIANT ────────────────────────────────────────────────────────
+    // Absent id (the disk read has not landed) or absent flag ⇒ variant A.
+    // Never a coin flip: `resolveFlag` is deterministic per install, so a user
+    // does not see a different card on every launch.
+    final String? installId = ref.watch(installIdProvider).valueOrNull;
+    final bool variantB =
+        installId != null &&
+        core.resolveFlag(
+          flag: kPromoCardVariantFlag,
+          rolloutPercent: cfg?.rolloutPercent(kPromoCardVariantFlag) ?? 0,
+          stableId: installId,
+        );
+    final String suffix = variantB ? '.b' : '';
+
+    String copy(String key, String fallback) => _copy(
+      cfg,
+      'promo.card.$key$suffix',
+      fallback: _copy(cfg, 'promo.card.$key', fallback: fallback),
+    );
+
+    final bool canSell = rail.canStartCheckout;
+
+    // ── THE FRAME, AND THE CREATIVE INSIDE IT ──────────────────────────────
+    // `PromoSurface` carries the two things that attach to the FIRST
+    // promotional communication and that a creative increment forgets because
+    // they are not part of the creative: the promotional label (Apple 2.5.18 ·
+    // Microsoft 10.10.4 · Play's native-ads trigger · India's Disguised
+    // Advertisement) and the Art 21(4) on-card objection, "presented clearly
+    // and separately", where somebody meeting their first offer will actually
+    // see it. It offers no constructor argument that switches either off, so
+    // the card cannot render without them — which is the whole reason it is a
+    // frame rather than two more parameters on `PromoCard`.
+    return PromoSurface(
+      show: true,
+      objected: ref.watch(promoObjectedProvider),
+      onObjectionChanged: (bool objected) =>
+          recordPromoObjection(ref, objected: objected),
+      promotionalLabel: l10n.promoLabel,
+      stopLabel: l10n.promoStopOffers,
+      resumeLabel: l10n.promoResumeOffers,
+      objectedNotice: l10n.promoOffersOff,
+      child: PromoCard(
+        show: true,
+        label: copy('label', l10n.promoCardLabel),
+        title: copy('title', l10n.promoCardTitle),
+        message: copy('body', l10n.promoCardBody),
+        // DERIVED from the rail's own amount and currency. Absolute, always: no
+        // percentage, no "was", no countdown — see the class doc and
+        // research/44 V6.
+        priceLabel: l10n.promoCardPrice(
+          offering.formattedPrice,
+          offering.term.wire,
+        ),
+        primaryActionLabel: canSell ? l10n.paywallUpgrade : null,
+        onPrimaryAction: canSell ? () => context.go('/paywall') : null,
+        // 🔒 ROSCA PARITY, IN THIS CARD, NOT A LEVEL DOWN. `PromoCard` makes
+        // both of these `required`, so a promo surface that offers a way to
+        // start paying and no equally-adjacent way to stop does not compile —
+        // and `assert-purchase-path.mjs` asserts this file really navigates to
+        // the cancel surface, because a required callback can still be `() {}`.
+        manageLabel: l10n.managePlanTitle,
+        onManageAction: () => context.go('/manage-plan'),
+        // Neutral decline copy. "Not now" — never "No thanks, I don't want to
+        // save", which is the confirm-shaming India's CCPA Dark Patterns
+        // Guidelines 2023 name outright.
+        dismissLabel: l10n.notNow,
+        onDismiss: () => ref.read(promoCardStateProvider.notifier).dismiss(),
+        dismissSemanticLabel: l10n.promoCardDismissA11y,
+      ),
     );
   }
 }

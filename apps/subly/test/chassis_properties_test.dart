@@ -69,11 +69,30 @@ import 'package:subly/state/providers.dart';
 /// exist in a widget test, so every test overrides the seam rather than mocking
 /// the plugin. This is the storage seam earning its keep.
 class _MemStore implements core.KeyValueStore {
+  _MemStore({this.slowKey, this.slowBy = Duration.zero});
+
+  /// ONE key's read is delayed, and only one — [research/44 §7 rung 3].
+  ///
+  /// A store where EVERY read is slow moves the session and the onboarding flag
+  /// with it, so the frames being measured stop being the frames that were
+  /// interesting. Delaying a single key models the real ordering instead: the
+  /// config resolves at the app root and the promo record is read when the home
+  /// body first builds, so the card can be asked to decide before its own
+  /// record has landed.
+  final String? slowKey;
+  final Duration slowBy;
+
   final Map<String, String> data = <String, String>{};
   @override
   Future<bool> containsKey(String key) async => data.containsKey(key);
   @override
-  Future<String?> read(String key) async => data[key];
+  Future<String?> read(String key) async {
+    if (key == slowKey && slowBy > Duration.zero) {
+      await Future<void>.delayed(slowBy);
+    }
+    return data[key];
+  }
+
   @override
   Future<void> remove(String key) async => data.remove(key);
   @override
@@ -361,10 +380,18 @@ core.AppConfig _servedConfig({
   bool paywallEnabled = true,
   String minSupportedVersion = '1.0.0',
   String? updateUrl,
+  // [research/44 §7 rung 3] The promo card's on-switch. ABSENT by default,
+  // never a served false: AppConfig.feature answers orElse false for a key
+  // nobody sent, so the OFF case below is produced by serving the SAME
+  // document the portfolio serves rather than by a flag somebody set to off.
+  bool promoEnabled = false,
+  Map<String, String> promoCopy = const <String, String>{},
 }) => core.AppConfig(
   appId: AppConfig.appId,
   apiBaseUrl: AppConfig.apiBaseUrl,
-  features: const <String, bool>{},
+  features: promoEnabled
+      ? const <String, bool>{'promo_card_enabled': true}
+      : const <String, bool>{},
   paywall: core.PaywallConfig(
     enabled: paywallEnabled,
     extra: const <String, Object?>{
@@ -380,7 +407,7 @@ core.AppConfig _servedConfig({
     },
   ),
   contentPack: null,
-  copy: const <String, String>{},
+  copy: promoCopy,
   minSupportedVersion: minSupportedVersion,
   updateUrl: updateUrl,
 );
@@ -390,6 +417,8 @@ ProviderContainer _moneyContainer({
   required _FakeEntitlements server,
   _MemSecureStore? secure,
   bool paywallEnabled = true,
+  bool promoEnabled = false,
+  Map<String, String> promoCopy = const <String, String>{},
 }) => ProviderContainer(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
@@ -406,7 +435,11 @@ ProviderContainer _moneyContainer({
     // born with it OFF — so the open path has to be opened deliberately, the
     // same shape `analyticsEnabledProvider` uses for the analytics rail.
     appConfigProvider.overrideWith(
-      (_) async => _servedConfig(paywallEnabled: paywallEnabled),
+      (_) async => _servedConfig(
+        paywallEnabled: paywallEnabled,
+        promoEnabled: promoEnabled,
+        promoCopy: promoCopy,
+      ),
     ),
   ],
 );
@@ -3968,6 +4001,423 @@ void main() {
         core.AppConfig.fromJson(body(kProbeUpdateUrl)).updateUrl,
         kProbeUpdateUrl,
       );
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // [research/44 §7 rung 3] THE SAME-APP UPGRADE CARD.
+  //
+  // 🔴 THE FIRST TEST ASSERTS THAT NOTHING HAPPENS, AND IT IS THE ONE THAT WILL
+  // MATTER FOR YEARS. `features.promo_card_enabled` is absent from every config
+  // this portfolio serves, an absent feature key reads false, and so the SHIPPED
+  // state of this surface — in every app the factory stamps, for as long as
+  // nobody arms a campaign — is that it renders zero pixels on the home screen.
+  // "Renders nothing" is exactly the claim nobody checks, because nothing about
+  // it looks broken: the version of this widget that draws an empty `Padding`
+  // instead of collapsing would put a dead strip above the home body of fifty
+  // apps while every other assertion in this file stayed green.
+  //
+  // The rest of the group is the other half of [pipeline C-6]: a fail-closed
+  // surface with no proven open path is a dead feature reporting healthy. So the
+  // flag is served for real, the card appears in the REAL home body of the REAL
+  // app root, and the price it quotes is derived from the rail rather than typed.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('property: promo-card-fails-closed', () {
+    Future<ProviderContainer> signedIn({
+      required bool promoEnabled,
+      _MemStore? store,
+      Map<String, String> promoCopy = const <String, String>{},
+      // The SERVER's answer, not the lock. Overriding `paywallLockedProvider`
+      // would assert that a boolean makes a widget change, which was never in
+      // doubt; this drives the entitlement that lock is computed from.
+      bool pro = false,
+    }) async {
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(store),
+        server: _FakeEntitlements(pro: pro),
+        promoEnabled: promoEnabled,
+        promoCopy: promoCopy,
+      );
+      // SIGNED IN, or the router's redirect guard sends this to /sign-in and
+      // the test measures the auth gate instead of the home body.
+      await c
+          .read(authRepositoryProvider)
+          .signInWithEmail(email: 'a@b.com', password: 'pw');
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+      return c;
+    }
+
+    testWidgets('the flag ABSENT ⇒ the home body renders no promo at all', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await signedIn(promoEnabled: false);
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      // MOUNTED, and drawing nothing. Both halves: `findsNothing` on the mount
+      // would mean the surface had been removed from the chassis rather than
+      // switched off, and the two are opposite facts that read identically
+      // from a single assertion.
+      expect(
+        find.byType(UpgradePromoCard),
+        findsOneWidget,
+        reason:
+            'the card must be in the home body of every stamped app — a '
+            'surface nothing mounts cannot be turned on by a config edit',
+      );
+      expect(find.byType(PromoCard), findsNothing);
+      expect(
+        tester.getSize(find.byType(UpgradePromoCard)),
+        Size.zero,
+        reason:
+            'the slot COLLAPSES. A hidden card that still draws its own '
+            'padding is a dead strip at the top of every home screen in the '
+            'portfolio and raises no exception anywhere',
+      );
+    });
+
+    testWidgets('the flag SERVED TRUE opens the path — a labelled card', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await signedIn(promoEnabled: true);
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(find.byType(PromoCard), findsOneWidget);
+      // The LABEL. One visible label plus a distinct container is what
+      // satisfies Apple 2.5.18, Microsoft Store 10.10.4, Play's native-ads
+      // trigger and India's Disguised Advertisement pattern simultaneously.
+      expect(find.text('OFFER FROM THIS APP'), findsOneWidget);
+      // The PRICE, derived from 499 + USD by `Offering.formattedPrice`. There
+      // is no price literal in the chassis and `assert-no-price-literals.mjs`
+      // fails the build if one appears.
+      expect(find.text(r'$4.99, billed per month'), findsOneWidget);
+      // ROSCA parity: the manage/cancel entry rides on the same surface as
+      // the offer, not one level below it.
+      //
+      // ⚠️ BY KEY, NOT BY COPY, AND THE GUARD MADE THAT CHOICE. The label is
+      // this app's own l10n string and it is a DOMAIN WORD; asserting on it
+      // put an app's vocabulary into the chassis and the C-10 clone-tells
+      // guard failed the build for it. The key also survives a server-side
+      // copy override, which the string cannot.
+      expect(
+        find.descendant(
+          of: find.byType(PromoCard),
+          matching: find.byKey(PromoCard.manageActionKey),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('nothing on the card announces a discount or a deadline', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await signedIn(promoEnabled: true);
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      // Directive 98/6/EC Art 6a + CJEU C-330/23 (Aldi Süd): a reduction must
+      // be computed against the lowest price of the prior 30 days, and this
+      // repository holds no price history. UCPD Annex I(7) makes false urgency
+      // unfair in all circumstances. The widget has no parameter for either —
+      // this asserts the COPY has not smuggled one in as prose.
+      final List<String> shown = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byType(PromoCard),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((Text t) => t.data ?? '')
+          .toList();
+      expect(shown, isNotEmpty, reason: 'COVERAGE LOST — no copy was read');
+      for (final String needle in <String>[
+        '%',
+        'was ',
+        'save',
+        'Save',
+        'ends',
+        'Only',
+        'hours',
+      ]) {
+        expect(
+          shown.where((String s) => s.contains(needle)),
+          isEmpty,
+          reason:
+              'a price-comparison or urgency claim ("$needle") reached a '
+              'surface with no price history to compute it from',
+        );
+      }
+    });
+
+    testWidgets('the dismissal LATCHES and survives a relaunch', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer first = await signedIn(
+        promoEnabled: true,
+        store: store,
+      );
+      addTearDown(first.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: first, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+      expect(find.byType(PromoCard), findsOneWidget);
+
+      await tester.tap(find.text('Not now'));
+      await _turnsAndSettleRoute(tester);
+      expect(find.byType(PromoCard), findsNothing);
+      expect(
+        store.data['nikatru.promo_card'],
+        contains('"dismissed":true'),
+        reason:
+            'research/44 §6 requires the dismissal LATCHED — never '
+            're-cleared by a counter roll-over — and a latch held only in '
+            'memory is not latched at all',
+      );
+
+      // A second container over the SAME storage: a relaunch.
+      //
+      // 🔴 NAMED `c2` TO MATCH THE TEMPLATE, WHERE IT IS LOAD-BEARING. In
+      // tooling/bricks the same line's LENGTH is a function of the stamped app
+      // id, and at `second` the formatter collapses it for one CI stamp variant
+      // and wraps it for the other. `Subly` is short enough that either form is
+      // stable here — which is exactly why the divergence would go unnoticed in
+      // this copy and fail in the brick's.
+      final ProviderContainer c2 = await signedIn(
+        promoEnabled: true,
+        store: store,
+      );
+      addTearDown(c2.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c2, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+      expect(find.byType(PromoCard), findsNothing);
+    });
+
+    testWidgets('a GDPR Art 21 objection outranks a live campaign', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      store.data['nikatru.promo_card'] =
+          '{"shown_count":0,"dismissed":false,"suppressed":true}';
+      final ProviderContainer c = await signedIn(
+        promoEnabled: true,
+        store: store,
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+      expect(
+        find.byType(PromoCard),
+        findsNothing,
+        reason:
+            'Art 21(2)/(3) makes the objection ABSOLUTE — "the personal '
+            'data shall no longer be processed for such purposes". No config '
+            'flag, counter or campaign outranks it',
+      );
+    });
+
+    testWidgets('the words are CONFIG, so a campaign needs no release', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = await signedIn(
+        promoEnabled: true,
+        promoCopy: const <String, String>{
+          'promo.card.title': 'Two months of everything',
+        },
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+      expect(find.text('Two months of everything'), findsOneWidget);
+      // …and the l10n default is what an app with NO override shows. Falling
+      // back to `AppConfig.text`'s key would greet a fresh stamp's first user
+      // with `promo.card.title`, which is the trap the onboarding carousel
+      // records at its own `_copy`.
+      expect(find.text('Get the full experience'), findsNothing);
+    });
+
+    testWidgets('a PAYING user is never promoted to', (
+      WidgetTester tester,
+    ) async {
+      // 🔴 THE MONEY-ADJACENT LIMB, AND IT WAS MUTATION-SURVIVABLE. Deleting
+      // the `paywallLockedProvider` check from the stamped home body left every
+      // row of this group AND all 18 rows of the surface suite green — verified
+      // by mutating the real tree, not a fixture. The row that carried the name
+      // asserted the card SHOWED, for an UNPAID user, and conceded in its own
+      // comment that the paid case was "the negative of this row"; that
+      // negative was asserted nowhere. An assertion that cannot fail is worse
+      // than none, and this one guards the difference between selling to a
+      // customer and selling to someone who has already bought.
+      final ProviderContainer c = await signedIn(promoEnabled: true, pro: true);
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(UpgradePromoCard),
+        findsOneWidget,
+        reason:
+            'COVERAGE — the card must be mounted and deciding, or the row '
+            'below passes against a home body that never rendered',
+      );
+      expect(
+        find.byType(PromoCard),
+        findsNothing,
+        reason:
+            'a user who has already paid must not be sold what they already '
+            'own, and the surface has to consult the entitlement to know it',
+      );
+    });
+
+    testWidgets('an UNREAD record is not a fresh device, and is never rewritten', (
+      WidgetTester tester,
+    ) async {
+      // 🔴 AN INTERRUPTED WRITE IS THE ORDINARY WAY A KEY/VALUE STORE FAILS,
+      // AND THE OBJECTION IS PLAINLY IN THESE BYTES — only the closing brace is
+      // gone. The first controller wrapped `jsonDecode` and the map cast in one
+      // catch that fell back to the empty default, so this record read as a
+      // device that had never run the app: the card rendered, and the
+      // impression counter then rewrote the key as `"suppressed":false`. One
+      // launch, and a GDPR Art 21 objection was erased from disk. Measured on
+      // the real tree before the fix, for this record and for `'["suppressed"]'`.
+      const String truncated =
+          '{"shown_count":0,"dismissed":false,"suppressed":true';
+      final _MemStore store = _MemStore();
+      store.data['nikatru.promo_card'] = truncated;
+      final ProviderContainer c = await signedIn(
+        promoEnabled: true,
+        store: store,
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(UpgradePromoCard),
+        findsOneWidget,
+        reason: 'COVERAGE — the surface must really be up and deciding',
+      );
+      expect(
+        find.byType(PromoCard),
+        findsNothing,
+        reason:
+            'a record we could not read is not a record that says nobody '
+            'objected — it fails CLOSED',
+      );
+      expect(
+        store.data['nikatru.promo_card'],
+        truncated,
+        reason:
+            'an impression counter is the least important thing on this key '
+            'and must never be what destroys the most important one',
+      );
+    });
+
+    testWidgets('the card waits for the disk read — measured BEFORE the settle', (
+      WidgetTester tester,
+    ) async {
+      // 🔴 THE WINDOW EVERY OTHER ROW SKIPS OVER, AND IT IS WHY THE CONTROLLER
+      // IS AN `AsyncNotifier`. The first version published a synchronous empty
+      // default and hydrated behind it, so a device holding an objection was
+      // shown a promotional card for the whole length of the read — measured on
+      // the real tree at t+0, t+5, t+10 and t+20 ms against a 40 ms store, off
+      // screen only by t+60. Nothing went red, because `pumpAndSettle` is the
+      // first line of every other row and that is exactly the window it skips.
+      // Art 21(3) — "the personal data shall no longer be processed for such
+      // purposes" — has no grace period in it, so neither may this.
+      //
+      // FIVE SECONDS, not forty milliseconds: `_turnsAndSettleRoute` advances
+      // the fake clock 500 ms to finish the route transition, so a short delay
+      // would have landed before the home body existed and the row would have
+      // measured nothing at all.
+      final _MemStore store = _MemStore(
+        slowKey: 'nikatru.promo_card',
+        slowBy: const Duration(seconds: 5),
+      );
+      store.data['nikatru.promo_card'] =
+          '{"shown_count":0,"dismissed":false,"suppressed":true}';
+      final ProviderContainer c = await signedIn(
+        promoEnabled: true,
+        store: store,
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      for (final int ms in <int>[0, 100, 500, 1000]) {
+        await tester.pump(Duration(milliseconds: ms));
+        expect(
+          find.byType(UpgradePromoCard),
+          findsOneWidget,
+          reason:
+              'COVERAGE at +$ms ms — the widget must be in the tree and '
+              'deciding, or the row below asserts about an empty screen',
+        );
+        expect(
+          find.byType(PromoCard),
+          findsNothing,
+          reason:
+              'at +$ms ms the record has not landed, and "not read yet" may '
+              'not be served as "nobody ever objected"',
+        );
+      }
+
+      // Now let the read land, and the answer it carried is still no.
+      await tester.pump(const Duration(seconds: 6));
+      await _turns(tester);
+      expect(find.byType(PromoCard), findsNothing);
+    });
+
+    testWidgets('the impression is persisted, and the card does not vanish', (
+      WidgetTester tester,
+    ) async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer c = await signedIn(
+        promoEnabled: true,
+        store: store,
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const SublyApp()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        store.data['nikatru.promo_card'],
+        contains('"shown_count":1'),
+        reason: 'a frequency cap nobody counts against never caps',
+      );
+      // 🔴 THE OTHER HALF, AND IT IS THE ONE THAT BREAKS SILENTLY. Persisting
+      // republishes the state, which rebuilds the widget, which re-decides —
+      // now from a record saying "shown just now" — and gets
+      // `shownTooRecently`. Without the presentation latch the card deletes
+      // itself on the frame after it appears, on every device, with nothing in
+      // the gate or the storage looking wrong.
+      expect(find.byType(PromoCard), findsOneWidget);
     });
   });
 

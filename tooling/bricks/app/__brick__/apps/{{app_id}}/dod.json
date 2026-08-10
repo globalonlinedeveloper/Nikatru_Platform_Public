@@ -85,7 +85,7 @@
       "mutation": {
         "symbol": "lib/features/settings/settings_screen.dart:updateProfile",
         "observedRed": "editing it in the REAL app updates what the user sees",
-        "date": "2026-08-08"
+        "date": "2026-08-10"
       }
     },
     {

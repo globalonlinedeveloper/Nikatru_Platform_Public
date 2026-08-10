@@ -252,6 +252,63 @@ if (callSites.length === 0) {
   for (const c of callSites) console.log(`       ${c}`);
 }
 
+// ── 4 · THE OTHER WAY TO READ A ROLLOUT, COUNTED AND CAPPED ─────────────────
+//
+// 🔴 LIMB 2 KEYS ON `FeatureFlags(` CONSTRUCTIONS, AND THAT IS NOT THE ONLY
+// DOOR. `resolveFlag`/`flagBucket` are top-level functions exported from the
+// core barrel, so a caller can decide a rollout on-device, emit nothing, and
+// never touch the type this guard polices. Found 2026-08-10 while wiring
+// research/44 §7 rung 3, which needed exactly that: the promo card's variant is
+// resolved with the raw function BECAUSE the observed reader would emit
+// `variant_exposed` on first read, and research/44 §4.4 records that v1 ships
+// UNMEASURED — the taxonomy carries no cross-promo event, and adding one costs
+// 25–50% of portfolio session capacity against the binding D1 rows-written
+// ceiling. That is owner decision D6, not an engineering preference.
+//
+// So the raw read is legitimate AND it is the exact shape limb 2 exists to
+// prevent. It is therefore neither failed nor ignored: it is PRINTED with its
+// file and line on every run, and CAPPED. A ceiling is what stops "one
+// deliberate exception" becoming the way rollouts are read — the same idiom as
+// assert-screen-set.mjs's reachability-exemption ceiling. Raise it only in the
+// same change that adds the read, with the reason beside it.
+const RAW_RESOLVERS = /(?<![A-Za-z0-9_.])(?:core\.)?(resolveFlag|flagBucket)\s*\(/g;
+// 2 since 2026-08-10, and it is ONE logical read in TWO trees: the promo card's
+// variant, in the brick template and in the one in-repo stamped app that
+// carries the same spine file (`apps/subly`). Every future in-repo stamped app
+// repeats the line — the same drift `EXCLUSIVE_TRIGGERS` in
+// assert-seams-wired.mjs already accepts for the review prompt, and for the same
+// reason: the twin is the chassis, not a second decision. When D6 says measure,
+// this read moves to `featureFlagsProvider.isOn` in both trees and this number
+// comes back to 0.
+const RAW_READER_CEILING = 2;
+const rawReads = [];
+for (const file of files) {
+  const code = stripSourceComments(readIf(file), '.dart');
+  for (const m of code.matchAll(RAW_RESOLVERS)) {
+    rawReads.push(`${file}:${code.slice(0, m.index).split('\n').length} (${m[1]})`);
+  }
+}
+if (rawReads.length > RAW_READER_CEILING) {
+  fail(
+    `${rawReads.length} raw \`resolveFlag(\`/\`flagBucket(\` call site(s) in non-test code, and the checked-in ` +
+      `ceiling is ${RAW_READER_CEILING}. Each one decides a rollout locally and tells nobody, so the treatment ` +
+      'group can only be re-derived from a rollout percentage that is not versioned — once ramped, the past is ' +
+      `gone. Wrap it: \`ref.watch(featureFlagsProvider)\` hands back an ${WRAPPER_TYPE}. Sites: ${rawReads.join(', ')}.`,
+  );
+}
+if (rawReads.length === 0) {
+  console.log(
+    `--   ZERO raw \`resolveFlag(\`/\`flagBucket(\` call sites (ceiling ${RAW_READER_CEILING}). Every rollout ` +
+      'read in the shipped tree is observed.',
+  );
+} else {
+  console.log(
+    `⬜   ${rawReads.length}/${RAW_READER_CEILING} UNMEASURED rollout read(s) — deliberate, dated, and printed ` +
+      'rather than hidden. Each is a variant nobody can attribute a conversion to:',
+  );
+  for (const r of rawReads) console.log(`       ${r}`);
+}
+
 const summary =
   `flag exposure — \`${EVENT}\` emitted by ${WRAPPER_TYPE} on the same \`${BUCKET_FN}\` the decision uses; ` +
   `${wrapped}/${constructions} raw ${RAW_TYPE} construction(s) wrapped across ${files.length} non-test file(s); ` +

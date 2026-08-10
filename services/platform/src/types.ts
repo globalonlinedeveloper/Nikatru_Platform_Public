@@ -360,7 +360,22 @@ export interface AnalyticsBatch {
 export interface ConsentArtifact {
   consent_id: string;
   anon_id: string;
-  /** 'analytics' | 'sync_backup' | … */
+  /**
+   * 'analytics' | 'sync_backup' | 'promo' | …
+   *
+   * Deliberately a free string and NOT a union: the route bounds it at 32 chars
+   * and writes it as TEXT, so a client purpose the server has never heard of is
+   * recorded rather than rejected. That is the right direction — a consent
+   * decision the user really made, dropped with a 400 because the server's
+   * vocabulary was a release behind the app's, is an unrecorded decision, and
+   * `consent_artifacts` is the trail a DPDP §6(3) withdrawal has to reference.
+   *
+   * 'promo' (research/44 rung 4) is the GDPR Art 21 objection to in-app
+   * promotion. Note that it inverts the usual reading of `granted`: the purpose
+   * runs on legitimate interest, so `granted: false` is an OBJECTION and its
+   * absence is not an absence of legal basis. Anything aggregating this table
+   * by `granted` has to branch on the purpose.
+   */
   purpose: string;
   granted: boolean;
   /** Which privacy-policy version the user was shown. */

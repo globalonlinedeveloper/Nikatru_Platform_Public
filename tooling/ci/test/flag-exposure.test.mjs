@@ -324,3 +324,86 @@ describe('assert-flag-exposure — coverage self-checks', () => {
     assert.match(r.out, /COVERAGE LOST — no \.dart file under/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB 4 — the RAW `resolveFlag(`/`flagBucket(` reader, counted and capped.
+//
+// 🔴 ADDED 2026-08-10 AFTER AN ADVERSARIAL REVIEW POINTED OUT THAT THE LIMB
+// SHIPPED WITH NO CHECKED-IN CASE. It had been negative-tested by mutating the
+// real tree — this repo's stronger standard — but a mutation nobody records is
+// one the next edit does not have to survive, and `assert-guard-coverage.mjs`
+// cannot see the gap because its coverage is FILE-level, not limb-level: the
+// file had cases, so the new limb inside it was invisible.
+//
+// The rows below cover the three states the limb has — at the ceiling
+// (printed), over it (failed), and empty (still printed) — plus the two
+// exclusions, because a limb that counted prose would report a ceiling breach
+// for the paragraph explaining the ceiling.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-flag-exposure — the raw-reader ceiling can FAIL', () => {
+  const raw = (n) =>
+    Array.from(
+      { length: n },
+      (_, i) => `final bool v${i} = core.resolveFlag(flag: 'f${i}', rolloutPercent: 0, stableId: id);`,
+    ).join('\n') + '\n';
+
+  test('AT the ceiling: two raw reads are printed with file:line, exit 0', () => {
+    const r = run(makeRepo((f) => ({ ...f, 'apps/demo/lib/promo.dart': raw(2) })));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2\/2 UNMEASURED rollout read\(s\)/);
+    assert.match(r.out, /apps\/demo\/lib\/promo\.dart:1 \(resolveFlag\)/);
+    assert.match(r.out, /apps\/demo\/lib\/promo\.dart:2 \(resolveFlag\)/);
+  });
+
+  test('OVER the ceiling: a third raw read FAILS the build', () => {
+    // The state the ceiling exists for — "one deliberate exception" becoming
+    // the way rollouts are read. The message must NAME the sites, or the fix is
+    // a hunt through 600 files.
+    const r = run(makeRepo((f) => ({ ...f, 'apps/demo/lib/promo.dart': raw(3) })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /3 raw `resolveFlag\(`\/`flagBucket\(` call site\(s\) in non-test code, and the checked-in ceiling is 2/,
+    );
+    assert.match(r.out, /apps\/demo\/lib\/promo\.dart:3/);
+  });
+
+  test('`flagBucket(` counts toward the same ceiling as `resolveFlag(`', () => {
+    // Both doors, one counter: bucketing on-device and deciding on-device are
+    // the same unmeasured read wearing different names.
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'apps/demo/lib/promo.dart':
+        "final int b = core.flagBucket(flag: 'a', stableId: id);\n" +
+        "final int c = flagBucket(flag: 'b', stableId: id);\n" +
+        "final int d = core.flagBucket(flag: 'c', stableId: id);\n",
+    })));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /3 raw `resolveFlag\(`\/`flagBucket\(` call site\(s\)/);
+    assert.match(r.out, /\(flagBucket\)/);
+  });
+
+  test('ZERO raw readers is PRINTED, not silent', () => {
+    // The day owner decision D6 says measure, this is the line that has to
+    // appear. An empty set reported as nothing at all is indistinguishable from
+    // a scanner that stopped scanning.
+    const r = run(makeRepo());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ZERO raw `resolveFlag\(`\/`flagBucket\(` call sites \(ceiling 2\)/);
+  });
+
+  test('raw reads in COMMENTS and in TESTS do not count', () => {
+    // Six mentions that must all be invisible — including two in a block
+    // comment, because this guard's own explanation of the rule is written in
+    // the words the rule matches.
+    const r = run(makeRepo((f) => ({
+      ...f,
+      'apps/demo/lib/notes.dart':
+        '// Never call core.resolveFlag(flag: x) or flagBucket(flag: x) here.\n' +
+        '/* resolveFlag( twice, flagBucket( twice */\n',
+      'apps/demo/test/promo_test.dart': raw(2),
+    })));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ZERO raw `resolveFlag\(`\/`flagBucket\(` call sites/);
+  });
+});

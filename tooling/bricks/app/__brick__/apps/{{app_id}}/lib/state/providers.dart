@@ -418,7 +418,7 @@ final Provider<core.EntitlementCache> entitlementCacheProvider =
 /// MUST equal `data-policy-version` on `sites/nikatru/privacy.html`. Without
 /// that equality a consent artifact proves someone tapped a button but not what
 /// they were shown, which is the one thing the record exists to establish.
-const String kPrivacyPolicyVersion = '2026-08-01';
+const String kPrivacyPolicyVersion = '2026-08-10';
 
 /// 🔒 The Terms-of-Service version the sign-up clickwrap accepts.
 ///
@@ -500,6 +500,12 @@ final Provider<bool> analyticsEnabledProvider = Provider<bool>(
   (ref) => AppConfig.isBackendLive,
 );
 
+/// [pipeline K-15] The device-level opt-out (Global Privacy Control), as an
+/// overridable seam. On Web this reads `navigator.globalPrivacyControl`; on the
+/// other five platforms there is no such concept and it is always false.
+final Provider<core.PrivacySignal> privacySignalProvider =
+    Provider<core.PrivacySignal>((ref) => core.createPrivacySignal());
+
 /// The DPDP consent seam, hydrated from disk. Resolves to `unknown` — which
 /// blocks all collection — if the store is unreadable.
 final FutureProvider<core.ConsentController> consentControllerProvider =
@@ -514,9 +520,23 @@ final FutureProvider<core.ConsentController> consentControllerProvider =
       // nothing changes for them.
       final core.ConsentController c = core.ConsentController(
         store: kv,
-        privacySignal: core.createPrivacySignal(),
+        // A PROVIDER rather than a direct `createPrivacySignal()` call, for
+        // the reason this file gives about every other switch: on the VM the
+        // real signal is always false, so the honoured-GPC branch could not be
+        // driven by any test and would be a seam nobody has watched carry a
+        // payload. [research/44 rung 4] made that branch load-bearing for a
+        // second purpose, so it needed to become reachable.
+        privacySignal: ref.watch(privacySignalProvider),
       );
       await c.hydrate(core.ConsentPurpose.analytics);
+      // [research/44 rung 4] The GDPR Art 21 objection to in-app
+      // promotion rides the SAME controller. Hydrated here rather
+      // than lazily at the first promo consult: a lazy read decides
+      // the very first card against an unread store, and "we had not
+      // loaded it yet" is no defence for processing someone objected
+      // to. One extra key read at launch, no extra request, and born
+      // into every stamped app rather than remembered per app.
+      await c.hydrate(core.ConsentPurpose.promo);
       return c;
     });
 
@@ -529,6 +549,49 @@ final Provider<core.ConsentStatus> analyticsConsentProvider =
       return c?.statusOf(core.ConsentPurpose.analytics) ??
           core.ConsentStatus.unknown;
     });
+
+/// **Has this person objected to promotional processing?** (GDPR Art 21.)
+///
+/// The single read every promo surface consults. It answers `true` — objected —
+/// in three different situations, and they are kept three because collapsing
+/// them would hide the last one:
+///
+///   1. a stored `promo` artifact with `granted: false` — they used the control;
+///   2. a live GPC signal — an automated objection under Art 21(5), which
+///      [core.ConsentController] applies without writing an artifact;
+///   3. 🔴 **the controller has not resolved yet.** `valueOrNull` is null for the
+///      first frames of every launch, and a promo rendered in that window is
+///      rendered against an objection nobody has read yet.
+///      Unknown-because-unloaded is not the same as unknown-because-untouched,
+///      and only the second may show. This is the one place they are told apart:
+///      below this line `unknown` means "never objected" and PERMITS, because
+///      the surface runs on legitimate interest and not on consent.
+final Provider<bool> promoObjectedProvider = Provider<bool>((ref) {
+  final core.ConsentController? c = ref
+      .watch(consentControllerProvider)
+      .valueOrNull;
+  if (c == null) return true; // still loading — hold, do not show
+  return core.PromoObjection(c).objected;
+});
+
+/// **Has the rail been read yet?** — the third state [promoObjectedProvider]
+/// deliberately hides, exposed for the one caller that must not lose it.
+///
+/// 🔴 A GATE AND A CONTROL NEED OPPOSITE ANSWERS WHILE THE RAIL IS LOADING.
+/// Case 3 above falls closed because a promotional surface rendered against an
+/// unread objection is the outcome Art 21(3) forbids. A SETTINGS ROW that read
+/// the same boolean would tell a person who has never objected "Offers are off"
+/// on every launch — and a tap in that window calls `recordPromoObjection(ref,
+/// objected: false)`, which writes AND uploads a `promo granted: true` artifact
+/// recording a decision they never made. Falling closed protects someone from a
+/// card; it does not license a claim about what they chose.
+///
+/// So the control reads BOTH: [promoObjectedProvider] for the value and this for
+/// whether the value means anything yet. One derivation, two readings, and the
+/// asymmetry written down once instead of inferred twice.
+final Provider<bool> promoObjectionKnownProvider = Provider<bool>(
+  (ref) => ref.watch(consentControllerProvider).valueOrNull != null,
+);
 
 /// Whether the consent question has been ANSWERED — distinct from answered yes.
 ///
@@ -570,19 +633,27 @@ final Provider<core.EventTransport> eventTransportProvider =
 /// that nothing ever called [core.ConsentController.record], and a path only
 /// reachable through a widget tree and three async providers is one nobody
 /// writes a test for.
+/// ⚠️ ONE DECISION PATH FOR EVERY PURPOSE, NOT ONE PER PURPOSE. [purpose] is a
+/// parameter (defaulting to analytics, which is every pre-existing caller) so
+/// the `promo` objection inherits this function's whole contract — the
+/// append-only artifact, the policy-version stamp, the shared anon id, the
+/// best-effort upload — instead of a second copy that drifts from it.
+/// [pipeline C-3]: no capability exists twice, and in the template a fork is a
+/// fork per stamped app.
 Future<core.ConsentArtifact> applyConsentDecision({
   required core.ConsentController controller,
   required core.ConsentTransport transport,
   required String appId,
   required String anonId,
   required bool granted,
+  core.ConsentPurpose purpose = core.ConsentPurpose.analytics,
   core.Analytics? analytics,
   String appVersion = kAnalyticsAppVersion,
   String? platform,
   DateTime? now,
 }) async {
   final core.ConsentArtifact artifact = await controller.record(
-    core.ConsentPurpose.analytics,
+    purpose,
     granted: granted,
     policyVersion: kPrivacyPolicyVersion,
     anonId: anonId,
@@ -600,7 +671,16 @@ Future<core.ConsentArtifact> applyConsentDecision({
   //
   // Before the upload, not after: the user's right to have it dropped does not
   // depend on the network being up.
-  if (!granted) await analytics?.purge();
+  //
+  // 🔴 SCOPED TO THE PURPOSE THE OUTBOX BELONGS TO. The queue holds ANALYTICS
+  // events, so a `promo` objection must not empty it: objecting to being shown
+  // an offer says nothing about analytics the person separately consented to,
+  // and deleting it would destroy lawfully-held data on the strength of an
+  // unrelated control. The opposite mistake — purging on every purpose "to be
+  // safe" — is the one an untyped `if (!granted)` makes silently.
+  if (!granted && purpose == core.ConsentPurpose.analytics) {
+    await analytics?.purge();
+  }
   // Best-effort by contract. The decision already applies on-device, so an
   // upload failure must never make the user's choice look rejected.
   await transport.send(appId: appId, artifact: artifact);
@@ -707,6 +787,43 @@ Future<void> recordAnalyticsConsent(
     // denied decision and deletes the persisted copy, so the disk half dies
     // either way.
     analytics: ref.read(analyticsProvider).valueOrNull,
+  );
+  ref.invalidate(consentControllerProvider);
+}
+
+/// Record the GDPR **Art 21 objection** to promotional processing, upload the
+/// artifact, and make it visible to every promo surface. [objected] `true` =
+/// stop; `false` = the person turned offers back on themselves.
+///
+/// It is [recordAnalyticsConsent]'s twin down to the invalidate, and it is a
+/// separate function rather than a `purpose:` argument on that one for a reason
+/// worth stating: the two are wired to different controls with different legal
+/// bases, and one entry point would let a settings row pass the wrong purpose
+/// and silently move the wrong decision. The SHARED half is
+/// [applyConsentDecision], which is where the reuse belongs.
+///
+/// 🔴 `granted` IS INVERTED, ONCE, THROUGH A NAMED HELPER. The rail's field
+/// means *may this purpose be processed*, so an objection is `granted: false`.
+/// Spelling that inversion out at every call site is how one of them ends up
+/// spelled the other way round; `core.PromoObjection.grantedForObjection` is
+/// the one place it happens.
+Future<void> recordPromoObjection(
+  WidgetRef ref, {
+  required bool objected,
+}) async {
+  final core.ConsentController controller = await ref.read(
+    consentControllerProvider.future,
+  );
+  await applyConsentDecision(
+    controller: controller,
+    transport: ref.read(consentTransportProvider),
+    appId: AppConfig.appId,
+    // 🔒 The same install id every other artifact and event carries.
+    anonId: await ref.read(installIdProvider.future),
+    purpose: core.ConsentPurpose.promo,
+    granted: core.PromoObjection.grantedForObjection(objected: objected),
+    // No `analytics:` — see the purge note in [applyConsentDecision]. A promo
+    // objection has no outbox of its own and must not empty anyone else's.
   );
   ref.invalidate(consentControllerProvider);
 }
@@ -1455,6 +1572,218 @@ final NotifierProvider<ReviewPromptController, core.ReviewGateState>
 reviewPromptProvider =
     NotifierProvider<ReviewPromptController, core.ReviewGateState>(
       ReviewPromptController.new,
+    );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE IN-APP PROMOTIONAL CARD — [research/44 §7 rung 3].
+//
+// 🔴 SAME-APP ONLY, AND THAT IS A DECLARATION FACT, NOT A PRODUCT PREFERENCE.
+// This surface promotes THE APP THE USER IS ALREADY IN. It matches none of
+// Google Play's three ads-declaration YES triggers — the house-ad trigger is
+// worded "to promote MY OTHER APPS" — so it carries no ads label and puts no
+// "Contains ads" badge on a listing (research/44 V2). A cross-app version is a
+// DIFFERENT component with a DIFFERENT config key and a different declaration
+// consequence, and the two must never share a widget or a flag.
+//
+// ⚠️ EVERYTHING HERE IS DORMANT BY DEFAULT, HONESTLY. The on-switch is
+// `features.promo_card_enabled`, and an ABSENT key reads false
+// (`AppConfig.feature` defaults to `orElse: false`), so a stamped app that has
+// never reached the network — and every stamped app today — renders nothing.
+// The dormancy is not a placeholder: the card's open path is proven in
+// `test/chassis_properties_test.dart` by serving the flag, which is the only
+// thing that distinguishes this from the four capabilities that shipped
+// fail-closed with no proven open path ([pipeline C-6]).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `features.promo_card_enabled` — the campaign's on-switch, named once.
+const String kPromoCardFeature = 'promo_card_enabled';
+
+/// `flags.promo_card_variant` — which wording this install sees.
+const String kPromoCardVariantFlag = 'promo_card_variant';
+
+const String _promoCardStateKey = 'nikatru.promo_card';
+
+/// The frequency rule. A provider rather than a constant so a test can shorten
+/// the thresholds instead of simulating a fortnight of calendar time — the same
+/// reason [reviewGateProvider] is one.
+final Provider<core.PromoGate> promoGateProvider = Provider<core.PromoGate>(
+  (ref) => const core.PromoGate(),
+);
+
+/// The persisted promo history: how often this card has been shown, when, and
+/// the two latches.
+///
+/// 🔴 THE LATCHES ARE NOT PREFERENCES. `dismissed` is the close control's answer
+/// and `suppressed` is the GDPR Art 21 objection, which is ABSOLUTE — "the data
+/// subject shall have the right to object at any time", after which "the
+/// personal data shall no longer be processed for such purposes". Neither is
+/// reachable from `copyWith`, by construction in [core.PromoGateState]; this
+/// controller adds the other half of that promise, which is that nothing here
+/// clears them either. There is deliberately no `reset()`.
+///
+/// 🔴 AN [AsyncNotifier], AND THE `Notifier` IT REPLACES SHIPPED TWO REAL
+/// DEFECTS THAT ONLY THE TYPE COULD CLOSE. The first version published
+/// `const core.PromoGateState()` synchronously and hydrated behind it, so for
+/// the length of one disk read the card's caller could not tell "this person
+/// never objected" from "we have not looked yet" — and those two must produce
+/// opposite behaviour. Measured on the real tree before the change, with a
+/// store whose read lands 40 ms after the config read: a record holding
+/// `"suppressed": true` still rendered a promotional card at t+0, t+5, t+10 and
+/// t+20 ms, and only came off screen at t+60. Every widget test hid that window
+/// behind `pumpAndSettle()`.
+///
+/// Making the value an [AsyncValue] moves the barrier from a comment into the
+/// type: `valueOrNull == null` covers *loading* and *unreadable* in one
+/// expression, and the caller cannot decide without a record because there is
+/// no record to decide from. Art 21(3) has no grace period in it, so neither
+/// does this.
+///
+/// Counters, not a choice — so every mutator awaits hydration, exactly as
+/// [ReviewPromptController] does. That distinction cost a lost launch on every
+/// cold start when it was got wrong there: a counter incremented before the
+/// disk read lands is overwritten by the stored value the moment it does.
+class PromoCardStateController extends AsyncNotifier<core.PromoGateState> {
+  /// Did the record we are holding actually come off disk?
+  ///
+  /// 🔴 THE SECOND DEFECT, AND THE WORSE ONE: A CORRUPT RECORD WAS NOT ONLY
+  /// IGNORED, IT WAS OVERWRITTEN. `jsonDecode` and the map cast used to sit
+  /// inside one `catch` that fell back to the empty default, so an interrupted
+  /// write — `'{"shown_count":0,"dismissed":false,"suppressed":true'`, with the
+  /// objection plainly in the bytes — read as a fresh device, showed the card,
+  /// and then `markShown` rewrote the key as `"suppressed":false`. Proven on
+  /// the real tree; the objection was gone from disk after one launch, and a
+  /// truncated write is the ordinary way a mobile key/value store fails.
+  ///
+  /// [core.PromoGateState.fromJson] already falls closed on every FIELD it can
+  /// read at all ("present but not `false`" reads as a set latch) — but it only
+  /// gets to do that for bytes that parse. What lands here is the case where
+  /// they do not, and a record we could not read is not a record that says no
+  /// one objected. So the read fails to [AsyncError], which the card renders as
+  /// nothing, and this flag blocks every write that could clobber the bytes we
+  /// failed to read.
+  bool _recordRead = false;
+
+  @override
+  Future<core.PromoGateState> build() async {
+    _recordRead = false;
+    final core.KeyValueStore kv = await ref.read(keyValueStoreProvider.future);
+    final String? raw = await kv.read(_promoCardStateKey);
+    if (raw == null || raw.isEmpty) {
+      // A device that has never run this app: the ONE state that may be shown a
+      // card, and the only one an absent key is allowed to mean.
+      _recordRead = true;
+      return const core.PromoGateState();
+    }
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is! Map<String, Object?>) {
+      // A non-object top level (`'["suppressed"]'`) used to reach the same
+      // silent fallback as a truncated one. Named as a failure instead.
+      throw FormatException('promo record is not a JSON object', raw);
+    }
+    final core.PromoGateState stored = core.PromoGateState.fromJson(decoded);
+    _recordRead = true;
+    return stored;
+  }
+
+  /// The record, once the read has settled — and never the read's exception.
+  ///
+  /// A failed hydration is not a caller's problem to handle; it is a reason to
+  /// do nothing, which every caller here does by consulting [_recordRead].
+  Future<core.PromoGateState> _settled() async {
+    try {
+      return await future;
+    } catch (_) {
+      return state.valueOrNull ?? const core.PromoGateState();
+    }
+  }
+
+  Future<void> _persist(core.PromoGateState next) async {
+    state = AsyncValue<core.PromoGateState>.data(next);
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(_promoCardStateKey, jsonEncode(next.toJson()));
+    } catch (_) {
+      // Best-effort. A failed write on a SHOW means at most one extra
+      // impression; a failed write on a latch is the one that matters, and it
+      // is why the latch is also held in memory for the life of the process.
+    }
+  }
+
+  /// Record that the card was really put on screen.
+  ///
+  /// ⚠️ CALLED ON RENDER, NOT ON DECIDE. `PromoGate.decide` is pure and
+  /// idempotent, so deciding twice from the same stored state says `show`
+  /// twice; the write is the moment of truth. Persisting here — and only here —
+  /// is what keeps the card from vanishing mid-frame under its own cooldown.
+  ///
+  /// 🔴 IT DOES NOT WRITE [decided] STRAIGHT THROUGH. The counter is incremented
+  /// against the HYDRATED record rather than the one the decision saw — the same
+  /// distinction [ReviewPromptController] records, where treating a counter like
+  /// a choice cost one uncounted launch on every cold start — and a latch that
+  /// arrived from storage WINS, abandoning this write. An impression is worth
+  /// one counter tick; it is not worth a legal obligation.
+  ///
+  /// 🔴 AND IT WRITES NOTHING AT ALL OVER A RECORD WE COULD NOT READ. That is
+  /// [_recordRead]'s whole job: an impression counter is the least important
+  /// thing on this key, and it must never be the thing that destroys the most
+  /// important one.
+  Future<void> markShown(core.PromoGateState decided) async {
+    final core.PromoGateState current = await _settled();
+    if (!_recordRead) return;
+    if (current.dismissed || current.suppressed) return;
+    await _persist(
+      current.copyWith(
+        shownCount: current.shownCount + 1,
+        lastShownAt: decided.lastShownAt,
+      ),
+    );
+  }
+
+  /// The user closed the card. One-way.
+  ///
+  /// Also refuses to write over an unread record: `dismissed: true` is a WEAKER
+  /// latch than `suppressed: true`, so writing it over bytes that may have held
+  /// an objection would trade a legal obligation for a preference. Unreachable
+  /// in practice — a card the user can close is a card that rendered, and a
+  /// failed read renders nothing — which is exactly why it is asserted rather
+  /// than assumed.
+  Future<void> dismiss() async {
+    final core.PromoGateState current = await _settled();
+    if (!_recordRead) return;
+    await _persist(current.dismiss());
+  }
+
+  /// The user objected to promotional processing (GDPR Art 21). Ends every
+  /// promotion on this device, not just this campaign.
+  ///
+  /// ⚠️ THE ONE MUTATOR THAT WRITES EVEN WHEN THE READ FAILED, and the asymmetry
+  /// is deliberate. `suppressed: true` is the MAXIMAL latch — the gate consults
+  /// it before the dismissal and before every counter — so the record this
+  /// writes is at least as restrictive as anything the unreadable bytes could
+  /// have encoded. Refusing the write is the only option that could lose an
+  /// objection, and losing an objection is the one outcome Art 21(3) forbids
+  /// outright.
+  ///
+  /// ⬜ NOT YET SURFACED, AND SAID OUT LOUD RATHER THAN LEFT TO BE NOTICED.
+  /// research/44 rung 4 is the objection surface — a `promo` purpose on the
+  /// existing `ConsentPurpose` rail, presented in/beside the first card per
+  /// Art 21(4). Until that lands the latch is honoured everywhere it is read
+  /// and set from nowhere, so this method has no UI caller. That is a real gap
+  /// and it belongs to rung 4; what it is NOT is a reason to leave the latch
+  /// out of the primitive, because retrofitting an objection across fifty
+  /// shipped apps is the expensive path.
+  Future<void> objectToPromotion() async {
+    final core.PromoGateState current = await _settled();
+    await _persist(current.objectToPromotion());
+  }
+}
+
+final AsyncNotifierProvider<PromoCardStateController, core.PromoGateState>
+promoCardStateProvider =
+    AsyncNotifierProvider<PromoCardStateController, core.PromoGateState>(
+      PromoCardStateController.new,
     );
 
 const String _onboardingSeenKey = 'nikatru.onboarding_seen';

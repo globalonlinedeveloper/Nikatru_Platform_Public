@@ -64,7 +64,11 @@ try {
 const screens = reg.screens ?? [];
 // A floor, not `> 0`: the register has held 16 since it was written, and a list
 // somebody trims to three would otherwise read as a clean pass.
-const MIN_SCREENS = 23;
+// 24 since 2026-08-10: research/44 §7 rung 3 added `monetization.promo-card`.
+// RAISED WITH THE TREE ON PURPOSE — left at 23, deleting a screen would leave
+// exactly 23 and this floor would stop catching the deletion it exists to
+// catch. A ratchet that does not follow the thing it measures has stopped.
+const MIN_SCREENS = 24;
 if (screens.length < MIN_SCREENS) {
   problems.push(
     `COVERAGE LOST — the register declares only ${screens.length} screen(s), expected >= ${MIN_SCREENS}. DoD §4-A names the full set; a register somebody has trimmed asserts less while looking identical.`,
@@ -334,7 +338,9 @@ if (screens.length > 0 && present === 0) {
 //
 // Both are checked-in numbers that only ever move with a reason, the same idiom
 // as MIN_SCREENS above and check-migrations.mjs's REQUIRED_COVERAGE.
-const MIN_PRESENT = 22;
+// 23 since 2026-08-10 — `monetization.promo-card` landed `present` with a
+// reachability proof. Same ratchet rule as MIN_SCREENS above.
+const MIN_PRESENT = 23;
 const REQUIRED_COVERAGE = { reachableExempt: 0 };
 if (present > 0 && present < MIN_PRESENT) {
   problems.push(

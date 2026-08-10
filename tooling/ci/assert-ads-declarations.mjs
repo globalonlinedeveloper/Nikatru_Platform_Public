@@ -59,6 +59,47 @@
 //      payload — which is the trigger with the different declaration
 //      consequence (same-app promotion matches none of Play's three).
 //
+//  (C) AND THEN — THE LIMB THAT DECIDES THE PLAY ANSWER — WHO DOES IT PROMOTE?
+//      🔴 A PROMOTIONAL SURFACE IS NOT AUTOMATICALLY AN AD, AND DERIVING THE
+//      PLAY ANSWER FROM THE TOKEN `promo` ALONE MADE THIS GUARD OVER-BROAD IN
+//      EXACTLY THE DIRECTION IT WARNS ABOUT ONE PARAGRAPH UP. Measured on this
+//      tree 2026-08-10: the same-app upgrade card ([ADR 040] v1, research/44 §7
+//      rung 3) — a card that promotes THE APP THE USER IS ALREADY IN, whose buy
+//      control resolves to the host's own `/paywall` route — was classified as
+//      advertising and would have put a "Contains ads" badge on a listing that
+//      carries none. An overstated sworn declaration is still an inaccurate one,
+//      and the corrective was already written down: research/44 §3 V2 resolves
+//      the red-team objection with "**Verdict: split the component in two.** A
+//      same-app upgrade card matches none of the three triggers (it promotes
+//      *this* app, not 'my other apps') and carries no ads label."
+//
+//      So the FORMAT scan says a promotional surface exists, and this limb says
+//      whether Play counts it as an ad. A hit is a PLAY ADS TRIGGER when:
+//        · it is CROSS-APP — a `more/your/other apps`-shaped name, a payload key
+//          or value naming a non-host app id, or a literal inside the
+//          declaration itself naming another registered app, its domain, or a
+//          store listing that is not the host's (Google's trigger 3, "House ads
+//          … to promote my other apps"); or
+//        · its name carries ADVERTISING vocabulary rather than PROMOTION
+//          vocabulary — ad/advert/advertising/sponsored/interstitial/adwall. An
+//          `AdBanner` or a `SponsoredTile` is an ad whoever it sells for, which
+//          is Google's triggers 1 and 2 and has nothing to do with "other apps";
+//          `promo/promotion/promoted` says only that something is promoted and
+//          is silent about whose product it is; or
+//        · it renders in an AD SHAPE — the three formats Google enumerates by
+//          name, "a small ad banner, interstitial ad, ad wall". (`widget`, the
+//          fourth word in that quote, is deliberately NOT one of them: in
+//          Flutter every rendered thing is a Widget, so it would fire on every
+//          surface and be switched off within a week — the CatchUpNudgeBanner
+//          lesson one level up. `card/panel/sheet/tile` classify a hit; they do
+//          not create one.)
+//      Everything else — a same-app promotional surface — is PRINTED with the
+//      host evidence that classified it, and is NOT a Play trigger. It still
+//      makes the published advertising sentence false, which is limb 7 and is
+//      owner-gated: the ownership split moves the PLAY answers, never that one.
+//      [ADR 040 §2] v1 is same-app only and D3 — whether a cross-app surface
+//      carries the badge — is deliberately deferred, not defaulted.
+//
 // ── AND THEN IT COMPARES THAT ONE VERDICT TO ALL FOUR CLAIMS ─────────────────
 // ads-declaration.json's own answers · data-safety.json's advertising-purpose
 // row count · content-rating.json's `contains-ads` · and the privacy page's
@@ -156,6 +197,40 @@ const AD_TOKENS = new Set([
   'interstitial', 'interstitials', 'adwall', 'sponsor', 'sponsored', 'sponsorship',
 ]);
 
+/** 🔴 THE SUBSET OF AD_TOKENS THAT NAMES AN ADVERTISEMENT, as opposed to naming
+ *  a promotion. This distinction is the whole of limb (C) and it is the one that
+ *  was missing: `promo`, `promotion`, `promotional`, `promoted` say that
+ *  SOMETHING IS BEING PROMOTED and are silent about WHOSE product it is, so they
+ *  cover both a same-app upgrade card and a cross-app house ad. The words below
+ *  do not: an `AdBanner`, an `AdvertSlot` or a `SponsoredTile` is an
+ *  advertisement whoever it sells for — Google's triggers 1 and 2 ("ads served
+ *  by an ad network", "ads I serve myself") are not about "my other apps" at
+ *  all — and `interstitial`/`adwall` name an ad format outright. */
+const AD_VOCABULARY = new Set([
+  'ad', 'ads', 'advert', 'adverts', 'advertising', 'advertisement', 'advertisements',
+  'interstitial', 'interstitials', 'adwall', 'sponsor', 'sponsored', 'sponsorship',
+]);
+
+/** The formats Google enumerates BY NAME in the house-ads trigger — "a small ad
+ *  banner, interstitial ad, ad wall" — plus `takeover`, which is an ad wall
+ *  under a product name.
+ *
+ *  ⚠️ `widget`, the fourth word in Google's own quote, IS DELIBERATELY ABSENT.
+ *  In Flutter every rendered thing is a Widget; including it would make this
+ *  limb fire on every promotional surface that exists, which is the
+ *  CatchUpNudgeBanner false-alarm lesson one level up — a rule that fires on
+ *  everything gets switched off. `card`, `panel`, `sheet`, `tile`, `dialog` and
+ *  the rest of FORMAT_TOKENS classify a hit for the `adFormats` answer; they do
+ *  not create one. */
+const AD_SHAPED_FORMATS = new Set(['banner', 'interstitial', 'wall', 'adwall', 'takeover']);
+
+/** A URL that IS an app's store page. Whose page it is decides the ownership
+ *  question; that a promotional component links to one at all is what makes the
+ *  question askable from the tree, and it is the half of the cross-app limb that
+ *  can fire while the catalogue still holds ONE app. */
+const LISTING_URL =
+  /(?:play\.google\.com\/store\/apps|apps\.apple\.com|itunes\.apple\.com|apps\.microsoft\.com|microsoft\.com\/[a-z-]*\/?store|snapcraft\.io|flathub\.org)/i;
+
 /** Pairs that mean "a surface pointing at our OTHER apps" without containing an
  *  advertising word. Play's NO carve-out is literally a "More Apps section in
  *  the main menu", so the words are the ones Google itself uses. */
@@ -219,6 +294,106 @@ function tokensOf(name) {
 const adTokenHit = (toks) => toks.filter((t) => AD_TOKENS.has(t));
 const pairHit = (toks) => AD_PAIRS.filter(([a, b]) => toks.includes(a) && toks.includes(b)).map((p) => p.join('+'));
 const formatOf = (toks) => FORMAT_TOKENS.filter((f) => toks.includes(f));
+const vocabularyOf = (hits) => hits.filter((t) => AD_VOCABULARY.has(t));
+const adShapeOf = (formats) => formats.filter((f) => AD_SHAPED_FORMATS.has(f));
+
+/** Every string literal in a slice of Dart, WITH ITS TEXT — the one reading in
+ *  this file where the literals are the subject rather than the noise.
+ *
+ *  🔴 THE OPPOSITE REDUCTION FROM THE ONE ABOVE, ON PURPOSE. The declaration
+ *  matcher runs over source with literals BLANKED, because a copy string reading
+ *  "Sponsored" must not create a component. The ownership limb runs over source
+ *  with literals KEPT, because the answer to "which app does this promote" is
+ *  written in exactly those strings: the route it navigates to, the URL it
+ *  opens, the slug it names. Both reductions preserve byte length, so a match
+ *  offset taken in one slices correctly in the other — and that is load-bearing:
+ *  it is what lets a literal be attributed to the declaration it sits inside
+ *  rather than to the file. */
+function literalsIn(text) {
+  const out = [];
+  for (const m of text.matchAll(/'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"/g)) {
+    const raw = m[0];
+    const q = raw.startsWith("'''") || raw.startsWith('"""') ? 3 : 1;
+    const body = raw.slice(q, raw.length - q).trim();
+    if (body !== '') out.push(body);
+  }
+  return out;
+}
+
+const clip = (s) => (s.length > 60 ? `${s.slice(0, 57)}…` : s);
+
+/** Where a declaration's own body ends, in a reduction whose comments AND string
+ *  literals are already blanked — so every `{`/`}` counted here is code.
+ *
+ *  🔴 THE OBVIOUS RULE — "from this declaration's match to the next one's" — IS
+ *  WRONG, AND WRONG IN THE DIRECTION THAT LOSES EVIDENCE. `Widget build(…)` is
+ *  matched as a declaration in its own right (that is how a builder FUNCTION is
+ *  found at all), so every Flutter widget class contains one, and a next-match
+ *  span ends the class AT ITS OWN BUILD METHOD — the exact place a promotional
+ *  card writes the route it navigates to and the URL it opens. Measured on this
+ *  tree: `_UpgradePromoCardState` came back with zero literals while
+ *  `context.go('/paywall')` sat four lines inside it.
+ *
+ *  An arrow body has no braces, so a `;` reached before the first `{` ends the
+ *  declaration there — otherwise `Widget x() => const Text('a');` would swallow
+ *  the next class whole. */
+function bodyEnd(reduced, from) {
+  const open = reduced.indexOf('{', from);
+  const semi = reduced.indexOf(';', from);
+  if (open === -1 || (semi !== -1 && semi < open)) return semi === -1 ? reduced.length : semi + 1;
+  let depth = 0;
+  for (let i = open; i < reduced.length; i++) {
+    if (reduced[i] === '{') depth++;
+    else if (reduced[i] === '}' && --depth === 0) return i + 1;
+  }
+  return reduced.length;
+}
+
+/** WHO DOES THIS SURFACE POINT AT? Evidence, both ways, from the literals inside
+ *  the declaration itself.
+ *
+ *  A CROSS tell is what makes a promotional surface a Play ads trigger; a HOST
+ *  tell is what a same-app print quotes so the classification is readable rather
+ *  than asserted. Absence of both is reported as absence — printed, with the
+ *  limitation named — never as proof.
+ *
+ *  ⚠️ THE BRICK TEMPLATE HAS NO FIXED HOST. `{{app_id}}` resolves to whatever
+ *  app the brick stamps, so a literal carrying it names THAT app: it is a host
+ *  tell in every generated tree at once, and treating it as "some other app"
+ *  would flag the chassis for all fifty apps.
+ *
+ *  ⚠️ A SLUG THAT IS ALSO AN ORDINARY WORD WILL COLLIDE, AND THE FAILURE IS
+ *  DESIGNED TO BE READABLE RATHER THAN PREVENTED BY A HEURISTIC. If app #2 is
+ *  registered as `notes`, the copy string "Add notes" inside a promotional card
+ *  reads as a cross-app tell. That direction is the safe one — it fails the
+ *  build loudly instead of understating a sworn declaration — and every tell
+ *  QUOTES THE LITERAL IT MATCHED so a reviewer can see in one line whether it is
+ *  a real reference. Tightening this into a cleverer rule would trade a visible
+ *  false alarm for an invisible miss, which is the trade this whole file exists
+ *  to refuse. */
+function ownershipTells(literals, { hostSlug, otherSlugs, hostHosts, otherHosts }) {
+  const cross = [];
+  const host = [];
+  for (const lit of literals) {
+    const lower = lit.toLowerCase();
+    const toks = new Set(tokensOf(lit));
+    const templated = lit.includes('{{');
+    for (const slug of otherSlugs) {
+      if (toks.has(slug)) cross.push(`names the registered app "${slug}" in ${JSON.stringify(clip(lit))}`);
+    }
+    for (const h of otherHosts) {
+      if (lower.includes(h)) cross.push(`links to another registered app's domain ${h} in ${JSON.stringify(clip(lit))}`);
+    }
+    if (LISTING_URL.test(lit)) {
+      if (toks.has(hostSlug) || templated) host.push(`links to the HOST app's own store listing ${JSON.stringify(clip(lit))}`);
+      else cross.push(`links to a store listing that does not name the host app "${hostSlug}": ${JSON.stringify(clip(lit))}`);
+    }
+    if (toks.has(hostSlug) && !templated) host.push(`names the host app "${hostSlug}" in ${JSON.stringify(clip(lit))}`);
+    for (const h of hostHosts) if (lower.includes(h)) host.push(`links to the host app's own domain ${h}`);
+    if (/^\/[a-z0-9]/i.test(lit) && !/\s/.test(lit)) host.push(`navigates to the in-app route ${JSON.stringify(lit)}`);
+  }
+  return { cross: [...new Set(cross)], host: [...new Set(host)] };
+}
 
 /** Disarmed = 0, false, null, "", [], {}. A promotional lever that is disarmed
  *  is a cap shipping before its sender, which is a GOOD state and is printed.
@@ -449,16 +624,26 @@ for (const app of apps) {
   }
   filesScannedTotal += dartFiles.length;
 
-  /** { file, name, base, widgetShaped } for every declaration the matcher sees. */
+  /** { file, name, base, widgetShaped, literals } for every declaration the
+   *  matcher sees. `literals` are the strings written INSIDE that declaration —
+   *  from its own match offset to the next declaration's, both taken in
+   *  length-preserving reductions of the same file — which is what lets the
+   *  ownership limb below answer "which app does THIS component point at"
+   *  instead of "does this FILE mention another app anywhere". */
   const declared = [];
   for (const f of dartFiles) {
-    const reduced = stripStringLiterals(stripSourceComments(read(f) ?? '', '.dart'));
+    const noComments = stripSourceComments(read(f) ?? '', '.dart');
+    const reduced = stripStringLiterals(noComments);
+    const inFile = [];
     for (const m of reduced.matchAll(/\bclass\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>{]*>)?\s+extends\s+([A-Za-z_$][A-Za-z0-9_$.]*(?:\s*<[^>{]*>)?)/g)) {
-      declared.push({ file: f, name: m[1], base: m[2].trim(), widgetShaped: isWidgetShaped(m[2]) });
+      inFile.push({ file: f, name: m[1], base: m[2].trim(), widgetShaped: isWidgetShaped(m[2]), at: m.index });
     }
     for (const m of reduced.matchAll(/(?:^|\n)\s*(?:static\s+)?Widget\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/g)) {
-      declared.push({ file: f, name: m[1], base: '(returns Widget)', widgetShaped: true });
+      inFile.push({ file: f, name: m[1], base: '(returns Widget)', widgetShaped: true, at: m.index });
     }
+    inFile.sort((a, b) => a.at - b.at);
+    for (const d of inFile) d.literals = literalsIn(noComments.slice(d.at, bodyEnd(reduced, d.at)));
+    declared.push(...inFile);
   }
   declarationsSeen += declared.length;
   widgetsSeen += declared.filter((d) => d.widgetShaped).length;
@@ -520,20 +705,10 @@ for (const app of apps) {
     }
   }
 
-  // (A) the promotional components.
-  const surfaces = [];
-  const machinery = [];
-  for (const d of declared) {
-    const toks = tokensOf(d.name);
-    const hits = adTokenHit(toks);
-    const pairs = pairHit(toks);
-    if (hits.length === 0 && pairs.length === 0) continue;
-    const entry = { ...d, tokens: hits, pairs, formats: formatOf(toks) };
-    if (d.widgetShaped) surfaces.push(entry);
-    else machinery.push(entry);
-  }
-
-  // (B) the served config payloads.
+  // (B) the served config payloads. Read BEFORE the components are classified,
+  //     because the app catalogue is the right-hand side of the ownership limb
+  //     for BOTH halves: the same registry that says "this payload value names
+  //     another app" says "this component's copy names another app".
   const payloads = Array.isArray(scan.configPayloads) ? scan.configPayloads.filter((p) => typeof p === 'string') : [];
   if (payloads.length === 0) {
     coverageLost([
@@ -564,6 +739,51 @@ for (const app of apps) {
       'The cross-app value limb ranges over that set; empty, it can never fire, and "no payload names another',
       'app" would be true of a registry nobody could read.',
     ]);
+  }
+
+  // The two sides of the ownership question, derived ONCE from the catalogue.
+  // `hostSlug` is this declaration's own subject; a registry row's `url` gives
+  // the domain each app is reachable at, which is how a link can be attributed
+  // without a second copy of where anything lives.
+  const hostSlug = typeof decl.app === 'string' && decl.app.trim() !== '' ? decl.app.trim() : app;
+  const registryRows = (Array.isArray(registry) ? registry : registry.apps ?? []).filter((r) => r && typeof r === 'object');
+  const domainOf = (r) => {
+    if (typeof r.url !== 'string') return null;
+    try {
+      return new URL(r.url).host.toLowerCase();
+    } catch {
+      return null;
+    }
+  };
+  const otherSlugs = slugs.filter((s) => s !== hostSlug);
+  const hostHosts = registryRows.filter((r) => r.slug === hostSlug).map(domainOf).filter(Boolean);
+  const otherHosts = registryRows.filter((r) => r.slug !== hostSlug).map(domainOf).filter(Boolean);
+  const ownershipCtx = { hostSlug, otherSlugs, hostHosts, otherHosts };
+
+  // (A) the promotional components, and — limb (C) — who each one promotes.
+  const surfaces = [];
+  const machinery = [];
+  for (const d of declared) {
+    const toks = tokensOf(d.name);
+    const hits = adTokenHit(toks);
+    const pairs = pairHit(toks);
+    if (hits.length === 0 && pairs.length === 0) continue;
+    const formats = formatOf(toks);
+    const vocab = vocabularyOf(hits);
+    const adShaped = adShapeOf(formats);
+    const tells = ownershipTells(d.literals ?? [], ownershipCtx);
+    const crossApp = pairs.length > 0 || tells.cross.length > 0;
+    // WHY EACH LIMB, IN ONE LINE EACH: cross-app is Google's trigger 3;
+    // advertising vocabulary is triggers 1-2, which are not about "other apps"
+    // at all; an ad SHAPE is the three formats the trigger names outright.
+    const triggers = [
+      ...(crossApp ? [`cross-app (${[...pairs, ...tells.cross].join('; ')})`] : []),
+      ...(vocab.length ? [`advertising vocabulary "${vocab.join(', ')}"`] : []),
+      ...(adShaped.length ? [`an ad-shaped format "${adShaped.join(', ')}"`] : []),
+    ];
+    const entry = { ...d, tokens: hits, pairs, formats, vocab, adShaped, crossApp, tells, triggers };
+    if (d.widgetShaped) surfaces.push(entry);
+    else machinery.push(entry);
   }
 
   const levers = [];
@@ -597,6 +817,10 @@ for (const app of apps) {
               key,
               armed: isArmed(value),
               crossApp: toks.includes('app') || toks.includes('apps') || pairs.length > 0,
+              // Same split as the components: `ads_enabled` is advertising by
+              // name; `promo_card_enabled` arms a promotion and says nothing
+              // about whose product it promotes.
+              vocab: vocabularyOf(hits),
               value: typeof value === 'object' && value !== null ? `<${Array.isArray(value) ? 'array' : 'object'}>` : JSON.stringify(value),
             });
           }
@@ -621,15 +845,44 @@ for (const app of apps) {
   const disarmedLevers = levers.filter((l) => !l.armed);
   const crossAppKeys = armedLevers.filter((l) => l.crossApp);
 
-  // ── 3 · THE VERDICT ────────────────────────────────────────────────────────
-  const adsPresent = surfaces.length > 0 || armedLevers.length > 0;
-  const crossAppPresent = crossAppKeys.length > 0 || crossAppRefs.length > 0 || surfaces.some((s) => s.pairs.length > 0);
-  const derivedFormats = [...new Set(surfaces.flatMap((s) => s.formats))].sort();
+  // ── 3 · THE VERDICT, AND IT IS TWO VERDICTS ────────────────────────────────
+  // 🔴 THESE TWO WERE ONE BOOLEAN, AND CONFLATING THEM IS WHAT MADE THE GUARD
+  // OVER-BROAD. They answer different questions to different audiences:
+  //
+  //   promoSurfacePresent — does this tree render ANY promotional surface? That
+  //     is the question the PUBLISHED SENTENCE is about ("no Nikatru app carries
+  //     advertising", read by a user, [ADR 031] class B to reword), and the
+  //     answer is yes for a same-app upgrade card. Limb 7 keys on this and is
+  //     deliberately UNCHANGED by the ownership split.
+  //   adsPresent — does Play count any of them as an AD? Trigger 3 is "House ads
+  //     … to promote my other apps"; triggers 1-2 are advertising whoever it
+  //     sells for. A same-app upgrade card is neither (research/44 §3 V2), so
+  //     answering `containsAds: true` for one would put a "Contains ads" badge on
+  //     a listing that carries none — an overstated sworn declaration, which the
+  //     other direction of limb 4 has always called inaccurate.
+  const adSurfaces = surfaces.filter((s) => s.triggers.length > 0);
+  const sameAppSurfaces = surfaces.filter((s) => s.triggers.length === 0);
+  const adLevers = armedLevers.filter((l) => l.crossApp || l.vocab.length > 0);
+  const promoSurfacePresent = surfaces.length > 0 || armedLevers.length > 0;
+  const adsPresent = adSurfaces.length > 0 || adLevers.length > 0 || crossAppRefs.length > 0;
+  const crossAppPresent = crossAppKeys.length > 0 || crossAppRefs.length > 0 || surfaces.some((s) => s.crossApp);
+  const derivedFormats = [...new Set(adSurfaces.flatMap((s) => s.formats))].sort();
 
+  /** Every promotional thing in the tree — what limb 7 quotes, because the
+   *  published sentence is falsified by promotion of any ownership. */
   const evidence = () =>
     [
       ...surfaces.map((s) => `component ${s.name} (${s.base}) in ${s.file} — advertising token(s) ${[...s.tokens, ...s.pairs].join(', ')}`),
       ...armedLevers.map((l) => `config ${l.file} ${l.path} = ${l.value} — an ARMED promotional lever`),
+      ...crossAppRefs.map((r) => `config ${r.file} ${r.path} names app "${r.value}" while the host is "${r.hostApp}"`),
+    ].join('; ') || '(none)';
+
+  /** Only what Play counts, WITH the limb that counted it — so a `containsAds`
+   *  failure can be checked against the rule instead of being taken on trust. */
+  const adsEvidence = () =>
+    [
+      ...adSurfaces.map((s) => `component ${s.name} (${s.base}) in ${s.file} — ${s.triggers.join(' + ')}`),
+      ...adLevers.map((l) => `config ${l.file} ${l.path} = ${l.value} — an ARMED ${l.crossApp ? 'cross-app' : 'advertising'} lever`),
       ...crossAppRefs.map((r) => `config ${r.file} ${r.path} names app "${r.value}" while the host is "${r.hostApp}"`),
     ].join('; ') || '(none)';
 
@@ -640,8 +893,8 @@ for (const app of apps) {
   } else if (decl.containsAds !== adsPresent) {
     problems.push(
       adsPresent
-        ? `🔴 ${ADS_REL} answers \`containsAds: false\` and the shipped tree renders a promotional surface. EVIDENCE: ${evidence()}. Google's trigger list needs no ad SDK — "House ads: My app renders a small ad banner, interstitial ad, ad wall, and/or widget" — and the penalty for getting this wrong is stated as suspension. Re-derive the answer, do not re-word it; and note that flipping it to true forces the privacy-page sentence and its register row to change in the same commit, which is [ADR 031] class B owner work.`
-        : `${ADS_REL} answers \`containsAds: true\` and the format scan found NO promotional surface, no armed promotional lever and no cross-app payload across ${dartFiles.length} Dart file(s) and ${payloadKeys} config key(s). An overstated declaration is still an inaccurate one — it puts a "Contains ads" badge on a listing for an app that carries none.`,
+        ? `🔴 ${ADS_REL} answers \`containsAds: false\` and the shipped tree renders a promotional surface Play counts as an ad. EVIDENCE: ${adsEvidence()}. Google's trigger list needs no ad SDK — "House ads: My app renders a small ad banner, interstitial ad, ad wall, and/or widget" — and the penalty for getting this wrong is stated as suspension. Re-derive the answer, do not re-word it; and note that flipping it to true forces the privacy-page sentence and its register row to change in the same commit, which is [ADR 031] class B owner work.`
+        : `${ADS_REL} answers \`containsAds: true\` and the format scan found NO advertising surface, no armed advertising or cross-app lever and no cross-app payload across ${dartFiles.length} Dart file(s) and ${payloadKeys} config key(s)${sameAppSurfaces.length ? ` — the ${sameAppSurfaces.length} promotional surface(s) it did find all promote the host app "${hostSlug}" and match none of Play's three triggers (research/44 §3 V2)` : ''}. An overstated declaration is still an inaccurate one — it puts a "Contains ads" badge on a listing for an app that carries none.`,
     );
   }
   if (typeof decl.promotesOtherApps !== 'boolean') {
@@ -653,7 +906,7 @@ for (const app of apps) {
           ? `EVIDENCE: ${[
               ...crossAppKeys.map((l) => `${l.file} ${l.path} is an armed cross-app promotional key`),
               ...crossAppRefs.map((r) => `${r.file} ${r.path} names app "${r.value}" while the host is "${r.hostApp}"`),
-              ...surfaces.filter((s) => s.pairs.length).map((s) => `component ${s.name} (${s.pairs.join(', ')})`),
+              ...surfaces.filter((s) => s.crossApp).map((s) => `component ${s.name} (${[...s.pairs, ...s.tells.cross].join('; ')})`),
             ].join('; ')}.`
           : 'Nothing in the tree points at another app.'
       } This is the answer with the different declaration consequence, so it is derived separately and must not be inherited from containsAds.`,
@@ -664,7 +917,11 @@ for (const app of apps) {
     problems.push(`${ADS_REL} \`adFormats\` is not an array. Use [] for "nothing renders" — Google asks WHICH format renders, and an absent list is a question left blank.`);
   } else if (declaredFormats.join('|') !== derivedFormats.join('|')) {
     problems.push(
-      `🔴 ${ADS_REL} declares adFormats [${declaredFormats.join(', ') || '(none)'}] and the scan derived [${derivedFormats.join(', ') || '(none)'}] from the component name(s) ${surfaces.map((s) => s.name).join(', ') || '(none)'}. The format IS the declaration — banner, interstitial, ad wall and widget are separate answers on the form.`,
+      // Derived from the AD surfaces only, and for the same reason `containsAds`
+      // is: `adFormats` is a sub-answer of the ads declaration, so a format that
+      // belongs to no Play trigger has no field on the form to go in. A same-app
+      // card's shape is still printed below — it is just not an ad format.
+      `🔴 ${ADS_REL} declares adFormats [${declaredFormats.join(', ') || '(none)'}] and the scan derived [${derivedFormats.join(', ') || '(none)'}] from the component name(s) ${adSurfaces.map((s) => s.name).join(', ') || '(none)'}. The format IS the declaration — banner, interstitial, ad wall and widget are separate answers on the form.`,
     );
   }
 
@@ -853,7 +1110,17 @@ for (const app of apps) {
       `🔴 ${pageRel} no longer emphasises the sentence ${ADS_REL} swears to: ${JSON.stringify(sentence)}. The published advertising promise and this declaration have come apart. Publishing legal copy is [ADR 031] class B owner work, so the repair is an owner signature, not an edit — but the two must move together.`,
     );
   }
-  if (pp.assertsAbsence === true && adsPresent) {
+  // 🔴 KEYED ON `promoSurfacePresent`, NOT ON THE PLAY ANSWER, AND THAT IS THE
+  // WHOLE POINT OF SPLITTING THEM. The ownership limb moves what we swear to
+  // GOOGLE; it does not move what we published to USERS. The sentence says "no
+  // Nikatru app carries advertising" and a same-app upgrade card is promotion a
+  // reader would recognise as such — research/44 §7 rung 5 requires the sentence
+  // "reworded to distinguish first-party promotion of our own apps from
+  // third-party ad networks", which is [ADR 031] class B owner work and is THE
+  // gate on any promo surface rendering ([ADR 040] §3). A guard that quietly
+  // stopped failing here the moment the card was classified same-app would have
+  // opened the owner's gate by re-deriving something else.
+  if (pp.assertsAbsence === true && promoSurfacePresent) {
     problems.push(
       `🔴 ${pageRel} publishes ${JSON.stringify(sentence)} and the format scan found a promotional surface: ${evidence()}. The sentence is now FALSE as published. This is the owner gate on the whole cross-promotion programme — the sentence must be reworded to distinguish first-party promotion of our own apps from third-party ad networks, its ${registerRel} row edited in the same commit, and the policy version bumped. No promo surface may ship ahead of it.`,
     );
@@ -872,7 +1139,10 @@ for (const app of apps) {
   for (const n of Array.isArray(decl.notCovered) ? decl.notCovered : []) prints.push(`NOT COVERED — ${n}`);
 
   // ── 9 · THE DOMAIN, SAID OUT LOUD ──────────────────────────────────────────
-  if (!adsPresent) {
+  // Keyed on the PROMOTIONAL domain, not the Play one: with a same-app card in
+  // the tree "NOT ONE promotional component" would be a false statement, and a
+  // guard that prints a false reassurance is worse than one that prints nothing.
+  if (!promoSurfacePresent) {
     prints.push(
       `DOMAIN EMPTY, AND THAT IS CURRENTLY TRUE — app "${app}": ${dartFiles.length} Dart file(s) walked under ` +
         `${roots.length} root(s), ${declared.length} declaration(s) parsed of which ` +
@@ -886,9 +1156,34 @@ for (const app of apps) {
   if (slugs.length < 2) {
     prints.push(
       `CROSS-APP VALUE LIMB IS CONSTANT-FALSE TODAY — ${registryRel} registers ${slugs.length} app ("${slugs.join('", "')}"), ` +
-        `so "a payload value naming ANOTHER app" has no value it could ever match. It is not evidence for ` +
-        `\`promotesOtherApps: false\`; the KEY-shape limb (an advertising token beside \`app\`) is what can fire ` +
-        `today, and the value limb becomes load-bearing the day app #2 joins the catalogue.`,
+        `so "a payload value naming ANOTHER app" — and its component half, "a literal inside a promotional ` +
+        `declaration naming another app or its domain" — have no value they could ever match. That is not ` +
+        `evidence for \`promotesOtherApps: false\`. What CAN fire today: the KEY-shape limb (an advertising ` +
+        `token beside \`app\`), a more/your/other-apps component name, and a store-listing URL that does not ` +
+        `name the host app "${hostSlug}". The slug and domain limbs become load-bearing the day app #2 joins ` +
+        `the catalogue.`,
+    );
+  }
+  for (const s of sameAppSurfaces) {
+    prints.push(
+      `SAME-APP PROMOTIONAL SURFACE, NO PLAY TRIGGER — ${s.name} (${s.base}) in ${s.file} carries promotion ` +
+        `token(s) ${[...s.tokens, ...s.pairs].join(', ')}${s.formats.length ? ` and renders as a ${s.formats.join('/')}` : ''}, ` +
+        `and nothing in it points at another app${s.tells.host.length ? `: it ${s.tells.host.slice(0, 3).join('; it ')}` : ''}. ` +
+        `Play's triggers are ads (1-2) and "House ads … to promote my other apps" (3); a surface promoting the ` +
+        `host app "${hostSlug}" matches none of them and carries no ads label [research/44 §3 V2 · ADR 040 §2]. ` +
+        `⚠️ D3 — whether a CROSS-APP surface carries the badge — is deliberately DEFERRED, not defaulted, and ` +
+        `is an owner answer gated on app #2 existing; this print is not that answer. The published advertising ` +
+        `sentence is a separate question and IS falsified by this surface — see the policy-page limb.`,
+    );
+  }
+  if (!surfaces.some((s) => s.crossApp) && !crossAppKeys.length && !crossAppRefs.length) {
+    prints.push(
+      `NO POSITIVE CONTROL FOR THE CROSS-APP LIMB EXISTS IN THIS TREE — there is no cross-app surface to ` +
+        `anchor on, so the limb that decides \`containsAds\` has no symbol it must keep finding, the way ` +
+        `\`requiredCoverage\` gives the widget matcher one. Its recorded failing inputs are the real-tree ` +
+        `mutations in tooling/ci/test/ads-declarations.test.mjs's header (a payload key naming a non-host ` +
+        `app id, and a store-listing URL inside the shipped promo card) plus the fixture family in that file. ` +
+        `The day a cross-app surface ships, it becomes an anchor.`,
     );
   }
   for (const l of disarmedLevers) {
@@ -936,6 +1231,10 @@ console.log('     Worker bundles at build time is readable from CI.');
 console.log('   · THE COMPILED-IN DART DEFAULT for the promo-notification cap — assert-adapter-capabilities.mjs');
 console.log('     owns it end to end, and a redundant assertion is the thing this repository deletes.');
 console.log('   · WHETHER GOOGLE HAS CHANGED THE ADS DECLARATION since the fetch date in `sources`.');
+console.log('   · WHOSE APP A SURFACE PROMOTES ONCE ITS COPY COMES FROM OUTSIDE THE TREE — the ownership limb');
+console.log('     reads the literals inside the declaration, so a same-app card whose copy and link are');
+console.log('     overridden by a `config:<app>` KV write could point elsewhere with no commit. Same blind spot');
+console.log('     as the lever above, one level deeper, and the same reason the levers live in the tree.');
 
 if (problems.length) {
   console.error('');

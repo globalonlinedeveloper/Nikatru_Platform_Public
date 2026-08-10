@@ -207,25 +207,123 @@
       "claim": "Cloudflare",
       "type": "provider",
       "providers": ["cloudflare"],
-      "note": "Two spans on this page carry this text. The first (hosting and the network edge) is true. The SECOND says crash reports run on Cloudflare infrastructure, and they run on Oracle Cloud — that is the `crash-reports-infrastructure` gap in provider-register.json, printed every run. A per-span row cannot distinguish them, and pretending it can would be worse than saying so here."
+      "note": "Two spans on this page carry this text and BOTH are now true. They were not on version 2026-08-01: the second sentence said usage statistics AND crash reports both run on Cloudflare, and crash reports run on Oracle Cloud. The 2026-08-10 signature split that sentence so each system names its own host, which is what retired the `crash-reports-infrastructure` gap. The note is kept rather than deleted because the defect it records is the reason a per-span row cannot distinguish two identical spans — if a future edit re-merges the sentence, this row goes green on a page that is wrong again."
     },
     {
       "page": "privacy.html",
       "claim": "merchant of record",
       "type": "provider",
       "providers": ["paddle"],
-      "note": "The page describes the ROLE without naming the provider, and commits to naming it before selling starts. [ADR 004] locked Paddle. The unnamed-provider gap is `merchant-of-record-unnamed`."
+      "note": "The ROLE, now stated beside the provider that fills it rather than instead of one. [ADR 004] locked Paddle and [ADR 039] D1 scoped it to every channel an app store does not bill itself; the `Paddle` span in the same sentence carries the name. The `merchant-of-record-unnamed` gap was retired by the 2026-08-10 signature."
     },
     {
       "page": "privacy.html",
-      "claim": "We do not use advertising networks or advertising SDKs, we do not share data with data brokers, and no Nikatru app carries advertising.",
+      "claim": "Paddle",
+      "type": "provider",
+      "providers": ["paddle"],
+      "note": "The seller named, closing `merchant-of-record-unnamed`. terms.html and refund.html named Paddle on 2026-08-10 without a version bump because they carry no policy version; privacy.html could not, which is why this span waited for the signature and arrived with it. The register's `namedIn` for paddle now lists all three pages, so assert-policy-claims re-checks the disclosure against the page text on every run."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "RevenueCat",
+      "type": "provider",
+      "providers": ["revenuecat"],
+      "note": "The IAP aggregator ([ADR 039] D5), disclosed as a PROCESSOR and never as a seller — the sentence says it 'processes that on our behalf and is never the seller', because a buyer contracts with the store or with Paddle, never with RevenueCat. Closes `iap-aggregator-unnamed`. It holds no live data today (every kind:store row in tooling/channel-register.json is served:false), which is exactly why the disclosure had to land before the first store purchase rather than after it."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Supabase",
+      "type": "provider",
+      "providers": ["supabase"],
+      "note": "The identity provider, wired by the cut-1 auth reversal (#280) and disclosed here. Closes `identity-provider-unnamed`. Nothing is stored under it today because no shipped app offers accounts — this is a disclosure that had to precede the first account, not one that was wrong."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Resend",
+      "type": "provider",
+      "providers": ["resend"],
+      "note": "🔴 THE FIFTH CORRECTION, AND THE ONLY ONE WITH NO GAP ROW BEHIND IT. The other four privacy.html omissions signed on 2026-08-10 were each carried as a `disclosureGaps` row that printed on every CI run; Resend was carried by nothing, because it was absent from tooling/legal/provider-register.json entirely — and every guard here quantifies over that register. It has delivered Supabase auth mail (and therefore held every user's email address) since auth mail went live under [ADR 029]. Found by inspection during the signature, not by a check. TRANSACTIONAL ONLY: the sentence names sign-in and account-verification messages and asserts no marketing channel, because ConsentPurpose.marketingEmail is collection-only with no sender and no list ([ADR 040] decision 5)."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Oracle Cloud",
+      "type": "provider",
+      "providers": ["oracle-cloud"],
+      "note": "Where crash reports actually land. Closes `crash-reports-infrastructure`: the sentence used to cover usage statistics and crash reports with one host and was wrong about the second. Split at the 2026-08-10 signature so each system names its own. tooling/legal/provider-register.json already declared `crash_report` against the oracle-cloud sink, so the page was the only half of the pair that disagreed with the register."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "We do not use advertising networks or advertising SDKs, we do not sell or share data with data brokers or advertisers, and no Nikatru app carries third-party advertising.",
       "type": "code",
       "assert": {
         "kind": "absent",
         "walk": { "root": ".", "filenameRe": "^pubspec\\.yaml$", "minFiles": 10 },
         "pattern": "(?im)^\\s*(google_mobile_ads|firebase_admob|admob_flutter|applovin_max|unity_ads_plugin|facebook_audience_network|ironsource_mediation|appodeal_flutter|adjust_sdk|appsflyer_sdk|facebook_app_events)\\s*:",
-        "why": "The one claim on the page that a package manifest can refute outright: an advertising or attribution SDK cannot enter this workspace without appearing as a dependency. Walked over every pubspec.yaml in the tree (12 today, floored at 10) so a new package is covered the day it is created. ⚠️ A NAMED LIST IS NOT EXHAUSTIVE and this row does not claim otherwise — it is a tripwire on the SDKs that would plausibly arrive, and the duty row in tooling/legal/duty-matrix.json carries the standing trigger 'the day an ad SDK enters a pubspec'. 🔴 AND THE SENTENCE'S LAST LIMB IS NOT ABOUT SDKs AT ALL: 'no Nikatru app carries advertising' is a claim about FORMAT, and a house ad is UI we render — no dependency, so this walk passes while the sentence becomes false. That half is owned by tooling/ci/assert-ads-declarations.mjs, which derives the answer from the widget tree and the served config and FAILS when a promotional surface appears while this sentence is still published (research/44 §3 V3, 2026-08-09). The sentence, this row and apps/subly/store/android-play/ads-declaration.json are pinned to each other by exact string equality, so rewording any one of them without the others is a build failure — which is the point, because the reword is [ADR 031] class B owner work."
+        "why": "A package manifest can refute the THIRD-PARTY half of this sentence outright: an advertising or attribution SDK cannot enter this workspace without appearing as a dependency. Walked over every pubspec.yaml in the tree (floored at 10) so a new package is covered the day it is created. 🔴 THE WORD `third-party` IS LOAD-BEARING AND WAS ADDED DELIBERATELY ON 2026-08-10. The sentence used to read 'no Nikatru app carries advertising', and this walk could never have refuted THAT: Google Play's own ads declaration counts a house ad — 'a small ad banner, interstitial ad, ad wall, and/or widget' promoting our own apps — as advertising, keyed on FORMAT rather than on ownership or SDK presence (support.google.com/googleplay/android-developer/answer/9859455). A first-party promo surface adds no dependency, so the old claim would have gone false while this row stayed green — the exact silent-failure class this register exists to catch. The claim is now scoped to what the walk can actually see, and the first-party half is disclosed in §3 and asserted by the `first-party promotions`, `on your device` and `Offers and promotions` rows. ⚠️ A NAMED LIST IS STILL NOT EXHAUSTIVE; the standing trigger 'the day an ad SDK enters a pubspec' is the `global-privacy-control` row in tooling/legal/duty-matrix.json, and the trigger for the FORMAT question is `first-party-promotion-legal-basis` in the same file. The sentence, this row and apps/subly/store/android-play/ads-declaration.json remain pinned by exact string equality, so rewording any one without the others is a build failure."
       }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "first-party promotions",
+      "type": "code",
+      "assert": {
+        "kind": "absent",
+        "walk": { "root": ".", "filenameRe": "^pubspec\\.yaml$", "minFiles": 10 },
+        "pattern": "(?im)^\\s*(google_mobile_ads|firebase_admob|admob_flutter|applovin_max|unity_ads_plugin|facebook_audience_network|ironsource_mediation|appodeal_flutter|adjust_sdk|appsflyer_sdk|facebook_app_events)\\s*:",
+        "why": "'we show them ourselves, and no advertising network, ad exchange or advertising SDK is involved' is the half of §3 a dependency walk CAN refute, and it is the same walk the advertising row uses. Kept as its own row rather than folded into that one because the two sentences are in different sections and either could be edited without the other."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "The legal basis we rely on.",
+      "type": "descriptive",
+      "why": "A lead-in, and a required disclosure: GDPR Art 13(1)(c) wants the purpose AND the basis. Descriptive because nothing in this tree can prove a legal basis is correctly chosen — that is a lawyer's judgement, and this register does not pretend otherwise (see its preamble)."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "legitimate interest",
+      "type": "descriptive",
+      "why": "The basis itself, GDPR Art 6(1)(f), with the SPECIFIC interest named in the same paragraph as Art 13(1)(d) requires. [research/44] V4 records why this is the basis rather than consent: Recital 47 treats direct marketing as capable of being a legitimate interest, and adding a consent gate would be legally unnecessary friction that wrongly implies the processing becomes unlawful when refused. The code agrees rather than merely not disagreeing: `ConsentPurpose.promo` in packages/core/lib/src/analytics/consent.dart carries `basis: ConsentBasis.legitimateInterest`, so `unknown` permits and only `denied` forbids. ⚠️ THE ROW IS `descriptive` AND THAT IS NOT A DODGE — the balancing test is the substance and no guard can perform it. What IS mechanical is the objection control, and it is asserted by the `Offers and promotions` row below."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "What we use to decide what to show you.",
+      "type": "descriptive",
+      "why": "A lead-in to the targeting-inputs disclosure. The substantive claim under it — entitlement state only, decided on the device — is carried by the `on your device` row."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "on your device",
+      "type": "code",
+      "assert": {
+        "kind": "absent",
+        "files": ["packages/core/lib/src/promo/promo_gate.dart"],
+        "pattern": "(?im)^\\s*import\\s|https?:|HttpClient|\\bfetch\\(|\\bDio\\(|analytics|\\brecord\\(",
+        "why": "'the decision is made on your device' is the one sentence in §3 that a file can refute. [research/44] §4.3 specifies PromoGate as a PURE function over persisted counters — no UI, no config read, no I/O — so the decision must reach no network and emit no event. 🔴 THE FIRST LIMB IS THE SHARP ONE AND IT IS WHY THE PATTERN IS NOT JUST A LIST OF HTTP SPELLINGS: promo_gate.dart declares ZERO imports today (`library;` and nothing else), so `^\\s*import\\s` fires on ANY dependency arriving — a network client, an analytics rail, a storage rail, anything. A purity claim defended only by a blocklist of client names is refuted by the client whose name is not on the list; a purity claim defended by 'this file imports nothing' cannot be. The remaining limbs catch an impurity written inline without an import. Comments are stripped before matching, so the doc comment explaining that the gate touches no network does not trip it. NEGATIVE-TESTED 2026-08-10 by adding `import 'dart:io';` + `HttpClient().close();` to PromoGate.decide: assert-policy-claims went red with `dart analyze` clean, and restoring the file returned it to green."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Your right to object, and how to use it.",
+      "type": "descriptive",
+      "why": "GDPR Art 21(4): the objection right must be 'explicitly brought to the attention of the data subject and presented clearly and separately from any other information', at the latest at the time of the first communication. This lead-in plus the in-card control ([research/44] §7 rung 4, `PromoObjectionControl` inside `PromoSurface`) are the two halves of that; a Settings-only control would satisfy neither the 'separately' limb nor 'at the time of the first communication'."
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Offers and promotions",
+      "type": "code",
+      "assert": {
+        "kind": "present",
+        "files": ["apps/subly/lib/features/settings/settings_screen.dart"],
+        "pattern": "recordPromoObjection\\(",
+        "why": "The page names a control and tells the reader where it is; this row is what makes that a promise rather than an intention. Modelled exactly on the 'Usage statistics can be withdrawn without contacting us.' row, which asserts `recordAnalyticsConsent\\(` in the same screen file — delete the row from Settings and the claim goes red. 🔴 THE STRING IS ALSO THE SCREEN'S LABEL, AND THAT WAS NOT FREE: r4 shipped the l10n value as 'Promotional offers' while this signed sentence says 'Offers and promotions'. The page is the promise and the app string is not owner-gated, so the APP was moved to the page's words (apps/subly and the brick, en and ta) rather than the reverse — the page and the app must use one name for one thing, or a reader following the instruction hunts for a heading that is not there. NEGATIVE-TESTED 2026-08-10 by deleting the `recordPromoObjection` call from settings_screen.dart: assert-policy-claims went red with `dart analyze` clean, and restoring it returned it to green."
+      }
+    },
+    {
+      "page": "privacy.html",
+      "claim": "Nikatru apps only",
+      "type": "descriptive",
+      "why": "The scope limit, and the sentence a store reviewer reads to decide whether the surface is an ad network. Descriptive today because v1 is SAME-APP ONLY ([ADR 040] decision 2) and there is no second app to promote — so nothing in the tree can yet be pointed at that would refute it. 🔴 IT BECOMES ASSERTABLE THE DAY A CROSS-APP SURFACE SHIPS ([research/44] §7 rung 6): the payload's app ids must all resolve to rows in sites/_shared/_data/apps.json, and that is the row to re-point this at rather than a new one."
     },
     {
       "page": "privacy.html",

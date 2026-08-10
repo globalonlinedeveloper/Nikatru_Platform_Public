@@ -19,7 +19,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, renameSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,15 +36,35 @@ const BRICK_RAIL = `${BRICK}/lib/state/providers.dart`;
 /** Where the first-run prompt lives in both roots — limb 4's subject. */
 const SUBLY_APP = `${SUBLY}/lib/app.dart`;
 const BRICK_APP = `${BRICK}/lib/app.dart`;
+/** Where a promotional card would land — limbs 5 and 6's subject. Also the file
+ *  that really calls `CatchUpNudge().decide(`, which those limbs must NOT
+ *  claim. */
+const SUBLY_HOME = `${SUBLY}/lib/features/home/home_screen.dart`;
+const BRICK_HOME = `${BRICK}/lib/features/home/home_screen.dart`;
 
-/** A real-tree copy carrying exactly what the guard reads: the workspace list
- *  and both roots' lib/ trees. Nothing else is read, so nothing else is copied. */
+/** core's purpose declarations — the notice check's subject. */
+const CORE_CONSENT = 'packages/core/lib/src/analytics/consent.dart';
+/** The pinned notice the promo artifacts cite — DERIVED from the app's own
+ *  constant, exactly as the guard derives it. Hardcoding the date here would
+ *  turn an owner publishing a new policy into a red test in a file that has
+ *  nothing to say about which policy is current. */
+const POLICY = `sites/nikatru/legal/${
+  readFileSync(join(REPO, SUBLY_RAIL), 'utf8').match(/kPrivacyPolicyVersion\s*=\s*'([^']+)'/)[1]
+}/en/privacy.html`;
+
+/** A real-tree copy carrying exactly what the guard reads: the workspace list,
+ *  both roots' lib/ trees, core's consent purposes and the published notice.
+ *  Nothing else is read, so nothing else is copied. */
 function realTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-withdrawal-'));
   cpSync(join(REPO, 'pubspec.yaml'), join(root, 'pubspec.yaml'));
   for (const r of [BRICK, SUBLY]) {
     mkdirSync(join(root, r), { recursive: true });
     cpSync(join(REPO, r, 'lib'), join(root, r, 'lib'), { recursive: true });
+  }
+  for (const f of [CORE_CONSENT, POLICY]) {
+    mkdirSync(dirname(join(root, f)), { recursive: true });
+    cpSync(join(REPO, f), join(root, f));
   }
   return root;
 }
@@ -83,11 +103,20 @@ describe('the real tree', () => {
       () => {},
       () => {
         for (const rel of [SUBLY_SETTINGS, BRICK_SETTINGS]) {
-          assert.ok(
-            readFileSync(join(REPO, rel), 'utf8').includes('recordAnalyticsConsent('),
-            `${rel} must really carry the withdrawal call`,
-          );
+          const src = readFileSync(join(REPO, rel), 'utf8');
+          assert.ok(src.includes('recordAnalyticsConsent('), `${rel} must really carry the withdrawal call`);
+          assert.ok(src.includes('recordPromoObjection('), `${rel} must really carry the Art 21 objection call`);
         }
+      },
+    );
+  });
+
+  test('and it reports the objection rail in both roots', () => {
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /Art 21 objection — 2 root\(s\) carry the promo rail/);
       },
     );
   });
@@ -194,7 +223,12 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
   test('🔴 NO CONSENT RAIL ANYWHERE IS COVERAGE LOST — every limb is gated on that judgement', () => {
     withTree(
       (root) => {
-        for (const rel of [SUBLY_RAIL, BRICK_RAIL]) edit(root, rel, (s) => s.replaceAll('recordAnalyticsConsent', 'recordSomethingElse'));
+        // BOTH writers, because a root that declares the promo one and not the
+        // analytics one is its own (correct) coverage failure — see the case
+        // two tests below. This mutation is about "no rails at all".
+        for (const rel of [SUBLY_RAIL, BRICK_RAIL]) {
+          edit(root, rel, (s) => s.replaceAll('recordAnalyticsConsent', 'recordSomethingElse').replaceAll('recordPromoObjection', 'recordSomethingElser'));
+        }
       },
       (r) => {
         assert.equal(r.status, 1);
@@ -205,7 +239,7 @@ describe('REQUIRED_COVERAGE — the scan must know when it has stopped scanning'
 
   test('a rail in only ONE root is COVERAGE LOST — the brick and a real app are both required', () => {
     withTree(
-      (root) => edit(root, BRICK_RAIL, (s) => s.replaceAll('recordAnalyticsConsent', 'recordSomethingElse')),
+      (root) => edit(root, BRICK_RAIL, (s) => s.replaceAll('recordAnalyticsConsent', 'recordSomethingElse').replaceAll('recordPromoObjection', 'recordSomethingElser')),
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /only 1 root\(s\) carry a consent rail/);
@@ -310,6 +344,350 @@ describe('the first-run prompt is scrollable — limb 4', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE Art 21 OBJECTION ROW — research/44 rung 4. Same three limbs, same
+// mutations, against the same real tree. It is a SEPARATE describe rather than
+// extra assertions on the cases above because the two rows fail independently:
+// an app can ship a perfect analytics toggle and no way to stop offers, which is
+// exactly the state every app was in before this rung landed.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the stop-offers row — the promo twin of all three limbs', () => {
+  test('🔴 DELETING THE SUBLY OBJECTION ROW FAILS', () => {
+    withTree(
+      (root) => edit(root, SUBLY_SETTINGS, (s) => s.replaceAll('recordPromoObjection(', '_noopObjection(')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /apps\/subly: declares recordPromoObjection and there is NO call to it/);
+        assert.match(r.stderr, /the card can never be the way back/);
+      },
+    );
+  });
+
+  test('🔴 AND FROM THE BRICK FAILS TOO — every app the factory stamps inherits it', () => {
+    withTree(
+      (root) => edit(root, BRICK_SETTINGS, (s) => s.replaceAll('recordPromoObjection(', '_noopObjection(')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /NO call to it in lib\/features\/settings/);
+      },
+    );
+  });
+
+  test('🔴 COMMENTING THE CALL OUT FAILS — comments are blanked before any match', () => {
+    withTree(
+      (root) => edit(root, SUBLY_SETTINGS, (s) => s.replace('recordPromoObjection(ref,', '_x( // recordPromoObjection(ref,')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /NO call to it in lib\/features\/settings/);
+      },
+    );
+  });
+
+  test('🔴 A DECLARATION IN THE SETTINGS TREE DOES NOT SATISFY THE CALL CHECK', () => {
+    withTree(
+      (root) => {
+        edit(root, SUBLY_SETTINGS, (s) => s.replaceAll('recordPromoObjection(', '_noopObjection('));
+        edit(root, SUBLY_SETTINGS, (s) => `${s}\nFuture<void> recordPromoObjection(\n  WidgetRef ref, {\n  required bool objected,\n}) async {}\n`);
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /DECLARES recordPromoObjection/);
+      },
+    );
+  });
+
+  test('🔴 A ROW THAT CAN ONLY STOP FAILS — Art 21 needs the way back', () => {
+    withTree(
+      (root) => edit(root, SUBLY_SETTINGS, (s) => s.replace('recordPromoObjection(ref, objected: objected)', 'recordPromoObjection(ref, objected: true)')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /passes `objected: true`/);
+        assert.match(r.stderr, /a duty to stay objected/);
+      },
+    );
+  });
+
+  test('🔴 A CONTROL THAT CANNOT RENDER ITS OWN STATE FAILS', () => {
+    withTree(
+      (root) => edit(root, SUBLY_SETTINGS, (s) => s.split('promoObjectedProvider').join('kNeverObjected')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /never reads promoObjectedProvider/);
+      },
+    );
+  });
+});
+
+describe('REQUIRED_COVERAGE for the objection rail', () => {
+  test('🔴 HALF AN ADOPTION IS COVERAGE LOST — the brick alone leaves the shipped app without it', () => {
+    withTree(
+      (root) => edit(root, BRICK_RAIL, (s) => s.replaceAll('recordPromoObjection', 'recordSomethingElse')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /exactly ONE root carries the Art 21 objection rail/);
+      },
+    );
+  });
+
+  test('🔴 A ROOT WITH A PROMO RAIL AND NO ANALYTICS RAIL IS COVERAGE LOST, NOT A PASS', () => {
+    // Every limb hangs off the analytics derivation, so such a root would be
+    // skipped entirely and its objection row would go unchecked while the guard
+    // printed a reassuring note. That is a hole in the SCAN.
+    withTree(
+      (root) => edit(root, BRICK_RAIL, (s) => s.replaceAll('recordAnalyticsConsent', 'recordSomethingElse')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /declares recordPromoObjection but NOT recordAnalyticsConsent/);
+      },
+    );
+  });
+
+  test('a tree that has NOT adopted rung 4 passes and says so — the guard is silent, not blind', () => {
+    // The check that this guard does not become a build-blocker for every app
+    // and template that has no promo surface at all.
+    withTree(
+      (root) => {
+        for (const rel of [SUBLY_RAIL, BRICK_RAIL]) edit(root, rel, (s) => s.replaceAll('recordPromoObjection', 'recordSomethingElse'));
+      },
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /no root declares recordPromoObjection, so none owes a stop-offers control/);
+      },
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMBS 5 + 6 — THE PROMOTIONAL CREATIVE CANNOT BYPASS THE RAIL OR THE FRAME.
+//
+// 🔬 THE MUTATION IS NOT INVENTED. It is a transcription of the sibling rung-3
+// increment as it was actually written (`scratchpad/patches/
+// r3-promocard-surface-v2.patch`): a `promoGateProvider`, a `.decide(` spanning
+// three lines off `ref.watch(...)`, and a card rendered with no `PromoSurface`
+// anywhere in the file. The invariant it violates was, at that moment, a
+// sentence in a doc comment claiming to be *"the only sanctioned way"* — and a
+// claim with no assertion under it is the shape [pipeline C-6] is about. These
+// cases exist so that sentence stops being the enforcement.
+//
+// 🔴 REWRITTEN 2026-08-10, AND THE REASON IS THE THING THESE CASES ASKED FOR.
+// This block was authored against a tree whose home screens had NOT yet been
+// wired through `PromoObjection`/`PromoSurface`: its header said "the real tree
+// names no promo gate at all, so limbs 5 and 6 are SILENT on it today", and
+// every case APPENDED its mutation to the real `home_screen.dart`. The D2
+// signature landed the wiring the guard was demanding, so both premises are now
+// false — the real tree decides a promotion in BOTH roots, correctly.
+//
+// Appending then measured the wrong thing: limb 6 is a claim about a FILE ("this
+// file decides a promotion and never names PromoSurface"), so a bypass appended
+// to a file that already names the frame satisfies limb 6 and the negative case
+// silently stopped covering half of what it claimed. The mutations therefore go
+// into a NEW file under the app's lib/ tree, which is also the realistic
+// regression: the next chip adds its own promotional widget in its own file.
+//
+// The baseline for "silent, not blind" moved with it — a tree with no promo gate
+// has to be MADE, by removing the wiring, rather than found.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the promotional creative — limbs 5 and 6', () => {
+  /** The sibling chip's shape, verbatim in structure: a provider-held gate, a
+   *  multi-line `.decide(`, and no frame. */
+  const BYPASS = `
+class _UpgradePromoCard extends ConsumerWidget {
+  const _UpgradePromoCard();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final core.PromoGateDecision decision = ref
+        .watch(promoGateProvider)
+        .decide(
+          ref.watch(promoCardStateProvider).valueOrNull ?? const core.PromoGateState(),
+          now: DateTime.now(),
+          featureEnabled: true,
+          hasContent: true,
+        );
+    if (decision.verdict != core.PromoGateVerdict.show) return const SizedBox.shrink();
+    return const Text('upgrade');
+  }
+}
+`;
+
+  /** The same card, through the rail and inside the frame. */
+  const SANCTIONED = `
+class _UpgradePromoCard extends ConsumerWidget {
+  const _UpgradePromoCard();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final core.PromoGateDecision decision = core.PromoObjection(ref.watch(railProvider)).decide(
+          ref.watch(promoGateProvider),
+          const core.PromoGateState(),
+          now: DateTime.now(),
+          featureEnabled: true,
+          hasContent: true,
+        );
+    return PromoSurface(
+      show: decision.verdict == core.PromoGateVerdict.show,
+      objected: ref.watch(promoObjectedProvider),
+      onObjectionChanged: (bool o) => recordPromoObjection(ref, objected: o),
+      child: const Text('upgrade'),
+    );
+  }
+}
+`;
+
+  /** The mutations land in their OWN file, never appended to a home screen that
+   *  already carries the sanctioned shape — see the block header. `addFile` is
+   *  the whole difference between testing limb 6 and testing nothing. */
+  const NEW_CARD = (root, rel) => `${root}/lib/features/home/${rel}`;
+  const addFile = (root, r, rel, body) => {
+    writeFileSync(join(root, NEW_CARD(r, rel)), body);
+  };
+
+  /** Make a tree that promotes nothing.
+   *
+   *  🔴 IT HAS TO BE THE WHOLE TOKEN, IN EVERY lib FILE, because the
+   *  classifier is `/promogate/i` over a file's text — and `promoGateProvider`
+   *  is DECLARED in `state/providers.dart`, not only used in the home screen.
+   *  Editing the home screens alone leaves the gate named, which puts the guard
+   *  in "a gate is named and nothing decides" — COVERAGE LOST, which is a
+   *  different case with its own test above. Renaming the token everywhere is
+   *  the only faithful model of an app that simply has no promo gate.
+   *
+   *  The `.decide(` calls survive the rename and are then classified as
+   *  non-promo, which is exactly the world this case is about. */
+  const walkDart = (dir, out = []) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walkDart(p, out);
+      else if (e.name.endsWith('.dart')) out.push(p);
+    }
+    return out;
+  };
+  const unwire = (root) => {
+    let renamed = 0;
+    for (const r of [SUBLY, BRICK]) {
+      for (const p of walkDart(join(root, r, 'lib'))) {
+        const src = readFileSync(p, 'utf8');
+        if (!/promogate/i.test(src)) continue;
+        writeFileSync(p, src.replace(/promogate/gi, 'QuietGate'));
+        renamed++;
+      }
+    }
+    // The premise, asserted: if nothing carried the token, this helper would be
+    // a no-op and the case below would pass against the unmutated tree — an
+    // assertion that cannot fail.
+    assert.ok(renamed >= 2, `expected the promo gate to be named in both roots, renamed it in ${renamed} file(s)`);
+  };
+
+  test('🔴 THE SIBLING CHIP\'S ACTUAL SHAPE FAILS — both limbs, one mutation', () => {
+    withTree(
+      (root) => addFile(root, SUBLY, 'promo_bypass.dart', BYPASS),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /reaches PromoGate\.decide WITHOUT PromoObjection/);
+        assert.match(r.stderr, /decides a promotion and never names PromoSurface/);
+        assert.match(r.stderr, /both halves report healthy/);
+        // …and it names the NEW file, not the correctly-wired home screen —
+        // otherwise this case would pass off the real tree's own call site as
+        // the defect it introduced.
+        assert.match(r.stderr, /promo_bypass\.dart/);
+      },
+    );
+  });
+
+  test('🔴 AND IN THE BRICK — every app the factory stamps would inherit the bypass', () => {
+    withTree(
+      (root) => addFile(root, BRICK, 'promo_bypass.dart', BYPASS),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /reaches PromoGate\.decide WITHOUT PromoObjection/);
+        assert.match(r.stderr, /promo_bypass\.dart/);
+      },
+    );
+  });
+
+  test('🔴 THROUGH THE RAIL BUT OUTSIDE THE FRAME STILL FAILS — limb 6 alone', () => {
+    // The half-fix that would otherwise look like a fix: the objection reaches
+    // the gate, and the card that renders still carries neither the promotional
+    // label nor the on-card control.
+    withTree(
+      (root) => addFile(root, SUBLY, 'promo_unframed.dart', SANCTIONED.replace(/PromoSurface/g, 'Card')),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /never names PromoSurface/);
+        assert.match(r.stderr, /promo_unframed\.dart/);
+        assert.doesNotMatch(r.stderr, /WITHOUT PromoObjection/);
+      },
+    );
+  });
+
+  test('the sanctioned shape PASSES — the limbs are satisfiable, not merely strict', () => {
+    // An assertion nothing can satisfy is a guard people delete. This is the
+    // positive case, and it is also the fix the two failing cases above are
+    // asking for, written out.
+    //
+    // 3 = the two the real tree already carries (one per root, landed by the D2
+    // signature) plus this one. The baseline 2 is asserted by `the real tree`
+    // block above, so the arithmetic is anchored in one place: if the wiring is
+    // ever removed, that case reddens first and this number is not the clue.
+    withTree(
+      (root) => addFile(root, SUBLY, 'promo_extra.dart', SANCTIONED),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /2 root\(s\) decide a promotion, 3 call site\(s\), every one through PromoObjection/);
+      },
+    );
+  });
+
+  test('a NON-promo `.decide(` is not classified — ReviewGate and CatchUpNudge are not this guard\'s', () => {
+    // `apps/subly/lib/features/home/home_screen.dart` really does call
+    // `const core.CatchUpNudge().decide(` — if the classifier keyed on the
+    // METHOD NAME this guard would fail an unrelated seam. The home screen also
+    // carries a real promo decision, so this is the discriminating case: two
+    // `.decide(` calls in ONE file, exactly one of them counted.
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /2 call site\(s\), every one through PromoObjection/);
+        assert.doesNotMatch(r.stderr, /CatchUpNudge/);
+        // The premise, asserted rather than assumed: if the nudge ever stopped
+        // living in that file, "it was not counted" would be true for the wrong
+        // reason and this case would prove nothing.
+        assert.ok(
+          readFileSync(join(REPO, SUBLY_HOME), 'utf8').includes('CatchUpNudge().decide('),
+          `${SUBLY_HOME} must really carry a non-promo .decide( for this case to discriminate`,
+        );
+      },
+    );
+  });
+
+  test('🔴 A PROMO GATE WITH NO CLASSIFIED `.decide(` IS COVERAGE LOST, NOT A PASS', () => {
+    // The classifier silently ceasing to match and the tree being clean print
+    // identically. Mutation: the gate stays NAMED everywhere (so the limbs
+    // engage) and every promo `.decide(` is renamed away, which is exactly what
+    // a rename of `PromoGate.decide` would do to this scan.
+    withTree(
+      (root) => {
+        for (const home of [SUBLY_HOME, BRICK_HOME]) {
+          edit(root, home, (s) => s.replace(/\.decide\(\n(\s*)ref\.watch\(promoGateProvider\)/, '.judge(\n$1ref.watch(promoGateProvider)'));
+        }
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /NOT ONE `\.decide\(` was classified as one/);
+      },
+    );
+  });
+
+  test('a tree with no promo gate PASSES and says so — silent, not blind', () => {
+    // The tree that promotes nothing has to be MADE now that both roots
+    // promote. Every remaining `.decide(` is a CatchUpNudge, so the limbs must
+    // go quiet rather than fire — silence here is the assertion.
+    withTree(unwire, (r) => {
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /no root names a promo gate, so none can bypass PromoObjection or PromoSurface/);
+    });
+  });
+});
+
 describe('what this guard does NOT assert, said out loud', () => {
   test('the first-run grant surface is reported, never required', () => {
     // Deleting the GRANT path is a real defect — there would be no way to say
@@ -326,6 +704,67 @@ describe('what this guard does NOT assert, said out loud', () => {
       (r) => {
         assert.equal(r.status, 0, r.stderr);
         assert.match(r.stdout, /caller\(s\) of recordAnalyticsConsent\( live OUTSIDE/);
+      },
+    );
+  });
+
+  test('👤 the notice that does not describe the basis PRINTS, and CLEARS ITSELF', () => {
+    // Owner-gated: publishing legal copy is ADR 031 class B, and a guard that
+    // reddens CI on work only the owner can do is a guard people switch off.
+    // The value of the line is that it is DERIVED from three trees — core's
+    // bases, the app's pinned version, the published words — so it disappears
+    // on the day the notice is fixed and appears on the day a purpose is added.
+    // Both halves are proven, because a note that could not clear would just be
+    // a permanent banner nobody reads.
+    //
+    // 🔴 THE TWO HALVES SWAPPED PLACES ON 2026-08-10, AND THAT IS THE NOTE
+    // DOING ITS JOB. This case used to read the real tree and assert the line
+    // PRINTS; the owner then published privacy.html §3, which states the
+    // legitimate-interest basis and the objection right, and the archived
+    // snapshot the guard pins went with it. So the real tree is now the CLEARED
+    // half, and the printing half is what has to be manufactured — by taking
+    // the words back out of the pinned notice. Neither half was deleted: a
+    // "clears itself" claim proven only in the direction the tree happens to be
+    // in is a claim about today, not about the mechanism.
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.doesNotMatch(r.stdout, /👤 OWNER the pinned notice/);
+        // ⚠️ "NO NOTE" IS NOT SELF-EVIDENTLY GOOD NEWS, and the count that used
+        // to be asserted here only exists INSIDE the note — so it cannot be
+        // read in the cleared direction. The two facts it guarded are covered,
+        // each by a case that can fail on its own: the second half below
+        // manufactures the note by taking the words out of the notice, and
+        // `an extractor that stops finding the purposes SAYS SO` covers a
+        // silent extractor. What must never happen is this half standing
+        // alone — a `doesNotMatch` on an unmutated tree is satisfied equally by
+        // a working guard and a guard that printed nothing at all.
+      },
+    );
+    withTree(
+      (root) =>
+        edit(root, POLICY, (s) =>
+          // Strip the two phrases §3 was signed to carry. Anything that removes
+          // them is the same edit a rewrite-without-review would make.
+          s.replace(/legitimate interest/g, 'interest').replace(/right to object/g, 'preference'),
+        ),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /👤 OWNER the pinned notice .*privacy\.html describes neither/);
+      },
+    );
+  });
+
+  test('👤 an extractor that stops finding the purposes SAYS SO', () => {
+    // The failure this repository keeps paying for: a check that silently
+    // stopped checking. Zero legitimate-interest purposes and an extractor that
+    // lost its grip print identically unless asked apart — so the guard asks.
+    withTree(
+      (root) => edit(root, CORE_CONSENT, (s) => s.replace("ConsentPurpose(\n    'promo',", "ConsentPurpose(\n    PROMO_ID,")),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /NAMES ConsentBasis\.legitimateInterest and the purpose extractor matched none/);
       },
     );
   });
