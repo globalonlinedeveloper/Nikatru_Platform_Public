@@ -61,7 +61,19 @@ const DECL = join(
   'src',
   'auth_providers.dart',
 );
-const VAULT = join(ROOT, '.claude', 'secrets.env');
+/// The local vault, overridable so a test can point it somewhere that does not
+/// exist.
+///
+/// 🔴 THIS SEAM IS NOT A CONVENIENCE, IT IS A CORRECTNESS FIX FOR THE TEST.
+/// The no-credential case is driven by withholding credentials — but with a
+/// hard-coded vault path, "withheld" means one thing on a CI runner (no
+/// `.claude/`, so exit 2) and the OPPOSITE on the owner's laptop (vault present,
+/// so real credentials are found and the live project is contacted, exit 0). The
+/// first version of `ops-verifiers.test.mjs` asserted exit 2 and failed here for
+/// exactly that reason. A test whose meaning depends on which machine it runs on
+/// is not a test; and the version that "passed" in CI would have been passing
+/// for a different reason than the one it claimed.
+const VAULT = process.env.NIKATRU_VAULT ?? join(ROOT, '.claude', 'secrets.env');
 
 /// 🔴 THE VALUES IN secrets.env ARE QUOTED. A reader that keeps the quotes
 /// sends `Bearer "…"` and the server answers 400 — which reads exactly like a
@@ -81,6 +93,45 @@ function fromVault(key) {
 
 const cred = (key) => process.env[key]?.trim() || fromVault(key);
 
+/// THE WHOLE JUDGEMENT, as a pure function — declared vs live, in.
+/// Problems out.
+///
+/// 🔴 SPLIT OUT SO IT CAN BE TESTED WITHOUT A NETWORK OR A LIVE PROJECT. While
+/// this logic lived inside `main()` the only way to exercise it was to point the
+/// script at something — which on CI means either the real Supabase project (a
+/// test that cannot run on a fork PR) or a fixture HTTP server (which hung the
+/// suite: undici keeps sockets alive, `server.close()` waits for them, and the
+/// `after` hook never resolved — ten minutes with every assertion already
+/// green). A pure function needs neither. Same reasoning as `judge` in
+/// `check-analytics-liveness.mjs`.
+///
+/// Returns [] when the declaration and the server agree on every provider.
+export function compareProviders({ declared, live }) {
+  const problems = [];
+  for (const name of ['apple', 'google']) {
+    const liveValue = live?.[name];
+    if (typeof liveValue !== 'boolean') {
+      problems.push(
+        `the live settings response has no boolean \`external.${name}\`. GoTrue stopped reporting ` +
+          `this provider, so the declaration can no longer be checked against anything.`,
+      );
+      continue;
+    }
+    if (liveValue === declared[name]) continue;
+    problems.push(
+      declared[name]
+        ? `🔓 ${name}: DECLARED ENABLED, but the server says disabled. The login screens will ` +
+            `render a "Continue with ${name}" button and Supabase will answer 400 "provider is not ` +
+            `enabled" — this is the exact defect AuthProviders was created to end. Either enable ` +
+            `${name} in the Supabase dashboard, or set \`${name}: false\` in auth_providers.dart.`
+        : `🙈 ${name}: DECLARED DISABLED, but the server says ENABLED. Somebody stood the provider ` +
+            `up and the app is hiding it from every user on every platform. Set \`${name}: true\` ` +
+            `in auth_providers.dart to ship the button.`,
+    );
+  }
+  return problems;
+}
+
 /// Parse the declared flags out of the Dart source.
 ///
 /// ⚠️ PARSED ON STRUCTURE, NOT GREPPED FROM PROSE. This file is mostly a long
@@ -90,7 +141,7 @@ const cred = (key) => process.env[key]?.trim() || fromVault(key);
 /// anchored to the `static const AuthProviders configured = AuthProviders(…)`
 /// initialiser specifically, and an initialiser that does not parse is a
 /// FAILURE — an assertion that cannot find its subject must never report ok.
-function declared() {
+export function declared() {
   const src = readFileSync(DECL, 'utf8');
   const m = src.match(
     /static\s+const\s+AuthProviders\s+configured\s*=\s*AuthProviders\s*\(([^;]*?)\)\s*;/s,
@@ -156,30 +207,11 @@ async function main() {
     return 2;
   }
 
-  const problems = [];
+  const problems = compareProviders({ declared: want, live: external });
   for (const name of ['apple', 'google']) {
-    const live = external[name];
-    if (typeof live !== 'boolean') {
-      problems.push(
-        `the live settings response has no boolean \`external.${name}\`. GoTrue stopped reporting ` +
-          `this provider, so the declaration can no longer be checked against anything.`,
-      );
-      continue;
+    if (typeof external[name] === 'boolean' && external[name] === want[name]) {
+      console.log(`ok   ${name}: declared ${want[name]}, live ${external[name]}`);
     }
-    if (live === want[name]) {
-      console.log(`ok   ${name}: declared ${want[name]}, live ${live}`);
-      continue;
-    }
-    problems.push(
-      want[name]
-        ? `🔓 ${name}: DECLARED ENABLED, but the server says disabled. The login screens will ` +
-            `render a "Continue with ${name}" button and Supabase will answer 400 "provider is not ` +
-            `enabled" — this is the exact defect AuthProviders was created to end. Either enable ` +
-            `${name} in the Supabase dashboard, or set \`${name}: false\` in auth_providers.dart.`
-        : `🙈 ${name}: DECLARED DISABLED, but the server says ENABLED. Somebody stood the provider ` +
-            `up and the app is hiding it from every user on every platform. Set \`${name}: true\` ` +
-            `in auth_providers.dart to ship the button.`,
-    );
   }
 
   if (problems.length) {
@@ -194,4 +226,12 @@ async function main() {
   return 0;
 }
 
-process.exitCode = await main();
+// Only run when EXECUTED, not when imported. A test importing this module to
+// unit-test `compareProviders` must not also fire a live probe as a side effect
+// — and without this guard it would, silently setting the test run's exit code.
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))
+) {
+  process.exitCode = await main();
+}

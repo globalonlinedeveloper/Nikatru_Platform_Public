@@ -68,6 +68,7 @@
   "obfuscation-coupled.test.mjs": 14,
   "ops-register.test.mjs": 155,
   "ops-status.test.mjs": 46,
+  "ops-verifiers.test.mjs": 15,
   "package-boundaries.test.mjs": 18,
   "package-earned.test.mjs": 13,
   "platform-proof-fresh.test.mjs": 65,
