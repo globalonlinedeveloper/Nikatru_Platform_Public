@@ -1275,7 +1275,15 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // 53 since 2026-08-10: research/44 rung 4 added `privacySignalProvider`,
 // `promoObjectedProvider` and `promoObjectionKnownProvider` to the stamped
 // chassis. Raised with the tree, same reason as every line above it.
-const MIN_DOMAIN = 53;
+// 56 since 2026-08-11: password-reset completion added `launchUriProvider`
+// (overridable, so the FAILURE path is drivable at all), `passwordRecoveryProvider`
+// and `passwordResetArrivalProvider`. It was left at 53 when those three landed,
+// and the cost was not theoretical: the floor sat THREE behind the tree, so the
+// fixture case that deletes one behaviour still measured 55 — above the floor —
+// and `COVERAGE LOST` stopped firing entirely. The negative test went green by
+// losing the thing it tests. A floor that lags the tree is a floor with slack,
+// and slack is indistinguishable from absence until something is deleted.
+const MIN_DOMAIN = 56;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
