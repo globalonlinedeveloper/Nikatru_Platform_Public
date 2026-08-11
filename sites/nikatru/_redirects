@@ -1,6 +1,15 @@
 # Apex app paths — owner decision 2026-08-08: nikatru.com/<app> is the permanent
 # public address for an app's commerce/product surface, so Paddle domain approval
 # is a one-time act on the apex, never a per-app submission. The path serves the
-# hub's per-app page today; the checkout increment (behind OD-6.1) upgrades it.
+# hub's per-app page today; the checkout increment upgrades it. That increment is
+# gated by paywall.enabled=false (services/platform/src/app-config-data.json) plus
+# OWNER_QUEUE A-1 -- NOT by OD-6.1, which CLOSED AS SUPERSEDED on 2026-08-08 (see
+# knowledge/decisions/036-subly-freeze-dissolved-by-owner-order.md). This line named
+# OD-6.1 as an open gate until 2026-08-11. sites/ sat outside that ADR's own declared
+# citation sweep (company/pipeline/* and knowledge/), which is exactly why it survived.
+# Precision, because a records file that overstates is the defect it is fixing: this
+# file is public in the REPO but is never SERVED -- Cloudflare consumes _redirects and
+# assert-web-cache-policy.mjs:168 lists it NOT_SERVED. pricing.html, repaired the same
+# day, is the one whose comment shipped the stale gate id to every browser.
 /subly /apps/subly.html 301
 /subly/ /apps/subly.html 301

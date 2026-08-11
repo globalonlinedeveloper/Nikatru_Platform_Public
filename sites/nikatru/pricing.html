@@ -156,7 +156,7 @@
      generated landing links here as /pricing.html?app=<slug> (written by
      tooling/sites/generate-discovery.mjs, which is where that link comes from —
      it is not typed anywhere by hand). This records WHICH app's page the reader
-     arrived from, so the increment after OD-6.1 — the one that opens a real web
+     arrived from, so the checkout increment (gated by the two switches named below, NOT by OD-6.1 — that closed as superseded 2026-08-08, see knowledge/decisions/036-subly-freeze-dissolved-by-owner-order.md; this line read "the increment after OD-6.1" until 2026-08-11, because sites/ sat outside that ADR's declared sweep of company/pipeline/* and knowledge/) — the one that opens a real web
      checkout — can attach it to the transaction instead of asking the buyer
      again or shipping a second pricing URL per app. The Paddle catalogue's
      custom_data already carries {app_id, offering_id}; this is the browser half
