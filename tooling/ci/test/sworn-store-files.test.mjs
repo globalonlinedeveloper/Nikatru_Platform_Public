@@ -38,6 +38,10 @@ const CR = `${SUBLY_STORE}/content-rating.json`;
 const ADS = `${SUBLY_STORE}/ads-declaration.json`;
 const SETTINGS = 'apps/subly/lib/features/settings/settings_screen.dart';
 const REGISTER = 'tooling/channel-register.json';
+/** Limb 9's subject. `put(SUBLY_STORE)` already copies it (the whole channel
+ *  directory goes in), so it needs no separate seed — but the files IT cites do,
+ *  which is why `citedPaths()` below reads it too. */
+const README = `${SUBLY_STORE}/README.md`;
 
 /**
  * The paths limb 5 will resolve, DERIVED from the real declarations with the
@@ -50,10 +54,17 @@ const REGISTER = 'tooling/channel-register.json';
  * a ~100 MB copy. Deriving the set gives 43 files, and it cannot go stale:
  * cite a new file in the declaration and the fixture copies it.
  */
-const CITED_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|html|txt|xml|sql|arb|md)/g;
+const CITED_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|mjs|html|txt|xml|sql|arb|md)/g;
 function citedPaths() {
   const set = new Set();
-  for (const rel of [DS, CR, ADS]) {
+  // …and the channel README, which limb 9 resolves. Derived, not listed: the
+  // README's derivation map cites 11 repository paths — app_config, apps.json,
+  // the register, the brick's brick.yaml, the data inventory and SIX .mjs
+  // scripts (assert-store-metadata, assert-play-declarations,
+  // assert-ads-declarations, submit-play, render-play-graphics,
+  // capture-play-screenshots) — and hand-listing them is the mistake this
+  // function's own header records making.
+  for (const rel of [DS, CR, ADS, README]) {
     for (const m of readFileSync(join(REPO, rel), 'utf8').matchAll(CITED_RE)) set.add(m[0]);
   }
   return [...set];
@@ -138,6 +149,9 @@ describe('the real tree', () => {
         assert.match(r.stdout, new RegExp(`${swornCount()} sworn declaration\\(s\\) still answered`));
         assert.match(r.stdout, /cited path\(s\) resolve/);
         assert.match(r.stdout, /brick template\(s\) still blank/);
+        // Limb 9 ran and says so. Without this the baseline passes identically
+        // whether the README limb read 32 paths or was never reached.
+        assert.match(r.stdout, /path\(s\) in [1-9]\d* channel README\(s\) resolve/);
       },
     );
   });
@@ -280,6 +294,66 @@ describe('limb 5 — a declaration may not cite code that is gone', () => {
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /cites apps\/subly\/lib\/features\/settings\/settings_screen\.dart, which does not exist/);
+      },
+    );
+  });
+});
+
+describe('limb 9 — the channel README may not cite code that is gone either', () => {
+  test('🔴 THE TEN-INSTANCE DEFECT, REPLAYED: the pre-#216 app_config path fails', () => {
+    // This is not a hypothetical mutation — it is the tree as it stood until
+    // this increment. #216 moved `lib/core/config/app_config.dart` to
+    // `lib/core/app_config.dart`; limb 5 repaired the three citations inside the
+    // declarations, and TEN more sat in the five channel READMEs (two per
+    // channel: the privacy-policy-url and support-url rows of every derivation
+    // map) for the simple reason that a `.md` was never in this guard's subject
+    // set. One re-introduced instance is enough to go red, which is the property
+    // that matters: the fix cannot be half-applied in silence.
+    withTree(
+      (root) =>
+        editText(root, README, (s) =>
+          s.replace('apps/subly/lib/core/app_config.dart', 'apps/subly/lib/core/config/app_config.dart'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(
+          r.stderr,
+          /README\.md:\d+ cites apps\/subly\/lib\/core\/config\/app_config\.dart, which does not exist/,
+        );
+      },
+    );
+  });
+
+  test('deleting the README is COVERAGE LOST, not a pass', () => {
+    // The failure this whole file is about, in its limb-9 shape: with no README
+    // the per-README loop iterates zero times and every path assertion is
+    // vacuously satisfied. `assert-store-metadata.mjs` owns the file's PRESENCE;
+    // this asserts that when it is gone, THIS guard says it stopped scanning
+    // rather than printing ok over an empty set.
+    withTree(
+      (root) => rmSync(join(root, README)),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /not one channel README was read/);
+      },
+    );
+  });
+
+  test('a README that cites NO code is COVERAGE LOST — the matcher must still match', () => {
+    // The subtler half. The file is present, so the case above stays green, and
+    // the derivation map — the thing limb 9 exists to check — has evaporated. A
+    // path check that matches nothing passes forever.
+    withTree(
+      (root) =>
+        writeFileSync(
+          join(root, README),
+          '# Store listing metadata\n\nThe derivation map used to be here.\n',
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /matched ZERO repository paths/);
       },
     );
   });

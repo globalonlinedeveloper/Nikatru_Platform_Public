@@ -38,8 +38,8 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `long-description.txt` | Description (`snapcraft.yaml` → `description`) | the app's differentiation line (`app_brick` var `description`), expanded | non-empty |
 | `category.txt` | Category | `app_brick` var `category` | non-empty |
 | `license.txt` | License | SPDX identifier | non-empty |
-| `privacy-policy-url.txt` | Privacy policy link | `apps/subly/lib/core/config/app_config.dart` → `privacyUrl` | ✅ exact match |
-| `support-url.txt` | Contact / support link | `apps/subly/lib/core/config/app_config.dart` → `contactUrl` | ✅ exact match |
+| `privacy-policy-url.txt` | Privacy policy link | `apps/subly/lib/core/app_config.dart` → `privacyUrl` | ✅ exact match |
+| `support-url.txt` | Contact / support link | `apps/subly/lib/core/app_config.dart` → `contactUrl` | ✅ exact match |
 | `screenshots/` | Media | not derivable — see that directory's README | slot must exist |
 
 ### 🔴 `snap-name.txt` is the one field with irreversible consequences

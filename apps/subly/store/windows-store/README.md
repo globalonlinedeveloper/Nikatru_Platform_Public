@@ -37,8 +37,8 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `long-description.txt` | Description | the app's differentiation line (`app_brick` var `description`), expanded | non-empty |
 | `category.txt` | Category | `app_brick` var `category` | non-empty |
 | `search-terms.txt` | Search terms | listing copy; **≤ 7** terms | ✅ count ≤ 7 |
-| `privacy-policy-url.txt` | Privacy policy URL | `apps/subly/lib/core/config/app_config.dart` → `privacyUrl` | ✅ exact match |
-| `support-url.txt` | Support contact info | `apps/subly/lib/core/config/app_config.dart` → `contactUrl` | ✅ exact match |
+| `privacy-policy-url.txt` | Privacy policy URL | `apps/subly/lib/core/app_config.dart` → `privacyUrl` | ✅ exact match |
+| `support-url.txt` | Support contact info | `apps/subly/lib/core/app_config.dart` → `contactUrl` | ✅ exact match |
 | `screenshots/` | Screenshots | not derivable — see that directory's README | slot must exist |
 
 **The brick vars are the generation mechanism, the app is the instance.** The
