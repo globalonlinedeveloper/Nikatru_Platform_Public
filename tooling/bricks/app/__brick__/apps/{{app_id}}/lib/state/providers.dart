@@ -1087,7 +1087,13 @@ class PasswordResetArrivalController
     extends Notifier<core.PasswordResetArrivalReport> {
   @override
   core.PasswordResetArrivalReport build() {
-    final AuthRepository auth = ref.watch(authRepositoryProvider);
+    // `core.` PREFIX: the brick imports nikatru_core AS `core`, so a bare
+    // `AuthRepository` is `Error: 'AuthRepository' isn't a type` in every
+    // stamped app. `apps/subly` imports the same symbol unprefixed, which is
+    // why this survived being copied across — the two roots are near-identical
+    // and their IMPORTS are not. Invisible to `dart analyze` here, because the
+    // template is mustache; caught only by stamping the probe.
+    final core.AuthRepository auth = ref.watch(authRepositoryProvider);
     final StreamSubscription<core.AuthEvent> sub = auth.authEvents().listen((
       core.AuthEvent event,
     ) {
@@ -2433,7 +2439,15 @@ final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
   final _Bump resetArrival = _Bump();
   ref.listen<core.PasswordResetArrivalReport>(
     passwordResetArrivalProvider,
-    (core.PasswordResetArrivalReport? _, core.PasswordResetArrivalReport _) =>
+    // ⚠️ `__` HERE TOO — the note twelve lines up applies to EVERY listener in
+    // this function, and this is the one it did not reach. The `bool` pair was
+    // written `(bool? _, bool __)` with the reason recorded, and then this pair
+    // was added below it with a repeated `_`, so every stamped app failed to
+    // compile: `The name '_' is already defined` at this line. A rule written
+    // beside one call site is not a rule the next call site inherits — the
+    // template is mustache, so `dart analyze` on this repository cannot see it,
+    // and only the stamped-probe lane can.
+    (core.PasswordResetArrivalReport? _, core.PasswordResetArrivalReport __) =>
         resetArrival.bump(),
   );
   ref.onDispose(onboarding.dispose);

@@ -139,7 +139,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   /// this that only navigated would leave the gate armed and the router would
   /// put the user straight back here. One mechanism for finishing and for
   /// abandoning, rather than two that have to be kept in step.
-  Future<void> _leave(core.AuthRepository auth) async {
+  Future<void> _leave() async {
     // 🔴 CLEARED BEFORE THE AWAIT, AND CLEARED AT ALL. `signedOut` is
     // deliberately NOT a release for the arrival — see
     // `passwordResetArrivalProvider`, where releasing on it would let a routine
@@ -149,7 +149,14 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     // sign-out tears this element down and `ref` throws afterwards.
     ref.read(passwordResetArrivalProvider.notifier).clear();
     try {
-      await auth.signOut();
+      // 🔴 THE SPINE, NOT `auth.signOut()`. This called the repository directly
+      // until `assert-seams-wired` caught it: a session-ending control beside
+      // the spine leaves the entitlement cache — honoured offline for up to
+      // seven days — and the notification schedule belonging to the person who
+      // just left. It matters MORE here than anywhere else, because a password
+      // reset is the one flow whose likeliest cause is "somebody else had my
+      // account", and the device that finishes it may not be the owner's.
+      await signOutAndForgetUser(ref);
     } catch (_) {
       // A failed sign-out must not trap the user on this page. The gate still
       // reads a live session, and navigating is still the right move.
@@ -206,7 +213,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         const SizedBox(height: 20),
         FilledButton(
           key: ResetPasswordScreen.signInButton,
-          onPressed: () => _leave(auth),
+          onPressed: () => _leave(),
           child: Text(l10n.signIn),
         ),
       ];
@@ -246,7 +253,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         const SizedBox(height: 20),
         FilledButton(
           key: ResetPasswordScreen.signInButton,
-          onPressed: () => _leave(auth),
+          onPressed: () => _leave(),
           child: Text(l10n.signIn),
         ),
       ];
@@ -294,7 +301,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       const SizedBox(height: 8),
       TextButton(
         key: ResetPasswordScreen.signInButton,
-        onPressed: _busy ? null : () => _leave(auth),
+        onPressed: _busy ? null : () => _leave(),
         child: Text(l10n.cancel),
       ),
     ];

@@ -56,6 +56,7 @@ import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/auth/reset_password_screen.dart';
 import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/state/providers.dart';
+import 'support/user_state_fakes.dart';
 
 class _MemStore implements core.KeyValueStore {
   final Map<String, String> data = <String, String>{};
@@ -95,6 +96,23 @@ ProviderContainer _container(
     keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
     analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
     launchUriProvider.overrideWithValue(Uri.parse(launchUrl)),
+    // 🔴 THE USER-STATE DROPS, AND WITHOUT THEM THE EXIT SILENTLY STOPS WORKING.
+    // `_leave` routes through `signOutAndForgetUser`, which RESOLVES all three
+    // drops BEFORE it awaits the sign-out (deliberately — see [userStateDrops];
+    // a read placed after the await throws once the router tears this page
+    // down). So an unoverridden drop throws first, `auth.signOut()` never runs,
+    // the recovery gate stays armed, and the router puts the user straight back
+    // on /reset-password — which is exactly the "room with no door" this file's
+    // own assertion warns about. The failure is silent because `_leave` catches:
+    // it must, or a failed sign-out would trap the user here.
+    // `secureStoreProvider` FIRST, because `entitlementCacheProvider` WATCHES
+    // it — unoverridden the cache reaches real platform storage, its `clear`
+    // throws, and the drop list throws with it.
+    secureStoreProvider.overrideWithValue(MemSecureStore()),
+    notificationServiceProvider.overrideWithValue(FakeNotifications()),
+    sublyNotificationServiceProvider.overrideWithValue(
+      RecordingSublyNotifications(),
+    ),
   ],
 );
 

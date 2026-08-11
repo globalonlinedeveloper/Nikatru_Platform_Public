@@ -64,6 +64,12 @@ function step(name, why, fn) {
   const { code, out } = fn();
   results.push({ name, why, code, out });
   process.stdout.write(code === 0 ? `ok   ${name}\n` : `FAIL ${name}\n`);
+  // ⬜ An observation prints on a GREEN leg too. A non-blocking advisory nobody
+  // ever sees is the "owner-gated gap that quietly becomes permanent" failure
+  // this corpus already names — the whole reason those clauses print at all.
+  if (code === 0 && /(^|\n)(⬜|COULD NOT LOOK)/.test(out)) {
+    process.stdout.write(out.split(/\r?\n/).map((l) => `     ${l}`).join('\n') + '\n');
+  }
 }
 
 // ── 1 · the guard test suite, THE WHOLE GLOB ────────────────────────────────
@@ -83,19 +89,60 @@ step(
   () => run('node', ['tooling/scripts/guard-sweep.mjs']),
 );
 
-// ── 3 · dart format over everything the repo tracks ─────────────────────────
-// 🔴 AND IT RUNS AFTER NOTHING ELSE EDITS. Formatting MOVES LINES, which is how
-// a repaired citation was invalidated by its own repair commit.
+// ── 3 · format drift, PRINTED, NEVER FAILED ─────────────────────────────────
+// 🔴 THIS LEG WAS A HARD FAILURE FOR ONE REVISION AND THAT WAS WRONG. It format-
+// checked every tracked .dart file — but ci.yml checks exactly TWO paths,
+// `apps/probe` (ci.yml:1983) and `apps/probeapi` (:2095), both STAMPED apps. The
+// tree at large has never been format-gated, and three files are unformatted
+// today (notifications/…/local_notification_service_stub.dart,
+// purchases/…/rail_config.dart, purchases/test/rail_config_url_shape_test.dart).
+// Failing on those would have made this script red on a tree CI is perfectly
+// happy with — a preflight that cries wolf gets ignored exactly as fast as a
+// guard that sleeps, which is this repo's own recorded rule about assert-screen-set.
+//
+// 📌 THE CONTRACT OF THIS SCRIPT IS: preflight ≡ CI. Anything STRICTER than CI is
+// printed as an observation and never blocks. The stamped-app format check, which
+// IS what CI runs, lives in leg 5 where the stamp exists.
 step(
-  'dart format (tracked Dart, --set-exit-if-changed)',
-  'CI fails a push whose Dart is unformatted. Running it LAST also proves nothing above re-broke a citation.',
+  'format drift in tracked Dart (printed — CI gates only the STAMPED apps)',
+  'ci.yml format-gates apps/probe and apps/probeapi only. Tree-wide drift is real but is NOT a CI failure, so it is surfaced here and never blocks.',
   () => {
     const files = run('git', ['ls-files', '*.dart']).out.split(/\r?\n/).filter(Boolean)
       // The brick template is not parseable Dart — it carries mustache in
       // expression position. CI formats the STAMPED app instead (leg 5).
       .filter((f) => !f.includes('__brick__'));
     if (files.length === 0) return { code: 1, out: 'no Dart files found — the scan stopped reaching them' };
-    return run('dart', ['format', '--output=none', '--set-exit-if-changed', ...files]);
+    // 🔴 CHUNKED, BECAUSE THE FIRST VERSION OF THIS LEG FAILED ON ITSELF.
+    // Passing ~600 paths in one argv exceeds Windows' 32 KiB command-line limit
+    // and `dart` answers "The command line is too long." — which this script
+    // then reported as a FORMAT failure. A checker that cannot distinguish "the
+    // code is unformatted" from "I could not run" is the same defect class the
+    // rest of this repo's guards exist to avoid, arriving inside the tool
+    // written to prevent it. 200 keeps every batch well under the limit.
+    // 🔴 CHUNKED AT 60, AND THE FIRST TWO ATTEMPTS FAILED ON THEMSELVES. Passing
+    // ~278 paths in one argv, and then 200, both exceeded the Windows command
+    // line limit; `dart` answered "The command line is too long." and this leg
+    // reported it as a FORMAT problem. A checker that cannot tell "the code is
+    // unformatted" from "I could not run" is the exact defect the guards in this
+    // repo exist to prevent — arriving inside the tool written to prevent it.
+    // Hence the explicit could-not-look branch below rather than a bare exit code.
+    const CHUNK = 60;
+    const drifted = [];
+    for (let i = 0; i < files.length; i += CHUNK) {
+      const r = run('dart', ['format', '--output=none', '--set-exit-if-changed', ...files.slice(i, i + CHUNK)]);
+      if (/command line is too long/i.test(r.out)) {
+        return { code: 0, out: `COULD NOT LOOK — the batch of ${CHUNK} still exceeded the command-line limit. Lower CHUNK. (Printed, not failed: this leg never blocks.)` };
+      }
+      for (const line of r.out.split(/\r?\n/)) {
+        if (line.startsWith('Changed ')) drifted.push(line.replace(/^Changed\s+/, ''));
+      }
+    }
+    return {
+      code: 0,
+      out: drifted.length === 0
+        ? `${files.length} tracked Dart file(s) format-clean`
+        : `⬜ ${drifted.length} of ${files.length} tracked Dart file(s) are NOT format-clean. CI does not gate these — it gates only the stamped apps — so this is an observation, not a blocker:\n   · ${drifted.join('\n   · ')}`,
+    };
   },
 );
 
