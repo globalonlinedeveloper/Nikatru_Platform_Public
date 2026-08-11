@@ -131,7 +131,23 @@ function tree({
 function run(root, args, env = {}) {
   const r = spawnSync(process.execPath, [SCRIPT, ...args, '--repo-root', root], {
     encoding: 'utf8',
-    env: { ...process.env, SNAPCRAFT_STORE_CREDENTIALS: '', ...env },
+    env: {
+      ...process.env,
+      SNAPCRAFT_STORE_CREDENTIALS: '',
+      // 🔴 THE AMBIENT CI VARIABLES ARE NEUTRALISED, AND THIS COST A RED CI RUN.
+      // PG-4 refuses when GITHUB_ACTIONS is not "true". The helper inherited
+      // process.env, so the case passed on a laptop (unset) and FAILED inside CI
+      // — where the variable is set, PG-4 correctly did not fire, and the
+      // assertion looked for a refusal that should not have happened. The test
+      // was measuring THE RUNNER, not the script.
+      // Cleared for every case so the subject is always the script's own logic;
+      // a case that wants Actions-like conditions passes them EXPLICITLY through
+      // `env`, which also makes that dependency visible at the call site instead
+      // of hidden in whatever machine happens to run it.
+      GITHUB_ACTIONS: '',
+      GITHUB_REPOSITORY: '',
+      ...env,
+    },
   });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
