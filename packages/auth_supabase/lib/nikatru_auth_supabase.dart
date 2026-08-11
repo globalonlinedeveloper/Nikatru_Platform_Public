@@ -12,6 +12,7 @@ import 'src/secure_session_storage.dart';
 
 export 'src/auth_capabilities.dart';
 export 'src/in_memory_auth_repository.dart';
+export 'src/password_reset_redirect.dart';
 export 'src/secure_session_storage.dart';
 export 'src/supabase_auth_repository.dart';
 

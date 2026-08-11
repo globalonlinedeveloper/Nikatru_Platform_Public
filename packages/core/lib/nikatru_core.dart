@@ -4,9 +4,11 @@ library;
 
 export 'src/analytics/analytics.dart';
 export 'src/auth/account_deletion.dart';
+export 'src/auth/auth_event.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
 export 'src/auth/identity_assurance.dart';
+export 'src/auth/password_policy.dart';
 export 'src/legal/legal_acceptance.dart';
 export 'src/analytics/analytics_lifecycle.dart';
 export 'src/analytics/analytics_recorder.dart';

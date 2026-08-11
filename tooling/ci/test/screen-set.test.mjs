@@ -96,7 +96,13 @@ function tree({ mutate = (r) => r, widgets = null, router = null } = {}) {
   // landed, so the padding moves with it. A fixture pinned to the old floor
   // fails every case in this file for a reason unrelated to the case under test
   // — which is exactly how a fixture gets weakened to keep itself green.
-  const padding = Array.from({ length: 20 }, (_, i) => ({
+  //
+  // 21 since 2026-08-11: MIN_PRESENT moved 23 → 24 when `auth.password-reset`
+  // landed `present`. Raising the guard's floor WITHOUT raising this is the
+  // two-file act this repo keeps paying for — the guard is right and the
+  // fixture is short, and FOUR cases in this file went red for a reason that
+  // had nothing to do with what any of them was testing.
+  const padding = Array.from({ length: 21 }, (_, i) => ({
     id: `settings.pad${i}`,
     what: 'a present, anchored, reachability-proven screen',
     status: 'present',
@@ -194,8 +200,8 @@ describe('assert-screen-set', () => {
   test('passes when every declared screen is present and reachable', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0);
-    assert.match(out, /28 screen\(s\) declared/);
-    assert.match(out, /23 screen\(s\) present and anchored; 23 proven reachable/);
+    assert.match(out, /29 screen\(s\) declared/);
+    assert.match(out, /24 screen\(s\) present and anchored; 24 proven reachable/);
     // Blocked and todo must PRINT — a gap nobody sees is a gap that grows.
     assert.match(out, /2 BLOCKED/);
     assert.match(out, /2 TODO/);
@@ -358,7 +364,7 @@ describe('assert-screen-set', () => {
       }));
       assert.equal(code, 1);
       // 22 still ANCHORED — presence is untouched…
-      assert.match(out, /23 screen\(s\) present and anchored/);
+      assert.match(out, /24 screen\(s\) present and anchored/);
       // …and the offline entry is the one that lost its reachability proof.
       assert.match(out, /`system\.offline` EXISTS but nothing reaches it/);
     });
@@ -422,7 +428,7 @@ describe('assert-screen-set', () => {
       }),
     }));
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 23/);
+    assert.match(out, /COVERAGE LOST — only 3 screen\(s\) are PRESENT, expected >= 24/);
   });
 
   // A register of nothing-but-todo passes every anchor check by having none.

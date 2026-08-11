@@ -680,10 +680,23 @@ const REQUIRED_COVERAGE = {
   // tree growing past it, so raising it belongs in the same change that adds
   // the surface — which is the step #280 skipped and the reason this block
   // exists.
+  //
+  // ⚠️ 18/15 → 19/16 ON 2026-08-11, IN THE SAME CHANGE THAT ADDS THE SURFACE,
+  // which is what the paragraph above asks for and what #280 did not do. This
+  // change adds `/reset-password` and `apps/subly/test/width_reset_password_
+  // test.dart`, and nothing else — so the +1/+1 is this change's own arithmetic
+  // rather than a re-pin to whatever the tree happens to measure.
+  // MEASURED on the merged order, not copied from the patch's own tree (which
+  // read 19/16 against a DIFFERENT base and so was not evidence for this one):
+  // `assert-responsive-coverage` reports "19 reachable surface(s) (17 routed
+  // screens, 2 modal sheets), all measured by 16 width test file(s)".
+  // Left at 18/15, deleting the new width test would drop the tree to 18 and
+  // still pass — the new surface would be guarded by nothing, which is the
+  // exact defect this floor exists to prevent.
   // ═════════════════════════════════════════════════════════════════════════
-  surfaces: 18,
-  // 14 `width_*_test.dart` + `responsive_width_test.dart`.
-  widthTestFiles: 15,
+  surfaces: 19,
+  // 15 `width_*_test.dart` + `responsive_width_test.dart`.
+  widthTestFiles: 16,
 };
 if (routed.size > 0 && routed.size < REQUIRED_COVERAGE.surfaces) {
   coverageLost(

@@ -368,6 +368,204 @@ void main() {
     });
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // PASSWORD RESET — the completion half, which did not exist.
+  //
+  // `sendPasswordReset` shipped and real recovery mail was delivered on
+  // 2026-08-03. There was no `updatePassword` anywhere, no route for the link to
+  // land on, and no `redirectTo` — so the mail arrived, the link resolved to the
+  // project's Site URL, and a user who forgot their password could ask for help
+  // and then had nowhere to accept it.
+  // ══════════════════════════════════════════════════════════════════════════
+  group('sendPasswordReset', () {
+    // 🔴 WITHOUT `redirectTo` THE LINK GOES TO THE PROJECT'S SITE URL — ONE URL
+    // SHARED BY EVERY APP IN THE PORTFOLIO. App #2's users would land in app #1,
+    // and nothing inside app #2 could see it: the mail sends, the link works.
+    test('the injected redirect REACHES the provider call', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        passwordResetRedirectTo: 'https://subly.nikatru.com/',
+      );
+
+      await auth.sendPasswordReset('a@b.com');
+
+      expect(g.resetRequests, <List<String?>>[
+        <String?>['a@b.com', 'https://subly.nikatru.com/'],
+      ]);
+    });
+
+    // The honest null, and it is a DIFFERENT claim from the one above: a
+    // repository that hardcoded some URL would satisfy that case and fail this.
+    test('nothing injected sends nothing — never an invented URL', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await auth.sendPasswordReset('a@b.com');
+
+      expect(g.resetRequests, <List<String?>>[
+        <String?>['a@b.com', null],
+      ]);
+    });
+  });
+
+  group('updatePassword', () {
+    test('the NEW password reaches the provider, and the user comes back',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      final core.AuthUser u = await auth.updatePassword(
+        newPassword: 'correct-horse',
+      );
+
+      expect(
+        g.passwordsSet,
+        <String>['correct-horse'],
+        reason: 'the VALUE, not a call count: a screen that submits the '
+            'confirmation field instead of the password field reaches the seam '
+            'exactly once either way',
+      );
+      expect(u.email, 'a@b.com');
+    });
+
+    // 🔴 THE COMMONEST REAL OUTCOME, NOT AN EDGE CASE. An expired link, a
+    // link already used, or a link opened on a device that never held the PKCE
+    // verifier all leave exactly this state — no session at all.
+    test('no session REFUSES, and with OUR type rather than the SDK\'s',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await expectLater(
+        auth.updatePassword(newPassword: 'correct-horse'),
+        throwsA(isA<core.AuthFailure>()),
+      );
+      expect(
+        g.passwordsSet,
+        isEmpty,
+        reason:
+            'refusing must happen BEFORE the network call. Reaching gotrue with '
+            'no session raises AuthSessionMissingException — a Supabase class, '
+            'which this seam promises never escapes the data layer',
+      );
+    });
+
+    // 🔴 THE SERVER IS THE AUTHORITY ON PASSWORD RULES and its refusal must
+    // arrive as an AuthFailure carrying the server's own English — screens match
+    // on that text to pick a localized sentence, so translating it here would
+    // break the matching.
+    test('a provider refusal is remapped, and keeps the server wording',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('live'),
+        updateUserError: sb.AuthException(
+          'Password should be at least 6 characters',
+          code: 'weak_password',
+        ),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await expectLater(
+        auth.updatePassword(newPassword: 'short'),
+        throwsA(
+          isA<core.AuthFailure>().having(
+            (core.AuthFailure e) => e.message,
+            'message',
+            contains('at least 6 characters'),
+          ),
+        ),
+      );
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 🔴 THE AUTH EVENT — the half that was being thrown away.
+  //
+  // `authStateChanges()` maps `AuthState` down to `AuthUser?`, so the
+  // `AuthChangeEvent` that produced it is discarded at the seam. A user arriving
+  // on a recovery link is handed a real session, so after that mapping they are
+  // byte-for-byte an ordinary sign-in and the router sends them home. There is
+  // no later read that can recover the distinction — not `currentUser`, not the
+  // session, not the JWT. It exists only at delivery.
+  // ══════════════════════════════════════════════════════════════════════════
+  group('authEvents', () {
+    test('PASSWORD_RECOVERY survives the seam as passwordRecovery', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      final List<core.AuthEvent> seen = <core.AuthEvent>[];
+      final StreamSubscription<core.AuthEvent> sub = auth.authEvents().listen(
+            seen.add,
+          );
+      addTearDown(sub.cancel);
+
+      g.emit(sb.AuthChangeEvent.passwordRecovery, _session('live'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(seen, hasLength(1));
+      expect(seen.single.kind, core.AuthEventKind.passwordRecovery);
+      expect(
+        seen.single.startsPasswordRecovery,
+        isTrue,
+        reason:
+            'this single boolean is the entire difference between a reset link '
+            'that works and one that drops the user on the home screen',
+      );
+      expect(seen.single.user?.email, 'a@b.com');
+    });
+
+    // The limb that rules out a mapping which answers `passwordRecovery` for
+    // everything — which would route every ordinary sign-in into the reset form.
+    test('an ordinary SIGNED_IN is NOT a recovery', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      final List<core.AuthEvent> seen = <core.AuthEvent>[];
+      final StreamSubscription<core.AuthEvent> sub = auth.authEvents().listen(
+            seen.add,
+          );
+      addTearDown(sub.cancel);
+
+      g.emit(sb.AuthChangeEvent.signedIn, _session('live'));
+      g.emit(sb.AuthChangeEvent.tokenRefreshed, _session('live'));
+      g.emit(sb.AuthChangeEvent.userUpdated, _session('live'));
+      g.emit(sb.AuthChangeEvent.signedOut, null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(seen.map((core.AuthEvent e) => e.kind), <core.AuthEventKind>[
+        core.AuthEventKind.signedIn,
+        core.AuthEventKind.tokenRefreshed,
+        core.AuthEventKind.userUpdated,
+        core.AuthEventKind.signedOut,
+      ]);
+      expect(
+          seen.where((core.AuthEvent e) => e.startsPasswordRecovery), isEmpty);
+    });
+
+    // ⚠️ INITIAL_SESSION FIRES AT EVERY COLD START, WITH OR WITHOUT A SESSION.
+    // Mapping it to a bare `signedIn` would announce an arrival to a signed-OUT
+    // app on every single launch — which is why the default arm decides by
+    // session rather than by event name.
+    test('INITIAL_SESSION with no session reports signedOut, not signedIn',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+      final List<core.AuthEvent> seen = <core.AuthEvent>[];
+      final StreamSubscription<core.AuthEvent> sub = auth.authEvents().listen(
+            seen.add,
+          );
+      addTearDown(sub.cancel);
+
+      g.emit(sb.AuthChangeEvent.initialSession, null);
+      g.emit(sb.AuthChangeEvent.initialSession, _session('live'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(seen.map((core.AuthEvent e) => e.kind), <core.AuthEventKind>[
+        core.AuthEventKind.signedOut,
+        core.AuthEventKind.signedIn,
+      ]);
+    });
+  });
+
   // ── [G-43] The session must LAND IN THE SECURE STORE. ────────────────────
   // The one line that keeps refresh tokens out of plaintext used to be
   // unreachable from a test (it sat inside `Supabase.initialize`, which needs
@@ -409,6 +607,113 @@ void main() {
       expect(options.detectSessionInUri, isTrue);
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // GlitchTip SUBLY-8 — THE ACCEPTANCE TEST FOR AN UNCAUGHT PRODUCTION CRASH.
+  //
+  // Event 2026-08-10T18:09:25Z, release subly@1.0.189+4d85ad7:
+  //   AuthException(Code verifier could not be found in local storage)
+  //   mechanism: runZonedGuarded · handled: false · level: fatal
+  //
+  // The path is the ordinary one, not an exotic edge: a reset requested on one
+  // device and opened on another (or with site data cleared in between) arrives
+  // with a `?code=` and no PKCE verifier, `exchangeCodeForSession` throws
+  // (`gotrue_client.dart:386-390`), `supabase_flutter` re-emits it as a STREAM
+  // ERROR, and a `.map`ped stream with no `onError` hands it to the zone.
+  //
+  // Both assertions matter and neither implies the other: the error must NOT
+  // reach the zone (that is the crash), and it must arrive as a TYPED EVENT
+  // (that is the difference between fixing the crash and hiding it).
+  group('a failed reset arrival is an EVENT, not a crash [SUBLY-8]', () {
+    test('the verifier-missing exception becomes recoveryLinkFailed', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository repo = SupabaseAuthRepository(client: g);
+
+      final List<core.AuthEvent> seen = <core.AuthEvent>[];
+      final List<Object> escaped = <Object>[];
+      final StreamSubscription<core.AuthEvent> sub = repo.authEvents().listen(
+            seen.add,
+            onError: escaped.add,
+          );
+
+      g.emitError(
+        sb.AuthException('Code verifier could not be found in local storage.'),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+
+      expect(
+        escaped,
+        isEmpty,
+        reason:
+            'an unhandled stream error goes to runZonedGuarded, which in this '
+            'app is a FATAL crash report and no message to the user at all',
+      );
+      expect(seen, hasLength(1));
+      expect(seen.single.kind, core.AuthEventKind.recoveryLinkFailed);
+      expect(seen.single.problem, core.AuthLinkProblem.verifierMissing);
+      expect(
+        seen.single.recoveryLinkIsUnusable,
+        isTrue,
+        reason: 'the predicate the arrival provider reads',
+      );
+    });
+
+    test('an EXPIRED link is typed differently, so the screen can say so', () {
+      // Same seam, different sentence. `expiredOrUsed` must not be told to open
+      // the link on the device they asked from — they did, and then waited.
+      expect(
+        core.authLinkProblemOf(
+          sb.AuthException('Email link is invalid or has expired'),
+        ),
+        core.AuthLinkProblem.expiredOrUsed,
+      );
+    });
+
+    test('the STREAM SURVIVES the error — a later real event still arrives',
+        () async {
+      // `handleError` on a plain `.map` would CLOSE the subscription, so the
+      // recovery event that follows a retry would never be seen and the app
+      // would look dead rather than crashed. The transformer keeps it open.
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository repo = SupabaseAuthRepository(client: g);
+      final List<core.AuthEventKind> kinds = <core.AuthEventKind>[];
+      final StreamSubscription<core.AuthEvent> sub =
+          repo.authEvents().listen((core.AuthEvent e) => kinds.add(e.kind));
+
+      g.emitError(sb.AuthException('Code verifier could not be found'));
+      await Future<void>.delayed(Duration.zero);
+      g.emit(sb.AuthChangeEvent.passwordRecovery, _session('live'));
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+
+      expect(kinds, <core.AuthEventKind>[
+        core.AuthEventKind.recoveryLinkFailed,
+        core.AuthEventKind.passwordRecovery,
+      ]);
+    });
+
+    test('authStateChanges does not crash either, and stays open', () async {
+      // The other stream over the same source. It has nothing truthful to say
+      // about a failed arrival — "who is signed in" is unchanged — so it drops
+      // the error rather than reporting it twice or letting it escape.
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository repo = SupabaseAuthRepository(client: g);
+      final List<Object> escaped = <Object>[];
+      final List<core.AuthUser?> users = <core.AuthUser?>[];
+      final StreamSubscription<core.AuthUser?> sub =
+          repo.authStateChanges().listen(users.add, onError: escaped.add);
+
+      g.emitError(sb.AuthException('Code verifier could not be found'));
+      await Future<void>.delayed(Duration.zero);
+      g.emit(sb.AuthChangeEvent.signedIn, _session('live'));
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+
+      expect(escaped, isEmpty);
+      expect(users, hasLength(1), reason: 'the real emission still arrives');
+    });
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -423,6 +728,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
     required this.session,
     this.failRefresh = false,
     this.hold,
+    this.updateUserError,
   }) : super(autoRefreshToken: false);
 
   sb.Session? session;
@@ -431,12 +737,78 @@ class _FakeGoTrue extends sb.GoTrueClient {
   /// Parks the refresh so several callers are in flight at once.
   final Future<void>? hold;
 
+  /// What `updateUser` throws instead of succeeding — the SERVER's refusal
+  /// (a weak password, a reused one), which the seam has to remap.
+  final sb.AuthException? updateUserError;
+
   int refreshCalls = 0;
   int signOutCalls = 0;
 
   /// Every address a resend was aimed at. The assertion is that it can only
   /// ever be the one on the SESSION.
   final List<String> resendEmails = <String>[];
+
+  /// `[email, redirectTo]` per reset request. The redirect is captured because
+  /// its ABSENCE is invisible in production: gotrue silently substitutes the
+  /// project's Site URL, so a missing argument and a correct one both send mail
+  /// that works — at different destinations.
+  final List<List<String?>> resetRequests = <List<String?>>[];
+
+  /// Every password `updateUser` was asked to set.
+  final List<String> passwordsSet = <String>[];
+
+  /// 🔴 OUR OWN CONTROLLER, replacing the real one. The SDK's stream is fed by
+  /// `notifyAllSubscribers`, which is `@internal` and reachable only through the
+  /// network methods this fake does not perform — so without this the event
+  /// mapping under test has no way to be given an event at all.
+  final StreamController<sb.AuthState> _states =
+      StreamController<sb.AuthState>.broadcast();
+
+  @override
+  Stream<sb.AuthState> get onAuthStateChange => _states.stream;
+
+  /// Deliver one raw SDK event, exactly as gotrue would.
+  void emit(sb.AuthChangeEvent event, sb.Session? s) {
+    session = s;
+    _states.add(sb.AuthState(event, s));
+  }
+
+  /// Deliver a stream ERROR, exactly as gotrue does on a failed arrival.
+  ///
+  /// This is not an invented shape. `supabase_flutter`'s `_handleDeeplink`
+  /// catches the `AuthException` thrown by `exchangeCodeForSession` and calls
+  /// `notifyException` (`supabase_auth.dart:290-296`), whose entire body is
+  /// `_onAuthStateChangeController.addError(exception, stackTrace)`
+  /// (`gotrue_client.dart:1586-1592`). So the error arrives on the SAME stream
+  /// as the events, and that is what made it a crash rather than a state.
+  void emitError(Object error) => _states.addError(error);
+
+  @override
+  Future<void> resetPasswordForEmail(
+    String email, {
+    String? redirectTo,
+    String? captchaToken,
+  }) async =>
+      resetRequests.add(<String?>[email, redirectTo]);
+
+  @override
+  Future<sb.UserResponse> updateUser(
+    sb.UserAttributes attributes, {
+    String? emailRedirectTo,
+  }) async {
+    final sb.AuthException? boom = updateUserError;
+    if (boom != null) throw boom;
+    final String? password = attributes.password;
+    if (password != null) passwordsSet.add(password);
+    return sb.UserResponse.fromJson(<String, dynamic>{
+      'id': 'user-1',
+      'app_metadata': <String, dynamic>{},
+      'user_metadata': <String, dynamic>{},
+      'aud': 'authenticated',
+      'email': 'a@b.com',
+      'created_at': '2026-08-01T00:00:00Z',
+    });
+  }
 
   @override
   Future<sb.ResendResponse> resend({

@@ -3032,6 +3032,11 @@ group('property: update-url-resolved-from-config', () {
   testWidgets('fallback', (t) async {});
   test('empty', () {});
 });
+group('property: password-recovery-routes', () {
+  testWidgets('a recovery arrival routes to the reset screen', (t) async {});
+  testWidgets('a dead link lands on the explanation', (t) async {});
+  test('an ordinary sign-in is not routed there', () {});
+});
 `;
   // [pipeline C-11] BOTH themes carry the seed. A fixture with only the light
   // one seeded would agree with the first version of that anchor, which passed
@@ -3366,6 +3371,46 @@ Future<void> logLaunchLifecycle(WidgetRef ref) async {
   final core.KeyValueStore kv = await ref.read(keyValueStoreProvider.future);
   await core.AnalyticsLifecycle(analytics: analytics, store: kv).onLaunch();
 }
+
+// [pipeline C-15] password-recovery-routes. The reason a reset link is not an
+// ordinary sign-in exists ONLY at delivery, so it is held, and it is released
+// on sign-out alone.
+class PasswordRecoveryController extends Notifier<bool> {
+  @override
+  bool build() {
+    ref.listen(authEventsProvider, (_, AsyncValue<core.AuthEvent> next) {
+      final core.AuthEvent? event = next.valueOrNull;
+      if (event == null) return;
+      if (event.startsPasswordRecovery) state = true;
+      if (event.kind == core.AuthEventKind.signedOut) { state = false; }
+    });
+    return false;
+  }
+}
+
+class PasswordResetArrivalController extends Notifier<core.PasswordResetArrivalReport> {
+  @override
+  core.PasswordResetArrivalReport build() =>
+      passwordResetArrivalOf(ref.watch(launchUriProvider));
+}
+
+// Overridable so the failure path is drivable at all: on a test VM the real
+// launch URL is never a reset arrival.
+final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
+
+final NotifierProvider<PasswordRecoveryController, bool> passwordRecoveryProvider =
+    NotifierProvider<PasswordRecoveryController, bool>(PasswordRecoveryController.new);
+final NotifierProvider<PasswordResetArrivalController, core.PasswordResetArrivalReport>
+    passwordResetArrivalProvider =
+    NotifierProvider<PasswordResetArrivalController, core.PasswordResetArrivalReport>(
+        PasswordResetArrivalController.new);
+
+// The refresh signal lives HERE, with the other router signals, not in the
+// router: the recovery event arrives while the user sits still, so nothing
+// navigates and the redirect guard would never be consulted at all.
+final Listenable routerRefreshRecovery = (WidgetRef ref) {
+  ref.listen<bool>(passwordRecoveryProvider, (bool? _, bool __) {});
+};
 `;
   const BRICK_PROVIDERS =
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart';
@@ -3377,6 +3422,27 @@ Future<void> logLaunchLifecycle(WidgetRef ref) async {
   // SDK defaults to plaintext shared_preferences for the access AND refresh
   // tokens, so this anchor is the one that keeps G-43 true.
   const AUTH_BARREL = 'packages/auth_supabase/lib/nikatru_auth_supabase.dart';
+  // [pipeline C-15] password-recovery-routes anchors two sources in the ADAPTER,
+  // not the brick: the seam maps `AuthState` down to `AuthUser?`, so the reason
+  // an arrival is a recovery exists only here, at delivery. `handleError` is the
+  // failure half — a failed exchange re-emits through the stream, and an
+  // unhandled stream error is a fatal crash rather than a message to anybody
+  // (GlitchTip SUBLY-8).
+  const AUTH_ADAPTER = 'packages/auth_supabase/lib/src/supabase_auth_repository.dart';
+  const goodAuthAdapter = `
+core.AuthEvent _event(sb.AuthState s) => switch (s.event) {
+  sb.AuthChangeEvent.passwordRecovery => core.AuthEventKind.passwordRecovery,
+  _ => core.AuthEventKind.signedIn,
+};
+
+Stream<core.AuthEvent> authEvents() => _auth.onAuthStateChange.map(_event).transform(
+      StreamTransformer<core.AuthEvent, core.AuthEvent>.fromHandlers(
+        handleData: (e, sink) => sink.add(e),
+        handleError: (Object error, StackTrace stack, EventSink<core.AuthEvent> sink) =>
+            sink.add(core.AuthEvent(core.AuthEventKind.recoveryLinkFailed, null)),
+      ),
+    );
+`;
   const goodAuthBarrel = `
 Future<void> initNikatruAuth() async {
   await sb.Supabase.initialize(
@@ -3611,6 +3677,16 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         return state.matchedLocation == '/reaccept-terms'
             ? null
             : '/reaccept-terms';
+      }
+      // [pipeline C-15] password-recovery-routes. The recovery event arrives
+      // while the user sits still, so the gate is told rather than waited for.
+      ref.listen<bool>(passwordRecoveryProvider, (_, __) {});
+      if (ref.read(passwordRecoveryProvider) ||
+          ref.read(passwordResetArrivalProvider).arrival !=
+              core.PasswordResetArrival.none) {
+        return state.matchedLocation == '/reset-password'
+            ? null
+            : '/reset-password';
       }
       return null;
     },
@@ -3973,11 +4049,11 @@ onTap: () => _openUrl(AppConfig.termsUrl),
 onTap: () => _openUrl(AppConfig.refundUrl),
 `;
 
-  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
+  const build = (name, { propTest = goodTest, app = goodApp, providers = goodProviders, packRail = goodPackRail, themeX = goodThemeX, scaffold = goodScaffold, authBarrel = goodAuthBarrel, authAdapter = goodAuthAdapter, settings = goodSettings, router = goodRouter, signUp = goodSignUp, onboarding = goodOnboarding, coreAuth = goodCoreAuth, arbTa = goodArbTa, brickMain = goodMain, tapObserver = goodTapObserver, accountRoute = goodAccountRoute, moneyProviders = goodMoneyProviders, home = goodHome, coreCache = goodCoreCache, coreLifecycle = goodCoreLifecycle, workspace = goodWorkspace, appConfig = goodAppConfig, siteIntegrity = goodSiteIntegrity, legalLinks = goodLegalLinks, permissionProbe = goodPermissionProbe, sublyMain = goodSublyMain, sublyNotifs = goodSublyNotifs, paywall = goodPaywall, moneyFunnel = goodMoneyFunnel, platformTypes = goodPlatformTypes, platformCatalogue = goodPlatformCatalogue, platformConfigData = goodPlatformConfigData, channelRegister = goodChannelRegister, extra = {}, omitArbTa = false, omitProp = false, omitTapObserver = false } = {}) => {
     // The pack rail is APPENDED rather than folded into `goodProviders` so the
     // many cases that replace `providers` wholesale keep satisfying it — and so
     // the cases that are ABOUT the pack rail can drop it on its own.
-    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
+    const files = { [APP]: app, [BRICK_WEB_INDEX]: webIndex, [BRICK_PROVIDERS]: providers + packRail, [THEME_X]: themeX, [SCAFFOLD]: scaffold, [AUTH_BARREL]: authBarrel, [AUTH_ADAPTER]: authAdapter, [SETTINGS]: settings + legalLinks, [ROUTER]: router, [SIGN_UP]: signUp, [ONBOARDING]: onboarding, [CORE_AUTH]: coreAuth, [BRICK_MAIN]: brickMain, [ACCOUNT_ROUTE]: accountRoute, [MONEY_PROVIDERS]: moneyProviders, [HOME]: home, [CORE_CACHE]: coreCache, [CORE_LIFECYCLE]: coreLifecycle, [WORKSPACE]: workspace, [APP_CONFIG]: appConfig, [SITE_INTEGRITY]: siteIntegrity, [PERMISSION_PROBE]: permissionProbe, [SUBLY_MAIN]: sublyMain, [SUBLY_NOTIFS]: sublyNotifs, [PAYWALL]: paywall, [MONEY_FUNNEL]: moneyFunnel, [PLATFORM_TYPES]: platformTypes, [PLATFORM_CATALOGUE]: platformCatalogue, [PLATFORM_CONFIG_DATA]: platformConfigData, [CHANNEL_REGISTER]: channelRegister, ...extra };
     if (!omitArbTa) files[ARB_TA] = arbTa;
     if (!omitProp) files[PROP] = propTest;
     // [13]T-9 Omittable on its own, because "the observer file is not there at
@@ -5568,7 +5644,12 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // signature) and `promoObjectionKnownProvider` (an admitted gap: no
       // chassis property pumps Settings). So the gap count below moves by TWO
       // and the domain by three.
-      assert.match(out, /tracked domain: 53 chassis behaviour\(s\)/);
+      // 55 since 2026-08-11: password-reset completion added `launchUriProvider`
+      // (overridable so the FAILURE path is drivable at all), plus the recovery
+      // flag and the arrival report. All three are classified, so the domain and
+      // the classification move together — which is the point of the pair of
+      // assertions below.
+      assert.match(out, /tracked domain: 56 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -5635,7 +5716,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // number moves with MIN_DOMAIN by construction: left at 45 it would have
       // passed over a floor five behaviours slack, which is the drift this pair
       // of assertions exists to make impossible.
-      assert.match(out, /COVERAGE LOST — the domain parse found 52/);
+      assert.match(out, /COVERAGE LOST — the domain parse found 55/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
@@ -5961,7 +6042,7 @@ describe('assert-responsive-coverage', () => {
   const TEST = 'apps/subly/test';
 
   // 🔴 THE FIXTURE MIRRORS THE SHAPE OF THE REAL TREE, NOT A MINIATURE OF IT.
-  // The guard carries a REQUIRED_COVERAGE floor of 18 surfaces and 15 width test
+  // The guard carries a REQUIRED_COVERAGE floor of 19 surfaces and 16 width test
   // files, so a three-screen fixture would fail every case for a reason that has
   // nothing to do with the behaviour under test — and a case that passes for the
   // wrong reason is the same defect as one that cannot fail. Same reason the
@@ -5974,13 +6055,20 @@ describe('assert-responsive-coverage', () => {
   // than the floor demands. A fixture sized to yesterday's floor fails for a
   // reason that has nothing to do with what any of these cases assert.
   //
+  // 16 since later the same day: the floor moved 18 → 19 when `/reset-password`
+  // landed, so `N` follows 15 → 16. This is the second half of the two-file act
+  // — raising a REQUIRED_COVERAGE floor and leaving its fixture behind turns
+  // every positive case in this block red for a reason unrelated to the case,
+  // and that has now happened twice in one day (see the MIN_PRESENT 23 → 24
+  // bump in screen-set.test.mjs, which cost four cases).
+  //
   // 🔴 AND IT CARRIES A `PaywallScreen` AT THE REAL PATH, measured at two widths
   // and not three. WIDTH_EXEMPT names that surface, and an exemption's own
   // self-check is that the surface EXISTS in the covered set — so a fixture
   // without one would fail every case here on the guard's own bookkeeping. The
   // shape being modelled is the argued exemption, which is why the paywall
   // fixture pumps kPhone and kTablet and stops.
-  const N = 15;
+  const N = 16;
   const ids = Array.from({ length: N }, (_, i) => i + 1);
   const screenFile = (i, dir = `s${i}`) => `${LIB}/features/${dir}/s${i}_screen.dart`;
   const screenSrc = (i) => `class S${i}Screen extends StatelessWidget {\n  const S${i}Screen({super.key});\n}\n`;
@@ -6038,7 +6126,7 @@ describe('assert-responsive-coverage', () => {
     );
   };
 
-  /** The whole app tree: N screens + the paywall, 2 sheets, and 15 width tests
+  /** The whole app tree: N screens + the paywall, 2 sheets, and 16 width tests
    *  covering all 18. */
   const build = (name, over = {}, routerOpts = {}) => {
     const files = {
@@ -6055,14 +6143,19 @@ describe('assert-responsive-coverage', () => {
       ),
     };
     for (const i of ids) files[screenFile(i)] = screenSrc(i);
-    // 12 single-subject files + one two-subject file + one sheets file + the
-    // paywall file above = 15.
-    for (const i of ids.slice(0, 12)) {
+    // 13 single-subject files + one three-subject file + one sheets file + the
+    // paywall file above = 16, which is the floor. It was 12 + s13/s14/s15 = 15
+    // until 2026-08-11, when `/reset-password` moved the floor to 19/16: the
+    // extra SURFACE comes from `N` and the extra FILE has to come from
+    // somewhere, so s13 was promoted to its own file rather than the shared one
+    // growing a fourth subject — the file COUNT is what the floor measures, and
+    // a fourth subject in one file would have left it at 15.
+    for (const i of ids.slice(0, 13)) {
       files[`${TEST}/width_s${i}_test.dart`] = testSrc([`features/s${i}/s${i}_screen.dart`], [`const S${i}Screen()`]);
     }
     files[`${TEST}/responsive_width_test.dart`] = testSrc(
-      [`features/s13/s13_screen.dart`, `features/s14/s14_screen.dart`, `features/s15/s15_screen.dart`],
-      ['const S13Screen()', 'const S14Screen()', 'const S15Screen()'],
+      [`features/s14/s14_screen.dart`, `features/s15/s15_screen.dart`, `features/s16/s16_screen.dart`],
+      ['const S14Screen()', 'const S15Screen()', 'const S16Screen()'],
     );
     files[`${TEST}/width_sheets_test.dart`] = testSrc(
       ['features/add/add_sheet.dart', 'features/cancel/cancel_sheet.dart'],
@@ -6074,7 +6167,7 @@ describe('assert-responsive-coverage', () => {
   test('PASSES when the routed set and the measured set are EQUAL', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
     assert.equal(code, 0);
-    assert.match(out, /18 surface\(s\) routed, 18 measured/);
+    assert.match(out, /19 surface\(s\) routed, 19 measured/);
     assert.match(out, /the two sets are EQUAL/);
     assert.match(out, /every surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
   });
@@ -6092,16 +6185,22 @@ describe('assert-responsive-coverage', () => {
   });
 
   test('FAILS naming the SCREEN when a routed screen has no width test', () => {
-    // A 16th routed screen with no test. The floor is untouched (19 >= 18) and
+    // A 17th routed screen with no test. The floor is untouched (20 >= 19) and
     // the test-file count is untouched, so the ONLY failure is the uncovered one.
+    //
+    // ⚠️ 17, NOT 16, SINCE 2026-08-11. This index has to be the first one BEYOND
+    // `ids`, and `N` moved 15 → 16 with the floor. Left at 16 it collided with a
+    // real fixture screen and the guard reported AMBIGUOUS SURFACE — a genuine
+    // finding about a duplicate import, but not the one this case exists to
+    // prove, so the case passed its exit code and asserted the wrong message.
     const dir = build(
       'rc-uncovered',
-      { [screenFile(16)]: screenSrc(16) },
-      { screens: [...ids, 16] },
+      { [screenFile(17)]: screenSrc(17) },
+      { screens: [...ids, 17] },
     );
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /UNCOVERED SURFACE — `S16Screen`/);
+    assert.match(out, /UNCOVERED SURFACE — `S17Screen`/);
   });
 
   test('FAILS naming the SUBJECT when a width test measures an unrouted twin', () => {
@@ -6223,7 +6322,7 @@ describe('assert-responsive-coverage', () => {
       [`${TEST}/width_sheets_test.dart`]: null,
       [`${TEST}/width_paywall_test.dart`]: null,
     };
-    for (const i of ids.slice(0, 12)) over[`${TEST}/width_s${i}_test.dart`] = null;
+    for (const i of ids.slice(0, 13)) over[`${TEST}/width_s${i}_test.dart`] = null;
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-notests', over) });
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST — the COVERED set parsed EMPTY/);

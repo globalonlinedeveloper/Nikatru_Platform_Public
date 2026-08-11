@@ -56,6 +56,7 @@ import 'package:{{app_id.snakeCase()}}/core/router.dart';
 import 'package:{{app_id.snakeCase()}}/features/auth/check_inbox_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/auth/legal_consent_fields.dart';
 import 'package:{{app_id.snakeCase()}}/features/auth/sign_up_screen.dart';
+import 'package:{{app_id.snakeCase()}}/features/auth/reset_password_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/firstrun/onboarding_screen.dart';
 import 'package:{{app_id.snakeCase()}}/features/home/home_screen.dart';
 // [pipeline 11]E-6. The paywall is the screen that emits the four money events,
@@ -1673,6 +1674,158 @@ void main() {
         findsWidgets,
         reason: 'the session ended and the user was left inside the app',
       );
+    });
+  });
+
+  // ── PROPERTY: password-recovery-routes ────────────────────────────────────
+  // 🔴 A RESET LINK USED TO HAVE NOWHERE TO LAND. `sendPasswordReset` was
+  // implemented and real recovery mail was delivered (2026-08-03) with no
+  // `updatePassword` on the seam, no `/reset-password` route, and no
+  // `redirectTo` — so a user who forgot their password could ask for help and
+  // then had no way to accept it, having spent their one link.
+  //
+  // 🔴 AND THE REASON IT COULD NOT SIMPLY BE ROUTED IS THE PROPERTY UNDER TEST.
+  // A recovery session is an ORDINARY session: same user, same token, same
+  // emission on `authStateChanges()`. Nothing below the seam can tell this
+  // person from somebody who just typed their password, so the redirect guard
+  // would hand them the home screen. The distinction exists only on the
+  // `AuthEvent` at the moment of delivery, and the Supabase adapter used to map
+  // it away.
+  //
+  // ⚠️ NOTHING NAVIGATES IN THE FIRST LIMB, ON PURPOSE. The event arrives while
+  // the user sits on whatever screen the browser opened; `redirect` fires on
+  // navigation, so a gate with no refresh signal behind it is correct and never
+  // runs. That is this repository's most-repeated shape and a test that
+  // navigated after arming the state could not see it.
+  group('property: password-recovery-routes', () {
+    testWidgets('a recovery arrival lands on the reset screen, unprompted', (
+      WidgetTester tester,
+    ) async {
+      final InMemoryAuthRepository auth = InMemoryAuthRepository();
+      addTearDown(auth.dispose);
+      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+      // The domain, asserted first: without the sign-in form on screen the
+      // check below would pass by having nothing to move away from.
+      expect(find.byType(TextField), findsWidgets);
+
+      // The link is followed. This is what the SDK produces after it exchanges
+      // the `?code=` on the app root: a real session, labelled `passwordRecovery`.
+      auth.deliverPasswordRecovery('a@b.com');
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        find.byType(ResetPasswordScreen),
+        findsOneWidget,
+        reason:
+            'the whole property in one assertion: with the event discarded this '
+            'user is an ordinary sign-in and the router sends them home, which '
+            'is not what they came for and offers no way to get it',
+      );
+
+      // …and the seam is actually reached, with the value the user typed.
+      await tester.enterText(
+        find.byKey(ResetPasswordScreen.passwordField),
+        'correct-horse',
+      );
+      await tester.enterText(
+        find.byKey(ResetPasswordScreen.confirmField),
+        'correct-horse',
+      );
+      await tester.tap(find.byKey(ResetPasswordScreen.submitButton));
+      await _turnsAndSettleRoute(tester);
+
+      expect(
+        auth.passwordsSet,
+        <String>['correct-horse'],
+        reason:
+            'the VALUE, not a call count — a form wired to submit the '
+            'CONFIRMATION field reaches the seam exactly once either way, and '
+            'locks the user out with a password they never chose',
+      );
+    });
+
+    // 🔴 THE FAILURE HALF, WHICH SHIPPED UNREACHABLE AND CRASHING.
+    //
+    // The limb above is the SUCCESS path. The one below is the path a real user
+    // is at least as likely to take — a link opened on the phone when the reset
+    // was asked for on the laptop — and until 2026-08-11 it did two things at
+    // once: it routed NOWHERE (only `AuthEventKind.passwordRecovery` reached
+    // this screen, and a failed exchange never emits it), and it CRASHED
+    // (GlitchTip SUBLY-8: the SDK re-emits the exception as a stream error, and
+    // an unhandled stream error is fatal under `runZonedGuarded`).
+    //
+    // Driven through the real repository, the real router and the real screen,
+    // with nothing navigating by hand — a `go('/reset-password')` here would
+    // prove only that the route exists, which was never the thing in doubt.
+    testWidgets(
+      'a reset link that CANNOT be exchanged lands on the explanation',
+      (WidgetTester tester) async {
+        final InMemoryAuthRepository auth = InMemoryAuthRepository();
+        addTearDown(auth.dispose);
+        final ProviderContainer c = _container(_onboardedStore(), auth: auth);
+        addTearDown(c.dispose);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+        );
+        await _turnsAndSettleRoute(tester);
+        expect(find.byType(TextField), findsWidgets);
+
+        // What the SDK really produces for a link with no verifier in this
+        // installation: no session, and an error carrying gotrue's own words.
+        auth.failRecoveryArrival();
+        await _turnsAndSettleRoute(tester);
+
+        expect(
+          find.byType(ResetPasswordScreen),
+          findsOneWidget,
+          reason:
+              'the person followed the instruction in their inbox; answering with '
+              'the sign-in form they already could not get past, and saying '
+              'nothing about why, is the state this screen exists to replace',
+        );
+        expect(
+          find.byKey(ResetPasswordScreen.linkDeadLine),
+          findsOneWidget,
+          reason: 'the explanation, not an empty form that can only fail',
+        );
+        expect(
+          find.byKey(ResetPasswordScreen.passwordField),
+          findsNothing,
+          reason:
+              'a form with no session behind it looks like the feature working '
+              'right up to the moment it cannot',
+        );
+      },
+    );
+
+    // The other direction, independently falsifiable: a router that sent EVERY
+    // arrival to the reset screen would satisfy the limb above and trap every
+    // ordinary sign-in here.
+    testWidgets('an ordinary sign-in is NOT routed into the reset flow', (
+      WidgetTester tester,
+    ) async {
+      final InMemoryAuthRepository auth = InMemoryAuthRepository();
+      addTearDown(auth.dispose);
+      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      await auth.signInWithEmail(email: 'a@b.com', password: 'password123');
+      await _turnsAndSettleRoute(tester);
+
+      expect(find.byType(ResetPasswordScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
     });
   });
 
