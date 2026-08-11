@@ -60,6 +60,14 @@ class FixtureQuietCases extends StatelessWidget {
         const Text(' — '),
         const Text('· 2026 ·'),
 
+        // Composed only of interpolations: every letter comes from a value, and
+        // the literal parts are a separator and a percent sign. There is no
+        // prose here, so there is nothing to translate. One letter OUTSIDE an
+        // interpolation and it counts again — `'Welcome, $name'` is a violation
+        // and lives in `dirty/` for that reason.
+        Text('${s.category} · ${s.plan}'),
+        Text('$_pct%'),
+
         // The exemptions apply in the labelling family too, not only in
         // `Text(…)` — so at least one near miss is proven there as well.
         FixtureTile(

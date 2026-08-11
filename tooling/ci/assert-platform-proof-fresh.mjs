@@ -72,6 +72,60 @@
 //   3. a decoy `needs: [linux_web_android, windows, apple]` above an aggregator
 //      whose own needs list drops all three                                       → red
 //
+// ── 🔴 AND FRESHNESS WAS THE AGE OF THE PROOF, NEVER THE AGE OF WHAT IT PROVED ─
+// Added 2026-08-11. Everything above grades a TIMESTAMP. Nothing graded the
+// COMMIT, and the two came apart in exactly the way that matters:
+//
+//   the only six-platform proof was produced on 255265b — SEVENTEEN commits
+//   behind main, and behind BOTH the Flutter 3.44.8→3.44.9 pin bump (ba6f0d8,
+//   which rewrote `tooling/versions.json` and this very workflow) and the cut-1
+//   auth reversal (a6a0646, which added a package to the compile). Every clause
+//   above was satisfied and the ops register read GREEN, because 255265b's own
+//   commit date was ONE DAY OLD. A dispatch pinned to an old ref produces a
+//   young run over old code, and age cannot see the difference.
+//
+// So the run's `head_sha` is now graded too, in two clauses that fail for two
+// genuinely different reasons:
+//
+//   · IDENTITY (hard, immediately). The sha must exist, be a 40-hex commit, and
+//     be an ANCESTOR OF OR EQUAL TO the commit being graded. A proof produced on
+//     a commit that is not in this history proves nothing about this history —
+//     a force-pushed main, a rebased branch, a run against a ref that never
+//     landed. When git cannot decide (no repository, a shallow clone, an object
+//     this checkout never fetched) the fallback is the strictest thing still
+//     derivable — the sha must EQUAL the graded commit — and anything short of
+//     that PRINTS THE GAP rather than passing quietly. "I could not tell" is the
+//     one answer this file has always refused to let read as "it is fine".
+//
+//   · INPUT CURRENCY (⬜ PRINTS, NEVER FAILS). A proof is evidence about the
+//     code it compiled. It stops being evidence the moment the build's own
+//     INPUTS change under it — the workflow, the toolchain pins, the pubspecs.
+//     Not every source commit: main moves daily and the proof runs weekly, so
+//     source drift is the accepted price of not compiling six platforms per
+//     merge, and failing on it would block every PR on a build nobody can run in
+//     time. A pubspec or an SDK pin is different in kind and rare in practice.
+//
+// ⚠️ AND THIS CLAUSE DOES NOT BITE ON ANY DATE. It shipped as a dated tripwire
+// — print until 2026-08-25, hard failure after — and the date was REMOVED ON
+// REVIEW before merge. Measured on the real history since 2026-07-01: 38 of 592
+// commits touched `tooling/versions.json` / `build-platforms.yml` and 38 touched
+// a tracked pubspec, so about one PR in eight would have started failing on a
+// day nobody chose deliberately, with nothing in the tree explaining why —
+// dependabot and pin-bump PRs first. The remedy is a SIX-PLATFORM compile
+// (owner runner budget, [L11]), and this repo's rule for an owner-gated gap is
+// to print it on every run rather than block CI on it. The full reasoning, the
+// measurement and the exact way to RE-ARM it are in the block above
+// `PROOF_INPUT_PATHS`. Escalating it is an OPEN OWNER DECISION, and the printed
+// notice says so on every run so it cannot become invisible.
+//
+// THE REMEDY IS DISCHARGEABLE, which is what would make a hard failure
+// legitimate if that decision is ever taken:
+// `gh workflow run build-platforms.yml --ref <branch>` compiles the current
+// inputs, and the run history query below is NO LONGER FILTERED TO main so that
+// run counts. Freshness is untouched by that widening — it selects on
+// `event === 'schedule'`, and GitHub fires schedules only on the default branch,
+// so the branch filter was never what made freshness a claim about main.
+//
 // LANE-BOUND: build-platforms.yml — this guard's SUBJECT is that one workflow's run history, not a
 // channel's artifact. There is exactly one 6-platform proof in this factory and build-platforms.yml IS
 // it; a second lane would not dilute this check, it would be a second proof needing its own freshness
@@ -82,6 +136,7 @@
 // Usage:  node tooling/ci/assert-platform-proof-fresh.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
@@ -93,6 +148,11 @@ const REGISTER_REL = 'tooling/channel-register.json';
 const BRANCH = 'main';
 const MAX_AGE_DAYS = 14;
 const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
+
+/** A full commit id. Abbreviations are refused rather than resolved: the API
+ *  always returns 40 hex, so a short one means the field was written by
+ *  something other than GitHub and the guard should say so, not guess. */
+const SHA_RE = /^[0-9a-f]{40}$/;
 
 /**
  * 🔴 THE PLATFORM SET IS NOT TYPED HERE — this is the TRANSLATION, not the list.
@@ -133,6 +193,70 @@ export const PLATFORM_BUILD_TARGETS = new Map([
 // warning: printed loudly until the deadline, hard failure after it. A gap that
 // only ever prints is one nobody closes.
 const SCHEDULE_PROOF_DEADLINE = Date.parse('2026-08-10T00:00:00Z');
+
+/**
+ * THE INPUTS THE SIX-PLATFORM BUILD CONSUMES — the files whose change between
+ * the proof's commit and the graded commit makes the proof evidence about
+ * something else.
+ *
+ * 🔴 DELIBERATELY NOT "ANY SOURCE FILE". A rule that fires on every commit is a
+ * rule that gets switched off: main lands changes daily and this proof runs
+ * weekly, so ordinary source drift is the accepted price of not compiling six
+ * platforms on every merge, and the age ceiling above is what bounds it. These
+ * three are a different kind of change — they alter WHAT is compiled and WITH
+ * WHAT, they land in dedicated commits, and each one has already broken a
+ * platform build in this repo's history (`tooling/versions.json` carries a
+ * multi-paragraph note about a macOS AOT crash pinned to one Flutter release).
+ *
+ * `__brick__` is excluded, and the exclusion is load-bearing rather than tidy:
+ * the brick's pubspec is a TEMPLATE that no lane in build-platforms.yml
+ * compiles. Counting it would red the build for editing a file the proof never
+ * read, which is the fastest way to make this clause look wrong.
+ */
+export const PROOF_INPUT_PATHS = [
+  { re: /^\.github\/workflows\/build-platforms\.yml$/, why: 'the workflow that IS the proof — a changed lane is an unproven lane' },
+  { re: /^tooling\/versions\.json$/, why: 'the single declaration of the Flutter/Dart SDK every lane compiles with' },
+  { re: /(^|\/)pubspec\.(yaml|lock)$/, why: 'what the app compiles against — a new package or a bumped constraint is new code in the binary' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⬜ THE INPUT-CURRENCY CLAUSE PRINTS. IT DOES NOT FAIL, AND THAT IS A DECISION
+//    RATHER THAN A DEFAULT.
+//
+// It shipped as a DATED tripwire — print until 2026-08-25, hard failure after —
+// modelled on SCHEDULE_PROOF_DEADLINE above. The date was removed before merge,
+// on review, and the reason is this repository's own owner-gated rule:
+//
+//    "When a capability's on-switch is owner-gated, the guard must PRINT the gap
+//     on every run rather than fail the build — otherwise it blocks all CI on
+//     work only the owner can do."  (CLAUDE.md, verification discipline)
+//
+// The remedy for this clause is `gh workflow run build-platforms.yml --ref
+// <branch>` — a SIX-PLATFORM compile, tens of minutes of runner budget, on a
+// branch, before the merge. Whether that is spent on every pin bump is a
+// budget decision belonging to the owner ([L11] zero-cost stack), not something
+// a guard should start enforcing on a date nobody chose deliberately.
+//
+// MEASURED BLAST RADIUS, on the real history since 2026-07-01 (592 commits):
+// 38 touched `tooling/versions.json` / `build-platforms.yml`, and 38 touched a
+// tracked pubspec — roughly one PR in eight. Dependabot bumps and Flutter pin
+// commits are exactly the population, so on the switch-over day the PRs that
+// would have gone red are the ones this repo merges most mechanically, with
+// nothing in the tree explaining why. That is the ambush this file exists to
+// prevent one class of, reproduced in a second class.
+//
+// 🔴 SO THE PRINT HAS TO BE UNMISSABLE, or "a gap that only ever prints is one
+// nobody closes" (this file's own header) becomes true here. It names the
+// inputs, names the remedy, and says in terms that the escalation is an OPEN
+// OWNER DECISION rather than a thing that will happen by itself.
+//
+// TO RE-ARM IT: restore a `const INPUT_CURRENCY_DEADLINE = Date.parse(…)` and
+// the `nowMs >= INPUT_CURRENCY_DEADLINE` branch in `reportProvenance`, WITH an
+// ADR recording the runner-budget decision and an OWNER_QUEUE line, and narrow
+// it to `versions.json` + `build-platforms.yml` first if the pubspec half is
+// what makes it too noisy — the three inputs are separable and their `why`
+// strings already say which is which.
+// ─────────────────────────────────────────────────────────────────────────────
 
 function fail(msg) {
   console.error(`FAIL  ${msg}`);
@@ -407,11 +531,144 @@ export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS) {
   };
 }
 
+/** The build inputs among a list of changed paths, each with the reason its
+ *  change makes the proof stale. Pure, so the classification is testable without
+ *  a repository. */
+export function changedProofInputs(files) {
+  const out = [];
+  for (const raw of files ?? []) {
+    const f = String(raw ?? '').replace(/\\/g, '/').trim();
+    if (f === '' || f.includes('__brick__')) continue;
+    const hit = PROOF_INPUT_PATHS.find(({ re }) => re.test(f));
+    if (hit) out.push({ file: f, why: hit.why });
+  }
+  return out;
+}
+
+const git = (root, args) => spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+
+/**
+ * WHERE THE PROOF'S COMMIT SITS RELATIVE TO THE COMMIT BEING GRADED.
+ *
+ * Returns `{ decidable: false, why }` whenever git cannot answer — no
+ * repository, a shallow clone, an object this checkout never fetched. That is a
+ * THIRD state and it is kept separate from "no" on purpose: the caller prints it
+ * rather than failing or, worse, treating it as a pass. A guard that cannot tell
+ * and says nothing is the shape this whole file exists to remove.
+ *
+ * `merge-base --is-ancestor X X` exits 0, so ANCESTOR-OR-EQUAL is one call and
+ * not two with a boundary between them to get wrong.
+ */
+export function gitAncestry(proofSha, gradedSha, root = ROOT) {
+  if (git(root, ['rev-parse', '--git-dir']).status !== 0) {
+    return { decidable: false, why: `git could not read a repository at ${root}` };
+  }
+  for (const [label, sha] of [['proof', proofSha], ['graded', gradedSha]]) {
+    if (git(root, ['cat-file', '-e', `${sha}^{commit}`]).status !== 0) {
+      return {
+        decidable: false,
+        why: `the ${label} commit ${sha.slice(0, 7)} is not in this clone's object store — a shallow checkout, or a commit this ref never fetched`,
+      };
+    }
+  }
+  const ancestor = git(root, ['merge-base', '--is-ancestor', proofSha, gradedSha]).status === 0;
+  const drift = Number(git(root, ['rev-list', '--count', `${proofSha}..${gradedSha}`]).stdout.trim());
+  const changed = git(root, ['diff', '--name-only', proofSha, gradedSha])
+    .stdout.split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { decidable: true, ancestor, drift: Number.isFinite(drift) ? drift : null, inputs: changedProofInputs(changed) };
+}
+
+/**
+ * DOES THE NEWEST PROOF DESCRIBE THE CODE BEING GRADED?
+ *
+ * Pure apart from the injected `ancestryOf(sha)` resolver, so every branch below
+ * is exercisable without a repository AND against the real one.
+ *
+ * Candidates are EVERY successful run, not only the scheduled ones — the two
+ * clauses ask different questions. Freshness asks whether the timer is alive, so
+ * it may only count `schedule`. Provenance asks whether some green six-platform
+ * build compiled these inputs, and a `workflow_dispatch` on the current branch
+ * answers that perfectly. Refusing it here would leave the failure with no
+ * remedy, which is how a guard earns an exemption and then an off switch.
+ *
+ * Newest first, and the search stops at the first candidate with nothing to
+ * report: an exact match cannot be improved on, and each candidate costs four
+ * `git` processes.
+ */
+export function evaluateProvenance(runs, gradedSha, ancestryOf) {
+  if (!Array.isArray(runs)) {
+    return { kind: 'unreadable', reason: 'run list was not an array — treating an unreadable answer as a failure' };
+  }
+  const successes = runs.filter((r) => r && r.conclusion === 'success');
+  if (successes.length === 0) {
+    return { kind: 'unreadable', reason: `no successful ${WORKFLOW} run to take a commit from` };
+  }
+  const ordered = [...successes].sort((a, b) => Date.parse(b.updated_at ?? 0) - Date.parse(a.updated_at ?? 0));
+  const seen = new Set();
+  const candidates = [];
+  for (const r of ordered) {
+    const sha = String(r.head_sha ?? '').toLowerCase();
+    if (!SHA_RE.test(sha) || seen.has(sha)) continue;
+    seen.add(sha);
+    candidates.push({ sha, run: r });
+  }
+  if (candidates.length === 0) {
+    return {
+      kind: 'unreadable',
+      reason:
+        `${successes.length} successful run(s) and NOT ONE carries a 40-hex \`head_sha\`. ` +
+        'A proof that does not record WHICH commit it compiled can only ever be aged against the clock, ' +
+        'and a dispatch pinned to an old ref produces a young run over old code.',
+    };
+  }
+
+  let undecidable = null;
+  let best = null;
+  for (const { sha, run } of candidates) {
+    const rel = ancestryOf(sha);
+    if (!rel.decidable) {
+      undecidable ??= { sha, run, why: rel.why };
+      continue;
+    }
+    if (!rel.ancestor) continue;
+    const verdict = { kind: rel.inputs.length === 0 ? 'current' : 'inputsChanged', sha, run, drift: rel.drift, inputs: rel.inputs };
+    if (verdict.kind === 'current') return verdict;
+    if (best === null || verdict.inputs.length < best.inputs.length) best = verdict;
+  }
+  if (best) return best;
+
+  // Nothing was decidable. The strictest thing still derivable without git is
+  // string equality with the graded commit — which is exactly the fallback the
+  // requirement names, and it is a real pass rather than a shrug.
+  if (undecidable) {
+    if (candidates.some((c) => c.sha === String(gradedSha).toLowerCase())) {
+      return { kind: 'current', sha: gradedSha, run: undecidable.run, drift: 0, inputs: [], viaEquality: true };
+    }
+    return { kind: 'undecidable', sha: undecidable.sha, run: undecidable.run, why: undecidable.why };
+  }
+  return {
+    kind: 'foreign',
+    shas: candidates.slice(0, 5).map((c) => c.sha),
+    reason:
+      `not one of the ${candidates.length} green run commit(s) is an ancestor of, or equal to, ${String(gradedSha).slice(0, 7)}. ` +
+      'The proof was produced on a commit that is not in this history — a force-pushed branch, a rebase, or a ref that never landed — ' +
+      'so it is evidence about code nobody is shipping.',
+  };
+}
+
 async function fetchRuns() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (!token) throw new Error('no GITHUB_TOKEN / GH_TOKEN in the environment — cannot read run history, so this fails closed');
   const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=success&per_page=20`;
+  // ⚠️ NO `branch=` FILTER, and freshness is not weakened by its absence.
+  // Freshness selects on `event === 'schedule'`, and GitHub fires a schedule
+  // only on the default branch, so the filter never carried that claim. What it
+  // DID do was hide the one run that can discharge an input-currency failure:
+  // a `workflow_dispatch` on the branch that changed the inputs. A guard whose
+  // failure has no reachable remedy is a guard that gets switched off.
+  const url = `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?status=success&per_page=100`;
   const res = await fetch(url, {
     headers: {
       authorization: `Bearer ${token}`,
@@ -458,8 +715,11 @@ async function main() {
     }
   }
 
-  const verdict = evaluateFreshness(runs, nowMs);
+  reportFreshness(evaluateFreshness(runs, nowMs), nowMs);
+  reportProvenance(runs, nowMs, runsFile !== null);
+}
 
+function reportFreshness(verdict, nowMs) {
   // The schedule has never fired yet — a "not proven" state, not a regression,
   // and it resolves itself the first Monday the cron runs. Printed loudly until
   // the deadline so it cannot be missed, then a hard failure so it cannot rot.
@@ -492,6 +752,92 @@ async function main() {
 
   console.log(
     `ok  platform proof fresh — newest green ${WORKFLOW} run ${verdict.runId} is ${verdict.ageDays.toFixed(1)} day(s) old (ceiling ${MAX_AGE_DAYS})`,
+  );
+}
+
+/**
+ * ⚠️ RUNS EVEN WHEN FRESHNESS FAILED. They are two independent claims about the
+ * same run history — "the timer is alive" and "the proof describes this code" —
+ * and returning early on the first would mean a stale timer permanently hid the
+ * commit clause behind it. One red is not a reason to stop measuring.
+ *
+ * 🔴 EXPORTED SO THE `offline` CONDITIONAL BELOW IS TESTABLE AT ALL. The claim
+ * "`--graded` is inert without `--runs-file`" cannot be reached through the
+ * process: `main()` dies at `fetchRuns()`'s token check long before provenance,
+ * so a subprocess case that clears GITHUB_TOKEN asserts only that the token
+ * check works — it passes identically with the `offline ?` guard DELETED. That
+ * is an assertion that cannot fail, which this repository deletes or re-points.
+ * Calling this function directly with `offline: false` reaches the real branch
+ * with no network and no token. See the pair of cases in
+ * `test/platform-proof-fresh.test.mjs`.
+ */
+export function reportProvenance(runs, nowMs, offline) {
+  // `--graded` is honoured ONLY alongside `--runs-file`. A flag that can retarget
+  // the commit under test is a flag that can silence this clause in CI, and the
+  // offline banner is already the one place this file admits to being driven by
+  // fixtures rather than by the world.
+  const gradedFlag = offline ? flag('--graded') : null;
+  const graded = (gradedFlag ?? git(ROOT, ['rev-parse', 'HEAD']).stdout).trim().toLowerCase();
+  if (!SHA_RE.test(graded)) {
+    fail(`could not resolve the commit being graded (\`git rev-parse HEAD\` gave "${graded}"), so the proof's commit has nothing to be compared against`);
+    return;
+  }
+
+  const verdict = evaluateProvenance(runs, graded, (sha) => gitAncestry(sha, graded, ROOT));
+
+  if (verdict.kind === 'unreadable') {
+    fail(`platform proof provenance unreadable — ${verdict.reason} [pipeline F-4]`);
+    return;
+  }
+
+  if (verdict.kind === 'foreign') {
+    fail(`platform proof was NOT produced on this history — ${verdict.reason}`);
+    console.error('');
+    console.error(`      Green run commits seen: ${verdict.shas.map((s) => s.slice(0, 7)).join(', ')}`);
+    console.error(`      Graded commit:          ${graded.slice(0, 7)}`);
+    console.error('      Re-run the six-platform build on a ref that is actually in this history:');
+    console.error(`      gh workflow run ${WORKFLOW} --ref <branch>  [pipeline F-4]`);
+    return;
+  }
+
+  if (verdict.kind === 'undecidable') {
+    console.log(`⬜  platform proof COMMIT could not be graded — ${verdict.why}`);
+    console.log(`      The newest green run compiled ${verdict.sha.slice(0, 7)}; the graded commit is ${graded.slice(0, 7)}.`);
+    console.log('      Neither ancestry nor equality could be established, so this run says NOTHING');
+    console.log('      about whether the proof describes the code being graded — which is different');
+    console.log('      from saying it does. Give this job a full-history checkout (`fetch-depth: 0`)');
+    console.log('      and the clause becomes decidable. [pipeline F-4]');
+    return;
+  }
+
+  if (verdict.kind === 'inputsChanged') {
+    // ⬜ NEVER `fail`. See the block above INPUT-CURRENCY at the top of this
+    // file: the remedy is a six-platform dispatch, which is owner budget, so
+    // this prints on every run and escalating it is an open decision rather
+    // than a dated event. `nowMs` is still taken so the signature and every
+    // caller stay unchanged if it is ever re-armed.
+    console.log(
+      `⬜  platform proof PREDATES a change to the build's own inputs — run ${verdict.run?.id} compiled ${verdict.sha.slice(0, 7)}, ` +
+        `${verdict.drift} commit(s) behind ${graded.slice(0, 7)}, and ${verdict.inputs.length} build input(s) changed since`,
+    );
+    for (const { file, why } of verdict.inputs) console.log(`      · ${file} — ${why}`);
+    console.log('      The six platforms are claimed against inputs no green build has ever compiled.');
+    console.log(`      Remedy: gh workflow run ${WORKFLOW} --ref <branch>`);
+    console.log(
+      '      ⚠️ THIS PRINTS AND WILL GO ON PRINTING. It is NOT scheduled to become a failure:' +
+        '\n      the dated tripwire it shipped with was removed on review because the remedy is a' +
+        '\n      six-platform compile, i.e. owner runner budget, and a guard must print an' +
+        "\n      owner-gated gap rather than block CI on it. Escalating it is an OPEN DECISION" +
+        '\n      (measured: ~1 PR in 8 touches a build input). [pipeline F-4]',
+    );
+    return;
+  }
+
+  console.log(
+    `ok  platform proof provenance — run ${verdict.run?.id} compiled ${verdict.sha.slice(0, 7)}, ` +
+      (verdict.viaEquality
+        ? 'which IS the graded commit (established by equality; git could not walk the history)'
+        : `${verdict.drift} commit(s) behind ${graded.slice(0, 7)}, with no build input changed since`),
   );
 }
 
