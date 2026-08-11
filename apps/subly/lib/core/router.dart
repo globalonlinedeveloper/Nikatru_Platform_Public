@@ -93,6 +93,83 @@ String? _pendingAddress(GoRouterState state) {
   return extra is String && extra.isNotEmpty ? extra : null;
 }
 
+/// Locations that must never be banked as a gate's `?next=` destination.
+///
+/// 🔴 `/scan` IS DELIBERATELY ABSENT, AND THAT ABSENCE IS THE FIX. `/scan` sits
+/// on the signed-out `authFlow` allowlist below, but it is ALSO the real
+/// post-sign-in destination — `LoginScreen._submit` ends on
+/// `context.go('/scan')` — so excluding every `authFlow` path (the obvious
+/// reading) makes the capture a no-op for the one journey that regressed.
+///
+/// What IS listed is listed because nobody can be "returning" to it: four are
+/// the interstitials themselves, and handing one back re-opens the gate the
+/// user has just cleared. `/sign-in` is the load-bearing entry —
+/// `refreshListenable` can re-run this redirect at `/sign-in` in the gap
+/// between the session appearing and `context.go('/scan')` landing, so a naive
+/// capture banks `/sign-in`, and the signed-in rule at the foot of the redirect
+/// bounces that straight home again: the regression, unchanged.
+const List<String> _neverADestination = <String>[
+  '/onboarding',
+  '/login',
+  '/sign-in',
+  '/sign-up',
+  '/check-inbox',
+  '/verify-email',
+  '/reaccept-terms',
+  '/reset-password',
+];
+
+/// `<gate>?next=<where they were going>`, or a bare `<gate>` when the current
+/// location is not somewhere anybody can be sent back to.
+///
+/// The WHOLE uri is carried rather than `matchedLocation`, so a deep link's own
+/// query survives the detour and `/sub/42?from=mail` comes back intact.
+/// `toString()` never decodes, so a query this app cannot read still travels.
+String _gateWithNext(String gate, GoRouterState state) {
+  if (_neverADestination.contains(state.matchedLocation)) return gate;
+  return '$gate?next=${Uri.encodeComponent(state.uri.toString())}';
+}
+
+/// The banked `?next=`, or null when the query cannot be decoded at all.
+///
+/// 🔴 `Uri.queryParameters` THROWS, AND A REDIRECT THAT THROWS TAKES THE WHOLE
+/// APP DOWN. MEASURED against the real SDK, not reasoned: escapes that are
+/// well-formed HEX but not well-formed UTF-8 pass through `Uri.parse` untouched
+/// and blow up only on decode — `?next=%FF` raises `FormatException: Invalid
+/// UTF-8 byte`, `?next=%E0%A4%A` raises `Missing extension byte`. Worse, this
+/// getter decodes the WHOLE query, so `?a=%ED%A0%80&next=%2Fhome` throws on a
+/// key nothing here reads. `/reaccept-terms` and `/verify-email` are public
+/// URLs and the read below runs for every user who does NOT owe the gate — the
+/// common case — so without this catch one typed link is an app-wide crash.
+/// (`Uri.parse` itself does not throw: it rewrites a non-hex `%zz` to `%25zz`.)
+String? _bankedNext(Uri uri) {
+  try {
+    return uri.queryParameters['next'];
+  } on FormatException {
+    return null;
+  }
+}
+
+/// Where a satisfied gate hands the user: the destination it took, or
+/// [fallback] when it never took one.
+///
+/// 🔴 VALIDATED, NEVER TRUSTED. `next` rides in a URL, so on web anybody can
+/// type one. Only a single-slash absolute path is honoured: `//evil.test` is a
+/// protocol-relative URL a browser resolves OFF-ORIGIN, and anything carrying a
+/// scheme is an open redirect. A `next` naming another gate is refused too — it
+/// would re-open the screen just cleared, and a nested one walks go_router's
+/// redirect limit down to the errorBuilder. The query and fragment are split
+/// off before that comparison so `?next=%2Fverify-email%3Fx%3D1` cannot smuggle
+/// a gate past a whole-string match.
+String _nextOr(GoRouterState state, String fallback) {
+  final String? next = _bankedNext(state.uri);
+  if (next == null || !next.startsWith('/') || next.startsWith('//')) {
+    return fallback;
+  }
+  final String path = next.split('?').first.split('#').first;
+  return _neverADestination.contains(path) ? fallback : next;
+}
+
 /// Router is built once (authRepositoryProvider is a stable instance) and
 /// refreshed on auth changes.
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
@@ -254,12 +331,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // reversed an unverified user would be asked to accept the terms first —
       // recording a legal acceptance against an identity nobody has proven.
       if (core.sessionIsUnverified(auth.currentUser)) {
-        return loc == '/verify-email' ? null : '/verify-email';
+        return loc == '/verify-email'
+            ? null
+            : _gateWithNext('/verify-email', state);
       }
       // A verified user has no business on the waiting room. Without this the
       // screen is reachable by typing the URL and shows "check your inbox" to
       // somebody who already did.
-      if (loc == '/verify-email') return '/home';
+      //
+      // 🔴 `next`, NOT A HARD-CODED '/home' — see the re-acceptance exit below
+      // for the measured cost of substituting a destination here. A user who
+      // verifies mid-journey is owed the screen they were heading for, and a
+      // `next` banked by THIS gate can be re-banked by the re-acceptance gate
+      // one block down, so the two chain rather than cancelling each other.
+      if (loc == '/verify-email') return _nextOr(state, '/home');
 
       // ── MATERIAL-CHANGE RE-ACCEPTANCE (research/43) ───────────────────────
       // Shown when `kTermsVersion`/`kPrivacyPolicyVersion` have moved past what
@@ -287,12 +372,28 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
           : false;
       if (mustReaccept == null) return null;
       if (mustReaccept) {
-        return loc == '/reaccept-terms' ? null : '/reaccept-terms';
+        return loc == '/reaccept-terms'
+            ? null
+            : _gateWithNext('/reaccept-terms', state);
       }
       // Reached by a signed-out visitor too, now that `/reaccept-terms` is in
-      // `authFlow`: they are handed to '/home', which the signed-out rule turns
-      // into '/sign-in' on the next pass. Two hops, and it terminates.
-      if (loc == '/reaccept-terms') return '/home';
+      // `authFlow`: they are handed to '/home' — no `next` was ever banked for
+      // them — which the signed-out rule turns into '/sign-in' on the next
+      // pass. Two hops, and it terminates.
+      //
+      // 🔴 THIS LINE ATE THE DESTINATION, AND THE NIGHTLY E2E IS WHAT NOTICED.
+      // #280 (a6a0646) put the gate in front of everything. A user signing in
+      // runs `context.go('/scan')` (login_screen.dart `_submit`), the gate
+      // intercepts, and this line then handed them '/home' instead of the
+      // '/scan' they were going to. ScanScreen is the ONLY renderer of
+      // `l10n.goToDashboard`, so `find.text('Go to dashboard')` found nothing
+      // at app_test.dart:849 and :1232.
+      //
+      // A redirect that silently SUBSTITUTES a destination is invisible to any
+      // test that only asserts the user reached the INTERSTITIAL —
+      // `test/legal_gates_test.dart` asserts exactly that, in both directions,
+      // and stayed green through the whole regression.
+      if (loc == '/reaccept-terms') return _nextOr(state, '/home');
       // ⚠️ `/login` IS DELIBERATELY ABSENT FROM THIS LIST, and it was here
       // until the mutation said otherwise. M4 (2026-08-10): removing it changed
       // NO test outcome, because a signed-in user opening `/login` is
