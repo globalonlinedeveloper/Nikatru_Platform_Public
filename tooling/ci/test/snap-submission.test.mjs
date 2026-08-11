@@ -153,20 +153,57 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     assert.match(out, /artifact apps\/subly\/build\/linux\/snap\/subly\.snap/);
   });
 
-  // 🔴 the refusal, and it must be BEFORE any validation
-  test('--submit REFUSES with UNVERIFIED, before running a single check', () => {
+  // 🔴 THESE TWO REPLACE THE BLANKET `UNVERIFIED` REFUSAL, THEY DO NOT DELETE IT.
+  // From 2026-08-01 to 2026-08-11 `--submit` refused outright and these cases
+  // asserted that refusal. Five of its seven facts are now sourced, so the
+  // refusal is gone — and a case that asserted a refusal must become a case that
+  // asserts WHAT REPLACED IT, or coverage shrinks by exactly the thing that
+  // changed. The stake the old case protected (a wrong revision reaching real
+  // machines silently) is now PG-3's, and is asserted there with its citations.
+  test('PG-1 · --submit REFUSES without the confirm token, before any validation', () => {
     const { code, out } = run(tree({ withArtifact: true }), ['--submit', '--app', 'subly']);
     assert.equal(code, 1, out);
-    assert.match(out, /--submit is NOT IMPLEMENTED, and refusing is the implementation/);
-    assert.match(out, /UNVERIFIED: the exact `snapcraft upload` invocation/);
-    assert.match(out, /Nothing was validated/);
+    assert.match(out, /--submit requires --confirm SUBMIT-TO-SNAP-STORE/);
+    // The gate is FIRST: nothing was validated on the way to refusing.
     assert.doesNotMatch(out, /metadata tree .* field\(s\) present/);
   });
 
-  test('the refusal explains the silent-auto-update stake, not just "not implemented"', () => {
-    const { out } = run(tree(), ['--submit']);
-    assert.match(out, /Snap auto-updates/);
-    assert.match(out, /the wrong revision reaches real machines/);
+  test('PG-3 · the stable risk is refused, and the refusal cites why it is class A', () => {
+    const { code, out } = run(tree({ withArtifact: true }), [
+      '--submit', '--app', 'subly', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--channel', 'latest/stable',
+    ]);
+    assert.equal(code, 1, out);
+    assert.match(out, /refuses the "stable" risk/);
+    // The three sourced sentences that MAKE it class A, not the word "class A".
+    // ⚠️ FRAGMENTS, NOT WHOLE SENTENCES: the refusal is printed wrapped, so a
+    // regex spanning the wrap matches nothing and the case would fail for a
+    // formatting reason while the citation was present all along.
+    assert.match(out, /risk level by default/);
+    assert.match(out, /checks for updates 4 times a day/);
+    assert.match(out, /100% of devices/);
+  });
+
+  test('PG-3 · refuses stable on ANY track, not only latest', () => {
+    const { code } = run(tree({ withArtifact: true }), [
+      '--submit', '--app', 'subly', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--channel', '2.x/stable',
+    ]);
+    assert.equal(code, 1);
+  });
+
+  test('PG-2 · --submit refuses --allow-missing-artifact, which is a dry-run flag', () => {
+    const { code, out } = run(tree({ withArtifact: true }), [
+      '--submit', '--app', 'subly', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--allow-missing-artifact',
+    ]);
+    assert.equal(code, 1, out);
+    assert.match(out, /is a DRY-RUN flag and --submit refuses it/);
+  });
+
+  test('PG-4 · --submit refuses outside GitHub Actions, where the reviewer gate lives', () => {
+    const { code, out } = run(tree({ withArtifact: true }), [
+      '--submit', '--app', 'subly', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--channel', 'latest/edge',
+    ]);
+    assert.equal(code, 1, out);
+    assert.match(out, /runs only inside GitHub Actions/);
   });
 
   test('FAILS when neither --dry-run nor --submit is given', () => {
@@ -248,7 +285,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   test('PRINTS that the name is not registered, and that availability is UNVERIFIED', () => {
     const { code, out } = dry(tree({ withArtifact: true }));
     assert.equal(code, 0, out);
-    assert.match(out, /SNAP NAME NOT REGISTERED/);
+    assert.match(out, /SNAP NAME REGISTRATION IS UNVERIFIABLE FROM HERE/);
     assert.match(out, /snapcraft register subly/);
     assert.match(out, /OWNER_QUEUE A-6/);
   });
@@ -330,16 +367,41 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
   // If a future increment writes a sourced Snap Store limit into the register,
   // this script would keep passing while appearing to enforce it. That is the
   // "a check that silently stopped checking" shape, pre-empted.
-  test('FAILS if the register grows a limit this script does not read', () => {
+  // 🔴 INVERTED ON 2026-08-11. This used to assert that a declared limit FAILED
+  // the run, on the correct ground that "a limit that looks enforced would not
+  // be". The right end of that trade is to ENFORCE it — so the case now proves
+  // the limit is read and applied, and its sibling below proves the fault that
+  // replaced the old refusal: a limit arriving with no `source` is not a licence
+  // to enforce a remembered number.
+  test('ENFORCES a declared, SOURCED character limit', () => {
     const { code, out } = dry(
       tree({
         withArtifact: true,
-        mutateRegister: (r) => (r.storeMetadataContract.perChannel['linux-snap'].maxChars = { 'title.txt': { max: 40, source: 'somewhere' } }),
+        fields: { 'title.txt': `${'T'.repeat(80)}\n` },
+        mutateRegister: (r) => (r.storeMetadataContract.perChannel['linux-snap'].maxChars = {
+          'title.txt': { max: 40, source: 'https://example.invalid/ (fixture)' },
+        }),
       }),
     );
     assert.equal(code, 1, out);
-    assertComplained(out);
-    assert.match(out, /declares maxChars for "linux-snap", and this script does not read them/);
+    assert.match(out, /is 80 characters; the Snap Store caps this field at 40/);
+  });
+
+  test('a declared limit with NO source is a FAULT, not a licence to enforce it', () => {
+    const { code, out } = dry(
+      tree({
+        withArtifact: true,
+        mutateRegister: (r) => (r.storeMetadataContract.perChannel['linux-snap'].maxChars = {
+          'title.txt': { max: 40 },
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    // 🔴 IT FAILS HARDER THAN THE PER-FIELD FAULT, and that is correct. An
+    // unsourced limit is never EVALUATED, so `limitsChecked` stays 0 and the
+    // declared-but-none-measured branch fires first — the same COVERAGE LOST
+    // shape this repo uses everywhere for 'the scan ranged over nothing'.
+    assert.match(out, /1 field limit\(s\) are declared for "linux-snap" and NOT ONE was evaluated/);
   });
 
   test('enforces NO character limit today — a long title passes, because none is sourced', () => {
@@ -358,7 +420,7 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
     const secret = 'THIS-MUST-NEVER-BE-PRINTED';
     const { code, out } = run(tree({ withArtifact: true }), ['--dry-run'], { SNAPCRAFT_STORE_CREDENTIALS: secret });
     assert.equal(code, 0, out);
-    assert.match(out, /credentials — all 1 environment variable\(s\) present/);
+    assert.match(out, /credentials — SNAPCRAFT_STORE_CREDENTIALS present/);
     assert.doesNotMatch(out, new RegExp(secret));
   });
 
