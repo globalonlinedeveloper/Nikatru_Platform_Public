@@ -36,8 +36,8 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `keywords.txt` | Keywords | listing copy, comma-separated | non-empty — **limit UNVERIFIED** |
 | `promotional-text.txt` | Promotional Text | listing copy | non-empty — **limit UNVERIFIED** |
 | `category.txt` | Primary Category | `app_brick` var `category` | non-empty |
-| `privacy-policy-url.txt` | Privacy Policy URL | `apps/subly/lib/core/config/app_config.dart` → `privacyUrl` | ✅ exact match |
-| `support-url.txt` | Support URL | `apps/subly/lib/core/config/app_config.dart` → `contactUrl` | ✅ exact match |
+| `privacy-policy-url.txt` | Privacy Policy URL | `apps/subly/lib/core/app_config.dart` → `privacyUrl` | ✅ exact match |
+| `support-url.txt` | Support URL | `apps/subly/lib/core/app_config.dart` → `contactUrl` | ✅ exact match |
 | `screenshots/` | App Previews and Screenshots | not derivable — see that directory's README | slot must exist |
 
 `short-description.txt` is **not** the Subtitle — see the `ios-appstore` README's

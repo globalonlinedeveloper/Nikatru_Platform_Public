@@ -36,8 +36,8 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `short-description.txt` | Short description | `sites/_shared/_data/apps.json` → `tagline` | ✅ exact match **+ ≤ 80 chars** |
 | `long-description.txt` | Full description | the app's differentiation line (`app_brick` var `description`), expanded | non-empty **+ ≤ 4000 chars** |
 | `category.txt` | Category | `app_brick` var `category` | non-empty |
-| `privacy-policy-url.txt` | Privacy policy URL | `apps/subly/lib/core/config/app_config.dart` → `privacyUrl` | ✅ exact match |
-| `support-url.txt` | Support contact — website | `apps/subly/lib/core/config/app_config.dart` → `contactUrl` | ✅ exact match |
+| `privacy-policy-url.txt` | Privacy policy URL | `apps/subly/lib/core/app_config.dart` → `privacyUrl` | ✅ exact match |
+| `support-url.txt` | Support contact — website | `apps/subly/lib/core/app_config.dart` → `contactUrl` | ✅ exact match |
 | `feature-graphic.png` | Feature graphic (1024×500) | **generated** from `assets/icon/app_icon_{foreground,background}.svg` by `tooling/store/render-play-graphics.mjs` | ✅ `assert-listing-assets.mjs` — exact size + **no** alpha |
 | `store-icon-512.png` | App icon (512×512) | **generated** from `assets/icon/app_icon_1024.png` — the same master the launcher icons use | ✅ `assert-listing-assets.mjs` — exact size + **with** alpha + ≤ 1024KB |
 | `screenshots/` | Phone screenshots | **captured** from a LIVE build by `tooling/store/capture-play-screenshots.mjs` | ✅ count, dimensions, aspect, format **and recorded posture** |

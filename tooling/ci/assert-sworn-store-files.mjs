@@ -85,6 +85,24 @@
 //     app's answers into the brick would make app #2 swear to app #1's code —
 //     the same lie in the other direction, and the one direction a floor-based
 //     guard would otherwise read as an improvement.
+//  9. THE CHANNEL README'S CITED PATHS. Limb 5's question, asked of the prose
+//     file that sits beside the sworn JSON in the same store tree.
+//
+//     🔴 MEASURED, AND THE NUMBER IS TEN. #216 (P2.5b) moved
+//     `apps/{app}/lib/core/config/app_config.dart` to
+//     `apps/{app}/lib/core/app_config.dart`. Limb 5 repaired the THREE citations
+//     inside the declarations and never looked at the READMEs, where the SAME
+//     dead path sat twice in every one of the five channels — the
+//     privacy-policy-url and support-url rows of each derivation map. Ten
+//     confident wrong answers about where a listing field is generated from,
+//     surviving the guard written for exactly this defect, because that guard's
+//     subject set was `.json` and the defect was in `.md`.
+//
+//     The README is not sworn, and this limb does not treat it as such: it makes
+//     no claim about the prose. It asks only the question limb 5 already asks —
+//     does the repository path this file NAMES still resolve — of the one file
+//     in the tree that tells a person which source each listing field comes
+//     from. Nothing else reads those strings, so nothing else can notice.
 //
 // ── REQUIRED_COVERAGE ───────────────────────────────────────────────────────
 // The sworn set is DERIVED from tooling/channel-register.json, never listed
@@ -332,6 +350,12 @@ if (!reg.json) {
 }
 const perChannel = reg.json.storeMetadataContract?.perChannel ?? {};
 const channelRows = Array.isArray(reg.json.channels) ? reg.json.channels : [];
+/** Every channel that HAS a store tree — limb 9's subject set, derived from the
+ *  same contract block the sworn set is derived from rather than listed here.
+ *  `_why` is documentation, not a channel (same filter as the sworn derivation
+ *  below). Add a sixth channel to the contract and its README is checked with no
+ *  edit to this file. */
+const storeChannels = Object.keys(perChannel).filter((c) => !c.startsWith('_'));
 
 /** { channel, file, key } for every .json in any channel's additionalFiles. */
 const swornWanted = [];
@@ -487,7 +511,7 @@ function strings(obj, path = '', out = []) {
  *  a known source extension: a bare directory ("tooling/legal") is a reference,
  *  a file is a citation, and only the second can be checked for existence
  *  without arguing about trailing slashes. */
-const PATH_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|html|txt|xml|sql|arb|md)/g;
+const PATH_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|mjs|html|txt|xml|sql|arb|md)/g;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE RUN
@@ -496,6 +520,8 @@ let copiesChecked = 0;
 let pathsChecked = 0;
 let anchorsChecked = 0;
 let lineCitesChecked = 0;
+let readmesChecked = 0;
+let readmePathsChecked = 0;
 const specsExercised = new Set();
 
 for (const app of apps) {
@@ -762,6 +788,40 @@ for (const app of apps) {
       }
     }
   }
+
+  // ── limb 9 · the channel README's cited paths still exist ─────────────────
+  // Deliberately OUTSIDE the sworn loop above: that loop ranges over the JSON
+  // declarations, which exist on ONE channel, and this limb's subject is every
+  // channel's README. Nesting it there is how it would have silently checked
+  // android-play only.
+  for (const channel of storeChannels) {
+    const rel = `${app}/store/${channel}/README.md`;
+    if (!existsSync(abs(rel))) continue; // presence is assert-store-metadata.mjs's contract
+    readmesChecked++;
+    const readmeLines = readFileSync(abs(rel), 'utf8').split('\n');
+    const seenInReadme = new Set();
+    for (let i = 0; i < readmeLines.length; i++) {
+      for (const m of readmeLines[i].matchAll(PATH_RE)) {
+        const cited = m[0];
+        if (seenInReadme.has(cited)) continue;
+        seenInReadme.add(cited);
+        // The same two readings limb 5 accepts, for the same measured reason: a
+        // citation may name the file IN THIS APP (a `{app}`/`{{app_id}}`
+        // placeholder standing for the app being checked) or the file IN THE
+        // BRICK, where the braces are a literal directory name on disk.
+        const candidates = [cited.replace('{{app_id}}', appId).replace('{app}', appId), cited];
+        readmePathsChecked++;
+        if (!candidates.some((c) => existsSync(abs(c)))) {
+          fail(
+            `${rel}:${i + 1} cites ${cited}, which does not exist (tried ${candidates.join(' and ')}). ` +
+              'This table is a DERIVATION MAP — it tells a person which file each listing field is generated ' +
+              'from. Pointing it at a file that was moved or deleted is a confident wrong answer, and nothing ' +
+              'else in this tree reads these strings. [Ten of these survived here after #216 moved app_config.]',
+          );
+        }
+      }
+    }
+  }
 }
 
 // ── REQUIRED_COVERAGE, final direction: did every spec actually get used? ───
@@ -806,6 +866,23 @@ if (problems.length === 0 && lineCitesChecked < LINE_ANCHORS.length) {
     '("re-walk these before submission") was not accepted as the repair.',
   ]);
 }
+if (readmesChecked === 0) {
+  coverageLost([
+    `not one channel README was read across ${apps.length} app(s) and ${storeChannels.length} channel(s).`,
+    'Limb 9 is per-README, so zero READMEs is a clean pass over an empty set. `README.md` is',
+    '`storeMetadataContract.requiredFiles[0]` — every store tree has one by contract — so zero does not mean',
+    'the READMEs are fine, it means this scan is no longer finding the store trees it thinks it is.',
+  ]);
+}
+if (readmePathsChecked === 0) {
+  coverageLost([
+    `the channel READMEs matched ZERO repository paths across ${readmesChecked} README(s).`,
+    'Every derivation map names the file each listing field is generated from; the count is 32 today and is',
+    'never legitimately zero. The ten dead paths this limb was written for all lived in those tables, so a',
+    'matcher that stopped matching would restore the exact blindness this limb exists to end — and a path',
+    'check that matches nothing passes forever.',
+  ]);
+}
 if (anchorsChecked === 0) {
   coverageLost([
     `not one of the ${UI_ANCHORS.length} UI anchor(s) was evaluated.`,
@@ -838,6 +915,7 @@ if (problems.length) {
   console.log(
     `\nok   ${copiesChecked} sworn declaration(s) still answered across ${apps.length} app(s); ` +
       `${pathsChecked} cited path(s) resolve; ${anchorsChecked} UI anchor(s) hold; ` +
+      `${readmePathsChecked} path(s) in ${readmesChecked} channel README(s) resolve; ` +
       `${templates.size} brick template(s) still blank`,
   );
   console.log('\nassert-sworn-store-files: ok');
