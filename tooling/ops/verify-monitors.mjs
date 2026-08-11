@@ -11,6 +11,17 @@
 // the org's monitors, and prints the drift in both directions:
 //   · a row claiming monitor id N that the API does not return   (register lies)
 //   · a row whose live url/type disagrees with what it records   (drift)
+//   · a row DECLARING `expectedBody` that the live monitor does not carry
+//     verbatim                                          (declared-body drift)
+//     Added 2026-08-11, when monitors 3, 4 and 5 acquired a body assertion and
+//     the register grew a claim nothing consumed — monitors 11 and 12 had
+//     carried `expectedBody` since 2026-08-05 and this file had never read it,
+//     so the register could say one thing while the live monitor said another
+//     for as long as anyone cared to look. DECLARED-ONLY on purpose: a row that
+//     records no `expectedBody` asserts none, so this cannot false-red on
+//     monitors 1 and 2, whose live body has never been read off the API. It CAN
+//     fire, which is the whole point — the live PUT and the register row are
+//     one change or this goes red.
 //   · a live monitor no row accounts for                         (register short)
 //   · a row with `monitor: null`                                 (the known gap)
 //
@@ -151,6 +162,31 @@ for (const row of rows) {
       `${row.hostname} — monitor id ${m.id} is type "${found.monitorType}" live and "${m.type}" in the register.`,
     );
     continue;
+  }
+  // ── the DECLARED-BODY limb ────────────────────────────────────────────────
+  // A body assertion is the difference between "the door opened" and "the thing
+  // behind it is ours": a Cloudflare edge error page, a Pages 404, an empty
+  // deploy and a cross-wired Pages project all answer 200. Until 2026-08-11
+  // nothing here read `expectedBody`, so the register could carry one the live
+  // monitor did not have — a claim about a check that is not running, which
+  // reads on this script's own stdout as `ok`.
+  //
+  // Compared only when the REGISTER declares one. A row that declares no body
+  // asserts none, so this cannot false-red on monitors 1 and 2, whose live
+  // `expectedBody` has never been read off the API. It can still fail, and its
+  // failing case is one line: change the body on the live monitor without
+  // changing the row here (or the row without the monitor) and this exits 1.
+  if (typeof m.expectedBody === 'string' && m.expectedBody !== '') {
+    const liveBody = typeof found.expectedBody === 'string' ? found.expectedBody : '';
+    if (liveBody !== m.expectedBody) {
+      const show = (s) => (s === '' ? '(none)' : JSON.stringify(s.length > 120 ? `${s.slice(0, 120)}…` : s));
+      problems.push(
+        `${row.hostname} — monitor id ${m.id} declares expectedBody ${show(m.expectedBody)} in the register and the ` +
+          `live monitor carries ${show(liveBody)}. A body assertion that exists only in the register is a claim ` +
+          'about a check nobody is running: the live monitor is still green on a blank shell.',
+      );
+      continue;
+    }
   }
   matched++;
   const state = found.isUp === false ? 'DOWN' : 'up';
