@@ -868,16 +868,16 @@
     {
       "id": "duty.laptop.claude-transcript-backup",
       "kind": "duty",
-      "what": "The nightly Windows task that copies Claude Code transcripts offsite, to D:\\ClaudeBackups.",
-      "detector": "🔴 NOTHING TODAY. Its exit code is the only record and nobody reads it — and the exit code is written by the thing that is dying.",
-      "response": "🔴 STILL FAILING, RE-MEASURED 2026-08-06: LastTaskResult = 1, last run 02:00:01. Diagnose on the laptop, then point it at the same heartbeat mechanism duty.laptop.nikatru-daily-backup uses — but AT THE OUTCOME, not the exit code (see the ownerGap: on 2026-08-06 the exit code and the outcome disagreed in BOTH directions on the same day).",
+      "what": "Claude Code transcripts reach an OFF-BOX copy. Two legs, and only one of them ever existed: scripts\backup-transcripts.ps1 robocopies to D:\\ClaudeBackups (a disk in Predictive Failure, which its 2026-08-07 preflight now correctly REFUSES), and — since 2026-08-11 — the `transcripts` job in .claude\\scripts\backup-knowledge.ps1, which copies %USERPROFILE%\\.claude\\projects to gdrive:nikatru-backup/transcripts on the 8-hourly schedule that already succeeds.",
+      "detector": "The `transcripts` job is one of the sets backup-knowledge.ps1 asserts coverage on every run — probe MEMORY.md, since transcript filenames are session UUIDs and the coverage check matches an exact name or */<name>, so no transcript name and no bare suffix could serve. That run also posts the heartbeat an outside watcher expects, so a silent stop is visible OFF the laptop. ⚠️ The D: leg still has no detector but no longer has anything to lose: it is now the SECOND copy.",
+      "response": "✅ CLOSED 2026-08-11, and the diagnosis was not what this row said. `LastTaskResult = 1` is backup-transcripts.ps1 WORKING — its preflight refuses to write to a failing disk, by design since 2026-08-07. What was actually wrong is that the off-box copy had NEVER STARTED: this row read the refusal as 'the off-box copy has stopped', but gdrive/gcrypt held ZERO transcript files while gcrypt:project held 83,228. Transcripts existed on C: ONLY — 3,102 files, ~1 GB, written to continuously, and present in no git repo anywhere. Measured after the fix: 3,102 of 3,102 on Drive, local count == remote count, coverage OK across all 8 sets, exit 0. 📌 THE EXIT CODE IS NOT THE INSTRUMENT, and it is now proven in BOTH directions on the same machine: duty.laptop.nikatru-project-backup ALSO exits 1 and is fine (its cloud copy runs first, 83,228 files land, then the D: leg fails), while this duty exited 1 and shipped nothing. Only the OUTCOME distinguishes them.",
       "cadence": "1d",
       "mechanism": {
         "substrate": "windows-task-scheduler",
         "anchor": "company/runbooks/scheduled-tasks.md",
-        "record": "Windows Task Scheduler LastTaskResult — and NOTHING reads it",
-        "failingValue": "LastTaskResult != 0 — currently 1",
-        "readBy": "nothing yet — this is the gap, named rather than hidden",
+        "record": "ClaudeTranscriptBackup's LastTaskResult — DELIBERATELY LEFT HERE, and it is worth saying why, because on 2026-08-11 it was briefly repointed at the healthy task and that was wrong. The off-box copy IS now made (see response), so pointing the record at the task that makes it would turn this row green. Its sibling duty.laptop.nikatru-project-backup is in the IDENTICAL state — cloud copy landing, local copy refused — and stays red ON PURPOSE: backup-project.ps1:203 defers its refusal to the END precisely so the task keeps reporting 1, because 'a green nightly here would read as backed up and remove the pressure to replace the dying disk'. One dying disk should show up as red on both duties it actually breaks, not on whichever one nobody has routed around yet.",
+        "failingValue": "LastTaskResult != 0 — currently 1, and correctly so: the preflight is refusing a disk in Predictive Failure",
+        "readBy": "this guard, every session. The OFF-BOX half is separately and independently watched by the GlitchTip heartbeat that 'NIKATRU daily backup' posts, plus that script's per-set coverage assertion on the `transcripts` set — so a silent stop of the copy that matters is visible from outside the laptop even while this row is red for the local copy.",
         "recordQuery": {
           "reader": "windows-scheduled-task",
           "task": "ClaudeTranscriptBackup"
@@ -894,7 +894,7 @@
         "google"
       ],
       "ownerGated": true,
-      "ownerGap": "Both the diagnosis and the heartbeat wiring happen on the laptop, which no workflow can reach. Two of three laptop duties are failing right now and are watched by nothing; that is the sentence this row exists to keep printing. 🔴 The destination disk is in Predictive Failure — see absenceWatcher.gap for the measurements.",
+      "ownerGap": "The remaining owner item is the DISK, not the backup: D: is ST1000LM048-2E7172, HealthStatus Warning / OperationalStatus Predictive Failure, so the local second copy stays absent until it is replaced. That is now a redundancy gap rather than a data-loss one — the off-box copy on Drive is the one that survives losing the machine, and it exists as of 2026-08-11.",
       "source": "verified"
     },
     {
