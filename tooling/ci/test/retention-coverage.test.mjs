@@ -387,8 +387,46 @@ describe('assert-retention-coverage — end to end, against the real repository'
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
   });
 
-  test('and it PRINTS the undeclared-period gap rather than filling it in', () => {
+  // 🔴 THIS TEST WAS RE-POINTED 2026-08-12, AND THE COVERAGE MOVED RATHER THAN
+  // BEING DELETED — the distinction is the whole point.
+  //
+  // It used to assert that the REAL repository still prints `PERIOD UNDECLARED`,
+  // which was true while `events` and `provider_notifications` had no declared
+  // period. [ADR 045] declared both (400 / 730 days), so that assertion became
+  // false — and the tempting fix, deleting it, would have removed the ONLY
+  // coverage of the print behaviour anywhere in this suite: nothing else
+  // exercised `rule: 'period-undeclared'`. The guard would have kept a limb no
+  // test could ever fail, which is this repository's signature defect.
+  //
+  // So the behaviour is now driven through a FIXTURE (below), where an
+  // undeclared period can be constructed on purpose and will still be
+  // constructible after every real gap is closed — and the real repository is
+  // asserted to have NONE, which is the state ADR 045 actually reached.
+  test('the real repository now has ZERO undeclared periods', () => {
     const r = spawnSync(process.execPath, [GUARD], { cwd: REPO, encoding: 'utf8' });
-    assert.match(r.stdout, /PERIOD UNDECLARED/);
+    assert.equal(r.status, 0, `${r.stdout}
+${r.stderr}`);
+    assert.doesNotMatch(
+      r.stdout,
+      /PERIOD UNDECLARED/,
+      'a period is undeclared again — either a new store arrived without one, or a declared ' +
+        'period was reverted. Both are decisions, not accidents: declare it or say why.',
+    );
+  });
+
+  test('…and the PRINT still works, proven on a fixture rather than on our own gap', () => {
+    const root = makeRepo((s) => {
+      s.rows = s.rows.map((r) =>
+        r.store === 'd1:demo_db:real_table'
+          ? { ...r, rule: 'period-undeclared', ownerGap: 'the owner has not chosen a number' }
+          : r,
+      );
+    });
+    const r = run(root);
+    // It PRINTS and does NOT fail: an owner-gated gap must be visible on every
+    // run without reddening a build over work only the owner can do (C-6).
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /PERIOD UNDECLARED/);
+    assert.match(r.out, /the owner has not chosen a number/);
   });
 });
