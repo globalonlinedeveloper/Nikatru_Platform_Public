@@ -265,13 +265,13 @@
       "status": "present",
       "anchor": {
         "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
-        "symbol": "signOut",
+        "symbol": "signOutAndForgetUser",
         "kind": "member"
       },
       "reachable": {
         "file": "tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart",
-        "pattern": "ref.read(authRepositoryProvider).signOut()",
-        "why": "placed ABOVE account deletion — it is the action a user wants hundreds of times more often, and putting the irreversible one first invites a misfire"
+        "pattern": "onTap: () => _signOut(context, ref, l10n)",
+        "why": "placed ABOVE account deletion — it is the action a user wants hundreds of times more often, and putting the irreversible one first invites a misfire. Re-pointed 2026-08-11 from `ref.read(authRepositoryProvider).signOut()`: that call was fire-and-forget, so the deliberate throw from SecureSessionStorage.removePersistedSession went nowhere and the per-user state on the device outlived the session. The two halves are split on purpose — `anchor` proves the handler reaches the real path (`signOutAndForgetUser(`), this proves the CONTROL reaches the handler. Anchoring both on the handler was measured and rejected: reverting the tile to the fire-and-forget call left the handler in place with nothing calling it, and every check stayed green"
       }
     },
     {

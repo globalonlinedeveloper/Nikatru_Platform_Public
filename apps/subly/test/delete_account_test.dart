@@ -17,6 +17,8 @@ import 'package:subly/features/settings/settings_screen.dart';
 import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/state/providers.dart';
 
+import 'support/user_state_fakes.dart';
+
 /// THE STORE-MANDATED DELETION PATH, AND THE PART THAT IS EASY TO GET WRONG.
 ///
 /// Both stores require an in-app way to delete an account wherever one can be
@@ -70,13 +72,8 @@ class _FakeAuth extends core.AuthRepository {
   Object? reauthThrows;
 
   @override
-  core.AuthUser? get currentUser =>
-      signedIn
-      ? const core.AuthUser(
-          id: 'u1',
-          email: 'a@b.test',
-          emailVerified: true,
-        )
+  core.AuthUser? get currentUser => signedIn
+      ? const core.AuthUser(id: 'u1', email: 'a@b.test', emailVerified: true)
       : null;
 
   /// 🔴 A REAL STREAM THAT REALLY EMITS ON SIGN-OUT. The first version of this
@@ -157,6 +154,17 @@ Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
         authRepositoryProvider.overrideWithValue(auth),
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+        // The deletion path now forgets the user's device-local state as well
+        // as their account (`forgetSignedInUser`), and both of those seams are
+        // platform channels. An unmocked channel call in a widget test does not
+        // throw — it never completes — so without these three the dialog stops
+        // half-way and every result assertion below reads as "nothing was
+        // rendered". See test/support/user_state_fakes.dart.
+        secureStoreProvider.overrideWithValue(MemSecureStore()),
+        notificationServiceProvider.overrideWithValue(FakeNotifications()),
+        sublyNotificationServiceProvider.overrideWithValue(
+          RecordingSublyNotifications(),
+        ),
       ],
       // P2.6b: the merged screen reads l10n and l10n.yaml sets
       // nullable-getter:false — a host without delegates throws on first pump.
@@ -287,6 +295,14 @@ void main() {
           authRepositoryProvider.overrideWithValue(auth),
           keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+          // Same reason as in `_pumpSettings`: an unmocked platform channel in
+          // a widget test never completes, and the deletion path now awaits two
+          // of them.
+          secureStoreProvider.overrideWithValue(MemSecureStore()),
+          notificationServiceProvider.overrideWithValue(FakeNotifications()),
+          sublyNotificationServiceProvider.overrideWithValue(
+            RecordingSublyNotifications(),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -454,6 +470,14 @@ void main() {
         onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+        // NOT auth — that is the point of this test — but the two platform
+        // channels the deletion path now awaits still have to answer, or the
+        // dialog stops before it renders its result.
+        secureStoreProvider.overrideWithValue(MemSecureStore()),
+        notificationServiceProvider.overrideWithValue(FakeNotifications()),
+        sublyNotificationServiceProvider.overrideWithValue(
+          RecordingSublyNotifications(),
+        ),
       ],
     );
     addTearDown(container.dispose);

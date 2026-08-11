@@ -359,7 +359,7 @@ class SettingsScreen extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: Text(l10n.signOut),
-                onTap: () => ref.read(authRepositoryProvider).signOut(),
+                onTap: () => _signOut(context, ref, l10n),
               ),
 
             // [pipeline C-13] Only when there is an account to delete. Both
@@ -469,6 +469,32 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
+  /// `onTap: () => ref.read(authRepositoryProvider).signOut()` — not awaited and
+  /// not caught — while `SecureSessionStorage.removePersistedSession` throws ON
+  /// PURPOSE when it can neither delete the persisted session nor tombstone it
+  /// (a Linux box with no unlocked libsecret collection is the ordinary case).
+  /// The one caller of that deliberate answer threw it away, so the app said
+  /// nothing and the next launch came back signed in.
+  ///
+  /// The message is a SnackBar rather than an inline notice because the app-level
+  /// `ScaffoldMessenger` outlives this route: on a successful sign-out the router
+  /// replaces the page immediately, and on a failed one it does not, so the same
+  /// call has to survive both. The messenger is captured BEFORE the await for the
+  /// same reason.
+  Future<void> _signOut(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+  ) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      await signOutAndForgetUser(ref);
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.signOutFailed)));
+    }
+  }
+
   Future<void> _contactSupport() async {
     final Uri uri = Uri.parse(
       'mailto:${AppConfig.supportEmail}'
@@ -575,11 +601,39 @@ class SettingsScreen extends ConsumerWidget {
     );
     final core.AuthRepository auth = ref.read(authRepositoryProvider);
     final String? email = auth.currentUser?.email;
+    // 🔴 RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason [userStateDrops]
+    // records: `deleteAccount()` signs out, the router tears this shell down,
+    // and a `ref.read` on the far side of that await throws `StateError` — into
+    // the deliberately empty `catch` below, where nothing can ever observe it.
+    // The forget would have silently done nothing on the one path where the
+    // account it belongs to no longer exists.
+    final List<UserStateDrop> drops = userStateDrops(ref);
     try {
       if (email == null) throw core.AuthFailure('Not signed in');
       // Re-authenticate through the SAME seam sign-in uses.
       await auth.signInWithEmail(email: email, password: password);
-      await auth.deleteAccount();
+      try {
+        await auth.deleteAccount();
+      } finally {
+        // BOTH BRANCHES, because `deleteAccount` signs out whether or not the
+        // server deleted anything — so the session is gone either way and the
+        // state scoped to it must go too. It matters MORE on the failing branch:
+        // those reminders belong to an account whose rows may already be
+        // destroyed. Placed after the reauth on purpose — a wrong password
+        // deletes nothing and leaves the user signed in, so there is nothing to
+        // forget.
+        try {
+          await forgetSignedInUser(drops);
+        } catch (_) {
+          // 🔴 A FAILED LOCAL CLEAR MUST NOT BECOME THE DELETION'S VERDICT.
+          // Letting it out of this `finally` would replace a 502 —
+          // `signInSurvives`, the one outcome a user can never discover for
+          // themselves — with a generic "we cannot tell", and would report a
+          // deletion that really happened as one that may not have. What the
+          // server did to the account outranks what this device managed to
+          // tidy up.
+        }
+      }
       nav.pop();
     } catch (e) {
       // Deliberately NOT "deleted" on failure. AuthRepository.deleteAccount

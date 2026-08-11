@@ -1701,6 +1701,63 @@ Future<void> markShown(core.PromoGateState decided) async {
 }
 `;
 
+  // [pipeline C-6] the USER_STATE_RESET seam, wired 2026-08-11 after
+  // `EntitlementCache.clear()` was found with ZERO production call sites while
+  // the cache honours a cached Pro answer offline for seven days — so the next
+  // person to sign in on a shared device inherited the previous one's
+  // subscription. Four needs, and the fixture splits into four pieces for the
+  // usual reason: a single case that removed the lot would still pass with
+  // three of them neutered.
+  //
+  // 🔴 THE `signOut()` CALL IN HERE IS LOAD-BEARING TWICE OVER. It satisfies
+  // need (3)'s counterpart in the `session_end` EXCLUSIVE TRIGGER — the spine
+  // is the only file permitted to end a session — and the trigger's
+  // at-least-one half means a fixture with no call at all fails for a reason
+  // unrelated to whatever each test is about.
+  const BRICK_DROP_CACHE = '  ref.read(entitlementCacheProvider).clear,\n';
+  const BRICK_DROP_SCHEDULE =
+    '  ref.read(notificationServiceProvider).cancelAll,\n';
+  // The DECLARATION of `signOutAndForgetUser` lives here, exactly as it does in
+  // the real template, because need (3) carries a `declares:` filter that drops
+  // the declaring file from the candidate set. A fixture that omitted it would
+  // leave the filter nothing to exclude and would agree with a guard whose
+  // caller check the declaration itself could satisfy — the trap this file
+  // already records twice, for `recordAnalyticsConsent` and `markShown`.
+  const brickForget = ({
+    dropCache = BRICK_DROP_CACHE,
+    dropSchedule = BRICK_DROP_SCHEDULE,
+    spineSignOut = '  await auth.signOut();\n',
+  } = {}) => `
+List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
+${dropCache}${dropSchedule}];
+Future<void> forgetSignedInUser(List<UserStateDrop> drops) async {
+  for (final UserStateDrop drop in drops) {
+    await drop();
+  }
+}
+Future<void> signOutAndForgetUser(WidgetRef ref) async {
+  final core.AuthRepository auth = ref.read(authRepositoryProvider);
+  final List<UserStateDrop> drops = userStateDrops(ref);
+${spineSignOut}  await forgetSignedInUser(drops);
+}
+`;
+  // The CONTROL and the HANDLER are separate strings because need (4) exists
+  // precisely because need (3) alone did not fail: reverting the tile to the
+  // fire-and-forget call leaves `signOutAndForgetUser(` sitting in a `_signOut`
+  // helper nothing calls, and the row printed three `ok`s. A case below removes
+  // each on its own.
+  const BRICK_SIGNOUT_TILE = 'onTap: () => _signOut(context, ref, l10n),\n';
+  const BRICK_SIGNOUT_HANDLER = `
+Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n) async {
+  final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+  try {
+    await signOutAndForgetUser(ref);
+  } catch (_) {
+    messenger.showSnackBar(SnackBar(content: Text(l10n.signOutFailed)));
+  }
+}
+`;
+
   const brickFiles = ({
     reminders = BRICK_SCHEDULES,
     toggle = BRICK_TOGGLE_CALLS,
@@ -1714,15 +1771,19 @@ Future<void> markShown(core.PromoGateState decided) async {
     promoDecide = BRICK_PROMO_DECIDE,
     promoMark = BRICK_PROMO_MARK,
     promoDecl = BRICK_PROMO_DECL,
+    forget = brickForget(),
+    signOutTile = BRICK_SIGNOUT_TILE,
+    signOutHandler = BRICK_SIGNOUT_HANDLER,
+    homeExtra = '',
     settingsExtra = '',
   } = {}) => ({
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart':
-      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}${packLoader}${packLoad}${promoDecl}`,
+      `const String kPrivacyPolicyVersion = '2026-07-26';\n${reminders}${review}${packLoader}${packLoad}${promoDecl}${forget}`,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
-      toggle + settingsExtra,
+      toggle + signOutTile + signOutHandler + settingsExtra,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/money_providers.dart': money,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart':
-      gate + promoMount + promoDecide + promoMark,
+      gate + promoMount + promoDecide + promoMark + homeExtra,
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart':
       checkout,
   });
@@ -1825,6 +1886,10 @@ Future<void> main() async {
       promoDecide = BRICK_PROMO_DECIDE,
       promoMark = BRICK_PROMO_MARK,
       promoDecl = BRICK_PROMO_DECL,
+      forget = brickForget(),
+      signOutTile = BRICK_SIGNOUT_TILE,
+      signOutHandler = BRICK_SIGNOUT_HANDLER,
+      homeExtra = '',
       settingsExtra = '',
     } = {},
   ) =>
@@ -1841,6 +1906,10 @@ Future<void> main() async {
         promoDecide,
         promoMark,
         promoDecl,
+        forget,
+        signOutTile,
+        signOutHandler,
+        homeExtra,
         settingsExtra,
       }),
       'apps/subly/lib/state/analytics_providers.dart':
@@ -2388,6 +2457,113 @@ Future<void> main() async {
     assert.match(out, /the impression persisted, so the frequency cap can ever bind NOT FOUND/);
   });
 
+  // ── user_state_reset, one recorded failing case per limb ───────────────────
+  // The row has four needs because the seam has four separable halves, and the
+  // file's own rule is that every check carries a case that has been watched
+  // fail. These four were missing when the row shipped: the row itself was
+  // negative-tested against the real tree, but its unit suite was not run at
+  // all — and adding the row without adding these fixture strings turned five
+  // unrelated cases in this describe red for a reason none of them is about.
+
+  test('user_state_reset — FAILS when the entitlement cache is no longer dropped', () => {
+    // The inherited-Pro half. `EntitlementCache` honours a cached answer offline
+    // for up to `kEntitlementStalenessCeiling` — seven days — so the next person
+    // to sign in on a shared, borrowed or resold device gets the previous one's
+    // subscription. Nothing goes red on its own: an uncleared cache and an empty
+    // one are the same observation until a SECOND user appears.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-user-state-no-cache-drop', {
+        forget: brickForget({ dropCache: '' }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the entitlement cache really dropped on the chassis reset path NOT FOUND/);
+    // …and the other three limbs are untouched, or this case would be proving
+    // the wrong thing.
+    assert.match(out, /ok\s+user_state_reset — the notification schedule really cancelled with it/);
+  });
+
+  test('user_state_reset — FAILS when the notification schedule survives the sign-out', () => {
+    // The other half of the same drop list: a deleted account went on reminding
+    // the device about itself.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-user-state-no-schedule-drop', {
+        forget: brickForget({ dropSchedule: '' }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the notification schedule really cancelled with it NOT FOUND/);
+    assert.match(out, /ok\s+user_state_reset — the entitlement cache really dropped/);
+  });
+
+  test('user_state_reset — FAILS when nothing on a screen reaches the reset', () => {
+    // The reset itself is intact here — both drops are present in the spine —
+    // and no screen calls it. That is the exact state `EntitlementCache.clear()`
+    // shipped in: written, documented ("e.g. on sign-out"), exported and
+    // unit-tested, with zero production callers.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-user-state-no-ui-caller', { signOutHandler: '' }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /a UI caller that ends a session through it NOT FOUND/);
+    assert.match(out, /ok\s+user_state_reset — the entitlement cache really dropped/);
+  });
+
+  // 🔴 THE CASE THE FOURTH NEED EXISTS FOR, and the one that proves the third
+  // need alone is not enough. The tile goes back to the fire-and-forget
+  // `signOut()` — the exact defect the increment fixes — and the handler stays
+  // where it is, so `signOutAndForgetUser(` is still in a non-declaring file and
+  // need (3) goes on printing `ok` over a helper nothing calls.
+  test('user_state_reset — FAILS when the CONTROL is reverted to the fire-and-forget call', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-user-state-dead-handler', {
+        signOutTile: 'onTap: () => ref.read(authRepositoryProvider).signOut(),\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /the sign-out CONTROL routed through that awaited handler NOT FOUND/);
+    assert.match(
+      out,
+      /ok\s+user_state_reset — a UI caller that ends a session through it/,
+      'need (3) must still pass here, or this case is not showing why need (4) exists',
+    );
+  });
+
+  // ── session_end, the EXCLUSIVE TRIGGER ─────────────────────────────────────
+  // At-least-one is not the question here; at-most is. Two shipped controls
+  // (`reaccept_terms_screen.dart`'s Decline and `verify_email_screen.dart`'s
+  // "the only way OUT of the gate") ended a session with a bare `signOut()`
+  // while every `user_state_reset` need printed `ok`, because those needs are
+  // satisfied by the settings screen alone.
+  test('session_end — FAILS when a screen ends a session outside the spine', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-session-end-bypass', {
+        homeExtra: 'await ref.read(authRepositoryProvider).signOut();\n',
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /session_end — 1 additional call site\(s\)/);
+    assert.match(out, /home_screen\.dart/);
+    // The `user_state_reset` row is entirely green in this fixture — which is
+    // the point: an at-least-one check cannot see a caller that bypasses the
+    // seam, and this is the only limb that can.
+    assert.match(out, /ok\s+user_state_reset — the sign-out CONTROL routed through/);
+  });
+
+  test('session_end — FAILS when NOTHING ends a session at all', () => {
+    // The at-most-one bound is satisfied by zero, which is the most obvious way
+    // for a bound like this to stop meaning anything. The spine keeps its
+    // `signOutAndForgetUser` declaration and its UI caller, so every
+    // `user_state_reset` need still passes and only this clause can notice.
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-session-end-none', {
+        forget: brickForget({ spineSignOut: '  // the session is never ended\n' }),
+      }),
+    });
+    assert.equal(code, 1);
+    assert.match(out, /session_end — NOTHING calls it/);
+  });
+
   // The self-check. A guard whose scan silently stops reaching the tree would
   // pass every seam by finding nothing to contradict — the exact failure mode
   // that let check-migrations.mjs report clean over an incomplete set.
@@ -2462,6 +2638,19 @@ class Ed25519PackVerifier implements PackVerifier {
     'Future<void> markShown(core.PromoGateState decided) async {\n' +
     '  if (!_recordRead) return;\n' +
     '  await kv.write(_promoCardKey, decided.encode());\n}\n' +
+    // …and the user_state_reset seam plus the session_end exclusive trigger
+    // (2026-08-11), for the same "isolate the verifier" reason as everything
+    // else in this file. The trigger has an at-least-one half, so a fixture with
+    // no `signOut()` call anywhere fails on a clause these tests are not about.
+    'List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[\n' +
+    '  ref.read(entitlementCacheProvider).clear,\n' +
+    '  ref.read(notificationServiceProvider).cancelAll,\n];\n' +
+    'Future<void> forgetSignedInUser(List<UserStateDrop> drops) async {\n' +
+    '  for (final UserStateDrop drop in drops) { await drop(); }\n}\n' +
+    'Future<void> signOutAndForgetUser(WidgetRef ref) async {\n' +
+    '  final core.AuthRepository auth = ref.read(authRepositoryProvider);\n' +
+    '  final List<UserStateDrop> drops = userStateDrops(ref);\n' +
+    '  await auth.signOut();\n  await forgetSignedInUser(drops);\n}\n' +
     packLoader +
     packLoad;
 
@@ -2505,8 +2694,14 @@ class Ed25519PackVerifier implements PackVerifier {
     'sites/nikatru/privacy.html': '<p data-policy-version="2026-07-26">x</p>',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart': brickProviders(),
     // …and the reminders seam, and the secure-session seam, for the same reason.
+    // The sign-out CONTROL and its handler are here too: `user_state_reset`
+    // needs (3) and (4) read this file, and need (4) exists because need (3)
+    // alone did not fail when the tile was reverted.
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart':
-      'onChanged: (bool on) => c.applyReminderChoice(on: on),\n',
+      'onChanged: (bool on) => c.applyReminderChoice(on: on),\n' +
+      'onTap: () => _signOut(context, ref, l10n),\n' +
+      'Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n) async {\n' +
+      '  await signOutAndForgetUser(ref);\n}\n',
     'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart':
       'await initNikatruAuth(url: u, publishableKey: k, secureStore: FlutterSecureStore());\n',
     // …and the ENTITLEMENTS seam ([pipeline 5]M-5, wired 2026-08-01), whose

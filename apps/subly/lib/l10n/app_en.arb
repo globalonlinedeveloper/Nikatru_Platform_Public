@@ -218,6 +218,10 @@
   "@signOut": {
     "description": "Ends the session on this device."
   },
+  "signOutFailed": "Sign-out did not finish on this device. Please try again.",
+  "@signOutFailed": {
+    "description": "Shown when signing out throws. Says DID NOT FINISH rather than 'failed': the session may already be gone on the server while the persisted copy or the per-user state on this device is not, and the honest instruction for both is to try again."
+  },
   "notifications": "Notifications",
   "@notifications": {
     "description": "Settings section for reminders."

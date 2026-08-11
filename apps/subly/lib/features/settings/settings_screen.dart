@@ -737,7 +737,7 @@ class SettingsScreen extends ConsumerWidget {
             SoftButton(
               label: l10n.logOut,
               color: AppColors.danger,
-              onPressed: () => ref.read(authRepositoryProvider).signOut(),
+              onPressed: () => _signOut(context, ref, l10n),
             ),
 
             // ── DELETE ACCOUNT ───────────────────────────────────────────────
@@ -864,6 +864,36 @@ class SettingsScreen extends ConsumerWidget {
         );
   }
 
+  /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
+  /// `onPressed: () => ref.read(authRepositoryProvider).signOut()` — not awaited
+  /// and not caught — while `SecureSessionStorage.removePersistedSession` throws
+  /// ON PURPOSE when it can neither delete the persisted session nor tombstone
+  /// it (a Linux box with no unlocked libsecret collection is the ordinary
+  /// case). The one caller of that deliberate answer threw it away, so the app
+  /// said nothing and the next launch came back signed in.
+  ///
+  /// The message is a SnackBar rather than an inline notice because the app-level
+  /// `ScaffoldMessenger` outlives this route: on a successful sign-out the router
+  /// replaces the page immediately, and on a failed one it does not, so the same
+  /// call has to survive both. The messenger is captured BEFORE the await for the
+  /// same reason.
+  ///
+  /// ⚠️ STILL NO NAVIGATION. The router owns where a signed-out user lands, and
+  /// the note above this button records what happens when a screen tries to own
+  /// it too — `test/sign_out_destination_test.dart` is the standing proof.
+  Future<void> _signOut(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+  ) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      await signOutAndForgetUser(ref);
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.signOutFailed)));
+    }
+  }
+
   Future<void> _contactSupport() async {
     final Uri uri = Uri.parse(
       'mailto:${AppConfig.supportEmail}'
@@ -984,6 +1014,13 @@ class SettingsScreen extends ConsumerWidget {
   ) async {
     final AuthRepository auth = ref.read(authRepositoryProvider);
     final AuthUser? user = auth.currentUser;
+    // 🔴 RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason [userStateDrops]
+    // records: `deleteAccount()` signs out, the router tears this shell down,
+    // and a `ref.read` on the far side of that await throws `StateError` — into
+    // the deliberately empty `catch` below, where nothing can ever observe it.
+    // The forget would have silently done nothing on the one path where the
+    // account it belongs to no longer exists.
+    final List<UserStateDrop> drops = userStateDrops(ref);
     core.AccountDeletionOutcome outcome;
     String? detail;
     try {
@@ -1004,6 +1041,21 @@ class SettingsScreen extends ConsumerWidget {
         // one fact that explains it already thrown away. Parked, not rendered in
         // release: see [lastAccountDeletionDetailProvider].
         detail = '$e';
+      }
+      // BOTH BRANCHES ABOVE, because `deleteAccount` signs out whether or not
+      // the server deleted anything — so the session is gone either way and the
+      // state scoped to it must go too. It matters MORE on the failing branch:
+      // those renewal reminders belong to an account whose rows may already be
+      // destroyed. Below the reauth on purpose — a wrong password deletes
+      // nothing and leaves the user signed in, so there is nothing to forget.
+      try {
+        await forgetSignedInUser(drops);
+      } catch (_) {
+        // 🔴 A FAILED LOCAL CLEAR MUST NOT BECOME THE DELETION'S VERDICT. Let
+        // out, it would reach the outer `catch (_)` below and return
+        // `couldNotReach` over a `deleted` — or over `signInSurvives`, the one
+        // outcome a user can never discover for themselves. What the server did
+        // to the account outranks what this device managed to tidy up.
       }
     } on core.AuthFailure {
       // The provider REFUSED the credentials. Nothing was sent, nothing was
