@@ -39,7 +39,7 @@
 // Exit:   0 = safe to push · 1 = CI would have failed, here is what
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -57,6 +57,12 @@ function run(cmd, args, opts = {}) {
   });
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
+
+const RE_LINES = new RegExp(String.fromCharCode(13) + '?' + String.fromCharCode(10));
+
+// The tree as it was BEFORE any check ran. The last leg compares against this,
+// so it reports what the CHECKS wrote rather than what you were already editing.
+const TREE_AT_START = run('git', ['status', '--porcelain=v1']).out.trim().split(RE_LINES).filter(Boolean);
 
 const results = [];
 function step(name, why, fn) {
@@ -166,8 +172,27 @@ if (!FAST) {
       const env = { PATH: `${pub}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}` };
       const mason = run('mason', ['make', 'app', '-c', 'tooling/bricks/app/_probe_vars.json', '-o', '.', '--on-conflict', 'overwrite'], { env });
       if (mason.code !== 0) return { code: 1, out: `mason stamp failed:\n${mason.out}` };
+      // 🔴 THE FORMAT HALF IS ADVISORY WHEN THE LOCAL SDK IS NOT THE CI PIN, and
+      // that is not caution — it is measured. `dart format`'s output is a
+      // function of the bundled `dart_style`, so a local Flutter that differs
+      // from `flutter-version:` in ci.yml disagrees with CI about files nobody
+      // has touched: on 2026-08-11, local 3.44.7 against the pinned 3.44.9
+      // reported 18 of 26 STAMPED files "changed" on a tree whose CI format leg
+      // was green — including on `main`, with no local edits at all. Hard-failing
+      // on that is a preflight that cries wolf, which is the failure this script
+      // exists to prevent (same calibration as leg 3).
+      const ciPin = (readFileSync(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8')
+        .match(/flutter-version:\s*([0-9.]+)/) || [])[1] ?? null;
+      const localVer = (run('flutter', ['--version']).out.match(/Flutter\s+([0-9.]+)/) || [])[1] ?? null;
+      const skewed = ciPin && localVer && ciPin !== localVer;
       const fmt = run('dart', ['format', '--output=none', '--set-exit-if-changed', 'apps/probe']);
       const dod = run('node', ['tooling/ci/assert-app-dod.mjs']);
+      if (fmt.code !== 0 && skewed) {
+        // Report it, do not fail on it — and say WHY, so nobody "fixes" the
+        // formatting to satisfy a toolchain CI does not use.
+        fmt.code = 0;
+        fmt.out = `⬜ dart format disagrees on the stamped app, but local Flutter ${localVer} != the ci.yml pin ${ciPin}, so this machine's dart_style is not CI's. NOT failed. To make this leg trustworthy, match the pin: flutter version ${ciPin}.\n${fmt.out.split(/\r?\n/).slice(-3).join('\n')}`;
+      }
       // 🔴 THE STAMP MUTATES TWO TRACKED FILES — pubspec.yaml gains apps/probe as
       // a workspace member and sites/_shared/_data/apps.json gains its row. Left
       // behind, a later `git add -A` commits the throwaway probe's registration.
@@ -185,13 +210,24 @@ if (!FAST) {
 // stamp registers a probe). A dirty tree at the end means the thing proven green
 // is not the thing about to be pushed.
 step(
-  'working tree clean (what was tested is what ships)',
-  'assert-guard-coverage rewrites coverage-manifest.json and the stamp edits pubspec.yaml + apps.json. A dirty tree means the verified state and the pushed state differ.',
+  'the checks did not edit the tree behind you',
+  'assert-guard-coverage rewrites coverage-manifest.json and the stamp edits pubspec.yaml + apps.json. Anything a CHECK wrote must be seen and committed deliberately, not carried along unnoticed.',
   () => {
-    const { out } = run('git', ['status', '--porcelain=v1']);
-    return out.trim() === ''
-      ? { code: 0, out: 'clean' }
-      : { code: 1, out: `uncommitted after preflight — commit or revert before pushing:\n${out}` };
+    // 🔴 THE DELTA, NOT THE STATE. The first version of this leg failed whenever
+    // the tree was dirty — which is ALWAYS, because preflight is what you run
+    // BEFORE committing. It would have gone red on every honest run, and a check
+    // that is red every time is a check people stop reading: the same cry-wolf
+    // failure this script's own leg 3 was corrected for, twice in one file.
+    // What it is actually for is narrower and real — several legs above WRITE
+    // (the coverage manifest self-ratchets; the stamp registers a probe in two
+    // TRACKED files) — so it compares against the snapshot taken at start-up and
+    // reports only what THIS RUN changed.
+    const now = run('git', ['status', '--porcelain=v1']).out.trim().split(/\r?\n/).filter(Boolean);
+    const before = new Set(TREE_AT_START);
+    const written = now.filter((l) => !before.has(l));
+    return written.length === 0
+      ? { code: 0, out: `no check wrote to the tree (${now.length} pre-existing change(s) left alone)` }
+      : { code: 1, out: `A CHECK EDITED THESE — review and commit deliberately, or revert:\n${written.join('\n')}` };
   },
 );
 

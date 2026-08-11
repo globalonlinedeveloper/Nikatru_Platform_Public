@@ -935,6 +935,103 @@ void main() {
       );
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // THE GATE MUST GIVE THE DESTINATION BACK, AND MUST NOT CRASH TAKING IT.
+  //
+  // 🔴 WHY THIS GROUP EXISTS. The nightly e2e went red on 2026-08-11 because a
+  // gate ATE the destination: `LoginScreen._submit` ends on `context.go('/scan')`,
+  // the re-acceptance gate intercepted it, and its exit line handed the user to
+  // `/home` — so ScanScreen, the only renderer of `l10n.goToDashboard`, never
+  // mounted. Nothing in this file caught it, because every case here asserted
+  // arrival AT an interstitial and none asserted the destination AFTER one.
+  // A gate is two halves and only one of them was tested.
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('a satisfied gate returns the user to where they were going', () {
+    testWidgets('a banked ?next= is honoured, not replaced by /home', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(auth: _Auth(verified: true));
+      addTearDown(c.dispose);
+      expect(
+        await _settleAt(tester, c, '/reaccept-terms?next=%2Fscan'),
+        '/scan',
+        reason:
+            'the regression verbatim: a user sent to the gate from /scan and '
+            'handed back to /home has lost the journey they were on, and the '
+            'nightly proves it end to end',
+      );
+    });
+
+    testWidgets('with NO next, the fallback still applies', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(auth: _Auth(verified: true));
+      addTearDown(c.dispose);
+      expect(
+        await _settleAt(tester, c, '/reaccept-terms'),
+        '/home',
+        reason:
+            'the old behaviour is the FALLBACK, not the bug — removing it '
+            'would strand anyone who reached the gate directly',
+      );
+    });
+
+    // 🔴 THE CRASH THE FIRST DRAFT OF THIS FIX WOULD HAVE SHIPPED. `next` rides
+    // in a public URL, and `Uri.queryParameters` DECODES THE WHOLE QUERY: an
+    // escape that is well-formed hex but not well-formed UTF-8 raises
+    // FormatException on read, not on parse. The read runs for every signed-in
+    // user who does NOT owe the gate — the common path — so one typed or mailed
+    // link would take the app down for everyone who followed it. Measured
+    // against the real SDK before `_bankedNext` existed; these cases are the
+    // reason it does.
+    testWidgets('a malformed ?next= cannot crash the redirect', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(auth: _Auth(verified: true));
+      addTearDown(c.dispose);
+      for (final String poison in <String>[
+        '/reaccept-terms?next=%FF',
+        '/reaccept-terms?next=%E0%A4%A',
+        // The nastiest shape: the poison is not even in `next`.
+        '/reaccept-terms?a=%ED%A0%80&next=%2Fscan',
+      ]) {
+        expect(
+          await _settleAt(tester, c, poison),
+          '/home',
+          reason:
+              'an undecodable query must degrade to the fallback, never throw '
+              '— a redirect that throws takes the whole app down, and $poison '
+              'is something a stranger can put in a link',
+        );
+      }
+    });
+
+    // The other direction: a `next` must not become an open redirect or a way
+    // to re-open the gate that was just cleared.
+    testWidgets('a hostile ?next= is refused, and lands on the fallback', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(auth: _Auth(verified: true));
+      addTearDown(c.dispose);
+      for (final String hostile in <String>[
+        // Protocol-relative: a browser resolves this OFF-ORIGIN.
+        '/reaccept-terms?next=%2F%2Fevil.test',
+        '/reaccept-terms?next=https%3A%2F%2Fevil.test',
+        // Re-opening a gate the user has just satisfied.
+        '/reaccept-terms?next=%2Freaccept-terms',
+        '/reaccept-terms?next=%2Fverify-email%3Fx%3D1',
+      ]) {
+        expect(
+          await _settleAt(tester, c, hostile),
+          '/home',
+          reason:
+              '`next` is attacker-controlled input on web; $hostile must not '
+              'be honoured',
+        );
+      }
+    });
+  });
 }
 
 /// A repository whose signed-in identity the test can change between

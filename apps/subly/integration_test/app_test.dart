@@ -687,7 +687,16 @@ void main() {
     // The acceptance is written and POSTed, then the router's gate re-runs and
     // replaces this page. Generous, because that round trip is a real network
     // call against the live Worker.
-    await pumpFor(tester, const Duration(seconds: 6));
+    //
+    // 🔴 12s, NOT 6s, AND THE GATE'S `?next=` FIX IS WHY. This window now has
+    // to cover TWO things where it used to cover one: the acceptance round
+    // trip AND the screen the gate hands back. The user no longer lands on
+    // /home but on the destination they were actually going to, and for the
+    // sign-in leg that is /scan — whose progress timer needs 6 × 560ms =
+    // 3.36s to reach `_done` and render 'Go to dashboard' (scan_screen.dart
+    // `_stepCount = 5`). At 6s the assertion below rested on the live Worker
+    // answering inside 2.64s, which is a coin toss wearing a test's clothes.
+    await pumpFor(tester, const Duration(seconds: 12));
     expect(
       find.byKey(ReacceptTermsScreen.acceptButton),
       findsNothing,
