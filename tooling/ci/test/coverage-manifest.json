@@ -98,7 +98,7 @@
   "sink-disclosure.test.mjs": 34,
   "site-integrity.test.mjs": 68,
   "smoke-web-artifact.test.mjs": 8,
-  "snap-submission.test.mjs": 30,
+  "snap-submission.test.mjs": 34,
   "snapcraft-generable.test.mjs": 66,
   "stamp-brand-assets.test.mjs": 11,
   "stamp-platforms.test.mjs": 27,
