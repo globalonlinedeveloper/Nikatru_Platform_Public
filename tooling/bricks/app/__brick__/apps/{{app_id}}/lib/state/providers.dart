@@ -1322,6 +1322,19 @@ Future<void> signOutAndForgetUser(WidgetRef ref) async {
 final Provider<AuthCapabilities> authCapabilitiesProvider =
     Provider<AuthCapabilities>((ref) => AuthCapabilities.current());
 
+/// Which federated providers the SERVER will accept — the other half of the
+/// question [authCapabilitiesProvider] answers, and the half that was missing.
+///
+/// A provider rather than a bare constant read at the call site so a test can
+/// override it and drive BOTH arms of the gate. That is not ceremony: every
+/// row of `AuthCapabilities.forPlatform` except fuchsia says `oauthRedirect:
+/// true`, so with the platform axis alone the "button is hidden" case is
+/// unreachable on anything this portfolio ships, and an assertion that cannot
+/// fail is worse than none.
+final Provider<AuthProviders> authProvidersProvider = Provider<AuthProviders>(
+  (ref) => AuthProviders.configured,
+);
+
 /// Turns the auth stream into something `GoRouter` will listen to.
 ///
 /// 🔴 [pipeline C-13] WITHOUT THIS, SIGNING IN LEAVES THE USER ON THE FORM.

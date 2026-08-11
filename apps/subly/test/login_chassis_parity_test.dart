@@ -35,12 +35,23 @@
 //     would be asserting a branch no shipping target takes — an assertion that
 //     cannot fail on anything the portfolio builds for. Overriding the provider
 //     drives BOTH arms, which is what makes the false arm capable of going red.
+//
+//     ⚠️ AND THE FIRST VERSION OF THAT FIX STILL DID NOT HIDE THE BUTTON.
+//     `caps.oauthRedirect` is a fact about the PLATFORM; whether Supabase will
+//     honour `provider=apple` is a fact about the SERVER, and gating one on the
+//     other hid the button on fuchsia alone — i.e. on nothing this portfolio
+//     ships. The 400 survived the fix that was written for it. `AuthProviders`
+//     is the missing axis, measured 2026-08-11 against
+//     `GET /auth/v1/settings` (every `external` key false but `email`), and the
+//     two groups below now pin the two conditions SEPARATELY — a platform that
+//     cannot redirect, and a server that will not honour the provider — so
+//     neither can silently stand in for the other again.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
-    show AuthCapabilities;
+    show AuthCapabilities, AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/core/e2e_keys.dart';
 import 'package:subly/features/auth/login_screen.dart';
@@ -96,10 +107,19 @@ const AuthCapabilities kWithRedirect = AuthCapabilities(
   note: '',
 );
 
+/// Both providers off — what the live project actually answers today.
+const AuthProviders kNoProviders = AuthProviders(apple: false, google: false);
+
+/// Apple switched on at the identity server. No shipping build sees this yet;
+/// it exists so the "the button comes back" arm is REACHABLE, which is the only
+/// thing that stops the arm above from passing by deletion.
+const AuthProviders kAppleEnabled = AuthProviders(apple: true, google: false);
+
 Future<void> pumpLogin(
   WidgetTester tester, {
   core.AuthRepository? auth,
   AuthCapabilities? caps,
+  AuthProviders? providers,
 }) => pumpAt(
   tester,
   kPhone,
@@ -107,6 +127,7 @@ Future<void> pumpLogin(
   overrides: <Override>[
     if (auth != null) authRepositoryProvider.overrideWithValue(auth),
     if (caps != null) authCapabilitiesProvider.overrideWithValue(caps),
+    if (providers != null) authProvidersProvider.overrideWithValue(providers),
   ],
 );
 
@@ -227,7 +248,7 @@ void main() {
     testWidgets('a platform that cannot redirect is not offered it', (
       WidgetTester tester,
     ) async {
-      await pumpLogin(tester, caps: kNoRedirect);
+      await pumpLogin(tester, caps: kNoRedirect, providers: kAppleEnabled);
 
       expect(
         find.text(en.continueWithApple),
@@ -248,7 +269,7 @@ void main() {
     testWidgets('a platform that CAN still gets it — gated, not deleted', (
       WidgetTester tester,
     ) async {
-      await pumpLogin(tester, caps: kWithRedirect);
+      await pumpLogin(tester, caps: kWithRedirect, providers: kAppleEnabled);
 
       expect(
         find.text(en.continueWithApple),
@@ -258,6 +279,71 @@ void main() {
             'yes; deleting it would have made the case above pass forever',
       );
       expect(find.text(en.orDivider), findsOneWidget);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // THE AXIS THE PLATFORM GATE COULD NOT SEE.
+  //
+  // Every case above pins a fact about the DEVICE. None of them can fail while
+  // the identity server refuses the provider, because the screen never asked
+  // the server anything. That is the gap the 400 lived in.
+  group('Continue with Apple is also SERVER-gated', () {
+    testWidgets('a capable platform is NOT offered a disabled provider', (
+      WidgetTester tester,
+    ) async {
+      await pumpLogin(tester, caps: kWithRedirect, providers: kNoProviders);
+
+      expect(
+        find.text(en.continueWithApple),
+        findsNothing,
+        reason:
+            'THE DEFECT THE PLATFORM GATE DID NOT FIX: android/iOS can complete '
+            'the redirect, so the platform arm says show it — and Supabase '
+            'answers 400 "provider is not enabled". A button that cannot '
+            'succeed must not be offered',
+      );
+      expect(
+        find.text(en.orDivider),
+        findsNothing,
+        reason: 'the divider goes with it, or "or" captions nothing',
+      );
+    });
+
+    testWidgets('THE SHIPPING DEFAULT hides it — no overrides at all', (
+      WidgetTester tester,
+    ) async {
+      // 🔴 THE ONE CASE THAT IS ABOUT REAL USERS. Everything else in this file
+      // overrides something; this pumps the screen exactly as a build does, so
+      // it asserts what a person actually sees. It fails the moment
+      // `AuthProviders.configured` claims a provider the server has not been
+      // told about — which is the mistake that would put the 400 back.
+      await pumpLogin(tester, caps: kWithRedirect);
+
+      expect(
+        find.text(en.continueWithApple),
+        findsNothing,
+        reason:
+            'measured 2026-08-11: GET /auth/v1/settings returns every external '
+            'provider false. While that is true, no shipping build may render '
+            'this button on any platform',
+      );
+    });
+
+    testWidgets('the declaration matches the measured live project', (
+      WidgetTester tester,
+    ) async {
+      // Pins the constant itself, so flipping it is a deliberate act that
+      // shows up in review rather than a quiet edit inside a widget tree.
+      // `verify-auth-providers.mjs` is the other half: this asserts what we
+      // DECLARED, that asserts the server still AGREES.
+      expect(AuthProviders.configured.apple, isFalse);
+      expect(AuthProviders.configured.google, isFalse);
+      expect(
+        AuthProviders.configured.any,
+        isFalse,
+        reason: 'no federated provider is enabled, so the whole limb is hidden',
+      );
     });
   });
 }

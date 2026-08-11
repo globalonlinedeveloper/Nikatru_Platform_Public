@@ -63,6 +63,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     // ([pipeline C-7]). Offering an OAuth button on a platform that cannot
     // complete the redirect is promising something the app cannot deliver.
     final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);
+    // …and whether the SERVER will accept the provider at all, which the
+    // capability matrix does not describe. Both must be true; see below.
+    final AuthProviders providers = ref.watch(authProvidersProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.signInTitle)),
@@ -111,13 +114,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 onPressed: _busy ? null : () => _forgot(auth, l10n),
                 child: Text(l10n.forgotPassword),
               ),
-              // Only where the platform can actually complete a redirect.
-              if (caps.oauthRedirect) ...<Widget>[
+              // 🔴 TWO CONDITIONS, BECAUSE THERE ARE TWO INDEPENDENT FACTS.
+              // Only where the platform can actually complete a redirect —
+              // AND only where the identity server will honour the provider.
+              // `caps.oauthRedirect` alone is true on every row but fuchsia,
+              // so on its own it gates nothing a stamped app ships to; a
+              // disabled provider still answers 400 and the button still lies.
+              // See `AuthProviders` for the live probe behind the declaration.
+              if (caps.oauthRedirect && providers.any) ...<Widget>[
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _run(auth.signInWithApple),
-                  child: Text(l10n.continueWithApple),
-                ),
+                if (providers.apple)
+                  OutlinedButton(
+                    onPressed: _busy ? null : () => _run(auth.signInWithApple),
+                    child: Text(l10n.continueWithApple),
+                  ),
               ],
               const SizedBox(height: 16),
               TextButton(

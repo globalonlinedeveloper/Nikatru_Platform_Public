@@ -1283,7 +1283,10 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // and `COVERAGE LOST` stopped firing entirely. The negative test went green by
 // losing the thing it tests. A floor that lags the tree is a floor with slack,
 // and slack is indistinguishable from absence until something is deleted.
-const MIN_DOMAIN = 56;
+// 2026-08-11: 56 → 57 with `authProvidersProvider`. Raised IN THE SAME COMMIT
+// as the provider, which is the only way this floor stays a floor — the note
+// above records what it costs to defer it.
+const MIN_DOMAIN = 57;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1295,6 +1298,11 @@ const COVERED_BY = {
   authTokenProvider: 'auth-seam-wired',
   restClientProvider: 'auth-seam-wired',
   authCapabilitiesProvider: 'auth-seam-wired',
+  // The OTHER axis of the same question, and the one whose absence shipped a
+  // dead "Continue with Apple" to every user: what the PLATFORM can do vs what
+  // the SERVER will honour. Driven by the same property, which reads the
+  // declaration and asserts the stamp offers exactly the providers it declares.
+  authProvidersProvider: 'auth-seam-wired',
   // Driven, not constructed: the property delivers a real recovery event through
   // the real repository and asserts the app moves to the reset screen with
   // nothing having navigated — then types a password and asserts the seam got

@@ -403,6 +403,86 @@ jobs:
           fi
           exit "$code"
 
+  # ── [pipeline 11]E-9 · [14]O-6 · THE LIVE HALF, NOW ON A CADENCE ────────────
+  #
+  # 🔴 THESE FOUR WERE SESSION-ONLY FOR ONE REASON, AND IT IS GONE.
+  # `SESSION_BOOTSTRAP.md` step 7 called them "THE ONLY PLACE THEY WILL EVER RUN"
+  # and both headers said so: automatable once `GLITCHTIP_TOKEN` is a repository
+  # secret (OWNER_QUEUE `S-8`). It became one at 2026-08-11T16:55:34Z. Until
+  # then the alarm chain of this entire portfolio was verified BY HAND, ON ONE
+  # LAPTOP, which is the same shape as a guard that stopped guarding: it holds
+  # only while somebody remembers to perform it, and nothing anywhere reports
+  # that nobody did.
+  #
+  # ⚠️ WHY HERE AND NOT `ci.yml`. ci.yml gates every push, including from forks,
+  # and holds no network credential — by its own design, not by omission. A limb
+  # needing a token would have to SKIP there, and a skipped check reports ok,
+  # which is the precise defect this repository keeps paying for. This workflow
+  # is the opposite shape: scheduled, gating nothing, no `push` or
+  # `pull_request` trigger so it never runs on a fork PR, and already trusted
+  # with five credentials.
+  #
+  # ⚠️ NO SECRET-PRESENCE BRANCH, for the same reason `supabase-drift` has none
+  # (see its note above, and its first scheduled run opening issue #151): a run
+  # that discovers it cannot do its job and then reports success is a green tick
+  # over an unchecked instance. Each script's exit 2 IS "I could not look", and
+  # it fails.
+  #
+  # ⛔ NEVER ADD `--self-test` TO THIS JOB. Three of these MUTATE the live
+  # instance and restore in a `finally` — an unattended run that dies mid-test
+  # leaves a real alarm chain disarmed. Self-tests are for a human changing the
+  # guard, at a keyboard.
+  glitchtip:
+    name: The live ops half — monitors, alarm chains, provider parity, GCP scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # 🔴 EVERY STEP RUNS EVEN IF AN EARLIER ONE FAILED (`if: always()`), and
+      # that is deliberate. These four check four unrelated things; stopping at
+      # the first red would turn "monitors drifted" into "the other three were
+      # never looked at", and a run that checked one thing reads on the summary
+      # page exactly like a run that checked four.
+      - name: The register still matches the live GlitchTip monitors
+        env:
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+        run: node tooling/ops/verify-monitors.mjs
+
+      - name: …and every monitor can still reach a mailbox
+        if: always()
+        env:
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+        run: node tooling/ops/verify-alarm-chains.mjs
+
+      # Needs no GlitchTip token: it reads the publishable key, which is what the
+      # app itself ships with. Catches an OAuth provider being switched on or off
+      # in the Supabase dashboard while `AuthProviders.configured` says otherwise
+      # — in EITHER direction. Declared-on/server-off ships a button that 400s;
+      # declared-off/server-on hides a provider the owner paid to stand up.
+      - name: The app's federated-provider declaration matches the live project
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node tooling/ops/verify-auth-providers.mjs
+
+      # [ADR 033]'s fail-closed half. The key comes from the env here because a
+      # runner has no `.claude/`; the script asserts the key's own
+      # `client_email` is the account ADR 033 is about, so a swapped secret
+      # fails loudly instead of proving a 403 about somebody else.
+      - name: The store service account is still powerless on GCP
+        if: always()
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: node tooling/ops/verify-free-api-scope.mjs
+
   # ── Alerting ────────────────────────────────────────────────────────────────
   # Copied from e2e.yml's `alert` job, which is the shape that works here: ONE
   # durable issue, reused, never auto-closed. A notification is read once and
@@ -442,7 +522,8 @@ jobs:
     # Leaving it out would have made B-17's monitor the one reader in this file
     # whose red nobody is told about — a check that runs, fails, and is read by
     # no one is the same as no check, which is B-17's own subject.
-    needs: [heartbeats, status, supabase-drift, prod-provenance, runner-budget]
+    needs:
+      [heartbeats, status, supabase-drift, prod-provenance, runner-budget, glitchtip]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 5

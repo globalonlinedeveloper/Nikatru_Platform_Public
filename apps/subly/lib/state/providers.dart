@@ -77,6 +77,7 @@ import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show
         AuthCapabilities,
+        AuthProviders,
         InMemoryAuthRepository,
         SupabaseAuthRepository,
         passwordResetArrivalOf,
@@ -973,6 +974,19 @@ Future<void> signOutAndForgetUser(WidgetRef ref) async {
 /// Ask before promising the user something the platform cannot deliver.
 final Provider<AuthCapabilities> authCapabilitiesProvider =
     Provider<AuthCapabilities>((ref) => AuthCapabilities.current());
+
+/// Which federated providers the SERVER will accept — the other half of the
+/// question [authCapabilitiesProvider] answers, and the half that was missing.
+///
+/// A provider rather than a bare constant read at the call site so a test can
+/// override it and drive BOTH arms of the gate. That is not ceremony: every
+/// row of `AuthCapabilities.forPlatform` except fuchsia says `oauthRedirect:
+/// true`, so with the platform axis alone the "button is hidden" case is
+/// unreachable on anything this portfolio ships, and an assertion that cannot
+/// fail is worse than none.
+final Provider<AuthProviders> authProvidersProvider = Provider<AuthProviders>(
+  (ref) => AuthProviders.configured,
+);
 
 /// The signed-in user as a STREAM, so a screen showing their details updates
 /// when those details change.
