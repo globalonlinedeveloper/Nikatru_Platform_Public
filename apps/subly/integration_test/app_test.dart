@@ -109,9 +109,9 @@ void main() {
   /// for one instance of that class (a modal `ModalBarrier`); this is the other,
   /// and it cost the nightly two red nights.
   ///
-  /// 🔬 WHAT HAPPENED, 2026-08-03 → 2026-08-04. `app_shell.dart` draws the
+  /// 🔬 WHAT HAPPENED, 2026-08-03 → 2026-08-04. `app_shell.dart` DREW the
   /// navigation bar as a FLOATING `Positioned` inside a `Stack`, over the branch
-  /// content — so the bottom ~86px of every scroll view is inside the viewport
+  /// content — so the bottom ~86px of every scroll view was inside the viewport
   /// but underneath an opaque bar. `scrollUntilVisible` finishes with
   /// `Scrollable.ensureVisible`, which scrolls the MINIMUM needed to bring the
   /// target inside the viewport RECT and knows nothing about what is painted on
@@ -126,6 +126,14 @@ void main() {
   /// stopping short at max-scroll. Nothing about signing out changed, which is
   /// why `test/sign_out_destination_test.dart` stayed green throughout — it
   /// mounts a 1200x4000 surface where nothing is ever occluded.
+  ///
+  /// ⚠️ THAT PARTICULAR OCCLUDER IS GONE; THE CLASS OF FAILURE IS NOT. P2.6a
+  /// (#217) docked the shell into the chassis `AppScaffold`, which delivers the
+  /// pill through `bottomNavigationBar` — a layout SLOT, so the body is now
+  /// measured above it and no scroll view ends underneath it. The FAB did not
+  /// move: `Scaffold` still paints it over the body. This helper therefore stays,
+  /// and stays a HIT TEST rather than a question about a widget type, which is
+  /// the only reason it needed no edit when the bar changed shape.
   ///
   /// So: keep scrolling while the control is occluded, and if it can never be
   /// reached, SAY WHAT IS ON TOP OF IT rather than blaming the button.
@@ -185,8 +193,8 @@ void main() {
     String what, {
     Finder? scrollable,
   }) async {
-    // A control resting under the floating bar only needs the list driven a
-    // little further — the scroll views carry enough bottom padding (108px on
+    // A control resting under the FAB only needs the list driven a little
+    // further — the scroll views carry enough bottom padding (108px on
     // Settings) to clear it, so this terminates on a real layout.
     if (!reaches(finder) && scrollable != null) {
       for (int i = 0; i < 15 && !reaches(finder); i++) {
@@ -203,10 +211,11 @@ void main() {
           'top of its centre point, and the tap would go there instead, '
           'silently. At that point the hit test finds: '
           '${occluders(finder).join(' → ')}. '
-          'The usual cause is the floating navigation bar or FAB in '
-          'app_shell.dart: they are Positioned siblings ABOVE the branch '
-          'content in a Stack, so the bottom ~86px of any scroll view is inside '
-          'the viewport but not tappable.',
+          'The usual cause is the FAB in app_shell.dart: Scaffold paints it '
+          'OVER the body, so a control at the bottom of a scroll view can be '
+          'inside the viewport and still not tappable. (The nav pill was the '
+          'other cause until #217 handed it to AppScaffold as a '
+          'bottomNavigationBar — a layout slot, not an overlay.)',
     );
     await tester.tap(finder);
   }
@@ -1275,10 +1284,13 @@ void main() {
       delta: 200,
     );
     await shot('19a-delete-control');
-    // The floating navigation bar in app_shell.dart sits OVER the bottom ~86px
-    // of this scroll view, and "Delete account" is the last control in it — the
-    // exact geometry that swallowed two nights of "Log out" taps. Never a bare
-    // tester.tap() here.
+    // "Delete account" is the LAST control in this scroll view, which is the
+    // position the FAB in app_shell.dart is painted over — `Scaffold` draws it
+    // above the body, so a control can be inside the viewport and still not
+    // tappable. Same class of failure that swallowed two nights of "Log out"
+    // taps, different occluder: the nav pill was the cause then, and since #217
+    // it arrives through `AppScaffold`'s `bottomNavigationBar`, a layout slot
+    // that the body is measured above. Never a bare tester.tap() here.
     await tapWhenHittable(
       tester,
       deleteButton,

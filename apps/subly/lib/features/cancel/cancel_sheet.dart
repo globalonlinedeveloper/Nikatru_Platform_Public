@@ -105,13 +105,20 @@ Future<void> showCancelSheet(BuildContext context, Subscription sub) {
     // 🔴 THE SHEET HAS TWO CALLERS ON DIFFERENT NAVIGATOR LEVELS, and without
     // this they mount on different navigators. `insights_screen.dart` calls
     // from inside a shell BRANCH navigator, so the modal scrim covered only the
-    // branch — AppShell's floating pill is a later `Stack` child and drew OVER
-    // the scrim, and under the chassis rail/drawer the same call would dim only
+    // branch — and under the chassis rail/drawer the same call would dim only
     // the body pane beside the rail. `subscription_detail_screen.dart` calls
     // from the ROOT and scrims the whole window. One destructive confirmation
     // that dims different amounts of the app depending on where it was opened
     // from is not a style difference: the scrim is what says "answer this
     // first", and a nav bar left live above it is a way out of the question.
+    //
+    // ⚠️ RETRACTED 2026-08-11: this said the branch scrim was drawn over by
+    // "AppShell's floating pill … a later `Stack` child". That WAS true and is
+    // not — the pill is handed to `AppScaffold` through the
+    // `compactNavigationBar` seam (`app_shell.dart:206`) and lands in its
+    // `bottomNavigationBar` slot, so it is no longer a sibling in the body
+    // `Stack`. The REASON to pin the root is unchanged and never depended on
+    // the pill: a branch navigator scrims only its own branch.
     //
     // Pinning it to the root unifies both. The dismiss paths are unaffected —
     // `Navigator.of(context)` inside the sheet resolves from the SHEET's own

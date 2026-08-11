@@ -224,7 +224,7 @@ if (WRAPPED.size < MIN_WRAPPED) {
 // switched off. Anything NEW fails immediately.
 const KNOWN_BYPASSES = {
   'apps/subly|flutter_local_notifications':
-    '2026-07-28 · Subly predates the notifications adapter and does not depend on nikatru_notifications at all — it rolled its own NotificationService. The straightest of the three bypasses.',
+    '2026-07-28 · Subly rolled its own NotificationService before any adapter existed and still owns every SCHEDULING call — `lib/services/notifications/notification_service.dart` is the file importing the plugin directly. ⚠️ CORRECTED 2026-08-11: this entry read "does not depend on nikatru_notifications at all", and [13]T-9 had already made that false. The adapter IS declared (apps/subly/pubspec.yaml) and imported by four lib files — main.dart, state/providers.dart, features/home/home_screen.dart, features/settings/settings_screen.dart — for the tap callback the fork never had. So the bypass is HALF of what it was written as: the inbound half goes through the seam, the scheduling half is still the fork. A waiver that overstates its own scope is the same defect as one that no longer applies.',
   'apps/subly|timezone':
     '2026-07-28 · same NotificationService; timezone arrives with flutter_local_notifications and leaves with it.',
   // 🪦 `apps/subly|supabase_flutter` LIVED HERE AND IS RESOLVED, NOT MOVED.

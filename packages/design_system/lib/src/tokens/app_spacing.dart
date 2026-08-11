@@ -1,8 +1,6 @@
-import 'package:flutter/widgets.dart';
-
 // `AppBreakpoints` is shown for the doc references below — the page gutter and
 // the body cap are two halves of one decision and should link to each other.
-import '../widgets/app_scaffold.dart' show AppBreakpoints, WindowClass;
+import '../widgets/app_scaffold.dart' show AppBreakpoints;
 
 /// Spacing scale (4-pt base grid) shared across NIKATRU apps.
 class AppSpacing {
@@ -38,62 +36,51 @@ class AppSpacing {
   /// looking like a crop.
   static const double gutterLarge = 32;
 
-  /// The page inset for a window class — one decision, inherited, instead of a
-  /// hand-picked `EdgeInsets.all(…)` per screen.
-  ///
-  /// 🔴 THE BOTTOM INSET IS ZERO WHENEVER THE NAVIGATION IS A RAIL OR DRAWER,
-  /// and that asymmetry is the substance of this function rather than a
-  /// rounding error. In the compact class the body sits directly on top of a
-  /// bottom [NavigationBar]; without an inset the last row of content touches
-  /// the bar and reads as part of it. From `medium` upward the navigation moves
-  /// to the SIDE, so the bottom edge of the body is the bottom edge of the
-  /// window — and a fixed inset there is subtracted from the scrollable extent
-  /// of whatever the page put inside, producing a dead stripe under the last
-  /// item that looks exactly like "the list ended". A scrolling body knows how
-  /// much room its own last item needs; the chassis does not, so at those
-  /// widths it hands the bottom edge back.
-  ///
-  /// Per class — the table is the contract, so a change here is visible in a
-  /// diff rather than distributed across screens:
-  ///
-  /// | class      | left/right | top | bottom |
-  /// |------------|-----------:|----:|-------:|
-  /// | compact    |         18 |  18 |     18 |
-  /// | medium     |         18 |  18 |      0 |
-  /// | expanded   |         24 |  18 |      0 |
-  /// | large      |         32 |  24 |      0 |
-  /// | extraLarge |         32 |  24 |      0 |
-  ///
-  /// The top inset grows a step later than the sides because vertical space is
-  /// the scarce one: a wider window is usually not a taller window.
-  static EdgeInsets pagePadding(WindowClass windowClass) {
-    switch (windowClass) {
-      case WindowClass.compact:
-        return const EdgeInsets.all(gutterCompact);
-      case WindowClass.medium:
-        return const EdgeInsets.fromLTRB(
-          gutterCompact,
-          gutterCompact,
-          gutterCompact,
-          0,
-        );
-      case WindowClass.expanded:
-        return const EdgeInsets.fromLTRB(
-          gutterExpanded,
-          gutterCompact,
-          gutterExpanded,
-          0,
-        );
-      case WindowClass.large:
-      case WindowClass.extraLarge:
-        return const EdgeInsets.fromLTRB(
-          gutterLarge,
-          gutterExpanded,
-          gutterLarge,
-          0,
-        );
-    }
-  }
+  // 🪦 `pagePadding(WindowClass)` LIVED HERE AND WAS DELETED 2026-08-11, NOT
+  // MOVED. It shipped with #207 beside `ContentPane` and the
+  // `compactNavigationBar` seam, and unlike those two it never acquired a
+  // production call site: at deletion it was reachable only from its own unit
+  // test, which is apparent coverage over a function nothing calls.
+  //
+  // 🔑 IT WAS NOT DELETED FOR BEING UNUSED — IT WAS DELETED BECAUSE NOTHING
+  // HANDS A SCREEN ITS PARAMETER, AND THE OBVIOUS RE-DERIVATION IS SILENTLY
+  // WRONG. `windowClassFor` has exactly ONE production call site
+  // (`app_scaffold.dart:178`, inside [AppScaffold]'s own `LayoutBuilder`) and
+  // the class it resolves is never passed down; every other reference that
+  // CALLS it is a test. (Two mention it in prose without calling it — the
+  // brick's `web/index.html:30` and this repo's session notes — which is worth
+  // stating precisely, because the sentence this one replaced was rejected for
+  // exactly this kind of one-clause overreach.) A screen that re-derived it
+  // from ITS OWN constraints — a
+  // `LayoutBuilder` inside the pane, which is the natural way to reach for it —
+  // gets the WRONG answer with no error, because every page here sits inside a
+  // `ContentPane` capped at `kMaxBodyWidth`: on a 1920 window the pane hands
+  // down 1280, which resolves to `large`, and the page would take a 32px gutter
+  // and a ZERO bottom inset while a bottom navigation bar was still under it.
+  //
+  // ⚠️ THE FUNCTION IS NOT UNREACHABLE, and saying so would be a fresh false
+  // claim in a permanent tombstone. It is a public top-level function whose own
+  // doc says "Public and pure on purpose", `app_scaffold.dart` is exported from
+  // the barrel, and apps/subly's tests already call it through that barrel — so
+  // any screen CAN write `windowClassFor(MediaQuery.sizeOf(context).width)` and
+  // get the correct class, because MediaQuery reports the WINDOW rather than the
+  // pane's constraints. That route is available; nothing takes it, and no
+  // deleted function is what stops the next screen from taking it.
+  //
+  // What the pages actually hand-roll is ONE fixed inset, not a per-class table
+  // — `fromLTRB(gutterCompact, gutterCompact, gutterCompact, xl)` in home,
+  // calendar, insights and budget — and its bottom is 24, not the 18 this
+  // function returned for `compact`. Substituting it would have been a visible
+  // repaint dressed as a refactor.
+  //
+  // ⚠️ THIS ORPHANS [gutterExpanded] AND [gutterLarge], measured rather than
+  // assumed: `pagePadding` was their only reader, so both now have ZERO
+  // consumers, against five for [gutterCompact]. They are kept anyway, and the
+  // reason is not sentiment — `sm`, `md`, `xxl` and `xxxl` have zero consumers
+  // too, because a spacing SCALE is a declared ladder that screens pick rungs
+  // from, and an unused rung costs nothing and forecloses nothing. The function
+  // was different in kind: a constant is one any caller can use, this was one no
+  // caller could call correctly.
 }
 
 /// Corner-radius scale.

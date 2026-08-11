@@ -126,11 +126,19 @@ class SettingsScreen extends ConsumerWidget {
     // rendered inside `AppShell`'s Scaffold.
     //
     // The AppBar is DROPPED and the background made transparent because this
-    // screen is a BRANCH of `AppShell`, which paints `AppColors.bg` and floats
-    // its own nav bar over the content. An opaque nested Scaffold would repaint
-    // the shell's background and an AppBar would land on top of the demo-data
-    // banner. The stamp's `l10n.settingsTitle` is not lost — it is the in-list
-    // heading below, which is where Subly has always drawn it.
+    // screen is a BRANCH of `AppShell`, which paints `AppColors.bg` behind every
+    // branch. An opaque nested Scaffold would repaint the shell's background and
+    // an AppBar would land on top of the demo-data banner. The stamp's
+    // `l10n.settingsTitle` is not lost — it is the in-list heading below, which
+    // is where Subly has always drawn it.
+    //
+    // ⚠️ THIS SENTENCE USED TO END "and floats its own nav bar over the
+    // content", and that stopped being true at #217: `AppShell` now hands the
+    // pill to `AppScaffold` as a `bottomNavigationBar`, a layout SLOT the body
+    // is measured above, so nothing of this screen is drawn under it. The
+    // transparency argument survives the correction unchanged — it is about the
+    // BACKGROUND, not the bar — which is exactly why nothing went red when the
+    // claim went stale.
     return Scaffold(
       backgroundColor: Colors.transparent,
       // 🔴 NO `padding:` ON THE PANE. `responsive_width_test` asserts the

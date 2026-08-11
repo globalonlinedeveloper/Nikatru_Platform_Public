@@ -130,10 +130,18 @@ class _HomeDashboard extends ConsumerWidget {
       // agreeing only past 1600 — the identical argument the stamped settings
       // screen records at its own `ContentPane`.
       //
-      // ⬜ NOT YET POLICED. `test/responsive_width_test.dart` covers onboarding,
-      // settings and manage-plan; it has NO HomeScreen group. The block that
-      // would close that is written out in `width-behaviour.md` §4 — until it
-      // lands, this wrapper can be deleted with every test still green.
+      // ✅ POLICED SINCE #239 by `test/width_home_test.dart` — the file this
+      // comment used to ask for by name. Deleting this wrapper now fails all
+      // FIVE of its cases (375 · 768 · 1280 · 1920 · 1500) on the harness's
+      // `inPane` guard; widening the cap fails the 1920 and 1500 ones. 1500 is
+      // the durable case: it sits in `AppScaffold`'s LARGE class, which caps
+      // nothing, so a green there is this pane's doing and nobody else's.
+      //
+      // ⚠️ FIVE, RE-MEASURED 2026-08-11, NOT COPIED. This sentence said "all
+      // three" — true when written, false once #289 added the 768 and 1280
+      // cases. Deleting the wrapper was re-run against the real tree: 5 of 5
+      // fail on `inPane`, with `flutter analyze` held at its 28-issue baseline
+      // so the red is an assertion rather than a compile error.
       child: ListView(
         // 🔀 MERGE CHANGE 3 of 4 — PADDING RE-BASED FOR THE CHASSIS SHELL.
         // Live was `fromLTRB(18, 58, 18, 108)`. Both odd numbers were paying for

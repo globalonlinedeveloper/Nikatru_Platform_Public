@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME · WIDTH — the assertion `home_screen.dart` asked for BY NAME.
 //
-// That file's `ContentPane` carries the comment `⬜ NOT YET POLICED`: "until it
+// That file's `ContentPane` carried the comment `⬜ NOT YET POLICED`: "until it
 // lands, this wrapper can be deleted with every test still green". This file is
-// what lands. The block below is the one pre-drafted in
+// what landed, and that comment now reads `✅ POLICED` and points here. The
+// block below is the one pre-drafted in
 // `knowledge/plans/prefab-artifacts/p26b-home/width-behaviour.md` §4, with its
 // imports adapted to `support/width_harness.dart` (the harness was extracted
 // from `responsive_width_test.dart` after that draft was written, so the draft's
@@ -30,9 +31,16 @@
 //     → 1920 fails `Expected <1280.0> Actual <1920.0>`, 1500 fails
 //       `<1500.0> is not <= <1280.0>`, and 375 stays GREEN — which is correct,
 //       375 is the no-op case and is not supposed to be able to fail;
-//   · pane deleted outright → all three fail on the harness's `inPane` guard
+//   · pane deleted outright → all FIVE fail on the harness's `inPane` guard
 //     with its named reason ("this screen has no ContentPane at all…"), which
 //     is the whole-pane regression, not the mis-set-cap one.
+//
+// ⚠️ "all three" until 2026-08-11, and it went stale IN PLACE: #289 added the
+// 768 and 1280 cases, and a count written into a comment does not recompute.
+// Re-measured against the real tree — 5 of 5 fail on `inPane`, `flutter
+// analyze` held at the 28-issue baseline so the red is an assertion and not a
+// compile error. (The first attempt at that mutation WAS a compile error, 36
+// issues and a failure at load: the count is what distinguishes them.)
 //
 // The 1500 case is kept and still named as THE case, because it is the one that
 // survives the screen being re-parented under a scaffold that caps at
