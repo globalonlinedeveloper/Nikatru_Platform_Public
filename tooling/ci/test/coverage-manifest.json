@@ -109,7 +109,7 @@
   "store-metadata.test.mjs": 69,
   "submission-safety.test.mjs": 20,
   "supabase-templates.test.mjs": 17,
-  "sworn-store-files.test.mjs": 29,
+  "sworn-store-files.test.mjs": 32,
   "text-reductions.test.mjs": 28,
   "update-coverage.test.mjs": 28,
   "vendor-portability.test.mjs": 19,
