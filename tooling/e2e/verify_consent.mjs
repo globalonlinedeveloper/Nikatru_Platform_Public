@@ -22,8 +22,17 @@
 // loop, and asserts the row the run's own tap should have written:
 //
 //   · at least one row for (app_id, anon_id)      — the upload reached D1
-//   · the newest row has `granted = 0`            — the suite taps "No thanks",
-//     and the decision that arrived is the decision that was made
+//   · at least one row has purpose='analytics'    — the run was asked about
+//     analytics, so its answer must be IN the trail
+//   · the newest ANALYTICS row has `granted = 0`  — the suite taps "No thanks",
+//     and the decision that arrived is the decision that was made.
+//     ⚠️ PER-PURPOSE, since 2026-08-11. This said "the newest row" and read
+//     `rows[0]` across every purpose. The same install also ACCEPTS TERMS at the
+//     re-acceptance gate — legitimately `granted = 1`, and written LATER — so
+//     the assertion picked up a terms acceptance and reported the consent leg
+//     broken against production. A trail is per-purpose by construction; an
+//     assertion over it that does not name its purpose is comparing two answers
+//     to two different questions.
 //   · `policy_version` is non-empty               — a record of a tap with no
 //     record of what was shown proves nothing
 //   · `platform = 'web'`                          — the envelope is the drive's
@@ -156,10 +165,38 @@ if (rows !== null && rows.length === 0) {
   );
   worse(1);
 } else if (rows !== null) {
-  const newest = rows[0];
+  // 🔴 THE NEWEST *ANALYTICS* ROW, NOT THE NEWEST ROW. This read `rows[0]` and
+  // asserted `granted = 0` on it — but this install writes MORE THAN ONE
+  // PURPOSE. The suite declines analytics and then ACCEPTS TERMS at the
+  // re-acceptance gate, and the terms row is legitimately `granted = 1` and
+  // lands LATER, so `rows[0]` is a terms acceptance and the assertion read it as
+  // "the decision that arrived is not the decision that was made".
+  //
+  // It went unnoticed because this step had never run to completion: the leg it
+  // sits behind was failing first, so the step was SKIPPED, and a skipped step
+  // is not a passing one. It surfaced the moment the earlier failure was fixed.
+  //
+  // 📌 A consent trail is per-PURPOSE by construction — that is what makes it a
+  // trail rather than a flag — so any assertion over it has to name the purpose
+  // it is about. Asserting on "the newest row" conflates two answers to two
+  // different questions.
+  const ANALYTICS = 'analytics';
+  const analyticsRows = rows.filter((r) => r.purpose === ANALYTICS);
   console.log(
-    `consent artifacts for this install: ${rows.length} — newest: ` +
-      `purpose=${newest.purpose} granted=${newest.granted} policy_version=${newest.policy_version} ` +
+    `consent artifacts for this install: ${rows.length} ` +
+      `(purposes: ${[...new Set(rows.map((r) => r.purpose))].sort().join(', ')})`,
+  );
+  if (analyticsRows.length === 0) {
+    console.error(
+      `FAIL: ${rows.length} artifact(s) landed for this install and NOT ONE has purpose="${ANALYTICS}". ` +
+        'The suite answered the analytics prompt, so its answer must be in the trail — a run that ' +
+        'records every purpose except the one it was asked about is the trail failing silently.',
+    );
+    worse(1);
+  }
+  const newest = analyticsRows[0] ?? rows[0];
+  console.log(
+    `newest ${newest.purpose}: granted=${newest.granted} policy_version=${newest.policy_version} ` +
       `platform=${newest.platform} app_version=${newest.app_version} server_ts=${newest.server_ts}`,
   );
 

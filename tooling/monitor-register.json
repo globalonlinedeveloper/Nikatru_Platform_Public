@@ -73,39 +73,39 @@
       "hostname": "nikatru.com",
       "what": "the factory's public site",
       "derivedFrom": "siteCanonicals",
-      "monitor": { "id": 4, "name": "nikatru.com", "type": "GET", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
+      "monitor": { "id": 4, "name": "nikatru.com", "type": "GET", "expectedStatus": 200, "expectedBody": "<link rel=\"canonical\" href=\"https://nikatru.com/\">", "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
       "closedGap": {
         "why": "The monitor was type `Ping` — it proves a socket opened and nothing else. A Cloudflare Pages project serving a 500, an edge error page or a blank shell answers a ping, so this check was green over precisely the failure it existed to catch. tooling/ops/status.mjs named it on the day it landed and tooling/ops/register.json's `_deploySmokeExemptions` restated it, because this host has no deploy job to probe from and O-2's external prober is its whole coverage.",
         "openedOn": "2026-08-03",
         "closedOn": "2026-08-11",
         "howItWasClosed": "Converted on the live instance via the GlitchTip API (PUT /api/0/organizations/nikatru/monitors/4/) and read back: monitorType GET, expectedStatus 200, everything else — url, interval 60s, timeout, confirmationThreshold, project — re-sent unchanged and diffed after, because PUT is a full replace. The save triggered an off-cadence check at 2026-08-10T19:22:21.660Z UTC which came back up in 32 ms.",
-        "note": "⚠️ WHAT THIS STILL DOES NOT ASSERT: a body. A 200 carrying a blank shell passes, unlike monitors 11 and 12, which assert `expectedBody`. Naming a body string for an HTML page is a separate decision — pick the wrong one and every copy edit alarms — so the status limb was taken and the body limb is left open rather than guessed at."
+        "note": "✅ THE BODY LIMB IS CLOSED TOO — decided 2026-08-11, where this line used to park it as a separate decision. expectedBody is <link rel=\"canonical\" href=\"https://nikatru.com/\">, which is sites/nikatru/index.html line 8, read back off the LIVE page the same day: GET https://nikatru.com/ answered 200 with 32887 UTF-8 bytes, exactly the byte length of that file at HEAD — this page has no mailto, so Cloudflare's email obfuscation does not rewrite it, unlike monitor 5's host. WHY A DEPLOY CANNOT BREAK IT: it is not copy, not a hash and not a build id — copy edits move titles and prose, never the canonical URL — and it cannot be deleted quietly, because tooling/ci/assert-monitor-coverage.mjs DERIVES this hostname from this very tag (its siteCanonicals limb); delete or retarget it and nikatru.com stops being a derived hostname, this row becomes a dead row, and that guard's no-dead-rows limb fails the build. ⚠️ A mere REFORMAT of the tag is the one drift that guard does NOT catch — its regex tolerates whitespace and single quotes, the monitor's match is exact — so reformatting this tag is itself a two-file change. WHY AN OUTAGE DOES BREAK IT: the 404 this Pages project actually serves carries no canonical tag at all (measured: GET /__no_such_page__ → 404, a 3448-byte body, string absent), nor do Cloudflare's edge error pages, and an empty or wrong deploy serves that same 404. The tag is also HOST-SPECIFIC, so a deploy cross-wired between these two near-identical Pages projects fails it — measured: rajasekarselvam.com's canonical is absent from this body."
       }
     },
     {
       "hostname": "rajasekarselvam.com",
       "what": "the founder site",
       "derivedFrom": "siteCanonicals",
-      "monitor": { "id": 5, "name": "rajasekarselvam.com", "type": "GET", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
+      "monitor": { "id": 5, "name": "rajasekarselvam.com", "type": "GET", "expectedStatus": 200, "expectedBody": "<link rel=\"canonical\" href=\"https://rajasekarselvam.com/\">", "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
       "closedGap": {
         "why": "Same defect and the same reason as nikatru.com: a `Ping` on a Pages host is green while the page behind it is a 500 or an empty shell, and this host's only coverage is O-2's external prober.",
         "openedOn": "2026-08-03",
         "closedOn": "2026-08-11",
         "howItWasClosed": "PUT /api/0/organizations/nikatru/monitors/5/ with every existing value re-sent and only monitorType and expectedStatus changed; read back as GET / 200. The save's off-cadence check at 2026-08-10T19:22:22.230Z UTC came back up in 64 ms.",
-        "note": "Same residual as monitor 4 — the status is asserted, the body is not."
+        "note": "✅ CLOSED THE SAME WAY AND ON THE SAME DAY as monitor 4: expectedBody is <link rel=\"canonical\" href=\"https://rajasekarselvam.com/\">, which is sites/rajasekarselvam/index.html line 8, present in the live 200 body and absent from this project's 404 (measured: GET /__no_such_page__ → 404, a 3383-byte body, no canonical tag anywhere in it). 🔴 AND THIS HOST IS THE ONE THAT PROVES THE STRING HAD TO BE CHOSEN FOR EDGE-TRANSFORM SURVIVAL RATHER THAN FOR PRESENCE IN THE REPO — THE SERVED HTML IS NOT THE FILE AT HEAD. Cloudflare's Email Address Obfuscation rewrites this page: measured 2026-08-11, live line 277 serves /cdn-cgi/l/email-protection#… where the file says mailto:support@nikatru.com, and an /cdn-cgi/scripts/…/email-decode.min.js tag is injected ahead of the JSON-LD block at live line 291, so the live body is 22191 bytes against the file's 21948 across the same 377 lines, stable over three fetches. A body string taken from that region would be asserting about Cloudflare's rewrite rather than about this site. The canonical sits at head line 8, ahead of every transform, byte-identical in both. 📌 GENERALISABLE: a monitor's expectedBody must be read from the SERVED response, never from the file in the tree — this host serves 243 bytes that no commit contains."
       }
     },
     {
       "hostname": "subly.nikatru.com",
       "what": "the flagship app's web build — the only shipping client today",
       "derivedFrom": "appCatalogue",
-      "monitor": { "id": 3, "name": "Subly web", "type": "GET", "expectedStatus": 200, "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
+      "monitor": { "id": 3, "name": "Subly web", "type": "GET", "expectedStatus": 200, "expectedBody": "<base href=\"/\">", "intervalSeconds": 60, "verifiedOn": "2026-08-11" },
       "closedGap": {
         "why": "The sharpest of the three. This is the only shipping client, it is a Flutter web build, and a Ping is green whenever the door opens — including when `flutter_bootstrap.js` is missing and the page renders nothing at all.",
         "openedOn": "2026-08-03",
         "closedOn": "2026-08-11",
         "howItWasClosed": "PUT /api/0/organizations/nikatru/monitors/3/ with every existing value re-sent and only monitorType and expectedStatus changed; read back as GET / 200. The save's off-cadence check at 2026-08-10T19:22:21.062Z UTC came back up in 42 ms.",
-        "note": "⚠️ AND THE RESIDUAL IS BIGGEST HERE. A Flutter web index.html is 768 bytes of loader: it answers 200 whether or not the app boots. The status assertion closes the 500-and-error-page half; the did-it-boot half needs an `expectedBody` or an e2e run, and the nightly e2e is what carries it today."
+        "note": "⚠️ THE BODY LIMB IS NOW ASSERTED AND IT STILL DOES NOT PROVE THE APP BOOTS — read the second half of this note before trusting the first. expectedBody is <base href=\"/\">, measured live 2026-08-11: GET https://subly.nikatru.com/ → 200, 772 UTF-8 bytes. It was chosen over the <title> and over flutter_bootstrap.js because it is the ONE byte sequence in the served shell that exists only if a real flutter build web ran — the source template apps/subly/web/index.html carries the literal <base href=\"$FLUTTER_BASE_HREF\">, and $FLUTTER_BASE_HREF does not appear in the live body at all. So it catches an edge error page, an empty or wrong Pages project, and a deploy of the SOURCE directory instead of build/web; and tooling/ci/test/smoke-web-artifact.test.mjs already records a failing case for this exact string — <base href=\"/\"> rewritten to /nope/ → exit 1 naming four 404s, run against a real flutter build web. 🔴 WHAT IT STILL CANNOT SEE, AND NO GET EVER WILL: this shell is a loader and a monitor runs no JavaScript, so flutter_bootstrap.js 404ing, main() throwing, or the first frame never rasterizing ALL still answer 200 with this exact body. That is also precisely why flutter_bootstrap.js was REJECTED as the string — it is present in the shell exactly when the file it names is missing, so it would read as coverage of the failure it cannot see. The did-it-boot half stays with the nightly e2e and with tooling/smoke/smoke-web-artifact.mjs's flutter-first-frame signal. Note also that GET /__no_such_page__ on this host returns 200 with this same shell (SPA fallback, measured), so this body says nothing about routing either."
       }
     },
     {
