@@ -46,8 +46,12 @@ class AppSpacing {
   // HANDS A SCREEN ITS PARAMETER, AND THE OBVIOUS RE-DERIVATION IS SILENTLY
   // WRONG. `windowClassFor` has exactly ONE production call site
   // (`app_scaffold.dart:178`, inside [AppScaffold]'s own `LayoutBuilder`) and
-  // the class it resolves is never passed down; every other reference in the
-  // tree is a test. A screen that re-derived it from ITS OWN constraints — a
+  // the class it resolves is never passed down; every other reference that
+  // CALLS it is a test. (Two mention it in prose without calling it — the
+  // brick's `web/index.html:30` and this repo's session notes — which is worth
+  // stating precisely, because the sentence this one replaced was rejected for
+  // exactly this kind of one-clause overreach.) A screen that re-derived it
+  // from ITS OWN constraints — a
   // `LayoutBuilder` inside the pane, which is the natural way to reach for it —
   // gets the WRONG answer with no error, because every page here sits inside a
   // `ContentPane` capped at `kMaxBodyWidth`: on a 1920 window the pane hands
