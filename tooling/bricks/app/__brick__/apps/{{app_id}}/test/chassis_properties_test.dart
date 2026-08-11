@@ -1763,46 +1763,47 @@ void main() {
     // Driven through the real repository, the real router and the real screen,
     // with nothing navigating by hand — a `go('/reset-password')` here would
     // prove only that the route exists, which was never the thing in doubt.
-    testWidgets('a reset link that CANNOT be exchanged lands on the explanation', (
-      WidgetTester tester,
-    ) async {
-      final InMemoryAuthRepository auth = InMemoryAuthRepository();
-      addTearDown(auth.dispose);
-      final ProviderContainer c = _container(_onboardedStore(), auth: auth);
-      addTearDown(c.dispose);
+    testWidgets(
+      'a reset link that CANNOT be exchanged lands on the explanation',
+      (WidgetTester tester) async {
+        final InMemoryAuthRepository auth = InMemoryAuthRepository();
+        addTearDown(auth.dispose);
+        final ProviderContainer c = _container(_onboardedStore(), auth: auth);
+        addTearDown(c.dispose);
 
-      await tester.pumpWidget(
-        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
-      );
-      await _turnsAndSettleRoute(tester);
-      expect(find.byType(TextField), findsWidgets);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+        );
+        await _turnsAndSettleRoute(tester);
+        expect(find.byType(TextField), findsWidgets);
 
-      // What the SDK really produces for a link with no verifier in this
-      // installation: no session, and an error carrying gotrue's own words.
-      auth.failRecoveryArrival();
-      await _turnsAndSettleRoute(tester);
+        // What the SDK really produces for a link with no verifier in this
+        // installation: no session, and an error carrying gotrue's own words.
+        auth.failRecoveryArrival();
+        await _turnsAndSettleRoute(tester);
 
-      expect(
-        find.byType(ResetPasswordScreen),
-        findsOneWidget,
-        reason:
-            'the person followed the instruction in their inbox; answering with '
-            'the sign-in form they already could not get past, and saying '
-            'nothing about why, is the state this screen exists to replace',
-      );
-      expect(
-        find.byKey(ResetPasswordScreen.linkDeadLine),
-        findsOneWidget,
-        reason: 'the explanation, not an empty form that can only fail',
-      );
-      expect(
-        find.byKey(ResetPasswordScreen.passwordField),
-        findsNothing,
-        reason:
-            'a form with no session behind it looks like the feature working '
-            'right up to the moment it cannot',
-      );
-    });
+        expect(
+          find.byType(ResetPasswordScreen),
+          findsOneWidget,
+          reason:
+              'the person followed the instruction in their inbox; answering with '
+              'the sign-in form they already could not get past, and saying '
+              'nothing about why, is the state this screen exists to replace',
+        );
+        expect(
+          find.byKey(ResetPasswordScreen.linkDeadLine),
+          findsOneWidget,
+          reason: 'the explanation, not an empty form that can only fail',
+        );
+        expect(
+          find.byKey(ResetPasswordScreen.passwordField),
+          findsNothing,
+          reason:
+              'a form with no session behind it looks like the feature working '
+              'right up to the moment it cannot',
+        );
+      },
+    );
 
     // The other direction, independently falsifiable: a router that sent EVERY
     // arrival to the reset screen would satisfy the limb above and trap every

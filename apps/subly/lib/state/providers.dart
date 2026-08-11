@@ -707,7 +707,9 @@ class PasswordResetArrivalController
           problem: event.problem ?? core.AuthLinkProblem.unknown,
         );
       } else if (event.startsPasswordRecovery) {
-        state = const core.PasswordResetArrivalReport(core.PasswordResetArrival.pending);
+        state = const core.PasswordResetArrivalReport(
+          core.PasswordResetArrival.pending,
+        );
       }
     });
     ref.onDispose(sub.cancel);
@@ -719,7 +721,10 @@ class PasswordResetArrivalController
   void clear() => state = core.PasswordResetArrivalReport.none;
 }
 
-final NotifierProvider<PasswordResetArrivalController, core.PasswordResetArrivalReport>
+final NotifierProvider<
+  PasswordResetArrivalController,
+  core.PasswordResetArrivalReport
+>
 passwordResetArrivalProvider =
     NotifierProvider<
       PasswordResetArrivalController,

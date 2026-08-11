@@ -61,6 +61,7 @@ class ResetPasswordScreen extends ConsumerStatefulWidget {
   static const Key statusLine = Key('resetPasswordStatus');
   static const Key doneLine = Key('resetPasswordDone');
   static const Key linkDeadLine = Key('resetPasswordLinkDead');
+
   /// The SECOND sentence of the dead-link state — keyed because it is the
   /// typed half, and a test that only found the first would pass whichever
   /// reason was rendered.

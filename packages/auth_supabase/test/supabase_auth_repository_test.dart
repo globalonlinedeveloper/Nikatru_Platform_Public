@@ -632,9 +632,9 @@ void main() {
       final List<core.AuthEvent> seen = <core.AuthEvent>[];
       final List<Object> escaped = <Object>[];
       final StreamSubscription<core.AuthEvent> sub = repo.authEvents().listen(
-        seen.add,
-        onError: escaped.add,
-      );
+            seen.add,
+            onError: escaped.add,
+          );
 
       g.emitError(
         sb.AuthException('Code verifier could not be found in local storage.'),
@@ -670,16 +670,16 @@ void main() {
       );
     });
 
-    test('the STREAM SURVIVES the error — a later real event still arrives', () async {
+    test('the STREAM SURVIVES the error — a later real event still arrives',
+        () async {
       // `handleError` on a plain `.map` would CLOSE the subscription, so the
       // recovery event that follows a retry would never be seen and the app
       // would look dead rather than crashed. The transformer keeps it open.
       final _FakeGoTrue g = _FakeGoTrue(session: null);
       final SupabaseAuthRepository repo = SupabaseAuthRepository(client: g);
       final List<core.AuthEventKind> kinds = <core.AuthEventKind>[];
-      final StreamSubscription<core.AuthEvent> sub = repo
-          .authEvents()
-          .listen((core.AuthEvent e) => kinds.add(e.kind));
+      final StreamSubscription<core.AuthEvent> sub =
+          repo.authEvents().listen((core.AuthEvent e) => kinds.add(e.kind));
 
       g.emitError(sb.AuthException('Code verifier could not be found'));
       await Future<void>.delayed(Duration.zero);
@@ -701,9 +701,8 @@ void main() {
       final SupabaseAuthRepository repo = SupabaseAuthRepository(client: g);
       final List<Object> escaped = <Object>[];
       final List<core.AuthUser?> users = <core.AuthUser?>[];
-      final StreamSubscription<core.AuthUser?> sub = repo
-          .authStateChanges()
-          .listen(users.add, onError: escaped.add);
+      final StreamSubscription<core.AuthUser?> sub =
+          repo.authStateChanges().listen(users.add, onError: escaped.add);
 
       g.emitError(sb.AuthException('Code verifier could not be found'));
       await Future<void>.delayed(Duration.zero);
@@ -716,7 +715,6 @@ void main() {
     });
   });
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A REAL GoTrueClient with its two network-facing members overridden. Extending

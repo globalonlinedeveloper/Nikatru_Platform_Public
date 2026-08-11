@@ -149,7 +149,8 @@ void main() {
       );
     });
 
-    test('the marker alone is still PENDING — the SDK cleaned up after itself', () {
+    test('the marker alone is still PENDING — the SDK cleaned up after itself',
+        () {
       // `removeAuthParametersFromUrl` strips the SDK's own twelve auth
       // parameters and preserves everything else, so after a SUCCESSFUL
       // exchange the URL is exactly this. Reading it as `none` would drop the
@@ -182,14 +183,14 @@ void main() {
           ),
         ).arrival,
         PasswordResetArrival.none,
-        reason:
-            'an error with no marker belongs to some other flow — a signup '
+        reason: 'an error with no marker belongs to some other flow — a signup '
             'confirmation, a magic link — and this screen has nothing to say '
             'about it',
       );
     });
 
-    test('an ordinary launch is none, and a route fragment does not confuse it', () {
+    test('an ordinary launch is none, and a route fragment does not confuse it',
+        () {
       expect(
         passwordResetArrivalOf(Uri.parse('https://subly.nikatru.com/')).arrival,
         PasswordResetArrival.none,
