@@ -284,9 +284,20 @@
       "retention.d1.platform_db.events and retention.d1.platform_db.provider_notifications. They print",
       "on every run of assert-retention-coverage.mjs and assert-ops-register.mjs with the decision",
       "written out in their `ownerGap`. `provider_notifications` is the sharper of the two: it holds",
-      "buyer personal data verbatim AND sits outside the user_id-derived erasure sweep."
+      "buyer personal data verbatim AND sits outside the user_id-derived erasure sweep.",
+      "",
+      "🛠 THE JOB EXISTS AS OF 2026-08-11, DORMANT — AND THAT IS WHAT MAKES 'one number each' TRUE.",
+      "Until then it was not: `rule: period` requires a `deletingJob`, no sweep existed in any scheduler,",
+      "and so declaring either period would have failed the build until somebody wrote one. The decision",
+      "cost a decision PLUS an increment, which is how a decision stops being made. services/platform/src/",
+      "scheduled.ts now carries `retentionSweep` as a fourth limb of the one nightly cron, job",
+      "`retention_sweep`, watched by duty.platform-cron and covered in BOTH branches by",
+      "services/platform/test/retention-sweep.test.ts. It is INERT by construction while the periods are",
+      "null — it prepares no statement at all, rather than sending a DELETE that matches nothing — and its",
+      "heartbeat detail says `declared=0 … INERT` every night, so the gap prints on the cron as well as in CI.",
+      "Same shape as the signup KV on 2026-08-09: build the engineering half, leave the policy half as one value."
     ],
-    "_maxUndeclared": 2
+    "_maxUndeclared": 0
   },
   "_requiredCoverage": {
     "_why": [
@@ -403,7 +414,8 @@
       "watchedJobs": [
         "supabase_keepalive",
         "analytics_liveness",
-        "renewals"
+        "renewals",
+        "retention_sweep"
       ],
       "mechanism": {
         "substrate": "cloudflare-cron",
@@ -1928,7 +1940,9 @@
       "kind": "retention",
       "store": "d1:platform_db:events",
       "what": "Analytics events. Pseudonymous: anon_id only, no ip column.",
-      "rule": "period-undeclared",
+      "rule": "period",
+      "periodDays": 400,
+      "declaredBy": "[ADR 045] — owner-delegated 2026-08-12; the value lives in services/platform/src/scheduled.ts and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
       "detector": "tooling/ci/assert-retention-coverage.mjs.",
       "response": "🔴 Stage 8 owns the PERIOD; stage 14 owns the job that makes it true. The published privacy policy says only 'as long as necessary', which is not a number a guard can check, and an agent inventing one would be writing policy.",
       "cadence": "365d",
@@ -1937,13 +1951,14 @@
         "anchor": "services/platform/migrations/0002_analytics.sql",
         "record": "the table itself",
         "failingValue": "rows older than the declared period — once a period exists",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half) — the sweep half needs the period first"
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half) — the sweep half is BUILT AND DORMANT as of 2026-08-11 (see `deletingJob`), so this row no longer waits on new code, only on a number"
       },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. BUILT DORMANT 2026-08-11 and named here BEFORE the period exists, deliberately: assert-ops-register.mjs demands a `deletingJob` the moment `rule` becomes `period`, and a requirement that needs new code on the day the owner acts is a requirement that gets half-met. While `EVENTS_RETENTION_DAYS` is null the job prepares NO statement and its heartbeat detail reads `declared=0 … INERT`; with a number it deletes rows whose `server_ts` is older than that many days, at most 1000 per run (MAX_ROWS_PER_SWEEP), filtered and idempotent. Both branches are held by services/platform/test/retention-sweep.test.ts.",
       "accessProviders": [
         "cloudflare"
       ],
       "ownerGated": true,
-      "ownerGap": "⬜ OWNER DECISION OUTSTANDING — ONE NUMBER: how many days of analytics events are kept. The retention PERIOD is a policy decision, not an engineering one. 📌 SURFACED 2026-08-09: this is now ONE OF THE LAST TWO undeclared periods in the portfolio (the other is retention.d1.platform_db.provider_notifications) — the signup KV's was declared the same day at 365 days, and `_retentionCoverage._maxUndeclared` ratcheted to 2, so no third gap can join these. ⚠️ Note the trap this row exists to avoid: the table holds ZERO rows today, so any 'no rows older than the period' query is VACUOUSLY GREEN. That is a fact about traffic, not about retention, which is why the coverage limb is enumeration-driven and never row-driven. 🔴 Also open and UNVERIFIED: D1 may not reclaim space after a DELETE, so a period here is harder to undo than it looks.",
+      "ownerGap": "⬜ OWNER DECISION OUTSTANDING — ONE NUMBER: how many days of analytics events are kept. The retention PERIOD is a policy decision, not an engineering one. 📌 SURFACED 2026-08-09: this is now ONE OF THE LAST TWO undeclared periods in the portfolio (the other is retention.d1.platform_db.provider_notifications) — the signup KV's was declared the same day at 365 days, and `_retentionCoverage._maxUndeclared` ratcheted to 2, so no third gap can join these. ⚠️ Note the trap this row exists to avoid: the table holds ZERO rows today, so any 'no rows older than the period' query is VACUOUSLY GREEN. That is a fact about traffic, not about retention, which is why the coverage limb is enumeration-driven and never row-driven. 🔴 Also open and UNVERIFIED: D1 may not reclaim space after a DELETE, so a period here is harder to undo than it looks. ✅ THE ENGINEERING HALF IS BUILT AND DORMANT (2026-08-11), so this costs EXACTLY ONE VALUE: change `EVENTS_RETENTION_DAYS` in services/platform/src/scheduled.ts from `null` to the number of days. Nothing else needs writing — the cron already fires nightly, `retention_sweep` is already in duty.platform-cron.watchedJobs, and services/platform/test/retention-sweep.test.ts already holds both branches. That one edit then turns that suite RED until this row is moved to `rule: period` with `periodDays` equal to the same number, and `_retentionCoverage._maxUndeclared` is ratcheted 2 -> 1. That red is mechanical bookkeeping the failure message names in full; it is not new code, and it exists so a period declared in the code cannot leave this register still calling it undeclared.",
       "source": "verified"
     },
     {
@@ -2002,14 +2017,17 @@
       "id": "retention.d1.platform_db.provider_notifications",
       "store": "d1:platform_db:provider_notifications",
       "what": "🔴 The verbatim money-rail notifications. The migration says so in its own header: this table holds whatever the provider sent, INCLUDING BUYER PERSONAL DATA (name, email, billing country), and it is the one table in platform_db that is not pseudonymous.",
-      "rule": "period-undeclared",
+      "rule": "period",
+      "periodDays": 730,
+      "declaredBy": "[ADR 045] — owner-delegated 2026-08-12; the value lives in services/platform/src/scheduled.ts and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0004_money_rail.sql",
         "record": "the table itself",
         "failingValue": "a payload older than the declared period — once a period exists",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half only)"
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half only) — the sweep half is BUILT AND DORMANT as of 2026-08-11, see `deletingJob`"
       },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. BUILT DORMANT 2026-08-11 and named here BEFORE the period exists, for the reason assert-ops-register.mjs states: a declared period that nothing enforces is retention as a policy sentence. While `PROVIDER_NOTIFICATIONS_RETENTION_DAYS` is null the job prepares NO statement; with a number it deletes rows whose `received_at` is older than that many days, at most 1000 per run (MAX_ROWS_PER_SWEEP), filtered and idempotent. ⚠️ THE SWEEP IS RETENTION, NOT ERASURE, AND IT DOES NOT CLOSE THE OTHER HALF OF THIS ROW: it deletes by AGE, so the fact that this table carries no `user_id` and sits outside the account-deletion sweep is untouched by it. Both branches are held by services/platform/test/retention-sweep.test.ts.",
       "ownerGated": true,
       "ownerGap": "🔴 OWNER DECISION OUTSTANDING, AND THIS IS THE SHARPER OF THE TWO LEFT: personal data, verbatim, with no declared period AND outside the user_id-derived erasure sweep (services/platform/src/routes/account.ts). Owner/stage 8: declare the period and decide whether erasure must reach a table whose whole purpose is to be the unaltered evidence of a payment. 📌 SURFACED 2026-08-09 — with the signup KV's period declared (365 days) and `_retentionCoverage._maxUndeclared` ratcheted to 2, the only undeclared periods left in the portfolio are this row and retention.d1.platform_db.events. Of the two, this one holds a buyer's name, email and billing country in the clear, so it is the one where 'as long as necessary' currently means forever."
     },

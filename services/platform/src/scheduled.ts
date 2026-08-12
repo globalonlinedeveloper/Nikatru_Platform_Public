@@ -422,6 +422,289 @@ export async function renewalsFanOut(env: Env): Promise<void> {
   await recordHeartbeat(env, rows, RENEWALS_JOB);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 14]O-17 · THE RETENTION SWEEP — BUILT DORMANT, ARMED BY ONE VALUE.
+//
+// 🔴 THE STATE THIS REPLACES. tooling/ops/register.json carries two rows at
+// `rule: "period-undeclared"` — retention.d1.platform_db.events and
+// retention.d1.platform_db.provider_notifications — and assert-ops-register.mjs
+// requires a `deletingJob` THE MOMENT either becomes `rule: "period"`. No such
+// job existed anywhere in the portfolio, so the owner's decision cost a decision
+// PLUS an increment, and the increment was the half nobody had time for. That is
+// exactly where the signup KV stood until 2026-08-09, and it is closed the same
+// way: build the engineering half first and leave the policy half as ONE VALUE.
+// (retention.kv.nikatru-signups.signup's own `response` field is the record of
+// that day; this section is its D1 twin.)
+//
+// ⚠️ WHY THE PERIOD IS NOT PICKED HERE. The published privacy policy says data
+// is kept "as long as necessary", which is not a number a guard can check, and an
+// agent choosing 180 or 365 would be WRITING POLICY under the appearance of
+// fixing a bug — while silently destroying the only analytics history the
+// portfolio has. So the number stays owner-gated and the gap PRINTS: on every CI
+// run (assert-retention-coverage.mjs, assert-ops-register.mjs) and on every cron
+// run, in this job's own heartbeat detail.
+//
+// 🔴 INERT MEANS NO STATEMENT, NOT A STATEMENT THAT MATCHES NOTHING. With no
+// declared period this limb prepares nothing and binds nothing — there is no
+// DELETE anywhere near the shared database until a number exists. A "harmless"
+// DELETE with an impossible cutoff would still be a deployed DELETE, one typo
+// away from being a real one.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The job name recorded in `cron_heartbeat` for the retention sweep.
+ *
+ *  ⚠️ THE `<NAME>_JOB` SPELLING IS LOAD-BEARING — the same convention
+ *  RENEWALS_JOB documents above. `deriveWatchedJobs` in
+ *  tooling/ops/check-heartbeats.mjs reads these declarations out of THIS source
+ *  and fails BOTH directions: unless `duty.platform-cron.watchedJobs` names the
+ *  literal, and unless the constant reaches `recordHeartbeat` at a REAL call
+ *  site (a symbol matching only its own declaration proves nothing). Both are
+ *  satisfied below and in tooling/ops/register.json. */
+export const RETENTION_SWEEP_JOB = 'retention_sweep';
+
+/** The two platform_db stores whose retention is a PERIOD rather than a reasoned
+ *  `keep`. Each name is also the store suffix of its register row id. */
+export type RetentionStore = 'events' | 'provider_notifications';
+
+/** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
+export type RetentionPeriods = Record<RetentionStore, number | null>;
+
+// 🔒 DECLARED — 400 DAYS. [ADR 045], owner-delegated 2026-08-12 ("whichever is
+// best approach, do deep research and lock"). Register row:
+// retention.d1.platform_db.events.
+//
+// 400 sits inside a corridor with a floor and a ceiling, and both ends matter:
+//   · FLOOR 365 — DPDP Rules 2025 (Rule 8(3), Rule 6(1)(e)) require a minimum of
+//     one year. ⚠️ NOT IN FORCE YET: notified 14 Nov 2025 with an 18-month
+//     phase-in, so ~14 May 2027. THIS IS THE TRAP — a 90- or 180-day period
+//     feels privacy-forward today and becomes non-compliant then, with the rows
+//     it should have kept already deleted and UNRECOVERABLE. Choosing short now
+//     creates a future failure that cannot be repaired retroactively.
+//   · CEILING 425 — 14 months, the hard maximum Google Analytics 4 allows a
+//     standard property. If the most-deployed analytics product treats that as
+//     the outer edge of "necessary", 400 is not unusual.
+//   · PRODUCT FLOOR 60 — a D30 figure needs a cohort's first_launch row and its
+//     day-30 return_visit row alive at the same instant (31 absolute), doubled
+//     so a D30 number exists on ANY given day rather than one frozen cohort.
+// 400 clears the statutory floor by ~5 weeks without sitting on the ceiling.
+//
+// 🔴 THERE IS NO ROLLUP TABLE, so this delete is IRREVERSIBLE for the metrics:
+// nothing aggregates events before they go. 11-measurement.md:1540-1543 records
+// that all five funnel numbers survive aggregation losslessly, so building a
+// daily rollup would decouple the metric from this period entirely and make it
+// a pure privacy choice. Until then, shortening this number destroys history.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const EVENTS_RETENTION_DAYS = 400;
+
+// 🔒 DECLARED — 730 DAYS (2 years). [ADR 045]. This table holds the buyer's
+// name, email and billing country VERBATIM (0004_money_rail.sql §B). Register
+// row: retention.d1.platform_db.provider_notifications.
+//
+// ⚠️ THE OBVIOUS JUSTIFICATION IS FALSE AND IS NOT USED HERE. "We need it to
+// fight chargebacks" does not survive Paddle's own documentation: Paddle is
+// MERCHANT OF RECORD, the dispute is raised against Paddle, its help centre
+// says seller evidence is "not required or accepted", and it retains the
+// transaction for 5 years. A number defended on a false reason is worse than no
+// number, because the next reader inherits the reason.
+// The real reasons for keeping a copy at all:
+//   · Paddle will NOT replay notifications older than 90 days — from day 91
+//     ours is the SOLE surviving copy of the raw payload;
+//   · Visa's outer dispute window is 540 calendar days from the transaction
+//     processing date (Visa Core Rules 18 Apr 2026, Table 11-92, ID# 0030316
+//     fn.4). 730 clears it with margin. Mastercard's outer cap is unread (403),
+//     so nothing rules out longer.
+// And the reason NOT to go further: DPDP s.8(7) wants the raw payload gone once
+// its purpose is served, and the statutory books-of-account duty is carried by
+// the DERIVED record, deliberately — see the derivation guard below.
+//
+// 📌 CORRECTION TO THIS FILE'S OWN EARLIER COMMENT: this table DOES carry a
+// `user_id` column (0006_erasure_reach.sql:63) and the account-deletion route
+// reaches it dynamically (routes/account.ts:122,352). Age is therefore not the
+// only exit. The residual gap is narrower: `user_id` stays NULL until
+// derivation resolves an account, so an underived row is unreachable by erasure
+// — which is the other half of why the guard below refuses to sweep one.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const PROVIDER_NOTIFICATIONS_RETENTION_DAYS = 730;
+
+// The per-store, per-run delete bound. A sweep is a CATCH-UP job, not a one
+// shot: hitting the bound leaves the remainder for tomorrow and says `capped=1`
+// rather than pretending the store is clean. Worst case per night is 2 × 1000
+// base rows plus their index rows (events carries 4 indexes,
+// provider_notifications 2) ≈ 8,000 of the 100,000 daily row-write budget — and
+// that is the CATCH-UP peak, not the steady state.
+// @ceiling d1.rowsWrittenPerDay lte
+export const MAX_ROWS_PER_SWEEP = 1000;
+
+// @ceiling none — a unit conversion (milliseconds in a day), not a cap on any platform resource.
+const MS_PER_DAY = 86400000;
+
+/**
+ * The cutoff instant for a store, or `null` when no period is declared.
+ *
+ * 🔴 `0`, NEGATIVES AND NON-NUMBERS FALL TO `null` DELIBERATELY, and this is the
+ * most important line in the section. A cutoff computed from `0` is NOW, and a
+ * sweep whose cutoff is now deletes the WHOLE TABLE. Same rule and same reason
+ * as `signupPutOptions` in sites/nikatru/functions/api/subscribe.js: a
+ * fat-fingered zero must mean NO RETENTION, never "delete everything".
+ *
+ * ISO-8601 UTC because both columns store exactly that (`events.server_ts`,
+ * `provider_notifications.received_at`), and lexicographic order on a
+ * fixed-width Z-suffixed timestamp IS chronological order — so `<` in SQL needs
+ * no date function whose D1 support this repo has not measured.
+ */
+export function retentionCutoff(days: number | null, nowMs: number = Date.now()): string | null {
+  return typeof days === 'number' && Number.isFinite(days) && days > 0
+    ? new Date(nowMs - days * MS_PER_DAY).toISOString()
+    : null;
+}
+
+/**
+ * One bounded, filtered DELETE against one store. Returns rows removed.
+ *
+ * ⚠️ TWO LITERAL STATEMENTS, NOT ONE WITH `${table}` INTERPOLATED. D1 cannot
+ * bind an identifier, so a shared statement would have to build the table name
+ * by hand — which tooling/ci/assert-d1-sql-inventory.mjs [R3] then has to be
+ * satisfied about, and which is the class both erasure routes already pay for.
+ * Two fixed strings need no identifier discipline because there is no identifier
+ * to discipline.
+ *
+ * ⚠️ AND THE SQL IS INLINE AT THE `.prepare(` CALL rather than hoisted to a
+ * constant: [R2 iii] of that same guard reports any `.prepare(` whose argument
+ * is not a single string literal as a statement NEITHER half of the D1 inventory
+ * can read — a `.prepare` moved behind a name does not make the SQL safer, it
+ * makes the scan smaller while every count still looks healthy.
+ *
+ * BOUNDED BY A SUBQUERY, not by `DELETE … LIMIT`: that form needs SQLite built
+ * with SQLITE_ENABLE_UPDATE_DELETE_LIMIT and is not a property of D1 this
+ * repository has measured. `rowid IN (SELECT rowid … ORDER BY … LIMIT ?)` is
+ * plain SQL, and both tables are ROWID tables — 0002 and 0004 declare no PRIMARY
+ * KEY and no WITHOUT ROWID, deliberately (0002's header records why).
+ */
+async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string): Promise<number> {
+  const stmt =
+    store === 'events'
+      ? env.PLATFORM_DB.prepare(
+          'DELETE FROM events WHERE rowid IN (SELECT rowid FROM events WHERE server_ts < ? ORDER BY server_ts LIMIT ?)',
+        )
+      : env.PLATFORM_DB.prepare(
+          // 🔴 `derived_at IS NOT NULL AND derive_error IS NULL` IS A LEGAL
+          // CONDITION, NOT AN OPTIMISATION — [ADR 045] §4. The retention FLOOR on
+          // this table is NONE *only because* a derived record independently
+          // satisfies the books-of-account duty (CGST Rule 56(1), Income-tax
+          // Rule 46(1)). If derivation never resolved, no derived record exists,
+          // the raw payload IS the book of account BY FUNCTION, and it inherits
+          // CGST s.36 — 72 months from the annual-return due date, roughly 2,698
+          // days, suspended indefinitely by any appeal or reopened assessment.
+          // Deleting such a row at 730 days destroys the only record of a
+          // payment, and it cannot be recovered: Paddle will not replay a
+          // notification older than 90 days.
+          //
+          // So the sweep's legality is a property of THIS PREDICATE, not of the
+          // period above. An underived row is never swept; it is left to be
+          // found. `retention-sweep.test.ts` drives the case with a row whose
+          // `derived_at` is NULL and asserts it survives.
+          //
+          // ⚠️ It is also the erasure argument: `user_id` stays NULL until
+          // derivation resolves an account (0006_erasure_reach.sql:35-38), so an
+          // underived row is the one row the account-deletion route cannot reach
+          // either. Sweeping it on age alone would be the ONLY thing that ever
+          // touched it — which is precisely why age alone must not.
+          //
+          // 📌 The single row in production today has a non-null `derive_error`
+          // ("unclaimed: no account is linked to paddle subscription sub_…"), so
+          // the first real subject of this rule already exists and is refused.
+          'DELETE FROM provider_notifications WHERE rowid IN (SELECT rowid FROM provider_notifications WHERE received_at < ? AND derived_at IS NOT NULL AND derive_error IS NULL ORDER BY received_at LIMIT ?)',
+        );
+  const res = await stmt.bind(cutoff, MAX_ROWS_PER_SWEEP).run();
+  return Number(res.meta?.changes ?? 0);
+}
+
+/**
+ * The nightly sweep. INERT until a period is declared.
+ *
+ * ⚠️ ONE HEARTBEAT ROW PER RUN, target `(portfolio)`, and that is not a
+ * simplification. `evaluateJob` in tooling/ops/check-heartbeats.mjs reduces a
+ * job's rows to "the newest by `ran_at`", and every row written in one run
+ * shares a `ran_at` — so with one row per STORE, a failing store and a healthy
+ * store would be tied and the reader could land on the healthy one. The same
+ * reasoning `analyticsLiveness` records for its unconditional portfolio row.
+ * The per-store detail travels in `detail`, which leads with parseable tokens
+ * for the same reason [ADR 035] requires it there: a reworded sentence must
+ * never be able to change a verdict.
+ *
+ * 🔴 `ok` ANSWERS ONE QUESTION — DID THE WORK SUCCEED — which is [ADR 035] and
+ * not a softening. An inert run succeeded at doing nothing, so `ok = 1`: a
+ * daily red on a number only the owner can supply is how an alarm gets muted
+ * (CLAUDE.md C-6). `ok = 0` is reserved for a DELETE that threw, which cannot
+ * happen while no period is declared because no statement is sent.
+ *
+ * `periods` and `nowMs` are parameters with the shipped values as DEFAULTS, so
+ * both branches are testable without rewriting this module — and so the test
+ * suite does not go red the day the owner changes one of the constants, which
+ * would turn a one-line change into a two-line one.
+ */
+export async function retentionSweep(
+  env: Env,
+  periods: RetentionPeriods = {
+    events: EVENTS_RETENTION_DAYS,
+    provider_notifications: PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
+  },
+  nowMs: number = Date.now(),
+): Promise<void> {
+  const stores: RetentionStore[] = ['events', 'provider_notifications'];
+  let declared = 0;
+  let deleted = 0;
+  let capped = 0;
+  const per: string[] = [];
+  const inert: string[] = [];
+
+  try {
+    for (const store of stores) {
+      const cutoff = retentionCutoff(periods[store], nowMs);
+      // THE INERT PATH. Nothing is prepared, nothing is bound, nothing is sent.
+      if (cutoff === null) {
+        inert.push(store);
+        continue;
+      }
+      declared++;
+      const n = await deleteOlderThan(env, store, cutoff);
+      deleted += n;
+      if (n >= MAX_ROWS_PER_SWEEP) capped++;
+      per.push(`${store}=${String(periods[store])}d:${n}`);
+    }
+  } catch (err) {
+    // ok=0 means THE WORK FAILED. A sweep that could not run is a retention
+    // promise not being kept, and must never be recorded as "nothing to do".
+    await recordHeartbeat(
+      env,
+      [
+        {
+          target: '(portfolio)',
+          ok: false,
+          detail: `stores=2 declared=${declared} deleted=${deleted} capped=${capped} — retention sweep FAILED: ${String(err)}`,
+        },
+      ],
+      RETENTION_SWEEP_JOB,
+    );
+    return;
+  }
+
+  await recordHeartbeat(
+    env,
+    [
+      {
+        target: '(portfolio)',
+        ok: true,
+        detail:
+          declared === 0
+            ? `stores=2 declared=0 deleted=0 capped=0 — INERT: no period declared for ${inert.join(', ')} (owner: one value each in services/platform/src/scheduled.ts).`
+            : `stores=2 declared=${declared} deleted=${deleted} capped=${capped} ${per.join(' ')}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
+      },
+    ],
+    RETENTION_SWEEP_JOB,
+  );
+}
+
 /** Cron entrypoint. `ctx.waitUntil` keeps the isolate alive for the async work. */
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, env, ctx) => {
   ctx.waitUntil(
@@ -429,6 +712,10 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, en
       await keepAliveSupabase(env);
       await analyticsLiveness(env);
       await renewalsFanOut(env);
+      // LAST, deliberately: the sweep is the only limb that destroys anything,
+      // and a slow or failing sweep must not delay the keep-alive that stands
+      // between a free-tier Supabase project and its ~7-day auto-pause.
+      await retentionSweep(env);
     })(),
   );
 };
