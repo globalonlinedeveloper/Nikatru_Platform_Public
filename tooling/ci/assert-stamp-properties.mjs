@@ -111,6 +111,102 @@ const WEB_INDEX = 'web/index.html';
 const MONEY_PROVIDERS = 'lib/state/money_providers.dart';
 /** Trees that are shared rather than owned by an app; never re-rooted. */
 const SHARED_PREFIX = /^(packages|services|tooling)\//;
+// ── PHASE 5 · MEASURED 2026-08-12 · WHAT THIS EXEMPTION IS ACTUALLY HOLDING
+//    BACK. Read off the tree, not re-derived from the header. (RE-MEASURED
+//    2026-08-12 on main @ 981481c with the method below: brick 0, apps/subly
+//    3 groups + 10 anchors = 13, REQUIRED_COVERAGE 26. Unchanged from the
+//    2026-08-11 reading even though commits since then touched THIS guard and
+//    apps/subly/lib. RE-DERIVE IT; do not trust the date on this line.)
+//
+// METHOD, so it can be redone rather than believed: every REQUIRED_COVERAGE
+// anchor below was resolved against `apps/subly` using this file's own
+// `resolveSource` rule (SHARED_PREFIX = repo-absolute, everything else re-rooted)
+// and tested. The BRICK came back with ZERO problems, which is what validates the
+// method. `apps/subly` came back with THIRTEEN — 3 missing property GROUPS and 10
+// failing source ANCHORS — in three classes, and the CLASS is the whole finding,
+// because only one of the three is a missing behaviour.
+//
+// ⚠️ THIRTEEN, not ten. A group and an anchor are separate problems, and the
+// notification-tap group takes THREE anchors down with it, so the two numbers are
+// easy to conflate — an earlier draft of this very comment did.
+//
+// 🔴 BUT 13 IS NOT WHAT RUNNING THE GUARD PRINTS, AND THIS COMMENT USED TO SAY
+// "Reproducing this must give 3 + 10 = 13". It does not. MEASURED 2026-08-13 by
+// dropping `apps/subly` from EXEMPT_APPS and running the real guard: it prints
+// **NINE** `FAIL apps/subly` lines — 3 groups NOT ASSERTED + 6 properties whose
+// IMPLEMENTATION is gone — because the anchor loop `break`s on the FIRST failing
+// anchor of a property, so one line is emitted per property, not per anchor.
+// 13 is the count of failing ANCHORS, which is only obtainable from an
+// exhaustive per-anchor extraction that was never committed. `_verdicts.json:37`
+// records the same 9 ("3 groups + 6 anchors"). Both numbers are real and they
+// count different things; the reproduction instruction quoted the one you cannot
+// reproduce, so a maintainer who did the repo-mandated thing — run the real
+// thing — would get 9 and conclude the comment had drifted.
+// REPRODUCE LIKE THIS: drop `apps/subly` from EXEMPT_APPS (line ~195), run
+// `node tooling/ci/assert-stamp-properties.mjs`, expect **9** FAIL lines for
+// apps/subly and **0** for the brick; a brick count other than 0 means the
+// extraction drifted, and that is fixed BEFORE the subly number is read as
+// anything at all. Restore the exemption afterwards.
+//
+// A · THREE PROPERTY GROUPS ARE ABSENT from apps/subly/test/chassis_properties_test.dart
+//     (it declares 23 `group('property: …')` markers; the brick declares 26):
+//       · password-recovery-routes
+//       · notification-tap-observed
+//       · sessionless-signup-reaches-check-inbox
+//     🔴 `password-recovery-routes` is the surprising one: ALL ELEVEN of its
+//     anchors already resolve in Subly. The feature is built — the adapter
+//     mapping, both controllers, the launch-uri read, the /reset-password route.
+//     Only the group that asserts it is missing. That one is a pure test port.
+//
+// B · SIX ANCHORS PIN THE BRICK'S SPELLING OF A BEHAVIOUR SUBLY HAS. The
+//     `(?:signedIn|loggedIn)` alternation further down this file — grep the
+//     alternation, never a line number, this file gets edited — already
+//     anticipated EXACTLY ONE of these and named this drop as the reason. The
+//     measurement says there are six, not one: an anticipation right about the
+//     class and wrong about the size, which is the useful kind of wrong to record:
+//       · auth-seam-wired / PROVIDERS      `Provider<core.AuthRepository>` — Subly
+//         imports the type unprefixed: `final Provider<AuthRepository> authRepositoryProvider`
+//       · promo-card-fails-closed / HOME   `const UpgradePromoCard()` — Subly mounts
+//         `UpgradePromoCard(),` (non-const, though the ctor is const-capable)
+//       · no-silent-channel / HOME         `const CatchUpNudgeBanner(),` — Subly
+//         mounts `CatchUpNudgeBanner(),`
+//       · legal-reacceptance-gated / ROUTER `matchedLocation == '/reaccept-terms'`
+//         — Subly carries the path as an entry in a signed-out allowlist ARRAY and
+//         tests it as `loc == '/reaccept-terms'`
+//       · sessionless-signup… / ROUTER     `matchedLocation == '/check-inbox'` —
+//         same allowlist shape; that property's other two anchors already resolve
+//       · notification-tap-observed / MAIN  `overrideWithValue(notifications)` —
+//         Subly's variable is named `taps`
+//     Widening each to an alternation is the same act as the `signedIn|loggedIn`
+//     one and is NOT a loosening: the anchor still cannot be satisfied by an
+//     absent feature. Negative-test each against the REAL tree, never a fixture.
+//
+// C · THREE ANCHORS NAME A FILE SUBLY DOES NOT PUT THE BEHAVIOUR IN. These are
+//     real chassis divergence and cost a code move, not a regex:
+//       · analytics-consent-gated / PROVIDERS — Subly's `controller.record(purpose,
+//         granted: granted, …)` lives in `lib/state/analytics_providers.dart`, a
+//         FOURTH providers file the brick has no equivalent of
+//       · paywall-gate-driven-by-server / HOME — Subly mounts `PaywallGate(locked:)`
+//         in `lib/core/router.dart` (`_GatedInsights`); its 5-tab nav has no
+//         Explore tab. The property's other four anchors resolve
+//       · notification-tap-observed / TAP_OBSERVER — the event NAME is
+//         `_safe('notification_opened', …)` in `lib/state/analytics_funnel.dart`;
+//         the brick declares it as `static const String kEvent` on the observer
+//
+// …and the TENTH anchor is not a divergence at all: `notification-tap-observed`
+// also anchors `notes.taps.add(` inside PROP_TEST itself, so it arrives and leaves
+// with group A-2. Port that group and this anchor closes with it — which is why
+// 13 problems are NOT 13 pieces of work.
+//
+// 🔴 AND THE FIXTURE IS THE OTHER HALF OF THE ACT. `tooling/ci/test/guards.test.mjs`
+// builds EVERY assert-stamp-properties case over a workspace that LISTS
+// `apps/subly` while creating only its `lib/main.dart` and one notifications file.
+// Emptying this Set therefore reddens roughly fifty currently-passing cases at
+// once with `apps/subly/test/chassis_properties_test.dart is MISSING`, and the
+// case named 'does NOT demand a property test from the frozen apps/subly' asserts
+// the exact opposite of the new behaviour. Guard and fixture move together, or
+// neither moves. (`bootRoots` below deliberately ignores this Set, so the [13]T-4
+// walk already covers Subly and is untouched by any of the above.)
 const EXEMPT_APPS = new Set(['apps/subly']);
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 // [pipeline 11]E-5. Shared tree, deliberately: the launch trio is implemented

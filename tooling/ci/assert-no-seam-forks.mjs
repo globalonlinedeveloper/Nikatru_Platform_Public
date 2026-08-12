@@ -35,10 +35,10 @@
 //      either a declared violation, a homeless sole implementation, or a FORK
 //   3. PARITY — for a fork this repository has ACCEPTED rather than removed, the
 //      chassis twin's capability gates must all still exist in it ([ADR 042])
-//
+//   4. THE WATCH — every OTHER chassis/fork screen pair, undecidable today (its
+//      chassis gates on nothing), must STAY so or be PROMOTED into check 3
 // Usage:  node tooling/ci/assert-no-seam-forks.mjs [repoRoot]
-// Exit 0 = no forks, 1 = a capability exists twice, or an accepted fork has
-// fallen behind the chassis screen it forked.
+// Exit 0 = no forks. 1 = a fork, a lagging accepted fork, or an unpromoted pair.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
@@ -391,8 +391,91 @@ const PARITY_PAIRS = [
     fork: 'apps/subly/lib/features/auth/login_screen.dart',
     note: '#275 deleted the chassis SignInScreen from apps/subly; the fork is accepted, so it owes parity.',
   },
+  {
+    adr: 'ADR 042',
+    chassis:
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/settings/settings_screen.dart',
+    fork: 'apps/subly/lib/features/settings/settings_screen.dart',
+    note:
+      'Listed UNSPECIFIED at [ADR 042]:260 because it was "not established that settings gates on that ' +
+      'idiom at all". Established by measurement 2026-08-12: BOTH sides build the reminders tile inside ' +
+      '`NotificationCapabilities.forPlatform(...)` and gate it on `if (!caps.canSchedule)`. Same idiom, ' +
+      'same field, same seam as the auth pair. C = F = {canSchedule} on the day it landed — no day-one ' +
+      'false positive, which is the bar [ADR 042]:267 sets for widening this rule.',
+  },
+  {
+    adr: 'ADR 042',
+    chassis: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/home/home_screen.dart',
+    fork: 'apps/subly/lib/features/home/home_screen.dart',
+    note:
+      '🔴 THIS PAIR IS IN NO ADR. [ADR 042]:256-260 enumerates THREE pairs and calls that the tree; it is ' +
+      'not. Found 2026-08-12 by enumerating every brick screen that has a Subly counterpart (11) and ' +
+      'measuring each, instead of trusting the list — the same false-negative shape CLAUDE.md records for ' +
+      'ripgrep and company/: a table is an assertion about files somebody once looked at. Both sides pass ' +
+      '`platformCanSchedule: caps.canSchedule`. C = F = {canSchedule} when it landed.',
+  },
 ];
-const MIN_PARITY_PAIRS = 1;
+/** 3, not 1: raising this floor with the list is the whole point of the floor.
+ *  Left at 1, two of the three pairs could be deleted and the limb would still
+ *  report a clean tree — the "check that silently stopped checking" shape this
+ *  guard exists to refuse. */
+const MIN_PARITY_PAIRS = 3;
+
+/** ── THE WATCH ──────────────────────────────────────────────────────────────
+ *  The other eight chassis/fork screen pairs. For each, the CHASSIS reads zero
+ *  `caps.<field>`, so C = {} and C ⊆ F holds for ANY fork: the subset test
+ *  cannot fail, and this guard deletes assertions that cannot fail rather than
+ *  keeping them for the look of coverage. So they are NOT in PARITY_PAIRS.
+ *
+ *  🔴 BUT "UNDECIDABLE TODAY" IS ITSELF A CLAIM WITH AN EXPIRY, AND THAT CLAIM
+ *  IS WHAT IS ENFORCED BELOW. The day somebody adds the first `caps.` gate to
+ *  one of these chassis screens, the pair BECOMES decidable — and under the old
+ *  one-pair guard that capability would have reached all 49 stamped apps and
+ *  not Subly, in silence, which is the precise defect [ADR 042] was written
+ *  about (the Apple button rendered against a provider the server 400s).
+ *  The loop below fails the build at that moment and demands promotion into
+ *  PARITY_PAIRS with its own two mutations ([ADR 042]:263).
+ *
+ *  This is the difference between a guard that is silent about eight pairs and
+ *  one that is EXPLICIT about why it does not cover them and watches the reason
+ *  hold. Silence is indistinguishable from coverage ([ADR 042]:262); this is
+ *  not silent. */
+const WATCHED_PAIRS = [
+  ['firstrun/onboarding_screen.dart', 'onboarding/onboarding_screen.dart'],
+  ['auth/check_inbox_screen.dart', 'auth/check_inbox_screen.dart'],
+  // Added 2026-08-13 by the ARRIVE limb below, on its first run. It was the ONE
+  // brick feature file with a Subly counterpart that appeared in neither list —
+  // the count said 11 accounted and the filesystem said 12 pairs. Both sides
+  // read zero `caps.<field>`, so it is undecidable exactly like the other eight
+  // and belongs here rather than in PARITY_PAIRS.
+  ['auth/legal_consent_fields.dart', 'auth/legal_consent_fields.dart'],
+  ['auth/reaccept_terms_screen.dart', 'auth/reaccept_terms_screen.dart'],
+  ['auth/reset_password_screen.dart', 'auth/reset_password_screen.dart'],
+  ['auth/sign_up_screen.dart', 'auth/sign_up_screen.dart'],
+  ['auth/verify_email_screen.dart', 'auth/verify_email_screen.dart'],
+  ['monetization/manage_plan_screen.dart', 'monetization/manage_plan_screen.dart'],
+  ['monetization/paywall_screen.dart', 'monetization/paywall_screen.dart'],
+].map(([c, f]) => ({
+  chassis: `tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/${c}`,
+  fork: `apps/subly/lib/features/${f}`,
+}));
+
+/** Every brick screen with a Subly counterpart must be accounted for by exactly
+ *  one of the two lists. Re-measured against the filesystem 2026-08-13: 12 such
+ *  pairs — 3 decidable, 9 not. The floor is on the TOTAL so that PROMOTING a
+ *  pair (moving it from the watch into PARITY_PAIRS) is free, while DELETING one
+ *  is loud.
+ *
+ *  🔴 THIS FLOOR IS THE *VANISH* LIMB ONLY, AND ON ITS OWN IT WAS THE DEFECT IT
+ *  DESCRIBES. It compares `PARITY_PAIRS.length + WATCHED_PAIRS.length` against a
+ *  constant — three values that all live in THIS FILE. It never touches the
+ *  filesystem, so it structurally cannot detect the condition its own failure
+ *  message names: a pair that is "in NEITHER" list. It catches a pair being
+ *  DELETED from the lists; it could not catch one ARRIVING in the tree, and it
+ *  did not notice one that was never listed. Shipped at 11 while the tree held
+ *  12 pairs — `auth/legal_consent_fields.dart` was unexamined and the guard
+ *  printed ok. The ARRIVE limb below is the other half. */
+const MIN_ACCOUNTED_PAIRS = 12;
 
 /** Every `caps.<field>` read in a file — comments and string literals blanked
  *  first, so neither prose nor a quoted string can satisfy the requirement.
@@ -418,6 +501,100 @@ if (PARITY_PAIRS.length < MIN_PARITY_PAIRS) {
   ]);
 }
 
+if (PARITY_PAIRS.length + WATCHED_PAIRS.length < MIN_ACCOUNTED_PAIRS) {
+  fail([
+    `✗ COVERAGE LOST — ${PARITY_PAIRS.length + WATCHED_PAIRS.length} chassis/fork screen pair(s) accounted ` +
+      `for, expected at least ${MIN_ACCOUNTED_PAIRS}.`,
+    '  Every brick screen with a Subly counterpart belongs to exactly one of PARITY_PAIRS (decidable,',
+    '  enforced) or WATCHED_PAIRS (undecidable, watched). A pair that is in NEITHER is not "fine" — it is',
+    '  unexamined, and unexamined reads exactly like clean. Promotion between the two lists is free;',
+    '  dropping a pair out of both is what this floor refuses.',
+  ]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ARRIVE LIMB — the other half of coverage, derived from the FILESYSTEM.
+//
+// The floor above is a written list, deliberately: a fully derived list loses an
+// entry at the moment the thing it names disappears. But a written list has the
+// mirror-image blind spot — it cannot know about a screen pair that DID NOT
+// EXIST when it was written. The two limbs point in opposite directions and
+// neither substitutes for the other:
+//   · the floor above catches a pair that VANISHED from the lists,
+//   · this one catches a pair that ARRIVED in the tree.
+// That is the same two-sided shape `check-migrations.mjs` [pipeline B-8] already
+// spells out and implements; this guard shipped only the vanish half, which is
+// why it read 11 while the tree held 12.
+//
+// PAIRING RULE: same relative path under `features/` on both sides. That is the
+// convention every pair here follows except the two that were deliberately
+// renamed (sign_in→login, firstrun→onboarding), and those are already listed by
+// hand. A brick screen with NO same-path counterpart could still be forked under
+// some other name, which no path rule can see — so those are PRINTED every run
+// rather than passed over in silence, and the limitation is stated instead of
+// being left for a reader to discover.
+// ─────────────────────────────────────────────────────────────────────────────
+const BRICK_FEATURES = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features';
+const SUBLY_FEATURES = 'apps/subly/lib/features';
+
+/** Every `.dart` under a features root, as paths relative to that root. */
+function featureFiles(relRoot) {
+  const abs = join(ROOT, relRoot);
+  if (!existsSync(abs)) return null;
+  const out = [];
+  const walk = (dirRel) => {
+    for (const e of listDir(join(abs, dirRel), { withFileTypes: true })) {
+      const rel = dirRel ? posix.join(dirRel, e.name) : e.name;
+      if (e.isDirectory()) walk(rel);
+      else if (e.name.endsWith('.dart')) out.push(rel);
+    }
+  };
+  walk('');
+  return out.sort();
+}
+
+const brickFeatureFiles = featureFiles(BRICK_FEATURES);
+// ZERO, not "fewer than MIN_ACCOUNTED_PAIRS". A count floor here would fire
+// ahead of the parity and watch limbs' own per-file COVERAGE LOST checks and
+// replace a precise diagnosis ("the chassis file is gone") with a vague one —
+// measured: it swallowed that exact case. Those per-file checks already assert
+// every listed chassis EXISTS under this same ROOT, so a mis-rooted or truncated
+// walk is caught there, more specifically. What is left for this floor is the
+// one condition they cannot see: an empty or absent universe, which would make
+// `arrived` trivially empty and this whole limb an assertion that cannot fail.
+if (brickFeatureFiles === null || brickFeatureFiles.length === 0) {
+  fail([
+    `✗ COVERAGE LOST — the brick features root produced NO .dart file(s) at ${BRICK_FEATURES}.`,
+    '  The arrive limb derives its universe from this directory. With an empty universe it would compare',
+    '  nothing against the lists and report a clean tree forever.',
+  ]);
+}
+
+const accountedChassis = new Set(
+  [...PARITY_PAIRS, ...WATCHED_PAIRS].map((p) => p.chassis.slice(`${BRICK_FEATURES}/`.length)),
+);
+
+const arrived = [];
+const unpairedByPath = [];
+for (const rel of brickFeatureFiles) {
+  if (accountedChassis.has(rel)) continue;
+  if (existsSync(join(ROOT, SUBLY_FEATURES, rel))) arrived.push(rel);
+  else unpairedByPath.push(rel);
+}
+
+if (arrived.length) {
+  fail([
+    `✗ ${arrived.length} chassis/fork screen pair(s) exist on disk and are in NEITHER list:`,
+    ...arrived.map((rel) => `    ${BRICK_FEATURES}/${rel}\n      ↔ ${SUBLY_FEATURES}/${rel}`),
+    '',
+    '  A pair in neither PARITY_PAIRS nor WATCHED_PAIRS is not "fine" — it is unexamined, and unexamined',
+    '  reads exactly like clean. Decide which it is and add it:',
+    '    · the chassis reads at least one `caps.<field>` → PARITY_PAIRS, with a note and its two mutations;',
+    '    · the chassis reads none → WATCHED_PAIRS, where the watch below asserts that stays true.',
+    '  Then raise MIN_ACCOUNTED_PAIRS to match, so the pair cannot later drop out of both in silence.',
+  ]);
+}
+
 for (const pair of PARITY_PAIRS) {
   const missingFiles = [pair.chassis, pair.fork].filter((rel) => !existsSync(join(ROOT, rel)));
   if (missingFiles.length) {
@@ -440,6 +617,54 @@ for (const pair of PARITY_PAIRS) {
   const missing = [...chassisReads].filter((f) => !forkReads.has(f));
   if (missing.length) parityGaps.push({ pair, missing, chassisReads, forkReads });
   else parityOk.push({ pair, chassisReads });
+}
+
+// ── THE WATCH: every pair excluded for being undecidable must STILL be so ────
+const watchLost = [];
+const watchPromotable = [];
+for (const pair of WATCHED_PAIRS) {
+  const missingFiles = [pair.chassis, pair.fork].filter((rel) => !existsSync(join(ROOT, rel)));
+  if (missingFiles.length) {
+    for (const rel of missingFiles) {
+      watchLost.push(`    ${rel} — the file is not there, so this pair is no longer being watched.`);
+    }
+    continue;
+  }
+  const chassisReads = capsReads(pair.chassis);
+  if (chassisReads.size > 0) watchPromotable.push({ pair, chassisReads });
+}
+
+if (watchLost.length) {
+  fail([
+    `✗ COVERAGE LOST — the watch lost sight of ${watchLost.length} path(s):`,
+    ...watchLost,
+    '',
+    '  A watched pair is one this guard has DECLARED it does not cover, and the declaration is only',
+    '  honest while the files are where it says. Re-point it, or drop the pair in the same change that',
+    '  deletes the screen — and mind MIN_ACCOUNTED_PAIRS, which is there to make that a decision.',
+  ]);
+}
+
+if (watchPromotable.length) {
+  const lines = [
+    `✗ ${watchPromotable.length} watched pair(s) BECAME DECIDABLE and were not promoted:`,
+  ];
+  for (const w of watchPromotable) {
+    lines.push(`    ${w.pair.chassis}`);
+    lines.push(
+      `      now reads {${[...w.chassisReads].sort().join(', ')}} — it gated on nothing when it was ` +
+        'put on the watch, so C ⊆ F was vacuous and the pair was deliberately left out of PARITY_PAIRS.',
+    );
+    lines.push(`      Its fork is ${w.pair.fork}.`);
+  }
+  lines.push('');
+  lines.push('  THIS IS THE MOMENT THE OLD GUARD WOULD HAVE MISSED. A chassis screen that gates on a');
+  lines.push('  capability reaches every stamped app; the Subly fork of it only gets there if somebody');
+  lines.push('  carries the gate across. That is [ADR 042] exactly — the Apple button shipped rendered');
+  lines.push('  against a provider the server answers 400 for, and nothing went red.');
+  lines.push('  Move this pair into PARITY_PAIRS, and give it ITS OWN two mutations ([ADR 042]:263)');
+  lines.push('  before trusting it: an unmutated pair inflates apparent coverage.');
+  fail(lines);
 }
 
 if (parityLost.length) {
@@ -494,9 +719,32 @@ for (const p of parityOk) {
       `\`caps.\` read(s): ${[...p.chassisReads].sort().join(', ')}`,
   );
 }
+// Printed EVERY run, like homeless above: the gap this guard does not close is
+// stated by the guard itself. A limitation nobody can see is a limitation that
+// gets mistaken for coverage.
+console.log(
+  `⚠  [ADR 042] ${WATCHED_PAIRS.length} chassis/fork screen pair(s) are WATCHED, NOT COVERED — their ` +
+    'chassis gates on no `caps.<field>`, so C ⊆ F is vacuous for them. They fail this guard the day ' +
+    'that stops being true: ' +
+    WATCHED_PAIRS.map((p) => p.chassis.replace(/^.*\/features\//, '')).join(', '),
+);
+
+// The ARRIVE limb's own blind spot, stated every run for the same reason. It
+// pairs by identical path, so a brick screen forked under a DIFFERENT name is
+// invisible to it — exactly how sign_in_screen→login_screen and
+// firstrun→onboarding are shaped, which is why both are listed by hand. These
+// files have no same-path counterpart; if one of them is silently forked
+// elsewhere in apps/subly, no path rule here will say so.
+if (unpairedByPath.length) {
+  console.log(
+    `⚠  ${unpairedByPath.length} brick feature file(s) have NO same-path Subly counterpart, so the arrive ` +
+      'limb cannot decide them by path — a fork under a different NAME would not be seen: ' +
+      unpairedByPath.join(', '),
+  );
+}
 
 console.log(
   `ok  no seam forks — ${contracts.size} contract(s), ${sharedFiles.length + suspectFiles.length} file(s) scanned; ` +
     `${shared.length} shared implementation(s), ${homeless.length} homeless, ${waived.length} declared, ` +
-    `${parityOk.length} accepted fork(s) at parity`,
+    `${parityOk.length} accepted fork(s) at parity, ${WATCHED_PAIRS.length} watched`,
 );

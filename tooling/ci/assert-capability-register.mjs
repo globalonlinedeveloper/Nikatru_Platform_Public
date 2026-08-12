@@ -301,6 +301,33 @@ const WIRED_SURFACES_THAT_MAY_NOT_REGRESS = [
  *  a fix owner that is a sentence nobody is accountable for. */
 const PIPELINE_ID = /\[(?:[1-9]|1[0-4])\][A-Z]-\d+/;
 
+/** A declared violation's `fixOwner` must name a TRACKABLE work item, in one of
+ *  the two forms this corpus actually uses: a pipeline id (`[2]C-3`) or an
+ *  owner-queue row (`OWNER_QUEUE D-8`). Same deliberate ceiling as PIPELINE_ID
+ *  above, for the same reason — company/ is gitignored, so CI can check the
+ *  FORM and never the EXISTENCE of the thing named.
+ *
+ *  🔴 WHY THIS EXISTS (2026-08-12). `violations[].fixOwner` was checked for
+ *  PRESENCE only, while the identically-named field on `missingMethods[]` got
+ *  the shape check at the `PIPELINE_ID.test` call below. Two limbs, one field
+ *  name, one of them unguarded — and the guarded one had ZERO subjects, because
+ *  this register declares no missingMethods at all. Net effect: NO fixOwner in
+ *  this file was validated against anything. Proven by mutation on the real
+ *  tree, not a fixture: setting a violation's fixOwner to the sentence
+ *  "somebody should get round to this eventually" passed at EXIT 0. That is
+ *  exactly the failure the missingMethods message already names — "A gap whose
+ *  owner is a sentence is how G-7 stayed open" — reached through the other door.
+ *
+ *  ⚠️ WHAT A GREEN RUN HERE STILL DOES NOT MEAN. This cannot tell that a
+ *  well-formed id points at a ticket that is CLOSED. All three violations named
+ *  `[2]C-3` for four and a half months; C-3 is real, VERIFIED at
+ *  02-shared-chassis.md:193, and its locked scope (02-STAGE-2-LOCKED.md:18) was
+ *  one act — write assert-no-seam-forks.mjs — which shipped. A pointer at a
+ *  finished ticket satisfies every mechanical check there is, and reads as
+ *  legitimate on every pass. Resolving an id to a LIVE work item is a human
+ *  control by necessity (OWNER_QUEUE D-8), not an oversight here. */
+const FIX_OWNER_FORM = /(?:\[(?:[1-9]|1[0-4])\][A-Z]-\d+|OWNER_QUEUE\s+[A-Z]{1,3}-\d+[a-z]?)/;
+
 let missingMethodEntries = 0;
 const declaredGapSurfaces = new Map(); // seam symbol -> [surface strings]
 const gapPrints = [];
@@ -671,6 +698,13 @@ for (const cap of capabilities) {
     }
     if (!v.detail || !v.fixOwner) {
       problems.push(`${cap.id} — violation \`${v.path}\` needs both \`detail\` and \`fixOwner\`.`);
+    } else if (!FIX_OWNER_FORM.test(v.fixOwner)) {
+      problems.push(
+        `${cap.id} — violation \`${v.path}\`'s \`fixOwner\` is ${JSON.stringify(v.fixOwner)}, which names ` +
+          'no trackable work item. Expected a pipeline id (`[2]C-3`) or an owner-queue row ' +
+          '(`OWNER_QUEUE D-8`). A violation whose owner is a sentence is one nobody can ever schedule: ' +
+          'it prints on every run and reads as managed. See FIX_OWNER_FORM for what this does NOT catch.',
+      );
     }
     declaredViolations.set(posix.normalize(v.path.replace(/\\/g, '/')), { cap: cap.id, ...v });
   }

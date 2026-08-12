@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:nikatru_core/nikatru_core.dart' as core;
-
-import 'auth_models.dart';
-import 'auth_repository.dart';
+// Package imports, not relative: this file used to sit beside these two shims
+// in `lib/data/auth/`. Both are re-export shims onto `packages/core`, so the
+// contract this test double implements is the SAME seam either way — the move
+// changed where the fake lives, never what it implements.
+import 'package:subly/data/auth/auth_models.dart';
+import 'package:subly/data/auth/auth_repository.dart';
 
 /// In-memory auth used automatically when Supabase isn't configured, so the
 /// whole app is explorable (every screen, sign-in → scan → dashboard) with no
@@ -13,7 +16,26 @@ import 'auth_repository.dart';
 /// `InMemoryAuthRepository` whenever the backend is not live — including under
 /// `--proof` — and has since before the cut-1 reversal
 /// (`git show 255265b:apps/subly/lib/state/providers.dart:544`). The ONLY
-/// non-test import of this file tree-wide is `test/delete_account_test.dart`.
+/// import of this file tree-wide is `test/delete_account_test.dart`.
+///
+/// 🔄 MOVED 2026-08-12 FROM `lib/data/auth/mock_auth_repository.dart` TO HERE,
+/// and that move is the whole fix — nothing about the class changed. It was
+/// declared a `seam-implemented-in-app` violation in
+/// `tooling/capability-register.json` for four and a half months while being a
+/// TEST DOUBLE that no shipped code path could reach: its sole importer was
+/// already a test. `02-STAGE-2-LOCKED.md:24` states the rule it was breaking in
+/// four words — **"fakes belong in tests"** — and both guards encode it, which
+/// is why the violation ends by relocation rather than by a waiver:
+/// `assert-capability-register.mjs` scans `apps/*/lib` only, and
+/// `assert-no-seam-forks.mjs`'s `EXEMPT_DIR` exempts `test/`.
+///
+/// ⚠️ THIS IS NOT THE RETIREMENT THE REGISTER'S WAIVER DESCRIBED, and the two
+/// were easy to confuse. That waiver blocked DELETING this class, because
+/// `delete_account_test.dart` drives the [ADR 027] 501-vs-502 outcomes through
+/// it and re-pointing that at `InMemoryAuthRepository` needs the chassis to
+/// produce both refusals. Relocating needs none of that — the test keeps using
+/// this double, by a relative import. The chassis change is still owed if the
+/// class is ever to go; it is simply not owed to put a fake where fakes live.
 ///
 /// ⚠️ THIS DOC USED TO CLAIM THE `--proof` SCREENSHOT LANE NEEDED THE FICTIONAL
 /// PROFILE `Alex Rivera` FROM HERE, AND THAT WAS FALSE IN BOTH HALVES. The lane

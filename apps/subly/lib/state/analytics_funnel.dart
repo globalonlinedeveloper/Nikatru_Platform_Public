@@ -45,19 +45,31 @@ class AnalyticsFunnel {
     } catch (_) {}
   }
 
-  Future<void> onPaywallViewed(String trigger) =>
-      _safe('paywall_viewed', <String, Object?>{'trigger': trigger});
-
-  Future<void> onCheckoutStarted(String sku) =>
-      _safe('checkout_started', <String, Object?>{'sku': sku});
-
-  Future<void> onPurchaseSuccess(String sku) =>
-      _safe('purchase_success', <String, Object?>{'sku': sku});
-
-  /// [reason] must be an ENUMERABLE code (`cancelled`, `declined`, `network`),
-  /// never a raw store error message — that would be free text in D1.
-  Future<void> onPurchaseFailed(String reason) =>
-      _safe('purchase_failed', <String, Object?>{'reason': reason});
+  // 🪦 THE FOUR MONEY METHODS LIVED HERE UNTIL 2026-08-12 AND WERE DELETED, NOT
+  // MOVED — `onPaywallViewed`, `onCheckoutStarted`, `onPurchaseSuccess`,
+  // `onPurchaseFailed`. [5]M-16 was satisfied by building the money half in
+  // `packages/purchases/lib/src/money_funnel.dart` (`MoneyFunnel`), which the
+  // brick calls, so every stamped app is born measuring its own conversion.
+  // These four were the ORIGINALS, left behind with ZERO callers ever since.
+  //
+  // 🔬 Measured before deleting, by resolving each call site rather than
+  // trusting the method names: the two apparent callers in
+  // `features/monetization/paywall_screen.dart:70,:77` bind
+  // `final MoneyFunnel funnel = await ref.read(moneyFunnelProvider.future)` —
+  // packages/purchases, not this class. Every other mention repo-wide is prose
+  // in a comment. `dart test` was green before and after with the same count.
+  //
+  // Deleted rather than kept "for safety": CLAUDE.md's mutation-testing rule —
+  // code whose removal changes no test outcome and has no caller is dead, and
+  // dead code in a class that is ITSELF scheduled to relocate just makes the
+  // relocation look bigger than it is. What remains below is the whole of what
+  // must find a home: `onActivation` and `onNotificationOpened`.
+  //
+  // ⚠️ NOT a rollback of the pseudonymity floor. `assert-pseudonymity-firewall`
+  // requires all four events to have a non-test caller and resolves them BY
+  // SYMBOL across apps/, packages/ and the brick, deliberately excluding files
+  // that DECLARE them — so it was never counting these declarations, and it
+  // still guards the live `MoneyFunnel` callers exactly as before.
 
   Future<void> onNotificationOpened(String kind) =>
       _safe('notification_opened', <String, Object?>{'kind': kind});

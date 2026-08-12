@@ -11,12 +11,14 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/core/router.dart';
-import 'package:subly/data/auth/mock_auth_repository.dart';
 import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';
 import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/state/providers.dart';
 
+// Relocated 2026-08-12 out of `lib/data/auth/` — a test double under `lib/`
+// was a declared capability-register violation; see that file's header.
+import 'support/mock_auth_repository.dart';
 import 'support/user_state_fakes.dart';
 
 /// THE STORE-MANDATED DELETION PATH, AND THE PART THAT IS EASY TO GET WRONG.

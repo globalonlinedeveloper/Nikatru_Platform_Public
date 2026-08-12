@@ -108,6 +108,56 @@ import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
+// ── PHASE 5 · MEASURED 2026-08-12 BY READING THE RECORD RATHER THAN RUNNING
+//    THIS GUARD. What is left before the exemption drops. (Tree: main @ 981481c.)
+//
+// `apps/subly/dod.json` is SHAPE-COMPLETE and has been for a while: its `items`
+// are set-equal to the register (A–H; B is `human` and honestly `pending`, which
+// is permitted), all FOURTEEN feature rows resolve to real `test(`/`testWidgets(`
+// declarations with non-empty bodies under apps/subly/test/, every `effect`
+// symbol still appears in its file outside comments, `humanReview` carries all
+// four required rows with all four keys, and `selection` carries its four fields
+// and all five gates. Those 25 judgement strings (16 humanReview + 4 selection + 5 gates) are BLANK, which is legal at
+// `stamped` — every blank check below is inside `if (done)` — and becomes 25
+// failures the moment the status flips. TWO things fail today, and only two:
+//
+//   1. THE LIFECYCLE ANCHOR. `sites/_shared/_data/apps.json` advertises subly as
+//      `"status": "live"` while this record still says `"status": "stamped"`.
+//      That red is the anchor doing its job, not a defect to route around.
+//
+//   2. FIVE EXPIRED MUTATION ROWS. Each row's date against `git log -1
+//      --format=%cI <effect file>`, normalised to UTC exactly as `lastCommitDay`
+//      does below:
+//        · sign in             2026-08-10 · lib/features/auth/login_screen.dart        2026-08-12
+//        · sign out            2026-08-10 · lib/core/router.dart                       2026-08-11
+//        · edit profile        2026-08-10 · lib/features/settings/settings_screen.dart 2026-08-11
+//        · home                2026-08-10 · lib/features/home/home_screen.dart         2026-08-11
+//        · cancel subscription 2026-08-08 · lib/features/cancel/cancel_sheet.dart      2026-08-11
+//      The other nine are in date.
+//
+// ⚠️ THE COUNT IS A READING OF ONE COMMIT, NEVER A PROPERTY OF THE FLIP. The
+// flip-draft's preflight measured ONE stale row on 2026-08-09, SEVEN on
+// 2026-08-10, FOUR on 2026-08-11, and it is FIVE today — the expiry clause does
+// not care how many it takes down. `sign in` expired via 6559d6e (#303) touching
+// login_screen.dart on 2026-08-12 UTC. ⚠️ A COMMIT SUBJECT IS NOT A RE-DATING:
+// b1e62ae is titled "…the sign-in mutation is re-run" but re-dated the BRICK's
+// dod.json, not apps/subly/dod.json. Re-measure at the moment of the flip; do
+// not trust this list.
+//
+// 🔴 THE DROP IS NOT THIS LINE ALONE. `tooling/scripts/check-selection-record.mjs`
+// carries the TWIN exemption, and it is the only place the selection record's
+// sha256 is ever resolved — leaving it there grades the string in dod.json while
+// nothing opens the file it names. AND its stale-exemption floor ("EXEMPT name(s)
+// are not workspace members") ranges over that Set, so emptying the Set turns
+// that limb into an assertion that cannot fail and its negative test can no longer
+// fire for its stated reason: DELETE the limb with the exemption rather than keep
+// it. Two fixture FILES also pin today's behaviour — app-dod.test.mjs (whose
+// default fixture workspace lists `apps/subly` and never creates it, and which
+// asserts `/1 exempt by name/` verbatim) and selection-record.test.mjs's whole
+// empty-domain describe. Guard and fixtures move together, in ONE commit with the
+// owner's 25 signed strings: dropping the exemption while the record says
+// `stamped` reddens the lifecycle anchor, and flipping the record while the
+// exemption stands changes nothing, because an exempt app is outside the domain.
 /** 39-CHASSIS §4 cut 1: `apps/subly` is a FROZEN legacy rail-prover. It predates
  *  the brick, was never stamped, and is never retrofitted — so it is exempt from
  *  carrying a done-record. Exempt BY NAME, never by a pattern, so adding an app
