@@ -588,6 +588,21 @@ jobs:
       - name: Every store the portfolio holds has a declared retention rule
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-retention-coverage.mjs
+      # …and the DAILY ROLLUP that 400-day sweep now depends on stays LOSSLESS.
+      # Two shipped comments cited this guard as build-failing while it did not
+      # exist (0007_events_rollup.sql, scheduled.ts) — a citation to a guard
+      # nobody wrote retires the reader's suspicion without retiring the risk.
+      # Three limbs: the grain covers every column the five insights queries
+      # read; `feature` is NOT NULL DEFAULT '' and the grain agrees across the
+      # DDL, ux_events_daily_grain and the rollup's own ON CONFLICT target
+      # (SQLite treats NULLs as DISTINCT, so a nullable one makes ON CONFLICT
+      # never fire — measured: 3 rows after 3 identical runs); and the `events`
+      # cutoff still passes through rollupBoundedCutoff rather than age alone.
+      # R3 is a TRIPWIRE — the behavioural proof is events-rollup.test.ts.
+      # [pipeline 11]E-11 [ADR 045]
+      - name: The events rollup stays lossless and the sweep stays fail-closed
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-rollup-lossless.mjs
       # …and the claim is worth what the lane's TRIGGER is worth. deploy-web.yml
       # filtered on `apps/subly/**` + `packages/**` only, so a dependency bump —
       # a transitive patch landing in the root pubspec.lock with no source change
@@ -1498,6 +1513,15 @@ jobs:
       - name: Every reachable surface has a width measurement, and every measurement a surface
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-responsive-coverage.mjs
+      # Same surface derivation as the width guard above — deliberately, so the
+      # two cannot range over different portfolios. 14 of 19 surfaces are
+      # UNSWEPT today and PRINT rather than fail: a guard that fails the build on
+      # work nobody has started blocks all CI on it (the standing C-6 rule). What
+      # DOES fail is the coverage self-check — a scan reaching zero surfaces or
+      # zero tests is COVERAGE LOST, not a clean run. [pipeline C-13]
+      - name: Every reachable surface has an accessibility sweep, and every sweep a surface
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-a11y-coverage.mjs
       # ── THE CLIENT MONEY RAIL ([pipeline 5]M-6/M-8/M-9/M-10/M-15) ───────────
       # Every limb here replaces an acceptance criterion that COULD NOT FAIL:
       # M-15 was satisfied by six rows of `false` (a rail dead everywhere

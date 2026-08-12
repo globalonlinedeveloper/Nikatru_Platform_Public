@@ -33,15 +33,18 @@
 //      still reaches app and template source
 //   2. every implementation of a registered contract, outside packages/, is
 //      either a declared violation, a homeless sole implementation, or a FORK
+//   3. PARITY — for a fork this repository has ACCEPTED rather than removed, the
+//      chassis twin's capability gates must all still exist in it ([ADR 042])
 //
 // Usage:  node tooling/ci/assert-no-seam-forks.mjs [repoRoot]
-// Exit 0 = no forks, 1 = a capability exists twice.
+// Exit 0 = no forks, 1 = a capability exists twice, or an accepted fork has
+// fallen behind the chassis screen it forked.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { stripSourceComments } from './text-reductions.mjs';
+import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
@@ -298,6 +301,184 @@ if (stale.length) {
   ]);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ── PARITY: A FORK THIS REPOSITORY ACCEPTED MUST STILL FOLLOW THE CHASSIS ────
+//
+// [ADR 042] — Subly's sign-in stays a fork. #275 canonicalised `/sign-in` onto
+// the forked `LoginScreen` and DELETED the chassis `SignInScreen` from the app,
+// for three good reasons (the ADR-027 deletion notice, which has no other
+// surface; the `E2EKeys.login*` anchors the nightly legs drive; the localized
+// `_friendlyMessage` mapping). The decision was to accept the divergence — and
+// the price of accepting it is this limb, not a promise.
+//
+// 🔬 THE PRICE IS NOT THEORETICAL; IT HAD ALREADY BEEN PAID BEFORE THE ADR WAS
+// EVEN WRITTEN. The brick's `SignInScreen` renders the Apple button only inside
+// `if (caps.oauthRedirect …)` ([pipeline C-7], what identity can actually do
+// HERE). The fork rendered it UNCONDITIONALLY, and a live probe of
+// `GET /auth/v1/authorize?provider=apple` answered 400 "provider is not
+// enabled". A fix to one screen does not reach the other, and nothing went red.
+//
+// THE DERIVATION, which is the whole guard ([ADR 042]:94-99):
+//   Let C = the `caps.<field>` reads in the CHASSIS screen and F = the same set
+//   in the FORK, both taken with comments AND string literals stripped.
+//   Require C ⊆ F.  Today {oauthRedirect} ⊆ {oauthRedirect}.
+//
+// 🔴 THE STRIPPING IS NOT HYGIENE, IT IS THE ASSERTION. Measured 2026-08-11:
+// login_screen.dart names `caps.oauthRedirect` in a COMMENT narrating the fix
+// (lines 445 and 451) as well as in the live `if` at 464. A raw match is
+// satisfied by the comment alone — the prose-grep false green this repository
+// has a scar about. Delete the `if` and leave the comment, and an unstripped
+// version of this limb still prints ok.
+//
+// WHY C ⊆ F AND NOT C = F: the fork legitimately carries MORE than the chassis
+// (that is why it was kept). Requiring equality would fail the tree on the day
+// it was written, which is a guard nobody keeps.
+//
+// ⚠️ WHAT THIS DELIBERATELY DOES NOT DO, because it was tried and rejected ON
+// MEASUREMENT ([ADR 042]:105-108): the same rule over `ref.watch(<X>Provider)`
+// false-positives on a CORRECT tree today — the brick watches
+// `authRepositoryProvider` in `build`, the fork reads it with `ref.read` at
+// three call sites. Same capability, different idiom. A rule with a known false
+// positive on day one is switched off inside a week.
+//
+// ⚠️ AND THE IDENTIFIER `caps` IS PART OF THE CONTRACT, not an accident of this
+// implementation. Rename the local in the CHASSIS and C empties → COVERAGE LOST
+// below. Rename it in the FORK and F empties → every chassis read is reported
+// missing. Both directions are LOUD; neither is silent, which is the only
+// property that matters when the thing being watched is two files drifting.
+//
+// 🔬 NEGATIVE-TESTED AGAINST THE REAL TREE 2026-08-12, not against fixtures.
+// [ADR 037]'s scar is that assert-seams-wired.mjs shipped broken with all six of
+// its fixtures green; a fixture encodes the same misunderstanding as the guard
+// it was written beside. Each mutation below was applied to the real file, the
+// guard was run, and the original bytes were restored byte-identically:
+//
+//   1. [ADR 042]:121 — `if (caps.secureSessionStorage) …` added to the chassis
+//      screen  → EXIT 1, naming login_screen.dart and the field it never reads.
+//      (`dart format --output=none` exit 0 on the mutated file first, so the
+//      mutation is real Dart and not a parse accident.)
+//   2. [ADR 042]:122 — `if (caps.oauthRedirect && providers.any)` in the fork
+//      narrowed to `if (providers.any)`, THE TWO COMMENT MENTIONS AT :445 AND
+//      :451 LEFT IN PLACE  → EXIT 1, `fork reads {—}`. This is one mutation
+//      testing two things: the limb reads the fork at all, and the stripping is
+//      load-bearing — an unstripped version reads `caps.oauthRedirect` out of
+//      the prose narrating the fix and prints ok.
+//   3. PARITY_PAIRS emptied  → EXIT 1 COVERAGE LOST, not a silent pass. This is
+//      the mutation that matters most: deleting the subject is how this limb
+//      would otherwise die without a sound.
+//   4. the pair's `fork` path re-pointed at a file that does not exist  →
+//      EXIT 1 COVERAGE LOST naming the path.
+//   5. the chassis gate narrowed so C empties  → EXIT 1 COVERAGE LOST. Without
+//      this one the limb degrades into an assertion that cannot fail, which
+//      this repository deletes rather than keeps.
+//
+// The fixture cases are in tooling/ci/test/no-seam-forks.test.mjs and are the
+// SECOND line of evidence, not the first.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Accepted forks and the chassis file each one must keep up with.
+ *
+ *  🔴 EMPTYING THIS LIST IS HOW THIS LIMB WOULD DIE QUIETLY — the loop below
+ *  only ever speaks about a pair it was given, so zero pairs is a silent pass,
+ *  the exact "a check that silently stopped checking" shape. MIN_PARITY_PAIRS
+ *  is the floor that makes the deletion loud instead. A pair is removed only
+ *  when the fork is GONE, and then the file-existence check below fails first
+ *  and makes somebody decide. */
+const PARITY_PAIRS = [
+  {
+    adr: 'ADR 042',
+    chassis: 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart',
+    fork: 'apps/subly/lib/features/auth/login_screen.dart',
+    note: '#275 deleted the chassis SignInScreen from apps/subly; the fork is accepted, so it owes parity.',
+  },
+];
+const MIN_PARITY_PAIRS = 1;
+
+/** Every `caps.<field>` read in a file — comments and string literals blanked
+ *  first, so neither prose nor a quoted string can satisfy the requirement.
+ *  `caps?.field` counts: it is the same read, and admitting it can only ever
+ *  find MORE reads on both sides of the subset. */
+const CAPS_READ = /\bcaps\??\.([A-Za-z_][A-Za-z0-9_]*)/g;
+function capsReads(rel) {
+  const src = stripStringLiterals(stripComments(readFileSync(join(ROOT, rel), 'utf8')));
+  const out = new Set();
+  for (const m of src.matchAll(CAPS_READ)) out.add(m[1]);
+  return out;
+}
+
+const parityLost = [];
+const parityGaps = [];
+const parityOk = [];
+
+if (PARITY_PAIRS.length < MIN_PARITY_PAIRS) {
+  fail([
+    `✗ COVERAGE LOST — ${PARITY_PAIRS.length} accepted-fork parity pair(s), expected at least ${MIN_PARITY_PAIRS}.`,
+    '  [ADR 042] pays for an accepted fork with this obligation. With no pair to check, the limb',
+    '  quantifies over nothing and reports a clean tree forever.',
+  ]);
+}
+
+for (const pair of PARITY_PAIRS) {
+  const missingFiles = [pair.chassis, pair.fork].filter((rel) => !existsSync(join(ROOT, rel)));
+  if (missingFiles.length) {
+    for (const rel of missingFiles) {
+      parityLost.push(
+        `    ${rel} — the file is not there, so the [${pair.adr}] pair cannot be compared at all.`,
+      );
+    }
+    continue;
+  }
+  const chassisReads = capsReads(pair.chassis);
+  const forkReads = capsReads(pair.fork);
+  if (chassisReads.size === 0) {
+    parityLost.push(
+      `    ${pair.chassis} — 0 \`caps.<field>\` read(s) found. C is empty, so C ⊆ F holds for ANY fork:` +
+        ' the subset test cannot fail and is therefore worse than none.',
+    );
+    continue;
+  }
+  const missing = [...chassisReads].filter((f) => !forkReads.has(f));
+  if (missing.length) parityGaps.push({ pair, missing, chassisReads, forkReads });
+  else parityOk.push({ pair, chassisReads });
+}
+
+if (parityLost.length) {
+  fail([
+    `✗ COVERAGE LOST — the accepted-fork parity limb reached nothing in ${parityLost.length} place(s):`,
+    ...parityLost,
+    '',
+    '  This limb is the price [ADR 042] charged for keeping a forked screen. A moved, renamed or',
+    '  deleted file makes it silent, not satisfied. Re-point the pair above at where the code went —',
+    '  or, if the fork was genuinely converged away, delete the pair in the same change that deletes',
+    '  the file, so a person decides rather than a path 404 deciding for them.',
+  ]);
+}
+
+if (parityGaps.length) {
+  const lines = [
+    `✗ ${parityGaps.length} accepted fork(s) have fallen behind the chassis screen they forked:`,
+  ];
+  for (const g of parityGaps) {
+    lines.push(`    ${g.pair.fork}`);
+    for (const f of g.missing) {
+      lines.push(
+        `      does NOT read \`caps.${f}\`, which the chassis gates on in ${g.pair.chassis}.`,
+      );
+    }
+    lines.push(
+      `      chassis reads {${[...g.chassisReads].sort().join(', ')}} · fork reads {${[...g.forkReads].sort().join(', ') || '—'}}`,
+    );
+  }
+  lines.push('');
+  lines.push('  [ADR 042] accepted this fork; the parity obligation is what it was accepted WITH. A chassis');
+  lines.push('  auth capability that the fork never mentions reaches every stamped app EXCEPT this one, in');
+  lines.push('  silence — which is the defect that already shipped once (the Apple button rendered');
+  lines.push('  unconditionally against a provider the server answers 400 for).');
+  lines.push('  Add the same gate to the fork, or move the behaviour into the chassis and converge — but');
+  lines.push('  read [ADR 042] first: three behaviours only the fork carries need a home before it can go.');
+  fail(lines);
+}
+
 for (const h of homeless) {
   console.log(
     `⚠  ${h.file} — class ${h.className} implements \`${h.contract}\`, and packages/ provides NO ` +
@@ -307,8 +488,15 @@ for (const h of homeless) {
 for (const w of waived) {
   console.log(`⚠  ${w.file} — declared fork of \`${w.contract}\` (see the register's violations).`);
 }
+for (const p of parityOk) {
+  console.log(
+    `✓  [${p.pair.adr}] parity — ${p.pair.fork} follows all ${p.chassisReads.size} chassis ` +
+      `\`caps.\` read(s): ${[...p.chassisReads].sort().join(', ')}`,
+  );
+}
 
 console.log(
   `ok  no seam forks — ${contracts.size} contract(s), ${sharedFiles.length + suspectFiles.length} file(s) scanned; ` +
-    `${shared.length} shared implementation(s), ${homeless.length} homeless, ${waived.length} declared`,
+    `${shared.length} shared implementation(s), ${homeless.length} homeless, ${waived.length} declared, ` +
+    `${parityOk.length} accepted fork(s) at parity`,
 );

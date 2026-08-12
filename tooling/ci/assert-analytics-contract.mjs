@@ -420,6 +420,18 @@ const WIRE_CONTRACTS = [
      *  statement, and this fails rather than going on printing it. */
     absentFromDart: '/v1/money',
   },
+  {
+    id: 'checkout',
+    kind: 'gap',
+    reason:
+      'NO CLIENT IN THIS REPO, AND UNLIKE money-webhook THAT IS A STATE, NOT A CONSTRUCTION — which is why the claim below is the load-bearing part. [ADR 044] §5(2) measured that `Paddle.Checkout.open({items})` opens a checkout with NO server-created transaction and NO API key on the request path, exercising the identical payment-link and `_ptxn` machinery, so the server endpoint is not a v1 dependency. The owner chose both rungs; this is rung 2 and nothing calls it yet. There is therefore no released client of ours to break and no wire contract to pin. What stands in for one is the SHAPE: the create body type carries no settable `status` field at all, so `status:"billed"` — which mints an invoice number and an immutable tax record, and on a cardless trial auto-completes the transaction — is a compile error rather than a review catch.',
+    /** THE CLAIM IS CHECKED, NOT ASSERTED, and here it is a TRIPWIRE ON OUR OWN
+     *  ROADMAP. The day any Dart source builds this path, a released client
+     *  exists, "nothing calls it yet" becomes false, and this fails instead of
+     *  going on printing it — which is exactly when a wire contract has to be
+     *  pinned, and exactly when nobody would think to come back here. */
+    absentFromDart: '/v1/checkout',
+  },
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

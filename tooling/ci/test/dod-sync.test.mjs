@@ -156,7 +156,17 @@ describe('check-dod-sync', () => {
     const page = PAGE.replace('| the golden matrix | 2026-07-25 |', '| the golden matrix | a while ago |');
     const { code, out } = run(SYNC, build({ page }));
     assert.equal(code, 1, 'a cut whose reasoning is not on the page will be re-litigated from memory');
-    assert.match(out, /appears nowhere in the one-pager's cut list/);
+    // Re-pointed 2026-08-12 with the guard's R3 repair. The old reason string was
+    // `appears nowhere in the one-pager's cut list` — a bare DATE substring search
+    // over the whole cut region, which is exactly the defect that repair removed:
+    // four of the five cuts share 2026-07-25, so one surviving row satisfied all
+    // four. The guard now matches each cut to a row of its OWN and compares THAT
+    // row's date cell, so the assertion is re-pointed at the stronger claim — it
+    // names the cut, the row it was matched to, and the value actually found.
+    assert.match(
+      out,
+      /the cut "golden-matrix" is dated 2026-07-25 in the register and its row on the one-pager \(definition-of-done\.md:\d+ "the golden matrix"\) says a while ago/,
+    );
   });
 
   test('COVERAGE LOST when the page loses the heading that BOUNDS the cut scan', () => {

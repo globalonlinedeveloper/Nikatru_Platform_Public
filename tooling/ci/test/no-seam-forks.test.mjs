@@ -39,12 +39,32 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 
 let seq = 0;
 
+/** The [ADR 042] parity pair, at the paths the guard hardcodes. Every fixture
+ *  tree must contain both files or the guard exits COVERAGE LOST — which is the
+ *  point of that limb, and is why they are defaults here rather than opt-in.
+ *  A case overrides either one by writing the same path into `extra`. */
+const CHASSIS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart';
+const FORK = 'apps/subly/lib/features/auth/login_screen.dart';
+
 /** A tree with: core declaring two contracts, packages/ implementing ONE of them
- *  (so the other is deliberately homeless), plus whatever `extra` files a case
- *  needs. MIN_CONTRACTS is 5, so the register declares five. */
+ *  (so the other is deliberately homeless), the parity pair at parity, plus
+ *  whatever `extra` files a case needs. MIN_CONTRACTS is 5, so the register
+ *  declares five. */
 function tree({ extra = {}, violations = null } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
+
+  // The parity pair, at parity: C = F = {oauthRedirect}, as the real tree is
+  // today. Class names deliberately do NOT collide with the fixture contracts —
+  // these files are the parity limb's subject, not the fork limb's.
+  files[join(root, CHASSIS)] =
+    'class SignInScreen {\n  Widget build(BuildContext context) {\n' +
+    '    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);\n' +
+    '    if (caps.oauthRedirect) return const AppleButton();\n    return const Empty();\n  }\n}\n';
+  files[join(root, FORK)] =
+    'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
+    '    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);\n' +
+    '    if (caps.oauthRedirect && providers.any) return const AppleButton();\n    return const Empty();\n  }\n}\n';
 
   const CONTRACTS = ['NotificationService', 'KeyValueStore', 'Analytics', 'PackVerifier', 'AuthRepository'];
   files[join(root, 'packages/core/lib/seams.dart')] =
@@ -281,5 +301,149 @@ describe('the stripper is a tokenizer — a comment cannot hide a fork', () => {
     }));
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /Ghost/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARITY — the limb [ADR 042] owed (added 2026-08-12).
+//
+// ⚠️ THESE FIXTURES ARE THE SECOND LINE OF EVIDENCE. Five mutations were run
+// against the REAL repository first and all five behaved correctly; they are
+// listed in the guard's own header, because a fixture written beside a guard
+// encodes the same misunderstanding as the guard. The two that the ADR itself
+// names ([ADR 042]:119-122) were run on the real files with `dart format
+// --output=none` clean on the mutated text, and both were restored
+// byte-identically.
+//
+// What the limb is: C = the `caps.<field>` reads in the brick's
+// sign_in_screen.dart, F = the same set in Subly's login_screen.dart, both with
+// comments AND string literals stripped. Require C ⊆ F. The fork was ACCEPTED,
+// so it may carry more; what it may not do is quietly carry less.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('[ADR 042] an accepted fork must follow the chassis it forked', () => {
+  test('parity holds → passes, and SAYS SO on every run', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    // Printed, not silent: an operator can see the limb is alive without
+    // reading the source, which is the difference between this and a check
+    // that quietly stopped checking.
+    assert.match(out, /\[ADR 042\] parity — apps\/subly\/lib\/features\/auth\/login_screen\.dart follows all 1 chassis/);
+    assert.match(out, /1 accepted fork\(s\) at parity/);
+  });
+
+  test('🔴 the chassis gains a capability the fork never hears about → EXIT 1, naming the fork', () => {
+    // [ADR 042]:121 — the whole reason the limb exists. The next auth capability
+    // added to the brick reaches all 49 stamped apps and not this one.
+    const { code, out } = run(tree({
+      extra: {
+        [CHASSIS]:
+          'class SignInScreen {\n  Widget build(BuildContext context) {\n' +
+          '    if (caps.oauthRedirect) return const AppleButton();\n' +
+          '    if (caps.secureSessionStorage) return const Locked();\n    return const Empty();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subly\/lib\/features\/auth\/login_screen\.dart/);
+    assert.match(out, /does NOT read `caps\.secureSessionStorage`/);
+    assert.match(out, /fallen behind the chassis screen they forked/);
+  });
+
+  test('🔴 the fork drops its gate → EXIT 1, the control that proves the fork is read at all', () => {
+    // [ADR 042]:122.
+    const { code, out } = run(tree({
+      extra: {
+        [FORK]: 'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
+          '    if (providers.any) return const AppleButton();\n    return const Empty();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does NOT read `caps\.oauthRedirect`/);
+    assert.match(out, /fork reads \{—\}/);
+  });
+
+  test('C ⊆ F, not C = F — the fork may carry MORE', () => {
+    // It carries more by design: the ADR-027 deletion notice, the E2EKeys.login*
+    // anchors, the localized _friendlyMessage mapping. Requiring equality would
+    // fail the tree on the day the limb was written.
+    const { code, out } = run(tree({
+      extra: {
+        [FORK]: 'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
+          '    if (caps.oauthRedirect) return const AppleButton();\n' +
+          '    if (caps.biometricUnlock) return const Extra();\n    return const Empty();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 0, out);
+  });
+
+  test('🔴 a `caps.` read that survives ONLY IN A COMMENT does not satisfy parity', () => {
+    // "The stripping is not hygiene, it is the assertion" ([ADR 042]:101-103).
+    // Measured on the real file: login_screen.dart names `caps.oauthRedirect` in
+    // a comment narrating the fix as well as in the live `if`, so a raw match is
+    // satisfied by the prose alone.
+    const { code, out } = run(tree({
+      extra: {
+        [FORK]: 'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
+          '    // the gate used to be `if (caps.oauthRedirect && providers.any)` here\n' +
+          '    /* and caps.oauthRedirect is discussed at length in this block too */\n' +
+          '    return const AppleButton();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does NOT read `caps\.oauthRedirect`/);
+  });
+
+  test('a `caps.` read inside a STRING LITERAL does not satisfy parity either', () => {
+    const { code, out } = run(tree({
+      extra: {
+        [FORK]: 'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
+          "    debugPrint('gated on caps.oauthRedirect');\n    return const AppleButton();\n  }\n}\n",
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does NOT read `caps\.oauthRedirect`/);
+  });
+
+  test('`caps?.field` counts — it is the same read', () => {
+    const { code, out } = run(tree({
+      extra: {
+        [FORK]: 'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
+          '    if (caps?.oauthRedirect ?? false) return const AppleButton();\n    return const Empty();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 0, out);
+  });
+});
+
+describe('the parity limb knows when it is not looking', () => {
+  test('COVERAGE LOST when the CHASSIS file is gone', () => {
+    const root = tree();
+    rmSync(join(root, CHASSIS));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — the accepted-fork parity limb reached nothing/);
+    assert.match(out, /sign_in_screen\.dart — the file is not there/);
+  });
+
+  test('COVERAGE LOST when the FORK file is gone — a converged fork must be DECIDED, not 404d', () => {
+    const root = tree();
+    rmSync(join(root, FORK));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /login_screen\.dart — the file is not there/);
+  });
+
+  test('🔴 COVERAGE LOST when the chassis yields ZERO caps reads — C ⊆ F would hold for any F', () => {
+    // The assertion-that-cannot-fail case, and the one a green run can never
+    // distinguish from a clean tree. If the brick's screen stops gating on
+    // capabilities (renamed local, refactored away), an empty C makes the subset
+    // test vacuously true forever.
+    const { code, out } = run(tree({
+      extra: {
+        [CHASSIS]: 'class SignInScreen {\n  Widget build(BuildContext context) {\n    return const Empty();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /0 `caps\.<field>` read\(s\) found/);
+    assert.match(out, /cannot fail and is therefore worse than none/);
   });
 });
