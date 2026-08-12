@@ -1545,6 +1545,26 @@ void main() {
       // Email/password is pure REST — it must work on all six.
       expect(caps.emailPassword, isTrue);
     });
+
+    // 🔴 AND THE OTHER AXIS, which is the one whose absence shipped a dead
+    // button. `AuthCapabilities` answers what the PLATFORM can do;
+    // `AuthProviders` answers what the SERVER will honour. Gating an OAuth
+    // button on the first alone hid it only on fuchsia — i.e. on nothing this
+    // factory ships — so Subly offered "Continue with Apple" everywhere and
+    // Supabase answered 400 "provider is not enabled" every time.
+    test('the app declares which federated providers the server honours', () {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final AuthProviders providers = c.read(authProvidersProvider);
+
+      // `any` is what the divider is gated on, so it must agree with the flags
+      // it summarises — otherwise the caption can render without its button.
+      expect(providers.any, providers.apple || providers.google);
+
+      // A stamped app takes the measured declaration, not a local guess.
+      expect(providers.apple, AuthProviders.configured.apple);
+      expect(providers.google, AuthProviders.configured.google);
+    });
   });
 
   // ── PROPERTY: auth-redirect-follows-session ───────────────────────────────

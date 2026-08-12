@@ -41,8 +41,15 @@
 //
 // Usage:  node tooling/ops/verify-free-api-scope.mjs
 //
-// The key lives at .claude/nikatru-platform-dd65a2de381c.json (gitignored).
-// Nothing below ever prints the key, the token, or any part of either.
+// The key comes from `PLAY_SERVICE_ACCOUNT_JSON` if that is set, and otherwise
+// from .claude/nikatru-platform-dd65a2de381c.json (gitignored). Env first so a
+// CI runner, which has no `.claude/`, can run this at all — the same account's
+// key has been a repository secret since 2026-08-04.
+// ⚠️ THE SECRET IS NOT WRITTEN TO DISK IN A WORKFLOW STEP, deliberately: that
+// filename is bound to a key id that changes on rotation, and it would put a
+// private key on the runner's filesystem for no gain.
+// Nothing below ever prints the key, the token, or any part of either — only
+// the account's own `client_email`, which is an identifier, not a credential.
 //
 // Exit 0 = the account authenticates AND is denied every project-level read.
 // Exit 1 = a project-level read SUCCEEDED (the fail-closed property is gone), or
@@ -60,6 +67,24 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const KEY_PATH = join(ROOT, '.claude', 'nikatru-platform-dd65a2de381c.json');
 const AUD = 'https://oauth2.googleapis.com/token';
 
+/// Env first, gitignored file second — so this can run on a CI runner, which
+/// has no `.claude/`. `PLAY_SERVICE_ACCOUNT_JSON` is a repository secret already
+/// (installed 2026-08-04) holding a key for this same account.
+const KEY_ENV = 'PLAY_SERVICE_ACCOUNT_JSON';
+
+/// 🔴 THE ACCOUNT THIS GUARD IS ABOUT. Asserted, not assumed.
+///
+/// The env source is a secret whose value cannot be read from here, so nothing
+/// locally can confirm it holds the key it is believed to hold. If it were
+/// swapped for a different service account's key, every probe below would still
+/// answer 403 and this guard would still print PASS — while asserting that some
+/// OTHER account is powerless and saying nothing at all about
+/// `nikatru-free-api@`. That is the exact shape of a check that quietly stopped
+/// checking, and it is cheap to close: the key states its own identity, so read
+/// it and refuse to proceed on the wrong one.
+const EXPECT_CLIENT_EMAIL =
+  'nikatru-free-api@nikatru-platform.iam.gserviceaccount.com';
+
 // 🔴 NO `process.exit()` ANYWHERE BELOW, AND THAT IS A BUG FIX, NOT A STYLE
 // CHOICE. Calling process.exit() while an undici (fetch) keep-alive handle is
 // still open CRASHES libuv on Windows —
@@ -71,12 +96,47 @@ const AUD = 'https://oauth2.googleapis.com/token';
 // rather than merely asserting non-zero. Set process.exitCode and return; let
 // Node drain and exit on its own.
 async function main() {
-if (!existsSync(KEY_PATH)) {
-  console.error('⬜ the service-account key is not present, so GCP was NOT contacted.');
+const rawEnv = (process.env[KEY_ENV] ?? '').trim();
+let KEY;
+if (rawEnv !== '') {
+  try {
+    KEY = JSON.parse(rawEnv);
+  } catch (err) {
+    console.error(
+      `⬜ ${KEY_ENV} is set but does not parse as JSON (${err.message}). A truncated or ` +
+        `quote-wrapped paste looks EXACTLY like a present secret, so this is exit 2 — ` +
+        `nothing was verified.`,
+    );
+    return 2;
+  }
+  for (const field of ['type', 'client_email', 'private_key']) {
+    if (!KEY?.[field]) {
+      console.error(`⬜ ${KEY_ENV} parses but carries no \`${field}\`. Exit 2 — nothing was verified.`);
+      return 2;
+    }
+  }
+} else if (!existsSync(KEY_PATH)) {
+  console.error(
+    `⬜ no service-account key: ${KEY_ENV} is unset and ${KEY_PATH} does not exist, ` +
+      `so GCP was NOT contacted.`,
+  );
   console.error('   Exit 2, deliberately distinct from 1.');
   return 2;
+} else {
+  KEY = JSON.parse(readFileSync(KEY_PATH, 'utf8'));
 }
-const KEY = JSON.parse(readFileSync(KEY_PATH, 'utf8'));
+
+// See EXPECT_CLIENT_EMAIL: a key for the wrong account would pass every probe
+// below and prove nothing about the account this guard names.
+if (KEY.client_email !== EXPECT_CLIENT_EMAIL) {
+  console.error(
+    `✗ this key belongs to ${KEY.client_email}, not ${EXPECT_CLIENT_EMAIL}. [ADR 033] is about ` +
+      `THAT account; every probe below would answer 403 for an unrelated identity and this guard ` +
+      `would report a pass it had not earned. Refusing to check the wrong subject.`,
+  );
+  return 1;
+}
+console.log(`--   key source: ${rawEnv !== '' ? KEY_ENV : KEY_PATH}  (${KEY.client_email})`);
 
 const b64 = (o) =>
   Buffer.from(typeof o === 'string' ? o : JSON.stringify(o))

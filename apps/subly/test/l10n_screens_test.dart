@@ -29,6 +29,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
+    show AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/app.dart';
 import 'package:subly/core/app_config.dart';
@@ -51,7 +53,12 @@ import 'support/width_harness.dart' show MemStore;
 /// does not degrade to English — it throws on the first frame. That is the
 /// intended shape (a screen silently rendering the wrong language is worse), and
 /// it is why every host in this suite carries them.
-Future<void> _pump(WidgetTester tester, Locale locale, Widget screen) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Locale locale,
+  Widget screen, {
+  List<Override> overrides = const <Override>[],
+}) async {
   // ⚠️ THE SURFACE IS PINNED TALL, AND IT IS NOT COSMETIC. flutter_test's
   // default is 800×600; the login column is ~712 px tall, so the sign-in /
   // sign-up toggle at the bottom sits OFF the render tree. A `find.text` still
@@ -64,6 +71,7 @@ Future<void> _pump(WidgetTester tester, Locale locale, Widget screen) async {
     ProviderScope(
       overrides: <Override>[
         keyValueStoreProvider.overrideWith((_) async => MemStore()),
+        ...overrides,
       ],
       child: MaterialApp(
         locale: locale,
@@ -377,7 +385,25 @@ void main() {
         WidgetTester tester,
       ) async {
         final AppLocalizations l10n = await _load(code);
-        await _pump(tester, Locale(code), const LoginScreen());
+        // 🔴 THE OAUTH LIMB IS FORCED ON HERE, AND ONLY HERE.
+        // `AuthProviders.configured` is `apple: false` — measured against the
+        // live project — so a plain pump renders no "Continue with Apple" and
+        // no divider, and the two assertions below would be asserting that a
+        // hidden widget is absent, which says nothing about TRANSLATION. This
+        // file's job is to prove every string a user can meet exists in both
+        // locales; the string is still in both arbs and still ships the day the
+        // provider is enabled, so the honest way to keep covering it is to
+        // pump the state in which it renders.
+        await _pump(
+          tester,
+          Locale(code),
+          const LoginScreen(),
+          overrides: <Override>[
+            authProvidersProvider.overrideWithValue(
+              const AuthProviders(apple: true, google: false),
+            ),
+          ],
+        );
 
         expect(find.text(l10n.welcomeBack), findsOneWidget);
         expect(find.text(l10n.signInSubtitle), findsOneWidget);

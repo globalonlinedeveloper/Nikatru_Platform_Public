@@ -3234,6 +3234,7 @@ Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
   }
 }
 final Provider<AuthCapabilities> authCapabilitiesProvider = X();
+final Provider<AuthProviders> authProvidersProvider = X();
 final Provider<AuthRefreshNotifier> authRefreshProvider = X();
 final StreamProvider<core.AuthUser?> authUserProvider = X();
 final Provider<core.ReviewPrompter> reviewPrompterProvider = X();
@@ -5649,7 +5650,12 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // flag and the arrival report. All three are classified, so the domain and
       // the classification move together — which is the point of the pair of
       // assertions below.
-      assert.match(out, /tracked domain: 56 chassis behaviour\(s\)/);
+      // 56 since 2026-08-11 (later the same day): `authProvidersProvider` — the
+      // server-side half of the OAuth question, whose absence let a disabled
+      // provider's button ship on every platform. Classified under
+      // `auth-seam-wired`, so the domain and the classification move together here
+      // too, and MIN_DOMAIN went 56 → 57 in the same commit.
+      assert.match(out, /tracked domain: 57 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -5712,11 +5718,20 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       assert.equal(code, 1);
       assert.match(out, /'secureStoreProvider' is classified in this guard but no longer exists/);
       // …and the domain's own floor catches the same edit from the other side.
-      // 49 = the 50 the fixture carries, minus the one this case deletes. The
-      // number moves with MIN_DOMAIN by construction: left at 45 it would have
-      // passed over a floor five behaviours slack, which is the drift this pair
-      // of assertions exists to make impossible.
-      assert.match(out, /COVERAGE LOST — the domain parse found 55/);
+      // The number is (what the fixture carries) − (the one this case deletes),
+      // and it moves with MIN_DOMAIN by construction: left behind, it would pass
+      // over a floor with slack, which is the drift this pair of assertions
+      // exists to make impossible.
+      // 2026-08-11: 55 → 56, because `authProvidersProvider` was added to BOTH
+      // the real tree and this fixture and MIN_DOMAIN went 56 → 57. THIS IS THE
+      // THIRD FILE OF A THREE-FILE ACT — the provider, the floor, and this
+      // expectation — and skipping it is not a red herring: with the fixture
+      // bumped and the floor left alone, the deletion measured 56 ≥ 56, the
+      // floor did not trip, and `COVERAGE LOST` silently stopped firing. The
+      // negative test passes BY LOSING THE THING IT TESTS, exactly as the note
+      // on MIN_DOMAIN describes. It was caught here by the suite, not by a
+      // human reading it.
+      assert.match(out, /COVERAGE LOST — the domain parse found 56/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

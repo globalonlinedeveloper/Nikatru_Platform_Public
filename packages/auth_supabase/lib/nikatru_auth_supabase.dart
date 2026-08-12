@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'src/secure_session_storage.dart';
 
 export 'src/auth_capabilities.dart';
+export 'src/auth_providers.dart';
 export 'src/in_memory_auth_repository.dart';
 export 'src/password_reset_redirect.dart';
 export 'src/secure_session_storage.dart';

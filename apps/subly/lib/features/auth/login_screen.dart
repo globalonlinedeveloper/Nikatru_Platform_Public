@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
-    show AuthCapabilities;
+    show AuthCapabilities, AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ContentPane;
@@ -301,6 +301,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // ([pipeline C-7]). Offering an OAuth button on a platform that cannot
     // complete the redirect is promising something the app cannot deliver.
     final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);
+    // …and whether the SERVER will accept the provider at all, which the
+    // capability matrix does not describe. Both must be true; see below.
+    final AuthProviders providers = ref.watch(authProvidersProvider);
     return Scaffold(
       backgroundColor: t.bg,
       body: SafeArea(
@@ -433,32 +436,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 // THE WHOLE OAUTH LIMB IS GATED, NOT JUST THE BUTTON — the
                 // chassis `SignInScreen` guard ([pipeline C-7]) that this fork
-                // never had. Subly rendered "Continue with Apple"
-                // unconditionally; it is now behind `caps.oauthRedirect`,
-                // GATED rather than deleted, and not enabled by this change.
+                // never had. GATED rather than deleted: the day a provider is
+                // switched on, the limb returns on its own.
                 //
-                // ⚠️ THIS GATE HIDES THE BUTTON ON NO TARGET THIS PORTFOLIO
-                // SHIPS TO, and saying so here is the point — the earlier
-                // version of this comment claimed the button "returns on its
-                // own the day the capability says yes", which reads as: it is
-                // hidden now. It is not. `AuthCapabilities.forPlatform` answers
-                // `oauthRedirect: true` for web, android, iOS, macOS, windows
-                // and linux; only fuchsia says false, and fuchsia is not a
-                // target. So what renders today is UNCHANGED.
-                //
-                // A live probe on 2026-08-10 answered
-                // `GET /auth/v1/authorize?provider=apple` with 400 "Unsupported
-                // provider: provider is not enabled". That is a switch in the
-                // SUPABASE PROJECT — server-side — which this gate neither
-                // reads nor flips, and which the capability matrix does not
-                // describe at all. Structural parity with the chassis is what
-                // changed here, and nothing beyond it.
+                // 🔴 TWO CONDITIONS, BECAUSE THERE ARE TWO INDEPENDENT FACTS —
+                // and the previous version of this gate had only one of them,
+                // which is why it changed nothing a user could see.
+                //   · `caps.oauthRedirect` — can THIS PLATFORM complete the
+                //     redirect back into the app?
+                //   · `providers.any`      — will THE SERVER honour an OAuth
+                //     request for any provider at all?
+                // The first is true for web, android, iOS, macOS, windows and
+                // linux; only fuchsia says false, and fuchsia is not a target.
+                // So `caps.oauthRedirect` ALONE hid this limb on no shipping
+                // platform — it read as a fix and shipped the defect intact.
+                // Measured on the live project 2026-08-11 via
+                // `GET /auth/v1/settings`: every key under `external` is false
+                // except `email`. `apple: false`. So the limb is hidden NOW,
+                // on every target, which is the whole point of the change.
+                // See `AuthProviders` for the probe and for the CI guard that
+                // fails if this declaration and the server ever disagree.
                 //
                 // ⚠️ THE DIVIDER IS INSIDE THE GATE BECAUSE IT IS THE OTHER
                 // HALF OF THE SENTENCE. "or" with nothing after it is a rule
                 // with a dangling caption; hiding the button alone would trade
                 // a dead control for a stray one.
-                if (caps.oauthRedirect) ...<Widget>[
+                if (caps.oauthRedirect && providers.any) ...<Widget>[
                   const SizedBox(height: 20),
                   Row(
                     children: <Widget>[
@@ -483,10 +486,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // translator drops, and would therefore render differently
                   // per locale for no stated reason. The reused key is the
                   // chassis's plain `continueWithApple`.
-                  SoftButton(
-                    label: l10n.continueWithApple,
-                    onPressed: _loading ? null : _apple,
-                  ),
+                  if (providers.apple)
+                    SoftButton(
+                      label: l10n.continueWithApple,
+                      onPressed: _loading ? null : _apple,
+                    ),
                 ],
                 const SizedBox(height: 24),
                 Center(
