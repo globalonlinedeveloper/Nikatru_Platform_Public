@@ -415,6 +415,7 @@
         "supabase_keepalive",
         "analytics_liveness",
         "renewals",
+        "events_rollup",
         "retention_sweep"
       ],
       "mechanism": {
@@ -1958,8 +1959,57 @@
         "cloudflare"
       ],
       "ownerGated": true,
-      "ownerGap": "⬜ OWNER DECISION OUTSTANDING — ONE NUMBER: how many days of analytics events are kept. The retention PERIOD is a policy decision, not an engineering one. 📌 SURFACED 2026-08-09: this is now ONE OF THE LAST TWO undeclared periods in the portfolio (the other is retention.d1.platform_db.provider_notifications) — the signup KV's was declared the same day at 365 days, and `_retentionCoverage._maxUndeclared` ratcheted to 2, so no third gap can join these. ⚠️ Note the trap this row exists to avoid: the table holds ZERO rows today, so any 'no rows older than the period' query is VACUOUSLY GREEN. That is a fact about traffic, not about retention, which is why the coverage limb is enumeration-driven and never row-driven. 🔴 Also open and UNVERIFIED: D1 may not reclaim space after a DELETE, so a period here is harder to undo than it looks. ✅ THE ENGINEERING HALF IS BUILT AND DORMANT (2026-08-11), so this costs EXACTLY ONE VALUE: change `EVENTS_RETENTION_DAYS` in services/platform/src/scheduled.ts from `null` to the number of days. Nothing else needs writing — the cron already fires nightly, `retention_sweep` is already in duty.platform-cron.watchedJobs, and services/platform/test/retention-sweep.test.ts already holds both branches. That one edit then turns that suite RED until this row is moved to `rule: period` with `periodDays` equal to the same number, and `_retentionCoverage._maxUndeclared` is ratcheted 2 -> 1. That red is mechanical bookkeeping the failure message names in full; it is not new code, and it exists so a period declared in the code cannot leave this register still calling it undeclared.",
+      "ownerGap": "✅ CLOSED 2026-08-12 by [ADR 045] — the period is 400 days and is declared in `periodDays` above and in services/platform/src/scheduled.ts. 📌 THIS FIELD PREVIOUSLY READ 'OWNER DECISION OUTSTANDING' AND WAS LEFT UNCHANGED WHEN THE NUMBER WAS LOCKED, so the register was still asking the owner for a decision they had already made. Retained rather than deleted because the sequence is the record: the row was undeclared, it was decided, and the gap text is what has to be closed by hand when that happens.",
       "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.events_daily",
+      "kind": "retention",
+      "store": "d1:platform_db:events_daily",
+      "what": "The daily install-grained rollup of `events`: one row per (day, app, install, event, feature) with a row count. 🔴 CARRIES `anon_id`, so it is PSEUDONYMOUS PERSONAL DATA, not an anonymous aggregate — every one of the five [11]E-11 numbers is an install-level DISTINCT count and three are per-install joins across event types, so marginal counts by (day, app, event) cannot reconstruct them. It drops nine identifying/contextual columns (session, platform, version, client clock, geo x3, consent id, raw params) and keeps the one the metrics need.",
+      "rule": "period",
+      "periodDays": 1100,
+      "declaredBy": "This increment (2026-08-12), NOT [ADR 045] — that ADR locked the RAW table's 400 days and predates this table existing. 1100 = 1095 (three calendar years, the floor for TWO year-over-year comparisons, which is the whole reason the rollup exists) + 5 days' margin, the same shape as 400 = 365 + 35. The value lives in services/platform/src/scheduled.ts as EVENTS_DAILY_RETENTION_DAYS and this row must agree with it.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "Stage 8 owns the PERIOD; stage 14 owns the job that makes it true. ⚠️ THIS TABLE IS PSEUDONYMOUS PERSONAL DATA, not an anonymous aggregate — it keeps `anon_id` because every [11]E-11 number is an install-level DISTINCT count. So the published privacy policy's 'only as long as necessary' binds here exactly as it binds `events`, and a consent withdrawal reaches it through `consent_artifacts.anon_id`. If the sweep stops, rows age past 1100 days and the promise is broken silently — the heartbeat is the detector.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0007_events_rollup.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `day` is older than 1100 days",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half) — the sweep half is BUILT AND DORMANT as of 2026-08-11 (see `deletingJob`), so this row no longer waits on new code, only on a number"
+      },
+      "deletingJob": "retention_sweep — the `events_daily` limb of `retentionSweep` in services/platform/src/scheduled.ts (EVENTS_DAILY_RETENTION_DAYS), watched by duty.platform-cron.watchedJobs. ⚠️ DELETES ON AGE ALONE, unlike the `events` limb: nothing downstream consumes this table, so there is no watermark for its cutoff to be bounded by. It is the end of the derivation chain. Held by services/platform/test/events-rollup.test.ts.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": false,
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.rollup_state",
+      "kind": "retention",
+      "store": "d1:platform_db:rollup_state",
+      "what": "One row per rollup naming the last COMPLETE UTC day fully consumed into `events_daily`. Three columns, no personal data: the rollup's name, a 'YYYY-MM-DD' watermark, and a timestamp.",
+      "rule": "keep",
+      "declaredBy": "This increment (2026-08-12). `keep` is not a deferred decision here — it is the decision: this table is a CONTROL, not data, and deleting it makes the events sweep INERT rather than freeing anything.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "No action on age, ever. 🔴 IF THIS ROW GOES MISSING the events sweep stops deleting rather than starts — the safe direction, and the reason this table must never be swept on a schedule that could race the job that writes it. The failure worth alarming on is not age but STALENESS: `rolled_through` not advancing means the rollup has stopped, which is reported by the events_rollup heartbeat's `lag=` token.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0007_events_rollup.sql",
+        "record": "the table itself",
+        "failingValue": "no row for rollup='events_daily', or `rolled_through` stale by more than 2 days",
+        "readBy": "services/platform/src/scheduled.ts (rollupBoundedCutoff)"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "ownerGated": false,
+      "source": "verified",
+      "keepWhy": "🔴 IT IS THE FAIL-CLOSED INTERLOCK THE EVENTS SWEEP READS, not data. `retentionSweep`'s cutoff for `events` is min(age, rolled_through + 1d), and a NULL watermark makes that limb INERT — so deleting this row frees nothing measurable and STOPS deletion rather than enabling it. That is the safe direction, and it is exactly why this table must never be swept on a schedule that could race the job that writes it. A retention period here would be a period on a control, not on data."
     },
     {
       "id": "retention.d1.platform_db.consent_artifacts",
@@ -2029,7 +2079,7 @@
       },
       "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. BUILT DORMANT 2026-08-11 and named here BEFORE the period exists, for the reason assert-ops-register.mjs states: a declared period that nothing enforces is retention as a policy sentence. While `PROVIDER_NOTIFICATIONS_RETENTION_DAYS` is null the job prepares NO statement; with a number it deletes rows whose `received_at` is older than that many days, at most 1000 per run (MAX_ROWS_PER_SWEEP), filtered and idempotent. ⚠️ THE SWEEP IS RETENTION, NOT ERASURE, AND IT DOES NOT CLOSE THE OTHER HALF OF THIS ROW: it deletes by AGE, so the fact that this table carries no `user_id` and sits outside the account-deletion sweep is untouched by it. Both branches are held by services/platform/test/retention-sweep.test.ts.",
       "ownerGated": true,
-      "ownerGap": "🔴 OWNER DECISION OUTSTANDING, AND THIS IS THE SHARPER OF THE TWO LEFT: personal data, verbatim, with no declared period AND outside the user_id-derived erasure sweep (services/platform/src/routes/account.ts). Owner/stage 8: declare the period and decide whether erasure must reach a table whose whole purpose is to be the unaltered evidence of a payment. 📌 SURFACED 2026-08-09 — with the signup KV's period declared (365 days) and `_retentionCoverage._maxUndeclared` ratcheted to 2, the only undeclared periods left in the portfolio are this row and retention.d1.platform_db.events. Of the two, this one holds a buyer's name, email and billing country in the clear, so it is the one where 'as long as necessary' currently means forever."
+      "ownerGap": "✅ CLOSED 2026-08-12 by [ADR 045] — the period is 730 days and is declared in `periodDays` above and in services/platform/src/scheduled.ts. 📌 THIS FIELD PREVIOUSLY READ 'OWNER DECISION OUTSTANDING' AND WAS LEFT UNCHANGED WHEN THE NUMBER WAS LOCKED, so the register was still asking the owner for a decision they had already made. Retained rather than deleted because the sequence is the record: the row was undeclared, it was decided, and the gap text is what has to be closed by hand when that happens."
     },
     {
       "kind": "retention",

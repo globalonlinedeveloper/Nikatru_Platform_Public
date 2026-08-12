@@ -38,6 +38,7 @@ import { describe, it, expect } from 'vitest';
 import registerRaw from '../../../tooling/ops/register.json?raw';
 import {
   EVENTS_RETENTION_DAYS,
+  EVENTS_DAILY_RETENTION_DAYS,
   MAX_ROWS_PER_SWEEP,
   PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
   RETENTION_SWEEP_JOB,
@@ -54,6 +55,13 @@ const NOW = Date.parse('2026-08-11T00:00:00.000Z');
 const CUTOFF_30D = '2026-07-12T00:00:00.000Z';
 
 const envOf = (db: RealDb) => ({ PLATFORM_DB: db }) as unknown as Env;
+
+/** Mark the rollup as CAUGHT UP to the last complete day before NOW, so the
+ *  `events` limb's cutoff is decided by age rather than by the interlock.
+ *  Any test about the sweep's ARITHMETIC needs this; without it the watermark is
+ *  NULL and the limb is inert, so the test would pass for the wrong reason. */
+const caughtUp = (db: RealDb) =>
+  db.db.exec("UPDATE rollup_state SET rolled_through = '2026-08-10' WHERE rollup = 'events_daily'");
 
 /** Two ancient rows and one fresh row in each swept table. */
 function seeded(): RealDb {
@@ -78,6 +86,19 @@ function seeded(): RealDb {
        ('paddle', 'evt-old-2', '2026-07-01T00:00:00.000Z', '{}', '2026-07-01T00:00:01.000Z'),
        ('paddle', 'evt-new-1', '2026-08-10T00:00:00.000Z', '{}', '2026-08-10T00:00:01.000Z')`,
   );
+  // 🔴 THE ROLLUP WATERMARK IS SET, AND IT IS LOAD-BEARING FOR THE SAME REASON
+  // `derived_at` IS. The `events` limb no longer deletes on age alone: its cutoff
+  // is min(age, rolled_through + 1d), and a NULL watermark makes it INERT
+  // (`rollupBoundedCutoff`). A seed that left this NULL would make every events
+  // arithmetic case below silently assert nothing — rows would survive because
+  // the INTERLOCK refused them, while the test read that as "the period had not
+  // elapsed". Exactly the failure the comment above describes, one table over.
+  //
+  // '2026-08-10' is the last complete day before NOW, i.e. THE ROLLUP HAS CAUGHT
+  // UP, so the age cutoff binds and these cases test the arithmetic they mean to.
+  // The interlock's own cases — stalled, never-run, exactly-at-cutoff — are
+  // driven deliberately in their own describe block, not smuggled in here.
+  db.db.exec("UPDATE rollup_state SET rolled_through = '2026-08-10' WHERE rollup = 'events_daily'");
   return db;
 }
 
@@ -99,7 +120,7 @@ const heartbeat = (db: RealDb) =>
 /** Every SQL string the sweep asked the DB to prepare that is a DELETE. */
 const deletesPrepared = (db: RealDb) => db.sql.filter((s) => /^\s*DELETE\b/i.test(s));
 
-const NONE: RetentionPeriods = { events: null, provider_notifications: null };
+const NONE: RetentionPeriods = { events: null, events_daily: null, provider_notifications: null };
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('retentionCutoff — the pure half', () => {
@@ -142,7 +163,7 @@ describe('DORMANT — with no declared period the sweep touches nothing', () => 
 
   it('a period of 0 or a negative is treated as undeclared, not as "delete everything"', async () => {
     const db = seeded();
-    await retentionSweep(envOf(db), { events: 0, provider_notifications: -1 }, NOW);
+    await retentionSweep(envOf(db), { events: 0, events_daily: null, provider_notifications: -1 }, NOW);
     expect(db.count('events')).toBe(3);
     expect(db.count('provider_notifications')).toBe(3);
     expect(deletesPrepared(db)).toEqual([]);
@@ -171,7 +192,7 @@ describe('DORMANT — with no declared period the sweep touches nothing', () => 
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('ACTIVATED — one value turns the same job into a bounded deletion', () => {
-  const THIRTY: RetentionPeriods = { events: 30, provider_notifications: 30 };
+  const THIRTY: RetentionPeriods = { events: 30, events_daily: null, provider_notifications: 30 };
 
   it('deletes EXACTLY the rows past the period, and nothing newer', async () => {
     const db = seeded();
@@ -239,6 +260,7 @@ describe('ACTIVATED — one value turns the same job into a bounded deletion', (
          ('at-cutoff', 'subly', 'a1', 'app_launch', '${CUTOFF_30D}'),
          ('one-ms-before', 'subly', 'a1', 'app_launch', '2026-07-11T23:59:59.999Z')`,
     );
+    caughtUp(db);
     await retentionSweep(envOf(db), THIRTY, NOW);
     expect(db.rows('SELECT event_id FROM events')).toEqual([{ event_id: 'at-cutoff' }]);
   });
@@ -257,10 +279,12 @@ describe('ACTIVATED — one value turns the same job into a bounded deletion', (
   it('the cutoff is BOUND, not interpolated — the deleted set is data, not string-building', async () => {
     const db = seeded();
     await retentionSweep(envOf(db), THIRTY, NOW);
-    // RealDb.bound records every `.bind(...)` tuple in order. The two sweeps
-    // come first; the heartbeat's INSERT binds after them.
-    expect(db.bound[0]).toEqual([CUTOFF_30D, MAX_ROWS_PER_SWEEP]);
+    // RealDb.bound records every `.bind(...)` tuple in order. bound[0] is the
+    // ROLLUP WATERMARK READ, which now runs once before the loop — the two
+    // sweeps follow it, and the heartbeat's INSERT binds after them.
+    expect(db.bound[0]).toEqual(['events_daily']);
     expect(db.bound[1]).toEqual([CUTOFF_30D, MAX_ROWS_PER_SWEEP]);
+    expect(db.bound[2]).toEqual([CUTOFF_30D, MAX_ROWS_PER_SWEEP]);
   });
 
   it('is IDEMPOTENT — a second run at the same instant deletes nothing more', async () => {
@@ -288,11 +312,13 @@ describe('ACTIVATED — one value turns the same job into a bounded deletion', (
 
   it('one store declared and one not is a MIXED run, not an all-or-nothing one', async () => {
     const db = seeded();
-    await retentionSweep(envOf(db), { events: 30, provider_notifications: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null }, NOW);
     expect(db.count('events')).toBe(1);
     expect(db.count('provider_notifications')).toBe(3);
     expect(deletesPrepared(db)).toHaveLength(1);
-    expect(String(heartbeat(db)[0].detail)).toContain('inert=provider_notifications');
+    // Both undeclared stores are named, in `stores` order — a reader must be
+    // able to tell WHICH are inert, not just how many.
+    expect(String(heartbeat(db)[0].detail)).toContain('inert=events_daily,provider_notifications');
   });
 });
 
@@ -311,15 +337,16 @@ describe('BOUNDED — the sweep is a catch-up job, never one unbounded DELETE', 
        VALUES ('keep-me', 'subly', 'a1', 'app_launch', '2026-08-10T00:00:00.000Z')`,
     );
     expect(db.count('events')).toBe(overflow + 1);
+    caughtUp(db);
 
-    await retentionSweep(envOf(db), { events: 30, provider_notifications: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null }, NOW);
     expect(db.count('events')).toBe(overflow + 1 - MAX_ROWS_PER_SWEEP);
     const first = String(heartbeat(db)[0].detail);
     expect(first).toContain('capped=1');
     expect(first).toContain(`events=30d:${MAX_ROWS_PER_SWEEP}`);
 
     // The next night finishes the backlog and stops reporting capped.
-    await retentionSweep(envOf(db), { events: 30, provider_notifications: null }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: null }, NOW);
     expect(db.rows('SELECT event_id FROM events')).toEqual([{ event_id: 'keep-me' }]);
     expect(String(heartbeat(db)[1].detail)).toContain('capped=0');
   });
@@ -330,7 +357,7 @@ describe('a failing DELETE is recorded as ok=0, never as "nothing to do"', () =>
   it('records the failure instead of swallowing it', async () => {
     const db = seeded();
     db.throwOnWrite = true;
-    await retentionSweep(envOf(db), { events: 30, provider_notifications: 30 }, NOW);
+    await retentionSweep(envOf(db), { events: 30, events_daily: null, provider_notifications: 30 }, NOW);
     // The heartbeat write itself is best-effort and shares the same flag, so the
     // observable contract here is that the cron does not throw out of the sweep.
     db.throwOnWrite = false;
@@ -349,6 +376,7 @@ describe('the shipped constants and tooling/ops/register.json agree', () => {
    *  `number | null` is what lets every case below compile in BOTH states. */
   const shipped: RetentionPeriods = {
     events: EVENTS_RETENTION_DAYS,
+    events_daily: EVENTS_DAILY_RETENTION_DAYS,
     provider_notifications: PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
   };
 

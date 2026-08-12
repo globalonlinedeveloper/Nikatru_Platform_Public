@@ -462,9 +462,9 @@ export async function renewalsFanOut(env: Env): Promise<void> {
  *  satisfied below and in tooling/ops/register.json. */
 export const RETENTION_SWEEP_JOB = 'retention_sweep';
 
-/** The two platform_db stores whose retention is a PERIOD rather than a reasoned
+/** The platform_db stores whose retention is a PERIOD rather than a reasoned
  *  `keep`. Each name is also the store suffix of its register row id. */
-export type RetentionStore = 'events' | 'provider_notifications';
+export type RetentionStore = 'events' | 'events_daily' | 'provider_notifications';
 
 /** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
 export type RetentionPeriods = Record<RetentionStore, number | null>;
@@ -488,13 +488,45 @@ export type RetentionPeriods = Record<RetentionStore, number | null>;
 //     so a D30 number exists on ANY given day rather than one frozen cohort.
 // 400 clears the statutory floor by ~5 weeks without sitting on the ceiling.
 //
-// 🔴 THERE IS NO ROLLUP TABLE, so this delete is IRREVERSIBLE for the metrics:
-// nothing aggregates events before they go. 11-measurement.md:1540-1543 records
-// that all five funnel numbers survive aggregation losslessly, so building a
-// daily rollup would decouple the metric from this period entirely and make it
-// a pure privacy choice. Until then, shortening this number destroys history.
+// ✅ THE ROLLUP NOW EXISTS (0007_events_rollup.sql, `eventsRollup` below), so
+// this delete is NO LONGER irreversible for the metrics — and the cutoff for
+// this store is bounded by the rollup's watermark, not by age alone. See
+// `rollupBoundedCutoff`.
+//
+// 📌 THIS COMMENT PREVIOUSLY SAID "THERE IS NO ROLLUP TABLE" AND CITED
+// 11-measurement.md:1540-1543 for the claim that all five funnel numbers "are
+// counts and ratios by day/app/event" and so "survive aggregation losslessly".
+// The first half is now false because the table exists. THE SECOND HALF WAS
+// ALWAYS FALSE: zero of the five are computable at (day, app, event) grain —
+// every one is an install-level DISTINCT count and three are per-install joins
+// across different event types. They do survive aggregation, but only at a grain
+// that keeps `anon_id`. A rollup built to the grain that sentence describes
+// would have destroyed four of five numbers while reporting success.
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const EVENTS_RETENTION_DAYS = 400;
+
+// 🔒 DECLARED — 1100 DAYS (~3 years). Register row:
+// retention.d1.platform_db.events_daily.
+//
+// The corridor, in [ADR 045]'s own idiom:
+//   · FLOOR 400 — below EVENTS_RETENTION_DAYS the rollup would destroy history
+//     the RAW table still holds, which is absurd by construction.
+//   · FLOOR 1095 — three calendar years, the minimum for TWO year-over-year
+//     comparisons (Y3 vs Y2 vs Y1). This is the first thing 400 days cannot buy
+//     and it is the whole reason the rollup exists.
+//   · CEILING — none statutory. GA4's 425-day cap governs raw, event-level,
+//     device-and-geo-bearing data; this table has none of that. DPDP purpose
+//     limitation (s.6(1)) still binds, and "portfolio seasonality across three
+//     years" is a stated, bounded purpose.
+// 1100 = 1095 + 5 days' margin — the same shape as 400 = 365 + 35.
+//
+// ⚠️ THIS IS A POLICY NUMBER, NOT A MEASUREMENT, and it is the one value in this
+// increment an owner may want to move. It is locked rather than deferred because
+// tooling/ops/register.json caps undeclared periods at `_maxUndeclared: 0`, so
+// shipping it undeclared is not an option. Moving it is a one-line change here
+// plus `periodDays` in the register.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const EVENTS_DAILY_RETENTION_DAYS = 1100;
 
 // 🔒 DECLARED — 730 DAYS (2 years). [ADR 045]. This table holds the buyer's
 // name, email and billing country VERBATIM (0004_money_rail.sql §B). Register
@@ -558,6 +590,225 @@ export function retentionCutoff(days: number | null, nowMs: number = Date.now())
     : null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE EVENTS ROLLUP — [11]E-11, [ADR 045]
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Heartbeat job name. Same `<NAME>_JOB` convention and same two-directional
+ *  check by `deriveWatchedJobs` as RETENTION_SWEEP_JOB — it must also appear in
+ *  `duty.platform-cron.watchedJobs` in tooling/ops/register.json. */
+export const EVENTS_ROLLUP_JOB = 'events_rollup';
+
+/** The rollup's identity in `rollup_state`. One string, one place. */
+export const EVENTS_DAILY_ROLLUP = 'events_daily';
+
+// Days consumed per run. A rollup is a CATCH-UP job like the sweep: falling
+// behind is SAFE (the watermark simply stops advancing and the sweep stops
+// deleting with it), so this can be lowered freely if catch-up ever competes
+// with ingest for the row-write budget.
+//
+// Worst case query budget per run: 1 (read watermark) + 1 (gap skip) + 14 × 2
+// (rollup + watermark advance, in one batch each) + 1 (heartbeat) = 31, against
+// d1.queriesPerInvocation = 50. This takes the WORST reading of an unresolved
+// question — Cloudflare does not document whether a batch() of N spends 1 query
+// or N — and 31 ≤ 50 holds either way.
+// @ceiling d1.queriesPerInvocation lte
+export const MAX_DAYS_PER_ROLLUP_RUN = 14;
+
+/** 'YYYY-MM-DD' for an epoch-ms instant, UTC. */
+function dayOf(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Calendar-day arithmetic on a 'YYYY-MM-DD' string, UTC, no DST to worry about. */
+function addDays(day: string, n: number): string {
+  return dayOf(Date.parse(`${day}T00:00:00.000Z`) + n * MS_PER_DAY);
+}
+
+/** The last COMPLETE day fully consumed, or `null` if nothing has been. */
+export async function rolledThrough(env: Env): Promise<string | null> {
+  const row = await env.PLATFORM_DB.prepare('SELECT rolled_through FROM rollup_state WHERE rollup = ?')
+    .bind(EVENTS_DAILY_ROLLUP)
+    .first<{ rolled_through: string | null }>();
+  // A MISSING row and a NULL value mean the same thing — nothing consumed — so
+  // the caller never has to distinguish them. 0007 seeds the row for this reason.
+  return row?.rolled_through ?? null;
+}
+
+/**
+ * 🔴 THE FAIL-CLOSED INTERLOCK. The `events` sweep's cutoff, bounded by what the
+ * rollup has actually consumed.
+ *
+ * `min(age_cutoff, rolled_through + 1 day)`, and **NULL when the rollup has
+ * consumed nothing at all** — which makes the sweep INERT rather than letting it
+ * delete on age alone.
+ *
+ * Every `events` row with `server_ts < rolled_through+1d` is provably in
+ * `events_daily`, because `eventsRollup` consumes days WHOLE AND ATOMICALLY: the
+ * aggregate and the watermark advance travel in one `D1.batch()`, which is one
+ * transaction, so a day is consumed and marked or neither.
+ *
+ * ⚠️ THIS FUNCTION IS THE GUARANTEE. Ordering `eventsRollup` before
+ * `retentionSweep` is an optimisation, not a safety property — both limbs
+ * swallow their own exceptions so they can write ok=0 heartbeats, so a failed
+ * rollup does not stop a sweep that runs a second later. Delete this call and
+ * the sweep silently reverts to deleting on age, destroying unrolled-up history.
+ * `test/events-rollup.test.ts` drives exactly that mutation.
+ *
+ * If the rollup fails, the sweep deletes NOTHING NEW: failure degrades to
+ * "events grows", which is recoverable, never to "history destroyed", which is
+ * not.
+ */
+export function rollupBoundedCutoff(ageCutoff: string | null, watermark: string | null): string | null {
+  if (watermark === null) return null;
+  const consumedThrough = `${addDays(watermark, 1)}T00:00:00.000Z`;
+  if (ageCutoff === null) return null;
+  return ageCutoff < consumedThrough ? ageCutoff : consumedThrough;
+}
+
+/**
+ * The nightly rollup. Consumes whole UTC days from `events` into `events_daily`
+ * and advances the watermark.
+ *
+ * 🔴 THE AGGREGATION NEVER SHIPS A ROW TO THE WORKER. `INSERT … SELECT … GROUP
+ * BY` executes entirely inside D1; the isolate holds one watermark string, one
+ * day string per iteration and `meta.changes`. Peak allocation is O(1) in the
+ * number of events, so the 128 MB isolate limit is not a constraint on this
+ * design rather than something it has to manage. Reading rows out and grouping
+ * in TypeScript would have made it one.
+ *
+ * ⚠️ TODAY IS NEVER CONSUMED. It is still accumulating, and rolling up a partial
+ * day would write an `n_rows` a later run has to correct — which the watermark's
+ * meaning ("fully consumed") would then be lying about.
+ *
+ * GAP SKIP. After a dormant period the first unconsumed day carrying data is
+ * found with ONE query rather than by walking empty days. Days strictly between
+ * the watermark and that result are provably empty, so advancing past them
+ * consumes nothing and loses nothing — catch-up is O(days-with-data), not
+ * O(calendar-days). Without it a 90-day dormancy costs seven nights of empty
+ * iterations.
+ */
+export async function eventsRollup(env: Env, nowMs: number = Date.now()): Promise<void> {
+  const lastCompleteDay = addDays(dayOf(nowMs), -1); // yesterday, UTC
+  let days = 0;
+  let rows = 0;
+  let watermark: string | null = null;
+  let lag = 0;
+
+  try {
+    watermark = await rolledThrough(env);
+    const from = watermark === null ? '' : `${addDays(watermark, 1)}T00:00:00.000Z`;
+
+    // 🔴 THE DAYS TO CONSUME, ENUMERATED IN ONE QUERY — not discovered by
+    // walking the calendar. This is what makes catch-up O(days-with-data)
+    // instead of O(calendar-days), and the difference is not academic: the first
+    // version of this loop advanced one day per D1 batch, so a fixture with 5
+    // days of data inside a 14-day window spent 14 batches to write 5 days'
+    // rows and reported `days=14 rows=5`. After a dormant month it would have
+    // burned an entire run's query budget on days containing nothing.
+    //
+    // LIMIT is MAX+1 so the result distinguishes "this is all of them" from
+    // "there are more" — which decides how far the watermark may advance below.
+    const dayRows = await env.PLATFORM_DB.prepare(
+      'SELECT DISTINCT substr(server_ts, 1, 10) AS d FROM events WHERE server_ts >= ?1 AND server_ts < ?2 ORDER BY d LIMIT ?3',
+    )
+      .bind(from, `${addDays(lastCompleteDay, 1)}T00:00:00.000Z`, MAX_DAYS_PER_ROLLUP_RUN + 1)
+      .all<{ d: string }>();
+    const withData = (dayRows.results ?? []).map((r) => r.d).filter((d) => typeof d === 'string');
+    const more = withData.length > MAX_DAYS_PER_ROLLUP_RUN;
+    const todo = more ? withData.slice(0, MAX_DAYS_PER_ROLLUP_RUN) : withData;
+
+    for (const day of todo) {
+      const res = await env.PLATFORM_DB.batch([
+        // 🔴 `DO UPDATE SET n_rows = excluded.n_rows` IS ASSIGNMENT, NEVER
+        // `n_rows + excluded.n_rows`. Accumulating would double every count on a
+        // re-run; assignment makes re-running a RECOMPUTATION, which is what
+        // makes a partially-failed night safe to repeat.
+        //
+        // 🔴 `CAST(… AS TEXT)` IS LOAD-BEARING. `json_extract` returns an INTEGER
+        // for `{"name": 42}`, and an INTEGER and its TEXT form are DISTINCT keys
+        // in the unique index — the same duplicate-row failure as a NULL
+        // sentinel, reached by a different route.
+        //
+        // The `''` sentinel (never NULL) is why ON CONFLICT fires at all for the
+        // ~90% of rows that are not `feature_used`. See 0007's header.
+        env.PLATFORM_DB.prepare(
+          "INSERT INTO events_daily (day, app_id, anon_id, event, feature, n_rows) SELECT substr(server_ts, 1, 10), app_id, anon_id, event, CASE WHEN event = 'feature_used' AND json_valid(params) AND json_extract(params, '$.name') IS NOT NULL THEN CAST(json_extract(params, '$.name') AS TEXT) ELSE '' END, COUNT(*) FROM events WHERE server_ts >= ?1 AND server_ts < ?2 GROUP BY 1, 2, 3, 4, 5 ON CONFLICT (day, app_id, anon_id, event, feature) DO UPDATE SET n_rows = excluded.n_rows",
+        ).bind(`${day}T00:00:00.000Z`, `${addDays(day, 1)}T00:00:00.000Z`),
+        // IN THE SAME BATCH — one D1 transaction — so a day is consumed and
+        // marked, or neither. That atomicity is exactly what lets
+        // `rollupBoundedCutoff` treat the watermark as "fully consumed".
+        env.PLATFORM_DB.prepare(
+          'INSERT INTO rollup_state (rollup, rolled_through, updated_at) VALUES (?, ?, ?) ON CONFLICT (rollup) DO UPDATE SET rolled_through = excluded.rolled_through, updated_at = excluded.updated_at',
+        ).bind(EVENTS_DAILY_ROLLUP, day, new Date(nowMs).toISOString()),
+      ]);
+      rows += Number(res[0]?.meta?.changes ?? 0);
+      watermark = day;
+      days++;
+    }
+
+    // 🔴 IF EVERY REMAINING DAY-WITH-DATA WAS CONSUMED, THE WATERMARK ADVANCES TO
+    // `lastCompleteDay`, NOT TO THE LAST ROW'S DAY. The days in between are
+    // PROVABLY EMPTY — the query above enumerated every day carrying a row in
+    // that range — so marking them consumed loses nothing and is the honest
+    // statement: "everything up to yesterday is in the rollup".
+    //
+    // It also matters for the SWEEP, which is the whole point of the watermark:
+    // leaving it at the last row's day would pin the sweep's cutoff there
+    // forever on a portfolio that goes quiet, so a gap in ingest would silently
+    // become a permanent ceiling on retention. A quiet week is not a reason to
+    // stop deleting.
+    //
+    // ⚠️ ONLY when `more` is false. If the run was capped there are unconsumed
+    // days with data beyond it, and jumping the watermark past them would be
+    // exactly the unrolled-up deletion this whole mechanism exists to prevent.
+    if (!more && withData.length > 0 && lastCompleteDay > (watermark ?? '')) {
+      await env.PLATFORM_DB.prepare(
+        'INSERT INTO rollup_state (rollup, rolled_through, updated_at) VALUES (?, ?, ?) ON CONFLICT (rollup) DO UPDATE SET rolled_through = excluded.rolled_through, updated_at = excluded.updated_at',
+      )
+        .bind(EVENTS_DAILY_ROLLUP, lastCompleteDay, new Date(nowMs).toISOString())
+        .run();
+      watermark = lastCompleteDay;
+    }
+
+    // How far behind the rollup still is after this run. Reported, not escalated
+    // — see the note on MAX_ROWS_PER_SWEEP; nothing yet fails a guard on N
+    // consecutive lagging nights, and that belongs with the sweep's `capped`.
+    lag =
+      watermark === null
+        ? 0
+        : Math.max(0, Math.round((Date.parse(`${lastCompleteDay}T00:00:00.000Z`) - Date.parse(`${watermark}T00:00:00.000Z`)) / MS_PER_DAY));
+  } catch (err) {
+    await recordHeartbeat(
+      env,
+      [
+        {
+          target: '(portfolio)',
+          ok: false,
+          detail: `days=${days} rows=${rows} watermark=${watermark ?? 'null'} — events rollup FAILED: ${String(err)}`,
+        },
+      ],
+      EVENTS_ROLLUP_JOB,
+    );
+    return;
+  }
+
+  await recordHeartbeat(
+    env,
+    [
+      {
+        target: '(portfolio)',
+        ok: true,
+        detail:
+          watermark === null
+            ? 'days=0 rows=0 watermark=null lag=0 — NOTHING TO ROLL UP: `events` holds no row older than today. The sweep is INERT while this is true, by design.'
+            : `days=${days} rows=${rows} watermark=${watermark} lag=${lag}${days >= MAX_DAYS_PER_ROLLUP_RUN ? ' capped=1' : ''}`,
+      },
+    ],
+    EVENTS_ROLLUP_JOB,
+  );
+}
+
 /**
  * One bounded, filtered DELETE against one store. Returns rows removed.
  *
@@ -586,7 +837,21 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
       ? env.PLATFORM_DB.prepare(
           'DELETE FROM events WHERE rowid IN (SELECT rowid FROM events WHERE server_ts < ? ORDER BY server_ts LIMIT ?)',
         )
-      : env.PLATFORM_DB.prepare(
+      : store === 'events_daily'
+        ? env.PLATFORM_DB.prepare(
+            // Deletes on AGE ALONE, and that asymmetry with `events` is
+            // deliberate: nothing downstream consumes this table, so there is no
+            // watermark for its cutoff to be bounded by. `events` needs one
+            // because `events_daily` is derived FROM it; `events_daily` is the
+            // end of the chain.
+            //
+            // `day` is 'YYYY-MM-DD' and the cutoff is a full ISO instant, so the
+            // comparison is on `substr(cutoff,1,10)` — done by the CALLER, which
+            // keeps this statement a plain string literal with no expression
+            // around the bound parameter (assert-d1-sql-inventory [R2 iii]).
+            'DELETE FROM events_daily WHERE rowid IN (SELECT rowid FROM events_daily WHERE day < ? ORDER BY day LIMIT ?)',
+          )
+        : env.PLATFORM_DB.prepare(
           // 🔴 `derived_at IS NOT NULL AND derive_error IS NULL` IS A LEGAL
           // CONDITION, NOT AN OPTIMISATION — [ADR 045] §4. The retention FLOOR on
           // this table is NONE *only because* a derived record independently
@@ -647,11 +912,13 @@ export async function retentionSweep(
   env: Env,
   periods: RetentionPeriods = {
     events: EVENTS_RETENTION_DAYS,
+    events_daily: EVENTS_DAILY_RETENTION_DAYS,
     provider_notifications: PROVIDER_NOTIFICATIONS_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
 ): Promise<void> {
-  const stores: RetentionStore[] = ['events', 'provider_notifications'];
+  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications'];
+  const n_stores = stores.length;
   let declared = 0;
   let deleted = 0;
   let capped = 0;
@@ -659,15 +926,29 @@ export async function retentionSweep(
   const inert: string[] = [];
 
   try {
+    // 🔴 READ THE WATERMARK ONCE, BEFORE THE LOOP. This is what bounds the
+    // `events` cutoff below. If it is null the rollup has consumed nothing and
+    // the `events` limb is INERT — see `rollupBoundedCutoff`.
+    const watermark = await rolledThrough(env);
+
     for (const store of stores) {
-      const cutoff = retentionCutoff(periods[store], nowMs);
+      const ageCutoff = retentionCutoff(periods[store], nowMs);
+      // 🔴 THE FAIL-CLOSED LINK. `events` never deletes on age alone; its cutoff
+      // is min(age, rolled_through + 1d), null when nothing is rolled up.
+      // Replacing this with bare `ageCutoff` reverts the sweep to destroying
+      // history the rollup has not consumed — the mutation
+      // test/events-rollup.test.ts drives, and the one
+      // tooling/ci/assert-rollup-lossless.mjs [R3] trips on.
+      const bounded = store === 'events' ? rollupBoundedCutoff(ageCutoff, watermark) : ageCutoff;
       // THE INERT PATH. Nothing is prepared, nothing is bound, nothing is sent.
-      if (cutoff === null) {
-        inert.push(store);
+      if (bounded === null) {
+        inert.push(store === 'events' && ageCutoff !== null ? 'events(unrolled)' : store);
         continue;
       }
       declared++;
-      const n = await deleteOlderThan(env, store, cutoff);
+      // `events_daily.day` is 'YYYY-MM-DD'; every other store compares a full
+      // ISO instant. Narrowing here keeps the DELETE a plain string literal.
+      const n = await deleteOlderThan(env, store, store === 'events_daily' ? bounded.slice(0, 10) : bounded);
       deleted += n;
       if (n >= MAX_ROWS_PER_SWEEP) capped++;
       per.push(`${store}=${String(periods[store])}d:${n}`);
@@ -681,7 +962,7 @@ export async function retentionSweep(
         {
           target: '(portfolio)',
           ok: false,
-          detail: `stores=2 declared=${declared} deleted=${deleted} capped=${capped} — retention sweep FAILED: ${String(err)}`,
+          detail: `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped} — retention sweep FAILED: ${String(err)}`,
         },
       ],
       RETENTION_SWEEP_JOB,
@@ -697,8 +978,15 @@ export async function retentionSweep(
         ok: true,
         detail:
           declared === 0
-            ? `stores=2 declared=0 deleted=0 capped=0 — INERT: no period declared for ${inert.join(', ')} (owner: one value each in services/platform/src/scheduled.ts).`
-            : `stores=2 declared=${declared} deleted=${deleted} capped=${capped} ${per.join(' ')}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
+            // ⚠️ `events(unrolled)` IS NOT THE SAME INERT AS THE OTHERS and the
+            // token says so. Every other store is inert because no period is
+            // declared — owner work. `events` is inert because the ROLLUP has
+            // consumed nothing yet, which is the fail-closed interlock doing its
+            // job, needs no owner, and resolves itself on the first rollup run.
+            // One word, because a reader who cannot tell them apart will go
+            // looking for a missing number that is not missing.
+            ? `stores=${n_stores} declared=0 deleted=0 capped=0 — INERT: ${inert.join(', ')} (a bare store name = no period declared, owner: one value each in services/platform/src/scheduled.ts; \`events(unrolled)\` = the rollup watermark is null, which is the interlock refusing to delete unrolled-up history and needs no action).`
+            : `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped} ${per.join(' ')}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
       },
     ],
     RETENTION_SWEEP_JOB,
@@ -712,6 +1000,16 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, en
       await keepAliveSupabase(env);
       await analyticsLiveness(env);
       await renewalsFanOut(env);
+      // The rollup runs BEFORE the sweep so a day rolled up tonight is sweepable
+      // tonight.
+      //
+      // 🔴 THIS ORDER IS AN OPTIMISATION, NOT THE SAFETY PROPERTY. Both limbs
+      // catch their own errors so they can write ok=0 heartbeats, so they run
+      // INDEPENDENTLY — a rollup that fails at 06:00:10 does nothing to stop a
+      // sweep that deletes at 06:00:11. The safety property is the watermark the
+      // sweep reads (`rollupBoundedCutoff`). Swap these two lines and nothing is
+      // destroyed; delete the watermark read and everything is.
+      await eventsRollup(env);
       // LAST, deliberately: the sweep is the only limb that destroys anything,
       // and a slow or failing sweep must not delay the keep-alive that stands
       // between a free-tier Supabase project and its ~7-day auto-pause.

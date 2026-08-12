@@ -537,6 +537,28 @@ async function main() {
       v === 'live' ? null : v == null ? 'no environment at all — the rail could not attribute this row to a money world' : `environment is \`${v}\`, not \`live\``,
     'cron-job': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `job \`${v}\` is declared by no \`export const <NAME>_JOB\` in services/platform/src`))(cronJobNames()),
     'provider-register': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `provider \`${v}\` has no row in ${PROVIDERS_REL}`))(providerIds()),
+    // For DERIVED tables carrying no build marker. Deliberately weaker than
+    // `released-build` — it proves the row belongs to a real app, not that a
+    // released build wrote it — and the register's own definition says so.
+    //
+    // ⚠️ REUSES THE `appSlugs()` ALREADY IN THIS FILE rather than reading the
+    // catalogue a second time. The first draft added its own reader and Node
+    // refused the module outright — `Identifier 'appSlugs' has already been
+    // declared` — which is the cheapest possible version of the second-declaration
+    // failure this repository keeps paying for, caught by the language instead of
+    // by a drifted count months later.
+    'app-catalogue': ((set) => (v) =>
+      typeof v === 'string' && set.has(v)
+        ? null
+        : `app \`${v}\` has no entry in the app catalogue, so this row belongs to no app the factory ships`)(
+      (() => {
+        const s = new Set(appSlugs());
+        // An empty set marks every row unattributable, which reads as a finding
+        // about the data when it is really a finding about the reader.
+        if (s.size === 0) throw new CouldNotLook('the app catalogue declares zero apps, so every row would read as unattributable');
+        return s;
+      })(),
+    ),
     'migration-seed': null, // built per table below — the allowed set is that table's own seeds
   };
 

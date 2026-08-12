@@ -199,9 +199,11 @@ describe('platform_db migrations re-apply cleanly', () => {
       'cron_heartbeat',
       'entitlements',
       'events',
+      'events_daily',
       'provider_accounts',
       'provider_notifications',
       'revocation_reasons',
+      'rollup_state',
       'unclaimed_payments',
     ]);
   });
