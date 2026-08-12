@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { eventsRollup, rolledThrough } from '../src/scheduled';
+import type { Env } from '../src/types';
 import { realPlatformDb, RealDb } from './harness';
 // `?raw` rather than node:fs — a Workers tsconfig has no node types on purpose
 // (see raw-modules.d.ts). Same trick analytics-contract.test.ts uses to read the
@@ -22,6 +24,19 @@ import insightsReadme from '../queries/insights/README.md?raw';
 // can only ever be watched, never gated. E-11's falsifier lives entirely inside
 // the repository: a seeded in-memory fixture, the real migrations, zero rows of
 // production data and zero credentials. It fails the build or it is satisfied.
+//
+// 🔴 THE QUERIES READ `events_daily` NOW, SO THIS FIXTURE HAS TO BE ROLLED UP.
+// `seeded()` writes raw `events` and then calls the SHIPPED `eventsRollup` from
+// src/scheduled.ts — it does NOT hand-INSERT rollup rows. Hand-writing them
+// would declare the grain a second time, and the day the rollup's own INSERT
+// changed, every number below would keep passing against a grain nothing
+// produces. The hand-computed values are UNCHANGED by the cutover, which is the
+// point: same rows in, same five numbers out.
+//
+// ⚠️ AND THIS FILE IS NOT THE EQUIVALENCE PROOF. It grades the queries against
+// numbers a human computed by hand. That the rollup form and the raw form agree
+// — on the same rows, across 75 metric × app × window combinations, compared as
+// JSON so types and NULL-vs-0 count — is `test/insights-equivalence.test.ts`.
 //
 // 🔴 AND A GREEN RUN HERE IS A STATEMENT ABOUT CORRECTNESS, NOT ABOUT TRUTH.
 // `platform_db.events` holds 0 ROWS IN PRODUCTION (E-4a). These queries are
@@ -278,11 +293,27 @@ function fixtureRows(): Row[] {
   return rows;
 }
 
-/** The real migrations on a real engine, plus the fixture. `event_id` is
- *  synthesised per row because the UNIQUE INDEX shipped before the first row
- *  ever landed and a fixture that violated it would fail as a constraint error
- *  rather than as a wrong number. */
-function seeded(rows: Row[] = fixtureRows()): RealDb {
+const envOf = (db: RealDb) => ({ PLATFORM_DB: db }) as unknown as Env;
+
+/**
+ * `2026-02-01T00:00:00Z`, so the last COMPLETE day is `2026-01-31` — the last
+ * day this fixture puts a row on. The rollup never consumes today, so a `now`
+ * inside the fixture's range would leave the tail unrolled and the D30 number
+ * would quietly drop to 0 while every other assertion still passed.
+ */
+const ROLLUP_NOW = Date.parse('2026-02-01T00:00:00.000Z');
+
+/** The real migrations on a real engine, plus the fixture, plus the SHIPPED
+ *  rollup run over it. `event_id` is synthesised per row because the UNIQUE
+ *  INDEX shipped before the first row ever landed and a fixture that violated it
+ *  would fail as a constraint error rather than as a wrong number.
+ *
+ *  ⚠️ `eventsRollup` IS CALLED, NOT REIMPLEMENTED. The fixture holds 11 distinct
+ *  days with data and `MAX_DAYS_PER_ROLLUP_RUN` is 14, so one run consumes all
+ *  of it — but the loop is written against the WATERMARK rather than against
+ *  that constant, so a fixture that grew past the cap fails loudly instead of
+ *  silently grading four numbers over a truncated rollup. */
+async function seeded(rows: Row[] = fixtureRows()): Promise<RealDb> {
   const db = realPlatformDb();
   const stmt = db.db.prepare(
     `INSERT INTO events (event_id, app_id, anon_id, event, params, server_ts)
@@ -291,6 +322,14 @@ function seeded(rows: Row[] = fixtureRows()): RealDb {
   rows.forEach((r, i) => {
     stmt.run(`evt-${String(i).padStart(4, '0')}`, r.app, r.anon, r.event, r.params ?? '{}', r.ts);
   });
+
+  let previous: string | null = null;
+  for (let i = 0; i < 12; i++) {
+    await eventsRollup(envOf(db), ROLLUP_NOW);
+    const wm = await rolledThrough(envOf(db));
+    if (wm === previous) break;
+    previous = wm;
+  }
   return db;
 }
 
@@ -493,33 +532,70 @@ const ASSERTIONS: Record<NumberId, (db: RealDb) => void> = {
 };
 
 describe('[pipeline 11]E-11 · the five numbers, against a seeded fixture', () => {
-  it('the fixture actually landed in the real schema', () => {
+  it('the fixture actually landed in the real schema, AND the rollup consumed it', async () => {
     // Every assertion below expects a NON-zero number, so an empty fixture would
     // already fail — but it would fail five times with five confusing messages
     // instead of once with the cause.
-    const db = seeded();
+    const db = await seeded();
     expect(db.count('events')).toBe(fixtureRows().length);
     expect(db.count('events', 'app_id = ?', APP)).toBeGreaterThan(0);
     expect(db.count('events', 'app_id = ?', 'lingo')).toBeGreaterThan(0);
+
+    // 🔴 THE ROLLUP IS NOW BETWEEN THE FIXTURE AND EVERY NUMBER BELOW. The five
+    // queries read `events_daily`; a rollup that silently did nothing would make
+    // all five report zeros and NULLs, which reads as five query bugs rather
+    // than as one missing call.
+    expect(
+      db.count('events_daily'),
+      'the rollup wrote no row. The five queries read `events_daily`, so every number below is about an empty table.',
+    ).toBeGreaterThan(0);
+    expect(
+      await rolledThrough(envOf(db)),
+      'the watermark did not reach the last complete day, so the tail of the fixture is not in the rollup',
+    ).toBe('2026-01-31');
+    // EVERY RAW ROW IS ACCOUNTED FOR. `SUM(n_rows)` is the check that matters:
+    // it fails if the rollup dropped a row, and it fails if the rollup
+    // double-counted one. A row COUNT would not — this fixture's repeats
+    // (s01's two paywall views, its two budget_view uses) fall on DIFFERENT
+    // days, so nothing here collapses and `events_daily` has exactly as many
+    // rows as `events`. The collapsing case is deliberately exercised elsewhere,
+    // by the same-day repeats in test/insights-equivalence.test.ts.
+    expect(db.count('events_daily')).toBeLessThanOrEqual(db.count('events'));
+    expect(
+      Number((db.rows('SELECT COALESCE(SUM(n_rows), 0) AS n FROM events_daily')[0] as { n: number }).n),
+      'the rollup did not account for every raw row',
+    ).toBe(fixtureRows().length);
   });
 
   for (const n of REQUIRED_COVERAGE) {
-    it(`${n.id} — ${n.title}`, () => {
-      ASSERTIONS[n.id](seeded());
+    it(`${n.id} — ${n.title}`, async () => {
+      ASSERTIONS[n.id](await seeded());
     });
   }
 });
 
 describe('[pipeline 11]E-11 · against production as it is TODAY (0 rows)', () => {
   // 🔴 THIS IS THE REAL PRODUCTION STATE, NOT AN EDGE CASE. `events` holds 0
-  // rows (E-4a). Every rate must be NULL and every count 0, because "0.0 %
-  // activation" is the claim that a cohort existed and none of it activated —
-  // a false, plausible-looking number that a dashboard would render in red and
-  // an owner would act on.
+  // rows (E-4a) — and so, therefore, does `events_daily`, which is the table
+  // these queries now read. Every rate must be NULL and every count 0, because
+  // "0.0 % activation" is the claim that a cohort existed and none of it
+  // activated — a false, plausible-looking number that a dashboard would render
+  // in red and an owner would act on.
+  //
+  // ⚠️ A TRAP WORTH NAMING RATHER THAN LEAVING FOR SOMEBODY TO FALL INTO: this
+  // whole block passes just as well if `seeded()` STOPPED calling the rollup.
+  // Its subject is an empty database, and an un-rolled-up database is empty
+  // where it counts. So it is NOT the guard against forgetting the rollup — the
+  // `events_daily` assertions in the block above are, and they are there for
+  // exactly this reason.
   const empty = () => realPlatformDb();
 
-  it('the table really is empty, so what follows is about an empty table', () => {
+  it('BOTH tables really are empty, so what follows is about an empty database', () => {
     expect(empty().count('events')).toBe(0);
+    expect(
+      empty().count('events_daily'),
+      'the rollup table is the one the five queries read; an empty `events` proves nothing about them on its own',
+    ).toBe(0);
   });
 
   it('activation_rate — 0 installs, rate NULL not 0.0', () => {

@@ -1,3 +1,23 @@
+-- ⛔ FROZEN BASELINE — DO NOT EDIT, DO NOT "UPDATE IT TO MATCH". ⛔
+-- ─────────────────────────────────────────────────────────────────────────────
+-- EVERYTHING BELOW THIS BANNER is the PRE-CUTOVER text of the query of the same
+-- name in services/platform/queries/insights/ — byte-identical to what shipped in
+-- 51bf1a2, and reading raw `events`. It is kept so test/insights-equivalence.test.ts can
+-- run BOTH forms of every metric against ONE seeded fixture and compare them
+-- byte for byte — which is what makes "the cutover changed no number" a
+-- measurement rather than a claim.
+--
+-- 🔴 THIS IS THE SPECIFICATION, NOT A MIRROR. If a shipped query ever stops
+-- matching this file, the question is WHICH OF THE TWO IS WRONG. Copying the new
+-- text down here would turn the equivalence test into a comparison of a string
+-- with itself — an assertion that cannot fail, which is worse than none because
+-- it inflates apparent coverage. The test refuses to run if that happens: it
+-- asserts every baseline reads `events`, that none mentions `events_daily`, and
+-- that every shipped query is the other way round.
+--
+-- Nothing loads these files at runtime. They are test data, and the shipped
+-- query set is still exactly the five .sql files in queries/insights/.
+-- ─────────────────────────────────────────────────────────────────────────────
 -- number: paywall_conversion
 -- title:  Paywall conversion
 -- source: analytics-events.md § "The ~5 numbers" #3 — "`paywall_viewed` →
@@ -27,40 +47,13 @@
 --
 -- Each rate is NULL when its own denominator is 0, never 0.0 — see
 -- 01-activation-rate.sql for why a manufactured zero is the worse answer.
---
--- ═════════════════════════════════════════════════════════════════════════════
--- 🔴 THIS READS THE ROLLUP `events_daily`, NOT RAW `events`
--- (migrations/0007_events_rollup.sql). Raw `events` is swept at 400 days
--- ([ADR 045]); the rollup is the copy of this funnel's inputs that outlives the
--- sweep, so a query still on the raw table is a number with an expiry date.
---
--- THE CALLER CONTRACT IS BYTE-FOR-BYTE UNCHANGED: still `?1` app_id, `?2`
--- window_start inclusive, `?3` window_end exclusive, still full ISO-8601 UTC
--- strings, still exactly three bound values.
---
--- ⚠️ BUT THE WINDOW IS A DAY WINDOW NOW, AND BOTH BOUNDS FLOOR — this answers
--- over `[floor(?2), floor(?3))`. A DAY-ALIGNED window is EXACT, MEASURED against
--- the frozen pre-cutover raw-`events` form in test/baselines/insights-raw/ by
--- test/insights-equivalence.test.ts.
---
--- 🔴 A SUB-DAY WINDOW IS NOT "WIDENED" — IT IS FLOORED AT BOTH ENDS, AND THE TWO
--- ENDS MOVE IN OPPOSITE DIRECTIONS: `start = …T13:00Z` takes the WHOLE of that
--- day, `end = …T13:00Z` drops the WHOLE of it, and a window opening and closing
--- inside one day returns NOTHING. This file is the one that measured it — the
--- 12:00/12:01/12:02 funnel rows of the fixture straddle exactly such a bound.
--- Whatever eventually binds `?2`/`?3` must floor them itself; there is no
--- `/insights` route yet, so no shipped caller does this today.
--- ═════════════════════════════════════════════════════════════════════════════
+-- ─────────────────────────────────────────────────────────────────────────────
 WITH staged AS (
-  -- ⚠️ `n_rows` IS DELIBERATELY NOT SELECTED. Every figure below is
-  -- `COUNT(DISTINCT anon_id)`, and `n_rows` is precisely the re-view count this
-  -- funnel exists to discard — carrying it into scope is how a later edit
-  -- "fixes" the top of the funnel by summing it.
   SELECT event, anon_id
-  FROM events_daily
+  FROM events
   WHERE app_id = ?1
-    AND day >= substr(?2, 1, 10)
-    AND day <  substr(?3, 1, 10)
+    AND server_ts >= ?2
+    AND server_ts <  ?3
     -- `purchase_failed` and `purchase_restored` are deliberately absent: a
     -- failure is not a stage of this funnel and a restore is not a new sale.
     AND event IN ('paywall_viewed', 'checkout_started', 'purchase_success')
