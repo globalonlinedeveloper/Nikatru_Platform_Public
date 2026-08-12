@@ -85,6 +85,7 @@
   "retentionKinds": {
     "_why": "The vocabulary rows are validated against, declared in the register rather than in the guard so that renaming a kind out from under the rows using it fails.",
     "ttl": "the store expires the record itself, and the row names the code that sets the expiry.",
+    "swept": "a DECLARED period that a job of ours enforces, because the store has no expiry of its own. Requires a `periodDays` and a `sweptBy` naming the code that deletes. ⚠️ DISTINCT FROM `ttl` ON PURPOSE: `ttl` says the STORE forgets, which is a property of the substrate and survives our code being wrong or absent; `swept` says WE forget, which holds only while a scheduled job keeps running. D1 has no TTL, so every D1 period is this kind — and calling it `ttl` would claim a durability guarantee the substrate does not give. Added 2026-08-12 with the events rollup: `events` and `provider_notifications` had been sitting at `undecided` since before [ADR 045] locked 400 and 730, so this file was still printing RETENTION UNDECIDED and asking the owner for numbers they had already given.",
     "keep": "kept until deliberately deleted. Requires a written reason — 'we might want it' is not one.",
     "undecided": "nobody has decided yet. Requires an ownerItem, and PRINTS every run so it cannot become permanent by being invisible.",
     "derived": "holds no record of its own; its lifetime is the lifetime of the rows inside it (a database, not a table)."
@@ -182,9 +183,10 @@
       "personalData": true,
       "holds": "🔴 THE ONE TABLE IN platform_db THAT IS NOT PSEUDONYMOUS, and it is named as such rather than discovered. Every merchant-of-record notification, stored VERBATIM — byte for byte, exactly as it arrived and exactly as it was signed. Whatever the provider put in it is therefore in it, which for a subscription event includes the buyer's name, email address and billing country. That is inherent in 'recorded verbatim' ([pipeline 5]M-2): a re-serialised or redacted copy is a different byte string and can never be re-verified against the signature that came with it, so a redacted store is a store that cannot prove what it received. It carries NO anon_id, so no code path can pair a payer with a pseudonymous install ([ADR 020]:21).",
       "retention": {
-        "kind": "undecided",
-        "ownerItem": "O-3",
-        "reason": "This is the audit trail behind every entitlement decision and the only thing that can resolve a payment dispute from our side — and it is also the most personal store in the database. How long a solo founder should keep a payment notification is a question with a tax answer, a consumer-law answer and a DPDP answer, and they may not agree. An agent picking a number here would be inventing a retention period that then looks authoritative. What IS decided is that the row exists, that the table is named as personal data, and that the gap prints on every run. NOTHING WRITES TO THIS TABLE TODAY — no seller account exists (OWNER_QUEUE A-1) — so the decision is due before the first payment, not after."
+        "kind": "swept",
+        "periodDays": 730,
+        "sweptBy": "services/platform/src/scheduled.ts — the `provider_notifications` limb of `retentionSweep`, PROVIDER_NOTIFICATIONS_RETENTION_DAYS. 🔴 IT DELETES ONLY WHERE `derived_at IS NOT NULL AND derive_error IS NULL`, and that predicate is a LEGAL CONDITION, not an optimisation: if derivation never resolved, no derived record exists, the raw payload IS the book of account by function, and it inherits CGST s.36 (~2,698 days). The sweep's legality is a property of that predicate, not of the period.",
+        "reason": "🔒 LOCKED 730 DAYS (2 years) by [ADR 045]. ⚠️ THE OBVIOUS JUSTIFICATION IS FALSE AND IS NOT USED: 'we need it to fight chargebacks' does not survive Paddle's own documentation — Paddle is merchant of record, the dispute is raised against Paddle, its help centre says seller evidence is 'not required or accepted', and it retains the transaction for 5 years. The real reasons are that Paddle will NOT replay a notification older than 90 days, so from day 91 ours is the sole surviving copy; and that Visa's outer dispute window is 540 days, which 730 clears with margin. 📌 THIS ROW READ `undecided` / O-3 until 2026-08-12 — see the note on `table:platform_db.events`; both were locked by ADR 045 on 2026-08-12 and neither row was updated, so this file printed two RETENTION UNDECIDED lines for decisions that had already been made."
       },
       "erasure": {
         "kind": "purge",
@@ -306,9 +308,10 @@
       "personalData": true,
       "holds": "Usage-statistics events, collected only after consent. Each row carries the client's install id (anon_id), the app, platform, version and a coarse geo derived at the network edge.",
       "retention": {
-        "kind": "undecided",
-        "ownerItem": "O-3",
-        "reason": "privacy.html promises information is kept 'only for as long as necessary'. No bound is set on this table and none is invented here: how long usage statistics are useful is a product and legal judgement, and an agent picking a number would be inventing a retention period that then looks authoritative. What IS decided is that the row exists and the gap is printed on every run."
+        "kind": "swept",
+        "periodDays": 400,
+        "sweptBy": "services/platform/src/scheduled.ts — the `events` limb of `retentionSweep`, EVENTS_RETENTION_DAYS. ⚠️ Its cutoff is bounded by the rollup watermark (`rollupBoundedCutoff`), not by age alone, so a stalled rollup makes this limb INERT rather than destructive.",
+        "reason": "🔒 LOCKED 400 DAYS by [ADR 045] (owner-delegated 2026-08-12). Floor 365 — DPDP Rules 2025 require a minimum of one year, phased in ~14 May 2027, which is the trap: a 90-day period feels privacy-forward today and becomes non-compliant then, with the rows already unrecoverable. Ceiling 425 — the GA4 standard maximum. 📌 THIS ROW READ `undecided` / ownerItem O-3 UNTIL 2026-08-12, THREE DAYS AFTER THE NUMBER WAS LOCKED. It was therefore PRINTING `RETENTION UNDECIDED (O-3)` on every run, asking the owner for a decision they had already made — the exact 'a rule left unamended while already false is worse than no rule' failure [ADR 034] names. Corrected in the increment that added the rollup, because that increment is what made anyone read this row again."
       },
       "erasure": {
         "kind": "pseudonymous",
@@ -323,6 +326,52 @@
         "quote": "if you agree when asked, we record which features of an app are used and when"
       },
       "note": "🔴 KEYED ON anon_id, NOT ON A USER. That is deliberate (nothing writes an anon_id → user_id mapping, and the route's own header says nothing ever may) and it has a consequence stage 8 records rather than hides: 'delete my account' provably cannot purge these rows, because there is nothing in them that identifies the account. Either the erasure promise narrows or the client sends its anon_id on erasure — a wording decision, and it belongs in the same version bump as the other O-3 corrections."
+    },
+    {
+      "id": "table:platform_db.events_daily",
+      "kind": "d1-table",
+      "name": "events_daily",
+      "personalData": true,
+      "holds": "🔴 A ROLLUP, AND STILL PERSONAL DATA — the two are not in tension and this row exists to say so plainly. One aggregate per (day, app, install, event, feature) with a row count. It DROPS nine of the raw table's columns — session id, platform, app version, client clock, country, region, city, consent id, and the raw params beyond the feature name — but it KEEPS `anon_id`, the install identifier, because every one of the five decision numbers is an install-level DISTINCT count and three are per-install joins across different event types. Marginal counts by (day, app, event) cannot reconstruct any of them, which was measured rather than assumed. So this is a SMALLER personal-data surface than `events`, not an anonymous one, and it must never be described as anonymised.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 1100,
+        "sweptBy": "services/platform/src/scheduled.ts — the `events_daily` limb of `retentionSweep`, EVENTS_DAILY_RETENTION_DAYS. Deletes on AGE ALONE, unlike the `events` limb: nothing downstream consumes this table, so there is no watermark for its cutoff to be bounded by. It is the end of the chain.",
+        "reason": "1100 days (~3 years) = 1095 + 5 days' margin, the same shape as events' 400 = 365 + 35. The floor is 1095 — three calendar years, the minimum for TWO year-over-year comparisons — and that is the first thing the raw table's 400 days cannot buy, which is the entire reason this table exists. No statutory ceiling applies: GA4's 425-day cap governs raw, event-level, device-and-geo-bearing data, and this table has none of that. DPDP s.6(1) purpose limitation still binds, and 'portfolio seasonality across three years' is a stated, bounded purpose. ⚠️ THIS IS A POLICY NUMBER, NOT A MEASUREMENT — it is the one value in the rollup increment an owner may reasonably want to move, and it is locked rather than deferred only because tooling/ops/register.json caps undeclared periods at `_maxUndeclared: 0`."
+      },
+      "erasure": {
+        "kind": "pseudonymous",
+        "reason": "Keyed on `anon_id` and carrying no `user_id`, exactly as `events` is, and for the same reason: [ADR 020] forbids an anon_id → user_id map ever being written, because that map is what would turn pseudonymous analytics into erasure-subject personal data. So an account deletion cannot address these rows either. ✅ BUT A CONSENT WITHDRAWAL CAN, and that is the reach this table does have: `consent_artifacts` carries `anon_id`, so a withdrawal resolves to an install id and reaches this table by `DELETE … WHERE anon_id = ?` directly. That is why the rollup deliberately does NOT carry `consent_id` — it would be a second identifier buying no erasure reach the first does not already give. The same widening gap `events` records against privacy.html applies here unchanged."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0007_events_rollup.sql",
+        "services/platform/src/scheduled.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you agree when asked, we record which features of an app are used and when"
+      },
+      "note": "Derived entirely from `events` and disclosed by the same sentence — it holds no category of information the raw table did not already hold, and strictly fewer. The reason it is listed separately rather than folded into the events row is that its LIFETIME differs: 1100 days against 400, so a reader asking 'what is still held about me after two years' gets the right answer only if this row exists."
+    },
+    {
+      "id": "table:platform_db.rollup_state",
+      "kind": "d1-table",
+      "name": "rollup_state",
+      "personalData": false,
+      "holds": "One row per rollup naming the last complete UTC day fully consumed into `events_daily`. Three columns: the rollup's name, a 'YYYY-MM-DD' watermark, and a timestamp. No identifier of any person, device or install.",
+      "retention": {
+        "kind": "keep",
+        "reason": "One row, no personal data, and it is the FAIL-CLOSED INTERLOCK the events sweep reads. Deleting it frees nothing measurable and makes the events sweep INERT — which is the safe direction, and precisely why it must never be swept on a schedule that could race the job that writes it. A retention period on this table would be a period on a control, not on data."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A date and a table name. There is nothing here to erase and no subject to erase it for."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0007_events_rollup.sql",
+        "services/platform/src/scheduled.ts"
+      ],
+      "note": "Listed because this file's own rule is that EVERY table in platform_db carries a row — including the ones with nothing personal in them. A table absent from the inventory is indistinguishable from a table nobody checked, which is the state the inventory exists to make impossible."
     },
     {
       "id": "table:platform_db.consent_artifacts",

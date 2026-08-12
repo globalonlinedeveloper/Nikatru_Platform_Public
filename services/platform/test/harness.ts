@@ -42,6 +42,7 @@ import cronHeartbeat0003 from '../migrations/0003_cron_heartbeat.sql?raw';
 import moneyRail0004 from '../migrations/0004_money_rail.sql?raw';
 import cancellations0005 from '../migrations/0005_cancellation_requests.sql?raw';
 import erasureReach0006 from '../migrations/0006_erasure_reach.sql?raw';
+import eventsRollup0007 from '../migrations/0007_events_rollup.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -61,6 +62,7 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   moneyRail0004,
   cancellations0005,
   erasureReach0006,
+  eventsRollup0007,
 ];
 
 /**
@@ -83,6 +85,11 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   // Listed here rather than assumed: the classifier in migrations-replay.test.ts
   // proves the claim, and this list is what it replays to prove it.
   cancellations0005,
+  // 0007 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS plus one
+  // INSERT … ON CONFLICT DO NOTHING — all three are replay-safe forms, and the
+  // seed row is idempotent BY the ON CONFLICT rather than by luck. Same
+  // reasoning as 0005: listed so the classifier proves it, not assumed.
+  eventsRollup0007,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

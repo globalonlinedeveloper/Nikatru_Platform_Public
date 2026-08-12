@@ -77,6 +77,25 @@ const ROOT = resolve(process.argv[2] ?? process.cwd());
 const REGISTER_REL = 'tooling/prod-provenance.json';
 const MONITOR_REL = 'tooling/ops/check-prod-provenance.mjs';
 const OPS_WATCH_REL = '.github/workflows/ops-watch.yml';
+/** ⚠️ THE CATALOGUE IS `sites/_shared/_data/apps.json`, NOT the channel register.
+ *  The channel register has no `apps` key at all — assert-channel-register.mjs
+ *  reads this same path into its own `apps` and compares the two. Pointing here
+ *  is what keeps this guard and that one speaking about one portfolio. (The
+ *  first draft of this limb read `channel-register.json.apps`, got an empty set,
+ *  and limb 6b failed it as COVERAGE LOST rather than passing every row — which
+ *  is the only reason the mistake was visible at all.) */
+const CATALOGUE_REL = 'sites/_shared/_data/apps.json';
+
+const appSlugs = new Set();
+try {
+  const cat = JSON.parse(readFileSync(join(ROOT, CATALOGUE_REL), 'utf8'));
+  for (const a of Array.isArray(cat) ? cat : []) {
+    if (typeof a?.slug === 'string' && a.slug.trim() !== '') appSlugs.add(a.slug.trim());
+  }
+} catch {
+  // Left empty on purpose: limb 6b turns an empty catalogue into COVERAGE LOST
+  // rather than into a silently permissive check.
+}
 
 /** The minimum a `reason` has to be before it counts as written down. A rule
  *  reading "n/a" is an exemption with no argument behind it. */
@@ -211,6 +230,34 @@ for (const [name, rule] of Object.entries(rules)) {
           'The allowed set is EMPTY, so every row in the table is unattributable and the count is the table size — or, ' +
           'read the other way round, the predicate matches nothing, which is exactly the empty-predicate defect that got ' +
           "B-17's original acceptance criterion replaced.",
+      );
+    }
+  }
+
+  // LIMB 6b · a catalogue resolver needs a catalogue, and a marker that could
+  // fail against it.
+  //
+  // 🔴 THIS LIMB EXISTS BECAUSE THE RESOLVER IT CHECKS WAS ALMOST WRITTEN AS AN
+  // ASSERTION THAT CANNOT FAIL. `events_daily` is DERIVED — every row is
+  // computed from `events` by the rollup — so the tempting rule is "its
+  // provenance is inherited from its source table", which no row could ever
+  // violate and which would inflate the covered-table count while checking
+  // nothing. `app-catalogue` is falsifiable instead: an `app_id` naming an app
+  // the factory does not ship is residue or a probe, and that is a real state
+  // this repository has produced before (C-6's `c6-localprobe` rows).
+  if (resolverId === 'app-catalogue') {
+    if (typeof marker !== 'string' || marker.trim() === '') {
+      problems.push(`\`${name}\` declares resolver \`app-catalogue\` with no \`marker\` column to resolve.`);
+    } else if (!t.columns.has(marker)) {
+      problems.push(
+        `\`${name}\` declares resolver \`app-catalogue\` on \`${marker}\`, which is not a column of the table as the ` +
+          'migrations create it. A marker the schema does not have resolves nothing and the monitor would count every row.',
+      );
+    } else if (appSlugs.size === 0) {
+      problems.push(
+        `\`${name}\` declares resolver \`app-catalogue\` and the app catalogue derived from ${CATALOGUE_REL} is EMPTY, ` +
+          'so the allowed set matches nothing and every row would be unattributable. COVERAGE LOST — this is the ' +
+          'empty-predicate defect, not a clean run.',
       );
     }
   }

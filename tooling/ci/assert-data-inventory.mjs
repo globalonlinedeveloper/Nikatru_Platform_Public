@@ -376,6 +376,29 @@ for (const s of stores) {
           'written justification, not a default.',
       );
     }
+    // `swept` — a period WE enforce, because the substrate has no expiry. Both
+    // fields are required, and for opposite reasons: without `periodDays` the
+    // row declares "there is a period" while naming none, which reviews exactly
+    // as well as `undecided` while no longer printing; without `sweptBy` nothing
+    // connects the promise to the code that keeps it, so the day that job is
+    // deleted this row still reads as a live guarantee. A period nothing
+    // enforces is the failure mode this whole file exists to surface.
+    if (kind === 'swept') {
+      if (typeof s.retention.periodDays !== 'number' || !Number.isFinite(s.retention.periodDays) || s.retention.periodDays <= 0) {
+        problems.push(
+          `${where} declares retention \`swept\` with no positive numeric \`periodDays\`. "We delete it eventually" is ` +
+            'not a retention period, and a zero or missing number here is the same unreviewable state `undecided` at ' +
+            'least admits to being.',
+        );
+      }
+      if (typeof s.retention.sweptBy !== 'string' || s.retention.sweptBy.trim() === '') {
+        problems.push(
+          `${where} declares retention \`swept\` and names no \`sweptBy\`. Unlike \`ttl\`, this kind is only true while ` +
+            'a job of ours keeps running — so the row must name that job, or nothing ties the promise to the code and ' +
+            'deleting the sweep leaves this reading as a live guarantee.',
+        );
+      }
+    }
     if (kind === 'undecided') {
       if (typeof s.retention.ownerItem !== 'string' || s.retention.ownerItem.trim() === '') {
         problems.push(
