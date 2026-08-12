@@ -1969,22 +1969,22 @@
       "what": "The daily install-grained rollup of `events`: one row per (day, app, install, event, feature) with a row count. 🔴 CARRIES `anon_id`, so it is PSEUDONYMOUS PERSONAL DATA, not an anonymous aggregate — every one of the five [11]E-11 numbers is an install-level DISTINCT count and three are per-install joins across event types, so marginal counts by (day, app, event) cannot reconstruct them. It drops nine identifying/contextual columns (session, platform, version, client clock, geo x3, consent id, raw params) and keeps the one the metrics need.",
       "rule": "period",
       "periodDays": 1100,
-      "declaredBy": "[ADR 045] — owner-delegated 2026-08-12; the value lives in services/platform/src/scheduled.ts and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "declaredBy": "This increment (2026-08-12), NOT [ADR 045] — that ADR locked the RAW table's 400 days and predates this table existing. 1100 = 1095 (three calendar years, the floor for TWO year-over-year comparisons, which is the whole reason the rollup exists) + 5 days' margin, the same shape as 400 = 365 + 35. The value lives in services/platform/src/scheduled.ts as EVENTS_DAILY_RETENTION_DAYS and this row must agree with it.",
       "detector": "tooling/ci/assert-retention-coverage.mjs.",
-      "response": "🔴 Stage 8 owns the PERIOD; stage 14 owns the job that makes it true. The published privacy policy says only 'as long as necessary', which is not a number a guard can check, and an agent inventing one would be writing policy.",
+      "response": "Stage 8 owns the PERIOD; stage 14 owns the job that makes it true. ⚠️ THIS TABLE IS PSEUDONYMOUS PERSONAL DATA, not an anonymous aggregate — it keeps `anon_id` because every [11]E-11 number is an install-level DISTINCT count. So the published privacy policy's 'only as long as necessary' binds here exactly as it binds `events`, and a consent withdrawal reaches it through `consent_artifacts.anon_id`. If the sweep stops, rows age past 1100 days and the promise is broken silently — the heartbeat is the detector.",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0002_analytics.sql",
+        "anchor": "services/platform/migrations/0007_events_rollup.sql",
         "record": "the table itself",
-        "failingValue": "rows older than the declared period — once a period exists",
+        "failingValue": "a row whose `day` is older than 1100 days",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half) — the sweep half is BUILT AND DORMANT as of 2026-08-11 (see `deletingJob`), so this row no longer waits on new code, only on a number"
       },
       "deletingJob": "retention_sweep — the `events_daily` limb of `retentionSweep` in services/platform/src/scheduled.ts (EVENTS_DAILY_RETENTION_DAYS), watched by duty.platform-cron.watchedJobs. ⚠️ DELETES ON AGE ALONE, unlike the `events` limb: nothing downstream consumes this table, so there is no watermark for its cutoff to be bounded by. It is the end of the derivation chain. Held by services/platform/test/events-rollup.test.ts.",
       "accessProviders": [
         "cloudflare"
       ],
-      "ownerGated": true,
+      "ownerGated": false,
       "source": "verified"
     },
     {
@@ -1993,21 +1993,21 @@
       "store": "d1:platform_db:rollup_state",
       "what": "One row per rollup naming the last COMPLETE UTC day fully consumed into `events_daily`. Three columns, no personal data: the rollup's name, a 'YYYY-MM-DD' watermark, and a timestamp.",
       "rule": "keep",
-      "declaredBy": "[ADR 045] — owner-delegated 2026-08-12; the value lives in services/platform/src/scheduled.ts and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "declaredBy": "This increment (2026-08-12). `keep` is not a deferred decision here — it is the decision: this table is a CONTROL, not data, and deleting it makes the events sweep INERT rather than freeing anything.",
       "detector": "tooling/ci/assert-retention-coverage.mjs.",
-      "response": "🔴 Stage 8 owns the PERIOD; stage 14 owns the job that makes it true. The published privacy policy says only 'as long as necessary', which is not a number a guard can check, and an agent inventing one would be writing policy.",
+      "response": "No action on age, ever. 🔴 IF THIS ROW GOES MISSING the events sweep stops deleting rather than starts — the safe direction, and the reason this table must never be swept on a schedule that could race the job that writes it. The failure worth alarming on is not age but STALENESS: `rolled_through` not advancing means the rollup has stopped, which is reported by the events_rollup heartbeat's `lag=` token.",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0002_analytics.sql",
+        "anchor": "services/platform/migrations/0007_events_rollup.sql",
         "record": "the table itself",
-        "failingValue": "rows older than the declared period — once a period exists",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half) — the sweep half is BUILT AND DORMANT as of 2026-08-11 (see `deletingJob`), so this row no longer waits on new code, only on a number"
+        "failingValue": "no row for rollup='events_daily', or `rolled_through` stale by more than 2 days",
+        "readBy": "services/platform/src/scheduled.ts (rollupBoundedCutoff)"
       },
       "accessProviders": [
         "cloudflare"
       ],
-      "ownerGated": true,
+      "ownerGated": false,
       "source": "verified",
       "keepWhy": "🔴 IT IS THE FAIL-CLOSED INTERLOCK THE EVENTS SWEEP READS, not data. `retentionSweep`'s cutoff for `events` is min(age, rolled_through + 1d), and a NULL watermark makes that limb INERT — so deleting this row frees nothing measurable and STOPS deletion rather than enabling it. That is the safe direction, and it is exactly why this table must never be swept on a schedule that could race the job that writes it. A retention period here would be a period on a control, not on data."
     },
