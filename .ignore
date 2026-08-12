@@ -19,8 +19,50 @@
 # different vocabularies, and no search ever brought them into contact.
 #
 # SAFETY: git does not read .ignore. Re-verify after any change with
-#   git check-ignore -v company knowledge CLAUDE.md
-# which must still report all three as ignored.
+#   git check-ignore -v company knowledge CLAUDE.md .claude .claude/secrets.env
+# which must still report all of them as ignored.
 !company/
 !knowledge/
 !CLAUDE.md
+
+# ── ADDED 2026-08-13, and DELIBERATELY NARROWER THAN `.claude/` ──────────────
+# The same false negative recurred one directory over. `.claude/` is gitignored
+# (.gitignore:13) AND hidden, and ripgrep skips hidden dot-directories EVEN UNDER
+# `--no-ignore` — so only `rg --hidden --no-ignore` ever reached it. An audit of
+# "what still reads the old rclone remotes" therefore returned a clean FALSE
+# NEGATIVE over the very directory holding the backup scripts:
+#
+#   rg -c --no-ignore "gcrypt:|gdrive:" .   -> 16 files, ZERO from .claude/
+#   rg -c --hidden --no-ignore "…"          -> 29 files, incl. .claude/scripts/
+#                                              backup-project.ps1 (7 hits)
+#
+# 🔴 THERE IS DELIBERATELY NO `!.claude/…` LINE HERE, FOR TWO INDEPENDENT REASONS.
+#
+# 1. A NEGATION CANNOT WORK AT THIS PATH — TESTED, NOT ASSUMED. `.gitignore:13`
+#    excludes the DIRECTORY `.claude/`, and neither git nor ripgrep can re-include
+#    a path whose parent directory is excluded. `!.claude/scripts/` was written
+#    here on 2026-08-13 and MEASURED INERT: a root `rg -l "gbiz:" .` still reached
+#    zero files under .claude/, with and without `--hidden`. It was removed rather
+#    than left in place, because a negation that looks like it re-enabled search
+#    is worse than none — the next auditor reads the line and trusts the sweep.
+#    Making it work needs `!.claude/` (the whole vault) plus a DENYLIST of secret
+#    files, which fails OPEN for every secret file added later. Not acceptable.
+#
+# 2. WE DO NOT WANT IT ANYWAY. `.claude/` is the vault: `secrets.env`, `PEM.txt`,
+#    `pack-signing.seed`, `Google drive_client_secret.json`, `nikatru-platform-*.json`
+#    (a GCP service-account key), `rclone-box.conf`. Re-enabling it for search puts
+#    all of them on the path of any routine `rg`, and an agent's search results land
+#    in a transcript.
+#
+# ✅ SO THE FIX IS AN INVOCATION, NOT A RULE. When auditing "what still reads X",
+#    .claude/ must be swept EXPLICITLY — an explicit path defeats both the ignore
+#    rules and the hidden-directory skip:
+#
+#      rg "gcrypt:|gdrive:" .claude/scripts/     # explicit path — always searched
+#      rg --hidden --no-ignore "…" .             # or sweep everything, knowingly
+#
+#    Measured 2026-08-13: `rg -c --no-ignore "gcrypt:|gdrive:" .` found 16 files and
+#    ZERO from .claude/, while the explicit sweep found `backup-project.ps1` with 7
+#    hits. A root-level "no matches" over a HIDDEN gitignored directory is an absence
+#    of search, not an absence of the fact — the same lesson as company/ above, which
+#    a negation could fix and this one cannot.
