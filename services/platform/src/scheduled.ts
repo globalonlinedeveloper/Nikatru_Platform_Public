@@ -937,8 +937,12 @@ export async function retentionSweep(
       // is min(age, rolled_through + 1d), null when nothing is rolled up.
       // Replacing this with bare `ageCutoff` reverts the sweep to destroying
       // history the rollup has not consumed — the mutation
-      // test/events-rollup.test.ts drives, and the one
-      // tooling/ci/assert-rollup-lossless.mjs [R3] trips on.
+      // test/events-rollup.test.ts drives (and which was run against the REAL
+      // tree: with the bound removed, all 30 seeded rows are deleted).
+      // ⬜ THIS COMMENT USED TO ALSO CITE `tooling/ci/assert-rollup-lossless.mjs
+      // [R3]`, WHICH DOES NOT EXIST — it is PR-2 work. Removed rather than left,
+      // because a citation to a guard that was never written is how a reader
+      // concludes an invariant is protected when only a test holds it.
       const bounded = store === 'events' ? rollupBoundedCutoff(ageCutoff, watermark) : ageCutoff;
       // THE INERT PATH. Nothing is prepared, nothing is bound, nothing is sent.
       if (bounded === null) {
