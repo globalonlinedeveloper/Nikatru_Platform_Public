@@ -6,6 +6,8 @@
 //   PUBLIC  POST   /v1/consent  — the DPDP consent artifact.
 //   AUTHED  DELETE /v1/account  — erasure ([4]B-5). ES256/JWKS only.
 //   AUTHED  POST   /v1/plan/cancel — the ROSCA cancel path ([5]M-9).
+//   AUTHED  POST   /v1/checkout — the Paddle create-transaction half ([ADR 044]
+//                                  rung 2). Dormant: 403 while the paywall is off.
 //   SIGNED  POST   /v1/money/:provider — the merchant-of-record webhook ([5]M-1).
 //                                  HMAC over the raw body; no user session.
 //   CRON    0 6 * * *           — Supabase keep-alive + per-app renewals fan-out.
@@ -21,6 +23,7 @@ import config from './routes/config';
 import entitlements from './routes/entitlements';
 import events from './routes/events';
 import cancellation from './routes/cancellation';
+import checkout from './routes/checkout';
 import money from './routes/money';
 import { scheduled } from './scheduled';
 
@@ -113,6 +116,27 @@ app.route('/v1', entitlements);
 // named "cancel" the moment somebody reordered the file.
 app.use('/v1/plan/*', platformAuth);
 app.route('/v1', cancellation);
+
+// AUTHENTICATED: the Paddle create-transaction half ([ADR 044] rung 2).
+//
+// ⚠️ IT IS BEHIND `platformAuth` BECAUSE THE ACCOUNT ID IS THE WHOLE POINT. The
+// transaction carries `custom_data.nikatru_user_id` so every subscription event
+// that follows is attributable — [ADR 044] §6 files the defect where one was
+// not — and a user id taken from a request body would let anyone attribute a
+// purchase to anyone. It comes from the verified JWT and from nowhere else,
+// exactly as on /v1/plan/cancel.
+//
+// Path-scoped like the three above. Mounted at `/v1/checkout` rather than under
+// `/v1/money`, which is a `/:provider` route: a sibling there would be matched
+// as a merchant of record named "checkout".
+//
+// 🔴 AND IT ANSWERS 403 FOR EVERY APP TODAY. `paywall.enabled` is false
+// portfolio-wide and [T-11] (renewal notices for two 30-day trials) blocks the
+// flip, so this route is wired and dormant on purpose — the overlay path
+// (`Paddle.Checkout.open`) needs no server at all, which is [ADR 044] §5(2)'s
+// finding and the reason this is rung 2 rather than the v1 dependency.
+app.use('/v1/checkout', platformAuth);
+app.route('/v1', checkout);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.

@@ -35,29 +35,38 @@
 //
 // LIMB B — THE DISPOSITION GAP ITSELF. PRINTS. NEVER FAILS.
 //   🔴 STATED WITH A DATE SO NOBODY LATER "FIXES" IT INTO A FAILURE.
-//   On 2026-08-07 issue #24 ("Nightly E2E (live) is failing against production")
-//   has been open 11 days while e2e.yml's scheduled runs on 08-05, 08-06 and
-//   08-07 were all `success`. It is a genuine undispositioned firing. It is ALSO
-//   only closable by a person: duty.workflow.e2e.yml's own `response` field says
-//   "the issue is closed by a human, never automatically — closing it IS the
-//   acknowledgement that someone looked." An agent closing it would FABRICATE
-//   the exact signal this requirement measures, and a guard that failed on it
-//   would redden `main` over an act only the owner may perform.
+//   An open auto-filed issue is undispositioned, and the register says the
+//   disposition IS a person closing it: duty.workflow.e2e.yml's own `response`
+//   field reads "the issue is closed by a human, never automatically — closing
+//   it IS the acknowledgement that someone looked." An agent closing one would
+//   FABRICATE the exact signal this requirement measures, and a guard that
+//   failed on it would redden `main` over an act only the owner may perform.
 //   [pipeline C-6]: an owner-gated gap PRINTS on every run rather than failing
 //   the build. Raising limb B to a failure is not a tightening — it is a merge
 //   block on somebody else's inbox.
 //
-//   #151 ("Scheduled duty is not reporting healthy") is open too and is NOT a
-//   gap: ops-watch.yml run 31162205780 failed today, so its issue tracking a
-//   live red source is correctly open. Open-while-green and open-while-red are
-//   opposite states and the guard must not average them.
+//   Open-while-green and open-while-red are OPPOSITE states and the guard must
+//   not average them. Which one it is, is decided by the SOURCE'S OWN run
+//   history, never by anything on the issue:
+//     open + source GREEN → a gap. The condition cleared, nobody acknowledged it.
+//     open + source RED   → correctly open. A live alarm is not an ignored one.
+//   Both were observed in the SAME run on 2026-08-07 — the e2e thread open 11
+//   days across three consecutive scheduled `success` runs (08-05/06/07), and
+//   the ops-watch thread open against a source whose run 31162205780 had failed
+//   that morning. Both were closed by the owner on 2026-08-09. That sentence
+//   names neither thread by issue number, on purpose; see the DECISION below.
 //
 // ⚠️ WHAT THIS GUARD DELIBERATELY DOES NOT DO
-//   · NO COMMENT-COUNT HEURISTIC. #24 carries seven comments and every single
-//     one is `github-actions[bot]` — the alerting job manufacturing its own
-//     evidence of attention — while all seventeen GlitchTip issues sit at zero.
-//     Comment count correlates with nothing and would score the bot's own noise
-//     as human disposition.
+//   · NO COMMENT-COUNT HEURISTIC. Measured 2026-08-07: the then-open e2e thread
+//     carried seven comments and every single one was `github-actions[bot]` —
+//     the alerting job manufacturing its own evidence of attention — while all
+//     seventeen GlitchTip issues sat at zero. Comment count correlates with
+//     nothing and would score the bot's own noise as human disposition.
+//     Re-measured 2026-08-12, and the re-measurement makes the point harder:
+//     that thread ended at nine comments, EIGHT of them the bot, and the single
+//     human comment was the close. A comment heuristic would have ranked it
+//     "attended to" from day one and then scored the actual disposition — the
+//     only human act in the whole thread — as one more tick.
 //   · NO GLITCHTIP LIMB. GLITCHTIP_TOKEN is not a repository secret
 //     (OWNER_QUEUE S-8), so a GlitchTip limb in CI would skip whenever the token
 //     was absent — and a check that skips reports ok, which is the whole defect.
@@ -67,6 +76,78 @@
 //     and cross-checked against the workflow that files them. Typing
 //     'Nightly E2E (live) is failing against production' into this file would
 //     make the guard agree with itself forever after the register moved on.
+//
+// ── 🔴 NO ISSUE NUMBER APPEARS IN THIS FILE AS A POINTER · DECIDED 2026-08-12 ──
+//   Two citations here, and four in tooling/ops/register.json, named issues by
+//   NUMBER. Every one of them had rotted and nothing said so, because the
+//   mechanism joins on TITLE and never on number: ops-watch.yml files with
+//   `gh issue create --title "$TITLE"`, matches with `select(.title == env.TITLE)`,
+//   and this guard DERIVES that title from the register's declaration clause.
+//   NO CODE IN THIS TREE HAS EVER READ AN ISSUE NUMBER. Every number printed
+//   below is resolved from the API at run time and stored nowhere.
+//
+//   The choice was (a) re-point at the live number and add a limb that fails
+//   when a cited number closes, or (b) delete the numbers and cite the mechanism
+//   the guard actually matches on. TOOK (b). The deciding measurement is that a
+//   number's lifetime here IS the disposition interval, so it goes stale exactly
+//   when the system is working. Enumerated 2026-08-12 over the repository's
+//   entire issue history (7 non-PR issues):
+//     'Scheduled duty is not reporting healthy'          → #151, #264, #307
+//        three numbers in eight days; #151 closed 08-09, #264 closed 08-10.
+//     'Nightly E2E (live) is failing against production' → #24, #295
+//        #295 was opened 08-11T04:46Z and closed 08-11T12:41Z — alive 7h55m.
+//     'Weekly ops digest'                                → #140, and only #140
+//        never closed, therefore never recycled.
+//   The one title that never took a second number is the one nobody ever
+//   dispositions. Re-pointing at the live number would buy a citation with an
+//   expected life of about two days, which is why (a) needs a new limb to stay
+//   honest and (b) needs none.
+//
+//   WHAT REPLACED THE NUMBERS is a citation to the register ROW that declares
+//   the thread. That is not a softer reference, it is a HARDER one: limb A
+//   already fails the build in BOTH directions when a declaring row drops its
+//   clause or the workflow stops filing that title. NEGATIVE-TESTED 2026-08-12,
+//   and the trees are named because "all fixtures passed" is not proof:
+//     · declaration clause deleted from the LIVE tooling/ops/register.json →
+//       EXIT 1, "files the durable issue … but NO row … declares it"; restored
+//       and confirmed byte-identical.
+//     · `TITLE:` in ops-watch.yml changed to a title no row declares, on an
+//       isolated `git archive HEAD` copy of the committed tree (not a
+//       hand-written fixture, and not the live file — another agent owns it) →
+//       EXIT 1 in BOTH directions at once.
+//     · every `the reused issue titled` clause removed → COVERAGE LOST, EXIT 1.
+//   The replacement citation is guarded; the numbers never were.
+//
+//   THE ONE SURVIVING NUMBER, and why it is not an exception to the rule.
+//   register.json's `duty.platform-cron.absenceWatcher.downTransitionDrill.evidence`
+//   still says #151. There the number is a DATED PRIMARY EVIDENCE RECORD — an
+//   immutable identifier for one specific past object — and that IS information
+//   the title cannot carry, because the title is a class with three members and
+//   "the issue titled X" no longer resolves to one thing. It is stamped with its
+//   closure date so it cannot be misread as live, and it is now the only GitHub
+//   ISSUE number left anywhere in the register. One archival anchor, no live
+//   pointers.
+//   The register's other `#N` tokens were checked on 2026-08-12 and are NOT this
+//   class, which is why they were left alone: #189/#203/#256 are MERGED PULL
+//   REQUESTS (immutable, and #189 is carried beside its commit 5dc6b67), and
+//   #21/#25/#54 are decision-record and research-section numbers in a different
+//   namespace entirely. A merged PR cannot rot; a reused issue number is rotting
+//   already.
+//
+//   A LIMB WAS CONSIDERED AND DECLINED — recorded so nobody re-derives its
+//   absence as an oversight. "FAIL when a declared title has NEVER been filed"
+//   would close the one hole (b) leaves: the register and the workflow drifting
+//   TOGETHER onto a title nothing files, after which limb A agrees with itself
+//   forever and limb B reports every firing dispositioned over an empty set. It
+//   needs a `state=all` enumeration, which changes the `--probe-file` contract
+//   that tooling/ci/test/alert-disposition.test.mjs builds all its fixtures
+//   against — a file outside this change's remit. Named as the next increment
+//   rather than half-built.
+//   The limb option (a) called for — "fail when a cited issue number is closed"
+//   — was NOT built and must not be: under (b) the only number left is archival
+//   and CORRECTLY closed, so that limb would be permanently red or would have to
+//   exempt the sole citation it could see. An assertion that cannot fail is
+//   worse than none.
 //
 // FAILS CLOSED with no token. "I could not look" must never read as "it is
 // fine" — that is how the original claim became unfalsifiable. Locally, with no
@@ -122,9 +203,10 @@ function flag(name) {
  *  `failure()`, so its running IS a firing. `ops-watch.yml`'s `digest` job also
  *  calls `gh issue create` and is NOT an alert — it runs `if: github.event.schedule
  *  == '45 7 * * 1' || workflow_dispatch`, i.e. on a timer regardless of health,
- *  so "Weekly ops digest" (#140) sitting open forever is its design and not an
+ *  so its weekly digest thread sitting open forever is its design and not an
  *  ignored alarm. The exclusion is COMPUTED and PRINTED, never a name in a
- *  skip-list. */
+ *  skip-list — and the thread is named by its filing job, not by an issue
+ *  number, for the reason in the DECISION note in the header. */
 export function issueFilingJobs(root = ROOT) {
   const out = [];
   for (const wf of parseAllWorkflows(root)) {
@@ -308,9 +390,14 @@ export function sourceHealth(runs) {
  *  simply a live alarm doing its job:
  *
  *    open + source green  → UNDISPOSITIONED. The condition cleared and nobody
- *                           acknowledged it. This is #24 today.
- *    open + source red    → ACTIVE. Correctly open. NOT a gap. This is #151.
+ *                           acknowledged it.
+ *    open + source red    → ACTIVE. Correctly open. NOT a gap.
  *    open + indeterminate → reported as such, claimed as neither.
+ *
+ *  NO WORKED EXAMPLE BY ISSUE NUMBER, deliberately: `issue.number` is read off
+ *  the API argument on the line that prints it and is never written down. A
+ *  number in this comment would be a pointer with no backlink to the object it
+ *  names — see the DECISION note in the header.
  *
  *  Nothing here sets an exit code. See the header for why. */
 export function classify(issue, health, nowMs) {

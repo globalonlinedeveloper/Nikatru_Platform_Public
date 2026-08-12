@@ -50,8 +50,17 @@
 -- ~90% of rows that are not `feature_used`. Measured: three identical runs
 -- produced THREE rows with a NULL sentinel and ONE with ''. A rollup that
 -- duplicates on every run is a rollup that silently multiplies every count it
--- feeds. tooling/ci/assert-rollup-lossless.mjs [R2] fails the build if this
--- column stops being NOT NULL or leaves the unique index.
+-- feeds.
+-- ⬜ NOT YET ENFORCED, AND THIS LINE USED TO CLAIM IT WAS. It read
+-- "tooling/ci/assert-rollup-lossless.mjs [R2] fails the build if this column
+-- stops being NOT NULL or leaves the unique index" -- and THAT GUARD DOES NOT
+-- EXIST. It is PR-2 work. A comment asserting an invariant is protected, when
+-- nothing protects it, is worse than no comment: it retires the reader's
+-- suspicion without retiring the risk. Same defect [8]K-12 recorded, where a
+-- requirement's only citation was a guard that had never been in the tree.
+-- Until that guard is written, the ONLY thing holding this column is
+-- services/platform/test/events-rollup.test.ts, which proves the '' sentinel
+-- keeps the rollup idempotent across three identical runs.
 --
 -- SHAPE: ROWID table + a UNIQUE INDEX on the grain, NOT a composite PRIMARY KEY
 -- — the same reasoning 0002_analytics.sql:13-16 records for `events`.

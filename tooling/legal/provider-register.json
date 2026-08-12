@@ -90,7 +90,22 @@
       "account",
       "money",
       "plan",
-      "cancel"
+      "cancel",
+      "checkout"
+    ],
+    "_checkout": [
+      "🟢 `checkout` ADDED 2026-08-12, AND THIS LIMB CAUGHT IT AGAIN — the third time. The route",
+      "services/platform/src/routes/checkout.ts mounts POST /v1/checkout (the Paddle",
+      "create-transaction server half, [ADR 044]) and it passed typecheck, its own tests and every",
+      "other guard while being invisible to this register.",
+      "",
+      "`checkout` is OURS: it is the door, not a vendor. The same distinction `_money` records one",
+      "entry down, and the route's own author reached it independently — services/platform/src/index.ts",
+      "notes it is mounted at `/v1/checkout` RATHER than under a segment named for a merchant of record.",
+      "",
+      "⚠️ THE TELL THAT WOULD MAKE THIS WRONG: if the segment were ever `/paddle`, this entry would be",
+      "the wrong answer and a provider row would be the right one. The vendor behind the door is Paddle;",
+      "the door is ours. Naming the door after the vendor is what turns a resource into a tell."
     ],
     "_money": [
       "🟢 `money` WAS ADDED BECAUSE THIS LIMB CAUGHT IT — the second time in two days, on a change that",

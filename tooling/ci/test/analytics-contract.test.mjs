@@ -575,7 +575,7 @@ describe('assert-analytics-contract — coverage self-checks', () => {
 // below against the same real files, copied.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-analytics-contract — limb 5, every shared route has a wire pin', () => {
-  test('PASSES on the real tree: 8 routes, 7 pinned, 1 printed gap', () => {
+  test('PASSES on the real tree: 9 routes, 7 pinned, 2 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -583,7 +583,11 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /wire entitlements — body pinned/);
     assert.match(r.out, /wire plan-cancel — body pinned/);
     assert.match(r.out, /GAP {2}wire money-webhook/);
-    assert.match(r.out, /8 shared route\(s\) from tooling\/platform-register\.json: 7 pinned, 1 printed gap/);
+    // checkout joined the gaps 2026-08-12 — the Paddle create-transaction server
+    // half ([ADR 044] rung 2). Its gap is a STATE, not a construction: the day a
+    // Dart client builds /v1/checkout the guard fails and demands a real pin.
+    assert.match(r.out, /GAP {2}wire checkout/);
+    assert.match(r.out, /9 shared route\(s\) from tooling\/platform-register\.json: 7 pinned, 2 printed gap/);
     // [4]B-14's last clause: the config route's client half resolves in the
     // BRICK, so the count above is about apps that do not exist yet too.
     assert.match(r.out, /wire config — .*client half INHERITED by every stamped app: 10 key\(s\) in tooling\/bricks\//);
@@ -717,6 +721,10 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     })));
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /GAP {2}wire money-webhook/);
+    // checkout joined the gaps 2026-08-12 — the Paddle create-transaction server
+    // half ([ADR 044] rung 2). Its gap is a STATE, not a construction: the day a
+    // Dart client builds /v1/checkout the guard fails and demands a real pin.
+    assert.match(r.out, /GAP {2}wire checkout/);
   });
 
   test('COVERAGE LOST when a delegated pin loses the marker it points at', () => {
@@ -794,7 +802,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /On the server \(services\/platform\/test\/config\.test\.ts\) and NOT in the brick: support_url/);
     // and the route stops counting as pinned — the number moves, honestly
-    assert.match(r.out, /6 pinned, 1 printed gap/);
+    assert.match(r.out, /6 pinned, 2 printed gap/);
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {

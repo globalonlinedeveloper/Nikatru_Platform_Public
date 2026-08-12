@@ -173,6 +173,15 @@
       "purpose": "[pipeline 5]M-1 — the ONE door a merchant of record knocks on. Verifies an HMAC-SHA256 signature over the RAW body with the rail's per-destination secret, records the notification verbatim exactly once, acks, then derives the entitlement. [ADR 020]:18 puts it on the SHARED host because a per-app Worker must never see a webhook: fifty stamped apps inherit one verified rail rather than fifty copies of a signature check. [ADR 004] fixes the merchant of record as Paddle / Lemon Squeezy; the adapter registry is what makes the choice a config change.",
       "unconsumedReason": "NO CLIENT IN THIS REPO, BY CONSTRUCTION — the caller is the merchant of record's own delivery system, not any code we ship. This is the one route whose 'who calls it' answer is a vendor, and the honest state is zero in-tree clients. What replaces the client check for this route is tooling/ci/assert-mor-adapters.mjs, which asserts the verifier exists, is CALLED, and is the only path to an entitlements write across ALL of services/**.",
       "noLimiterReason": "It DOES reach withinEdgeCeiling (MONEY_CEILING_LIMITER) — this field is present only to record why the ceiling is the server-derived one and not the fairness bucket: there is no per-install identity on a webhook to be fair between, and the only meaningful key is one the caller cannot choose."
+    },
+    {
+      "id": "checkout",
+      "method": "POST",
+      "path": "/v1/checkout",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/checkout.ts",
+      "purpose": "The Paddle CREATE-TRANSACTION server half ([ADR 044]). Creates a DRAFT transaction from `items` alone and returns its `checkout.url`. 🔴 THE SHAPE IS THE SAFETY PROPERTY: the create body type carries NO settable `status` field at all, so passing `status:\"billed\"` is a COMPILE ERROR rather than a code-review catch. That matters because `billed` mints an invoice number and an immutable tax record, and on a cardless trial Paddle auto-completes the transaction and creates a subscription — removing the human from a loop everything else here assumes.",
+      "unconsumedReason": "⚠️ NOTHING CALLS THIS ROUTE TODAY, AND THAT IS RECORDED RATHER THAN DRESSED UP. [ADR 044] §5(2) found that `Paddle.Checkout.open({items})` opens a checkout with NO server-created transaction and NO API key on the request path, exercising the identical payment-link and `_ptxn` machinery — \"the server endpoint is therefore not a v1 dependency, which was the load-bearing surprise of this investigation\". The owner then chose BOTH rungs, so this exists as rung 2. It earns its place the moment a transaction needs something the overlay cannot pre-fill: a known `customer_id`, a discount, or `custom_data` carrying our own account id — and §6 records that last one as a FILED DEFECT, not a nicety. Until then this is an UNCONSUMED route by design, and the honest state is zero clients."
     }
   ],
   "bindings": [
