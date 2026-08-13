@@ -631,9 +631,18 @@ class PoweredByNikatru extends StatelessWidget {
     // order differs from English. The names themselves stay untranslated; they
     // come from [AppConfig] so every portfolio app inherits the line.
     final AppLocalizations l10n = AppLocalizations.of(context);
+    // 🔴 `onDark` IS NOT "THE APP IS IN DARK MODE". It means "this footer is
+    // sitting on a dark HERO/gradient", and it is passed explicitly by the
+    // caller. So the `false` arm ran on the DARK SCAFFOLD too, painting the
+    // light literal [AppColors.muted] (#6F6F7B) at 3.74:1 on #131318 — under SC
+    // 1.4.3's 4.5:1 for these 12px w700 links. That is what kept `every string
+    // on settings … DARK` red after the screen's own tokens were fixed: the
+    // defect was one level down, in a SHARED widget the screen merely hosts.
+    // The `false` arm now resolves through the ambient brightness; `onDark`
+    // keeps its own meaning and its own colour.
     final Color faint = onDark
         ? const Color.fromRGBO(255, 255, 255, 0.6)
-        : AppColors.muted;
+        : (AppText.of(context).muted.color ?? AppColors.muted);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[

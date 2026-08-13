@@ -445,18 +445,31 @@ class _HomeDashboard extends ConsumerWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
+                    // 🔴 THE ACCENT IS INK HERE, SO IT FORKS BY BRIGHTNESS.
+                    // `AppColors.accent` (#6459F5) is a FILL colour that this
+                    // row paints as 12px w700 TEXT, so SC 1.4.3's 4.5:1 governs,
+                    // not 1.4.11's 3:1. On the dark scaffold #131318 it measured
+                    // **3.78:1** — the whole reason `every string on home … DARK`
+                    // was red. `scheme.primary` is the same seed resolved for the
+                    // ambient brightness (M3 puts dark primary at tone 80), which
+                    // is why the fork is a chassis lookup and not a second
+                    // literal. Light keeps the literal so nothing repaints.
                     Text(
                       l10n.calendarLink,
                       style: AppText.body.copyWith(
-                        color: AppColors.accent,
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? AppColors.accent
+                            : Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
                       ),
                     ),
                     const SizedBox(width: 3),
-                    const Icon(
+                    Icon(
                       Icons.arrow_forward,
-                      color: AppColors.accent,
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? AppColors.accent
+                          : Theme.of(context).colorScheme.primary,
                       size: 13,
                     ),
                   ],

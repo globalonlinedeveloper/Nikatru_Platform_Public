@@ -110,6 +110,25 @@ class AppColors {
   // That reverses the "status colours do not fork" decision above and rewrites
   // the tests that pin it, so it is an owner-visible design-system change with
   // its own increment — not a silent token edit here.
+  //
+  // ⚠️ AND IT IS NOT WHAT THE THREE RED CONTRAST TESTS WERE, WHICH THE COMMIT
+  // MESSAGE AND THE KICKOFF BOTH GOT WRONG. Measured from the failing run
+  // (2026-08-13, `melos run gate`, 625 pass / 3 fail): NOT ONE failing node
+  // involved [positive], [warn] or [danger]. The three reds were
+  //   · settings DARK — `AppText.title`/`body`/`label` baking [ink] #141420 and
+  //     [muted] onto the dark scaffold: **1.01:1** on the page title and 1.48:1
+  //     on five list rows. Near-invisible text, not an AA rounding error.
+  //   · home DARK — [accent] painted as 12px w700 TEXT on #131318, 3.78:1.
+  //   · scan (results) — white at **0.85 alpha** over [brandGradient], 3.97:1.
+  // All three were fixable IN PLACE, and were fixed, by adopting the existing
+  // `AppText.of` seam and forking [accent] to `scheme.primary` in dark. The
+  // arithmetic above is still correct; it simply describes a DIFFERENT defect
+  // than the one that was red. **"No colour satisfies both grounds" was true of
+  // the status trio and was never true of what the gate was reporting** — the
+  // impossibility proof got attached to the wrong failure, and that is what made
+  // a fixable red look like a blocked design decision for a whole session.
+  // 📌 The status-trio fork remains OWED and remains owner-visible. It is
+  // deferred work, not gate-blocking work.
   static const Color positive = Color(0xFF10B981);
   static const Color warn = Color(0xFFF59E0B);
   static const Color danger = Color(0xFFEF4D6A);

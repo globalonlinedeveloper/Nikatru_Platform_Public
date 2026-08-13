@@ -321,11 +321,21 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               // The three whites below are ON `AppColors.brandGradient` — a
               // saturated indigo→violet, its own surface in either brightness.
               // They do not fork; see the class doc.
+              //
+              // 🔴 BUT THE ALPHA IS NOT FREE, AND THIS ONE WAS THE DEFECT.
+              // At `0.85` the glyphs blend to ~#EAE6FE against the gradient's
+              // #6C57F7 here, which measured **3.97:1** — under SC 1.4.3's 4.5:1
+              // for this 11px label, and the only reason `every string on scan
+              // (results)` was red. Opaque white is **4.90:1** at the accent end
+              // and 4.51:1 at the #8950FF end, so it clears AA across the whole
+              // sweep. The de-emphasis this alpha bought is not worth a string
+              // that fails the bar the Definition of Done publishes; the size and
+              // tracking of `AppText.label` already carry the hierarchy.
+              // 📌 The sibling at `:346` is `0.92` on 15px w700 and MEASURED
+              // passing — it is left alone deliberately, not overlooked.
               Text(
                 l10n.scanResultsHeading,
-                style: AppText.label.copyWith(
-                  color: const Color.fromRGBO(255, 255, 255, 0.85),
-                ),
+                style: AppText.label.copyWith(color: Colors.white),
               ),
               const SizedBox(height: 4),
               // 🔴 A PLURAL KEY, and it fixes a shipped bug rather than only

@@ -151,7 +151,7 @@ class SettingsScreen extends ConsumerWidget {
           children: <Widget>[
             Text(
               l10n.settingsTitle,
-              style: AppText.title.copyWith(fontSize: 26),
+              style: AppText.of(context).title.copyWith(fontSize: 26),
             ),
             const SizedBox(height: 16),
 
@@ -227,21 +227,23 @@ class SettingsScreen extends ConsumerWidget {
                                           user.displayName!.isEmpty)
                                       ? l10n.displayNameNotSet
                                       : user.displayName!,
-                                  style: AppText.body.copyWith(
+                                  style: AppText.of(context).body.copyWith(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 16,
                                   ),
                                 ),
                                 Text(
                                   user.email,
-                                  style: AppText.muted.copyWith(fontSize: 13),
+                                  style: AppText.of(
+                                    context,
+                                  ).muted.copyWith(fontSize: 13),
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(
+                          Icon(
                             Icons.edit_outlined,
-                            color: AppColors.muted,
+                            color: AppText.of(context).muted.color,
                           ),
                         ],
                       ),
@@ -255,7 +257,7 @@ class SettingsScreen extends ConsumerWidget {
             // preference with no control is a dead setting — the same shape as
             // the consent recorder that had no prompt and silently discarded
             // every event. Shipped together, or not at all.
-            _sectionLabel(l10n.appearance),
+            _sectionLabel(context, l10n.appearance),
             SegmentedButton<ThemeMode>(
               segments: <ButtonSegment<ThemeMode>>[
                 ButtonSegment<ThemeMode>(
@@ -279,7 +281,7 @@ class SettingsScreen extends ConsumerWidget {
             // ── LANGUAGE ─────────────────────────────────────────────────────
             // Language names are shown in their OWN language, so a speaker can
             // find theirs without first being able to read the current one.
-            _sectionLabel(l10n.language),
+            _sectionLabel(context, l10n.language),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -313,7 +315,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
 
             // ── CURRENCY (live-only) ─────────────────────────────────────────
-            _sectionLabel(l10n.currency),
+            _sectionLabel(context, l10n.currency),
             Row(
               children: <String>['\$', '€', '£', '₹'].map((String sym) {
                 final bool sel = settings.currencySymbol == sym;
@@ -365,7 +367,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
 
             // ── PREFERENCES (live-only) ──────────────────────────────────────
-            _sectionLabel(l10n.preferences),
+            _sectionLabel(context, l10n.preferences),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -383,6 +385,7 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       ),
                       child: _prefRow(
+                        context,
                         toggles[i][1],
                         toggles[i][2],
                         settings.prefs[toggles[i][0]] ?? false,
@@ -406,7 +409,7 @@ class SettingsScreen extends ConsumerWidget {
             // platform can deliver a scheduled notification at all. Merging them
             // would be the toggle-with-no-feature shape on every platform where
             // `canSchedule` is false.
-            _sectionLabel(l10n.notifications),
+            _sectionLabel(context, l10n.notifications),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -456,11 +459,12 @@ class SettingsScreen extends ConsumerWidget {
             // ✅ THE GUARD P2.7 OWED NOW EXISTS:
             // `tooling/ci/assert-consent-withdrawal-surface.mjs` fails the build
             // if this row leaves, for the brick and for every apps/* alike.
-            _sectionLabel(l10n.privacy),
+            _sectionLabel(context, l10n.privacy),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: _prefRow(
+                context,
                 l10n.usageStatistics,
                 ref.watch(analyticsConsentProvider) ==
                         core.ConsentStatus.granted
@@ -497,7 +501,7 @@ class SettingsScreen extends ConsumerWidget {
             // not a private flag: one append-only artifact trail, one server
             // route, one place the objection lives. `PromoGateState.suppressed`
             // is a projection of this value — see `PromoObjection`.
-            _sectionLabel(l10n.promotionalOffers),
+            _sectionLabel(context, l10n.promotionalOffers),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -552,7 +556,7 @@ class SettingsScreen extends ConsumerWidget {
             // account.
             if (ref.watch(authRepositoryProvider).currentUser !=
                 null) ...<Widget>[
-              _sectionLabel(l10n.plan),
+              _sectionLabel(context, l10n.plan),
               Container(
                 decoration: cardDecoration(context),
                 clipBehavior: Clip.antiAlias,
@@ -796,7 +800,7 @@ class SettingsScreen extends ConsumerWidget {
                   runningVersion,
                   AppConfig.companyName,
                 ),
-                style: AppText.muted.copyWith(fontSize: 11),
+                style: AppText.of(context).muted.copyWith(fontSize: 11),
               ),
             ),
           ],
@@ -806,9 +810,16 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   /// The uppercase section heading Subly draws above each card.
-  static Widget _sectionLabel(String text) => Padding(
+  ///
+  /// Takes [context] so the label resolves through [AppText.of] rather than the
+  /// baked const style. The const `AppText.label` carries [AppColors.muted]
+  /// (#6F6F7B), which scored **3.74:1 on the dark scaffold** — under SC 1.4.3's
+  /// 4.5:1 for this 11px text — on all seven headings this screen draws. Light
+  /// is byte-identical (`AppText.of` returns the const objects themselves), so
+  /// this repaints nothing.
+  static Widget _sectionLabel(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.fromLTRB(2, 22, 2, 8),
-    child: Text(text.toUpperCase(), style: AppText.label),
+    child: Text(text.toUpperCase(), style: AppText.of(context).label),
   );
 
   /// PERMISSION PRIMING — explain, THEN ask the OS.
@@ -1087,7 +1098,17 @@ class SettingsScreen extends ConsumerWidget {
     return outcome;
   }
 
-  Widget _prefRow(String label, String desc, bool value, VoidCallback onTap) {
+  /// Takes [context] for the same reason as [_sectionLabel]: the const styles
+  /// bake the LIGHT literals, so on a dark surface the title rendered
+  /// [AppColors.ink] (#141420) and the description [AppColors.muted].
+  Widget _prefRow(
+    BuildContext context,
+    String label,
+    String desc,
+    bool value,
+    VoidCallback onTap,
+  ) {
+    final AppTextStyles t = AppText.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       child: Row(
@@ -1098,12 +1119,12 @@ class SettingsScreen extends ConsumerWidget {
               children: <Widget>[
                 Text(
                   label,
-                  style: AppText.body.copyWith(
+                  style: t.body.copyWith(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
                 ),
-                Text(desc, style: AppText.muted.copyWith(fontSize: 12)),
+                Text(desc, style: t.muted.copyWith(fontSize: 12)),
               ],
             ),
           ),
@@ -1539,7 +1560,7 @@ class _LinkRow extends StatelessWidget {
                       children: <Widget>[
                         Text(
                           label,
-                          style: AppText.body.copyWith(
+                          style: AppText.of(context).body.copyWith(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
                           ),
@@ -1547,14 +1568,16 @@ class _LinkRow extends StatelessWidget {
                         if (sub != null)
                           Text(
                             sub,
-                            style: AppText.muted.copyWith(fontSize: 12),
+                            style: AppText.of(
+                              context,
+                            ).muted.copyWith(fontSize: 12),
                           ),
                       ],
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right,
-                    color: AppColors.muted,
+                    color: AppText.of(context).muted.color,
                     size: 18,
                   ),
                 ],
