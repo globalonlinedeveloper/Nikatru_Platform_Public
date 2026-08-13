@@ -379,8 +379,18 @@ class InsightsScreen extends ConsumerWidget {
                         ],
                       ),
                     ),
+                    // 🔴 48, NOT 36 — MEASURED 73.5x36.0 AGAINST
+                    // androidTapTargetGuideline. This is the control that opens
+                    // the cancel sheet, i.e. the one destructive path on this
+                    // screen, and it shipped as the smallest button in the app.
+                    // No WCAG 2.5.8 exception reaches it: there is one per row
+                    // and no equivalent control anywhere on insights, it is not
+                    // inline in text, and nothing about a savings card makes 36
+                    // essential. Both numbers move together — `GradientButton`
+                    // sizes its own `SizedBox`, so leaving the outer one at 36
+                    // would clip the button rather than shrink it.
                     SizedBox(
-                      height: 36,
+                      height: 48,
                       child: GradientButton(
                         // REUSES the shared `cancel` key. The label is painted
                         // white on `AppColors.brandGradient` inside
@@ -388,7 +398,7 @@ class InsightsScreen extends ConsumerWidget {
                         // brightnesses — an on-gradient colour must not follow
                         // the scheme, because the surface under it does not.
                         label: l10n.cancel,
-                        height: 36,
+                        height: 48,
                         fontSize: 12,
                         onPressed: () => showCancelSheet(context, s),
                       ),

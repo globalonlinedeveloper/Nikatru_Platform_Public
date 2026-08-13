@@ -77,6 +77,20 @@ images inside the binary); the content register covers what the **pipeline consu
 (generator models, TTS voices, QA models, and any third-party asset family a pack carries). An app can
 ship a font it never generated with, and a pack can carry a voice the app binary never sees.
 
+🔴 **AND THE TWO REGISTERS CROSS-ASSERT, since 2026-08-13** — `tooling/ci/licence-cross-assert.mjs`,
+imported by **both** guards above, so a disagreement turns both red. A family can legitimately be in
+both files (Noto is the worked example: cleared as a pack-rendering input today, and it would owe an
+asset row the day a Noto face ships inside a binary), and until this landed nothing compared what the
+two files said about one. Every `asset-register.json` row therefore answers `contentFamily` — a
+content-register family name, or `null` — with a `contentFamilyWhy` sentence; where a row names a
+family, both registers must record the **same licence identity** and the **same attribution duty**.
+The field is required and `null` is a real answer: an optional cross-link cannot fail on the input
+that actually causes a seam, which is nobody writing the link. ⚠️ The overlap is **empty today**
+(6 families, 6 asset rows, 0 in both) and the guard prints that on every run, so "0 compared" can
+never be read as "0 disagreements". 📌 The sentence above is a **paraphrase**; the canonical wording
+lives in `content-licence-register.json` (`_readme`), is quoted verbatim by `[7]P-5` and `[8]K-10`,
+and the guard fails if that copy is edited without re-syncing them.
+
 `pack-key-drills.json` is a register with no third party in it at all — it records whether the
 content-pack signing key's stored copies have been **read back**. It lives here because it is the same
 shape: a declared fact a guard compares to the tree, with the sensitive value (the seed) named rather

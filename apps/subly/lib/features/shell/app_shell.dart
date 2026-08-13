@@ -108,11 +108,30 @@ class AppShell extends StatelessWidget {
                     vertical: 6,
                   ),
                   color: AppColors.warn,
+                  // 🔴 THE LABEL WAS WHITE, AND WHITE ON #F59E0B IS 2.15:1 —
+                  // the worst contrast in the app, on a banner that spans the
+                  // full width of every screen. SC 1.4.3 wants 4.5:1 for 12px
+                  // w600; even the large-text floor of 3:1 was out of reach.
+                  //
+                  // THE INK MOVES, NOT THE AMBER. `AppColors.ink` on the same
+                  // fill measures 8.50:1 — AAA — so the one-word fix is the
+                  // foreground, and the warn fill stays exactly the amber the
+                  // design asks for. Darkening `AppColors.warn` instead would
+                  // have been the wrong lever twice over: it is painted
+                  // unbranched on the DARK surfaces too (where it is already
+                  // correct at 8.62:1), and it would have turned a warning
+                  // stripe into a brown one to fix a foreground problem.
+                  //
+                  // Correct in both brightnesses without a branch, because
+                  // neither colour here is brightness-dependent: the fill is a
+                  // fixed literal, so the ink on it is fixed too — the same
+                  // on-gradient rule `GradientButton` and the calendar
+                  // today-pill follow.
                   child: Text(
                     l10n.demoDataBanner,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.ink,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -282,8 +301,26 @@ class AppShell extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(15),
+                // 🔴 0.05, NOT 0.10 — THE WASH WAS DARKENING THE GROUND UNDER
+                // ITS OWN LABEL. `AppColors.accent` clears AA on every SOLID
+                // light ground this app paints (4.90:1 on a white card, 4.67:1
+                // on the live scaffold #FCF8FF), so the brand token is not the
+                // defect. But composited at 10% over the pill's white@0.9 fill
+                // this tint resolves to #F0EEFE, and the 9px w700 tab label on
+                // it measures 4.28:1 — under SC 1.4.3's 4.5:1 for normal-size
+                // text, and this label is the only thing naming the
+                // destination. At 0.05 the ground is #F7F6FF and the label
+                // measures 4.57:1.
+                //
+                // Halving a decorative tint rather than darkening
+                // `AppColors.accent`: the accent is the brand mark and moving
+                // it would repaint every gradient, hero, ring and FAB in the
+                // app to fix one 9px label. The selected state survives the
+                // lighter wash — it is also carried by the label/icon COLOUR
+                // (accent vs muted) and by `Semantics(selected: true)` above,
+                // so the tint is the fourth cue, not the only one.
                 color: selected
-                    ? const Color.fromRGBO(100, 89, 245, 0.1)
+                    ? const Color.fromRGBO(100, 89, 245, 0.05)
                     : Colors.transparent,
               ),
               child: Column(

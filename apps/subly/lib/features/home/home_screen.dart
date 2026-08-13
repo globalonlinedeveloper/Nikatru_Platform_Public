@@ -298,9 +298,24 @@ class _HomeDashboard extends ConsumerWidget {
           child: GestureDetector(
             onTap: () => context.go('/settings'),
             child: ExcludeSemantics(
+              // 🔴 48, NOT 44 — AND THE 44 SURVIVED BECAUSE IT WAS BESIDE THE
+              // ONE ASSERTION THAT COULD NOT SEE IT. `_circleButton` nine
+              // pixels to the left is 48 and says so in its own comment ("48px,
+              // not 44: the chassis floor for an icon-only tap target"); this
+              // control does the same job in the same row and shipped at 44.
+              // `chassis_properties_test`'s 48px limb ranges over
+              // `_iconOnlyControls`, which filters to controls with NO `Text`
+              // descendant — and this one has one, the account initial. So the
+              // ONE control in the header the floor did not apply to is the one
+              // that missed it. [ADR 048] defect 1, found by the sweep that
+              // replaces the mistitled assertion: measured 44.0x44.0 against
+              // androidTapTargetGuideline's 48.
+              //
+              // The row was ALREADY 48 tall (the bell sets it), so this changes
+              // the avatar's own box and nothing around it.
               child: Container(
-                width: 44,
-                height: 44,
+                width: 48,
+                height: 48,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   gradient: AppColors.brandGradient,
@@ -401,29 +416,51 @@ class _HomeDashboard extends ConsumerWidget {
         // prose sitting beside a heading. The arrow contributes nothing — an
         // `Icon` with no `semanticLabel` is silent — which is correct: it is the
         // same direction the word already implies.
+        // 🔴 THE PAINTED WORD WAS THE WHOLE TAP TARGET, AND IT WAS 13 PIXELS
+        // TALL. Measured 112.0x13.0 against androidTapTargetGuideline's 48 —
+        // and it fails WCAG 2.5.8's 24x24 as well, so this is not merely under
+        // the stricter Android bar. NONE of 2.5.8's exceptions covers it: it is
+        // not Inline (it sits beside a heading, not inside a sentence, and its
+        // size is set by its own 12px style rather than by surrounding
+        // line-height), and Equivalent would be a claim about the shell's
+        // Calendar tab — a control that is NOT in the tree when this screen is
+        // pumped, i.e. an exclusion nothing here could falsify.
+        //
+        // So the target grows to 48 rather than being argued away. Two halves,
+        // both needed: `SizedBox` gives the SEMANTICS NODE its height (the rect
+        // a reader's switch/scan target is derived from), and
+        // `HitTestBehavior.opaque` gives the POINTER the same area — without it
+        // the node would claim 48 while a finger still had to find the 13px
+        // word, which is the announce-one-thing-do-another shape the avatar
+        // above records. The painted row is unmoved; only the header's own
+        // block is taller.
         trailing: MergeSemantics(
           child: Semantics(
             button: true,
             child: GestureDetector(
               onTap: () => context.go('/calendar'),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    l10n.calendarLink,
-                    style: AppText.body.copyWith(
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                height: 48,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      l10n.calendarLink,
+                      style: AppText.body.copyWith(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 3),
-                  const Icon(
-                    Icons.arrow_forward,
-                    color: AppColors.accent,
-                    size: 13,
-                  ),
-                ],
+                    const SizedBox(width: 3),
+                    const Icon(
+                      Icons.arrow_forward,
+                      color: AppColors.accent,
+                      size: 13,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

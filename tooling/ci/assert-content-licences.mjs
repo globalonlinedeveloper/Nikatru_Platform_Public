@@ -35,6 +35,10 @@ import { join, relative, resolve } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 
 import { IMPLEMENTED_MODALITIES, QA_IMPLEMENTED_MODALITIES } from '../content_pipeline/src/recipe.mjs';
+// The seam against [8]K-10's register. Imported by BOTH guards on purpose: a
+// disagreement between the two registers must turn both red, or the one that
+// stays green is the one somebody quotes. See licence-cross-assert.mjs.
+import { crossAssertLicenceRegisters } from './licence-cross-assert.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 const REGISTER_REL = 'tooling/legal/content-licence-register.json';
@@ -239,6 +243,15 @@ if (qaModels.length === 0 && qaGap.length) {
       '"the model limbs are cleared". Land each model-bearing limb WITH its register row, never before.',
   );
 }
+
+// ── the seam against [8]K-10's asset register ───────────────────────────────
+// P-5 owns content-pipeline INPUTS; K-10 owns BUILT-BUNDLE contents. A family
+// can be in both, and until 2026-08-13 nothing compared what the two files said
+// about one. Both requirement texts now carry the boundary sentence verbatim;
+// this is the half of it that fails a build.
+const seam = crossAssertLicenceRegisters(repoRoot, { side: 'content' });
+problems.push(...seam.problems);
+prints.push(...seam.prints);
 
 if (problems.length) {
   console.error(`✗ content licences — ${problems.length} problem(s):`);

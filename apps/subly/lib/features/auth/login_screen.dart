@@ -510,6 +510,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       button: true,
                       child: GestureDetector(
                         onTap: () => setState(() => _signUp = !_signUp),
+                        // 🔴 THE TAP TARGET IS THE BAND, NOT THE INK.
+                        // Measured 319.0x40.0 against
+                        // androidTapTargetGuideline: eight pixels short, on the
+                        // ONLY control that reaches registration from the screen
+                        // every signed-out visitor is routed to. `opaque` is
+                        // half the fix — `deferToChild` would leave the pointer
+                        // hunting the glyphs while the semantics rect claimed
+                        // the whole band. `minHeight` rather than a fixed
+                        // height because `haveAccountPrompt` is a different
+                        // sentence in every locale and some of them wrap to
+                        // three lines; a `SizedBox(height: 48)` would clip those
+                        // instead of growing.
+                        behavior: HitTestBehavior.opaque,
                         // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
                         // This was two `TextSpan`s — "New here? " + "Create account"
                         // — which is a concatenation wearing a rich-text costume: it
@@ -526,12 +539,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         // changed. What is lost is the accent colouring of the last
                         // two words; a per-locale substring hunt to restore it would
                         // be exactly the fixed-word-order assumption this removes.
-                        child: Text(
-                          _signUp ? l10n.haveAccountPrompt : l10n.newHerePrompt,
-                          textAlign: TextAlign.center,
-                          style: AppText.muted.copyWith(
-                            fontSize: 14,
-                            color: t.muted,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Align(
+                            child: Text(
+                              _signUp
+                                  ? l10n.haveAccountPrompt
+                                  : l10n.newHerePrompt,
+                              textAlign: TextAlign.center,
+                              style: AppText.muted.copyWith(
+                                fontSize: 14,
+                                color: t.muted,
+                              ),
+                            ),
                           ),
                         ),
                       ),

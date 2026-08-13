@@ -61,8 +61,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:intl/date_symbols.dart' show DateSymbols;
 import 'package:intl/intl.dart';
-import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart' show InMemoryAuthRepository;
+import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
+    show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show buildAppTheme;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subly/core/app_config.dart';
 import 'package:subly/core/e2e_keys.dart';
@@ -261,7 +264,223 @@ void expectNothingNaked(WidgetTester tester, String screen, {int floor = 1}) {
   );
 }
 
+// ─── the tap-target family's falsifier ───────────────────────────────────────
+
+/// [androidTapTargetGuideline]'s traversal with a floor nothing can clear.
+///
+/// The SAME class, so the SAME skip rules — links, hidden nodes, merged nodes,
+/// nodes with no tap action, targets clipped by a scrolling boundary — decide
+/// what it visits. Only the threshold differs, which turns "did it pass" into
+/// "what did it look at".
+const AccessibilityGuideline _everyTapTargetIsTooSmall =
+    MinimumTapTargetGuideline(
+      size: Size(1000000, 1000000),
+      link:
+          'the falsifier for androidTapTargetGuideline — not a real guideline',
+    );
+
+/// How many nodes [androidTapTargetGuideline] ACTUALLY inspects on the screen
+/// that is currently pumped.
+///
+/// [Evaluation] exposes no node list, so the count comes from its reason text —
+/// `MinimumTapTargetGuideline` emits exactly one `expected tap target size` line
+/// per node it measured and rejected, and at the floor above it rejects every
+/// node it measures.
+Future<int> tapTargetSubjects(WidgetTester tester) async {
+  final Evaluation e = await _everyTapTargetIsTooSmall.evaluate(tester);
+  return (e.reason ?? '')
+      .split('\n')
+      .where((String line) => line.contains('expected tap target size'))
+      .length;
+}
+
+/// Positive proof the sweep beside this call ranged over something.
+///
+/// 🔴 THE WHOLE REASON THIS FAMILY IS NOT ONE LINE PER SCREEN. A guideline that
+/// inspects nothing returns `Evaluation.pass()`, which is byte-identical to a
+/// screen whose every control is the right size. Six of the nineteen surfaces
+/// were in exactly that state while this increment was being written.
+Future<void> expectGuidelineHadSubjects(
+  WidgetTester tester,
+  String screen,
+) async {
+  expect(
+    await tapTargetSubjects(tester),
+    greaterThanOrEqualTo(1),
+    reason:
+        'COVERAGE LOST — androidTapTargetGuideline inspected NOT ONE node on '
+        '$screen, so the sweep beside this call passed over the empty set and '
+        'reported the screen clean. Check the pump before believing anything '
+        'below it: the guideline skips links, hidden and merged nodes, nodes '
+        'with no tap action, and targets at a scroll or view boundary.',
+  );
+}
+
+// ─── the contrast family's falsifier ─────────────────────────────────────────
+
+/// [textContrastGuideline]'s traversal with a target ratio nothing can clear.
+///
+/// The SAME class, so the SAME skip rules — merged, invisible, hidden and
+/// DISABLED nodes, route scopes, nodes whose label is empty, nodes whose text is
+/// not `hitTestable`, elements whose paint bounds fall outside the view — decide
+/// what it visits. Only [targetContrastRatio] differs, which turns "did it pass"
+/// into "what did it look at". The maximum contrast ratio expressible is 21:1
+/// (white on black), so this floor rejects every subject it is handed.
+class _EveryTextFailsContrast extends MinimumTextContrastGuideline {
+  const _EveryTextFailsContrast();
+
+  @override
+  double targetContrastRatio(double? fontSize, {required bool bold}) => 1000000;
+}
+
+/// How many text nodes [textContrastGuideline] ACTUALLY measures on the screen
+/// that is currently pumped.
+///
+/// [Evaluation] exposes no node list, so the count comes from its reason text —
+/// `MinimumTextContrastGuideline` emits exactly one `Expected contrast ratio of
+/// at least` line per element it rasterised and rejected, and at the floor above
+/// it rejects every element it rasterises.
+///
+/// ⚠️ THE COUNT IS OF (node, element) PAIRS THAT REACHED THE HISTOGRAM, WHICH IS
+/// THE ONLY NUMBER WORTH HAVING. Four separate limbs inside
+/// `_evaluateElement` return `Evaluation.pass()` BEFORE any colour is read — an
+/// empty intersection between the node's rect and the render box's, a node the
+/// view rect culls, and an empty colour histogram. A subject that leaves by one
+/// of those doors is exactly the vacuous pass this helper exists to expose, and
+/// it does not appear in this count.
+Future<int> contrastSubjects(WidgetTester tester) async {
+  final Evaluation e = await const _EveryTextFailsContrast().evaluate(tester);
+  return (e.reason ?? '')
+      .split('\n')
+      .where((String l) => l.contains('Expected contrast ratio of at least'))
+      .length;
+}
+
+/// Positive proof the contrast sweep beside this call ranged over something.
+///
+/// 🔴 THE SAME REASON THE TAP-TARGET FAMILY HAS ONE, AND A SHARPER ONE. A
+/// guideline that inspects nothing returns `Evaluation.pass()`, byte-identical
+/// to a screen whose every string is legible — and this family is MORE exposed
+/// to that than the tap-target one, because `MinimumTextContrastGuideline` culls
+/// against `view.physicalSize` too (`isNodeOffScreen`, accessibility.dart:483).
+/// That is the stale-`physicalSize` defect [sizeSurface] was written for,
+/// pointed at a second family: without [sizeSurface] every string below 600
+/// logical pixels on an 812-tall phone would be culled and the sweep would
+/// report the screen clean having read nothing off it.
+Future<void> expectContrastHadSubjects(
+  WidgetTester tester,
+  String screen,
+) async {
+  expect(
+    await contrastSubjects(tester),
+    greaterThanOrEqualTo(1),
+    reason:
+        'COVERAGE LOST — the text-contrast guideline measured NOT ONE string on '
+        '$screen, so the sweep beside this call passed over the empty set and '
+        'reported the screen legible. Check the pump before believing anything '
+        'below it: the guideline skips route scopes, merged/invisible/hidden '
+        'and DISABLED nodes, labels that are not `hitTestable`, and anything '
+        'whose paint bounds fall outside `view.physicalSize` — which is what '
+        '[sizeSurface] exists to keep honest.',
+  );
+}
+
+/// Whether WCAG **AAA** (7.0 normal / 4.5 large) would additionally hold here.
+///
+/// Reported, never asserted. The Definition of Done publishes **AA**, so AA is
+/// what the sweeps below enforce; this is the measurement that lets each case
+/// say in a comment what the stricter bar would do, without a second failing
+/// gate for a level nothing has committed to. See the group header for why AAA
+/// is not simply switched on globally.
+Future<bool> meetsAAA(WidgetTester tester) async =>
+    (await const MinimumTextContrastGuidelineAAA().evaluate(tester)).passed;
+
+/// Refuses a screen whose text was measured against **NOTHING**.
+///
+/// 🔴🔴 THE DEFECT THIS INCREMENT ACTUALLY FOUND, AND IT IS THE VACUOUS-PASS
+/// SHAPE INVERTED — a CONFIDENT WRONG NUMBER RATHER THAN A SILENT PASS.
+/// `_ContrastReport` builds its histogram from the rasterised layer and then
+/// calls `Color.computeLuminance()`, WHICH IGNORES ALPHA. A fully transparent
+/// pixel is therefore scored as PURE BLACK, luminance 0.
+///
+/// Five of Subly's surfaces — insights, budget, calendar, settings, home — are
+/// the AppShell's branch panes and DECLARE NO `Scaffold` OF THEIR OWN
+/// (`insights_screen.dart` contains the string `Scaffold` only inside two
+/// comments). In the app they are the `body:` of the one `AppScaffold` builds
+/// (`app_scaffold.dart:198`), which is what paints `scaffoldBackgroundColor`.
+/// Pumped standalone the way every case in this file pumps them, they paint
+/// their text onto TRANSPARENCY.
+///
+/// MEASURED on the first run of this family: 74 nodes were scored against
+/// `dark - Color(alpha: 0.0000, …)`, and the numbers were not noise —
+/// insights' 26px "Insights" heading, whose real contrast is
+/// `onSurface`/`surface` = 16.29:1, was reported at **1.15:1** and FAILED. The
+/// app's most legible text, reported as its worst, by a check that had just
+/// been written to find exactly that.
+///
+/// 📌 THE OTHER TWO FAMILIES COULD NOT HAVE CAUGHT THIS AND NEVER WILL: the
+/// semantics walk and `MinimumTapTargetGuideline` read the tree and the
+/// geometry, never a pixel, so a missing background costs them nothing. The
+/// first family that reads pixels inherits every rig shortcut the others could
+/// afford. Hence [pumpScreen]'s `paintBackground:`, and hence this assertion —
+/// which fails BY NAME rather than as an unreadable ratio.
+Future<void> expectOpaqueGround(WidgetTester tester, String screen) async {
+  final Evaluation e = await const _EveryTextFailsContrast().evaluate(tester);
+  final List<String> transparent = (e.reason ?? '')
+      .split('\n')
+      .where(
+        (String l) => l.startsWith('light - ') && l.contains('alpha: 0.0000'),
+      )
+      .toList();
+  expect(
+    transparent,
+    isEmpty,
+    reason:
+        'COVERAGE LOST — ${transparent.length} string(s) on $screen were scored '
+        'against a TRANSPARENT ground, and `Color.computeLuminance()` ignores '
+        'alpha, so the guideline compared them to PURE BLACK. Every ratio below '
+        'is fiction. The pump is missing whatever paints this surface in the '
+        'real app — the five AppShell branch panes declare no Scaffold and get '
+        'their background from `AppScaffold`. Pass `paintBackground: true` to '
+        '[pumpScreen]; do NOT relax the sweep.\n  ${transparent.join('\n  ')}',
+  );
+}
+
 // ─── hosts ───────────────────────────────────────────────────────────────────
+
+/// Pins BOTH the render surface and the view it is supposed to be a view of.
+///
+/// 🔴 `setSurfaceSize` ALONE LEAVES `FlutterView.physicalSize` AT FLUTTER_TEST'S
+/// DEFAULT 800×600, AND THAT IS NOT A COSMETIC DISAGREEMENT — IT SILENTLY
+/// AMPUTATED THE TAP-TARGET SWEEP. `setSurfaceSize` moves the size the render
+/// view LAYS OUT to; it does not touch the size the view REPORTS. Every case in
+/// this file laid out at 375×812 while `tester.view.physicalSize` still said
+/// 2400×1800 physical (= 800×600 at dpr 3).
+///
+/// Nothing noticed for as long as every assertion here walked the semantics tree
+/// itself, because the walk never reads the view. `MinimumTapTargetGuideline`
+/// does: it skips any node whose paint bounds touch `Offset.zero &
+/// view.physicalSize`, on the entirely sound grounds that a target hanging off
+/// the edge has less area than its rect claims. Against a stale 800×600 rect
+/// that rule fires on EVERYTHING BELOW 600 LOGICAL PIXELS.
+///
+/// MEASURED before this function existed, with the guideline re-run at an
+/// impossible floor so every node it actually inspects reports itself: scan's
+/// only CTA, onboarding's Skip and Next, check-inbox's only way out,
+/// reset-password's only way out and BOTH cancel-sheet buttons were inspected
+/// ZERO times. Six of the nineteen surfaces handed the guideline nothing at all,
+/// and it returned `Evaluation.pass()` for every one of them — the family would
+/// have gone from ×0 to ×20 without a single one of those controls being
+/// measured. That is the [ADR 048] defect reproduced in a new place: not a check
+/// that fails, a check that never started.
+Future<void> sizeSurface(WidgetTester tester, Size size) async {
+  await tester.binding.setSurfaceSize(size);
+  tester.view.physicalSize = size * tester.view.devicePixelRatio;
+  addTearDown(() async {
+    tester.view.resetPhysicalSize();
+    await tester.binding.setSurfaceSize(null);
+  });
+}
 
 /// [tester.ensureSemantics] with the release in a `finally` — see the header.
 Future<void> semantically(
@@ -276,20 +495,52 @@ Future<void> semantically(
   }
 }
 
+/// The seed `app.dart:83` stamps this app with, spelled the way seven other
+/// files under `apps/subly/test` already spell it.
+///
+/// ⚠️ IT IS A COPY, AND THE COPY IS ALREADY GUARDED SOMEWHERE ELSE —
+/// `chassis_properties_test.dart:1106` pumps the REAL `SublyApp` and asserts its
+/// `theme.colorScheme.primary` equals `buildAppTheme(seed: 0xFF6459F5)`'s. So
+/// the day somebody re-seeds the app, that case goes red and this constant is
+/// found by following it. Restating the pin here would be a second thing to rot.
+const Color kSublySeed = Color(0xFF6459F5);
+
+/// The theme the app SHIPS, at the brightness asked for.
+///
+/// 🔴 NOT COSMETIC, AND IT IS WHY THIS FILE GREW A `theme:` ARGUMENT AT ALL.
+/// Every case in this file pumped a bare `MaterialApp` — i.e. Flutter's DEFAULT
+/// `ThemeData`, a palette no Subly user has ever seen. That costs the semantic
+/// sweeps nothing, because the semantics walk never reads a colour. It would
+/// cost the contrast family everything: a contrast sweep run against the default
+/// theme measures the framework's palette and reports a verdict about Subly's,
+/// which is the live-verify defect this repo keeps recording — a green check
+/// standing over the test double instead of the thing.
+ThemeData appTheme({Brightness brightness = Brightness.light}) =>
+    buildAppTheme(seed: kSublySeed, brightness: brightness);
+
 /// [pumpAt]'s shape plus a locale, and it hands the container back.
 ///
 /// The container is the point: every expected label below is built from the
 /// SAME providers the screen read, so the assertion cannot drift from the data
 /// the painter was given. Re-typing "₹2,340" here would pin the seed data, not
 /// the label.
+///
+/// [paintBackground] paints `theme.scaffoldBackgroundColor` behind [screen] —
+/// what `AppScaffold`'s own `Scaffold` paints behind the five AppShell branch
+/// panes in the real app, and what those panes DO NOT paint for themselves. See
+/// [expectOpaqueGround] for what happens to a pixel-reading sweep without it. It
+/// is a `ColoredBox`, not a `Scaffold`, deliberately: it adds a paint and
+/// changes NO layout, so a case that opts in is measuring the same geometry the
+/// naked and tap-target cases measure on the same screen.
 Future<ProviderContainer> pumpScreen(
   WidgetTester tester,
   Widget screen, {
   Locale locale = const Locale('en'),
   Size size = kPhone,
+  ThemeData? theme,
+  bool paintBackground = false,
 }) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await sizeSurface(tester, size);
   final ProviderContainer c = ProviderContainer(
     overrides: defaultWidthOverrides(),
   );
@@ -299,9 +550,17 @@ Future<ProviderContainer> pumpScreen(
       container: c,
       child: MaterialApp(
         locale: locale,
+        // `null` is `MaterialApp`'s own default, so every pre-existing caller
+        // pumps the byte-identical tree it pumped before this argument existed.
+        theme: theme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: screen,
+        home: paintBackground
+            ? ColoredBox(
+                color: (theme ?? ThemeData.light()).scaffoldBackgroundColor,
+                child: screen,
+              )
+            : screen,
       ),
     ),
   );
@@ -332,8 +591,7 @@ class _OnboardingSeen extends OnboardingSeenController {
 
 class _SignedInAuth extends core.AuthRepository {
   @override
-  core.AuthUser? get currentUser =>
-      const core.AuthUser(
+  core.AuthUser? get currentUser => const core.AuthUser(
     id: 'a11y',
     email: 'a11y@test.dev',
     emailVerified: true,
@@ -354,9 +612,8 @@ class _SignedInAuth extends core.AuthRepository {
 /// in the compact window class — flutter_test's 800×600 default resolves to
 /// `medium`, i.e. a RAIL, where the pill this file is about is not in the tree
 /// at all. Same rig and same reasons as `dark_group_home_test.dart`'s.
-Future<void> pumpShell(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(kPhone);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+Future<void> pumpShell(WidgetTester tester, {ThemeData? theme}) async {
+  await sizeSurface(tester, kPhone);
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       ...defaultWidthOverrides(),
@@ -375,6 +632,7 @@ Future<void> pumpShell(WidgetTester tester) async {
     UncontrolledProviderScope(
       container: c,
       child: MaterialApp.router(
+        theme: theme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: c.read(routerProvider),
@@ -389,6 +647,22 @@ Future<void> pumpShell(WidgetTester tester) async {
         'the router did not land on the shell, so nothing below is measuring '
         'the nav pill — check the redirect overrides, not the semantics',
   );
+}
+
+/// A bare host for the contrast FALSIFIERS below.
+///
+/// Deliberately not [pumpScreen]: a falsifier has to control every pixel inside
+/// the text's paint bounds, and a real screen brings a Scaffold, an AppBar and a
+/// theme's surface colour with it.
+Future<void> pumpContrastFixture(WidgetTester tester, Widget child) async {
+  await sizeSurface(tester, kPhone);
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: appTheme(),
+      home: Scaffold(body: Center(child: child)),
+    ),
+  );
+  await tester.pump();
 }
 
 Future<AppLocalizations> _load(String code) =>
@@ -1349,8 +1623,7 @@ void main() {
         final InMemoryAuthRepository auth = InMemoryAuthRepository();
         addTearDown(auth.dispose);
         await auth.signInWithEmail(email: 'a@b.test', password: 'pw');
-        await tester.binding.setSurfaceSize(kPhone);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await sizeSurface(tester, kPhone);
         final ProviderContainer c = ProviderContainer(
           overrides: <Override>[
             ...defaultWidthOverrides(),
@@ -2459,6 +2732,1489 @@ void main() {
     });
   });
 
+  // ═══ 48×48 · FLUTTER_TEST'S OWN TAP-TARGET SWEEP, EVERY SURFACE ═══════════
+  //
+  // 🔴 WHY THIS FAMILY EXISTS, AND WHAT IT REPLACES. [ADR 048] measured two
+  // things about tap targets in this repository and both were the same defect
+  // wearing different clothes:
+  //   · `chassis_properties_test.dart:1209` is titled "every tap target on
+  //     every declared route is at least 48px" and ranges over
+  //     `_iconOnlyControls` — IconButton | InkWell | GestureDetector, FILTERED
+  //     TO THOSE WITH NO `Text` DESCENDANT. Every LABELLED control in the app is
+  //     outside it. The title describes a sweep; the code is a spot check.
+  //   · `assert-a11y-coverage.mjs:283-286` has recognised a `tap-target` family
+  //     since it was written, keyed on `meetsGuideline(…TapTargetGuideline)`,
+  //     and printed `tap-target ×0` on every run. A check that never started.
+  //
+  // The three defects that fell out of pointing the real guideline at the real
+  // screens are all controls the old assertion could not have seen, and two of
+  // them are the reason the filter exists at all:
+  //   · home's account avatar — 44.0×44.0, nine pixels from a sibling that is 48
+  //     and says so. It has a `Text` descendant (the account initial), which is
+  //     exactly what `_iconOnlyControls` filters out.
+  //   · home's "Calendar →" jump — 112.0×13.0. Labelled, so outside the filter.
+  //   · insights' "Cancel" — 73.5×36.0, ×3 rows. Labelled, so outside the
+  //     filter. It is the one destructive path on that screen.
+  //   · sign-in's "New here? Create account" — 319.0×40.0. Labelled, so outside
+  //     the filter. It is the only route to registration from the screen every
+  //     signed-out visitor is routed to.
+  // Each was fixed in `lib/`, with the measurement written beside the fix. NONE
+  // was excluded: see the two non-sweeps at the bottom of this group for the
+  // only two surfaces that get an exception, and why.
+  //
+  // ── WHY THE FRAMEWORK'S GUIDELINE AND NOT A HAND-ROLL ────────────────────
+  // WCAG 2.5.8 is not "measure the rect and compare to 48". It carries five
+  // exceptions (Spacing, Equivalent, Inline, User Agent Control, Essential), and
+  // `MinimumTapTargetGuideline` already implements the ones that are mechanical:
+  // it skips `isLink` nodes (its source cites the WCAG link exemption by URL),
+  // hidden nodes, nodes merged into a parent, nodes with no tap/long-press
+  // action, and targets clipped by a scrolling boundary. It implements NO
+  // Spacing exception. A hand-rolled version of this file would have had to
+  // re-derive all of that and would have got it wrong in the direction that
+  // reports clean.
+  //
+  // ── 🔴 THE FALSIFIER IS NOT OPTIONAL HERE, AND IT IS WHY THIS GROUP IS NOT
+  //    NINETEEN COPIES OF ONE LINE ─────────────────────────────────────────
+  // `meetsGuideline(androidTapTargetGuideline)` returns `Evaluation.pass()` for
+  // a screen it inspected NOTHING on. It is the vacuous-pass shape this
+  // repository keeps paying for, and it is not hypothetical: before
+  // `sizeSurface` existed (see its own note), SIX of the nineteen surfaces
+  // handed the guideline zero nodes and every one of them passed. The family
+  // tally would have gone ×0 → ×20 without a single one of those controls being
+  // measured — the [ADR 048] defect reproduced by the change that was supposed
+  // to close it.
+  //
+  // So every case below runs [expectGuidelineHadSubjects] FIRST. It re-runs the
+  // SAME guideline class at an impossible floor, so every node the real sweep
+  // would inspect reports itself; the count is the size of the domain the sweep
+  // ranged over. The floor is 1 — non-vacuity, not a second coverage assertion,
+  // because the `nothing on … is naked` case on the SAME pump already carries a
+  // per-screen count. The measurements are recorded per case so a reader has the
+  // number without a brittle equality standing in for it.
+  group('48×48 · flutter_test\'s own tap-target sweep', () {
+    testWidgets('every tap target on insights is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const InsightsScreen());
+        // 3 subjects. All three are the unused-plan "Cancel" buttons, and all
+        // three were 73.5×36.0 until this increment.
+        await expectGuidelineHadSubjects(tester, 'insights');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on calendar is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const CalendarScreen());
+        // 3 subjects — the renewal rows, the hand-rolled RowCard twin whose
+        // semantics the naked sweep found on this same pump.
+        await expectGuidelineHadSubjects(tester, 'calendar');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on scan (results) is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const ScanScreen());
+        final AppLocalizations l10n = await _load('en');
+        // Six ticks to the DONE phase, for the naked sweep's reason: during
+        // SCANNING the only control is genuinely disabled and contributes no
+        // tap action, so the guideline would inspect nothing and pass.
+        for (int i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 560));
+        }
+        expect(
+          find.text(l10n.goToDashboard),
+          findsOneWidget,
+          reason:
+              'the scan never reached its results phase, so the sweep below is '
+              'about the scanning screen again',
+        );
+        // 1 subject — the dashboard CTA is the whole activatable surface here.
+        await expectGuidelineHadSubjects(tester, 'scan (results)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on detail is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const SubscriptionDetailScreen(id: '1'));
+        // 4 subjects — back, more-options and the two hero actions.
+        await expectGuidelineHadSubjects(tester, 'detail');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on the shell is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpShell(tester);
+        // 11 subjects, the largest domain outside settings: five pill tabs, the
+        // FAB and home's own header and rows underneath them. This case is also
+        // the one that pumps the REAL router, so it attributes to no single
+        // domain surface — the same shape `assert-a11y-coverage.mjs` already
+        // reports for the shell's naked sweep.
+        await expectGuidelineHadSubjects(tester, 'the shell (landed on /home)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on verify-email is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const VerifyEmailScreen());
+        // 2 of the three stacked controls; the third sits under this screen's
+        // scroll boundary, which the guideline steps around.
+        await expectGuidelineHadSubjects(tester, 'verify-email');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on re-accept terms is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const ReacceptTermsScreen());
+        // 1 subject.
+        //
+        // ⚠️ AND THE CLICKWRAP TICK IS NOT THE DEFECT IT WAS EXPECTED TO BE.
+        // `legal_consent_fields.dart` paints a 20 px box, and the brief for this
+        // increment named it as the Equivalent-exception case to argue. It is
+        // not: that box is a Material `Checkbox`, whose default
+        // `materialTapTargetSize` is `padded`, so the node it contributes is
+        // 48×48 and the 20 px is the PAINTED square inside it. Measured, not
+        // assumed — the guideline inspects this screen and passes. No exception
+        // is needed and none is claimed.
+        await expectGuidelineHadSubjects(tester, 're-accept terms');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on sign-in is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const LoginScreen());
+        // 5 subjects. One of them — "New here? Create account" — was 319.0×40.0
+        // until this increment, and it is the only route to registration from
+        // the screen the router hands every signed-out visitor.
+        await expectGuidelineHadSubjects(tester, 'sign-in');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on the SIGN-UP ARM is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const LoginScreen());
+        final AppLocalizations l10n = await _load('en');
+        // The second door, and a DIFFERENT TREE — the naked sweep's reason,
+        // unchanged here: this arm is where the two consent boxes and their
+        // document links live, and no other pump of this screen has them.
+        await tester.tap(find.text(l10n.newHerePrompt));
+        await tester.pump();
+        expect(
+          find.text(l10n.legalAcceptTerms),
+          findsOneWidget,
+          reason:
+              'the toggle did not flip, so the sweep below is about the '
+              'sign-in arm again and the two consent boxes are not in the tree',
+        );
+        // 4 subjects.
+        await expectGuidelineHadSubjects(tester, 'sign-in (sign-up arm)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on sign-up is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const SignUpScreen());
+        // 4 subjects.
+        await expectGuidelineHadSubjects(tester, 'sign-up');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on the reset FORM is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        // 🔴 THE FORM, NOT THE DEAD-LINK STATE, AND THE CHOICE IS MEASURED.
+        // Both states are swept for naked controls. Only this one gives the
+        // guideline anything: the dead-link state's single way out sits under a
+        // scroll boundary (see the non-sweeps at the bottom of this group), so a
+        // case pumped there would pass over zero nodes. The host is built by
+        // hand for the same reason the naked case builds it — unoverridden,
+        // `authRepositoryProvider` resolves with nobody signed in, and no
+        // session IS the dead-link state.
+        final InMemoryAuthRepository auth = InMemoryAuthRepository();
+        addTearDown(auth.dispose);
+        await auth.signInWithEmail(email: 'a@b.test', password: 'pw');
+        await sizeSurface(tester, kPhone);
+        final ProviderContainer c = ProviderContainer(
+          overrides: <Override>[
+            ...defaultWidthOverrides(),
+            authRepositoryProvider.overrideWithValue(auth),
+          ],
+        );
+        addTearDown(c.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: c,
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: const ResetPasswordScreen(),
+            ),
+          ),
+        );
+        for (int i = 0; i < 12; i++) {
+          await tester.pump();
+        }
+        expect(
+          find.byKey(ResetPasswordScreen.passwordField),
+          findsOneWidget,
+          reason:
+              'the SUBJECT check — without it this sweeps the dead-link state '
+              'and reports the form as clean without ever rendering it',
+        );
+        // 3 subjects — both password boxes and one of the two buttons.
+        await expectGuidelineHadSubjects(tester, 'reset-password (the form)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on home is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const HomeScreen());
+        // 7 subjects, and TWO of them were defects: the account avatar at
+        // 44.0×44.0 and the "Calendar →" jump at 112.0×13.0. Both are labelled
+        // controls, i.e. both are outside `_iconOnlyControls` and neither could
+        // ever have failed the assertion this family replaces.
+        await expectGuidelineHadSubjects(tester, 'home');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on settings is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        // The tall viewport, for the naked sweep's reason: settings is the
+        // longest ListView in the app and a ListView lays out only what fits.
+        await pumpScreen(
+          tester,
+          const SettingsScreen(),
+          size: const Size(375, 3000),
+        );
+        // 24 subjects — by some way the largest domain in the app, and the one
+        // that most needed the `sizeSurface` fix: at the stale 800×600 view rect
+        // the guideline inspected 10 of them and passed on the other fourteen.
+        await expectGuidelineHadSubjects(tester, 'settings');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on notifications is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const NotificationsScreen());
+        // 1 subject — the close button is the only control on a screen of
+        // cards, stated rather than defaulted (the naked case measures the
+        // same 1).
+        await expectGuidelineHadSubjects(tester, 'notifications');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on the paywall is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        // The rail override is the limb that refuses the empty screen: without
+        // it the choosing phase never renders and there is nothing to buy, so
+        // the guideline would inspect zero plan rows and pass.
+        await pumpScreen(
+          tester,
+          ProviderScope(
+            overrides: <Override>[
+              purchaseRailProvider.overrideWithValue(
+                HostedCheckoutRail(
+                  config: const RailConfig(
+                    offerings: <Offering>[
+                      Offering(
+                        productId: 'pro_monthly',
+                        amountMinor: 499,
+                        currencyCode: 'USD',
+                        term: OfferingTerm.month,
+                        trialDays: 30,
+                      ),
+                      Offering(
+                        productId: 'pro_yearly',
+                        amountMinor: 4999,
+                        currencyCode: 'USD',
+                        term: OfferingTerm.year,
+                        trialDays: 0,
+                      ),
+                    ],
+                    checkoutUrlTemplate: 'https://example.test/{price_id}',
+                    manageUrlTemplate: null,
+                  ),
+                  appId: AppConfig.appId,
+                  returnUrl: kCheckoutReturnUrl,
+                  accountId: () async => 'a11y',
+                  accessToken: () async => null,
+                  cancellationTransport:
+                      const core.UnavailableCancellationTransport(),
+                  capabilities: const PurchaseCapabilities(
+                    technicallySupported: true,
+                    channelPermitted: true,
+                    why: 'a11y sweep needs the populated choosing phase',
+                  ),
+                ),
+              ),
+            ],
+            child: const PaywallScreen(),
+          ),
+        );
+        // 2 subjects — one Upgrade per offering.
+        await expectGuidelineHadSubjects(tester, 'paywall (choosing)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on manage-plan is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        // PRO, and stated: the cancel row is `if (isPro)`, so the default state
+        // drops the control this screen exists for — the ROSCA requirement.
+        await pumpScreen(
+          tester,
+          ProviderScope(
+            overrides: <Override>[
+              entitlementsProvider.overrideWith(
+                (_) async => core.Entitlements(
+                  appId: AppConfig.appId,
+                  isPro: true,
+                  items: const <core.Entitlement>[],
+                ),
+              ),
+            ],
+            child: const ManagePlanScreen(),
+          ),
+        );
+        // 2 subjects — restore and cancel.
+        await expectGuidelineHadSubjects(tester, 'manage-plan (pro)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on onboarding is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const OnboardingScreen());
+        // 2 subjects — Skip and Next. Both were invisible to the guideline
+        // before `sizeSurface`: they sit at the bottom of an 812-tall phone,
+        // i.e. below the 600 logical pixels the stale view rect stopped at.
+        await expectGuidelineHadSubjects(tester, 'onboarding');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on the add sheet is at least 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showAddSubscriptionSheet(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        // 6 subjects.
+        //
+        // ⚠️ AND THE MODAL SCRIM NEEDS NO EXCLUSION HERE, WHICH IS THE ONE PLACE
+        // THIS FAMILY IS SIMPLER THAN THE NAKED ONE. The naked sweep has to step
+        // around `showModalBottomSheet`'s `ModalBarrier` by hand — it carries a
+        // tap action and no role flag, so it is naked in every Flutter app. The
+        // guideline never sees it: the barrier fills the view, so it is at the
+        // view boundary and skipped before any size is compared. Nothing is
+        // being excluded; the framework's own rule already covers it.
+        await expectGuidelineHadSubjects(tester, 'the add sheet');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    testWidgets('every tap target on the cancel sheet is at least 48×48 — in '
+        'EITHER step', (WidgetTester tester) async {
+      await semantically(tester, () async {
+        final Subscription sub = Subscription(
+          id: 'sub-1',
+          name: 'Netflix',
+          category: 'Streaming',
+          price: 15,
+          cycle: BillingCycle.monthly,
+          nextRenewal: DateTime.utc(2026, 9, 12),
+        );
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showCancelSheet(context, sub),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        final AppLocalizations l10n = await _load('en');
+
+        // Step 0 — 2 subjects: 'Keep it' and the destructive confirm.
+        await expectGuidelineHadSubjects(tester, 'the cancel sheet (step 0)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+
+        // 🔴 STEP 1 IS A DIFFERENT TREE, the naked sweep's reason verbatim: the
+        // sheet swaps its whole Column on `_step`, so a control added to the
+        // success branch is invisible to any sweep that only measured the
+        // confirmation branch.
+        await tester.tap(find.text(l10n.confirmCancel));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(l10n.cancelledHeading),
+          findsOneWidget,
+          reason:
+              'the confirmation never resolved, so the sweep below is about '
+              'step 0 a second time',
+        );
+        // Step 1 — 1 subject: Done, the only way off the success step.
+        await expectGuidelineHadSubjects(tester, 'the cancel sheet (step 1)');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+
+    // ── THE TWO SURFACES THAT GET NO SWEEP, AND WHY — ASSERTED, NOT ASSERTED
+    //    ABOUT ────────────────────────────────────────────────────────────
+    // 🔴 NEITHER IS A WCAG EXCEPTION. Both are surfaces on which
+    // `androidTapTargetGuideline` inspects ZERO nodes, so a
+    // `meetsGuideline(androidTapTargetGuideline)` beside them would be an
+    // assertion that CANNOT FAIL — the shape this repository has recorded as
+    // worse than none, because it inflates apparent coverage. Both keep their
+    // `nothing on … is naked` sweep; only this family skips them.
+    //
+    // The two cases below are what stops that from being a prose claim that
+    // rots. Each PINS the measured zero, so the day it stops being zero — a
+    // control lands on budget, or a Flutter upgrade changes the traversal — the
+    // suite goes red and says "now write the sweep" instead of leaving a
+    // permanent hole nobody re-checks.
+    testWidgets('budget hands the tap-target guideline NOTHING — pinned', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const BudgetScreen());
+        // Budget is the one Tier-1 screen with no control on it at all — it is a
+        // report, and its naked case says the same thing with a floor of 0. A
+        // tap-target sweep here would range over an empty set forever.
+        expect(
+          await tapTargetSubjects(tester),
+          0,
+          reason:
+              'budget now offers the tap-target guideline something to measure, '
+              'and this family skips it on the grounds that it does not. Add '
+              '`meetsGuideline(androidTapTargetGuideline)` for this screen and '
+              'delete this case — the exception has expired.',
+        );
+      });
+    });
+
+    testWidgets('check-inbox hands the tap-target guideline NOTHING — pinned', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const CheckInboxScreen(email: 'a@b.test'));
+        // 🔴 NOT THE APP'S DOING, AND MEASURED RATHER THAN INFERRED. This screen
+        // has exactly one control, a Material `FilledButton`, and it measures
+        // 48.0 tall — there is no defect here to find. It is skipped by
+        // `MinimumTapTargetGuideline`'s scroll-boundary rule, which compares the
+        // CHILD'S RECT IN ROOT SPACE against the SCROLLABLE'S RECT IN ITS OWN
+        // LOCAL SPACE. Measured on this pump: AppBar 0..56, SingleChildScrollView
+        // 56..440 (so 384 tall in its own space), button at 368..416 in root
+        // space — 416 > 384, so the guideline reads it as hanging off the
+        // scrollable's bottom edge and steps around it. Subtract the 56px AppBar
+        // and it sits at 312..360, comfortably inside. The mismatch is the
+        // framework's, it is the same for every Flutter app with a scrollable
+        // under an AppBar, and it is deliberately NOT worked around here: the
+        // whole reason this family uses the framework's guideline is that
+        // re-deriving its skip rules by hand is how a sweep starts disagreeing
+        // with the thing it claims to be.
+        expect(
+          await tapTargetSubjects(tester),
+          0,
+          reason:
+              'check-inbox now offers the tap-target guideline something to '
+              'measure — the framework traversal changed, or the screen no '
+              'longer puts its control under a scrollable. Add '
+              '`meetsGuideline(androidTapTargetGuideline)` for this screen and '
+              'delete this case — the exception has expired.',
+        );
+      });
+    });
+  });
+
+  // ═══ WCAG 1.4.3 · FLUTTER_TEST'S OWN TEXT-CONTRAST SWEEP ══════════════════
+  //
+  // 🔴 WHY THIS FAMILY EXISTS. `assert-a11y-coverage.mjs` has recognised a
+  // `contrast` family since it was written, keyed on
+  // `meetsGuideline(textContrastGuideline)`, and printed `contrast ×0` on every
+  // run. The same "check that never started" shape [ADR 048] recorded for
+  // tap-target, one family over: a matcher waiting for a call nobody made.
+  //
+  // ── WHAT THE MEASUREMENT SAID, AND WHY THE ANSWER IS NOT `contrastLevel` ──
+  // Measured 2026-08-13 across 7 seeds and both brightnesses on Flutter 3.44.9:
+  //   · `ColorScheme.fromSeed` is ALREADY AAA on body text — onSurface/surface
+  //     16.29:1 light, 14.35:1 dark. Nothing to fix there.
+  //   · Only the ACCENT falls short, and uniformly: `primary`/`surface` lands
+  //     6.12–6.16:1 in LIGHT mode for EVERY hue, because M3 pins light `primary`
+  //     to tone 40. `onPrimary`/`primary` is 6.46:1 light.
+  //   · `contrastLevel: 1.0` fixes every pair AND flattens all brands to
+  //     13.25–13.33:1 at near-identical LIGHTNESS. Contrast constrains lightness
+  //     only, so fifty apps become fifty dark-on-white apps differing by hue —
+  //     which undercuts the [pipeline C-11] fix whose whole stated purpose is
+  //     surviving store clone-detection, where a clone-flag is a PORTFOLIO-wide
+  //     event. It is deliberately NOT set.
+  //   · `contrastLevel: 0.5` is NON-MONOTONIC:
+  //     `onPrimaryContainer`/`primaryContainer` gets WORSE, 7.25:1 → 5.16:1.
+  //
+  // ── WHY AA IS THE BAR AND AAA IS ONLY REPORTED ───────────────────────────
+  // The Definition of Done publishes AA, so AA is what these sweeps enforce and
+  // AAA is noted per case via [meetsAAA] rather than gated. That is not
+  // timidity: 🔴 SC 1.4.6 (Contrast Enhanced) governs TEXT AND IMAGES OF TEXT
+  // ONLY, and there is NO AAA counterpart to SC 1.4.11 Non-text Contrast. So
+  // "make everything AAA" is not even a well-formed instruction for a fill, a
+  // chart segment or a FAB background — those live at 1.4.11's AA 3:1 whatever
+  // the text bar is. The resolution the palette work carries is to keep the
+  // bright brand accent for FILLS and darken a brand-derived tone only where the
+  // accent is TEXT; this family is what measures the second half of that.
+  //
+  // ── 🔴 THE GUIDELINE IS A SCREENSHOT HEURISTIC, AND ITS OWN DOC SAYS SO ──
+  // `_ContrastReport` (accessibility.dart:684) rasterises the layer, takes a
+  // colour histogram of the text's paint bounds INFLATED BY 4 LOGICAL PIXELS,
+  // splits those colours into "light" and "dark" AT THEIR MEAN LIGHTNESS, and
+  // reports the ratio between the MODE of each group. Its own doc calls that "a
+  // very naive partitioning". So the four FALSIFIERS below are not decoration —
+  // they are the recorded proof of what this family can and cannot see, and
+  // three of the four were WRONG about the answer before they were run:
+  //   A · flat, 2.07:1 ...................... CAUGHT (the control)
+  //   B · mid-grey on a white→black ramp .... CAUGHT at 3.76:1 — but by
+  //       comparing the glyph fill to the SCAFFOLD colour the 4px inflate
+  //       reached, never to the ramp. A smooth gradient has no mode.
+  //   C · white text on a black→white ramp .. CAUGHT at 2.61:1. So "gradients
+  //       defeat it" was the expected finding and it is FALSE as stated.
+  //   D · white text on a WHITE box, 1.00:1,  NOT CAUGHT. Passes AA and AAA.
+  //       The 4px inflate reached a black surround, which supplied the other
+  //       mode. This is the real blind spot and it is about the INFLATE, not
+  //       about gradients. See the case for why four pixels is enough to reach
+  //       a divider, a card edge or an icon beside almost any label in this app.
+  // 📌 A GREEN CASE IN THIS FAMILY MEANS NOTHING OBVIOUS IS WRONG. It is not
+  // proof that every string is legible, which is why the token audit at the
+  // bottom of this group is not redundant with the sweeps, and why the manual
+  // screen-reader pass stays a recorded CUT (dod-register:134-141).
+  //
+  // ── TWO FALSIFIERS PER CASE, AND THE SECOND ONE FOUND THE REAL DEFECT ────
+  // Vacuity first, same shape as the tap-target family's: a guideline that
+  // inspects NOTHING returns `Evaluation.pass()`, so every case runs
+  // [expectContrastHadSubjects], which re-runs the SAME class at an impossible
+  // target ratio and counts what reports itself.
+  //
+  // 🔴 THEN [expectOpaqueGround], WHICH IS THE ONE THIS INCREMENT WAS ACTUALLY
+  // PAID FOR. On the first run, 74 nodes across five surfaces were scored
+  // against `dark - Color(alpha: 0.0000)` — a TRANSPARENT ground, which
+  // `Color.computeLuminance()` reads as pure black. Insights' 26px heading, real
+  // contrast 16.29:1, was reported at 1.15:1 and FAILED. The five AppShell
+  // branch panes declare no `Scaffold` of their own and every case in this file
+  // pumps them standalone, so their text was painted onto nothing. The other two
+  // families never noticed because they never read a pixel. See
+  // [expectOpaqueGround] and [pumpScreen]'s `paintBackground:`.
+  group('contrast · flutter_test\'s own text-contrast sweep', () {
+    // ── FALSIFIER A · THE FLAT CASE — the guideline DOES catch this ────────
+    testWidgets('THE FALSIFIER · A — low-contrast text on a FLAT ground is caught', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpContrastFixture(
+          tester,
+          ColoredBox(
+            color: const Color(0xFFFFFFFF),
+            child: const Text(
+              'deliberately unreadable',
+              style: TextStyle(color: Color(0xFFB4B4B4), fontSize: 14),
+            ),
+          ),
+        );
+        // #B4B4B4 on #FFFFFF is 2.07:1 by the WCAG formula, against a 4.5 target
+        // for 14px non-bold text. If this passes, the family below is measuring
+        // nothing and every green case in it is worthless.
+        expect(await contrastSubjects(tester), greaterThanOrEqualTo(1));
+        final Evaluation e = await textContrastGuideline.evaluate(tester);
+        expect(
+          e.passed,
+          isFalse,
+          reason:
+              'THE FALSIFIER PASSED. `textContrastGuideline` accepted 2.07:1 '
+              'text, so it is not enforcing WCAG 1.4.3 and nothing below this '
+              'line is a measurement. Do not fix the fixture — find out what '
+              'changed in the guideline.',
+        );
+      });
+    });
+
+    testWidgets(
+      'THE FALSIFIER · B — mid-grey on a ramp, caught by the SURROUND',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpContrastFixture(
+            tester,
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[Color(0xFFFFFFFF), Color(0xFF000000)],
+                ),
+              ),
+              child: const Text(
+                'mid-grey text on a white-to-black ramp',
+                style: TextStyle(color: Color(0xFF808080), fontSize: 14),
+              ),
+            ),
+          );
+          expect(await contrastSubjects(tester), greaterThanOrEqualTo(1));
+          // CAUGHT — 3.76:1 against a 4.5 target. But read WHICH two colours
+          // it compared: `light` is #FCF8FF, the SCAFFOLD's surface, reached
+          // through the 4px inflate — not the ramp's white end — and `dark` is
+          // #808080, the text itself. A smooth gradient has no mode: every one
+          // of its colours occurs a handful of times, while the flat surround
+          // and the glyph fill occur thousands. So the guideline did not
+          // measure the text against its own background at all. It got the
+          // right verdict from the wrong comparison, which is why FALSIFIER D
+          // exists.
+          final Evaluation e = await textContrastGuideline.evaluate(tester);
+          expect(e.passed, isFalse, reason: 'falsifier B stopped failing: $e');
+        });
+      },
+    );
+
+    testWidgets(
+      'THE FALSIFIER · C — white text half-invisible on a ramp',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpContrastFixture(
+            tester,
+            ColoredBox(
+              color: const Color(0xFF000000),
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: <Color>[Color(0xFF000000), Color(0xFFFFFFFF)],
+                  ),
+                ),
+                child: const Text(
+                  'white text vanishing into the white end of this ramp',
+                  style: TextStyle(color: Color(0xFFFFFFFF), fontSize: 14),
+                ),
+              ),
+            ),
+          );
+          expect(await contrastSubjects(tester), greaterThanOrEqualTo(1));
+          // CAUGHT — 2.61:1. White text on a black-to-white ramp is unreadable
+          // across its right-hand half and the guideline says so, comparing
+          // #FFFFFF (the glyphs) against #A0A0A0 (a mid-ramp colour that
+          // happened to be the mode of the dark group). So a gradient is not
+          // automatically a blind spot. What IS one is below.
+          final Evaluation e = await textContrastGuideline.evaluate(tester);
+          expect(e.passed, isFalse, reason: 'falsifier C stopped failing: $e');
+        });
+      },
+    );
+
+    // ── 🔴🔴 FALSIFIER D · THE RECORDED BLIND SPOT — THIS ONE IS NOT CAUGHT ──
+    //
+    // WHITE TEXT ON A WHITE BOX. Contrast ratio 1.00:1. A sighted user sees an
+    // empty rectangle. `textContrastGuideline` PASSES it, and so does
+    // `MinimumTextContrastGuidelineAAA`.
+    //
+    // THE MECHANISM, WHICH IS GENERAL RATHER THAN A QUIRK OF THIS FIXTURE:
+    // `_evaluateElement` (accessibility.dart:400) takes the histogram of
+    // `renderBox.paintBounds.inflate(4.0)` — FOUR LOGICAL PIXELS WIDER THAN THE
+    // TEXT ON EVERY SIDE — and `_ContrastReport` then reports the mode of the
+    // colours above mean lightness against the mode of those below. Here that is
+    // white (box + glyphs, thousands of pixels) against black (the 4px ring of
+    // surround that the inflate reached), i.e. 21:1. The guideline never
+    // compares a glyph to the pixels BEHIND that glyph; it compares the two
+    // busiest colours in a slightly-too-big rectangle.
+    //
+    // 📌 WHY THIS MATTERS HERE RATHER THAN IN THE ABSTRACT: four pixels is
+    // nothing. A label near a card edge, a divider, an icon, a chip border or a
+    // section background — most labels in this app — has a contrasting colour
+    // inside its inflated bounds, and any such colour can supply the "other"
+    // mode and rescue an illegible pair. So a GREEN case in this family is
+    // evidence that nothing OBVIOUS is wrong, and it is not proof that every
+    // string is legible. That is exactly why the token audit at the bottom of
+    // this group is not redundant with the twenty-four sweeps above it, and why
+    // the manual screen-reader/eyes pass stays a recorded CUT
+    // (dod-register:134-141) rather than something these cases replace.
+    //
+    // The assertion is deliberately `isTrue`: it PINS the gap. The day Flutter
+    // sharpens the partition this case goes red, and the correct response is to
+    // delete it and shrink the caveat above — not to weaken it.
+    testWidgets('THE FALSIFIER · D — 1.00:1 text the guideline does NOT catch', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpContrastFixture(
+          tester,
+          ColoredBox(
+            color: const Color(0xFF000000),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ColoredBox(
+                color: const Color(0xFFFFFFFF),
+                child: const Text(
+                  'white on white, 1.00 to 1',
+                  style: TextStyle(color: Color(0xFFFFFFFF), fontSize: 14),
+                ),
+              ),
+            ),
+          ),
+        );
+        // Not vacuous: the guideline DID measure this string. It measured it
+        // and approved it.
+        expect(await contrastSubjects(tester), greaterThanOrEqualTo(1));
+        final Evaluation aa = await textContrastGuideline.evaluate(tester);
+        expect(
+          aa.passed,
+          isTrue,
+          reason:
+              'GOOD NEWS, AND IT INVALIDATES THIS CASE. '
+              '`textContrastGuideline` now catches 1.00:1 text whose inflated '
+              'paint bounds reach a contrasting surround, which it did not on '
+              'Flutter 3.44.9 (measured 2026-08-13). Delete this case and cut '
+              'the caveat above it back to what is still true.\n$aa',
+        );
+        expect(
+          await meetsAAA(tester),
+          isTrue,
+          reason:
+              'AAA now catches what AA does not, so the two levels no longer '
+              'share the partition. Re-measure both before trusting either.',
+        );
+      });
+    });
+
+    testWidgets('every string on insights meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const InsightsScreen(),
+          theme: appTheme(),
+          paintBackground: true,
+        );
+        // 5 subjects. AA passes; AAA does not — see the group header.
+        await expectOpaqueGround(tester, 'insights');
+        await expectContrastHadSubjects(tester, 'insights');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on budget meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const BudgetScreen(),
+          theme: appTheme(),
+          paintBackground: true,
+        );
+        // 3 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'budget');
+        await expectContrastHadSubjects(tester, 'budget');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on scan (results) meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const ScanScreen(), theme: appTheme());
+        final AppLocalizations l10n = await _load('en');
+        for (int i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 560));
+        }
+        expect(
+          find.text(l10n.goToDashboard),
+          findsOneWidget,
+          reason:
+              'the scan never reached its results phase, so the sweep below is '
+              'about the scanning screen again',
+        );
+        // 6 subjects, and this case is RED on the tree of 2026-08-13.
+        // MEASURED: `YOUR SUBSCRIPTIONS` (11px) is 3.97:1 — #6C57F7 on
+        // #EAE6FE — against a 4.5 target. That is `AppColors.accent` used
+        // as TEXT (scan_screen.dart:249), the exact case the seeded-palette
+        // research predicted: the accent is fine as a FILL at 1.4.11's 3:1
+        // and short as TEXT at 1.4.3's 4.5:1. Owned by the palette lane —
+        // do not relax this assertion to make the suite green.
+        await expectOpaqueGround(tester, 'scan (results)');
+        await expectContrastHadSubjects(tester, 'scan (results)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on calendar meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const CalendarScreen(),
+          theme: appTheme(),
+          paintBackground: true,
+        );
+        // 34 subjects, joint-largest with settings. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'calendar');
+        await expectContrastHadSubjects(tester, 'calendar');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on detail meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const SubscriptionDetailScreen(id: '1'),
+          theme: appTheme(),
+        );
+        // 5 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'detail');
+        await expectContrastHadSubjects(tester, 'detail');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on the shell meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpShell(tester, theme: appTheme());
+        // 8 subjects. This case pumps the REAL router, so it attributes to
+        // no single domain surface — the shape assert-a11y-coverage.mjs
+        // already reports for the shell's other two families.
+        // AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'the shell (landed on /home)');
+        await expectContrastHadSubjects(tester, 'the shell (landed on /home)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on verify-email meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const VerifyEmailScreen(), theme: appTheme());
+        // 6 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'verify-email');
+        await expectContrastHadSubjects(tester, 'verify-email');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on re-accept terms meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const ReacceptTermsScreen(),
+          theme: appTheme(),
+        );
+        // 5 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 're-accept terms');
+        await expectContrastHadSubjects(tester, 're-accept terms');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on sign-in meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const LoginScreen(), theme: appTheme());
+        // 12 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'sign-in');
+        await expectContrastHadSubjects(tester, 'sign-in');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on the SIGN-UP ARM meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const LoginScreen(), theme: appTheme());
+        final AppLocalizations l10n = await _load('en');
+        await tester.tap(find.text(l10n.newHerePrompt));
+        await tester.pump();
+        expect(
+          find.text(l10n.legalAcceptTerms),
+          findsOneWidget,
+          reason:
+              'the toggle did not flip, so the sweep below is about the '
+              'sign-in arm again and the two consent boxes are not in the tree',
+        );
+        // 5 subjects on the second door. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'sign-in (sign-up arm)');
+        await expectContrastHadSubjects(tester, 'sign-in (sign-up arm)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on sign-up meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const SignUpScreen(), theme: appTheme());
+        // 4 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'sign-up');
+        await expectContrastHadSubjects(tester, 'sign-up');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on the reset FORM meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        final InMemoryAuthRepository auth = InMemoryAuthRepository();
+        addTearDown(auth.dispose);
+        await auth.signInWithEmail(email: 'a@b.test', password: 'pw');
+        await sizeSurface(tester, kPhone);
+        final ProviderContainer c = ProviderContainer(
+          overrides: <Override>[
+            ...defaultWidthOverrides(),
+            authRepositoryProvider.overrideWithValue(auth),
+          ],
+        );
+        addTearDown(c.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: c,
+            child: MaterialApp(
+              theme: appTheme(),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: const ResetPasswordScreen(),
+            ),
+          ),
+        );
+        for (int i = 0; i < 12; i++) {
+          await tester.pump();
+        }
+        expect(
+          find.byKey(ResetPasswordScreen.passwordField),
+          findsOneWidget,
+          reason:
+              'the SUBJECT check — without it this sweeps the dead-link state '
+              'and reports the form as legible without ever rendering it',
+        );
+        // 4 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'reset-password (the form)');
+        await expectContrastHadSubjects(tester, 'reset-password (the form)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    // ── CHECK-INBOX · MEASURED HERE, DELIBERATELY NOT SPELLED `meetsGuideline`
+    //
+    // 🔴 THE ONE SURFACE IN THE APP THIS FAMILY MUST NOT REGISTER ON, AND THE
+    // REASON IS A DEPENDENCY IN THE OTHER DIRECTION — a guard's own negative
+    // tests depend on a property of THIS file.
+    //
+    // `assert-a11y-coverage.mjs` keys the `contrast` family on the literal
+    // `meetsGuideline(textContrastGuideline`. Its mutation ledger M1/M2/M2b
+    // deletes ONE sweep call from a surface and asserts the surface moves out of
+    // SWEPT — which only measures anything while that surface is swept by
+    // EXACTLY ONE family. `CheckInboxScreen` is that surface, and
+    // `tooling/ci/test/a11y-coverage.test.mjs:395` asserts the precondition by
+    // name (`familiesOf(out, SUBJECT) == ['naked-controls']`) precisely because
+    // a second family silently landed on the PREVIOUS subject, InsightsScreen,
+    // and made all three mutations vacuous for a commit.
+    //
+    // After this increment every other surface carries two families, so there is
+    // no surface left to re-point M1/M2/M2b at. Spelling `meetsGuideline` here
+    // would take the count to 19 of 19 and disarm three of that guard's ten
+    // mutations in the same change — trading a tally for the thing the tally is
+    // supposed to be evidence of.
+    //
+    // So the screen IS swept, with the same guideline, the same falsifiers and
+    // the same bar; only the spelling differs, and the cost is stated rather
+    // than hidden: `contrast ×23` covers 18 of the 19 surfaces, and
+    // `assert-a11y-coverage.mjs` cannot see this case. If M1/M2/M2b are ever
+    // rewritten to delete EVERY sweep of their subject (the alternative that
+    // guard's own failure message offers), replace the two lines below with
+    // `await expectLater(tester, meetsGuideline(textContrastGuideline));` and
+    // the nineteenth surface registers itself.
+    testWidgets('every string on check-inbox meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const CheckInboxScreen(email: 'a@b.test'),
+          theme: appTheme(),
+        );
+        // 5 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'check-inbox');
+        await expectContrastHadSubjects(tester, 'check-inbox');
+        final Evaluation e = await textContrastGuideline.evaluate(tester);
+        expect(
+          e.passed,
+          isTrue,
+          reason:
+              'check-inbox carries text under WCAG 1.4.3 AA. Same guideline as '
+              'every case above, spelled so the family matcher does not see it '
+              '— read the comment above this case before "fixing" the '
+              'spelling.\n$e',
+        );
+      });
+    });
+
+    testWidgets('every string on home meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const HomeScreen(),
+          theme: appTheme(),
+          paintBackground: true,
+        );
+        // 2 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'home');
+        await expectContrastHadSubjects(tester, 'home');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on settings meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const SettingsScreen(),
+          size: const Size(375, 3000),
+          theme: appTheme(),
+          paintBackground: true,
+        );
+        // 34 subjects, joint-largest with calendar. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'settings');
+        await expectContrastHadSubjects(tester, 'settings');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on notifications meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const NotificationsScreen(),
+          theme: appTheme(),
+        );
+        // 1 subject — the close button is the only string the guideline
+        // reaches on a screen of cards. AA AND AAA both pass.
+        await expectOpaqueGround(tester, 'notifications');
+        await expectContrastHadSubjects(tester, 'notifications');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on the paywall meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          ProviderScope(
+            overrides: <Override>[
+              purchaseRailProvider.overrideWithValue(
+                HostedCheckoutRail(
+                  config: const RailConfig(
+                    offerings: <Offering>[
+                      Offering(
+                        productId: 'pro_monthly',
+                        amountMinor: 499,
+                        currencyCode: 'USD',
+                        term: OfferingTerm.month,
+                        trialDays: 30,
+                      ),
+                      Offering(
+                        productId: 'pro_yearly',
+                        amountMinor: 4999,
+                        currencyCode: 'USD',
+                        term: OfferingTerm.year,
+                        trialDays: 0,
+                      ),
+                    ],
+                    checkoutUrlTemplate: 'https://example.test/{price_id}',
+                    manageUrlTemplate: null,
+                  ),
+                  appId: AppConfig.appId,
+                  returnUrl: kCheckoutReturnUrl,
+                  accountId: () async => 'a11y',
+                  accessToken: () async => null,
+                  cancellationTransport:
+                      const core.UnavailableCancellationTransport(),
+                  capabilities: const PurchaseCapabilities(
+                    technicallySupported: true,
+                    channelPermitted: true,
+                    why: 'a11y sweep needs the populated choosing phase',
+                  ),
+                ),
+              ),
+            ],
+            child: const PaywallScreen(),
+          ),
+          theme: appTheme(),
+        );
+        // 4 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'paywall (choosing)');
+        await expectContrastHadSubjects(tester, 'paywall (choosing)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on manage-plan meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          ProviderScope(
+            overrides: <Override>[
+              entitlementsProvider.overrideWith(
+                (_) async => core.Entitlements(
+                  appId: AppConfig.appId,
+                  isPro: true,
+                  items: const <core.Entitlement>[],
+                ),
+              ),
+            ],
+            child: const ManagePlanScreen(),
+          ),
+          theme: appTheme(),
+        );
+        // 3 subjects. AA AND AAA both pass.
+        await expectOpaqueGround(tester, 'manage-plan (pro)');
+        await expectContrastHadSubjects(tester, 'manage-plan (pro)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on onboarding meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const OnboardingScreen(), theme: appTheme());
+        // 11 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'onboarding');
+        await expectContrastHadSubjects(tester, 'onboarding');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on the add sheet meets WCAG AA contrast', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showAddSubscriptionSheet(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+          theme: appTheme(),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        // 17 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'the add sheet');
+        await expectContrastHadSubjects(tester, 'the add sheet');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on the cancel sheet meets WCAG AA contrast — in '
+        'EITHER step', (WidgetTester tester) async {
+      await semantically(tester, () async {
+        final Subscription sub = Subscription(
+          id: 'sub-1',
+          name: 'Netflix',
+          category: 'Streaming',
+          price: 15,
+          cycle: BillingCycle.monthly,
+          nextRenewal: DateTime.utc(2026, 9, 12),
+        );
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: TextButton(
+                  onPressed: () => showCancelSheet(context, sub),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+          theme: appTheme(),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        final AppLocalizations l10n = await _load('en');
+
+        // Step 0 — 4 subjects. AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'the cancel sheet (step 0)');
+        await expectContrastHadSubjects(tester, 'the cancel sheet (step 0)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+
+        await tester.tap(find.text(l10n.confirmCancel));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(l10n.cancelledHeading),
+          findsOneWidget,
+          reason:
+              'the confirmation never resolved, so the sweep below is about '
+              'step 0 a second time',
+        );
+        // Step 1 — 3 subjects, a DIFFERENT TREE (the sheet swaps its whole
+        // Column on `_step`). AA passes; AAA does not.
+        await expectOpaqueGround(tester, 'the cancel sheet (step 1)');
+        await expectContrastHadSubjects(tester, 'the cancel sheet (step 1)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    // ── DARK IS SHIPPED, SO DARK IS SWEPT ──────────────────────────────────
+    testWidgets('every string on home meets WCAG AA contrast — DARK', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const HomeScreen(),
+          theme: appTheme(brightness: Brightness.dark),
+          paintBackground: true,
+        );
+        // 2 subjects, and this case is RED on the tree of 2026-08-13.
+        // MEASURED: the `Calendar →` jump is 3.78:1 — #6459F5 on #131318.
+        // That is `AppColors.accent` (home_screen.dart:451/459) painted
+        // UNCONDITIONALLY, i.e. the light palette on the dark surface. It is
+        // the cost app.dart:70-77 names in prose — `126 AppColors.*
+        // references paint the LIGHT palette unconditionally` — with a
+        // number attached for the first time.
+        await expectOpaqueGround(tester, 'home (dark)');
+        await expectContrastHadSubjects(tester, 'home (dark)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on settings meets WCAG AA contrast — DARK', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const SettingsScreen(),
+          size: const Size(375, 3000),
+          theme: appTheme(brightness: Brightness.dark),
+          paintBackground: true,
+        );
+        // 34 subjects, and this case is RED on the tree of 2026-08-13,
+        // by the widest margin anywhere in the app.
+        // MEASURED: the `Settings` heading is 1.01:1 — #141420 on #131318.
+        // `AppColors.ink` on the dark surface: the text is INVISIBLE, not
+        // merely low. `themeMode` defaults to `ThemeMode.system`
+        // (app.dart:88), so this is what every dark-OS user is handed.
+        // Owned by the palette lane / the scheduled theme fork.
+        await expectOpaqueGround(tester, 'settings (dark)');
+        await expectContrastHadSubjects(tester, 'settings (dark)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    testWidgets('every string on the paywall meets WCAG AA contrast — DARK', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          ProviderScope(
+            overrides: <Override>[
+              purchaseRailProvider.overrideWithValue(
+                HostedCheckoutRail(
+                  config: const RailConfig(
+                    offerings: <Offering>[
+                      Offering(
+                        productId: 'pro_monthly',
+                        amountMinor: 499,
+                        currencyCode: 'USD',
+                        term: OfferingTerm.month,
+                        trialDays: 30,
+                      ),
+                    ],
+                    checkoutUrlTemplate: 'https://example.test/{price_id}',
+                    manageUrlTemplate: null,
+                  ),
+                  appId: AppConfig.appId,
+                  returnUrl: kCheckoutReturnUrl,
+                  accountId: () async => 'a11y',
+                  accessToken: () async => null,
+                  cancellationTransport:
+                      const core.UnavailableCancellationTransport(),
+                  capabilities: const PurchaseCapabilities(
+                    technicallySupported: true,
+                    channelPermitted: true,
+                    why: 'a11y sweep needs the populated choosing phase',
+                  ),
+                ),
+              ),
+            ],
+            child: const PaywallScreen(),
+          ),
+          theme: appTheme(brightness: Brightness.dark),
+        );
+        // 3 subjects. AA AND AAA both pass — the paywall is the one dark
+        // surface that paints from the scheme rather than from AppColors.
+        await expectOpaqueGround(tester, 'paywall (choosing, dark)');
+        await expectContrastHadSubjects(tester, 'paywall (choosing, dark)');
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    });
+
+    // ── THE TOKEN AUDIT THE SCREENSHOT HEURISTIC CANNOT DO ────────────────
+    //
+    // 🔴 THIS IS NOT BELT-AND-BRACES, IT IS THE HALF THE SWEEPS ABOVE CANNOT
+    // COVER. FALSIFIER D proves `textContrastGuideline` returns PASS — at AA
+    // *and* AAA — for text at 1.00:1. A pair of tokens has no paint bounds, no
+    // 4px inflate and no light/dark partition, so this limb cannot be fooled the
+    // same way. Neither limb is redundant: the sweeps see what was PAINTED and
+    // this sees what was CHOSEN.
+    for (final (String name, Brightness brightness) in <(String, Brightness)>[
+      ('light', Brightness.light),
+      ('dark', Brightness.dark),
+    ]) {
+      test('the shipped $name scheme\'s text pairs clear WCAG AA', () {
+        final ColorScheme s = appTheme(brightness: brightness).colorScheme;
+        // Every pair M3 defines as "text/icon drawn ON this container". The
+        // accent-as-TEXT pair `primary`/`surface` is in here deliberately: it is
+        // the one the seeded-palette research found short, because M3 pins light
+        // `primary` to tone 40 for EVERY hue.
+        final Map<String, double> measured = <String, double>{
+          'onSurface/surface': _ratio(s.onSurface, s.surface),
+          'onSurfaceVariant/surface': _ratio(s.onSurfaceVariant, s.surface),
+          'primary/surface': _ratio(s.primary, s.surface),
+          'onPrimary/primary': _ratio(s.onPrimary, s.primary),
+          'onPrimaryContainer/primaryContainer': _ratio(
+            s.onPrimaryContainer,
+            s.primaryContainer,
+          ),
+          'onSecondaryContainer/secondaryContainer': _ratio(
+            s.onSecondaryContainer,
+            s.secondaryContainer,
+          ),
+          'onTertiaryContainer/tertiaryContainer': _ratio(
+            s.onTertiaryContainer,
+            s.tertiaryContainer,
+          ),
+          'onError/error': _ratio(s.onError, s.error),
+          'onErrorContainer/errorContainer': _ratio(
+            s.onErrorContainer,
+            s.errorContainer,
+          ),
+        };
+        // ignore: avoid_print
+        print('a11y contrast tokens · $name · $measured');
+        for (final MapEntry<String, double> e in measured.entries) {
+          expect(
+            e.value,
+            greaterThanOrEqualTo(4.5),
+            reason:
+                '$name `${e.key}` is ${e.value}:1, under WCAG 1.4.3 AA (4.5 for '
+                'normal text). This is a TOKEN fact — it holds on every screen '
+                'that paints the pair, whatever any rasterised sweep above '
+                'says, and it moves only when the seed or the scheme moves.',
+          );
+        }
+      });
+    }
+  });
+}
+
+/// The WCAG contrast ratio between two OPAQUE colours, to 2dp.
+///
+/// Not a re-implementation of the guideline — the guideline works from PIXELS
+/// and this works from TOKENS, which is the whole point. See the group header:
+/// the framework's guideline is a screenshot heuristic with a naive light/dark
+/// partition, and on a gradient it reports the GRADIENT's own range rather than
+/// the text's legibility. A token pair has no gradient and no partition to get
+/// wrong.
+double _ratio(Color a, Color b) {
+  final double la = a.computeLuminance();
+  final double lb = b.computeLuminance();
+  final double hi = la > lb ? la : lb;
+  final double lo = la > lb ? lb : la;
+  return double.parse((((hi + 0.05) / (lo + 0.05))).toStringAsFixed(2));
 }
 
 /// The subscription the detail screen under test is showing, read from the

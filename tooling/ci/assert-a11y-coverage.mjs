@@ -101,10 +101,14 @@
 //
 // The BLOCK is the unit, NOT the file, and that is the limb this guard exists
 // for. Set equality over files would credit `a11y_semantics_test.dart` with
-// every screen it so much as names — and MEASURED ON THE TREE OF 2026-08-13,
-// TWENTY-SIX of its 60 cases construct a surface while asserting one label on
-// it and never sweeping it (36 of the 60 sweep nothing; 26 of those 36 pump a
-// domain surface anyway). ⚠️ AND THE FILE-LEVEL ANSWER HAPPENS TO AGREE TODAY:
+// every screen it so much as names — and RE-MEASURED ON THE TREE OF 2026-08-13
+// AFTER THE TAP-TARGET SWEEP LANDED, TWENTY-EIGHT of its 81 cases construct a
+// surface while asserting one label on it and never sweeping it (38 of the 81
+// sweep nothing; 28 of those 38 pump a domain surface anyway).
+// ~~TWENTY-SIX of its 60 cases … (36 of the 60 sweep nothing; 26 of those 36)~~
+// — retracted 2026-08-13, same day, same file: that reading was taken before
+// the tap-target family added 21 cases.
+// ⚠️ AND THE FILE-LEVEL ANSWER HAPPENS TO AGREE TODAY:
 // the same one file that names those surfaces also sweeps all nineteen, so set
 // equality over files would currently return the same verdict for the wrong
 // reason. That coincidence is not reassurance — it is exactly the state in
@@ -124,20 +128,28 @@
 // mechanism rather than an aspiration:
 //   · NAKED CONTROLS — `expectNothingNaked(` / `nakedControls(`, the walk this
 //     app wrote: every node with a tap action that announces no role or no
-//     name. All nineteen surfaces have it today, and it is the ONLY family any
-//     of them uses.
+//     name. All nineteen surfaces have it today. ~~and it is the ONLY family
+//     any of them uses~~ — RETRACTED 2026-08-13, hours after it was written,
+//     by the tap-target sweep below.
 //   · TAP TARGET — flutter_test's own `meetsGuideline(androidTapTargetGuideline)`
-//     / `iOSTapTargetGuideline` / `labeledTapTargetGuideline`.
+//     / `iOSTapTargetGuideline` / `labeledTapTargetGuideline`. LIVE since
+//     2026-08-13 ([ADR 048]): 19 cases, covering 17 of the 19 surfaces.
 //   · CONTRAST — flutter_test's `meetsGuideline(textContrastGuideline)`.
-// ⚠️ MEASURED, NOT ASSUMED, AND RE-MEASURED 2026-08-13 WHEN THE SWEEP LANDED
-// (the nineteen new sweeps are all naked-controls, so this did not change): the
-// guideline matchers appear in ZERO
-// source files in this repository — the only hits are inside compiled
-// `build/test_cache/*.dill` artefacts, i.e. the framework's own bundle. The
-// per-family tally is PRINTED on every run precisely so "tap targets and
-// contrast are checked nowhere" is a number a reader sees rather than a claim
-// this header makes. They are recognised so that the work, when it is done,
-// counts — not to imply it has been.
+// ⚠️ MEASURED, NOT ASSUMED, AND RE-MEASURED 2026-08-13 AFTER THE TAP-TARGET
+// SWEEP LANDED — the reading below is the CURRENT one and the previous two are
+// kept because the shape of the change is the lesson:
+//   naked-controls ×24 · tap-target ×19 · contrast ×0  (81 cases, 43 sweeping)
+// ~~the guideline matchers appear in ZERO source files in this repository — the
+// only hits are inside compiled `build/test_cache/*.dill` artefacts, i.e. the
+// framework's own bundle~~ — TRUE when this file was written and FALSE the same
+// day. `meetsGuideline(androidTapTargetGuideline)` now appears 19× in
+// apps/subly/test/a11y_semantics_test.dart, and NOTHING in this guard had to
+// change for it to count: the family was recognised in advance and it started
+// tallying non-zero on its own. That is the design working, and it is also why
+// the tally is PRINTED on every run — "tap targets are checked nowhere" was a
+// number a reader saw rather than a claim this header made, so when it stopped
+// being true no prose had to be believed. `contrast ×0` is now the only one of
+// the three still standing at zero.
 //
 // 🔴 AND BOTH SETS ARE KEYED BY `<file>#<Symbol>`, NEVER BY THE BARE CLASS
 // NAME. Subly has already shipped two different classes called
@@ -180,17 +192,36 @@
 // against a broken version — only mutating the REAL tree exposed it. Every
 // mutation below was applied to a byte copy of the live repo, run, and
 // restored. tooling/ci/test/a11y-coverage.test.mjs re-applies each one.
-//   M1  delete the `expectNothingNaked` call from the insights sweep
-//       → InsightsScreen moves out of SWEPT and into the printed list, AND
+//   M1  delete the `expectNothingNaked` call from the CHECK-INBOX sweep
+//       → CheckInboxScreen moves out of SWEPT and into the printed list, AND
 //         REGRESSION fires by name (SWEPT_FLOOR). exit 1.
+//       🔴 RE-POINTED 2026-08-13, AND THE OLD SUBJECT WAS SILENTLY VACUOUS.
+//       M1/M2/M2b deleted the INSIGHTS sweep, which stopped unsweeping
+//       InsightsScreen the moment the tap-target family landed: insights is
+//       swept TWICE (naked-controls + tap-target), so deleting one call leaves
+//       the surface swept and the guard is RIGHT to still report it — the
+//       mutation no longer tested what its name said. check-inbox is swept by
+//       exactly ONE family, and that is not an accident of today's tree: the
+//       suite PINS it (`check-inbox hands the tap-target guideline NOTHING —
+//       pinned`, a11y_semantics_test.dart:3069), so the day a tap-target sweep
+//       becomes possible there the suite says so. The test file also asserts
+//       the single-family precondition directly, so this cannot rot in silence
+//       a second time.
 //   M2  replace that call with a STRING mentioning `expectNothingNaked`
 //       → identical to M1: prose does not sweep.
 //   M3  delete every `GoRoute` from the router
 //       → COVERAGE LOST, the reachable set parsed EMPTY.
 //   M4  rename `a11y_semantics_test.dart` out of the `a11y_*` corpus
 //       → COVERAGE LOST, no a11y file matched.
-//   M5  rename BOTH sweep helpers app-wide inside the test file
-//       → COVERAGE LOST, 60 cases parsed and not one sweeps.
+//   M5  rename EVERY sweep helper app-wide inside the test file — both naked
+//       helpers AND `meetsGuideline`
+//       → COVERAGE LOST, 81 cases parsed and not one sweeps.
+//       ⚠️ `meetsGuideline` ADDED 2026-08-13. Renaming only the two naked
+//       helpers left tap-target ×19 alive and 17 surfaces still swept, so the
+//       mutation could no longer reach the `sweepingBlocks === 0` limb it is
+//       named for. A mutation aimed at "not one sweep" has to neuter every
+//       family this guard recognises, and it acquires a new one for free every
+//       time SWEEP_FAMILIES grows.
 //   M6  point a sweep at an unrouted twin screen
 //       → DEAD COVERAGE, named.
 //   M7  delete one route (`/notifications`) from the router
@@ -203,8 +234,8 @@
 //         floor was measured sits in neither set and only this floor would see
 //         it go, but that case cannot be built without editing
 //         REQUIRED_COVERAGE itself.
-//   M8  delete four of the 60 cases, keeping every sweep
-//       → COVERAGE LOST on the `cases` floor (56 < 60): every set above is
+//   M8  delete four of the 81 cases, keeping every sweep
+//       → COVERAGE LOST on the `cases` floor (77 < 81): every set above is
 //         byte-identical and real assertions left the tree in silence.
 //   M9  delete a NOT_A_PANE entry's route (AppShell)
 //       → the exclusion self-check fires: judgement over nothing.
@@ -213,7 +244,7 @@
 //       and so touches neither the router nor SWEPT_FLOOR), then add its sweep,
 //       and watch it cross the line in TWO runs against ONE fixture:
 //         before → 19 swept, 1 printed (20 reachable), exit 0
-//         after  → 20 swept, 0 printed, 61 cases,        exit 0
+//         after  → 20 swept, 0 printed, 82 cases,        exit 0
 //       ⚠️ RE-POINTED 2026-08-13. It used to add the MISSING `HomeScreen` sweep
 //       and read "6 swept, 13 printed"; home is swept now, so that mutation can
 //       no longer be performed as written — adding a sweep for an
@@ -251,8 +282,9 @@ const NOT_A_PANE = new Map([
     'AppShell',
     'is the shell CHROME, not a pane — it hosts the bottom nav and an IndexedStack of the five branch ' +
       'routes, each of which is in this domain on its own account. Its OWN semantics are not unmeasured: ' +
-      'the `shell ·` group pumps the REAL router and sweeps what it lands on, which is why the tally ' +
-      'below reports a sweeping case that attributes to no surface rather than pretending there is none.',
+      'the `shell ·` group pumps the REAL router and sweeps what it lands on — once per family since ' +
+      '2026-08-13 — which is why the tally below reports sweeping case(s) that attribute to no surface ' +
+      'rather than pretending there are none.',
   ],
   [
     'NotFoundScreen',
@@ -690,6 +722,15 @@ if (parsedCleanly) {
 // domain — the floor and the reachable set are the same nineteen today, so
 // there is no unswept surface left for the printed list to name.
 //
+// ⚠️ RE-MEASURED LATER THE SAME DAY, AND THE FLOOR DID NOT MOVE: the tap-target
+// family added a SECOND sweep to 17 of the nineteen. Membership is unchanged
+// (the floor asks whether a surface is swept, not by how many families), so
+// this set is still correct — but the two surfaces it did NOT reach are the
+// reason M1/M2/M2b now point at check-inbox: `BudgetScreen` and
+// `CheckInboxScreen` are the only single-family entries left, and both are
+// single-family by ARGUMENT, not by omission (a11y_semantics_test.dart:3049 and
+// :3069 pin that the guideline inspects zero nodes on each).
+//
 // ⚠️ THE FLOOR COVERING EVERYTHING HAS A CONSEQUENCE WORTH STATING: while it
 // held only five, removing a route touched one limb. Now it touches three (see
 // M7), and no mutation can exercise the `surfaces` floor alone.
@@ -765,8 +806,10 @@ if (parsedCleanly) {
 //   cases     delete the `[ta]` Tamil donut case. InsightsScreen is still
 //             constructed and still swept by its own case, so every set above
 //             is byte-identical and a real assertion left the tree in silence.
-//             P5 shipped 24 and the 2026-08-13 sweep took the suite to 60; a
-//             smaller number is coverage leaving, not tidying.
+//             P5 shipped 24; the 2026-08-13 naked-controls sweep of all
+//             nineteen took the suite to 60, and the tap-target family the same
+//             day took it to 81. A smaller number is coverage leaving, not
+//             tidying.
 //
 // 🔴 THIS FLOOR WENT BLIND FOR THE LENGTH OF ONE COMMIT, AND THE CAUSE IS THE
 // EXACT SHAPE THIS FILE'S HEADER WARNS ABOUT. The 2026-08-13 sweep moved
@@ -779,6 +822,26 @@ if (parsedCleanly) {
 // fire when something else fires first is not a floor.
 // 📌 A guard extended in one dimension must be re-measured in EVERY dimension
 // it carries. Raising the membership set is not raising the count.
+//
+// 🔴🔴 IT RECURRED THE SAME DAY — WITHIN HOURS OF THE PARAGRAPH ABOVE BEING
+// WRITTEN (fixed 2026-08-13, second instance). The tap-target increment
+// ([ADR 048]) took the suite 60 → 81 and added a whole SWEEP FAMILY that had
+// read ×0 since this file was written, and `cases` stayed at 60. The failure
+// is not "a number was missed": it is that the SAME dimension drifted for the
+// SAME reason, one commit after the reason was written down at length. At 60
+// against a tree of 81, TWENTY-ONE cases could have been deleted in silence —
+// and 38 of the 81 are non-sweeping, so once again the floor could not fire
+// without a sweep dying first.
+// 📌 THIS IS THE EVIDENCE THAT THE NOTE ABOVE IS LOAD-BEARING RATHER THAN
+// DECORATIVE. A gotcha that only lives in prose gets repeated — this one was
+// repeated by the next commit, by someone who had the prose in front of them.
+// The prose is kept AND it is not the control: what the tree now has instead
+// is `PRECONDITION · the mutation subject is swept by exactly ONE family` in
+// tooling/ci/test/a11y-coverage.test.mjs, which fails the build when a second
+// family lands on M1/M2/M2b's subject. The generalisable control is still
+// owed: nothing yet fails when `cases` is left behind by a growing suite, and
+// it cannot be written here — a floor that recomputed itself from the tree
+// would be satisfied by definition and would measure nothing at all.
 //
 // 🔴 AND THE PROSE DRIFTED WITH IT — THE THIRD INSTANCE OF THIS CLASS IN ONE
 // DAY (fixed 2026-08-13). The same change raised SWEPT_FLOOR 5 → 19 and `cases`
@@ -802,10 +865,14 @@ if (parsedCleanly) {
 // interpolates `SWEPT_FLOOR.size` rather than spelling a number that can rot.
 // ═══════════════════════════════════════════════════════════════════════════
 const REQUIRED_COVERAGE = {
-  // MEASURED on the working tree of 2026-08-13, not set from ambition:
+  // RE-MEASURED on the working tree of 2026-08-13 AFTER the tap-target
+  // increment, by running this guard and counting, not from ambition:
   //   19 reachable surfaces — 17 routed screens + 2 modal sheets
-  //   60 testWidgets cases in 1 file (a11y_semantics_test.dart), of which 24
-  //      call a sweep helper and 36 assert a single label without sweeping
+  //   81 testWidgets cases in 1 file (a11y_semantics_test.dart), of which 43
+  //      call a sweep helper (naked-controls ×24 + tap-target ×19, no case in
+  //      two families) and 38 assert a single label without sweeping
+  // ~~60 cases … 24 sweeping … 36 non-sweeping~~ — the reading of the previous
+  // commit, retracted the same day; see the recurrence note above.
   //
   // ⚠️ `surfaces: 19` IS THE SAME NUMBER assert-responsive-coverage.mjs CARRIES
   // and that is a MEASUREMENT, not a copy. The two guards range over the same
@@ -813,7 +880,7 @@ const REQUIRED_COVERAGE = {
   // is the signal that one of the two parses has drifted from the other. If you
   // change one, RE-MEASURE the other rather than mirroring the edit.
   surfaces: 19,
-  cases: 60,
+  cases: 81,
 };
 if (reachable.size > 0 && reachable.size < REQUIRED_COVERAGE.surfaces) {
   coverageLost(
@@ -828,8 +895,9 @@ if (a11yCases > 0 && a11yCases < REQUIRED_COVERAGE.cases) {
     `only ${a11yCases} a11y case(s) were found across ${a11yFiles.length} file(s), and the checked-in ` +
       `floor is ${REQUIRED_COVERAGE.cases}. Cases can be deleted without changing either set above — the ` +
       'screen stays swept by one surviving case while every label, locale and falsifier assertion around ' +
-      'it goes. P5 shipped 24 and the 2026-08-13 sweep of all nineteen surfaces took the suite to 60; a ' +
-      'smaller number is coverage leaving the tree, not a tidy-up.',
+      'it goes. P5 shipped 24; the 2026-08-13 naked-controls sweep of all nineteen surfaces took the suite ' +
+      `to 60 and the tap-target family the same day took it to ${REQUIRED_COVERAGE.cases}. A smaller ` +
+      'number is coverage leaving the tree, not a tidy-up.',
   );
 }
 
@@ -885,7 +953,7 @@ if (swept.size) {
 }
 notes.push(
   `   sweep families used: ${SWEEP_FAMILIES.map((f) => `${f.kind} ×${kindTally.get(f.kind)}`).join(', ')}` +
-    `${unattributedSweeps ? `; ${unattributedSweeps} sweeping case(s) construct no domain surface directly (the shell case pumps the real router)` : ''}`,
+    `${unattributedSweeps ? `; ${unattributedSweeps} sweeping case(s) construct no domain surface directly (the \`shell ·\` group pumps the REAL router, once per family)` : ''}`,
 );
 
 if (unswept.length) {

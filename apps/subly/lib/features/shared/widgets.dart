@@ -399,9 +399,23 @@ const List<BoxShadow> kBrandGlow = <BoxShadow>[
 /// of the three widgets where the text was never broken. `AppColors.brandGradient`
 /// + `Colors.white` is already the app's established treatment on its DARK
 /// surfaces — the onboarding CTA, the home and detail heroes, the FAB and the
-/// calendar's today-pill all paint exactly that pair. Contrast holds at both
+/// calendar's today-pill all paint exactly that pair.
+///
+/// 🔴 RETRACTED 2026-08-13 — THIS PARAGRAPH USED TO CLEAR THE LABEL AT BOTH
+/// GRADIENT ENDS AND THE ARITHMETIC WAS WRONG. It read: "Contrast holds at both
 /// gradient ends for the 15px w700 label (4.9:1 on #6459F5, 3.5:1 on #9B6BFF;
-/// AA large-text is 3:1). Swapping dark to the theme's derived
+/// AA large-text is 3:1)". Both measurements were correct; the RULE cited was
+/// not. WCAG 2.1 large-scale text is 18pt (24px), or 14pt (18.66px) when bold —
+/// a 15px w700 label is NORMAL text, so its bar is SC 1.4.3's 4.5:1, and 3.5:1
+/// was a failure being reported as a pass on the app's primary CTA. A stated
+/// threshold is as load-bearing as the number it is compared against.
+///
+/// Fixed at the token: `AppColors.accent2` moved #9B6BFF → #8950FF (a 5.2%
+/// HSL-lightness step, hue and saturation untouched), so the label now measures
+/// **4.90:1 at the accent end and 4.51:1 at the accent2 end** — AA at every
+/// point of the sweep. `calendar_screen.dart:314`'s white 12px today-pill day
+/// number rode the same gradient and is fixed by the same step.
+/// Swapping dark to the theme's derived
 /// `AppThemeX.brandGradient` would ALSO force `scheme.onPrimary` for the label —
 /// M3 dark `primary` is a tone-80 lavender, on which white scores 1.70:1 — and
 /// would leave this one CTA diverging from every other brand surface in the app.
