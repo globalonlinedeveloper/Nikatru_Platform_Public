@@ -18,6 +18,19 @@ import 'state/providers.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // [pipeline K-10/K-11] The licences of assets that ship in the bundle but that
+  // Flutter's NOTICES collector never sees — today, the CC BY 4.0 Material Icons
+  // font, which arrives from the SDK artifact cache rather than as a Dart
+  // package. Measured: the shipped NOTICES had ZERO hits for its licence, so the
+  // font was being distributed with its attribution condition unmet, and an
+  // unmet CC BY condition means the licence does not apply.
+  //
+  // Registered BEFORE `runApp` because `LicenseRegistry` is read lazily by
+  // `LicensePage` — the surface Settings offers — and a registration that lands
+  // after a user has already opened that page shows them an incomplete list.
+  // It is idempotent, so the stamped chassis calling it too is harmless.
+  registerVendoredAssetLicences();
+
   // [pipeline C-2] Telemetry chassis. Until this landed, the ONLY app in
   // production had NO crash reporting: the package existed, was tested, and was
   // declared by the brick and by nothing that ships — so if Subly broke for a

@@ -2,6 +2,7 @@
 /// shell shared across the Cross Platform Apps portfolio.
 library;
 
+export 'src/licences/vendored_asset_licences.dart';
 export 'src/tokens/app_colors.dart';
 export 'src/tokens/app_text.dart';
 export 'src/tokens/app_spacing.dart';
