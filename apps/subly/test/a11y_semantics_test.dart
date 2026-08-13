@@ -3431,38 +3431,37 @@ void main() {
       },
     );
 
-    testWidgets(
-      'THE FALSIFIER · C — white text half-invisible on a ramp',
-      (WidgetTester tester) async {
-        await semantically(tester, () async {
-          await pumpContrastFixture(
-            tester,
-            ColoredBox(
-              color: const Color(0xFF000000),
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: <Color>[Color(0xFF000000), Color(0xFFFFFFFF)],
-                  ),
-                ),
-                child: const Text(
-                  'white text vanishing into the white end of this ramp',
-                  style: TextStyle(color: Color(0xFFFFFFFF), fontSize: 14),
+    testWidgets('THE FALSIFIER · C — white text half-invisible on a ramp', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpContrastFixture(
+          tester,
+          ColoredBox(
+            color: const Color(0xFF000000),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[Color(0xFF000000), Color(0xFFFFFFFF)],
                 ),
               ),
+              child: const Text(
+                'white text vanishing into the white end of this ramp',
+                style: TextStyle(color: Color(0xFFFFFFFF), fontSize: 14),
+              ),
             ),
-          );
-          expect(await contrastSubjects(tester), greaterThanOrEqualTo(1));
-          // CAUGHT — 2.61:1. White text on a black-to-white ramp is unreadable
-          // across its right-hand half and the guideline says so, comparing
-          // #FFFFFF (the glyphs) against #A0A0A0 (a mid-ramp colour that
-          // happened to be the mode of the dark group). So a gradient is not
-          // automatically a blind spot. What IS one is below.
-          final Evaluation e = await textContrastGuideline.evaluate(tester);
-          expect(e.passed, isFalse, reason: 'falsifier C stopped failing: $e');
-        });
-      },
-    );
+          ),
+        );
+        expect(await contrastSubjects(tester), greaterThanOrEqualTo(1));
+        // CAUGHT — 2.61:1. White text on a black-to-white ramp is unreadable
+        // across its right-hand half and the guideline says so, comparing
+        // #FFFFFF (the glyphs) against #A0A0A0 (a mid-ramp colour that
+        // happened to be the mode of the dark group). So a gradient is not
+        // automatically a blind spot. What IS one is below.
+        final Evaluation e = await textContrastGuideline.evaluate(tester);
+        expect(e.passed, isFalse, reason: 'falsifier C stopped failing: $e');
+      });
+    });
 
     // ── 🔴🔴 FALSIFIER D · THE RECORDED BLIND SPOT — THIS ONE IS NOT CAUGHT ──
     //
@@ -4183,8 +4182,15 @@ void main() {
             s.errorContainer,
           ),
         };
-        // ignore: avoid_print
-        print('a11y contrast tokens · $name · $measured');
+        // 🔴 A `print` HERE SUPPRESSED `avoid_print` AND WAS DELETED, NOT
+        // ALLOWLISTED. It dumped the whole token table on every run, including
+        // every passing one — but the only value anyone reads is the one that
+        // FAILED, and the `reason` below already carries that value, its pair
+        // name and its bar. So the suppression bought duplicate output and cost
+        // an exemption from a rule the whole factory inherits
+        // (`assert-no-gate-weakening.mjs`, [pipeline N-4]). The full measured
+        // table across seeds and brightnesses is recorded in [ADR 050], which is
+        // where a reader looking for it should go.
         for (final MapEntry<String, double> e in measured.entries) {
           expect(
             e.value,
