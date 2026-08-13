@@ -18,9 +18,12 @@
 // exactly like a width. So an unswept surface is an unpoliced one, and the
 // accounting has to be mechanical.
 //
-// 🔴 THIS GUARD PRINTS THE GAP; IT DOES NOT FAIL ON IT. Fourteen of nineteen
-// surfaces are unswept today. A guard that reddened CI over work nobody has
-// started would block every unrelated change on it — the standing [pipeline
+// 🔴 THIS GUARD PRINTS THE GAP; IT DOES NOT FAIL ON IT. As of 2026-08-13 THE
+// GAP IS EMPTY — the sweep landed all nineteen, so the printed list has ZERO
+// entries. That does not make the printing limb decoration: the next surface to
+// land arrives unswept and joins that list by existing, which is the ordinary
+// case this guard was written for. A guard that reddened CI over work nobody
+// has started would block every unrelated change on it — the standing [pipeline
 // C-6] rule, recorded when four fail-closed seams shipped with no proven open
 // path. What it DOES fail on is the other three things:
 //   · COVERAGE LOST — the scan reached no router, no surfaces, no a11y file, no
@@ -51,7 +54,8 @@
 // 🔴 THERE IS NO SECOND HARDCODED LIST OF SCREENS HERE, AND THAT IS THE POINT.
 // A checked-in enumeration of the nineteen would be the copy that silently
 // stops matching the first. The only checked-in sets in this file are
-// NOT_A_PANE (two argued non-panes) and SWEPT_FLOOR (five measured sweeps), and
+// NOT_A_PANE (two argued non-panes) and SWEPT_FLOOR (nineteen measured sweeps,
+// which is the whole domain as of 2026-08-13), and
 // BOTH are self-checked against the derived domain in both directions below —
 // an entry the tree no longer contains fails, and an entry the tree contradicts
 // fails.
@@ -97,9 +101,16 @@
 //
 // The BLOCK is the unit, NOT the file, and that is the limb this guard exists
 // for. Set equality over files would credit `a11y_semantics_test.dart` with
-// every screen it so much as names — and MEASURED ON THE TREE OF 2026-08-12,
-// EIGHT of its 24 cases name a surface while asserting one label on it and
-// never sweeping it. "[en] the chart announces the total AND every category" is
+// every screen it so much as names — and MEASURED ON THE TREE OF 2026-08-13,
+// TWENTY-SIX of its 60 cases construct a surface while asserting one label on
+// it and never sweeping it (36 of the 60 sweep nothing; 26 of those 36 pump a
+// domain surface anyway). ⚠️ AND THE FILE-LEVEL ANSWER HAPPENS TO AGREE TODAY:
+// the same one file that names those surfaces also sweeps all nineteen, so set
+// equality over files would currently return the same verdict for the wrong
+// reason. That coincidence is not reassurance — it is exactly the state in
+// which a weaker check looks correct, and it lasts only until one sweep is
+// deleted from a file that still names its subject, which is M1 below.
+// "[en] the chart announces the total AND every category" is
 // a real assertion and it says nothing whatever about whether that screen
 // carries a control a user can activate and cannot identify. That is the
 // `width_home_test.dart` defect one domain over: present in both sets, green,
@@ -113,11 +124,14 @@
 // mechanism rather than an aspiration:
 //   · NAKED CONTROLS — `expectNothingNaked(` / `nakedControls(`, the walk this
 //     app wrote: every node with a tap action that announces no role or no
-//     name. Five surfaces have it today.
+//     name. All nineteen surfaces have it today, and it is the ONLY family any
+//     of them uses.
 //   · TAP TARGET — flutter_test's own `meetsGuideline(androidTapTargetGuideline)`
 //     / `iOSTapTargetGuideline` / `labeledTapTargetGuideline`.
 //   · CONTRAST — flutter_test's `meetsGuideline(textContrastGuideline)`.
-// ⚠️ MEASURED, NOT ASSUMED: on 2026-08-12 the guideline matchers appear in ZERO
+// ⚠️ MEASURED, NOT ASSUMED, AND RE-MEASURED 2026-08-13 WHEN THE SWEEP LANDED
+// (the nineteen new sweeps are all naked-controls, so this did not change): the
+// guideline matchers appear in ZERO
 // source files in this repository — the only hits are inside compiled
 // `build/test_cache/*.dill` artefacts, i.e. the framework's own bundle. The
 // per-family tally is PRINTED on every run precisely so "tap targets and
@@ -176,20 +190,37 @@
 //   M4  rename `a11y_semantics_test.dart` out of the `a11y_*` corpus
 //       → COVERAGE LOST, no a11y file matched.
 //   M5  rename BOTH sweep helpers app-wide inside the test file
-//       → COVERAGE LOST, 24 cases parsed and not one sweeps.
+//       → COVERAGE LOST, 60 cases parsed and not one sweeps.
 //   M6  point a sweep at an unrouted twin screen
 //       → DEAD COVERAGE, named.
-//   M7  delete one route AND its screen file
-//       → COVERAGE LOST on the `surfaces` floor (18 < 19), which is the only
-//         thing that sees a domain being emptied wholesale.
-//   M8  delete four of the 24 cases, keeping every sweep
-//       → COVERAGE LOST on the `cases` floor: every set above is byte-identical
-//         and real assertions left the tree in silence.
+//   M7  delete one route (`/notifications`) from the router
+//       → COVERAGE LOST on the `surfaces` floor (18 < 19). ⚠️ TWO MORE LIMBS NOW
+//         CO-FIRE, re-measured 2026-08-13: with SWEPT_FLOOR covering the whole
+//         domain, the removed route also strands its floor entry (FLOOR OVER
+//         NOTHING) and strands its surviving sweep (DEAD COVERAGE). The
+//         `surfaces` floor is therefore no longer demonstrable IN ISOLATION
+//         here — it is still not redundant, because a surface added AFTER the
+//         floor was measured sits in neither set and only this floor would see
+//         it go, but that case cannot be built without editing
+//         REQUIRED_COVERAGE itself.
+//   M8  delete four of the 60 cases, keeping every sweep
+//       → COVERAGE LOST on the `cases` floor (56 < 60): every set above is
+//         byte-identical and real assertions left the tree in silence.
 //   M9  delete a NOT_A_PANE entry's route (AppShell)
 //       → the exclusion self-check fires: judgement over nothing.
-//   M10 add a `HomeScreen` sweep (the positive control)
-//       → 6 swept, 13 printed, exit 0. Without this one, every result above is
-//         consistent with a guard that can only ever say "unswept".
+//   M10 THE POSITIVE CONTROL — land a reachable surface nothing sweeps (a new
+//       `showExportSheet` under lib/features, which enters the domain FROM DISK
+//       and so touches neither the router nor SWEPT_FLOOR), then add its sweep,
+//       and watch it cross the line in TWO runs against ONE fixture:
+//         before → 19 swept, 1 printed (20 reachable), exit 0
+//         after  → 20 swept, 0 printed, 61 cases,        exit 0
+//       ⚠️ RE-POINTED 2026-08-13. It used to add the MISSING `HomeScreen` sweep
+//       and read "6 swept, 13 printed"; home is swept now, so that mutation can
+//       no longer be performed as written — adding a sweep for an
+//       already-swept surface changes no number, which is a positive control
+//       that cannot fail, the exact defect this ledger exists to rule out.
+//       Without M10, every result above is consistent with a guard that can
+//       only ever say "unswept".
 // ═══════════════════════════════════════════════════════════════════════════
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -636,11 +667,12 @@ if (parsedCleanly) {
 // ═══════════════════════════════════════════════════════════════════════════
 // (E) SWEPT_FLOOR — what WAS swept, by name
 //
-// 🔴 A COUNT WOULD NOT DO, AND THE MUTATION THAT PROVES IT IS: delete the
-// insights sweep and add a home sweep in the same change. A `sweptSurfaces: 5`
-// number stays satisfied, the printed list still has fourteen entries, and
-// insights lost its coverage in silence. The floor is therefore a SET, and it
-// names what it loses.
+// 🔴 A COUNT WOULD NOT DO, AND THE MUTATION THAT PROVES IT IS: delete one
+// surface's sweep and add another's in the same change. A `sweptSurfaces: 19`
+// number stays satisfied, the printed list is still empty, and the surface that
+// lost its coverage lost it in silence. The floor is therefore a SET, and it
+// names what it loses — which is what M1 measures: deleting the insights sweep
+// reports `REGRESSION — InsightsScreen` BY NAME, not a count that moved.
 //
 // It is NOT an allowlist and nothing can be added to it to silence anything —
 // it is a measurement of work already done, and it is self-checked: an entry
@@ -652,9 +684,18 @@ if (parsedCleanly) {
 // adds the sweep — the step #280 skipped one domain over, which left
 // assert-responsive-coverage's floor two surfaces under its tree for a week.
 //
-// MEASURED 2026-08-12 by running this guard against the working tree: these
-// five `<file>#<Symbol>` keys were reported swept, each by a `nothing on … is
-// naked` case in apps/subly/test/a11y_semantics_test.dart.
+// MEASURED 2026-08-13 by running this guard against the working tree: these
+// NINETEEN `<file>#<Symbol>` keys were reported swept, each by a `nothing on …
+// is naked` case in apps/subly/test/a11y_semantics_test.dart. That is the WHOLE
+// domain — the floor and the reachable set are the same nineteen today, so
+// there is no unswept surface left for the printed list to name.
+//
+// ⚠️ THE FLOOR COVERING EVERYTHING HAS A CONSEQUENCE WORTH STATING: while it
+// held only five, removing a route touched one limb. Now it touches three (see
+// M7), and no mutation can exercise the `surfaces` floor alone.
+//
+// (It held FIVE from 2026-08-12 until the 2026-08-13 sweep — the P5 five:
+// insights, budget, scan, calendar and subscription-detail.)
 // ═══════════════════════════════════════════════════════════════════════════
 const SWEPT_FLOOR = new Set([
   `${APP}/lib/features/insights/insights_screen.dart#InsightsScreen`,
@@ -693,7 +734,8 @@ if (parsedCleanly) {
       const [file, symbol] = key.split('#');
       const alsoNamed = namedOnly.get(key);
       problems.push(
-        `REGRESSION — \`${symbol}\` (${file}) was swept when this floor was measured (2026-08-12) and NO ` +
+        `REGRESSION — \`${symbol}\` (${file}) was swept when this floor was measured (2026-08-13, all ` +
+          `${SWEPT_FLOOR.size} surfaces) and NO ` +
           'a11y case sweeps it now. ' +
           (alsoNamed
             ? `${[...alsoNamed].join(', ')} still NAMES it, and naming is not sweeping: a case that ` +
@@ -712,15 +754,19 @@ if (parsedCleanly) {
 //
 // 🔴 NEITHER IS REDUNDANT WITH ANYTHING ABOVE, AND EACH HAS THE MUTATION THAT
 // PROVES IT:
-//   surfaces  delete a route AND its screen file in one change. The reachable
-//             set shrinks, nothing above says a word — a surface that is gone
-//             is not unswept, it is absent — and the printed list gets SHORTER,
-//             which reads like progress. This floor is the only thing that sees
-//             a domain being emptied wholesale.
+//   surfaces  delete a route. The reachable set shrinks, a surface that is gone
+//             is not unswept but ABSENT, and the printed list gets SHORTER,
+//             which reads like progress. This floor is what sees a domain being
+//             emptied wholesale. ⚠️ Since SWEPT_FLOOR grew to cover the whole
+//             domain it no longer fires ALONE (M7: the same deletion also
+//             strands a floor entry and a sweep), but it remains the ONLY limb
+//             that would see a surface added AFTER the floor was measured —
+//             which is in neither set — leave again.
 //   cases     delete the `[ta]` Tamil donut case. InsightsScreen is still
 //             constructed and still swept by its own case, so every set above
 //             is byte-identical and a real assertion left the tree in silence.
-//             P5 shipped 24; a smaller number is coverage leaving, not tidying.
+//             P5 shipped 24 and the 2026-08-13 sweep took the suite to 60; a
+//             smaller number is coverage leaving, not tidying.
 //
 // 🔴 THIS FLOOR WENT BLIND FOR THE LENGTH OF ONE COMMIT, AND THE CAUSE IS THE
 // EXACT SHAPE THIS FILE'S HEADER WARNS ABOUT. The 2026-08-13 sweep moved
@@ -733,6 +779,27 @@ if (parsedCleanly) {
 // fire when something else fires first is not a floor.
 // 📌 A guard extended in one dimension must be re-measured in EVERY dimension
 // it carries. Raising the membership set is not raising the count.
+//
+// 🔴 AND THE PROSE DRIFTED WITH IT — THE THIRD INSTANCE OF THIS CLASS IN ONE
+// DAY (fixed 2026-08-13). The same change raised SWEPT_FLOOR 5 → 19 and `cases`
+// 24 → 60 and left SIXTEEN statements describing them untouched: the header
+// still said "fourteen of nineteen surfaces are unswept", the floor still said
+// "MEASURED 2026-08-12 … these five keys", the ledger still described an M10
+// that can no longer be performed. TWO OF THE SIXTEEN WERE RUNTIME MESSAGES —
+// the REGRESSION text named the wrong measurement date, and the cases-floor
+// text told the reader "P5 shipped 24" while the floor it had just tripped was
+// 60. A failure message that misstates the baseline is worse than a stale
+// comment: it is read at the exact moment someone is deciding what broke, and
+// it sends them to the wrong conclusion.
+// 📌 THE MESSAGE A GUARD PRINTS IS PART OF ITS CONTRACT, AND IT IS THE PART
+// NOTHING CHECKS. Every number in this file is asserted by
+// tooling/ci/test/a11y-coverage.test.mjs; not one WORD of the reasoning is, so
+// prose can contradict the code indefinitely while the suite stays green — the
+// suite cannot see this class of defect at all. Until an assertion exists, the
+// only control is the discipline: change a floor, then re-read every sentence
+// and every failure string that explains it. Where a message can quote the
+// enforced value instead of restating it, MAKE IT — the REGRESSION text now
+// interpolates `SWEPT_FLOOR.size` rather than spelling a number that can rot.
 // ═══════════════════════════════════════════════════════════════════════════
 const REQUIRED_COVERAGE = {
   // MEASURED on the working tree of 2026-08-13, not set from ambition:
@@ -761,7 +828,8 @@ if (a11yCases > 0 && a11yCases < REQUIRED_COVERAGE.cases) {
     `only ${a11yCases} a11y case(s) were found across ${a11yFiles.length} file(s), and the checked-in ` +
       `floor is ${REQUIRED_COVERAGE.cases}. Cases can be deleted without changing either set above — the ` +
       'screen stays swept by one surviving case while every label, locale and falsifier assertion around ' +
-      'it goes. P5 shipped 24; a smaller number is coverage leaving the tree, not a tidy-up.',
+      'it goes. P5 shipped 24 and the 2026-08-13 sweep of all nineteen surfaces took the suite to 60; a ' +
+      'smaller number is coverage leaving the tree, not a tidy-up.',
   );
 }
 
@@ -788,8 +856,12 @@ for (const [symbol, why] of NOT_A_PANE) {
 // (G) THE REPORT — swept, unswept, excluded. ALL OF IT PRINTED, EVERY RUN.
 //
 // Counted is not enough. The failure this repository keeps recording is an
-// unmet clause that produced NO OUTPUT AT ALL, so the fourteen unswept surfaces
-// are read aloud on a GREEN run and stay uncomfortable to read. There is no
+// unmet clause that produced NO OUTPUT AT ALL, so every unswept surface is read
+// aloud on a GREEN run and stays uncomfortable to read. ⚠️ AS OF 2026-08-13
+// THAT LIST IS EMPTY — nineteen of nineteen are swept — and this section is
+// deliberately unchanged by that: the discomfort was the mechanism, not the
+// goal, and the list refills by itself the moment a surface lands without a
+// sweep. There is no
 // deferral list to add a screen to and no reason field to fill in: the list is
 // DERIVED from the domain minus the sweeps, so it cannot drift from either, and
 // a surface added tomorrow joins it by existing rather than by somebody
