@@ -3587,13 +3587,19 @@ void main() {
               'the scan never reached its results phase, so the sweep below is '
               'about the scanning screen again',
         );
-        // 6 subjects, and this case is RED on the tree of 2026-08-13.
-        // MEASURED: `YOUR SUBSCRIPTIONS` (11px) is 3.97:1 — #6C57F7 on
-        // #EAE6FE — against a 4.5 target. That is `AppColors.accent` used
-        // as TEXT (scan_screen.dart:249), the exact case the seeded-palette
-        // research predicted: the accent is fine as a FILL at 1.4.11's 3:1
-        // and short as TEXT at 1.4.3's 4.5:1. Owned by the palette lane —
-        // do not relax this assertion to make the suite green.
+        // 6 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
+        // MEASURED THEN: `YOUR SUBSCRIPTIONS` (11px) was 3.97:1 — #6C57F7 on
+        // #EAE6FE — against a 4.5 target.
+        // 🔴 AND THE DIAGNOSIS IN THIS COMMENT WAS WRONG, which is why it is
+        // corrected rather than deleted. It read the pair as `AppColors.accent`
+        // used as TEXT. It is the other way round: #6C57F7 is the GRADIENT and
+        // #EAE6FE is the INK — white at **0.85 alpha** blended over
+        // `brandGradient`. The defect was the ALPHA, not the accent. Opaque
+        // white is 4.90:1 at the accent end and 4.51:1 at the #8950FF end.
+        // 📌 The guideline reports two MODES, not foreground and background;
+        // reading the darker one as "the text" is how a blended white became an
+        // accent-as-text finding and got filed to the palette lane it did not
+        // belong to.
         await expectOpaqueGround(tester, 'scan (results)');
         await expectContrastHadSubjects(tester, 'scan (results)');
         await expectLater(tester, meetsGuideline(textContrastGuideline));
@@ -4055,13 +4061,14 @@ void main() {
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );
-        // 2 subjects, and this case is RED on the tree of 2026-08-13.
-        // MEASURED: the `Calendar →` jump is 3.78:1 — #6459F5 on #131318.
-        // That is `AppColors.accent` (home_screen.dart:451/459) painted
-        // UNCONDITIONALLY, i.e. the light palette on the dark surface. It is
-        // the cost app.dart:70-77 names in prose — `126 AppColors.*
-        // references paint the LIGHT palette unconditionally` — with a
-        // number attached for the first time.
+        // 2 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
+        // MEASURED THEN: the `Calendar →` jump was 3.78:1 — #6459F5 on #131318.
+        // That was `AppColors.accent` painted UNCONDITIONALLY, i.e. the light
+        // palette on the dark surface — the cost app.dart:70-77 names in prose
+        // (`126 AppColors.* references paint the LIGHT palette
+        // unconditionally`) with a number attached for the first time.
+        // FIXED by forking to `scheme.primary` in dark, which is the same seed
+        // resolved for the ambient brightness rather than a second literal.
         await expectOpaqueGround(tester, 'home (dark)');
         await expectContrastHadSubjects(tester, 'home (dark)');
         await expectLater(tester, meetsGuideline(textContrastGuideline));
@@ -4079,13 +4086,20 @@ void main() {
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );
-        // 34 subjects, and this case is RED on the tree of 2026-08-13,
-        // by the widest margin anywhere in the app.
-        // MEASURED: the `Settings` heading is 1.01:1 — #141420 on #131318.
-        // `AppColors.ink` on the dark surface: the text is INVISIBLE, not
-        // merely low. `themeMode` defaults to `ThemeMode.system`
-        // (app.dart:88), so this is what every dark-OS user is handed.
-        // Owned by the palette lane / the scheduled theme fork.
+        // 34 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 — by the widest
+        // margin anywhere in the app — AND IS GREEN SINCE.
+        // MEASURED THEN: the `Settings` heading was 1.01:1 — #141420 on
+        // #131318. `AppColors.ink` on the dark surface: the text was INVISIBLE,
+        // not merely low. `themeMode` defaults to `ThemeMode.system`
+        // (app.dart:88), so that is what every dark-OS user was handed.
+        // FIXED by adopting `AppText.of(context)` — the resolver already built
+        // for this, which had ONE caller in the app against 114 static uses.
+        // ⚠️ It was NOT the "scheduled theme fork" this comment assigned it to.
+        // No design decision had to move: the status-trio fork that the
+        // impossibility proof describes is a different defect, and not one node
+        // in this case involved it. Fixing the SCREEN was also not enough — the
+        // last red nodes were `_LegalLink`s inside `PoweredByFooter`, whose
+        // `onDark` flag means "on a dark hero", not "the app is in dark mode".
         await expectOpaqueGround(tester, 'settings (dark)');
         await expectContrastHadSubjects(tester, 'settings (dark)');
         await expectLater(tester, meetsGuideline(textContrastGuideline));
