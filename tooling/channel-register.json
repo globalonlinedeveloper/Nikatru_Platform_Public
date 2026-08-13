@@ -88,7 +88,29 @@
     "named an `xcode` key versions.json did not have. It has one as of 2026-08-08 (`\"xcode\": \"26\"`, with",
     "$xcode_comment recording Apple's dated requirement and $updateExemptions recording why no bot can",
     "advance a store-policy floor), so the gap is closed and the guard prints nothing for it. Corrected",
-    "here in the same change: a sentence describing a gap that has closed reads as a live gap forever."
+    "here in the same change: a sentence describing a gap that has closed reads as a live gap forever.",
+    "",
+    "🔴 SINCE 2026-08-13 THIS FILE IS ALSO THE HOME OF THE PURCHASE-RAIL ANSWER — `purchaseRail` on",
+    "EVERY channel row, validated against the `purchaseRails` vocabulary declared just above `channels`.",
+    "[ADR 039] (LOCKED 2026-08-09) decides which payment rail each CHANNEL takes; this register is where",
+    "that decision is machine-readable. Prose elsewhere CITES the field. It must not restate it.",
+    "",
+    "WHY IT MOVED HERE, MEASURED RATHER THAN ASSERTED. The rail answer lived only in prose and prose did",
+    "not hold it. On 2026-08-13 `company/pipeline/05-money-rail.md` still carried \"no requirement here",
+    "demands a native IAP rail\" as a CUT BEING HONOURED, while [ADR 039] D2/D3 had locked exactly that",
+    "rail on three channels four days earlier — and `company/pipeline/10-distribution-store.md`, the",
+    "stage that owns store submission, contained the string \"IAP\" ZERO times. Both documents have since",
+    "been corrected in prose (05's sentence is now struck through and re-labelled a gap; 10 now carries",
+    "12 occurrences). That is the argument FOR this field, not against it: a fact restated in N documents",
+    "drifts in N places, and every correction is a fresh chance to drift. One field, N citations.",
+    "",
+    "🔴 THE RAIL FOLLOWS THE CHANNEL, NOT THE PLATFORM — AND ANDROID IS WHERE THAT BITES. The SAME",
+    "Flutter build takes PLAY BILLING when Google Play delivers it and PADDLE when a user sideloads the",
+    "`.apk`. One app, two rails, decided by the channel the install arrived through. The owner who LOCKED",
+    "[ADR 039] re-read their own corpus five days later and summarised it as \"APK and iOS = own store,",
+    "everything else Paddle\" — wrong on APK, in the direction that costs 15% and a policy question. A",
+    "structure that cannot EXPRESS the split will be misread again, so the sideload channel is carried as",
+    "its own entry rather than as a comment on the Play row: see `purchaseRails.awaitingChannelRow`."
   ],
 
   "aggregatingJob": {
@@ -631,6 +653,134 @@
     ]
   },
 
+  "purchaseRails": {
+    "_why": [
+      "🔴 THE ONE PLACE THE RAIL ANSWER LIVES. [ADR 039] (LOCKED 2026-08-09, after a 6-agent",
+      "primary-source sweep and a 3-agent adversarial round that REVERSED the Play half) decides the",
+      "payment rail per CHANNEL. `purchaseRail` on each row below is that decision as data. Four fields,",
+      "and each exists because its absence has a named failure mode:",
+      "",
+      "  `rail`       — which rail this channel takes, from the `rails` dictionary below. The vocabulary",
+      "                 is DERIVED from this file, exactly as `signing.keyKind` is derived from",
+      "                 `keyKinds`, so deleting the dictionary or renaming an entry out from under the",
+      "                 rows still using it FAILS instead of a second copy inside a guard [pipeline F-2].",
+      "  `why`        — the POLICY or the ARITHMETIC that forces the answer, never \"because ADR 039 says",
+      "                 so\". A rail with no ground cannot be reviewed and cannot be RE-decided when the",
+      "                 policy moves — and ADR 039 ships a re-check calendar (Apple's US external-link",
+      "                 commission, Google's injunction expiry 2027-11-01, Play's new fee card reaching",
+      "                 India 2027-09-30, the Donato fee proceedings). Every one of those lands on one of",
+      "                 these sentences. Same requirement `ciSecretRegister.nonSigning[].why` carries.",
+      "  `forbids`    — the rails this channel PROHIBITS. Without it a checker can only catch a MISSING",
+      "                 rail, never a FORBIDDEN one, and the expensive failure here is a SHIPMENT rather",
+      "                 than an omission: an external checkout inside an App Store build is a documented",
+      "                 rejection cause (guideline 3.1.1), and steering out of a Play build once IAP is",
+      "                 offered is an anti-steering violation. Neither is an absence.",
+      "  `source`     — the ADR clause, so a row OPENS the decision instead of asserting it.",
+      "",
+      "⚠️ `forbids` IS NOT THE COMPLEMENT OF `rail` AND MUST NOT BE COMPUTED AS ONE. On `web`, Play",
+      "Billing is absent for a MECHANICAL reason (no Play services in a browser); on `android-play`,",
+      "Paddle is absent because Google FORBIDS it. Collapsing \"cannot\" into \"may not\" is the exact",
+      "conflation `PurchaseCapabilities` splits into `technicallySupported` vs `channelPermitted`, and for",
+      "the same reason: they are different facts with different owners and different remedies. Each row's",
+      "`forbidsWhy` names which of the two applies, so the distinction survives the list.",
+      "",
+      "⚠️ UNIVERSAL, AND NOT A RAIL: web-bought premium ALWAYS unlocks via login on every channel, the",
+      "two store rails included — additive, free of store commission, policy-safe on both ([ADR 039] D2).",
+      "That is entitlement DELIVERY, not a purchase rail, so it is stated once in `universalUnlock` and",
+      "appears on no row. Putting it in `rail` would make a channel that sells nothing look like a",
+      "channel that sells.",
+      "",
+      "⚠️ THE GLUE IS NOT A RAIL EITHER. RevenueCat ([ADR 039] D5, LOCKED) is how BOTH store rails resolve",
+      "to ONE entitlement answer; it enters the codebase only at the Play-Billing increment and",
+      "OWNER_QUEUE A-4. Naming it as a `rail` value would make an SDK look like a merchant of record."
+    ],
+    "rails": {
+      "paddle": "Paddle hosted apex checkout, opened in the browser ([ADR 038]). Paddle is MERCHANT OF RECORD and registers and remits the VAT/GST/OIDAR itself — which is what keeps a sole proprietorship out of ~40 tax registrations. Nets $18.49 of the $19.99 annual SKU, i.e. 7.5%.",
+      "play-billing": "Google Play Billing, 15% on the first-$1M/yr tier, integrated through RevenueCat ([ADR 039] D5). Carries an exposure the other rails do not: since 2026-08-03 Play bills the developer $15-25 per chargeback dispute.",
+      "apple-iap": "Apple StoreKit in-app purchase, 15% under the Small Business Program, integrated through RevenueCat ([ADR 039] D5).",
+      "none": "this channel sells nothing and must open no checkout of any kind. NO ROW CARRIES IT TODAY — it exists so that a channel which must not sell can SAY so, rather than being absent and read as somebody not having got to it. Same reason `keyKinds.none` exists."
+    },
+    "universalUnlock": "Web-bought premium unlocks via login on EVERY channel, store rails included — additive, free of store commission, and policy-safe on both stores. [ADR 039] D2. This is entitlement delivery, not a rail.",
+    "antiSteering": "Once a store IAP rail is offered on a channel, that build performs NO in-app steering to another rail. [ADR 039] D2 (Play) and D3 (Apple). The rule is about the BUILD, not the company: the same app sold through `web` steers freely.",
+    "_awaitingChannelRowWhy": [
+      "🔴 TWO CHANNELS WITH A LOCKED RAIL AND NO `channels` ROW — AND THE SECOND HALF IS THE FINDING.",
+      "[ADR 039] D1 names, verbatim, \"Web · Microsoft Store · Windows/macOS/Linux direct downloads · Snap ·",
+      "APK sideload\" as the Paddle set. This register has rows for `windows-direct`, `linux-snap` and",
+      "`linux-appimage` — and NONE for APK sideload, and NONE for a macOS direct download. So on the two",
+      "platforms where the split actually costs money, the register said \"android = Play\" and \"macos =",
+      "App Store\", full stop. That is precisely the sentence the owner read back as \"APK and iOS = own",
+      "store, everything else Paddle\". The register was not neutral about the confusion; it was a source",
+      "of it.",
+      "",
+      "⛔ WHY THEY ARE ENTRIES HERE AND NOT ROWS YET, AND IT IS NOT A JUDGEMENT CALL. `tooling/ci/",
+      "assert-purchase-path.mjs` section A requires the `PurchaseChannel` enum in `packages/purchases/lib/",
+      "src/purchase_capabilities.dart` to EQUAL the id set of `channels` — both directions, `missing` AND",
+      "`extra`. A ninth row with no matching enum member fails that guard on the same commit. Promotion is",
+      "therefore a multi-file increment: the row here, the enum member, its `forChannel` case with a",
+      "substantive `why` (>= 20 chars, enforced), and a mention in `hosted_checkout_rail_test.dart`,",
+      "because section B fails any channel marked sellable that no test exercises. `packages/` was outside",
+      "the scope fence of the increment that added this block.",
+      "",
+      "Recorded as DATA rather than deferred to prose so that the answer exists in exactly one place NOW,",
+      "and so the promotion is a mechanical change a reviewer can check rather than a decision somebody",
+      "has to make again. ⬜ OPEN: promote both to `channels` rows in one increment with their enum rows.",
+      "",
+      "⚠️ WINDOWS ALREADY MODELS THE SPLIT AND IS THE CONTROL CASE. `windows-store` and `windows-direct`",
+      "are two rows for one platform — and they take the SAME rail, so the split is invisible in the",
+      "answer. Android and macOS are the two places where the same app takes DIFFERENT rails by channel,",
+      "which is exactly why those two are the ones the register failed to model."
+    ],
+    "awaitingChannelRow": [
+      {
+        "id": "android-sideload",
+        "name": "APK sideload (direct .apk install, outside Google Play)",
+        "platforms": ["android"],
+        "kind": "direct",
+        "artifactFormats": [".apk"],
+        "railSplitsFrom": "android-play",
+        "purchaseRail": {
+          "rail": "paddle",
+          "why": "Google Play's Payments policy binds apps DISTRIBUTED THROUGH GOOGLE PLAY, not the Android artifact — an install Play did not deliver sits under no store commerce policy, so there is no 15% tier in the path and the hosted apex checkout nets 7.5%.",
+          "forbids": ["play-billing", "apple-iap"],
+          "forbidsWhy": "MECHANICAL, not policy: the Play Billing Library resolves a purchase against the Play install that delivered the app, so a sideloaded build has no billing backend to talk to. Shipping it here would be a paywall that cannot complete a sale, which is a worse failure than a forbidden one because it looks like a bug rather than a violation.",
+          "source": "[ADR 039] D1"
+        },
+        "notes": [
+          "🔴 THIS IS THE TRAP THE WHOLE BLOCK EXISTS FOR. Same Flutter build as `android-play`; Play takes",
+          "the `.aab` and only the `.aab`, a sideload takes the `.apk`, and the RAIL DIFFERS BY WHICH ONE",
+          "THE USER GOT. `.github/workflows/build-platforms.yml` already produces both — the register's own",
+          "`android-play` row records that the `.apk` is kept on purpose because an app bundle is not",
+          "installable — so the artifact for this channel exists today while the channel does not.",
+          "⬜ NOT SERVED and no dl.nikatru.com Android link exists; this entry records the researched rail",
+          "so it is not rediscovered at the moment somebody publishes a download button."
+        ]
+      },
+      {
+        "id": "macos-direct",
+        "name": "macOS direct download (Developer ID-signed, notarised, outside the Mac App Store)",
+        "platforms": ["macos"],
+        "kind": "direct",
+        "artifactFormats": [".dmg", ".app"],
+        "railSplitsFrom": "macos-appstore",
+        "purchaseRail": {
+          "rail": "paddle",
+          "why": "App Store Review Guideline 3.1.1 governs apps distributed through the App Store; a Developer ID-signed, notarised app the user downloads from our own site is not App Store distribution, so no Apple commerce policy applies and the rail is the same hosted checkout the web channel uses.",
+          "forbids": ["play-billing"],
+          "forbidsWhy": "MECHANICAL: there is no Play surface on macOS at all. Apple IAP is deliberately NOT listed as forbidden here — StoreKit outside the Mac App Store is a question this register has not researched, and an unresearched vendor fact must never be written down as an answer in either direction.",
+          "source": "[ADR 039] D1"
+        },
+        "notes": [
+          "The macOS half of the same split, and the one nobody names: `macos-appstore` is `apple-iap` at",
+          "15%, this is `paddle` at 7.5%, and it is the same product. [ADR 039] D1 lists \"macOS direct",
+          "download\" explicitly; the register had no row for it.",
+          "⬜ NOT SERVED. Both macOS channels are blocked behind OWNER_QUEUE A-4 (no Apple Developer",
+          "account), and notarisation needs that account too — so unlike `android-sideload`, this channel",
+          "cannot be opened by a decision alone."
+        ]
+      }
+    ]
+  },
+
   "channels": [
     {
       "id": "web",
@@ -639,6 +789,13 @@
       "kind": "web",
       "served": true,
       "submittable": false,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "Our own site. No store sits between us and the buyer, so no platform commerce policy applies at all and the only cut is Paddle's — $18.49 of the $19.99 annual SKU.",
+        "forbids": ["play-billing", "apple-iap"],
+        "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists in a browser. Listed anyway because `forbids` is what a checker reads to catch a SHIPMENT rather than an omission, and a rail that cannot work is still a rail that must not ship.",
+        "source": "[ADR 039] D1"
+      },
       "artifactFormats": ["static-bundle"],
       "signing": {
         "keyKind": "none",
@@ -690,6 +847,13 @@
       "kind": "store",
       "served": false,
       "submittable": true,
+      "purchaseRail": {
+        "rail": "play-billing",
+        "why": "ARITHMETIC, not just policy — and the arithmetic REVERSED the earlier recommendation. Play requires Play Billing for in-app digital purchases; against that, the annual SKU's breakeven tolerates only an 8.1% conversion loss from detouring buyers to the web, while MEASURED web-detour losses run 12-36% even WITH a tappable link (a Play build may offer none), and the monthly SKU nets the same to the cent either way so any detour loss there is pure loss. A no-card web trial also converts at roughly a third of a card-on-file store trial.",
+        "forbids": ["paddle", "apple-iap"],
+        "forbidsWhy": "POLICY for `paddle`: once IAP is offered there is NO in-app steering to another rail, and the US link-out program is not taken (its 0% window ends 2026-09-30, after which ~10% nets below Play Billing). MECHANICAL for `apple-iap`. 🔴 THE SIDELOAD OF THIS SAME APP IS `paddle` — see purchaseRails.awaitingChannelRow.android-sideload. The rail follows the CHANNEL, not the artifact.",
+        "source": "[ADR 039] D2"
+      },
       "artifactFormats": [".aab"],
       "signing": {
         "keyKind": "upload-key",
@@ -974,6 +1138,13 @@
       "kind": "store",
       "served": false,
       "submittable": true,
+      "purchaseRail": {
+        "rail": "apple-iap",
+        "why": "App Store Review Guideline 3.1.1 requires in-app purchase for digital content, and launching an external checkout is a documented rejection cause rather than a grey area. Subly is not reader-app eligible, and 3.1.3(b) parity forbids the consumption-only trick Play permits. 15% under the Small Business Program.",
+        "forbids": ["paddle", "play-billing"],
+        "forbidsWhy": "POLICY for `paddle`: 3.1.1 plus the anti-steering rule. MECHANICAL for `play-billing`. The 3.1.3(f) free-companion posture is worth ONE cheap attempt when OWNER_QUEUE A-4 opens, with the IAP build as the ready fallback — that is an attempt at a different classification, not permission for a second rail.",
+        "source": "[ADR 039] D3"
+      },
       "artifactFormats": [".ipa"],
       "signing": {
         "keyKind": "distribution-certificate",
@@ -1115,6 +1286,13 @@
       "kind": "store",
       "served": false,
       "submittable": true,
+      "purchaseRail": {
+        "rail": "apple-iap",
+        "why": "The same 3.1.1 family as iOS, against a SEPARATE App Store Connect record — one record per platform, one review outcome, and therefore one rail answer of its own rather than an inherited one. 15% under the Small Business Program.",
+        "forbids": ["paddle", "play-billing"],
+        "forbidsWhy": "POLICY for `paddle`: 3.1.1 and anti-steering, identically to iOS. MECHANICAL for `play-billing`. 🔴 A macOS BUILD DISTRIBUTED OUTSIDE THE MAC APP STORE IS NOT THIS CHANNEL and is not covered by this row — it is `paddle`; see purchaseRails.awaitingChannelRow.macos-direct.",
+        "source": "[ADR 039] D3"
+      },
       "artifactFormats": [".pkg"],
       "signing": {
         "keyKind": "distribution-certificate",
@@ -1218,6 +1396,13 @@
       "kind": "store",
       "served": false,
       "submittable": true,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "PERMISSION, read from the primary text: Microsoft Store Policies v7.19 (effective 2025-10-14) §10.8.1 lets a non-game PC app use \"a secure third-party purchase API\" for digital goods and §10.8.6 says the same for subscriptions, and the App Developer Agreement exempts third-party commerce from the Store Fee — 0% store tax, so the only cut is Paddle's 7.5%. This row was UNVERIFIED-therefore-denied until the source was read on 2026-08-09.",
+        "forbids": ["play-billing", "apple-iap"],
+        "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows. TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are not optional — Paddle must be identified as the seller at purchase time (its hosted checkout does this), and the third-party purchase API must be DECLARED in Partner Center at submission (company/runbooks/store-submission-windows.md carries that step).",
+        "source": "[ADR 039] D1"
+      },
       "artifactFormats": [".msix"],
       "signing": {
         "keyKind": "none",
@@ -1322,6 +1507,13 @@
       "kind": "direct",
       "served": false,
       "submittable": false,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "Direct download from our own domain. No store, no gatekeeper, and therefore no commerce policy to satisfy — the arithmetic is the same 7.5% as the web channel because it is the same hosted checkout.",
+        "forbids": ["play-billing", "apple-iap"],
+        "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows.",
+        "source": "[ADR 039] D1"
+      },
       "artifactFormats": [".msix", ".exe"],
       "signing": {
         "keyKind": "code-signing-certificate",
@@ -1436,6 +1628,13 @@
       "kind": "store",
       "served": false,
       "submittable": true,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "The Snap Store imposes no commerce policy on digital goods sold by the publisher and takes no cut of them — Canonical signs the binary and hosts the download, which is a distribution service, not a payments one. So a `kind: store` row takes the non-store rail, which is why the rail cannot be derived from `kind`.",
+        "forbids": ["play-billing", "apple-iap"],
+        "forbidsWhy": "MECHANICAL: neither store's billing exists on Linux.",
+        "source": "[ADR 039] D1"
+      },
       "artifactFormats": [".snap"],
       "signing": {
         "keyKind": "none",
@@ -1575,6 +1774,13 @@
       "kind": "direct",
       "served": false,
       "submittable": false,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "An AppImage served from dl.nikatru.com has no gatekeeper at all — nothing signs it for us, nothing hosts it for us, and nothing takes a cut of a sale made through it.",
+        "forbids": ["play-billing", "apple-iap"],
+        "forbidsWhy": "MECHANICAL: neither store's billing exists on Linux.",
+        "source": "[ADR 039] D1"
+      },
       "artifactFormats": [".AppImage"],
       "signing": {
         "keyKind": "own-signing-key",

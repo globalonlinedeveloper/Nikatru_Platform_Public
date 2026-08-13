@@ -62,18 +62,63 @@ after(() => {
 
 let seq = 0;
 
-const CHANNELS = JSON.stringify({
-  channels: [
-    { id: 'web' },
-    { id: 'android-play' },
-    { id: 'ios-appstore' },
-    { id: 'macos-appstore' },
-    { id: 'windows-store' },
-    { id: 'windows-direct' },
-    { id: 'linux-snap' },
-    { id: 'linux-appimage' },
-  ],
+// ─────────────────────────────────────────────────────────────────────────────
+// §G's fixture — the RAIL each channel sells through ([10]D-13 · [ADR 039]).
+//
+// 🔴 BUILT AS AN OBJECT, MUTATED AS AN OBJECT. Every case below hands
+// `registerDoc()` a dimension rather than running `.replace()` over the JSON
+// text — the lesson this file already carries for the T-11 cases: a string
+// mutation that stops matching is a silent no-op, and a case whose mutation
+// no-ops tests the PASSING input while claiming to test the failing one.
+//
+// The row set mirrors the real register's shape after [ADR 039]: five paddle
+// channels, Play on Play Billing, both Apple channels on Apple IAP, plus the
+// PARKED `android-sideload` split — the one entry the owner's own restatement
+// ("APK and iOS = own store, everything else Paddle") got backwards.
+// ─────────────────────────────────────────────────────────────────────────────
+const RAILS = () => ({
+  paddle: 'Paddle hosted apex checkout, opened in the browser. Merchant of record; nets 7.5%.',
+  'play-billing': 'Google Play Billing, 15% on the first-$1M/yr tier, integrated through RevenueCat.',
+  'apple-iap': 'Apple StoreKit in-app purchase, 15% under the Small Business Program.',
+  none: 'this channel sells nothing and must open no checkout of any kind at all.',
 });
+
+const railBlock = (rail, forbids) => ({
+  rail,
+  why: `The policy and the arithmetic that force \`${rail}\` on this channel, written out in full.`,
+  forbids,
+  forbidsWhy: 'MECHANICAL where the billing SDK cannot exist here, POLICY where the store forbids it.',
+  source: '[ADR 039] D1',
+});
+
+const channelRows = () => [
+  { id: 'web', platforms: ['web'], kind: 'web', purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']) },
+  { id: 'android-play', platforms: ['android'], kind: 'store', purchaseRail: railBlock('play-billing', ['paddle', 'apple-iap']) },
+  { id: 'ios-appstore', platforms: ['ios'], kind: 'store', purchaseRail: railBlock('apple-iap', ['paddle', 'play-billing']) },
+  { id: 'macos-appstore', platforms: ['macos'], kind: 'store', purchaseRail: railBlock('apple-iap', ['paddle', 'play-billing']) },
+  { id: 'windows-store', platforms: ['windows'], kind: 'store', purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']) },
+  { id: 'windows-direct', platforms: ['windows'], kind: 'direct', purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']) },
+  { id: 'linux-snap', platforms: ['linux'], kind: 'store', purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']) },
+  { id: 'linux-appimage', platforms: ['linux'], kind: 'direct', purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']) },
+];
+
+const parkedRows = () => [
+  {
+    id: 'android-sideload',
+    platforms: ['android'],
+    kind: 'direct',
+    railSplitsFrom: 'android-play',
+    purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']),
+  },
+];
+
+const registerDoc = ({ channels = channelRows(), rails = RAILS(), parked = parkedRows(), noRailsDict = false } = {}) => {
+  const doc = { purchaseRails: { rails, awaitingChannelRow: parked }, channels };
+  if (noRailsDict) delete doc.purchaseRails.rails;
+  return JSON.stringify(doc, null, 2);
+};
+
+const CHANNELS = registerDoc();
 
 const CAPS = `
 enum PurchaseChannel {
@@ -120,8 +165,8 @@ class PurchaseCapabilities {
       case PurchaseChannel.windowsStore:
         return const PurchaseCapabilities(
           technicallySupported: true,
-          channelPermitted: false,
-          why: 'UNVERIFIED: Microsoft Store commerce policy is unchecked here.',
+          channelPermitted: true,
+          why: 'Microsoft Store Policies §10.8.1/§10.8.6 permit a third-party rail.',
         );
       case PurchaseChannel.windowsDirect:
         return const PurchaseCapabilities(
@@ -138,6 +183,43 @@ class PurchaseCapabilities {
         );
     }
   }
+
+  // The PLATFORM→CHANNEL COLLAPSE. A build does not know at runtime which
+  // channel installed it, so one channel answers for the whole platform — which
+  // is the exact place the APK/Play confusion lands, and why §G parses it.
+  static PurchaseCapabilities forPlatform(
+    TargetPlatform platform, {
+    required bool isWeb,
+  }) {
+    if (isWeb) return forChannel(PurchaseChannel.web);
+    switch (platform) {
+      case TargetPlatform.android:
+        return forChannel(PurchaseChannel.androidPlay);
+      case TargetPlatform.iOS:
+        return forChannel(PurchaseChannel.iosAppStore);
+      case TargetPlatform.macOS:
+        return forChannel(PurchaseChannel.macosAppStore);
+      case TargetPlatform.windows:
+        return forChannel(PurchaseChannel.windowsStore);
+      case TargetPlatform.linux:
+        return forChannel(PurchaseChannel.linuxSnap);
+      case TargetPlatform.fuchsia:
+        return const PurchaseCapabilities(
+          technicallySupported: false,
+          channelPermitted: false,
+          why: 'Fuchsia is not a distribution target for this factory at all.',
+        );
+    }
+  }
+}
+`;
+
+// §G0's premise: ONE PurchaseRail in the tree, and it is the Paddle hosted
+// checkout. That is what makes `channelPermitted: true` mean "this build opens
+// PADDLE here" and therefore comparable to the register's rail.
+const HOSTED_RAIL = `
+class HostedCheckoutRail implements PurchaseRail {
+  const HostedCheckoutRail();
 }
 `;
 
@@ -145,6 +227,7 @@ const RAIL_TEST = `
 void main() {
   for (final PurchaseChannel channel in <PurchaseChannel>[
     PurchaseChannel.web,
+    PurchaseChannel.windowsStore,
     PurchaseChannel.windowsDirect,
     PurchaseChannel.linuxSnap,
     PurchaseChannel.linuxAppImage,
@@ -293,6 +376,9 @@ function run(o = {}) {
   const root = join(TMP, `case-${(seq += 1)}`);
   write(root, 'tooling/channel-register.json', o.channels ?? CHANNELS);
   write(root, 'packages/purchases/lib/src/purchase_capabilities.dart', o.caps ?? CAPS);
+  if (o.hostedRail !== null) write(root, 'packages/purchases/lib/src/hosted_checkout_rail.dart', o.hostedRail ?? HOSTED_RAIL);
+  if (o.extraRailImpl) write(root, 'packages/purchases/lib/src/second_rail.dart', o.extraRailImpl);
+  if (o.morPaddle !== null) write(root, 'services/platform/src/lib/mor/paddle.ts', o.morPaddle ?? 'export const paddle = {};\n');
   write(root, 'packages/purchases/test/purchase_capabilities_test.dart', 'void main() {}');
   if (o.railTest !== null) write(root, 'packages/purchases/test/hosted_checkout_rail_test.dart', o.railTest ?? RAIL_TEST);
   write(root, 'packages/purchases/lib/src/entitlement_convergence.dart', o.convergence ?? CONVERGENCE);
@@ -661,5 +747,370 @@ class _UpgradePromoCardState extends ConsumerState<UpgradePromoCard> {
     // …and the ok line for the clause must NOT appear, or "ranged over nothing"
     // and "checked and found good" would read identically in the log.
     assert.doesNotMatch(r.out, /promo surface\(s\): each offers/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §G — THE RAIL EACH CHANNEL SELLS THROUGH, AND THE SHIPPED CODE AGREES.
+// [10]D-13 · [ADR 039] (LOCKED 2026-08-09, owner-locked twice)
+//
+// 🔴 WHY THIS SECTION EXISTS AT ALL, AND IT IS NOT HYPOTHETICAL. On 2026-08-13
+// the OWNER — five days after locking [ADR 039] themselves — read their own
+// corpus and restated it as "APK and iOS = own store, everything else Paddle."
+// That is WRONG ON APK: the same Android artifact takes PADDLE when sideloaded
+// and PLAY BILLING when shipped through Play, because the rail follows the
+// CHANNEL, not the platform and not the artifact. If the person who locked the
+// decision misreads it in five days, prose does not hold it.
+//
+// ⚠️ REAL-TREE MUTATIONS FIRST, AS ALWAYS (2026-08-13, fourteen, against a
+// sparse byte-copy of the live tree — the real `channel-register.json`, the real
+// `purchase_capabilities.dart`; the live files' sha256 verified identical before
+// and after). The fixtures below re-encode those inputs. They are not the
+// evidence, for the reason this file already states twice: a fixture I wrote
+// encodes the same misunderstanding as the guard I wrote.
+//
+//   G1  a channel row loses `purchaseRail`        -> "COVERAGE LOST — channel `linux-snap`"
+//   G2  rail = 'stripe'                           -> "not one of paddle | play-billing | …"
+//   G3  `rails.none` deleted from the dictionary  -> "THE RAIL VOCABULARY LOST `none`"
+//   G4  `rails.stripe` added                      -> "AN UNDECIDED RAIL"
+//   G5  forbids ['braintree']                     -> "forbids `braintree`, which is not one of"
+//   G6  android-play forbids play-billing         -> "CONTRADICTORY ROW"
+//   G7  windows-store -> play-billing, forbids    -> "THE SHIPPED CODE OFFERS A RAIL THE
+//       paddle, code untouched                       REGISTER FORBIDS — channel `windows-store`"
+//   G8  🔴 CODE: androidPlay flipped to           -> "…OFFERS A RAIL THE REGISTER FORBIDS —
+//       channelPermitted: true, REGISTER              channel `android-play` declares rail
+//       UNTOUCHED                                     `play-billing`"
+//   G9  android-play -> paddle                    -> "THE REGISTER CLAIMS A RAIL THE SHIPPED
+//                                                     CODE REFUSES"
+//   G10 🔴 CODE: forPlatform(iOS) -> web          -> "THE PLATFORM MAP TAKES THE PERMISSIVE
+//                                                     ANSWER" (the APK trap, generalised)
+//   G11 CODE: the forPlatform map made unparsable -> "COVERAGE LOST — no `case TargetPlatform"
+//   G12 CODE: a second `implements PurchaseRail`  -> "COVERAGE LOST — §G reasons from"
+//   G13 parked android-sideload -> play-billing   -> "SPLITS FROM `android-play` AND TAKES THE
+//       (i.e. "the rail follows the artifact")       SAME RAIL"
+//   G14 parked entry copied into `channels`       -> "TWO RAIL ANSWERS FOR `android-sideload`"
+//
+// G8, G10, G11 and G12 are the four that make limb (d) a CODE check rather than
+// a register talking to itself: in each of them the register is byte-identical
+// to the real one and only Dart moved.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
+  /** A replacement that cannot silently no-op. */
+  const mutate = (src, from, to) => {
+    const out = src.replace(from, to);
+    assert.notEqual(out, src, 'the mutation was a NO-OP, so the case would test the passing input');
+    return out;
+  };
+
+  // A ninth channel, in code: the enum member + its capability row + the
+  // launcher test naming it. Used both for "a new channel must not default into
+  // silence" and for the promotion case that proves §G is satisfiable.
+  const capsWithSideload = () =>
+    mutate(
+      mutate(CAPS, "  androidPlay('android-play'),", "  androidPlay('android-play'),\n  androidSideload('android-sideload'),"),
+      '      case PurchaseChannel.iosAppStore:',
+      `      case PurchaseChannel.androidSideload:
+        return const PurchaseCapabilities(
+          technicallySupported: true,
+          channelPermitted: true,
+          why: 'A sideloaded APK is not a Play distribution, so no Play commerce policy reaches it.',
+        );
+      case PurchaseChannel.iosAppStore:`,
+    );
+  const railTestWithSideload = () =>
+    mutate(RAIL_TEST, '    PurchaseChannel.web,', '    PurchaseChannel.web,\n    PurchaseChannel.androidSideload,');
+  const sideloadLiveRow = () => ({
+    id: 'android-sideload',
+    platforms: ['android'],
+    kind: 'direct',
+    purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']),
+  });
+
+  test('PASSES, and SAYS the register and the shipped matrix agree', () => {
+    // Both halves. An exit-code-only assertion passes just as happily on a §G
+    // that compared nothing at all, which is the whole failure mode here.
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /8 channel\(s\): the register's rail and the shipped capability matrix agree/);
+  });
+
+  // ── (a) EVERY CHANNEL DECLARES A RAIL ────────────────────────────────────
+  test('FAILS when a channel declares no `purchaseRail` at all', () => {
+    const rows = channelRows();
+    delete rows.find((c) => c.id === 'linux-snap').purchaseRail;
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — channel `linux-snap` declares no `purchaseRail`/);
+  });
+
+  test('🔴 FAILS when a NEW channel arrives with no rail — coverage must not default into silence', () => {
+    // The failure this limb is built for: a ninth channel lands, everything else
+    // still passes, and "which rail?" is answered by absence — which a reader
+    // fills in with "the usual one". On APK the owner filled it in wrong.
+    const row = sideloadLiveRow();
+    delete row.purchaseRail;
+    const r = run({
+      channels: registerDoc({ channels: [...channelRows(), row], parked: [] }),
+      caps: capsWithSideload(),
+      railTest: railTestWithSideload(),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — channel `android-sideload` declares no `purchaseRail`/);
+  });
+
+  test('PASSES once that channel is promoted properly — the gate is satisfiable, not a permanent block', () => {
+    // A guard that cannot be satisfied is a guard somebody deletes. This is the
+    // whole promotion: the register row, the enum member, the launcher test.
+    const r = run({
+      channels: registerDoc({ channels: [...channelRows(), sideloadLiveRow()], parked: [] }),
+      caps: capsWithSideload(),
+      railTest: railTestWithSideload(),
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /9 channel\(s\): the register's rail and the shipped capability matrix agree/);
+    // …and the printed APK gap has to STOP printing, or the note is decoration.
+    assert.doesNotMatch(r.out, /ASSIGNS APK SIDELOAD TO `paddle`, AND NO LIVE CHANNEL ROW CARRIES IT/);
+  });
+
+  // ── (b) THE VALUE IS ONE THE REGISTER'S OWN DICTIONARY DEFINES ───────────
+  test('FAILS when the declared rail is outside the vocabulary', () => {
+    const rows = channelRows();
+    rows.find((c) => c.id === 'windows-store').purchaseRail.rail = 'stripe';
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /channel `windows-store` declares rail `stripe`, which is not one of/);
+  });
+
+  test('FAILS when the vocabulary LOSES a rail [ADR 039] locked', () => {
+    // Deleting `none` does not remove a rail — it removes the ability to write
+    // it down, and a rail that cannot be named cannot be forbidden either.
+    const rails = RAILS();
+    delete rails.none;
+    const r = run({ channels: registerDoc({ rails }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /THE RAIL VOCABULARY LOST `none`/);
+  });
+
+  test('FAILS when a FIFTH rail is added as a data edit', () => {
+    const r = run({ channels: registerDoc({ rails: { ...RAILS(), stripe: 'Stripe, with no ADR behind it at all.' } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /AN UNDECIDED RAIL/);
+  });
+
+  test('FAILS when a `forbids` entry names a rail that does not exist', () => {
+    const rows = channelRows();
+    rows.find((c) => c.id === 'ios-appstore').purchaseRail.forbids.push('braintree');
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /forbids `braintree`, which is not one of/);
+  });
+
+  test('COVERAGE LOST when the rails dictionary is missing entirely', () => {
+    // Without it the guard would be checking every value against a list it
+    // carries itself — which stops covering the file the day the file changes.
+    const r = run({ channels: registerDoc({ noRailsDict: true }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares no `purchaseRails.rails` dictionary/);
+  });
+
+  test('FAILS when a rail dictionary entry carries no description', () => {
+    const r = run({ channels: registerDoc({ rails: { ...RAILS(), paddle: '' } }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /rail `paddle` in `purchaseRails.rails` carries no description/);
+  });
+
+  // ── (c) A ROW MAY NOT CANCEL ITSELF ─────────────────────────────────────
+  test('🔴 FAILS when a row forbids its OWN rail', () => {
+    const rows = channelRows();
+    rows.find((c) => c.id === 'android-play').purchaseRail.forbids.push('play-billing');
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /CONTRADICTORY ROW — channel `android-play` declares rail `play-billing` and also forbids/);
+  });
+
+  test('FAILS when a row forbids something and says nothing about WHY', () => {
+    // `forbids` is NOT the complement of `rail`: on `web` Play Billing is absent
+    // MECHANICALLY, on `android-play` Paddle is absent because Google FORBIDS
+    // it. Same list, different owners, different remedies.
+    const rows = channelRows();
+    rows.find((c) => c.id === 'web').purchaseRail.forbidsWhy = '';
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /says nothing about WHY/);
+  });
+
+  test('FAILS when the rail assignment carries no substantive `why`', () => {
+    const rows = channelRows();
+    rows.find((c) => c.id === 'ios-appstore').purchaseRail.why = 'because';
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares no substantive `why`/);
+  });
+
+  test('FAILS when the rail assignment cites no `source`', () => {
+    const rows = channelRows();
+    rows.find((c) => c.id === 'macos-appstore').purchaseRail.source = '';
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /cites no `source`/);
+  });
+
+  // ── (d) THE SHIPPED CODE AGREES WITH THE REGISTER ───────────────────────
+  test('🔴 FAILS when the CODE offers a rail the register forbids — register untouched, only Dart moved', () => {
+    // THE ONE WITH THE MONEY ON IT. `HostedCheckoutRail` is the only PurchaseRail
+    // in the tree, so `technicallySupported && channelPermitted` IS an
+    // instruction to open Paddle — on `android-play` that is an anti-steering
+    // violation, and on an Apple channel a documented rejection cause.
+    const r = run({
+      caps: mutate(
+        CAPS,
+        `      case PurchaseChannel.androidPlay:
+        return const PurchaseCapabilities(
+          technicallySupported: true,
+          channelPermitted: false,`,
+        `      case PurchaseChannel.androidPlay:
+        return const PurchaseCapabilities(
+          technicallySupported: true,
+          channelPermitted: true,`,
+      ),
+      railTest: mutate(RAIL_TEST, '    PurchaseChannel.web,', '    PurchaseChannel.web,\n    PurchaseChannel.androidPlay,'),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /THE SHIPPED CODE OFFERS A RAIL THE REGISTER FORBIDS — channel `android-play` declares rail `play-billing`/);
+  });
+
+  test('FAILS when the REGISTER moves a channel off Paddle and the code keeps opening it', () => {
+    const rows = channelRows();
+    const pr = rows.find((c) => c.id === 'windows-store').purchaseRail;
+    pr.rail = 'play-billing';
+    pr.forbids = ['paddle', 'apple-iap'];
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /THE SHIPPED CODE OFFERS A RAIL THE REGISTER FORBIDS — channel `windows-store`/);
+  });
+
+  test('FAILS when the register claims a rail the shipped code REFUSES — the mirror', () => {
+    // Without this half, the cheapest way to green a §G failure is to flip the
+    // matrix to `false` everywhere, and a rail nobody ships passes as compliant.
+    const rows = channelRows();
+    const pr = rows.find((c) => c.id === 'android-play').purchaseRail;
+    pr.rail = 'paddle';
+    pr.forbids = ['apple-iap'];
+    const parked = parkedRows();
+    parked[0].purchaseRail.rail = 'none'; // keep the split limb out of this case
+    const r = run({ channels: registerDoc({ channels: rows, parked }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /THE REGISTER CLAIMS A RAIL THE SHIPPED CODE REFUSES — channel `android-play`/);
+  });
+
+  test('🔴 FAILS when the platform map takes the PERMISSIVE answer — the APK trap, generalised', () => {
+    // A build cannot tell at runtime which channel installed it, so one channel
+    // answers for the whole platform. Point that answer at a Paddle channel and
+    // every sibling on the platform inherits a rail its own row forbids — which
+    // is exactly "same artifact, different channel, different rail" read
+    // backwards.
+    const r = run({
+      caps: mutate(
+        CAPS,
+        'case TargetPlatform.iOS:\n        return forChannel(PurchaseChannel.iosAppStore);',
+        'case TargetPlatform.iOS:\n        return forChannel(PurchaseChannel.web);',
+      ),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /THE PLATFORM MAP TAKES THE PERMISSIVE ANSWER — `forPlatform\(TargetPlatform.iOS\)` resolves to `web`/);
+  });
+
+  test('COVERAGE LOST when the platform map cannot be parsed at all', () => {
+    const r = run({
+      caps: CAPS.replace(
+        /case TargetPlatform\.(\w+):\s*\n\s*return forChannel\(PurchaseChannel\.(\w+)\);/g,
+        'case TargetPlatform.$1:\n        return _resolve($2);',
+      ),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no `case TargetPlatform.X: return forChannel\(PurchaseChannel.Y\);` could be parsed/);
+  });
+
+  test('🔴 COVERAGE LOST when a SECOND PurchaseRail implementation lands — the premise, not the conclusion', () => {
+    // The day a Play Billing rail ships, `channelPermitted: true` stops meaning
+    // "opens Paddle" and every comparison in §G silently changes subject. The
+    // guard must say it has stopped being able to reason.
+    const r = run({ extraRailImpl: 'class PlayBillingRail implements PurchaseRail {\n  const PlayBillingRail();\n}\n' });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — §G reasons from "the only PurchaseRail this repo ships is HostedCheckoutRail/);
+    assert.match(r.out, /now implements \[HostedCheckoutRail, PlayBillingRail\]/);
+  });
+
+  test('COVERAGE LOST when the `paddle` rail id resolves to no code', () => {
+    const r = run({ morPaddle: null });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the `paddle` rail id is supposed to resolve to real code/);
+  });
+
+  test('COVERAGE LOST when the client rail implementation is gone', () => {
+    const r = run({ hostedRail: null });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST — §G reasons from/);
+  });
+
+  // ── THE PARKED SPLITS — the APK trap as data ────────────────────────────
+  test('🔴 FAILS when the parked APK split takes the SAME rail as Play — the exact misreading', () => {
+    // "APK and iOS = own store, everything else Paddle" written into the
+    // register: the sideload row follows the ARTIFACT instead of the CHANNEL,
+    // and the split it exists to record disappears.
+    const parked = parkedRows();
+    parked[0].purchaseRail = railBlock('play-billing', ['apple-iap']);
+    const r = run({ channels: registerDoc({ parked }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`android-sideload` SPLITS FROM `android-play` AND TAKES THE SAME RAIL \(`play-billing`\)/);
+  });
+
+  test('FAILS when a parked entry is ALSO a live channel row', () => {
+    const r = run({ channels: registerDoc({ channels: [...channelRows(), sideloadLiveRow()] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /TWO RAIL ANSWERS FOR `android-sideload`/);
+  });
+
+  test('FAILS when a parked entry names no `railSplitsFrom`', () => {
+    const parked = parkedRows();
+    delete parked[0].railSplitsFrom;
+    const r = run({ channels: registerDoc({ parked }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /awaiting channel `android-sideload` declares no `railSplitsFrom`/);
+  });
+
+  test('FAILS when a parked entry splits from a channel that does not exist', () => {
+    const parked = parkedRows();
+    parked[0].railSplitsFrom = 'android-gone';
+    const r = run({ channels: registerDoc({ parked }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /splits from `android-gone`, which is not a channel with a declared rail/);
+  });
+
+  test('FAILS when a PARKED channel already has an enum row in the shipped code', () => {
+    // §A fails when the enum is MISSING a registered channel; this is the
+    // mirror — the matrix answering for a channel the register has not decided
+    // is real, which is an answer that came from nowhere.
+    const r = run({ caps: capsWithSideload(), railTest: railTestWithSideload() });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`android-sideload` IS PARKED IN THE REGISTER AND ALREADY LIVE IN THE CODE/);
+  });
+
+  test('a parked entry is validated like a live row, not parked and forgotten', () => {
+    const parked = parkedRows();
+    parked[0].purchaseRail.source = '';
+    const r = run({ channels: registerDoc({ parked }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /awaiting channel `android-sideload`'s `purchaseRail` cites no `source`/);
+  });
+
+  test('PRINTS the APK-sideload gap on every run while no live row carries it', () => {
+    // The limb that cannot fail today is the one that must SAY so. ADR 039
+    // assigns APK sideload to Paddle; with no live row and no enum member the
+    // code refuses (the safe direction) but not the decided one, and a silent
+    // pass here would read exactly like agreement.
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ASSIGNS APK SIDELOAD TO `paddle`, AND NO LIVE CHANNEL ROW CARRIES IT/);
   });
 });

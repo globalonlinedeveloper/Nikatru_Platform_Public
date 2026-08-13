@@ -19,17 +19,44 @@
 // ⚠️ A FIXTURE AGREES WITH WHATEVER MISUNDERSTANDING WROTE IT. These are the
 // regression net; the mutation run against the real tree is the proof.
 //
+// 🔴 2026-08-13 — EIGHT CASES HERE WENT RED WITHOUT ONE LINE OF THIS FILE BEING
+//    EDITED, AND THE GUARD WAS RIGHT. licence-cross-assert.mjs was wired into
+//    BOTH licence guards that day, which made [7]P-5's
+//    tooling/legal/content-licence-register.json part of THIS guard's subject.
+//    The fixture below INVENTS a tree, and the tree it invented has one register
+//    in it — so every case that expected exit 0 got `CROSS-ASSERT COVERAGE LOST`
+//    while `node tooling/ci/assert-licence-register.mjs` exited 0 on the real
+//    repository. That asymmetry is the finding, not the failure: a fixture that
+//    no longer resembles real input stops testing the thing, and it reports the
+//    difference as a guard defect. The repair is to make the invented tree carry
+//    what a real one carries (BOTH registers, and a `contentFamily` answer on
+//    every row) — not to soften the guard.
+//
+//    Two smaller consequences of the same shape, fixed here:
+//      · the cases that assert only `status 1` + /COVERAGE LOST/ had started
+//        passing off the CROSS-ASSERT message instead of their own subject. A
+//        test that passes for a reason it was not written about is coverage that
+//        has quietly left the tree.
+//      · licence-cross-assert.mjs shipped with NO test file naming it at all —
+//        the exact shape [pipeline F-10]/assert-guard-coverage.mjs limb 1 exists
+//        to refuse. Its cases are the last describe block below.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+// The seam module itself. Imported rather than re-described: the boundary
+// sentence is guarded in the real register, so a hand copy of it here would be a
+// second store for one string and would drift in the direction that still passes.
+import { BOUNDARY_SENTENCE, crossAssertLicenceRegisters } from '../licence-cross-assert.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-licence-register.mjs');
 
 let TMP;
@@ -59,6 +86,8 @@ const DERIVATION = {
 const DEFAULT_ASSETS = [
   {
     id: 'icon-font',
+    contentFamily: null,
+    contentFamilyWhy: 'an icon font the toolchain bundles; the content pipeline neither generates with it nor ships it in a pack',
     fromFlag: 'uses-material-design',
     name: 'MaterialIcons',
     origin: 'third-party',
@@ -70,6 +99,8 @@ const DEFAULT_ASSETS = [
   },
   {
     id: 'brand-a',
+    contentFamily: null,
+    contentFamilyWhy: 'own-work brand art, shipped in the binary and carried by no pack',
     path: 'apps/one/assets/brand/logo.png',
     name: 'logo',
     origin: 'own-work',
@@ -81,6 +112,8 @@ const DEFAULT_ASSETS = [
   },
   {
     id: 'brand-b',
+    contentFamily: null,
+    contentFamilyWhy: 'own-work brand art, shipped in the binary and carried by no pack',
     path: 'apps/one/assets/brand/icon.png',
     name: 'icon',
     origin: 'own-work',
@@ -89,6 +122,26 @@ const DEFAULT_ASSETS = [
     attributionRequired: false,
     attributedIn: null,
     source: { note: 'our own mark' },
+  },
+];
+
+// ── [7]P-5's register, which this fixture has to carry too ───────────────────
+// Only the fields the seam reads, because inventing the rest would be inventing
+// a second subject. `all null` mirrors the REAL tree's measured state (6 asset
+// rows, 6 families, 0 links) so the baseline exercises the honest-empty print;
+// the linked cases below supply the agreement limb its subject.
+const DEFAULT_CONTENT_FAMILIES = [
+  {
+    family: 'hand-authored-content',
+    kind: 'first-party',
+    licence_id: 'first-party',
+    verdicts: { attribution_NOTICE: { value: 'not-required', basis: 'owner-lock' } },
+  },
+  {
+    family: 'noto-fonts',
+    kind: 'third-party',
+    licence_id: 'OFL-1.1',
+    verdicts: { attribution_NOTICE: { value: 'required', basis: 'clause:2' } },
   },
 ];
 
@@ -114,6 +167,12 @@ function fixture({
   incompatible = { prefixes: ['CC-BY-NC', 'CC-BY-SA'] },
   generatedFiles = { 'AssetManifest.bin': 'the build\'s own index', NOTICES: 'the attribution surface itself' },
   patterns = ['AboutListTile\\s*\\(', 'showLicensePage\\s*\\(', 'LicenseRegistry\\.addLicense\\s*\\('],
+  // The second register. `withContentRegister: false` is the tree this fixture
+  // used to build unknowingly, and it is now a NAMED case rather than the
+  // silent shape of every baseline.
+  contentFamilies,
+  contentReadme = ['A fixture stand-in for [7]P-5, carrying only the fields the seam reads.', BOUNDARY_SENTENCE],
+  withContentRegister = true,
 } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(root, { recursive: true });
@@ -133,6 +192,17 @@ function fixture({
       2,
     ),
   );
+  if (withContentRegister) {
+    write(
+      root,
+      join('tooling', 'legal', 'content-licence-register.json'),
+      JSON.stringify(
+        { _readme: contentReadme, families: contentFamilies ?? structuredClone(DEFAULT_CONTENT_FAMILIES) },
+        null,
+        2,
+      ),
+    );
+  }
   write(root, join('apps', 'one', 'pubspec.yaml'), appPubspec);
   write(root, join('apps', 'one', 'assets', 'brand', 'logo.png'), 'png-a');
   write(root, join('apps', 'one', 'assets', 'brand', 'icon.png'), 'png-b');
@@ -293,6 +363,10 @@ describe('licences that cannot ship here are refused, not printed', () => {
     const r = run(fixture({ incompatible: { prefixes: [] } }));
     assert.equal(r.status, 1);
     assert.match(out(r), /COVERAGE LOST/);
+    // …and NAMING it, because a bare /COVERAGE LOST/ was satisfiable by a
+    // DIFFERENT limb's message from 2026-08-13 (the seam's, over a fixture with
+    // one register in it) — the test passing for a reason it was not about.
+    assert.match(out(r), /declares no `incompatibleLicences\.prefixes`/);
   });
 
   test('an attribution obligation with nothing discharging it FAILS', () => {
@@ -360,6 +434,7 @@ describe('[pipeline K-11] every app shows the licences of what it ships', () => 
     const r = run(fixture({ patterns: [] }));
     assert.equal(r.status, 1);
     assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /declares no `licenceSurfaceCalls\.patterns`/);
   });
 });
 
@@ -370,6 +445,9 @@ describe('coverage self-checks', () => {
     const r = run(root);
     assert.equal(r.status, 1);
     assert.match(out(r), /COVERAGE LOST/);
+    // The NEAR register specifically. The seam raises its own COVERAGE LOST over
+    // the same two files, and without this line the two are indistinguishable.
+    assert.match(out(r), /tooling\/legal\/asset-register\.json does not exist/);
   });
 
   test('an assets: walk that finds nothing while the icon-font flag is on is COVERAGE LOST', () => {
@@ -453,6 +531,8 @@ describe('coverage self-checks', () => {
       const assets = structuredClone(DEFAULT_ASSETS);
       assets.push({
         id: 'engine-shader',
+        contentFamily: null,
+        contentFamilyWhy: 'a shader the engine emits into the bundle; nothing in the content pipeline reads or produces it',
         path: 'ink_sparkle.frag',
         bundleOnly: true,
         name: 'ink_sparkle.frag',
@@ -471,6 +551,8 @@ describe('coverage self-checks', () => {
       const assets = structuredClone(DEFAULT_ASSETS);
       assets.push({
         id: 'engine-shader',
+        contentFamily: null,
+        contentFamilyWhy: 'a shader the engine emits into the bundle; nothing in the content pipeline reads or produces it',
         path: 'ink_sparkle.frag',
         bundleOnly: true,
         name: 'ink_sparkle.frag',
@@ -508,5 +590,208 @@ describe('coverage self-checks', () => {
     const r = run(root, '--bundle', bundle);
     assert.equal(r.status, 1);
     assert.match(out(r), /has NO row in tooling\/legal\/asset-register\.json/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// licence-cross-assert.mjs — the seam between [7]P-5's register and [8]K-10's.
+//
+// 🔴 IT SHIPPED WITH NO TEST FILE NAMING IT. Created 2026-08-13, imported by
+// BOTH licence guards, negative-tested by hand against the real registers — and
+// with nothing in tooling/ci/test/ that could fail if it changed. That is the
+// exact absence [pipeline F-10] / assert-guard-coverage.mjs limb 1 refuses ("a
+// guard nobody feeds known-bad input to has only ever run against the real
+// repository, which is valid input by definition"), and it is also how the eight
+// failures at the top of this file happened: the only thing exercising the new
+// module was a fixture suite that predated it.
+//
+// Every case below is a MUTATION of the passing fixture, each asserting the
+// SPECIFIC message rather than a bare non-zero exit — a crash and a catch look
+// identical from the exit code alone.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('[7]P-5 ↔ [8]K-10 — the seam between the two licence registers', () => {
+  /** A fixture in which ONE asset row genuinely links to a content family, so
+   *  the agreement limb has a subject. The real tree's overlap is empty today
+   *  (6 rows, 6 families, 0 links) and an agreement limb with no subject is this
+   *  repo's cardinal sin — so the fixture supplies the subject the real tree
+   *  cannot, and the honest-empty print is covered separately below. */
+  const FAM = 'a-family-in-both-registers';
+  const linked = ({ licenceId = 'proprietary-all-rights-reserved', attribution = 'not-required' } = {}) => {
+    const assets = structuredClone(DEFAULT_ASSETS);
+    assets[1].contentFamily = FAM;
+    assets[1].contentFamilyWhy = 'the pack carries this mark too, so both registers describe it';
+    const contentFamilies = structuredClone(DEFAULT_CONTENT_FAMILIES);
+    contentFamilies.push({
+      family: FAM,
+      kind: 'third-party',
+      licence_id: licenceId,
+      verdicts: { attribution_NOTICE: { value: attribution, basis: 'clause:4' } },
+    });
+    return { assets, contentFamilies };
+  };
+
+  test('a tree with only ONE register is CROSS-ASSERT COVERAGE LOST — half a seam is not a seam', () => {
+    // The shape every baseline in this file silently had until 2026-08-13.
+    const r = run(fixture({ withContentRegister: false }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /CROSS-ASSERT COVERAGE LOST/);
+    assert.match(out(r), /tooling\/legal\/content-licence-register\.json does not exist/);
+  });
+
+  test('a content register with NO family rows is COVERAGE LOST, not agreement', () => {
+    const r = run(fixture({ contentFamilies: [] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /CROSS-ASSERT COVERAGE LOST/);
+    assert.match(out(r), /0 family row\(s\)/);
+  });
+
+  test('an asset row that never answers `contentFamily` FAILS — the field is required, null is an answer', () => {
+    const assets = structuredClone(DEFAULT_ASSETS);
+    delete assets[2].contentFamily;
+    const r = run(fixture({ assets }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /"brand-b" declares no `contentFamily`/);
+  });
+
+  test('an answered `contentFamily` with no `contentFamilyWhy` FAILS — a bare answer cannot be reviewed', () => {
+    const assets = structuredClone(DEFAULT_ASSETS);
+    assets[2].contentFamilyWhy = '   ';
+    const r = run(fixture({ assets }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /"brand-b" answers `contentFamily` and gives no `contentFamilyWhy`/);
+  });
+
+  test('a link to a family the content register does not have FAILS — a cross-link to nothing reads like a checked one', () => {
+    const assets = structuredClone(DEFAULT_ASSETS);
+    assets[1].contentFamily = 'noto-fontz';
+    assets[1].contentFamilyWhy = 'a typo is the cheapest way to make a seam disappear';
+    const r = run(fixture({ assets }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /links to content family "noto-fontz" and tooling\/legal\/content-licence-register\.json has no such row/);
+  });
+
+  test('a linked family that AGREES passes, and the print says how many verdicts it compared', () => {
+    const r = run(fixture(linked()));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /1 family\/families in BOTH registers, 2 verdict comparison\(s\), all in agreement/);
+  });
+
+  test('one family under TWO licences FAILS', () => {
+    const r = run(fixture(linked({ licenceId: 'Apache-2.0' })));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /SEAM DISAGREEMENT on licence identity/);
+    assert.match(out(r), /says APACHE-2\.0 \(licence_id\)/);
+  });
+
+  test('the same licence with TWO attribution duties FAILS — the pairs are checked independently', () => {
+    // The licences are made to AGREE here on purpose: without this case, one
+    // pair masking the other would be indistinguishable from both working.
+    const r = run(fixture(linked({ attribution: 'required' })));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /SEAM DISAGREEMENT on attribution \/ NOTICE duty/);
+    assert.ok(!out(r).includes('SEAM DISAGREEMENT on licence identity'), out(r));
+  });
+
+  test('UNVERIFIED is NOT a wildcard — resolved on one side and unread on the other is a real disagreement', () => {
+    // Both registers holding two different states of knowledge about one licence
+    // is the finding, not a tolerance to be absorbed.
+    const r = run(fixture(linked({ attribution: 'UNVERIFIED' })));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /says UNVERIFIED \(attribution_NOTICE\) and tooling\/legal\/asset-register\.json row "brand-a" says NOT-REQUIRED/);
+  });
+
+  test('renaming the content-side field is COVERAGE LOST — not undefined agreeing with undefined forever', () => {
+    const contentFamilies = structuredClone(DEFAULT_CONTENT_FAMILIES).map(({ licence_id, ...rest }) => ({ ...rest, licenceId: licence_id }));
+    const r = run(fixture({ contentFamilies }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /CROSS-ASSERT COVERAGE LOST — not one row in tooling\/legal\/content-licence-register\.json produces a value for "licence_id"/);
+  });
+
+  test('renaming the asset-side field is COVERAGE LOST', () => {
+    const assets = structuredClone(DEFAULT_ASSETS).map(({ licence, ...rest }) => ({ ...rest, licenceId: licence }));
+    const r = run(fixture({ assets }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /CROSS-ASSERT COVERAGE LOST — not one row in tooling\/legal\/asset-register\.json produces a value for "licence"/);
+  });
+
+  test('the boundary sentence leaving the register FAILS and names the corpus copies to re-sync', () => {
+    const r = run(fixture({ contentReadme: ['the two registers answer different questions'] }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /no longer contains the boundary sentence verbatim/);
+    assert.match(out(r), /08-compliance-legal\.md/);
+  });
+
+  test('an EMPTY overlap is PRINTED with its candidates — "0 compared" must never read as "0 disagreements"', () => {
+    const r = run(fixture());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /ZERO link to a content family, so the agreement limb compared NOTHING/);
+    assert.match(out(r), /Seam candidates the day one is[^\n]*noto-fonts/);
+  });
+
+  test('the seam says the SAME thing from BOTH sides — the half that stays green is the half somebody quotes', () => {
+    // The module's whole reason for being a shared import rather than a limb
+    // inside one guard. Asserted on the FUNCTION, because the two callers differ
+    // in everything else they check and an end-to-end comparison of their
+    // outputs would be comparing two guards, not one seam.
+    const root = fixture(linked({ licenceId: 'Apache-2.0' }));
+    const asAsset = crossAssertLicenceRegisters(root, { side: 'asset' });
+    const asContent = crossAssertLicenceRegisters(root, { side: 'content' });
+    assert.ok(asAsset.problems.length > 0, 'the disagreeing fixture must produce problems at all');
+    assert.deepEqual(asContent.problems, asAsset.problems);
+    assert.deepEqual(asContent.prints, asAsset.prints);
+    assert.equal(asAsset.linked, 1);
+    assert.equal(asAsset.compared, 2);
+
+    // …and the agreeing tree is clean from both sides, or the equality above
+    // would also hold for a function that always returns the same problem.
+    const clean = crossAssertLicenceRegisters(fixture(linked()), { side: 'asset' });
+    assert.deepEqual(clean.problems, []);
+  });
+
+  test('assert-content-licences.mjs goes red on the SAME disagreement — the OTHER guard is wired to the seam', () => {
+    // 🔴 THE LIMB THAT NEEDS A REAL TREE, AND THE ONE NOTHING ELSE COVERS.
+    // Everything above proves the seam module and its wiring into
+    // assert-licence-register.mjs. The seam's stated reason for being a shared
+    // import — "a disagreement turns BOTH red, or the one that stays green is
+    // the one somebody quotes" — is a claim about the OTHER guard, and deleting
+    // its two `seam` lines would leave every case above passing. [7]P-5's guard
+    // cannot be driven from the invented fixture in this file (it wants recipes,
+    // packs and a required-coverage set), so this case does what the sibling
+    // suite does: it MUTATES A COPY OF THE REAL TREE. Only tooling/ is copied —
+    // the guard itself is run from the repo, since nothing here mutates a guard.
+    const root = join(TMP, `real${seq++}`);
+    for (const rel of ['tooling/content_pipeline', 'tooling/legal']) {
+      cpSync(join(REPO, ...rel.split('/')), join(root, ...rel.split('/')), { recursive: true });
+    }
+    // The tripwire limb scans pubspecs; with none found it reports on an empty
+    // domain and the baseline below would prove nothing.
+    for (const top of ['apps', 'packages', 'services', 'sites']) {
+      const dir = join(REPO, top);
+      if (!existsSync(dir)) continue;
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (!e.isDirectory()) continue;
+        const src = join(dir, e.name, 'pubspec.yaml');
+        if (!existsSync(src)) continue;
+        mkdirSync(join(root, top, e.name), { recursive: true });
+        cpSync(src, join(root, top, e.name, 'pubspec.yaml'));
+      }
+    }
+    const contentGuard = (r) => spawnSync(process.execPath, [join(CI_DIR, 'assert-content-licences.mjs'), r], { encoding: 'utf8' });
+
+    // The positive control. Without it a red MUTATED run is consistent with a
+    // copy that was simply too thin to pass.
+    const before = contentGuard(root);
+    assert.equal(before.status, 0, out(before));
+
+    // The same mutation the asset-side cases use: an asset row claims a content
+    // family whose licence and attribution duty it does not agree with.
+    const reg = join(root, 'tooling', 'legal', 'asset-register.json');
+    const doc = JSON.parse(readFileSync(reg, 'utf8'));
+    doc.assets[0].contentFamily = 'noto-fonts';
+    writeFileSync(reg, `${JSON.stringify(doc, null, 2)}\n`);
+
+    const after = contentGuard(root);
+    assert.equal(after.status, 1, out(after));
+    assert.match(out(after), /SEAM DISAGREEMENT on licence identity for family "noto-fonts"/);
   });
 });

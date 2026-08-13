@@ -26,8 +26,23 @@
 // Every number in this file was re-derived by running the guard against the
 // working tree, not by editing the old numbers until they matched:
 //   19 reachable surfaces (17 routed screens + 2 modal sheets) — unchanged
-//   19 swept (was 5) · 0 unswept (was 14) · 60 a11y cases (was 24)
-//   24 of those 60 cases call a sweep; 36 assert one label and do not
+//   19 swept (was 5) · 0 unswept (was 14) · ~~60~~ a11y cases (was 24)
+//   ~~24 of those 60 cases call a sweep; 36 assert one label and do not~~
+//
+// ── RE-MEASURED AGAIN THE SAME DAY, WHEN THE TAP-TARGET FAMILY LANDED ────────
+// [ADR 048] took the suite 60 → 81 and moved `tap-target` from ×0 to ×19, and
+// NINE of this file's fourteen tests went red on pinned numbers that had not
+// moved with it. Re-derived the same way — by running the guard, then counting
+// the blocks with the guard's own parse:
+//   19 reachable surfaces (17 routed screens + 2 modal sheets) — still unchanged
+//   19 swept · 0 unswept · 81 a11y cases
+//   43 of the 81 call a sweep (naked-controls ×24 + tap-target ×19, and NO case
+//      is in two families); 38 assert one label and do not
+// 🔴 AND THREE TESTS CHANGED SUBSTANCE, NOT JUST NUMBERS. A second sweep family
+// over the same surfaces silently un-tested M1/M2/M2b and half of M5 — see the
+// notes on each. That is the more expensive half of this repair: the numeric
+// failures were LOUD (nine red tests), and these four were SILENT and would
+// have stayed green.
 // Two tests changed SUBJECT rather than numbers, because their subject became
 // empty, and an assertion that cannot fail inflates coverage instead of
 // providing it. Both are re-pointed and renamed below, never deleted:
@@ -163,6 +178,18 @@ function sweptList(out) {
     .map((l) => l.trim().split(' ')[1]);
 }
 
+/** The sweep FAMILIES the guard attributes to one surface, from its ✅ line.
+ *
+ *  Added 2026-08-13. M1/M2/M2b delete ONE sweep call, so they only measure what
+ *  their names claim while their subject is swept by exactly ONE family — and
+ *  when a second family landed on the old subject nothing said a word. This is
+ *  what the precondition test below reads. */
+function familiesOf(out, symbol) {
+  const prefix = `   · ${symbol} — `;
+  const line = out.split('\n').find((l) => l.startsWith(prefix));
+  return line === undefined ? null : line.slice(prefix.length).split(' (')[0].split(' + ');
+}
+
 /** The ⬜ block — the surfaces the guard prints as owed. */
 function printedUnswept(out) {
   const start = out.indexOf('carry NO a11y sweep');
@@ -206,7 +233,7 @@ function addUnsweptSheet(root) {
 
 /** Give that surface a sweep: the import for provenance, and one testWidgets
  *  block that both CONSTRUCTS it and CALLS a sweep. Swept 19 → 20, cases
- *  60 → 61. */
+ *  109 → 110. */
 function sweepTheNewSheet(root) {
   edit(
     root,
@@ -243,15 +270,28 @@ describe('the guard says YES on the tree as it is', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, out);
     assert.match(out, /19 reachable surface\(s\) \(17 routed screens, 2 modal sheets\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 60 case\(s\)/);
+    assert.match(out, /19 swept by 1 a11y test file\(s\) across 109 case\(s\)/);
     assert.match(out, /0 unswept and PRINTED/);
+    // The per-family tally, pinned. It read `tap-target ×0` from the day this
+    // guard was written until 2026-08-13, and a family that has never been
+    // non-zero is a limb nothing has exercised — so the number that proves it
+    // started is worth holding.
+    //
+    // ✅ `contrast` STARTED TOO, later the same day: ×0 → ×23. It is pinned here
+    // for the same reason tap-target is — and it earned the pin immediately, by
+    // failing on its first real run and catching five genuine defects (a 1.01:1
+    // page title in dark mode among them). **Both families have now gone from
+    // ×0 to non-zero, so this line no longer records a limb that has never
+    // fired.** If either returns to ×0, that is a sweep helper renamed out of
+    // the parse, not progress.
+    assert.match(out, /sweep families used: naked-controls ×24, tap-target ×19, contrast ×23/);
   });
 
   test('the copied subject tree reproduces the real reading exactly', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
     assert.match(out, /19 reachable surface\(s\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 60 case\(s\)/);
+    assert.match(out, /19 swept by 1 a11y test file\(s\) across 109 case\(s\)/);
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);
   });
@@ -283,7 +323,7 @@ describe('the guard says YES on the tree as it is', () => {
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /FAIL /);
     assert.match(out, /20 reachable surface\(s\) \(17 routed screens, 3 modal sheets\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 60 case\(s\)/);
+    assert.match(out, /19 swept by 1 a11y test file\(s\) across 109 case\(s\)/);
     assert.match(out, /1 unswept and PRINTED/);
   });
 
@@ -315,7 +355,7 @@ describe('the guard says YES on the tree as it is', () => {
     );
     assert.deepEqual(sweptList(out).sort(), [...ALL_19_SWEPT, NEW_SHEET_SYMBOL].sort());
     assert.equal(printedUnswept(out).length, 0);
-    assert.match(out, /20 swept by 1 a11y test file\(s\) across 61 case\(s\)/);
+    assert.match(out, /20 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
     assert.match(out, /0 unswept and PRINTED/);
   });
 });
@@ -323,8 +363,55 @@ describe('the guard says YES on the tree as it is', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // A SWEEP THAT LEAVES — covered ⇒ printed, and it is NOT quiet
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔴 RE-POINTED FROM INSIGHTS TO CHECK-INBOX, 2026-08-13, AND THE OLD SUBJECT
+// HAD STOPPED TESTING ANYTHING — SILENTLY, WITH ALL THREE TESTS STILL GREEN
+// WOULD HAVE BEEN THE OUTCOME HAD THE NUMBERS NOT MOVED TOO.
+//
+// These three delete ONE sweep call and require the surface to leave the ✅
+// list. `InsightsScreen` is swept by TWO families now (naked-controls AND
+// tap-target), so deleting `expectNothingNaked(tester, 'insights')` leaves it
+// swept — and the guard is CORRECT to keep reporting it. The mutation stopped
+// matching its own name: "the sweep call is deleted" would have been measuring
+// nothing but the guard's ability to survive an irrelevant edit.
+//
+// TWO REPAIRS WERE AVAILABLE AND THE CHOICE IS RECORDED RATHER THAN IMPLIED:
+//   (a) make each mutation delete BOTH of the subject's sweeps;
+//   (b) re-point at a surface carrying exactly ONE.
+// (b) is taken, for all three. The axis under test is whether a sweep CALL is
+// what the guard counts — M2 hides it in a string, M2b in a comment — and each
+// needs the smallest edit that isolates that axis. Under (a) every one of the
+// three would need a second anchor in a distant group of the suite, doubling
+// what can drift while measuring the same one thing; and M2/M2b would have to
+// prose-ify a `meetsGuideline` call as well, which tests the literal- and
+// comment-stripping limbs twice over rather than once.
+//
+// ⚠️ AND (b) HAS A FAILURE MODE, WHICH IS THE ONE THAT JUST HAPPENED: the
+// subject's single-family status is a fact about today's tree, and nothing
+// noticed when it changed. So it is no longer left to be noticed. The
+// PRECONDITION test below asserts it, and the suite ARGUES it too —
+// `CheckInboxScreen` is single-family because
+// `androidTapTargetGuideline` inspects zero nodes on that screen, pinned by
+// `check-inbox hands the tap-target guideline NOTHING — pinned`
+// (a11y_semantics_test.dart:3069). The day that stops being true, that case
+// goes red and so does the precondition, in the same run.
 describe('a surface whose a11y sweep is deleted moves from covered to printed', () => {
-  const DELETED = "        expectNothingNaked(tester, 'insights');\n";
+  // The subject, named once. Swept by exactly ONE family — see the precondition.
+  const SUBJECT = 'CheckInboxScreen';
+  const DELETED = "        expectNothingNaked(tester, 'check-inbox');\n";
+
+  test('PRECONDITION · the subject is swept by exactly ONE family', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.deepEqual(
+      familiesOf(out, SUBJECT),
+      ['naked-controls'],
+      `${SUBJECT} is no longer swept by exactly one family, so deleting its ONE sweep call no longer ` +
+        'unsweeps it and M1/M2/M2b below are vacuous — they would pass while measuring nothing. This is ' +
+        'not hypothetical: it is exactly what a second family did to the previous subject (InsightsScreen) ' +
+        'on 2026-08-13, in silence. Either re-point M1/M2/M2b at a single-family surface, or make each of ' +
+        `them delete EVERY sweep of ${SUBJECT}.\n${out}`,
+    );
+  });
 
   test('M1 · the sweep call is deleted', () => {
     const root = tree();
@@ -332,19 +419,19 @@ describe('a surface whose a11y sweep is deleted moves from covered to printed', 
     const { code, out } = run(root);
 
     // THE ACCOUNTING MOVED — this is the requirement.
-    assert.ok(!sweptList(out).includes('InsightsScreen'), `still reported swept:\n${out}`);
-    assert.ok(printedUnswept(out).includes('InsightsScreen'), `not printed as owed:\n${out}`);
-    assert.deepEqual(printedUnswept(out), ['InsightsScreen']);
+    assert.ok(!sweptList(out).includes(SUBJECT), `still reported swept:\n${out}`);
+    assert.ok(printedUnswept(out).includes(SUBJECT), `not printed as owed:\n${out}`);
+    assert.deepEqual(printedUnswept(out), [SUBJECT]);
 
     // AND IT IS NOT QUIET. Coverage that WAS there and is gone is a regression,
     // not an unstarted task, and SWEPT_FLOOR is what tells the two apart.
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL REGRESSION — `InsightsScreen`/);
+    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT}\``));
 
     // The remaining eighteen are untouched: one loss is reported as one loss.
     assert.deepEqual(
       sweptList(out).sort(),
-      ALL_19_SWEPT.filter((s) => s !== 'InsightsScreen'),
+      ALL_19_SWEPT.filter((s) => s !== SUBJECT),
     );
   });
 
@@ -358,9 +445,9 @@ describe('a surface whose a11y sweep is deleted moves from covered to printed', 
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.ok(!sweptList(out).includes('InsightsScreen'), `prose was counted as a sweep:\n${out}`);
-    assert.ok(printedUnswept(out).includes('InsightsScreen'), out);
-    assert.match(out, /FAIL REGRESSION — `InsightsScreen`/);
+    assert.ok(!sweptList(out).includes(SUBJECT), `prose was counted as a sweep:\n${out}`);
+    assert.ok(printedUnswept(out).includes(SUBJECT), out);
+    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT}\``));
   });
 
   // 🔴 M2 AND M2b DIFFER ON PURPOSE, AND THE DIFFERENCE WAS MEASURED. Both
@@ -379,19 +466,21 @@ describe('a surface whose a11y sweep is deleted moves from covered to printed', 
       root,
       SUITE,
       DELETED,
-      '        // expectNothingNaked(tester) — InsightsScreen is swept elsewhere.\n',
+      `        // expectNothingNaked(tester) — ${SUBJECT} is swept elsewhere.\n`,
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.ok(
-      !sweptList(out).includes('InsightsScreen'),
+      !sweptList(out).includes(SUBJECT),
       `a commented-out call was counted as coverage:\n${out}`,
     );
-    assert.ok(printedUnswept(out).includes('InsightsScreen'), out);
-    assert.match(out, /FAIL REGRESSION — `InsightsScreen`/);
-    // It is still NAMED by the two locale cases, and the guard says so rather
-    // than implying the screen is untouched by the suite.
-    assert.match(out, /InsightsScreen .*NAMES it but never sweeps it/);
+    assert.ok(printedUnswept(out).includes(SUBJECT), out);
+    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT}\``));
+    // It is still NAMED — by the two label cases in its own group AND by the
+    // pinned `hands the tap-target guideline NOTHING` case, all three of which
+    // construct it without sweeping it — and the guard says so rather than
+    // implying the screen is untouched by the suite.
+    assert.match(out, new RegExp(`${SUBJECT} .*NAMES it but never sweeps it`));
   });
 });
 
@@ -418,16 +507,38 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     assert.match(out, /COVERAGE LOST — no file under .* matched `a11y_\*_test\.dart`/);
   });
 
-  test('M5 · both sweep helpers are renamed — 60 cases, not one sweep', () => {
+  // 🔴 `meetsGuideline` ADDED TO THE RENAME 2026-08-13, AND WITHOUT IT THIS
+  // TEST HAD STOPPED REACHING ITS OWN LIMB. Renaming only the two naked
+  // helpers used to silence every sweep in the suite; once the tap-target
+  // family landed it left `tap-target ×19` running and SEVENTEEN surfaces still
+  // swept, so `sweepingBlocks === 0` could not fire and the guard instead
+  // reported two REGRESSIONs (budget and check-inbox, the two surfaces the
+  // tap-target family does not reach). The test went red on its regex and that
+  // is the only reason this was seen — had the message not carried a number,
+  // it would have passed while measuring a different failure entirely.
+  // 📌 A mutation named "not one sweep" must neuter EVERY family the guard
+  // recognises, and it inherits a new one each time SWEEP_FAMILIES grows.
+  // `contrast` needs no rename today only because it shares `meetsGuideline`.
+  test('M5 · every sweep helper is renamed — 109 cases, not one sweep', () => {
     const root = tree();
     const src = readIn(root, SUITE)
       .replaceAll('expectNothingNaked', 'expectNothingBare')
-      .replaceAll('nakedControls', 'bareControls');
-    assert.ok(!src.includes('expectNothingNaked') && !src.includes('nakedControls'));
+      .replaceAll('nakedControls', 'bareControls')
+      .replaceAll('meetsGuideline', 'satisfiesGuideline');
+    assert.ok(
+      !src.includes('expectNothingNaked') &&
+        !src.includes('nakedControls') &&
+        !/\bmeetsGuideline\b/.test(src),
+      'a sweep helper survived the rename, so this mutation would leave a family running',
+    );
     writeIn(root, SUITE, src);
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — 60 a11y case\(s\) were parsed .* and NOT ONE of them calls a sweep/s);
+    assert.match(out, /COVERAGE LOST — 109 a11y case\(s\) were parsed .* and NOT ONE of them calls a sweep/s);
+    // Proof the mutation reached the limb it names rather than a neighbouring
+    // one: with NO family running, nothing is attributed at all.
+    assert.equal(sweptList(out).length, 0);
+    assert.match(out, /sweep families used: naked-controls ×0, tap-target ×0, contrast ×0/);
   });
 
   // ⚠️ RENAMED 2026-08-13, AND THE OLD NAME WAS THE LIE. It read "the surfaces
@@ -489,6 +600,16 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
   // floor has since been re-measured to 60, so four is enough again, the
   // fixture parse is deleted, and the mutation is once more the small silent
   // erosion the limb exists to catch.
+  //
+  // 🔴 AND IT HAPPENED AGAIN THE SAME DAY, WHICH IS WHY THE PARAGRAPH ABOVE
+  // STAYS. The tap-target increment took the suite 60 → 81 and again left
+  // `cases` behind, this time at 60 — TWENTY-ONE cases deletable in silence.
+  // This test was one of the nine that went red, and only because it pins the
+  // floor's own number in its regex: `only 56 … floor is 60` could not match a
+  // guard that no longer trips at 77. Pinning the FLOOR here, not just the
+  // measured count, is what turns someone else's missed re-measurement into a
+  // red test instead of a quieter guard. Re-measured to 81; four is still
+  // enough, because the floor sits exactly on the tree again.
   test('M8 · four cases are deleted while every sweep survives', () => {
     const root = tree();
     for (const title of [
@@ -501,7 +622,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     }
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — only 56 a11y case\(s\) .* the checked-in floor is 60/s);
+    assert.match(out, /COVERAGE LOST — only 105 a11y case\(s\) .* the checked-in floor is 109/s);
     // Every set above is byte-identical — which is the point of the floor, and
     // it is also what catches a mutation that disabled the WRONG block: if one
     // of the four titles above ever drifts onto a sweeping case, its surface

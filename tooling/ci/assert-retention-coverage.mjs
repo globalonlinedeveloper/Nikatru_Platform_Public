@@ -36,7 +36,9 @@
 //   `keep`               requires a WRITTEN `keepWhy`. Without that, "we never
 //                        got round to deleting it" and "we deliberately retain
 //                        this" are the same word.
-//   `period`             requires a positive `periodDays`.
+//   `period`             requires a positive `periodDays` AND — limb (v) — that
+//                        it equal the number declared in
+//                        tooling/legal/data-inventory.json, which is its HOME.
 //   `ttl`                requires the TTL to be IN THE CODE at the row's anchor,
 //                        AND requires `mechanism.ttlSource` — the exact source
 //                        text that sets THIS store's expiry — to appear verbatim
@@ -54,6 +56,50 @@
 // (The per-row shape of every rule is validated by assert-ops-register.mjs; this
 // guard owns the DOMAIN — which stores exist, and whether each one is covered.)
 //
+// 🔴 ONE NUMBER, ONE HOME (added 2026-08-13). `rule: period` above required only
+// "a positive `periodDays`" — a property of the register ALONE. The same number
+// also lives in tooling/legal/data-inventory.json, which is what the privacy
+// notice is generated from, and in the constants in
+// services/platform/src/scheduled.ts, which is what actually deletes rows. Three
+// homes, zero cross-checks between the first two: changing one left the others
+// printing the old figure while every guard stayed green. tooling/ops/register.json
+// :1915 and :1941 BOTH already said "Stage 8 owns the PERIOD; stage 14 owns the
+// job" — and then carried the period anyway, which is a comment describing an
+// intention rather than a rule anything enforced.
+//
+// The decision (2026-08-13) makes that comment true:
+//   · tooling/legal/data-inventory.json  = THE HOME. [8]K-8's own wording names
+//                                          "purpose, retention, legal basis,
+//                                          processor", and the notice is
+//                                          generated from this file.
+//   · tooling/ops/register.json          = the rule KIND and the `deletingJob`.
+//                                          Its `periodDays` is a DERIVED COPY and
+//                                          limb (v) below is what makes "derived"
+//                                          mean something.
+//
+// Limb (v) is deliberately BOTH DIRECTIONS, for the same reason limb (ii) is:
+// checking only "the inventory's number appears in the register" makes DELETING
+// the inventory row the way to pass. And a data-inventory row that declares a
+// period whose id this guard cannot JOIN to a register store is a FAILURE, not a
+// skip — a silent skip is exactly how a domain shrinks unnoticed.
+//
+// ⚠️ THE THIRD HOME IS NOT THIS GUARD'S — services/platform/src/scheduled.ts is
+// paired with the register by services/platform/test/retention-sweep.test.ts,
+// which is where it belongs: that pairing needs the compiled constants, and this
+// guard reads files. The chain is therefore
+//   data-inventory.json  ≡  register.json   ← limb (v), here
+//   register.json        ≡  scheduled.ts    ← retention-sweep.test.ts
+// and equality composes, so all three agree.
+//
+// 📌 ~~"Its `EVENTS_DAILY_RETENTION_DAYS` is read into the `shipped` map and then
+// never asserted, so the code's 1100 can drift from both registers with nothing
+// red."~~ — TRUE WHEN WRITTEN, FIXED THE SAME DAY (2026-08-13). It was MEASURED,
+// not inferred: setting that constant to 37 while both registers said 1100 left
+// 40 tests passing and every retention guard green. The cause was that the test's
+// `stores` array — not its `shipped` map — is what the assertions range over, so
+// a value that was read, used and type-checked was never actually compared. The
+// array now names all three stores, and the same mutation is caught.
+//
 // Usage:  node tooling/ci/assert-retention-coverage.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
@@ -63,6 +109,7 @@ import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
+const INVENTORY_REL = 'tooling/legal/data-inventory.json';
 
 const coverageLost = (lines) => {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
@@ -125,6 +172,24 @@ export function tablesIn(sql) {
   let s = sql.replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
   s = s.replace(/'(?:[^'\\]|\\.)*'/g, "''");
   return [...s.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(\w+)["'`]?/gi)].map((m) => m[1]);
+}
+
+/**
+ * The 1-based line where `field` is declared inside the JSON object whose
+ * `"<id>"` line comes first. A disagreement between two files is only actionable
+ * if it names WHERE in each — "the register says 730" sends a reader to a
+ * 2,400-line file. Best-effort by construction: `null` degrades the citation to
+ * a bare filename rather than failing, because a missing line number must never
+ * be the reason a real disagreement goes unreported.
+ */
+export function lineOfField(text, id, field, window = 80) {
+  const lines = text.split('\n');
+  const start = lines.findIndex((l) => l.includes(`"${id}"`));
+  if (start < 0) return null;
+  for (let i = start; i < Math.min(lines.length, start + window); i++) {
+    if (lines[i].includes(`"${field}"`)) return i + 1;
+  }
+  return null;
 }
 
 /** The enumerated store set. Keys are the `store` values a register row must
@@ -299,6 +364,111 @@ function main() {
     }
   }
 
+  // ── (v) ONE NUMBER, ONE HOME ────────────────────────────────────────────────
+  // tooling/legal/data-inventory.json DECLARES the period (the privacy notice is
+  // generated from it); the register's `periodDays` is a DERIVED COPY. Before
+  // this limb, `rule: period` required only "a positive periodDays" — a property
+  // of the register alone — so changing one file left the other printing the old
+  // figure with every guard green.
+  const inventoryPath = join(ROOT, INVENTORY_REL);
+  if (!existsSync(inventoryPath)) {
+    coverageLost([
+      `${INVENTORY_REL} does not exist.`,
+      'It is the HOME of every retention period. Without it the register\'s `periodDays` is a number with nothing to',
+      'agree with, and this limb would pass by having nothing to compare. A missing home is not a smaller check.',
+    ]);
+  }
+  const inventoryRaw = readFileSync(inventoryPath, 'utf8');
+  let inventory;
+  try {
+    inventory = JSON.parse(inventoryRaw);
+  } catch (e) {
+    coverageLost([`${INVENTORY_REL} could not be parsed (${e.message}), so no declared period has a home to be checked against.`]);
+  }
+  const registerRaw = readFileSync(registerPath, 'utf8');
+  const cite = (file, raw, id, field) => {
+    const n = lineOfField(raw, id, field);
+    return `${file}${n ? `:${n}` : ''}`;
+  };
+
+  /** inventory id → the register `store` key it names. `table:<db>.<table>` is
+   *  the only id shape a period is declared under today. Anything else is an
+   *  ERROR rather than a skip: a skipped row is an unchecked number that reads
+   *  exactly like a checked one. */
+  const storeKeyFor = (id) => {
+    const m = /^table:([^.]+)\.(.+)$/.exec(typeof id === 'string' ? id : '');
+    return m ? `d1:${m[1]}:${m[2]}` : null;
+  };
+
+  const invPeriods = new Map();
+  for (const s of inventory.stores ?? []) {
+    const days = s?.retention?.periodDays;
+    if (typeof days !== 'number') continue;
+    const key = storeKeyFor(s.id);
+    if (!key) {
+      errors.push(
+        `${INVENTORY_REL} → \`${s.id}\` declares \`periodDays: ${days}\` and this guard has no rule for joining that id shape ` +
+          'to a register `store`, so that number is cross-checked against NOTHING while every other one is. Teach the join or ' +
+          'move the row — an unjoined period must not pass as a covered one.',
+      );
+      continue;
+    }
+    invPeriods.set(key, { id: s.id, days });
+  }
+
+  // The floor is taken on the HOME, not on the pairs: a floor over pairs could be
+  // satisfied to zero by deleting register rows, and would then fire INSTEAD of
+  // the errors that describe the actual damage.
+  if (invPeriods.size === 0) {
+    coverageLost([
+      `${INVENTORY_REL} declares no \`retention.periodDays\` for any store, so limb (v) compares nothing.`,
+      'It would then print ok whatever the register said, and emptying the home would be the way to make it pass.',
+      'An assertion that cannot fail is worse than none, because it inflates apparent coverage.',
+    ]);
+  }
+
+  // (v-a) the home declares it → the register must carry the same copy
+  let periodPairs = 0;
+  for (const [store, inv] of invPeriods) {
+    const row = byStore.get(store);
+    if (!row) {
+      errors.push(
+        `${cite(INVENTORY_REL, inventoryRaw, inv.id, 'periodDays')} declares \`periodDays: ${inv.days}\` for \`${store}\` and ` +
+          `${REGISTER_REL} carries no retention row for that store — the period the privacy notice is generated from names no deleting job.`,
+      );
+      continue;
+    }
+    if (row.rule !== 'period') {
+      errors.push(
+        `${cite(INVENTORY_REL, inventoryRaw, inv.id, 'periodDays')} declares \`periodDays: ${inv.days}\` for \`${store}\` while ` +
+          `${cite(REGISTER_REL, registerRaw, row.id, 'rule')} calls it \`rule: ${JSON.stringify(row.rule)}\`. Only \`period\` obliges a ` +
+          '`deletingJob`, so under any other rule nothing is required to enforce the number users are shown.',
+      );
+      continue;
+    }
+    periodPairs++;
+    if (row.periodDays !== inv.days) {
+      errors.push(
+        `RETENTION PERIODS DISAGREE for \`${store}\` — ${cite(INVENTORY_REL, inventoryRaw, inv.id, 'periodDays')} says ` +
+          `${inv.days} and ${cite(REGISTER_REL, registerRaw, row.id, 'periodDays')} says ${row.periodDays}. ` +
+          `${INVENTORY_REL} is the HOME (the privacy notice is generated from it) and ${REGISTER_REL} carries a DERIVED copy: ` +
+          'change the home and copy it across, never reconcile by editing the register alone.',
+      );
+    }
+  }
+
+  // (v-b) THE OTHER DIRECTION — a derived copy with no home. Without this, the
+  // way to pass limb (v-a) is to delete the inventory row, and the register would
+  // go on declaring a period the disclosure knows nothing about.
+  for (const r of rows) {
+    if (r.rule !== 'period' || invPeriods.has(r.store)) continue;
+    errors.push(
+      `${cite(REGISTER_REL, registerRaw, r.id, 'periodDays')} declares \`periodDays: ${r.periodDays}\` for \`${r.store}\` and ` +
+        `${INVENTORY_REL} declares no period for it. The register's number is a DERIVED copy, and a copy with no home is a ` +
+        'period the privacy notice will never state — the direction that lets the two files drift apart in silence.',
+    );
+  }
+
   for (const r of rows) {
     if (r.rule === 'period-undeclared') prints.push(`${r.id} — PERIOD UNDECLARED (owner): ${r.ownerGap ?? ''}`);
   }
@@ -306,6 +476,10 @@ function main() {
   console.log(
     `⬜  ${stores.size} store(s) enumerated from ${configs.length} live wrangler config(s) ` +
       `(${excluded.length} brick template(s) excluded) + ${requiredIds.length} external`,
+  );
+  console.log(
+    `⬜  ${periodPairs} declared period(s) cross-checked home→copy: ${INVENTORY_REL} (home) ≡ ${REGISTER_REL} (derived), ` +
+      `${invPeriods.size} declared in the home`,
   );
   for (const p of prints) console.log(`⬜  ${p}`);
 
@@ -315,7 +489,10 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`ok  every enumerated store carries a declared retention rule — ${rows.length} rule(s) over ${stores.size} tree-derived + ${requiredIds.length} external store(s) [pipeline O-17]`);
+  console.log(
+    `ok  every enumerated store carries a declared retention rule — ${rows.length} rule(s) over ${stores.size} tree-derived + ` +
+      `${requiredIds.length} external store(s), and ${periodPairs} declared period(s) agree between their home and the register [pipeline O-17]`,
+  );
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

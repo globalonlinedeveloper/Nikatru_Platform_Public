@@ -103,7 +103,46 @@ async function fingerprint(secret, text) {
 const RATE_LIMIT = 12; // max signups per fingerprint per hour
 const RATE_WINDOW_SECONDS = 3600;
 
-// ── SIGNUP RETENTION — DECLARED: 365 DAYS (OWNER, 2026-08-09) ────────────────
+// ── SIGNUP RETENTION — ~~365 DAYS (OWNER, 2026-08-09)~~ → 400 DAYS ───────────
+//
+// 🔴 CORRECTED IN PLACE 2026-08-13, AND THE CORRECTION IS NOT A PREFERENCE — IT
+// IS A LEAP YEAR. Read this before touching the number, and do NOT "optimise" it
+// back to 365: 365 is the number that is wrong, and it is wrong by one day.
+//
+//   DPDP Rules 2025 **Rule 8(3)** requires personal data to be retained "for a
+//   minimum period of one year from the date of such processing"; Rule 6(1)(e)
+//   adds a second one-year floor for security logs. Rule 8(3) is UNQUALIFIED as
+//   to class — unlike Rule 8(1), which is limited to Third-Schedule fiduciaries
+//   — so it reaches this store. "One year" is an ANNIVERSARY, not 365 sleeps.
+//   A key written on date D and expired by a 365-day TTL dies at D+365 days,
+//   but its one-year anniversary is D+366 days whenever the interval [D, D+1yr)
+//   contains a 29 February. Concretely: **every signup written between
+//   1 Mar 2027 and 29 Feb 2028 would be deleted ONE DAY SHORT of the floor** —
+//   and all of those are written AFTER the 13 May 2027 phase-in, so all of them
+//   are inside the period when the floor actually bites. A TTL is fixed at write
+//   time and cannot be lengthened afterwards, so the day this is noticed is
+//   already the day the affected keys are unrecoverable.
+//
+//   400 = 365 + 35 days of margin, DELIBERATELY THE SAME SHAPE as the `events`
+//   period in [ADR 045] §2: clear the floor, never sit on it. It clears 366 by
+//   34 days, which absorbs a late sweep, a clock-skewed comparison and the leap
+//   day at once.
+//
+// ⚠️ THE 400 IS AGENT-RAISED AND OWNER-REVIEWABLE. THE 365 WAS THE OWNER'S.
+// The paragraph below is preserved verbatim because it is still the reason this
+// line is safe to trust — and it argues that an agent picking a number here is
+// writing policy. That argument is not retired by this edit; it is why this edit
+// is FLAGGED rather than quiet. What changed is the KIND of number: 365 was a
+// free policy choice among defensible values, and it has since acquired a legal
+// FLOOR that it fails by one day. Raising it to clear a floor is a different act
+// from choosing it. 👤 **OWNER: the direction of this change costs privacy.**
+// This is the only store in the repository holding a plain email address, its
+// erasure route is `no-route` (operator-only, tooling/legal/data-inventory.json
+// → `kv:nikatru-signups`), so 35 extra days is 35 more days of un-erasable
+// contactable identity. Any number ≥ 366 satisfies the floor; 400 is the one
+// chosen for margin, and moving it costs one value here plus the register's
+// `ttlSource`.
+//
 // 🔑 THE NUMBER ON THE `SIGNUP_RETENTION_DAYS` LINE IS THE OWNER'S POLICY CALL,
 // NOT AN ENGINEERING ONE — and it has now been made. Why it shipped as `null`
 // until 2026-08-09 stays written down, because it is the reason this line is
@@ -134,7 +173,16 @@ const RATE_WINDOW_SECONDS = 3600;
 // key), not something this code path does — and until it happens the store
 // still holds contactable addresses with no bound, which is exactly the fact
 // docs/runbooks/breach-response.md's notifiable-population step turns on.
-const SIGNUP_RETENTION_DAYS = 365;
+//
+// 📌 THE SAME SENTENCE NOW CUTS A SECOND WAY, ADDED 2026-08-13. Keys written
+// between 2026-08-09 and this edit carry a 365-day TTL that CANNOT BE EXTENDED
+// in place — the 400 reaches subsequent writes only. Those keys expire between
+// ~2027-08-09 and ~2027-08-13; each spans a non-leap window (Feb 2027 has 28
+// days), so 365 days IS one year for exactly that cohort and none of them is
+// short. The defect this edit prevents opens for writes from 1 Mar 2027 only.
+// No re-put is therefore required to fix a breach of the floor; a re-put would
+// be an operator choice about uniformity, not a repair.
+const SIGNUP_RETENTION_DAYS = 400;
 
 const SECONDS_PER_DAY = 86400;
 

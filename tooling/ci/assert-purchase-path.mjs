@@ -29,7 +29,7 @@
 //
 // Usage:  node tooling/ci/assert-purchase-path.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
@@ -114,6 +114,12 @@ const code = (s) => s.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, 
 // right-hand side is its own hand-kept list stops covering a channel the day one
 // is added and never says so.
 let permitted = [];
+// Hoisted for §G, which has to compare the SAME parse of the shipped matrix
+// against the register rather than re-deriving it. Two parsers of one file drift,
+// and the drift shows up as §G quietly checking a matrix §A never saw.
+let capsCode = null; // purchase_capabilities.dart, comments stripped
+let capById = new Map(); // register channel id -> { member, tech, permitted, why }
+let registerChannels = []; // the register's channel rows, whole
 {
   const capsRaw = read(CAPS);
   const chRaw = read(CHANNELS);
@@ -123,9 +129,11 @@ let permitted = [];
     problems.push(`COVERAGE LOST — ${CHANNELS} does not exist, so the channel set the matrix must equal is unknown.`);
   } else {
     const caps = code(capsRaw);
+    capsCode = caps;
     let registered = [];
     try {
-      registered = (JSON.parse(chRaw).channels ?? []).map((c) => c.id).filter(Boolean);
+      registerChannels = (JSON.parse(chRaw).channels ?? []).filter((c) => c && typeof c.id === 'string');
+      registered = registerChannels.map((c) => c.id).filter(Boolean);
     } catch (e) {
       problems.push(`COVERAGE LOST — ${CHANNELS} did not parse (${e.message}).`);
     }
@@ -197,6 +205,10 @@ let permitted = [];
     }
 
     permitted = declared.filter((d) => rows.get(d.member)?.tech && rows.get(d.member)?.permitted);
+    for (const d of declared) {
+      const row = rows.get(d.member);
+      if (row) capById.set(d.id, { member: d.member, ...row });
+    }
 
     // THE FLOOR THAT KILLS "six rows of false is a complete matrix".
     if (permitted.length === 0) {
@@ -686,6 +698,397 @@ let permitted = [];
         ok(`T-11 — no declared offering renews automatically or carries a trial (${offerings.length} scanned)`);
       }
     }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// G · THE RAIL EACH CHANNEL SELLS THROUGH, AND THE SHIPPED CODE AGREES
+//     [10]D-13 · [ADR 039] (LOCKED 2026-08-09, owner-locked twice)
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 THE RAIL FOLLOWS THE CHANNEL, NOT THE PLATFORM. That single sentence is
+// what this section exists to make mechanical, and the reason it needs a guard
+// rather than a paragraph is on the record: the OWNER, five days after locking
+// [ADR 039] themselves, read their own corpus and restated it as
+//
+//     "APK and iOS = own store, everything else Paddle."
+//
+// which is WRONG ON APK. The same Android artifact takes PADDLE when it is
+// sideloaded and PLAY BILLING when it is shipped through Play — the artifact is
+// identical, the CHANNEL differs, and the rail follows the channel. If the
+// person who locked the decision can misread it in five days, prose will not
+// hold it; a build failure will.
+//
+// WHAT [ADR 039] LOCKS:
+//   paddle       · web · microsoft store (Store Policy §10.8.1/§10.8.6, 0% fee)
+//                · windows/macos/linux direct download · snap · APK SIDELOAD
+//   play-billing · google play (15% first-$1M tier)
+//   apple-iap    · apple app store (15% Small Business Program)
+//   glue         · RevenueCat over the two store rails (D5), ONE entitlement
+//
+// ⚠️ WHY LIMB (d) IS NOT A REGISTER TALKING TO ITSELF. The register says which
+// rail a channel MAY use; `packages/purchases/lib/src/purchase_capabilities.dart`
+// is where the shipped build DECIDES, and `HostedCheckoutRail` — the one
+// `PurchaseRail` this repo implements — refuses or opens on exactly that
+// decision (`canStartCheckout => _capabilities.canStartCheckout && …`). So for
+// every channel there are two independently editable facts, in two files, in two
+// languages, and this section fails when they disagree. §G0 asserts the premise
+// that makes the comparison meaningful — that the only rail in the tree is still
+// the Paddle hosted checkout — so the day a Play Billing rail lands, this
+// section says it has stopped being able to reason instead of silently checking
+// the wrong thing.
+// ═══════════════════════════════════════════════════════════════════════════
+// The rail vocabulary is DERIVED FROM THE REGISTER's own `purchaseRails.rails`
+// dictionary — the same shape `signing.keyKind` takes against `keyKinds`, and
+// for the [pipeline F-2] reason: a guard whose right-hand side is its own
+// hand-kept list stops covering the file the day the file changes and never says
+// so. `LOCKED_RAILS` is not a second copy of that list; it is the assertion that
+// the DICTIONARY still says what [ADR 039] locked, so neither deleting an entry
+// (which would silently make a forbidden rail unnameable) nor adding a fifth one
+// (a rail nobody decided on) can pass as a data edit.
+const LOCKED_RAILS = ['paddle', 'play-billing', 'apple-iap', 'none'];
+const RAIL_CLIENT_IMPL = 'packages/purchases/lib/src/hosted_checkout_rail.dart';
+const RAIL_SERVER_IMPL = 'services/platform/src/lib/mor/paddle.ts';
+const PURCHASES_LIB = 'packages/purchases/lib';
+// `TargetPlatform.X` -> the `platforms` token the register uses. Fuchsia is
+// declared by Flutter and is not a channel, so it maps to nothing.
+const TP_TO_REGISTER_PLATFORM = {
+  android: 'android',
+  iOS: 'ios',
+  macOS: 'macos',
+  windows: 'windows',
+  linux: 'linux',
+  fuchsia: null,
+};
+
+/** A register field that may be a string or an array of prose lines. */
+const flat = (v) =>
+  Array.isArray(v) ? v.filter((x) => typeof x === 'string').join(' ') : typeof v === 'string' ? v : '';
+
+{
+  // ── G0 · THE PREMISE THIS SECTION REASONS FROM ──────────────────────────
+  // One production `PurchaseRail`, and it is the Paddle hosted checkout. If that
+  // stops being true, `canStartCheckout == true` stops meaning "this build opens
+  // PADDLE here" and every comparison below silently changes subject.
+  let premiseHolds = true;
+  {
+    const impls = [];
+    const walkLib = (d) => {
+      for (const e of listDir(d)) {
+        const f = join(d, e);
+        if (statSync(f).isDirectory()) walkLib(f);
+        else if (e.endsWith('.dart')) {
+          const src = code(readFileSync(f, 'utf8'));
+          for (const m of src.matchAll(/class\s+(\w+)\s+implements\s+PurchaseRail\b/g)) impls.push(m[1]);
+        }
+      }
+    };
+    try {
+      walkLib(join(ROOT, PURCHASES_LIB));
+    } catch {
+      /* reported below */
+    }
+    if (impls.length !== 1 || impls[0] !== 'HostedCheckoutRail') {
+      premiseHolds = false;
+      problems.push(
+        `COVERAGE LOST — §G reasons from "the only PurchaseRail this repo ships is HostedCheckoutRail, the PADDLE hosted checkout", and ${PURCHASES_LIB} now implements [${impls.join(', ') || 'none'}]. ` +
+          `While that held, \`channelPermitted: true\` MEANT "this build opens Paddle here" and could be compared against the register's rail. It no longer does. ` +
+          `Extend this section with the new rail's own code marker before re-greening it — a comparison whose left-hand side changed meaning is not a weaker check, it is a check of something else.`,
+      );
+    }
+    for (const f of [RAIL_CLIENT_IMPL, RAIL_SERVER_IMPL]) {
+      if (!existsSync(join(ROOT, f))) {
+        premiseHolds = false;
+        problems.push(
+          `COVERAGE LOST — the \`paddle\` rail id is supposed to resolve to real code, and ${f} is missing. A rail id that names nothing is a label, and §G would be comparing the register against a word.`,
+        );
+      }
+    }
+  }
+
+  // ── G1 (a) · EVERY CHANNEL DECLARES ITS RAIL ────────────────────────────
+  // A channel with no `purchaseRail` is COVERAGE LOST, never a default. The
+  // whole failure mode here is a NEW channel arriving and inheriting silence:
+  // "which rail?" answered by absence is read by a human as "the usual one",
+  // and the usual one is a 15% store fee or an app removal depending on which
+  // way the reader guesses.
+  if (registerChannels.length === 0) {
+    problems.push(
+      `COVERAGE LOST — no channel row could be read out of ${CHANNELS}, so every rail limb below ranged over nothing. An empty domain reads exactly like a compliant one.`,
+    );
+  }
+
+  // The vocabulary, read off the register, then checked against what [ADR 039]
+  // locked. Both directions: a MISSING id makes a real rail unnameable (and a
+  // `forbids` entry naming it unwritable); an EXTRA one is a fifth rail that
+  // entered as a data edit rather than as an amendment.
+  let vocabulary = [];
+  {
+    const raw = read(CHANNELS);
+    let block = null;
+    try {
+      block = raw === null ? null : JSON.parse(raw).purchaseRails;
+    } catch {
+      /* §A already reported the parse failure */
+    }
+    const dict = block && typeof block.rails === 'object' && !Array.isArray(block.rails) ? block.rails : null;
+    if (!dict) {
+      problems.push(
+        `COVERAGE LOST — ${CHANNELS} declares no \`purchaseRails.rails\` dictionary, so every rail value below was checked against a vocabulary this guard invented. The register is the source of truth for the rail set; a guard carrying its own copy stops covering the file the day the file changes.`,
+      );
+      vocabulary = [...LOCKED_RAILS];
+    } else {
+      vocabulary = Object.keys(dict);
+      for (const r of LOCKED_RAILS) {
+        if (!vocabulary.includes(r)) {
+          problems.push(
+            `THE RAIL VOCABULARY LOST \`${r}\` — ${CHANNELS}'s \`purchaseRails.rails\` declares [${vocabulary.join(', ')}], and [ADR 039] locks ${LOCKED_RAILS.join(' | ')}. A rail id that is not in the dictionary cannot be written in a \`rail\` or a \`forbids\`, so deleting one does not remove a rail — it removes the ability to FORBID it.`,
+          );
+        }
+      }
+      for (const r of vocabulary) {
+        if (!LOCKED_RAILS.includes(r)) {
+          problems.push(
+            `AN UNDECIDED RAIL — ${CHANNELS}'s \`purchaseRails.rails\` declares \`${r}\`, which [ADR 039] does not lock (${LOCKED_RAILS.join(' | ')}). A fifth rail is an amendment to an owner-locked decision, not a data edit; land the ADR and this line together.`,
+          );
+        }
+      }
+      for (const [id, desc] of Object.entries(dict)) {
+        if (flat(desc).replace(/\s+/g, '').length < 20) {
+          problems.push(`rail \`${id}\` in \`purchaseRails.rails\` carries no description. The dictionary is what a row's \`rail\` value resolves to; an entry with no text resolves to nothing.`);
+        }
+      }
+    }
+  }
+
+  /**
+   * G1 (a) / G2 (b) / G3 (c) for ONE `purchaseRail` block.
+   *
+   * Shared between the live `channels` rows and the `purchaseRails
+   * .awaitingChannelRow` entries deliberately: a parked rail answer that nobody
+   * validates is a researched fact rotting in place, and it is read at exactly
+   * the moment somebody promotes it — i.e. the moment it stops being cheap to be
+   * wrong.
+   */
+  const checkRailBlock = (label, pr) => {
+    if (!pr || typeof pr !== 'object' || Array.isArray(pr)) {
+      problems.push(
+        `COVERAGE LOST — ${label} declares no \`purchaseRail\` in ${CHANNELS}. [ADR 039] assigns a rail to every channel (${LOCKED_RAILS.join(' | ')}); a row that answers "which rail?" with silence is how "APK and iOS = own store, everything else Paddle" survives — the reader supplies the answer, and on APK the owner supplied the wrong one.`,
+      );
+      return null;
+    }
+    const rail = typeof pr.rail === 'string' ? pr.rail : null;
+    const forbids = Array.isArray(pr.forbids) ? pr.forbids.filter((x) => typeof x === 'string') : null;
+    const why = flat(pr.why).trim();
+    const source = flat(pr.source).trim();
+    const forbidsWhy = flat(pr.forbidsWhy).trim();
+
+    // ── (b) THE VALUE IS ONE THE REGISTER'S OWN DICTIONARY DEFINES ────────
+    if (rail === null) {
+      problems.push(`${label} has a \`purchaseRail\` with no \`rail\` string. The field that names the rail is the field.`);
+    } else if (!vocabulary.includes(rail)) {
+      problems.push(
+        `${label} declares rail \`${rail}\`, which is not one of ${vocabulary.join(' | ')}. [ADR 039] locks the rail set; a value outside it is either a typo nothing enforces or a fifth rail nobody decided on.`,
+      );
+    }
+    if (forbids === null) {
+      problems.push(`${label} declares no \`forbids\` array. The rail a channel MAY NOT use is the half with the app removal behind it, and it must be written down, empty array included.`);
+    } else {
+      for (const f of forbids) {
+        if (!vocabulary.includes(f)) {
+          problems.push(
+            `${label} forbids \`${f}\`, which is not one of ${vocabulary.join(' | ')}. A forbid that names no real rail forbids nothing, and it reads in review exactly like one that does.`,
+          );
+        }
+      }
+      // `forbids` IS NOT THE COMPLEMENT OF `rail`, and the register says so in
+      // its own `_why`: on `web` Play Billing is absent MECHANICALLY (no Play
+      // services in a browser); on `android-play` Paddle is absent because
+      // Google FORBIDS it. "Cannot" and "may not" have different owners and
+      // different remedies, and only `forbidsWhy` carries which one applies.
+      if (forbids.length > 0 && forbidsWhy.replace(/\s+/g, '').length < 20) {
+        problems.push(
+          `${label} forbids [${forbids.join(', ')}] and says nothing about WHY. Collapsing "cannot" (mechanical) into "may not" (policy) is the exact conflation \`PurchaseCapabilities\` splits into technicallySupported vs channelPermitted — a mechanical absence becomes a policy claim nobody can re-check when the policy moves.`,
+        );
+      }
+    }
+    if (why.replace(/\s+/g, '').length < 20) {
+      problems.push(
+        `${label}'s \`purchaseRail\` declares no substantive \`why\`. Same rule as the capability matrix's own \`why\`: a rail assignment without its reason cannot be reviewed, and this is the field that would have said "sideloaded APKs are not a Play distribution, so Play Billing does not reach them".`,
+      );
+    }
+    if (source.length === 0) {
+      problems.push(
+        `${label}'s \`purchaseRail\` cites no \`source\`. Every rail here traces to a primary text or a locked decision (Play Payments FAQ 10281818 · App Store 3.1.3(b) · Microsoft Store Policies §10.8.1/§10.8.6 · [ADR 039]); an uncited rail is somebody's recollection.`,
+      );
+    }
+
+    // ── (c) A ROW MAY NOT FORBID ITS OWN RAIL ─────────────────────────────
+    if (rail !== null && forbids !== null && forbids.includes(rail)) {
+      problems.push(
+        `CONTRADICTORY ROW — ${label} declares rail \`${rail}\` and also forbids \`${rail}\`. The row cancels itself, and whichever half a reader (or a later guard) happens to consult decides the money.`,
+      );
+    }
+    return rail !== null && vocabulary.includes(rail) ? { rail, forbids: forbids ?? [] } : null;
+  };
+
+  const railOf = new Map(); // channel id -> { rail, forbids[] }
+  for (const ch of registerChannels) {
+    const parsed = checkRailBlock(`channel \`${ch.id}\``, ch.purchaseRail);
+    if (parsed) railOf.set(ch.id, parsed);
+  }
+
+  // ── G1b · THE PARKED SPLITS — the APK trap, as data ─────────────────────
+  // `purchaseRails.awaitingChannelRow` holds channels whose rail [ADR 039] has
+  // decided and whose `channels` row does not exist yet (promotion needs the
+  // enum member too, or §A fails on the same commit). Two things must stay true
+  // of a parked entry, and neither is checkable by reading it:
+  //   · it is not ALSO a live row — two rail answers for one channel is worse
+  //     than none, because both look authoritative;
+  //   · its `railSplitsFrom` names a real channel AND takes a DIFFERENT rail.
+  //     An entry that splits from a channel with the same rail records a
+  //     distinction that does not exist, which is how "the rail follows the
+  //     channel" degrades back into "the rail follows the platform".
+  {
+    const raw = read(CHANNELS);
+    let awaiting = [];
+    try {
+      const a = raw === null ? null : JSON.parse(raw).purchaseRails?.awaitingChannelRow;
+      if (Array.isArray(a)) awaiting = a.filter((e) => e && typeof e.id === 'string');
+    } catch {
+      /* §A already reported the parse failure */
+    }
+    const liveIds = new Set(registerChannels.map((c) => c.id));
+    for (const e of awaiting) {
+      const parsed = checkRailBlock(`awaiting channel \`${e.id}\``, e.purchaseRail);
+      if (liveIds.has(e.id)) {
+        problems.push(
+          `TWO RAIL ANSWERS FOR \`${e.id}\` — it is a live \`channels\` row AND still parked in \`purchaseRails.awaitingChannelRow\`. Promotion moves the entry; leaving both means a reader (or a guard) gets whichever they happen to open, and both look authoritative.`,
+        );
+      }
+      const from = typeof e.railSplitsFrom === 'string' ? e.railSplitsFrom : null;
+      if (!from) {
+        problems.push(
+          `awaiting channel \`${e.id}\` declares no \`railSplitsFrom\`. The entry exists because some LIVE channel's rail would otherwise be read as covering it — that channel has to be named, or the split is invisible exactly where it is expensive.`,
+        );
+      } else if (!railOf.has(from)) {
+        problems.push(
+          `awaiting channel \`${e.id}\` splits from \`${from}\`, which is not a channel with a declared rail in ${CHANNELS}. A split from nothing records no split.`,
+        );
+      } else if (parsed && railOf.get(from).rail === parsed.rail) {
+        problems.push(
+          `\`${e.id}\` SPLITS FROM \`${from}\` AND TAKES THE SAME RAIL (\`${parsed.rail}\`) — so it is not a rail split at all. This entry's whole purpose is to record that the SAME artifact takes a DIFFERENT rail through a different channel; with equal rails it is a row waiting to be promoted for no reason, and the distinction it was meant to preserve is gone.`,
+        );
+      }
+      // The code half: a parked channel must NOT already have an enum member.
+      // §A fails when the enum is missing a registered channel; this is the
+      // mirror — an enum member for a channel the register has not promoted
+      // means the shipped matrix answers for a channel the register does not
+      // have, and the answer came from nowhere.
+      if (capById.has(e.id)) {
+        problems.push(
+          `\`${e.id}\` IS PARKED IN THE REGISTER AND ALREADY LIVE IN THE CODE — ${CAPS} declares \`PurchaseChannel.${capById.get(e.id).member}\` for it while ${CHANNELS} still lists it under \`awaitingChannelRow\`. The shipped matrix is answering for a channel the register has not decided is real; promote the row or drop the enum member.`,
+        );
+      }
+    }
+  }
+
+  // ── G4 (d) · THE SHIPPED CODE AGREES WITH THE REGISTER ──────────────────
+  if (premiseHolds && railOf.size > 0 && capById.size > 0) {
+    const offersPaddle = (id) => {
+      const row = capById.get(id);
+      return row ? row.tech && row.permitted : null;
+    };
+    let compared = 0;
+    // Scoped to THIS limb, not to `problems.length`: an unrelated failure in §A
+    // or §E must not be able to silence this limb's ok line, or "agreed" and
+    // "something else was broken" read identically in the log.
+    const problemsBeforeD = problems.length;
+    for (const [id, { rail, forbids }] of railOf) {
+      const opens = offersPaddle(id);
+      if (opens === null) continue; // no enum row — §A already failed on it
+      compared += 1;
+      const row = capById.get(id);
+      if (opens && (rail !== 'paddle' || forbids.includes('paddle'))) {
+        problems.push(
+          `THE SHIPPED CODE OFFERS A RAIL THE REGISTER FORBIDS — channel \`${id}\` declares rail \`${rail}\`${forbids.length ? ` and forbids [${forbids.join(', ')}]` : ''} in ${CHANNELS}, but ${CAPS} answers \`PurchaseChannel.${row.member}\` with technicallySupported: true, channelPermitted: true. ` +
+            `The only PurchaseRail this repo implements is HostedCheckoutRail — the PADDLE hosted checkout — so that pair of booleans IS an instruction to open Paddle on \`${id}\`. On a store channel that is the documented rejection/removal cause, not a style disagreement.`,
+        );
+      } else if (!opens && rail === 'paddle' && !forbids.includes('paddle')) {
+        problems.push(
+          `THE REGISTER CLAIMS A RAIL THE SHIPPED CODE REFUSES — channel \`${id}\` declares rail \`paddle\`, but ${CAPS} answers \`PurchaseChannel.${row.member}\` with technicallySupported: ${row.tech}, channelPermitted: ${row.permitted}, so \`HostedCheckoutRail.startCheckout\` refuses there with \`${row.tech ? 'channelNotPermitted' : 'platformNotSupported'}\`. ` +
+            `One of the two is wrong and the register is the decision: either the channel does not sell (fix the register) or the build refuses money it is allowed to take (fix the matrix). Silence between them is how a locked rail becomes a rail nobody ships.`,
+        );
+      }
+    }
+    if (compared > 0 && problems.length === problemsBeforeD) {
+      ok(`${compared} channel(s): the register's rail and the shipped capability matrix agree`);
+    }
+
+    // ── G4b · THE PLATFORM→CHANNEL COLLAPSE STAYS RESTRICTIVE ─────────────
+    // 🔴 THIS IS THE APK TRAP, GENERALISED. A build does NOT know at runtime
+    // which channel installed it, so `forPlatform` picks one channel per
+    // platform and every channel on that platform lives with the answer. If the
+    // chosen channel opens Paddle while a SIBLING channel on the same platform
+    // forbids Paddle, then the build that was installed from the sibling opens a
+    // forbidden rail — which is precisely "the same Android artifact" reasoning
+    // that the owner's own restatement got backwards.
+    const platformPick = new Map(); // TargetPlatform member -> channel id
+    if (capsCode) {
+      const idOfMember = new Map([...capById].map(([id, r]) => [r.member, id]));
+      for (const m of capsCode.matchAll(
+        /case\s+TargetPlatform\.(\w+):\s*return\s+forChannel\(PurchaseChannel\.(\w+)\)\s*;/g,
+      )) {
+        const id = idOfMember.get(m[2]);
+        if (id) platformPick.set(m[1], id);
+      }
+      if (platformPick.size === 0) {
+        problems.push(
+          `COVERAGE LOST — no \`case TargetPlatform.X: return forChannel(PurchaseChannel.Y);\` could be parsed out of ${CAPS}, so the platform→channel collapse was checked over nothing. That map is where a build with no knowledge of its own channel gets an answer, and it is the exact place the APK/Play confusion lands.`,
+        );
+      }
+      for (const [tp, chosenId] of platformPick) {
+        const token = TP_TO_REGISTER_PLATFORM[tp];
+        if (!token) continue;
+        if (offersPaddle(chosenId) !== true) continue;
+        const siblings = registerChannels.filter(
+          (c) => Array.isArray(c.platforms) && c.platforms.includes(token) && c.id !== chosenId,
+        );
+        for (const s of siblings) {
+          const sr = railOf.get(s.id);
+          if (!sr) continue;
+          if (sr.rail !== 'paddle' || sr.forbids.includes('paddle')) {
+            problems.push(
+              `THE PLATFORM MAP TAKES THE PERMISSIVE ANSWER — \`forPlatform(TargetPlatform.${tp})\` resolves to \`${chosenId}\`, which opens Paddle, but \`${s.id}\` ships on \`${token}\` too and declares rail \`${sr.rail}\`${sr.forbids.length ? ` (forbids [${sr.forbids.join(', ')}])` : ''}. ` +
+                `A build cannot tell at runtime which channel installed it, so this hands the Paddle checkout to the \`${s.id}\` build as well. That is the APK trap with a different platform's name on it: same artifact, different channel, different rail.`,
+            );
+          }
+        }
+      }
+    }
+
+    // ── G4c · THE GAP THAT IS PRINTED RATHER THAN FAILED ──────────────────
+    // [ADR 039] assigns APK SIDELOAD to `paddle`, and the register has no
+    // sideload row to hang that on — so the one assignment the owner actually
+    // misread is the one this guard cannot bind. Printed on EVERY run, per this
+    // repo's rule for owner-gated gaps: a limb whose domain is empty must say so
+    // rather than resolve to ok. Adding the row is all it takes to arm it.
+    const androidRows = registerChannels.filter(
+      (c) => Array.isArray(c.platforms) && c.platforms.includes('android'),
+    );
+    const sideload = androidRows.filter((c) => c.kind === 'direct' || /apk|sideload/i.test(c.id));
+    if (sideload.length === 0) {
+      console.log(
+        'note ⬜ [ADR 039] ASSIGNS APK SIDELOAD TO `paddle`, AND NO LIVE CHANNEL ROW CARRIES IT — ' +
+          `${CHANNELS} registers ${androidRows.length} live android channel(s) (${androidRows.map((c) => c.id).join(', ') || 'none'}), all of them Play, ` +
+          `and ${CAPS} maps EVERY android build to \`${platformPick.get('android') ?? '(unmapped)'}\`. So the rail ADR 039 grants to a sideloaded APK is unreachable in code, ` +
+          'and limb (d) cannot fail on it — the SAFE direction (the build refuses rather than opening a forbidden rail), but not the decided one. ' +
+          'This is the exact assignment the owner restated backwards on 2026-08-13. Promoting the parked `android-sideload` entry to a `channels` row, with its enum member, arms every limb in §G for it automatically.',
+      );
+    }
+  } else if (premiseHolds && registerChannels.length > 0 && capById.size === 0) {
+    problems.push(
+      `COVERAGE LOST — no capability row could be parsed out of ${CAPS}, so limb (d) compared the register against nothing. A register-versus-register check is a decoration; it cannot fail for the reason it exists.`,
+    );
   }
 }
 

@@ -596,7 +596,7 @@ jobs:
             apps/${{ matrix.app }}/build/app/outputs/flutter-apk/*.apk
             apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab
             apps/${{ matrix.app }}/build/linux/x64/release/bundle
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
   windows:
@@ -761,7 +761,7 @@ jobs:
           path: |
             apps/${{ matrix.app }}/build/windows/x64/runner/Release
             apps/${{ matrix.app }}/build/windows/msix/*.msix
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
   apple:
@@ -900,7 +900,7 @@ jobs:
         with:
           name: ${{ matrix.app }}-macos
           path: apps/${{ matrix.app }}/build/macos/Build/Products/Release
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
   all_platforms:

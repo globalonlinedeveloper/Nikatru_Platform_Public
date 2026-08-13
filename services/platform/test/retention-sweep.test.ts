@@ -391,7 +391,19 @@ describe('the shipped constants and tooling/ops/register.json agree', () => {
     return row as Record<string, unknown>;
   };
 
-  const stores: RetentionStore[] = ['events', 'provider_notifications'];
+  // 🔴 `events_daily` ADDED 2026-08-13, AND ITS ABSENCE WAS NOT A JUDGEMENT CALL —
+  // it was a silent hole. `EVENTS_DAILY_RETENTION_DAYS` was read into `shipped`
+  // above and then never asserted, because this array — not the map — is what
+  // every `it.each` below ranges over. MEASURED, not inferred: setting the
+  // constant to 37 while both registers still said 1100 left 40 tests passing and
+  // `assert-retention-coverage.mjs` / `assert-data-inventory.mjs` both green.
+  //
+  // 📌 A value that is READ but never ASSERTED looks exactly like a value that is
+  // checked — it appears in the file, it type-checks, it is even used. The list
+  // that drives the assertions is the coverage; the map is only the data. This is
+  // the `check-migrations.mjs` failure in a new shape: the domain was smaller than
+  // it looked and nothing said so.
+  const stores: RetentionStore[] = ['events', 'events_daily', 'provider_notifications'];
 
   it('duty.platform-cron WATCHES this job — otherwise it runs nightly and nothing reads its outcome', () => {
     const cron = register.rows.find((r) => r.id === 'duty.platform-cron') as

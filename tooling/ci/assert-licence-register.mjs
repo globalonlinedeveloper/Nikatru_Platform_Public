@@ -41,6 +41,10 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+// The seam against [7]P-5's content-licence register. Imported by BOTH guards on
+// purpose: a disagreement between the two registers must turn both red, or the
+// one that stays green is the one somebody quotes. See licence-cross-assert.mjs.
+import { crossAssertLicenceRegisters } from './licence-cross-assert.mjs';
 
 // ⚠️ ARGUMENT PARSING, AND IT ALREADY BIT ONCE. The first draft read
 // `argv.find((a, i) => !a.startsWith('--') && i !== bundleAt + 1)`; with no
@@ -508,6 +512,16 @@ for (const app of appDirs) {
       'diverged from the chassis rather than made a choice.)',
   );
 }
+
+// ── the seam against [7]P-5's content-licence register ──────────────────────
+// K-10 owns BUILT-BUNDLE contents; P-5 owns content-pipeline INPUTS. A family
+// can be in both, and until 2026-08-13 nothing compared what the two files said
+// about one. Both requirement texts now carry the boundary sentence verbatim;
+// this is the half of it that fails a build. Runs in BOTH modes — the registers
+// are files, so nothing about this comparison depends on a bundle being present.
+const seam = crossAssertLicenceRegisters(repoRoot, { side: 'asset' });
+problems.push(...seam.problems);
+prints.push(...seam.prints);
 
 // ── report ──────────────────────────────────────────────────────────────────
 if (problems.length) {
