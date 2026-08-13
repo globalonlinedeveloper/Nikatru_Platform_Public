@@ -60,6 +60,34 @@ happens on the hot path (the same reason `src/scheduled.ts:264` compares `server
 positionally exactly as `node:sqlite` does — three bound values, however many times each is
 referenced.
 
+### 🔴 The five read `events_daily`, and the window is a DAY window
+
+Every query here reads the daily rollup (`migrations/0007_events_rollup.sql`), **not** raw `events`.
+Raw `events` is swept at 400 days ([ADR 045]); the rollup is the copy of these numbers' inputs that
+outlives the sweep. The change is invisible to the caller: **same three parameters, same order, same
+full ISO-8601 strings, same three bound values** — the day truncation happens inside the SQL, as
+`substr(?N, 1, 10)` against `events_daily.day`.
+
+**What is not invisible is the window.** These queries answer over `[floor(?2), floor(?3))`.
+
+| you bind | you get | |
+|---|---|---|
+| `2026-01-01T00:00:00Z` → `2026-02-01T00:00:00Z` | exactly that | ✅ day-aligned is **exact** |
+| `2026-01-03T13:00:00Z` → … | the whole of **Jan 3** | ⚠️ start floors back — **more** than you asked |
+| … → `2026-01-03T13:00:00Z` | Jan 3 **dropped entirely** | 🔴 end floors back — **less** than you asked |
+| `2026-01-03T09:00Z` → `2026-01-03T23:00Z` | **nothing at all** | 🔴 both floor to the same day |
+
+It is **not** a "widening" — both ends floor, so they move in opposite directions. Whatever
+eventually calls these (there is no `/insights` route yet) must floor `?2`/`?3` itself, or the number
+it prints is not the number it asked for. All four rows above are measured in
+`test/insights-equivalence.test.ts`, which also proves the day-aligned case is **bit-identical** to
+the pre-cutover raw-`events` form across 75 metric × app × window combinations — by running both
+forms against one seeded fixture, not by asserting it.
+
+Two further losses, both in #5 only and both measured: a feature literally **named the empty string**
+is dropped (it is indistinguishable from the rollup's `''` sentinel for "no name"), and a **non-string
+name** comes back as `TEXT`. See `05-feature-adoption.sql`'s header.
+
 ## 🔴 What a green test here does and does not prove
 
 It proves the SQL is **correct**: given known rows, each query returns the number a human computed
@@ -67,8 +95,15 @@ by hand from those rows, against the schema that actually ships (`?raw` imports 
 migrations).
 
 It does **not** prove the numbers are **meaningful**. `platform_db.events` holds **0 rows in
-production** (E-4a). Every query in this directory returns `NULL` for its rates and `0` for its
-counts against that table today, and the test asserts exactly that as its first case — a `0%`
-activation rate would be a claim that nobody activated, which is a different and false statement
-from "there is no cohort". Making the rail carry traffic is **E-4a**, and noticing when it stops is
-**E-13**. Neither is this file's job, and neither is implied by it passing.
+production** (E-4a), and therefore so does `events_daily`. Every query in this directory returns
+`NULL` for its rates and `0` for its counts against that table today, and the test asserts exactly
+that — a `0%` activation rate would be a claim that nobody activated, which is a different and false
+statement from "there is no cohort". Making the rail carry traffic is **E-4a**, and noticing when it
+stops is **E-13**. Neither is this file's job, and neither is implied by it passing.
+
+⚠️ **And the empty case is a trap as well as a requirement.** The "0 rows in production" block in
+`test/insights-queries.test.ts` passes just as well if the fixture were never rolled up at all — an
+un-rolled-up database is empty exactly where these queries look. So it is *not* the guard against
+forgetting the rollup. The `events_daily` assertions in the seeded block are, and
+`test/insights-equivalence.test.ts` additionally refuses to run unless every metric produced at least
+one non-empty comparison.

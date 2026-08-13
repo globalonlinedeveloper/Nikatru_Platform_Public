@@ -1,3 +1,23 @@
+-- ⛔ FROZEN BASELINE — DO NOT EDIT, DO NOT "UPDATE IT TO MATCH". ⛔
+-- ─────────────────────────────────────────────────────────────────────────────
+-- EVERYTHING BELOW THIS BANNER is the PRE-CUTOVER text of the query of the same
+-- name in services/platform/queries/insights/ — byte-identical to what shipped in
+-- 51bf1a2, and reading raw `events`. It is kept so test/insights-equivalence.test.ts can
+-- run BOTH forms of every metric against ONE seeded fixture and compare them
+-- byte for byte — which is what makes "the cutover changed no number" a
+-- measurement rather than a claim.
+--
+-- 🔴 THIS IS THE SPECIFICATION, NOT A MIRROR. If a shipped query ever stops
+-- matching this file, the question is WHICH OF THE TWO IS WRONG. Copying the new
+-- text down here would turn the equivalence test into a comparison of a string
+-- with itself — an assertion that cannot fail, which is worse than none because
+-- it inflates apparent coverage. The test refuses to run if that happens: it
+-- asserts every baseline reads `events`, that none mentions `events_daily`, and
+-- that every shipped query is the other way round.
+--
+-- Nothing loads these files at runtime. They are test data, and the shipped
+-- query set is still exactly the five .sql files in queries/insights/.
+-- ─────────────────────────────────────────────────────────────────────────────
 -- number: notification_lift
 -- title:  Notification lift
 -- source: analytics-events.md § "The ~5 numbers" #4 — "`notification_opened`-
@@ -28,65 +48,36 @@
 -- otherwise every dormant install in history would be counted as a
 -- non-returning control and the lift would be an artifact of how long the app
 -- has existed.
---
--- ═════════════════════════════════════════════════════════════════════════════
--- 🔴 THIS READS THE ROLLUP `events_daily`, NOT RAW `events`
--- (migrations/0007_events_rollup.sql). Raw `events` is swept at 400 days
--- ([ADR 045]); the rollup is the copy of this comparison's inputs that outlives
--- the sweep, so a query still on the raw table is a number with an expiry date.
---
--- THE CALLER CONTRACT IS BYTE-FOR-BYTE UNCHANGED: still `?1` app_id, `?2`
--- window_start inclusive, `?3` window_end exclusive, still full ISO-8601 UTC
--- strings, still exactly three bound values — even though `?2`/`?3` are now
--- referenced eight times between them. SQLite numbered parameters bind
--- positionally however many times each appears, and D1 does the same.
---
--- ⚠️ BUT THE WINDOW IS A DAY WINDOW NOW, AND BOTH BOUNDS FLOOR — this answers
--- over `[floor(?2), floor(?3))`. A DAY-ALIGNED window is EXACT, MEASURED against
--- the frozen pre-cutover raw-`events` form in test/baselines/insights-raw/ by
--- test/insights-equivalence.test.ts.
---
--- 🔴 A SUB-DAY WINDOW IS NOT "WIDENED" — IT IS FLOORED AT BOTH ENDS, AND THE TWO
--- ENDS MOVE IN OPPOSITE DIRECTIONS: `start = …T13:00Z` takes the WHOLE of that
--- day, `end = …T13:00Z` drops the WHOLE of it, and a window opening and closing
--- inside one day returns NOTHING. Whatever eventually binds `?2`/`?3` must floor
--- them itself; there is no `/insights` route yet, so no shipped caller does this
--- today.
--- ═════════════════════════════════════════════════════════════════════════════
+-- ─────────────────────────────────────────────────────────────────────────────
 WITH active AS (
   SELECT DISTINCT anon_id
-  FROM events_daily
+  FROM events
   WHERE app_id = ?1
-    AND day >= substr(?2, 1, 10)
-    AND day <  substr(?3, 1, 10)
+    AND server_ts >= ?2
+    AND server_ts <  ?3
 ),
 flags AS (
   -- EXISTS yields 0/1 in SQLite, which is what makes the SUMs below plain
   -- counting rather than a second pass of DISTINCT bookkeeping.
-  --
-  -- ⚠️ THE SUMs IN `agg` SUM THESE 0/1 FLAGS — NEVER `n_rows`. `flags` is one
-  -- row per INSTALL by construction (`active` is DISTINCT), which is the whole
-  -- reason `SUM(opened * returned)` is a population count. `n_rows` would make
-  -- every one of them a count of raw event rows instead.
   SELECT
     a.anon_id,
     EXISTS (
-      SELECT 1 FROM events_daily e
+      SELECT 1 FROM events e
       WHERE e.app_id = ?1 AND e.anon_id = a.anon_id
         AND e.event = 'notification_opened'
-        AND e.day >= substr(?2, 1, 10) AND e.day < substr(?3, 1, 10)
+        AND e.server_ts >= ?2 AND e.server_ts < ?3
     ) AS opened,
     EXISTS (
-      SELECT 1 FROM events_daily e
+      SELECT 1 FROM events e
       WHERE e.app_id = ?1 AND e.anon_id = a.anon_id
         AND e.event = 'return_visit'
-        AND e.day >= substr(?2, 1, 10) AND e.day < substr(?3, 1, 10)
+        AND e.server_ts >= ?2 AND e.server_ts < ?3
     ) AS returned,
     EXISTS (
-      SELECT 1 FROM events_daily e
+      SELECT 1 FROM events e
       WHERE e.app_id = ?1 AND e.anon_id = a.anon_id
         AND e.event = 'notif_opt_out'
-        AND e.day >= substr(?2, 1, 10) AND e.day < substr(?3, 1, 10)
+        AND e.server_ts >= ?2 AND e.server_ts < ?3
     ) AS opted_out
   FROM active a
 ),

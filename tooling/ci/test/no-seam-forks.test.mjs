@@ -46,6 +46,32 @@ let seq = 0;
 const CHASSIS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_in_screen.dart';
 const FORK = 'apps/subly/lib/features/auth/login_screen.dart';
 
+/** The other two DECIDABLE pairs, added 2026-08-12. Same shape, different seam:
+ *  both gate on `caps.canSchedule` off NotificationCapabilities. */
+const BRICK_F = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features';
+const SUBLY_F = 'apps/subly/lib/features';
+const SETTINGS_CHASSIS = `${BRICK_F}/settings/settings_screen.dart`;
+const SETTINGS_FORK = `${SUBLY_F}/settings/settings_screen.dart`;
+const HOME_CHASSIS = `${BRICK_F}/home/home_screen.dart`;
+const HOME_FORK = `${SUBLY_F}/home/home_screen.dart`;
+
+/** The nine WATCHED pairs — undecidable because their chassis gates on nothing.
+ *  Every fixture tree must contain them for the same reason it must contain the
+ *  parity pair: their ABSENCE is itself a failure the guard is meant to report. */
+const WATCHED = [
+  ['firstrun/onboarding_screen.dart', 'onboarding/onboarding_screen.dart'],
+  ['auth/check_inbox_screen.dart', 'auth/check_inbox_screen.dart'],
+  // Ninth, added 2026-08-13 with the ARRIVE limb. It was a real chassis/fork
+  // pair on disk that appeared in NEITHER of the guard's lists.
+  ['auth/legal_consent_fields.dart', 'auth/legal_consent_fields.dart'],
+  ['auth/reaccept_terms_screen.dart', 'auth/reaccept_terms_screen.dart'],
+  ['auth/reset_password_screen.dart', 'auth/reset_password_screen.dart'],
+  ['auth/sign_up_screen.dart', 'auth/sign_up_screen.dart'],
+  ['auth/verify_email_screen.dart', 'auth/verify_email_screen.dart'],
+  ['monetization/manage_plan_screen.dart', 'monetization/manage_plan_screen.dart'],
+  ['monetization/paywall_screen.dart', 'monetization/paywall_screen.dart'],
+];
+
 /** A tree with: core declaring two contracts, packages/ implementing ONE of them
  *  (so the other is deliberately homeless), the parity pair at parity, plus
  *  whatever `extra` files a case needs. MIN_CONTRACTS is 5, so the register
@@ -65,6 +91,23 @@ function tree({ extra = {}, violations = null } = {}) {
     'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
     '    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);\n' +
     '    if (caps.oauthRedirect && providers.any) return const AppleButton();\n    return const Empty();\n  }\n}\n';
+
+  // The two other decidable pairs, at parity: C = F = {canSchedule}.
+  const schedGate = (cls) =>
+    `class ${cls} {\n  Widget build(BuildContext context) {\n` +
+    '    final NotificationCapabilities caps = NotificationCapabilities.forPlatform(p);\n' +
+    '    if (!caps.canSchedule) return const Unavailable();\n    return const Toggle();\n  }\n}\n';
+  files[join(root, SETTINGS_CHASSIS)] = schedGate('SettingsScreen');
+  files[join(root, SETTINGS_FORK)] = schedGate('SettingsScreen');
+  files[join(root, HOME_CHASSIS)] = schedGate('HomeScreen');
+  files[join(root, HOME_FORK)] = schedGate('HomeScreen');
+
+  // The watched pairs: present, and gating on NOTHING — which is exactly the
+  // condition the watch limb asserts still holds.
+  for (const [c, f] of WATCHED) {
+    files[join(root, `${BRICK_F}/${c}`)] = 'class Screen {\n  Widget build() => const Empty();\n}\n';
+    files[join(root, `${SUBLY_F}/${f}`)] = 'class Screen {\n  Widget build() => const Empty();\n}\n';
+  }
 
   const CONTRACTS = ['NotificationService', 'KeyValueStore', 'Analytics', 'PackVerifier', 'AuthRepository'];
   files[join(root, 'packages/core/lib/seams.dart')] =
@@ -328,7 +371,7 @@ describe('[ADR 042] an accepted fork must follow the chassis it forked', () => {
     // reading the source, which is the difference between this and a check
     // that quietly stopped checking.
     assert.match(out, /\[ADR 042\] parity — apps\/subly\/lib\/features\/auth\/login_screen\.dart follows all 1 chassis/);
-    assert.match(out, /1 accepted fork\(s\) at parity/);
+    assert.match(out, /3 accepted fork\(s\) at parity, 9 watched/);
   });
 
   test('🔴 the chassis gains a capability the fork never hears about → EXIT 1, naming the fork', () => {
@@ -445,5 +488,168 @@ describe('the parity limb knows when it is not looking', () => {
     assert.equal(code, 1, out);
     assert.match(out, /0 `caps\.<field>` read\(s\) found/);
     assert.match(out, /cannot fail and is therefore worse than none/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TWO PAIRS ADDED 2026-08-12, AND THE WATCH OVER THE REST.
+//
+// [ADR 042]:263 — "Each new pair needs its own two mutations. An unmutated pair
+// inflates apparent coverage." So each of settings and home carries BOTH below,
+// and both were ALSO run against a copy of the real tree before these fixtures
+// were written — a fixture encodes the same misunderstanding as the guard it
+// was written beside, so it is the second line of evidence, never the first.
+//
+// ⚠️ TWO ASSERTIONS HERE CANNOT BE REACHED FROM A FIXTURE TREE, and saying so is
+// the honest thing rather than writing a case that only looks like it covers
+// them: MIN_PARITY_PAIRS and MIN_ACCOUNTED_PAIRS are module constants of the
+// guard, so no fixture can vary them. Both were negative-tested by mutating a
+// COPY of the guard source (tooling/ci → scratchpad) against a copy of the real
+// tree: deleting the settings pair → "✗ COVERAGE LOST — 2 accepted-fork parity
+// pair(s), expected at least 3"; deleting a watched pair → "✗ COVERAGE LOST —
+// 10 chassis/fork screen pair(s) accounted for, expected at least 11".
+//
+// 🔴 AND THAT PARAGRAPH WAS THE DEFECT, NOT JUST A CAVEAT. Both mutations above
+// delete an entry from one of the guard's own arrays — they exercise the VANISH
+// direction, which is the direction MIN_ACCOUNTED_PAIRS handles. Its failure
+// message claims something stronger: that a pair "in NEITHER" list is caught.
+// It could not be. The condition is `PARITY.length + WATCHED.length < 12`,
+// three constants in the guard's own source, evaluated without touching the
+// filesystem — so a pair ARRIVING on disk was invisible, and one already had:
+// `auth/legal_consent_fields.dart` was unlisted while the guard printed ok.
+// Negative-testing only the direction the guard handles is the repo's own
+// recorded defect. The ARRIVE limb and the cases below are the other direction,
+// and unlike the two constants above they ARE reachable from a fixture tree.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the ARRIVE limb — a pair that appears on disk in NEITHER list', () => {
+  test('🔴 a new chassis screen WITH a Subly counterpart → EXIT 1, naming both paths', () => {
+    const root = tree();
+    writeFileSync(join(root, `${BRICK_F}/settings/zz_new_screen.dart`), 'class ZzNew {}\n');
+    writeFileSync(join(root, `${SUBLY_F}/settings/zz_new_screen.dart`), 'class ZzNew {}\n');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /1 chassis\/fork screen pair\(s\) exist on disk and are in NEITHER list/);
+    assert.match(out, /settings\/zz_new_screen\.dart/);
+    // The count floor is UNTOUCHED by this mutation — 12 accounted is still 12.
+    // Asserting its message is absent is what proves the ARRIVE limb, and not
+    // the vanish limb, is what caught this.
+    assert.doesNotMatch(out, /expected at least/);
+  });
+
+  test('a new chassis screen with NO Subly counterpart is PRINTED, not failed — the path rule cannot see a rename', () => {
+    const root = tree();
+    writeFileSync(join(root, `${BRICK_F}/settings/zz_chassis_only.dart`), 'class ZzOnly {}\n');
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /have NO same-path Subly counterpart/);
+    assert.match(out, /zz_chassis_only\.dart/);
+  });
+
+  test('🔴 an EMPTY brick features universe is COVERAGE LOST, not a clean tree', () => {
+    const root = tree();
+    rmSync(join(root, BRICK_F), { recursive: true, force: true });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /produced NO \.dart file\(s\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('[ADR 042] the SETTINGS pair — decidable, and therefore enforced', () => {
+  test('🔴 the chassis gains a capability the fork lacks → EXIT 1, naming the settings fork', () => {
+    const { code, out } = run(tree({
+      extra: {
+        [SETTINGS_CHASSIS]:
+          'class SettingsScreen {\n  Widget build(BuildContext context) {\n' +
+          '    final NotificationCapabilities caps = NotificationCapabilities.forPlatform(p);\n' +
+          '    if (!caps.canSchedule) return const Unavailable();\n' +
+          '    if (!caps.canNotify) return const Unavailable();\n    return const Toggle();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subly\/lib\/features\/settings\/settings_screen\.dart/);
+    assert.match(out, /does NOT read `caps\.canNotify`/);
+    assert.match(out, /chassis reads \{canNotify, canSchedule\} · fork reads \{canSchedule\}/);
+  });
+
+  test('🔴 the fork drops its gate, COMMENT LEFT IN → EXIT 1 (the stripping is the assertion)', () => {
+    // The control that proves the limb reads the settings FORK at all, and that
+    // prose cannot satisfy it. An unstripped implementation reads
+    // `caps.canSchedule` out of the comment and prints ok.
+    const { code, out } = run(tree({
+      extra: {
+        [SETTINGS_FORK]:
+          'class SettingsScreen {\n  Widget build(BuildContext context) {\n' +
+          '    // the gate that used to live here read caps.canSchedule\n' +
+          '    return const Toggle();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does NOT read `caps\.canSchedule`/);
+    assert.match(out, /chassis reads \{canSchedule\} · fork reads \{—\}/);
+  });
+});
+
+describe('[ADR 042] the HOME pair — the one no ADR listed', () => {
+  test('🔴 the chassis gains a capability the fork lacks → EXIT 1, naming the home fork', () => {
+    const { code, out } = run(tree({
+      extra: {
+        [HOME_CHASSIS]:
+          'class HomeScreen {\n  Widget build(BuildContext context) {\n' +
+          '    final NotificationCapabilities caps = NotificationCapabilities.forPlatform(p);\n' +
+          '    if (!caps.canSchedule) return const Unavailable();\n' +
+          '    if (!caps.canNotify) return const Unavailable();\n    return const Toggle();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subly\/lib\/features\/home\/home_screen\.dart/);
+    assert.match(out, /does NOT read `caps\.canNotify`/);
+  });
+
+  test('🔴 the fork drops its gate, COMMENT LEFT IN → EXIT 1', () => {
+    const { code, out } = run(tree({
+      extra: {
+        [HOME_FORK]:
+          'class HomeScreen {\n  Widget build(BuildContext context) {\n' +
+          '    // this used to pass caps.canSchedule\n    return const Toggle();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does NOT read `caps\.canSchedule`/);
+    assert.match(out, /fork reads \{—\}/);
+  });
+});
+
+describe('the watch — the nine pairs this guard does NOT cover, and says so', () => {
+  test('🔴 a watched chassis that GAINS a caps gate must demand promotion, not stay quiet', () => {
+    // The whole reason the watch exists. Under a guard that only knew the auth
+    // pair, this capability reaches every stamped app and not Subly, silently.
+    const { code, out } = run(tree({
+      extra: {
+        [`${BRICK_F}/monetization/paywall_screen.dart`]:
+          'class PaywallScreen {\n  Widget build(BuildContext context) {\n' +
+          '    if (!caps.canSchedule) return const Empty();\n    return const Paywall();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /1 watched pair\(s\) BECAME DECIDABLE and were not promoted/);
+    assert.match(out, /monetization\/paywall_screen\.dart/);
+    assert.match(out, /now reads \{canSchedule\}/);
+  });
+
+  test('COVERAGE LOST when a watched file is gone — the declaration must stay true', () => {
+    const root = tree();
+    rmSync(join(root, `${SUBLY_F}/monetization/paywall_screen.dart`));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — the watch lost sight of 1 path\(s\)/);
+    assert.match(out, /paywall_screen\.dart — the file is not there/);
+  });
+
+  test('the watch is PRINTED on every clean run — a limitation nobody sees is mistaken for coverage', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /9 chassis\/fork screen pair\(s\) are WATCHED, NOT COVERED/);
+    assert.match(out, /They fail this guard the day that stops being true/);
   });
 });

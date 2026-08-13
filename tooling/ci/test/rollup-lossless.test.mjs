@@ -129,11 +129,16 @@ describe('assert-rollup-lossless — the real tree and its copy must be green FI
     assert.match(r.out, /the grain covers every column/);
   });
 
-  test('the deferred cutover is PRINTED, not failed — all five queries still read raw `events`', () => {
+  test('the LANDED cutover is printed — all five queries read `events_daily`, none reads raw `events`', () => {
+    // This test asserted the OPPOSITE until PR-2 ("the deferred cutover is
+    // PRINTED, not failed"), and that is the point of keeping it: the guard's
+    // print is a statement about the tree, so when the tree moved the assertion
+    // had to move with it or it would have gone on reassuring a reader about a
+    // deferral that had ended.
     const r = run(null);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /STILL READ THE RAW `events` TABLE/);
-    assert.match(r.out, /The cutover to events_daily is DEFERRED and this is not a failure/);
+    assert.match(r.out, /5 of 5 quer\(ies\) READ `events_daily` — THE CUTOVER HAS LANDED/);
+    assert.match(r.out, /0 still read raw `events`/);
   });
 
   test('R3 announces that it is a TRIPWIRE and names the behavioural proof', () => {
@@ -152,8 +157,10 @@ describe('assert-rollup-lossless [R2] — the idempotency the whole table rests 
     assert.equal(r.code, 1, r.out);
     // R2: the index and the INSERT still name a column the table does not have.
     assert.match(r.out, /grain column `feature` is not a column of events_daily/);
-    // R1: the grain no longer carries what 05-feature-adoption.sql reads.
-    assert.match(r.out, /reads `params`, which GRAIN_COVERAGE says is carried by events_daily\.`feature`/);
+    // R1: 05-feature-adoption.sql reads `feature` straight off events_daily
+    // since the cutover, so the DDL losing the column is caught directly rather
+    // than through the GRAIN_COVERAGE map.
+    assert.match(r.out, /05-feature-adoption\.sql reads `feature` off `events_daily` and the shipped DDL/);
   });
 
   test('M2 — `feature TEXT NOT NULL DEFAULT \'\'` weakened to `feature TEXT` FAILS', () => {
@@ -295,7 +302,7 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
     assert.match(r.out, /documents 5 quer\(ies\) and only 4 \.sql file\(s\) are present — 1 MISSING: 05-feature-adoption\.sql/);
   });
 
-  test('M7 — a query that grows a column the grain cannot carry FAILS', () => {
+  test('M7 — a query that grows a column events_daily does not have FAILS', () => {
     const root = copyOfRealTree();
     mutate(
       root,
@@ -305,7 +312,46 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
     );
     const r = run(root);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /reads `geo_country` off the base table and the rollup grain carries no counterpart/);
+    assert.match(r.out, /reads `geo_country` off `events_daily` and the shipped DDL/);
+  });
+
+  test('M8 — a query REVERTED to raw `events` FAILS: the cutover is a ratchet, not a preference', () => {
+    // Until PR-2 this was a PRINT, and deliberately so — the queries had not
+    // moved. They have. A query back on the raw table is a number the 400-day
+    // sweep eats, one night at a time, while the query goes on answering.
+    const root = copyOfRealTree();
+    mutate(root, join(INSIGHTS, '03-paywall-conversion.sql'), /FROM events_daily/, 'FROM events');
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /03-paywall-conversion\.sql READS THE RAW `events` TABLE/);
+    assert.match(r.out, /the 400-day `events` sweep DESTROYS/);
+  });
+
+  test('M8b — GRAIN_COVERAGE still has a reachable failing case: a raw-reverted query reading an uncovered column', () => {
+    // 🔴 WHY THIS EXISTS. After the cutover NO shipped query reaches the
+    // GRAIN_COVERAGE branch, so that branch would have no reachable failing
+    // input — an assertion that cannot fail, which is worse than none because it
+    // inflates apparent coverage. This is the input that reaches it.
+    const root = copyOfRealTree();
+    mutate(root, join(INSIGHTS, '03-paywall-conversion.sql'), /FROM events_daily/, 'FROM events');
+    mutate(
+      root,
+      join(INSIGHTS, '03-paywall-conversion.sql'),
+      /AND day >= substr\(\?2, 1, 10\)/,
+      "AND geo_country = 'IN'\n    AND day >= substr(?2, 1, 10)",
+    );
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /reads `geo_country` off the raw `events` table and the rollup grain carries no counterpart/);
+  });
+
+  test('M8c — a query reading NEITHER table is COVERAGE LOST, not a question R1 quietly skips', () => {
+    const root = copyOfRealTree();
+    mutate(root, join(INSIGHTS, '04-notification-lift.sql'), /FROM events_daily/g, 'FROM events_hourly');
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /names neither `events_daily` nor `events` after FROM\/JOIN/);
   });
 
   test('M7b — the SAME new reference inside a COMMENT does NOT fail: structure, not prose', () => {

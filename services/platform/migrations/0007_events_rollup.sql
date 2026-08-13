@@ -40,9 +40,39 @@
 --
 -- WHAT SURVIVES, MEASURED NOT ASSERTED: the five shipped queries in
 -- queries/insights/ return BIT-IDENTICAL results from this table as from raw
--- `events` across 45 (metric × app × window) combinations — PROVIDED the window
--- is day-aligned. A sub-day window is silently widened to day bounds; that is
--- the one and only fidelity loss. test/events-rollup.test.ts is that proof.
+-- `events` across 75 (metric × app × window) combinations — PROVIDED the window
+-- is DAY-ALIGNED. The proof is `test/insights-equivalence.test.ts`, which runs
+-- each metric BOTH WAYS against ONE seeded fixture: the shipped query against
+-- `events_daily` (populated by calling the shipped `eventsRollup`) and the
+-- FROZEN pre-cutover text of the same query, kept in
+-- test/baselines/insights-raw/, against raw `events`. Compared as JSON, so
+-- column order, column names, value types and NULL-vs-0 all have to match.
+--
+-- 📌 THREE CORRECTIONS TO WHAT THESE FIVE LINES USED TO SAY, ALL MEASURED:
+--   (i) THE CITATION WAS TO A PROOF THAT DID NOT EXIST. This paragraph named
+--       `test/events-rollup.test.ts` as "that proof" and claimed 45
+--       combinations. That file contains ZERO references to the insights
+--       queries — it tests the interlock, idempotency, catch-up and the
+--       heartbeat, and reads no .sql at all. The claim was TRUE; nothing in the
+--       tree established it. Same defect [8]K-12 recorded, in the same header
+--       that had already been corrected for it once, eight days earlier.
+--  (ii) "A SUB-DAY WINDOW IS SILENTLY WIDENED TO DAY BOUNDS" IS HALF FALSE, AND
+--       THE WRONG HALF IS THE ONE THAT LOSES DATA. BOTH bounds floor, so the two
+--       ends move in OPPOSITE directions: `start = …T13:00Z` takes the WHOLE of
+--       that day (more than asked), `end = …T13:00Z` drops the WHOLE of it (less
+--       than asked), and a window that opens and closes inside ONE day returns
+--       NOTHING AT ALL. Whoever writes the future `/insights` route reads this
+--       sentence; the old one would have had them over-report and then silently
+--       under-report. Both directions are asserted in the equivalence test.
+-- (iii) "THE ONE AND ONLY FIDELITY LOSS" WAS A WRONG COUNT. There are THREE,
+--       and the other two belong to #5 `feature_adoption`: a feature literally
+--       NAMED the empty string is indistinguishable from the `''` sentinel and
+--       is DROPPED, and a non-string name (`{"name":42}`) comes back as TEXT
+--       here where raw `events` gave its own type. Both are out-of-taxonomy
+--       inputs and in both the rollup's answer is arguably better — but a wrong
+--       count of the known losses is exactly how the next one goes unnoticed.
+--       See 05-feature-adoption.sql's header and the equivalence test's
+--       § "known divergences, measured".
 --
 -- 🔴 `feature` IS `NOT NULL DEFAULT ''`, NEVER NULLABLE, AND THE WHOLE
 -- IDEMPOTENCY OF THIS TABLE RESTS ON IT. SQLite treats NULLs as DISTINCT in a
@@ -51,16 +81,19 @@
 -- produced THREE rows with a NULL sentinel and ONE with ''. A rollup that
 -- duplicates on every run is a rollup that silently multiplies every count it
 -- feeds.
--- ⬜ NOT YET ENFORCED, AND THIS LINE USED TO CLAIM IT WAS. It read
--- "tooling/ci/assert-rollup-lossless.mjs [R2] fails the build if this column
--- stops being NOT NULL or leaves the unique index" -- and THAT GUARD DOES NOT
--- EXIST. It is PR-2 work. A comment asserting an invariant is protected, when
--- nothing protects it, is worse than no comment: it retires the reader's
--- suspicion without retiring the risk. Same defect [8]K-12 recorded, where a
--- requirement's only citation was a guard that had never been in the tree.
--- Until that guard is written, the ONLY thing holding this column is
--- services/platform/test/events-rollup.test.ts, which proves the '' sentinel
--- keeps the rollup idempotent across three identical runs.
+-- ✅ NOW ENFORCED, AND THE HISTORY IS WORTH KEEPING. This paragraph originally
+-- cited `tooling/ci/assert-rollup-lossless.mjs [R2]` as build-failing while no
+-- such file was in the tree; it was then corrected to ⬜ OWED; the guard was
+-- written and wired (ci.yml runs it), so the citation is true again. [R2] fails
+-- the build if `feature` stops being NOT NULL, loses its `DEFAULT ''`, leaves
+-- `ux_events_daily_grain`, or leaves the rollup's own `ON CONFLICT` target — and
+-- each of those four has a RECORDED FAILING CASE in
+-- tooling/ci/test/rollup-lossless.test.mjs (M2, M2b, M3, M3d/M3e), driven
+-- against a byte-identical copy of this file rather than a hand-written fixture.
+-- The BEHAVIOURAL proof — that the '' sentinel keeps the rollup idempotent
+-- across three identical runs — is still
+-- services/platform/test/events-rollup.test.ts, and a guard cannot replace it:
+-- [R2] reads the schema, not the rows.
 --
 -- SHAPE: ROWID table + a UNIQUE INDEX on the grain, NOT a composite PRIMARY KEY
 -- — the same reasoning 0002_analytics.sql:13-16 records for `events`.

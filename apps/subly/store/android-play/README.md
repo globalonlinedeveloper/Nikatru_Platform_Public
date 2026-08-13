@@ -173,11 +173,20 @@ column to type into the console.
   resolve to a page this repo actually serves. Play requires **both** halves and
   Subly has both: the in-app control (`assert-deletion-control.mjs`) and the web
   link submitted on the Data safety form itself.
-- ⬜ **Target API level** — Android 16 / **API 36 by 2026-08-31** for new apps and
-  updates. A build property, not a listing field; see
-  `company/runbooks/store-submission-android.md`.
-- ⬜ **12 testers × 14 continuous days** of closed testing before production
-  access, for personal accounts created after 2023-11-13. A calendar, not a task.
+- ✅ **Target API level** — Android 16 / **API 36 by 2026-08-31**. A build property, not a
+  listing field, and **already met**: `apps/subly/android/app/build.gradle.kts` pins the
+  integer literal `targetSdk = 36`, and `tooling/ci/assert-android-target-sdk.mjs` reads the
+  floor from `tooling/legal/duty-matrix.json` → `play-target-api-level` (sourced to
+  `developer.android.com/google/play/requirements/target-sdk`, fetched 2026-08-04) and fails
+  the build if the literal drops below it or stops being a literal. *(This row read `⬜` until
+  2026-08-11; it had been satisfied since 2026-08-04.)*
+- ✅ **12 testers × 14 continuous days does NOT apply to this account.** Google's page is titled
+  *"App testing requirements for new **personal** developer accounts"* and scopes the rule to
+  *"developers with personal accounts created after November 13, 2023"*. NIKATRU is a
+  **verified Organization account** (2026-08-04), so there is no tester window and no calendar
+  dependency before production access. A closed test remains good practice, not a gate.
+  *(This row read `⬜ … A calendar, not a task` until 2026-08-11.)*
+  See `company/runbooks/store-submission-android.md` §1.
 
 ## Regenerating / validating
 

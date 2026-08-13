@@ -24,25 +24,27 @@
 //    ux_events_daily_grain; and the retention sweep's `events` cutoff passes
 //    through the rollup watermark rather than age alone."
 //
-//   [R1] THE GRAIN COVERS WHAT THE FIVE QUERIES READ.
+//   [R1] EVERY COLUMN THE FIVE QUERIES READ EXISTS WHERE THEY READ IT.
 //        events_daily's column set is PARSED out of the CREATE TABLE body in
 //        0007 — the paren-matched body, split on top-level commas — never
-//        grepped. Each queries/insights/*.sql is parsed for the columns it
-//        reads off the base table, and every one must have a counterpart in the
-//        rollup through the declared GRAIN_COVERAGE map below, whose TARGET must
-//        exist in the shipped DDL.
+//        grepped. Each queries/insights/*.sql is parsed for the columns it reads
+//        off its base table, and WHICH QUESTION R1 ASKS DEPENDS ON WHICH TABLE
+//        THAT IS:
+//          · reads `events_daily` (the shipped state since the PR-2 cutover) —
+//            every column must be a real column of the shipped DDL. This is the
+//            exact question; there is no map in the way of it.
+//          · reads raw `events` — every column must have a counterpart in the
+//            rollup through the declared GRAIN_COVERAGE map below, whose TARGET
+//            must exist in the DDL. This is the pre-cutover question, kept alive
+//            because a NEW query is likely to be drafted against the raw table.
 //
-//        ⚠️ THE FIVE QUERIES STILL READ RAW `events` TODAY, AND R1 DOES NOT FAIL
-//        ON THAT. The cutover to events_daily is deferred — 0007 exists so the
-//        400-day sweep stops being irreversible for the metrics, not because the
-//        queries moved. So the question R1 answers is the one that is actually
-//        decidable now: WHEN the cutover happens, is the grain already
-//        sufficient? A query that starts reading a column the grain cannot carry
-//        (geo, session, device, version, client clock, consent id — the nine
-//        columns 0007's header records dropping) is caught the day it lands,
-//        which is the day it is cheap. That the queries still read the raw table
-//        is PRINTED on every run, so the deferral stays visible and nobody reads
-//        a green R1 as "the cutover happened".
+//        🔴 AND READING RAW `events` IS NOW A FAILURE, NOT A PRINT. Until the
+//        PR-2 cutover this limb deliberately did not fail on it — the queries
+//        had not moved yet, and the honest thing was to print the deferral. They
+//        have moved. A query back on the raw table is a number the 400-day sweep
+//        DESTROYS ([ADR 045]), and it does not destroy it loudly: the query
+//        keeps returning a smaller answer every night. That is the whole reason
+//        0007 exists, so silently reverting it must not be a green run.
 //
 //   [R2] THE IDEMPOTENCY THE WHOLE TABLE RESTS ON.
 //        `feature` is NOT NULL with DEFAULT '', every grain column is NOT NULL,
@@ -102,8 +104,14 @@
 //   M4 `rollupBoundedCutoff` removed from scheduled.ts -> exit 1 (undeclared)
 //   M5 the cutoff reverted to bare `ageCutoff`         -> exit 1 (age alone)
 //   M6 the query directory emptied                     -> exit 1 COVERAGE LOST
-//   M7 a query reading a column with no grain counterpart -> exit 1 (R1's own
-//      failing case: without it R1 could not fail while the cutover is deferred)
+//   M7 a query reading a column events_daily does not have -> exit 1 (R1's
+//      post-cutover failing case)
+//   M8 a query reverted to raw `events`                -> exit 1 (the cutover
+//      undone — the case that was a PRINT until PR-2 and is a failure now)
+//   M8b a raw-reverted query ALSO reading an uncovered column -> exit 1 through
+//      GRAIN_COVERAGE (without it, that branch has no reachable failing input
+//      now that no shipped query reads the raw table, and an assertion that
+//      cannot fail is worse than none)
 //
 // Usage:  node tooling/ci/assert-rollup-lossless.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,14 +146,22 @@ export const REQUIRED_GRAIN = ['day', 'app_id', 'anon_id', 'event', 'feature'];
 /**
  * RAW `events` COLUMN → THE events_daily COLUMN THAT CARRIES ITS INFORMATION.
  *
- * This is the map that makes R1 answerable while the cutover is deferred: the
- * queries read the raw table today, so "does the grain COVER them" is a question
- * about counterparts, not about which table appears after FROM.
+ * ⚠️ THIS MAP IS FOR QUERIES THAT STILL READ THE RAW TABLE, AND SINCE THE PR-2
+ * CUTOVER NO SHIPPED QUERY DOES. It is deliberately NOT extended with identity
+ * entries (`day → day`, `feature → feature`, `n_rows → n_rows`) to make the
+ * post-cutover queries pass through it: a query reading `events_daily` is
+ * checked DIRECTLY against the shipped DDL, which is the exact question, while
+ * identity entries would also have made `SELECT server_ts FROM events_daily` —
+ * a statement that fails at runtime — read as covered.
  *
- *   server_ts → day      the one documented fidelity loss. A day-aligned window
- *                        is exact; a sub-day window is silently widened to day
- *                        bounds (0007's header, and the 45-combination
- *                        bit-identical proof in events-rollup.test.ts).
+ *   server_ts → day      the documented fidelity loss. A DAY-ALIGNED window is
+ *                        exact; a sub-day window is FLOORED AT BOTH ENDS, so the
+ *                        start widens and the end NARROWS and a window inside
+ *                        one day returns nothing. (This comment said "silently
+ *                        widened", copied from 0007's header, until PR-2
+ *                        measured both directions — see
+ *                        services/platform/test/insights-equivalence.test.ts
+ *                        § "the day window is a REAL loss".)
  *   params    → feature  the rollup precomputes `params.$.name` into `feature`
  *                        with CAST(… AS TEXT); no other param survives, and that
  *                        is the point — nine identifying/contextual columns go.
@@ -745,32 +761,74 @@ function main() {
   }
 
   const stillRaw = [];
+  const onRollup = [];
   for (const f of sqlFiles) {
     const { columns, baseTables } = queryColumnRefs(readFileSync(join(queriesDir, f), 'utf8'));
     if (columns.size === 0) {
       coverageLost([
         `${QUERIES_REL}/${f} parsed to ZERO column references.`,
-        'Every one of these queries reads at least app_id, event and a timestamp. Zero means the parse stopped',
+        'Every one of these queries reads at least app_id, event and a day. Zero means the parse stopped',
         'working, and an empty reference set satisfies every containment check below without checking anything.',
       ]);
     }
-    if (baseTables.has(RAW_TABLE)) stillRaw.push(f);
+
+    const readsRaw = baseTables.has(RAW_TABLE);
+    const readsRollup = baseTables.has(ROLLUP_TABLE);
+    if (readsRaw) stillRaw.push(f);
+    if (readsRollup) onRollup.push(f);
+
+    // WHICH TABLE THE QUERY READS DECIDES WHICH QUESTION R1 ASKS, so a file that
+    // reads NEITHER would be asked nothing at all while the run still printed a
+    // column count — the silent-scan shape this repo keeps paying for.
+    if (!readsRaw && !readsRollup) {
+      coverageLost([
+        `${QUERIES_REL}/${f} names neither \`${ROLLUP_TABLE}\` nor \`${RAW_TABLE}\` after FROM/JOIN ` +
+          `(it reads: ${[...baseTables].sort().join(', ') || '(nothing)'}).`,
+        "R1 picks its question from the table the query reads. With neither present it would ask neither question and",
+        'report the grain sufficient for a query it never checked.',
+      ]);
+    }
+
+    if (readsRaw) {
+      problems.push(
+        `[R1] ${QUERIES_REL}/${f} READS THE RAW \`${RAW_TABLE}\` TABLE. The shipped query set moved to ` +
+          `\`${ROLLUP_TABLE}\` (PR-2); a query back on the raw table is a number the 400-day \`${RAW_TABLE}\` sweep ` +
+          'DESTROYS ([ADR 045]) — and destroys quietly, because the query keeps answering, with less history every ' +
+          'night, rather than failing. That is the entire reason 0007 exists, so undoing it must not be a green run.',
+      );
+    }
+
     for (const col of [...columns].sort()) {
-      const target = GRAIN_COVERAGE.get(col);
-      if (target === undefined) {
-        problems.push(
-          `[R1] ${QUERIES_REL}/${f} reads \`${col}\` off the base table and the rollup grain carries no counterpart. ` +
-            `Either ${ROLLUP_TABLE} must grow a column for it (and 0007's privacy argument re-made — the grain drops nine ` +
-            'identifying/contextual columns on purpose), or the query must stop reading it. Left as-is, the cutover to ' +
-            'the rollup silently changes this number. (If it is a SQL function this scan has not met, add it to ' +
-            'SQL_VOCABULARY — that is a vocabulary gap, not a grain gap.)',
-        );
+      if (readsRaw) {
+        // THE PRE-CUTOVER QUESTION, kept because a new query is likely to be
+        // drafted against the raw table: is there a counterpart at all?
+        const target = GRAIN_COVERAGE.get(col);
+        if (target === undefined) {
+          problems.push(
+            `[R1] ${QUERIES_REL}/${f} reads \`${col}\` off the raw \`${RAW_TABLE}\` table and the rollup grain carries ` +
+              `no counterpart. Either ${ROLLUP_TABLE} must grow a column for it (and 0007's privacy argument re-made — ` +
+              'the grain drops nine identifying/contextual columns on purpose), or the query must stop reading it. ' +
+              'Left as-is, this number cannot survive the cutover at all. (If it is a SQL function this scan has not ' +
+              'met, add it to SQL_VOCABULARY — that is a vocabulary gap, not a grain gap.)',
+          );
+          continue;
+        }
+        if (!dailyCols.has(target)) {
+          problems.push(
+            `[R1] ${QUERIES_REL}/${f} reads \`${col}\`, which GRAIN_COVERAGE says is carried by ${ROLLUP_TABLE}.\`${target}\` — ` +
+              `and \`${target}\` is not in the shipped DDL. The map is describing a table that no longer has that column.`,
+          );
+        }
         continue;
       }
-      if (!dailyCols.has(target)) {
+
+      // THE POST-CUTOVER QUESTION, and it is the exact one — no map in the way.
+      if (!dailyCols.has(col)) {
         problems.push(
-          `[R1] ${QUERIES_REL}/${f} reads \`${col}\`, which GRAIN_COVERAGE says is carried by ${ROLLUP_TABLE}.\`${target}\` — ` +
-            `and \`${target}\` is not in the shipped DDL. The map is describing a table that no longer has that column.`,
+          `[R1] ${QUERIES_REL}/${f} reads \`${col}\` off \`${ROLLUP_TABLE}\` and the shipped DDL in ${MIGRATION_REL} ` +
+            `has no such column (it has: ${[...dailyCols.keys()].join(', ')}). This does not degrade at runtime — D1 ` +
+            'rejects the statement — so the number simply stops existing. (If it is a SQL function this scan has not ' +
+            'met, add it to SQL_VOCABULARY — that is a vocabulary gap, not a schema gap.)',
         );
       }
     }
@@ -847,14 +905,14 @@ function main() {
     `⬜  R1 scanned ${sqlFiles.length} quer(ies) in ${QUERIES_REL}` +
       (documented.length ? ` (README.md documents ${documented.length})` : ''),
   );
-  if (stillRaw.length) {
-    console.log(
-      `⬜  ${stillRaw.length} of ${sqlFiles.length} quer(ies) STILL READ THE RAW \`${RAW_TABLE}\` TABLE — ` +
-        `${stillRaw.join(', ')}. The cutover to ${ROLLUP_TABLE} is DEFERRED and this is not a failure: 0007 exists so ` +
-        'the 400-day sweep stops being irreversible for the metrics, not because the queries moved. What R1 asserts ' +
-        'today is that the grain would COVER them when they do move.',
-    );
-  }
+  console.log(
+    `⬜  ${onRollup.length} of ${sqlFiles.length} quer(ies) READ \`${ROLLUP_TABLE}\` — THE CUTOVER HAS LANDED, and ` +
+      `${stillRaw.length} still read raw \`${RAW_TABLE}\`. This line used to report the reverse and call it a ` +
+      'deliberate deferral; that is no longer true, and a stale reassurance is the thing this repo pays for most. ' +
+      'The queries answer over a DAY window now: both bounds FLOOR, so the start widens and the end NARROWS — the ' +
+      'equivalence and both directions of that loss are measured in ' +
+      'services/platform/test/insights-equivalence.test.ts.',
+  );
   console.log(
     '⬜  R3 IS A TRIPWIRE, NOT THE PROOF. It shows the call is still wired; it cannot show a row survives. ' +
       `The behavioural proof is ${BEHAVIOURAL_PROOF_REL} — seed 30 days, sweep with no rollup, all 30 survive; ` +

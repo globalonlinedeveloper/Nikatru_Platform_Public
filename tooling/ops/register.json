@@ -969,19 +969,19 @@
     {
       "id": "duty.oci.gt-drive-sync",
       "kind": "duty",
-      "what": "/opt/glitchtip/gt_drive_sync.sh, root cron 02:30 daily: rclone copy of the dumps to the encrypted `gcrypt:` Drive remote, plus the stack config (compose.yml + .env) to gcrypt:config, plus /coldstorage, plus a fresh crontab-root.txt; then prunes LOCAL dumps to 7 days while Drive keeps the history.",
+      "what": "/opt/glitchtip/gt_drive_sync.sh, root cron 02:30 daily: rclone copy of the dumps to `gbiz:nikatru-backup/glitchtip/` (business Drive, PLAINTEXT), plus the stack config (compose.yml + .env) to `${REMOTE}config`, plus ssl, nginx, /coldstorage, uploads and a fresh crontab-root.txt; then prunes LOCAL dumps to 7 days while Drive keeps the history. CHANGED 2026-08-12 [ADR 046] — was the encrypted `gcrypt:` remote, whose Drive directory was purged the same day; this row still said `gcrypt:` until 2026-08-13, i.e. the register described a remote that returns `directory not found`.",
       "detector": "/opt/glitchtip/backup-liveness.py, which asserts the dump REACHED DRIVE and requires the stamp /opt/glitchtip/.gt-drive-sync.done — written as this script's LAST action, so a sync that aborted midway cannot look complete.",
       "response": "Read the event, then check the rclone leg specifically: this script running under `set -euo pipefail` means an abort before the prune step leaves a correctly-sized dump on Drive with every other assertion still passing.",
       "cadence": "1d",
       "mechanism": {
         "substrate": "oci-cron",
         "anchor": "company/runbooks/glitchtip.md",
-        "record": "the encrypted objects under gcrypt: on Drive, plus /opt/glitchtip/.gt-drive-sync.done",
+        "record": "the objects under gbiz:nikatru-backup/glitchtip/ on Drive (PLAINTEXT since [ADR 046] — browsable is a recovery property), plus /opt/glitchtip/.gt-drive-sync.done",
         "failingValue": "the newest dump absent from Drive, or the .done stamp older than the newest dump",
         "readBy": "/opt/glitchtip/backup-liveness.py on the box",
         "recordQuery": {
           "reader": "unreachable",
-          "why": "The record is the encrypted objects under gcrypt: on Drive plus /opt/glitchtip/.gt-drive-sync.done on the box. The Drive half needs the rclone crypt password that exists only in the on-box rclone.conf; the stamp half is on the box."
+          "why": "The record is the objects under gbiz:nikatru-backup/glitchtip/ on Drive plus /opt/glitchtip/.gt-drive-sync.done on the box. The Drive half needs the gbiz OAuth credential in the on-box rclone.conf; the stamp half is on the box. [ADR 046] removed the crypt layer, so no crypt password is involved any more — the objects are plaintext and readable by anyone holding that credential, which is the deliberate trade: 'a backup that needs rclone, a config and a password is one nobody tests'."
         }
       },
       "absenceWatcher": {
