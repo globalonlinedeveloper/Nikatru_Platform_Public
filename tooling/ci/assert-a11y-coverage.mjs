@@ -865,14 +865,25 @@ if (parsedCleanly) {
 // interpolates `SWEPT_FLOOR.size` rather than spelling a number that can rot.
 // ═══════════════════════════════════════════════════════════════════════════
 const REQUIRED_COVERAGE = {
-  // RE-MEASURED on the working tree of 2026-08-13 AFTER the tap-target
-  // increment, by running this guard and counting, not from ambition:
+  // RE-MEASURED on the working tree of 2026-08-13 AFTER the CONTRAST increment,
+  // by running this guard and counting, not from ambition:
   //   19 reachable surfaces — 17 routed screens + 2 modal sheets
-  //   81 testWidgets cases in 1 file (a11y_semantics_test.dart), of which 43
-  //      call a sweep helper (naked-controls ×24 + tap-target ×19, no case in
-  //      two families) and 38 assert a single label without sweeping
-  // ~~60 cases … 24 sweeping … 36 non-sweeping~~ — the reading of the previous
-  // commit, retracted the same day; see the recurrence note above.
+  //   109 testWidgets cases in 1 file (a11y_semantics_test.dart), of which the
+  //      sweeping families are naked-controls ×24 · tap-target ×19 · contrast ×23
+  // ~~81 cases~~ — the reading after the tap-target increment.
+  // ~~60 cases … 24 sweeping … 36 non-sweeping~~ — the reading before that.
+  //
+  // 🔴 AND IT HAPPENED A THIRD TIME, WHICH IS WHY BOTH RETRACTIONS STAY. The
+  // contrast increment took the suite 81 → 109 and left `cases` at 81 — **28
+  // cases deletable in silence**, the same defect as the 21 the tap-target
+  // increment left and the 36 the sweep before it left. It was invisible to
+  // `melos run gate`, which runs Dart only; the limb that caught it is this
+  // guard's OWN test suite (`tooling/ci/test/a11y-coverage.test.mjs`, M8),
+  // which pins the floor's number in its regex — and that suite runs ONLY in
+  // CI, under `node --test`, so a session that gates locally and pushes sees
+  // nothing. **Three occurrences is not a lapse, it is the default outcome of
+  // growing a suite.** The floor does not track the suite by itself and nothing
+  // reminds you; only M8 going red does.
   //
   // ⚠️ `surfaces: 19` IS THE SAME NUMBER assert-responsive-coverage.mjs CARRIES
   // and that is a MEASUREMENT, not a copy. The two guards range over the same
@@ -880,7 +891,7 @@ const REQUIRED_COVERAGE = {
   // is the signal that one of the two parses has drifted from the other. If you
   // change one, RE-MEASURE the other rather than mirroring the edit.
   surfaces: 19,
-  cases: 81,
+  cases: 109,
 };
 if (reachable.size > 0 && reachable.size < REQUIRED_COVERAGE.surfaces) {
   coverageLost(
