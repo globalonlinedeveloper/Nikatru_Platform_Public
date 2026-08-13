@@ -120,34 +120,72 @@ class _Row extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    // The whole label is a tap target for the box — a 20 px square is below
+    // The label SENTENCE is a tap target for the box — a 20 px square is below
     // every platform's minimum touch size, and a checkbox whose only hit area
     // is the box itself is the reason people tick the wrong one.
+    // ⚠️ THE SENTENCE, NOT THE WHOLE COLUMN — this line said "the whole label"
+    // until 2026-08-13, and the detector had already shrunk beneath it. It now
+    // wraps the `Text` alone (see the links note below: keeping the links
+    // inside the exclusion would have taken both link nodes with it). Both
+    // consent strings wrap at 375 px and so still fill the width, keeping their
+    // hit area; the 12 px strip above and the links gutter below deliberately
+    // no longer toggle. Measured: tapping the sentence still ticks the box.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        // 🔴 `semanticLabel` IS THE NAME OF THIS CONTROL AND IT WAS MISSING.
+        // A bare `Checkbox` contributes a node with a CHECKED state and NO
+        // label, so the app's only clickwrap announced as "not checked,
+        // checkbox" — a legally blocking control whose subject a reader is
+        // never told. The sentence beside it is not a substitute: it sat on a
+        // DIFFERENT node, which a reader reaches on a separate swipe and can
+        // just as easily reach after it. Measured by
+        // `a11y_semantics_test.dart`'s naked-controls sweep, which reported
+        // «» NO NAME here.
         Checkbox(
           key: checkboxKey,
           value: value,
           onChanged: enabled ? (bool? v) => onChanged(v ?? false) : null,
+          semanticLabel: label,
         ),
         Expanded(
-          child: GestureDetector(
-            onTap: enabled ? () => onChanged(!value) : null,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(label, style: theme.textTheme.bodyMedium),
-                  if (links.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Wrap(spacing: 16, runSpacing: 4, children: links),
-                  ],
+          child: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // 🔴 THE LABEL IS A SECOND HIT TARGET FOR THE BOX, NOT A SECOND
+                // CONTROL — so it is excluded from the semantics tree rather
+                // than annotated. Its `GestureDetector` contributed a TAP
+                // ACTION with no role and no state, i.e. a node announced as
+                // prose that happens to respond, sitting next to the real
+                // checkbox and doing the same thing; the same sweep reported it
+                // «I agree to the Terms…» NO ROLE. Naming it as a second
+                // checkbox would be worse: two nodes claiming one tick, and a
+                // reader with no way to know they are the same box. The
+                // sentence is now spoken ONCE, by the control that owns it.
+                //
+                // ⚠️ THE EXCLUSION WRAPS THE DETECTOR, NOT THE TEXT. Inside it,
+                // the detector's own tap action survives into the tree and the
+                // node is merely nameless — worse than before, not better.
+                ExcludeSemantics(
+                  child: GestureDetector(
+                    onTap: enabled ? () => onChanged(!value) : null,
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(label, style: theme.textTheme.bodyMedium),
+                  ),
+                ),
+                // ⚠️ AND THE LINKS STAY OUTSIDE THAT EXCLUSION, which is why
+                // the detector no longer wraps them. It used to cover this
+                // whole column, so excluding it would have taken both `link`
+                // nodes with it — and a tap in the gutter beside "Privacy"
+                // toggled the consent box instead of opening the document.
+                if (links.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Wrap(spacing: 16, runSpacing: 4, children: links),
                 ],
-              ),
+              ],
             ),
           ),
         ),

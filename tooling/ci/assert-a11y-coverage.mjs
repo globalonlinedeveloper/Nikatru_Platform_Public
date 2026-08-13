@@ -662,6 +662,20 @@ const SWEPT_FLOOR = new Set([
   `${APP}/lib/features/scan/scan_screen.dart#ScanScreen`,
   `${APP}/lib/features/calendar/calendar_screen.dart#CalendarScreen`,
   `${APP}/lib/features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen`,
+  `${APP}/lib/features/auth/check_inbox_screen.dart#CheckInboxScreen`,
+  `${APP}/lib/features/auth/verify_email_screen.dart#VerifyEmailScreen`,
+  `${APP}/lib/features/auth/reaccept_terms_screen.dart#ReacceptTermsScreen`,
+  `${APP}/lib/features/auth/login_screen.dart#LoginScreen`,
+  `${APP}/lib/features/auth/sign_up_screen.dart#SignUpScreen`,
+  `${APP}/lib/features/auth/reset_password_screen.dart#ResetPasswordScreen`,
+  `${APP}/lib/features/home/home_screen.dart#HomeScreen`,
+  `${APP}/lib/features/settings/settings_screen.dart#SettingsScreen`,
+  `${APP}/lib/features/notifications/notifications_screen.dart#NotificationsScreen`,
+  `${APP}/lib/features/monetization/paywall_screen.dart#PaywallScreen`,
+  `${APP}/lib/features/monetization/manage_plan_screen.dart#ManagePlanScreen`,
+  `${APP}/lib/features/onboarding/onboarding_screen.dart#OnboardingScreen`,
+  `${APP}/lib/features/add/add_subscription_sheet.dart#showAddSubscriptionSheet`,
+  `${APP}/lib/features/cancel/cancel_sheet.dart#showCancelSheet`,
 ]);
 
 if (parsedCleanly) {
