@@ -374,8 +374,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // upper case (it does not — `toUpperCase()` is a no-op on Tamil
                 // script, which is the correct rendering, and it would be frozen
                 // wrong if the capitals lived in the value).
+                //
+                // ⚠️ THE `toUpperCase()` MOVED INSIDE `_field`, and it is not a
+                // tidy-up: the capitals belong to the PAINTED label only. The
+                // same word, in sentence case, is now what the field ANNOUNCES
+                // (see [_field]), and a reader handed "E-M-A-I-L" is handed a
+                // layout compromise read out one letter at a time.
                 _field(
-                  l10n.email.toUpperCase(),
+                  l10n.email,
                   _email,
                   TextInputType.emailAddress,
                   fieldKey: E2EKeys.loginEmail,
@@ -383,7 +389,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 14),
                 _field(
-                  l10n.password.toUpperCase(),
+                  l10n.password,
                   _password,
                   TextInputType.text,
                   obscure: true,
@@ -542,6 +548,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  /// One labelled field — and the label reaches a SCREEN READER, which it did
+  /// not.
+  ///
+  /// 🔴 THE FIELDS ON THIS SCREEN HAD NO NAME AS SOON AS SOMEBODY TYPED IN
+  /// THEM, and the empty form is exactly the state that hides it. The name is
+  /// painted as a separate `Text` ABOVE the box rather than through
+  /// `InputDecoration.labelText`, so nothing tied the two together: the only
+  /// string in the field's own semantics was `hintText`, and Flutter fades the
+  /// hint out — semantics and all, `AnimatedOpacity` excludes a fully
+  /// transparent child — the moment the field has content. So a reader heard
+  /// "you@email.com, text field" on arrival and, one character later, a text
+  /// field announced as NOTHING. Both boxes, on the first screen every
+  /// signed-out user sees, and the password box is the one where "which box am
+  /// I in" cannot be answered by listening to the value.
+  ///
+  /// Measured by `a11y_semantics_test.dart`'s naked-controls sweep, which
+  /// reported two «» NO NAME nodes once the case typed into them — and passed
+  /// on the pristine form, which is why the typed-in case exists.
+  ///
+  /// ⚠️ FIXED WITH `MergeSemantics`, NOT WITH `labelText`. Moving the name into
+  /// the decoration would repaint the box with a floating Material label, and
+  /// apps/subly is the frozen legacy rail-prover the owner eyeballs. This
+  /// changes no pixels: the visible capitals are excluded from the tree (a
+  /// layout compromise has no business in the audio channel — the same rule the
+  /// calendar's narrow weekday letters are held to) and the sentence-case word
+  /// is annotated onto the field, where the merge makes label, role, value and
+  /// tap action ONE node instead of a caption a reader meets on a separate
+  /// swipe and can just as easily meet afterwards.
   Widget _field(
     String label,
     TextEditingController c,
@@ -551,43 +585,53 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     String? hint,
   }) {
     final _Tones t = _tones(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(label, style: AppText.label.copyWith(color: t.muted)),
-        const SizedBox(height: 7),
-        TextField(
-          key: fieldKey,
-          controller: c,
-          obscureText: obscure,
-          keyboardType: type,
-          style: AppText.body.copyWith(
-            fontWeight: FontWeight.w600,
-            color: t.ink,
-          ),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: AppText.muted.copyWith(
-              fontWeight: FontWeight.w500,
-              color: t.muted,
-            ),
-            filled: true,
-            fillColor: t.surface,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 15,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: t.line),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: t.accent, width: 1.5),
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          ExcludeSemantics(
+            child: Text(
+              label.toUpperCase(),
+              style: AppText.label.copyWith(color: t.muted),
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 7),
+          Semantics(
+            label: label,
+            child: TextField(
+              key: fieldKey,
+              controller: c,
+              obscureText: obscure,
+              keyboardType: type,
+              style: AppText.body.copyWith(
+                fontWeight: FontWeight.w600,
+                color: t.ink,
+              ),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: AppText.muted.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: t.muted,
+                ),
+                filled: true,
+                fillColor: t.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 15,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: t.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: t.accent, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

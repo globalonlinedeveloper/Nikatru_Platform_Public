@@ -261,31 +261,58 @@ class _HomeDashboard extends ConsumerWidget {
         // the three states an unlabelled control can be in: not silent (which at
         // least reads as "unknown"), but confidently wrong.
         //
-        // `excludeSemantics` drops the letter rather than appending to it: the
-        // initial is a visual shorthand for "your account", and hearing the
-        // shorthand AND its expansion ("Account and settings R") is the stutter
-        // [GlyphTile] records. Which account is signed in is already announced
-        // by the greeting and the display name to the left of this row.
+        // The letter is dropped rather than appended to: the initial is a
+        // visual shorthand for "your account", and hearing the shorthand AND
+        // its expansion ("Account and settings R") is the stutter [GlyphTile]
+        // records. Which account is signed in is already announced by the
+        // greeting and the display name to the left of this row.
+        //
+        // 🔴 THE EXCLUSION IS `ExcludeSemantics` AROUND THE VISUAL, NOT
+        // `excludeSemantics: true` ON THE ANNOTATION — AND THE DIFFERENCE IS
+        // THE WHOLE CONTROL. This read
+        // `Semantics(button: true, label: …, excludeSemantics: true)` wrapped
+        // around the `GestureDetector`, and that flag drops the ENTIRE subtree
+        // beneath the annotation: the account initial it was aimed at, and the
+        // gesture handler's `SemanticsAction.tap` with it. So the node
+        // announced "Account and settings, button" and had no action to
+        // perform — and a screen reader's double-tap dispatches the action to
+        // the node rather than synthesising a pointer event, so the ONE route
+        // to /settings a reader can find did nothing at all. Sighted taps were
+        // unaffected (hit-testing never consults semantics), which is why this
+        // shipped.
+        //
+        // Moving the exclusion inside the gesture handler keeps every property
+        // the old spelling was for — the annotation still supplies the role and
+        // the name, the letter is still silent — and leaves the tap action on
+        // the node that announces the button. Same shape as the settings
+        // profile card, which had it right.
+        //
+        // ✅ POLICED by the `home ·` group in `test/a11y_semantics_test.dart`:
+        // restoring `excludeSemantics: true` here fails its third limb by name.
+        // `expectNothingNaked` cannot see this defect in either direction — it
+        // ranges over nodes that HAVE a tap action, so a control missing one is
+        // exactly the control it skips.
         Semantics(
           button: true,
           label: l10n.a11yAccountSettings,
-          excludeSemantics: true,
           child: GestureDetector(
             onTap: () => context.go('/settings'),
-            child: Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: AppColors.brandGradient,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                user?.initial ?? 'A',
-                style: const TextStyle(
-                  fontFamily: 'Manrope',
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+            child: ExcludeSemantics(
+              child: Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: AppColors.brandGradient,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  user?.initial ?? 'A',
+                  style: const TextStyle(
+                    fontFamily: 'Manrope',
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),

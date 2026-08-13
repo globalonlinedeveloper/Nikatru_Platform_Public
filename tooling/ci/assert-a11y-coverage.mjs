@@ -662,6 +662,20 @@ const SWEPT_FLOOR = new Set([
   `${APP}/lib/features/scan/scan_screen.dart#ScanScreen`,
   `${APP}/lib/features/calendar/calendar_screen.dart#CalendarScreen`,
   `${APP}/lib/features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen`,
+  `${APP}/lib/features/auth/check_inbox_screen.dart#CheckInboxScreen`,
+  `${APP}/lib/features/auth/verify_email_screen.dart#VerifyEmailScreen`,
+  `${APP}/lib/features/auth/reaccept_terms_screen.dart#ReacceptTermsScreen`,
+  `${APP}/lib/features/auth/login_screen.dart#LoginScreen`,
+  `${APP}/lib/features/auth/sign_up_screen.dart#SignUpScreen`,
+  `${APP}/lib/features/auth/reset_password_screen.dart#ResetPasswordScreen`,
+  `${APP}/lib/features/home/home_screen.dart#HomeScreen`,
+  `${APP}/lib/features/settings/settings_screen.dart#SettingsScreen`,
+  `${APP}/lib/features/notifications/notifications_screen.dart#NotificationsScreen`,
+  `${APP}/lib/features/monetization/paywall_screen.dart#PaywallScreen`,
+  `${APP}/lib/features/monetization/manage_plan_screen.dart#ManagePlanScreen`,
+  `${APP}/lib/features/onboarding/onboarding_screen.dart#OnboardingScreen`,
+  `${APP}/lib/features/add/add_subscription_sheet.dart#showAddSubscriptionSheet`,
+  `${APP}/lib/features/cancel/cancel_sheet.dart#showCancelSheet`,
 ]);
 
 if (parsedCleanly) {
@@ -707,11 +721,24 @@ if (parsedCleanly) {
 //             constructed and still swept by its own case, so every set above
 //             is byte-identical and a real assertion left the tree in silence.
 //             P5 shipped 24; a smaller number is coverage leaving, not tidying.
+//
+// 🔴 THIS FLOOR WENT BLIND FOR THE LENGTH OF ONE COMMIT, AND THE CAUSE IS THE
+// EXACT SHAPE THIS FILE'S HEADER WARNS ABOUT. The 2026-08-13 sweep moved
+// SWEPT_FLOOR 5 → 19 and left `cases` at 24 while the suite grew 24 → 60. Both
+// numbers were measured on the same day from the same file; only one was
+// carried. Measured consequence, not a worry: **36 cases could be deleted
+// before this limb said one word** — and since exactly 36 of the 60 are
+// non-sweeping, the floor could no longer fire AT ALL without a sweep also
+// being deleted, which the sets above already catch. A floor that can only
+// fire when something else fires first is not a floor.
+// 📌 A guard extended in one dimension must be re-measured in EVERY dimension
+// it carries. Raising the membership set is not raising the count.
 // ═══════════════════════════════════════════════════════════════════════════
 const REQUIRED_COVERAGE = {
-  // MEASURED on the working tree of 2026-08-12, not set from ambition:
+  // MEASURED on the working tree of 2026-08-13, not set from ambition:
   //   19 reachable surfaces — 17 routed screens + 2 modal sheets
-  //   24 testWidgets cases in 1 file (a11y_semantics_test.dart)
+  //   60 testWidgets cases in 1 file (a11y_semantics_test.dart), of which 24
+  //      call a sweep helper and 36 assert a single label without sweeping
   //
   // ⚠️ `surfaces: 19` IS THE SAME NUMBER assert-responsive-coverage.mjs CARRIES
   // and that is a MEASUREMENT, not a copy. The two guards range over the same
@@ -719,7 +746,7 @@ const REQUIRED_COVERAGE = {
   // is the signal that one of the two parses has drifted from the other. If you
   // change one, RE-MEASURE the other rather than mirroring the edit.
   surfaces: 19,
-  cases: 24,
+  cases: 60,
 };
 if (reachable.size > 0 && reachable.size < REQUIRED_COVERAGE.surfaces) {
   coverageLost(
