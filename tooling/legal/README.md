@@ -16,8 +16,8 @@ been building four more instances of it deliberately.
 
 `tooling/channel-register.json` had already met the same wall and already recorded the answer, in prose:
 
-> `ownerQueue` IDS ARE DATA, NOT AN ASSERTION. `company/` is gitignored and is not in the public repo, so
-> no CI guard can read `OWNER_QUEUE.md`.
+> `ownerQueue` IDS ARE DATA, NOT AN ASSERTION. `OWNER_QUEUE.md` moved to `nikatru/` ([ADR 054]) — a
+> SEPARATE private repo, not on the CI checkout at all, so no CI guard can read it.
 
 So: **the in-tree home is `tooling/legal/`**, and the registers here are public files in a public repo.
 
@@ -36,7 +36,7 @@ record lives (`OWNER_QUEUE S-4`) — never where the key is, or how it is protec
 
 Applied here, per register:
 
-| register | public part (here) | private part (stays in `company/`) |
+| register | public part (here) | private part (stays out of this repo — `nikatru/` or `company/`) |
 |---|---|---|
 | `provider-register.json` | the provider's name, role, the route or page that names it, whether it is disclosed | the seller account itself: merchant IDs, KYC state, bank/payout details, contract terms |
 | `data-inventory.json` | which stores exist, what CATEGORY of data each holds, its declared retention, which code writes it | the data itself, and any per-subject record. No row names a person, an address, or a key |
