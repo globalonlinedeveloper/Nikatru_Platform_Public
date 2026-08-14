@@ -193,14 +193,20 @@ function baseRegister() {
         lastDone: '2026-07-26',
         takesDown: ['laptop'],
         respondsVia: 'recovery.bundles',
-        mechanism: { substrate: 'google-drive', anchor: 'company/runbooks/backup-liveness.md', record: 'a dated file', failingValue: 'an intersection', readBy: 'this guard' },
+        // 🔴 DELIBERATELY `nikatru/` WHILE THE ROW ABOVE IS `company/`. `OUTSIDE_CI` holds TWO
+        // prefixes, and the `unverifiableAnchors` assertion below counts 2 — so this fixture is
+        // the only thing making that count span BOTH branches. With both rows on one prefix the
+        // other branch would be exercised by nothing and could be deleted in silence, which is
+        // this repo's most repeated defect (a check that quietly stopped checking). One fixture
+        // per prefix costs nothing and is not a new stored test.
+        mechanism: { substrate: 'google-drive', anchor: 'nikatru/OWNER_QUEUE.md', record: 'a dated file', failingValue: 'an intersection', readBy: 'this guard' },
         accessProviders: ['google'],
         source: 'verified',
       },
       // [14]O-4's domain is duties ON A CLOCK, and the three rows above are not
       // on one. Appended (never inserted) so every rows[N] index above still
-      // points where its test thinks it does, and anchored OUTSIDE company/ so
-      // the companyAnchored count assertion is untouched.
+      // points where its test thinks it does, and anchored OUTSIDE company/ and
+      // nikatru/ so the unverifiableAnchors count assertion is untouched.
       {
         id: 'duty.laptop.backup',
         kind: 'duty',
@@ -431,7 +437,7 @@ describe('assert-ops-register — mechanism, source and the company/ blind spot'
   test('an anchor under company/ is ACCEPTED and COUNTED, because CI cannot read it', () => {
     const v = run(baseRegister());
     assert.deepEqual(v.errors, []);
-    assert.equal(v.stats.companyAnchored, 2);
+    assert.equal(v.stats.unverifiableAnchors, 2);
   });
 
   test('a mechanism with no reachable failing value FAILS', () => {
@@ -628,7 +634,7 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       outcomes: { keep: 'no action', kill: 'execute the retirement contract' },
       ownerGated: true,
       ownerGap: 'gates all revenue',
-      mechanism: { substrate: 'owner-decision', anchor: 'company/OWNER_QUEUE.md', record: 'the decisions log', failingValue: 'day 90 with no review', readBy: 'this guard' },
+      mechanism: { substrate: 'owner-decision', anchor: 'nikatru/OWNER_QUEUE.md', record: 'the decisions log', failingValue: 'day 90 with no review', readBy: 'this guard' },
       accessProviders: ['github'],
       source: 'verified',
     });
@@ -649,7 +655,7 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       dayCount: 90,
       day0: '2025-01-01',
       outcomes: { keep: 'no action', kill: 'withdraw' },
-      mechanism: { substrate: 'owner-decision', anchor: 'company/OWNER_QUEUE.md', record: 'the decisions log', failingValue: 'day 90 with no review', readBy: 'this guard' },
+      mechanism: { substrate: 'owner-decision', anchor: 'nikatru/OWNER_QUEUE.md', record: 'the decisions log', failingValue: 'day 90 with no review', readBy: 'this guard' },
       accessProviders: ['github'],
       source: 'verified',
     });
@@ -671,7 +677,7 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       ownerGated: true,
       ownerGap: 'pending',
       outcomes: { keep: 'no action' },
-      mechanism: { substrate: 'owner-decision', anchor: 'company/OWNER_QUEUE.md', record: 'x', failingValue: 'y', readBy: 'z' },
+      mechanism: { substrate: 'owner-decision', anchor: 'nikatru/OWNER_QUEUE.md', record: 'x', failingValue: 'y', readBy: 'z' },
       accessProviders: ['github'],
       source: 'verified',
     });

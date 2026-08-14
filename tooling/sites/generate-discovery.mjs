@@ -825,8 +825,12 @@ export function renderSitemap(entries) {
 // 🔴 ONLY THE `## Apps` SECTION IS GENERATED, and the rest is left byte-for-byte
 // on purpose rather than for lack of ambition. The other sections state facts
 // that DO NOT EXIST IN THIS REPOSITORY — the Udyam registration number, the
-// founding year, the founder's biography — because they live in `company/`,
-// which is gitignored and invisible here. A generator could only produce them by
+// founding year, the founder's biography — because they live in the shared
+// business brain `nikatru/business/`, a SEPARATE private repo that is not on this
+// checkout at all. (Said "`company/`, which is gitignored" until 2026-08-14; the
+// reasoning is unchanged and the conclusion is now stronger — this is not a
+// directory a build could opt into reading, it is a different repository.)
+// A generator could only produce them by
 // carrying owner prose inside a script, which moves a second source of truth
 // from a file a human can read and edit into one only a machine reads. That is
 // strictly worse than the hand-maintenance it would claim to remove.

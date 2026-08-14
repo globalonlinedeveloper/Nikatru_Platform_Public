@@ -2,7 +2,7 @@
   Android ADAPTIVE ICON — foreground layer.
 
   The mark ALONE on transparency. Path data, stroke width and the MONO gradient
-  stops are copied verbatim from company/logo/nikatru-icon.svg — nothing is
+  stops are copied verbatim from nikatru/logo/nikatru-icon.svg — nothing is
   redrawn and no colour is invented; only the tile behind it is removed, because
   an adaptive foreground must be transparent for the background layer to show
   through the system mask.

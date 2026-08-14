@@ -175,7 +175,7 @@ const deferredWindowsStore = () => ({
   storeMetadataDir: 'apps/{app}/store/windows-store',
   ownerQueue: 'A-2',
   // [10]D-4's agent slice, added 2026-08-03. `ownerQueue` is a pointer into a
-  // file CI can never open (company/ is gitignored), so this is the only place
+  // file CI can never open (it moved to nikatru/, a separate private repo), so this is the only place
   // a machine can answer "does a publisher account exist for this channel?".
   // Owner-asserted and dated because it cannot be derived; the guard holds it
   // to a RELATIONSHIP — served ⇒ verified, everything else PRINTS.
@@ -1219,8 +1219,8 @@ describe('assert-channel-register — the RELEASE_CHANNEL stamp resolves to a ro
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [10]D-4's agent slice — the channel↔account status is IN THE TREE.
-// `ownerQueue` points into company/OWNER_QUEUE.md, which CI can never open
-// (.gitignore:15), so before this field "does a publisher account exist for
+// `ownerQueue` points into nikatru/OWNER_QUEUE.md, which CI can never open
+// (a separate private repo, not on the checkout), so before this field "does a publisher account exist for
 // this channel?" had no answer a machine could give. The status cannot be
 // derived — no API this repo can reach knows whether an enrolment completed —
 // so it is owner-asserted and dated, and the GUARD holds it to a relationship.

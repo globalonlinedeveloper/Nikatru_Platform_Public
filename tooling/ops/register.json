@@ -34,7 +34,7 @@
     "WHY THE PUBLIC REPO AND NOT company/. CI cannot read company/ — it is gitignored and invisible to",
     "every workflow, which is exactly what blocked four stage-8 increments. This file holds surface names,",
     "cadences and dates. No credential, no business identifier, no PII. The private CONTENT (the runbooks",
-    "themselves, the owner queue) stays in company/; the STRUCTURAL FACTS a guard must read live here.",
+    "themselves) stays in company/, the owner queue in nikatru/; the STRUCTURAL FACTS a guard reads live here.",
     "",
     "Enforced by tooling/ci/assert-ops-register.mjs (schema, coverage, staleness, revert mitigations,",
     "access-path intersection) and tooling/ci/assert-retention-coverage.mjs (the `retention` rows against",
@@ -245,7 +245,7 @@
       "DECISION 2026-08-06 — THE TOLERANCE STAYS, AND STOPS BEING SILENT. Not one of the twelve dates",
       "is knowable in this repository: eight live in a vendor console, one on the Oracle box behind",
       "`openssl x509 -enddate`, one is a non-use clock with no calendar date at all, and two (GST LUT,",
-      "Awfis lease) are business values CLAUDE.md forbids mirroring out of gitignored company/ into this",
+      "Awfis lease) are business values CLAUDE.md forbids mirroring out of the private brain (nikatru/) into this",
       "public file. Requiring a date would therefore either block all of CI on owner-only work",
       "(CLAUDE.md C-6) or invite an invented date — and an invented expiry is worse than a null, because",
       "it reads as coverage and the arithmetic would then pass on a fiction.",
@@ -1634,16 +1634,16 @@
       "kind": "expiring",
       "what": "The GST Letter of Undertaking, which is renewed per financial year.",
       "detector": "This row.",
-      "response": "Renew; company/business/compliance-calendar.md carries the deadline.",
+      "response": "Renew; nikatru/business/compliance-calendar.md carries the deadline.",
       "cadence": "180d",
       "expires": null,
       "leadDays": 30,
       "mechanism": {
         "substrate": "external-registry",
-        "anchor": "company/business",
+        "anchor": "nikatru/business",
         "record": "the GST portal",
         "failingValue": "a validity end inside the lead window",
-        "readBy": "nothing in this repo — and nothing should be: the date lives in company/, which CI cannot read"
+        "readBy": "nothing in this repo — and nothing should be: the date lives in nikatru/business/, which CI cannot read"
       },
       "accessProviders": [
         "india-gov",
@@ -1652,20 +1652,20 @@
       "ownerGated": true,
       "ownerGap": "Owner-supplied date. Deliberately NOT mirrored into this public file with a real value — the row's existence is the structural fact CI needs; the date itself is business content that stays private.",
       "source": "verified",
-      "expiryKnownAt": "company/business/compliance-calendar.md (gitignored). Deliberately NOT mirrored here: the row's existence is the structural fact CI needs, the date is business content that stays private."
+      "expiryKnownAt": "nikatru/business/compliance-calendar.md (the shared business brain — a separate private repo, not on the CI checkout at all). Deliberately NOT mirrored here: the row's existence is the structural fact CI needs, the date is business content that stays private."
     },
     {
       "id": "expiring.awfis-lease",
       "kind": "expiring",
       "what": "The registered-office lease.",
       "detector": "This row.",
-      "response": "Renew; company/business/compliance-calendar.md carries the deadline.",
+      "response": "Renew; nikatru/business/compliance-calendar.md carries the deadline.",
       "cadence": "180d",
       "expires": null,
       "leadDays": 30,
       "mechanism": {
         "substrate": "external-registry",
-        "anchor": "company/business",
+        "anchor": "nikatru/business",
         "record": "the lease agreement",
         "failingValue": "an end date inside the lead window",
         "readBy": "nothing in this repo, deliberately"
@@ -1674,9 +1674,9 @@
         "owner"
       ],
       "ownerGated": true,
-      "ownerGap": "Owner-supplied date; the value stays in company/.",
+      "ownerGap": "Owner-supplied date; the value stays in nikatru/business/company-master.md.",
       "source": "verified",
-      "expiryKnownAt": "company/business/company-master.md plus the Awfis agreement (both gitignored). Same split as the GST LUT: existence public, value private."
+      "expiryKnownAt": "nikatru/business/company-master.md plus the Awfis agreement (both in the shared business brain — a separate private repo, not on the CI checkout at all). Same split as the GST LUT: existence public, value private."
     },
     {
       "id": "expiring.store-enrolment.play",
@@ -1869,8 +1869,8 @@
       },
       "mechanism": {
         "substrate": "owner-decision",
-        "anchor": "company/OWNER_QUEUE.md",
-        "record": "the decision itself, recorded in company/decisions/decisions-log.md",
+        "anchor": "nikatru/OWNER_QUEUE.md",
+        "record": "the decision itself, recorded in nikatru/decisions/decisions-log.md",
         "failingValue": "Day 0 + 90 passing with no recorded review",
         "readBy": "tooling/ci/assert-ops-register.mjs — it PRINTS the pending state every run and becomes a hard failure once day0 is set and dayCount has elapsed"
       },
@@ -2317,7 +2317,7 @@
       "what": "THE SIGNUP RECORDS THEMSELVES — an email address and a timestamp. This is the store O-17 was written about, and the drafted acceptance excluded it by construction because it quantified over 'every store WITH a retention rule'. Every signup written since 2026-08-09 carries an expirationTtl; see the ownerGap for the keys written BEFORE that, which do not. ⚠️ THE PERIOD IS 400 DAYS SINCE 2026-08-13, ~~365~~ BEFORE IT — three cohorts now exist in this namespace and they are not interchangeable: no TTL (pre-2026-08-09), 365 days (2026-08-09 → 2026-08-13), 400 days (since). KV fixes expiry at WRITE time, so this row describes a store whose keys carry three different bounds and no code path reconciles them.",
       "rule": "ttl",
       "detector": "tooling/ci/assert-retention-coverage.mjs — this row is in _requiredCoverage, so it cannot leave the domain by having no rule, and its `ttl` limb reads `mechanism.ttlSource` out of the anchor rather than believing this row.",
-      "response": "n/a for new records — the store expires them itself. The PERIOD was the missing half and it was a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 would have been WRITING POLICY under the appearance of fixing a bug. DECLARED BY THE OWNER 2026-08-09 at ~~365~~ days (company/decisions/decisions-log.md); the engineering half had been built dormant the same day, so the decision cost exactly one value at sites/nikatru/functions/api/subscribe.js (`SIGNUP_RETENTION_DAYS`), with both branches held by tooling/ci/test/signup-retention.test.mjs. 🔴 RAISED TO 400 DAYS 2026-08-13, BY AN AGENT, ON A FLOOR RATHER THAN A PREFERENCE — and the sentence above is why it is flagged and not quiet. DPDP Rules 2025 Rule 8(3) requires 'a minimum period of one year from the date of such processing' (Rule 6(1)(e) adds a one-year floor for security logs), and Rule 8(3) carries no class qualifier — unlike Rule 8(1), which is limited to Third-Schedule fiduciaries — so it reaches this store. 'One year' is an anniversary, not 365 sleeps: a key written on D expires at D+365 while its anniversary is D+366 whenever [D, D+1yr) contains a 29 February, so EVERY signup written between 1 Mar 2027 and 29 Feb 2028 would have died one day short of the floor, all of them after the 13 May 2027 phase-in. 400 = 365 + 35, the same shape as `events` in [ADR 045] §2. 👤 THE NUMBER REMAINS THE OWNER'S TO MOVE — any value >= 366 satisfies the floor and the direction of this change costs privacy on the one store holding a plain email address with no automated erasure route; see the ADR 045 addendum.",
+      "response": "n/a for new records — the store expires them itself. The PERIOD was the missing half and it was a policy decision, not an engineering one: the published privacy policy says 'as long as necessary', and an agent picking 180 or 365 would have been WRITING POLICY under the appearance of fixing a bug. DECLARED BY THE OWNER 2026-08-09 at ~~365~~ days (nikatru/decisions/decisions-log.md); the engineering half had been built dormant the same day, so the decision cost exactly one value at sites/nikatru/functions/api/subscribe.js (`SIGNUP_RETENTION_DAYS`), with both branches held by tooling/ci/test/signup-retention.test.mjs. 🔴 RAISED TO 400 DAYS 2026-08-13, BY AN AGENT, ON A FLOOR RATHER THAN A PREFERENCE — and the sentence above is why it is flagged and not quiet. DPDP Rules 2025 Rule 8(3) requires 'a minimum period of one year from the date of such processing' (Rule 6(1)(e) adds a one-year floor for security logs), and Rule 8(3) carries no class qualifier — unlike Rule 8(1), which is limited to Third-Schedule fiduciaries — so it reaches this store. 'One year' is an anniversary, not 365 sleeps: a key written on D expires at D+365 while its anniversary is D+366 whenever [D, D+1yr) contains a 29 February, so EVERY signup written between 1 Mar 2027 and 29 Feb 2028 would have died one day short of the floor, all of them after the 13 May 2027 phase-in. 400 = 365 + 35, the same shape as `events` in [ADR 045] §2. 👤 THE NUMBER REMAINS THE OWNER'S TO MOVE — any value >= 366 satisfies the floor and the direction of this change costs privacy on the one store holding a plain email address with no automated erasure route; see the ADR 045 addendum.",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-kv",

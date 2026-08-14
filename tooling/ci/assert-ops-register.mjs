@@ -136,12 +136,20 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ⚠️ THE ONE BLIND SPOT, STATED RATHER THAN PAPERED OVER. `company/` is
-// gitignored and INVISIBLE TO CI. A row may anchor there — the runbooks
-// legitimately live in company/ — but this guard CANNOT check that such an
-// anchor exists, and it says so out loud with a count on every run instead of
-// pretending the check happened. Anchors anywhere else MUST exist. This is why
-// the register itself is in the public tree: a register under company/ would be
-// unenforceable, which is precisely what blocked four stage-8 increments.
+// gitignored and INVISIBLE TO CI, and `nikatru/` — the shared business brain
+// [ADR 054] moved to a sibling repository — is not even on the disk CI checks
+// out. A row may anchor at either; the runbooks legitimately live in company/,
+// and the GST LUT, the Awfis lease and the kill-or-keep review now anchor in the
+// brain. This guard CANNOT check that such an anchor exists, and it says so out
+// loud with a count on every run instead of pretending the check happened.
+// Anchors anywhere else MUST exist. This is why the register itself is in the
+// public tree: a register under company/ would be unenforceable, which is
+// precisely what blocked four stage-8 increments.
+//
+// 🔴 THE PREFIX LIST IS THE WHOLE EXEMPTION, SO IT MUST NOT GROW CASUALLY. Each
+// entry buys a row the right to name a substrate nothing verifies. Two are
+// justified because each is a REPOSITORY BOUNDARY this repo cannot cross; a
+// third would need the same argument, not merely a convenient path.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ⚠️ WHAT THESE SCANS DO NOT WALK INTO, AND THE RULE THAT DECIDES IT.
@@ -196,6 +204,15 @@ const WORKFLOW_DIR_REL = '.github/workflows';
 // alternative silently matched nothing for the entire workflow half of the
 // domain — a check that reported ok because it was looking at an empty set.
 const NAMED_PATH = /(?<![\w/.-])(?:tooling|\.github|services|sites|packages|apps|scripts)\/[A-Za-z0-9_.\-/]*[A-Za-z0-9_-]\.(?:mjs|js|ts|yml|yaml|json|jsonc|sql|ps1|dart|py)\b/g;
+
+/** Prefixes a CI checkout structurally CANNOT contain, so an anchor under one of
+ *  them is counted and printed rather than checked. Both are STRUCTURAL, not
+ *  flags: `company/` is the private-SSoT boundary (gitignored, .gitignore:15) and
+ *  `nikatru/` is the shared business brain, which [ADR 054] moved to a SIBLING
+ *  REPOSITORY outside this working tree entirely — so it is not merely unreadable
+ *  by CI, it is not on the disk CI checks out. A boolean anybody could set would
+ *  make this check optional; a prefix list cannot be set per-row. */
+const OUTSIDE_CI = ['company/', 'nikatru/'];
 
 /** No argument means CI's own invocation against the real repository, where the
  *  git manifest MUST be readable. A fixture root is a weaker situation and says
@@ -603,7 +620,7 @@ export function evaluate(reg, tree, nowMs) {
   let onDemand = 0;
   let unverified = 0;
   let cannotRevert = 0;
-  let companyAnchored = 0;
+  let unverifiableAnchors = 0;
   // Counted so ZERO armed tripwires cannot look like a clean register. If this
   // reaches 0 the `degradedUntil` limb ranges over the empty set, and an empty
   // domain that prints nothing is the defect this whole file is written against.
@@ -661,8 +678,8 @@ export function evaluate(reg, tree, nowMs) {
         if (!nonEmpty(mech[f])) bad(`${id} — \`mechanism.${f}\` is empty.`);
       }
       if (nonEmpty(mech.anchor)) {
-        if (mech.anchor.startsWith('company/')) {
-          companyAnchored++;
+        if (OUTSIDE_CI.some((p) => mech.anchor.startsWith(p))) {
+          unverifiableAnchors++;
         } else if (!tree.paths.has(mech.anchor)) {
           bad(`${id} — \`mechanism.anchor\` names \`${mech.anchor}\`, which is not in the tree. A mechanism that names a substrate that does not exist is a mechanism that does not exist.`);
         }
@@ -826,7 +843,9 @@ export function evaluate(reg, tree, nowMs) {
       // `expires: null` and the guard tolerated it, so the arithmetic below had
       // NEVER RUN — twelve rows of apparent coverage over zero checked dates.
       // The dates are genuinely not knowable here (vendor consoles, the Oracle
-      // box, gitignored company/), so the tolerance stays; what it now costs is
+      // box, and — since [ADR 054], 2026-08-14 — the sibling brain repo
+      // `nikatru/business/`, which was gitignored `company/business/` when this
+      // repair was written), so the tolerance stays; what it now costs is
       // this field. "Nobody knows" becomes "nobody has read it FROM HERE", which
       // is a sentence somebody can act on — and deleting the field reddens.
       if (!nonEmpty(r.expiryKnownAt)) {
@@ -957,8 +976,12 @@ export function evaluate(reg, tree, nowMs) {
   // STAYS. Not one of the twelve dates is knowable from this repository — eight
   // are in a vendor console, one is `openssl x509 -enddate` on the Oracle box,
   // one is a non-use clock with no calendar date at all, and two are business
-  // values CLAUDE.md forbids mirroring out of gitignored `company/` into this
-  // public file. Requiring a date would block all of CI on owner-only work
+  // values CLAUDE.md forbids mirroring into this public file — they lived in
+  // gitignored `company/business/` when this was decided and moved to the shared
+  // brain `nikatru/business/` under [ADR 054] on 2026-08-14. (Amended in place
+  // rather than swapped: the paragraph is stamped 2026-08-06, and rewriting the
+  // location outright would make the decision claim a fact that was not yet
+  // true.) Requiring a date would block all of CI on owner-only work
   // (CLAUDE.md C-6, which gets guards disabled) or invite an invented one — and
   // an invented expiry is strictly worse than a null, because the arithmetic
   // would then run and PASS on a fiction.
@@ -1249,7 +1272,15 @@ export function evaluate(reg, tree, nowMs) {
   //
   // `tooling/ops/check-heartbeats.mjs` derives the cron jobs it watches with
   // `kind === 'duty' && mechanism.substrate === 'cloudflare-cron'`, and the
-  // `anchored` map at :1026 in THIS file is built from `kind === 'duty'` alone.
+  // the `anchored` map in THIS file (search `const anchored = new Map()`) is built
+  // from `kind === 'duty'` alone.
+  // 🔴 THIS CITATION USED TO READ `:1026` AND HAD BEEN WRONG BY 13 LINES FOR MONTHS.
+  // A `:NNN` pointer into the file that CONTAINS it is drift by construction: every
+  // edit above it moves the target and nothing recomputes the number. Worse, the
+  // 2026-08-14 [ADR 054] repair shifted the THREE EXTERNAL copies of this same
+  // citation by +17 and left this one alone, so one construction had four different
+  // line numbers and none of them landed on it. Naming the SYMBOL costs one grep and
+  // cannot go stale. Prefer that to a line number whenever the target has a name.
   // So a NON-duty row declaring `cloudflare-cron` is invisible to both: it names
   // a scheduled Cloudflare job that NOTHING watches, and every existing limb
   // passes it. Measured 2026-08-07 by mutation — a `cloudflare-cron` substrate
@@ -1555,7 +1586,7 @@ export function evaluate(reg, tree, nowMs) {
       onDemand,
       unverified,
       cannotRevert,
-      companyAnchored,
+      unverifiableAnchors,
       datedTripwires,
       gaps,
       // [14]O-11 / [14]O-17 — the EXECUTION counts, not the row counts. main()
@@ -2131,7 +2162,7 @@ async function main() {
   console.log(
     `⬜  register: ${stats.rows} rows · ${stats.onDemand} on-demand · ${stats.cannotRevert} cannot-revert · ` +
       `${stats.unverified} unverified · ${stats.datedTripwires} dated tripwire(s) armed · ` +
-      `${stats.companyAnchored} anchored in company/ (gitignored — this guard CANNOT verify those anchors exist)`,
+      `${stats.unverifiableAnchors} anchored outside the CI checkout — ${OUTSIDE_CI.join(' or ')} (this guard CANNOT verify those anchors exist)`,
   );
   // ⬜ [14]O-4's gaps print IN FULL and SEPARATELY from the row-level ones. They
   // are a different question — "if this stops, does anything anywhere notice" —

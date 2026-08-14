@@ -301,7 +301,7 @@
         "Named in privacy.html and refund.html; terms.html says only 'Google' in a parenthetical.",
         "tooling/channel-register.json android-play is served:false.",
         "⚠️ CORRECTED 2026-08-05 — this note said 'No account yet'. The Play ORGANIZATION account has been",
-        "verified since 2026-08-04; see company/vendors/google.md. `status` stays \"deferred\", which is a",
+        "verified since 2026-08-04; see nikatru/vendors/google.md. `status` stays \"deferred\", which is a",
         "statement about REVENUE and is still true: zero apps published, so nothing has ever been sold",
         "through this provider. The account and the revenue are two different facts, and only one of them",
         "was wrong. Compare microsoft-store below, which makes no account claim and so never went stale."
@@ -592,7 +592,7 @@
       "namedIn": [
         "privacy.html"
       ],
-      "privateRecord": "company/vendors/resend.md — the account, the API key and the sending domain. The SMTP wiring itself is recorded in company/vendors/supabase.md ([ADR 029]).",
+      "privateRecord": "nikatru/vendors/resend.md — the account, the API key and the sending domain. The SMTP wiring itself is recorded in nikatru/vendors/supabase.md ([ADR 029]).",
       "notes": [
         "🔴 THIS ROW IS A FOUND DISCLOSURE GAP, AND THE FINDING IS THAT THERE WAS NO GAP ROW. Resend has",
         "delivered every Supabase auth email since auth mail went live — smtp.resend.com, sending as",

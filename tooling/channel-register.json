@@ -74,10 +74,10 @@
     "  · disqualified channels are named with the LOCKED ADR that killed them, and printed every run",
     "  · COVERAGE LOST when the register is absent, empty, or has nothing served   [D-1 requires loud]",
     "",
-    "⚠️ `ownerQueue` IDS ARE DATA, NOT AN ASSERTION. company/ is gitignored (.gitignore:15) and is not",
-    "in the public repo, so no CI guard can read OWNER_QUEUE.md. [10]D-4's machine limbs as written are",
-    "unimplementable in CI for that reason — they are a LOCAL check. Recorded here so the ids are at",
-    "least in one place a guard could reach if company/ ever ships.",
+    "⚠️ `ownerQueue` IDS ARE DATA, NOT AN ASSERTION. OWNER_QUEUE.md moved to nikatru/ ([ADR 054]) — a",
+    "SEPARATE private repo, not on the CI checkout at all, so no CI guard can read it. [10]D-4's machine",
+    "limbs as written are unimplementable in CI for that reason — they are a LOCAL check. Recorded here",
+    "so the ids are at least in one place a guard could reach if the brain ever ships.",
     "",
     "⚠️ MINIMUM TOOLCHAIN NAMES KEYS, NOT VALUES. [pipeline F-2] says every version is declared once;",
     "duplicating '3.44.8' here would make this file the second declaration and the first to drift. So a",
@@ -1039,7 +1039,7 @@
       "accountStatus": {
         "_why": [
           "[10]D-4's agent slice. The `ownerQueue` id above is a POINTER into a file CI can never open",
-          "(company/ is gitignored, .gitignore:15), so until this field existed 'does a publisher account",
+          "(it moved to nikatru/, a separate private repo), so until this field existed 'does a publisher account",
           "exist for this channel?' had no answer any machine could give — and the question is the whole",
           "of D-4.",
           "",
@@ -1051,7 +1051,7 @@
         ],
         "status": "verified",
         "asOf": "2026-08-04",
-        "note": "Play ORGANIZATION account, VERIFIED 2026-08-04 11:12 IST — Organization ✅ and Authorized representative ✅, website verified, $25 paid, OWNER_QUEUE A-3 CLOSED. ⚠️ THIS FIELD SAID \"none — No Play Console account\" AND WAS FALSE FOR TWO DAYS, in the PUBLIC repo, while three other files in this same tree already said the opposite (apps/subly/store/android-play/content-rating.json, tooling/ci/assert-play-declarations.mjs, and ci.yml's own comment). And it was NOT unguarded — assert-channel-register printed 'ACCOUNT NONE: android-play … as of 2026-08-03 · No Play Console account' on EVERY CI run for two days after it became false. That is the sharper lesson: the gap-printer worked perfectly and printed a gap that had closed, in a message identical to the one it had printed correctly for weeks. A print that repeats an expected line is wallpaper, and a `verified` row printed NOTHING at all — so the freshness of the claim was never surfaced in either state. `accountStatus` also only FAILS on `served: true`, and this row is deliberately not served. Exactly the defect fixed one channel over for windows-store; found the same way, by reviewing a vendor file against the artefacts. The account record is company/vendors/google.md."
+        "note": "Play ORGANIZATION account, VERIFIED 2026-08-04 11:12 IST — Organization ✅ and Authorized representative ✅, website verified, $25 paid, OWNER_QUEUE A-3 CLOSED. ⚠️ THIS FIELD SAID \"none — No Play Console account\" AND WAS FALSE FOR TWO DAYS, in the PUBLIC repo, while three other files in this same tree already said the opposite (apps/subly/store/android-play/content-rating.json, tooling/ci/assert-play-declarations.mjs, and ci.yml's own comment). And it was NOT unguarded — assert-channel-register printed 'ACCOUNT NONE: android-play … as of 2026-08-03 · No Play Console account' on EVERY CI run for two days after it became false. That is the sharper lesson: the gap-printer worked perfectly and printed a gap that had closed, in a message identical to the one it had printed correctly for weeks. A print that repeats an expected line is wallpaper, and a `verified` row printed NOTHING at all — so the freshness of the claim was never surfaced in either state. `accountStatus` also only FAILS on `served: true`, and this row is deliberately not served. Exactly the defect fixed one channel over for windows-store; found the same way, by reviewing a vendor file against the artefacts. The account record is nikatru/vendors/google.md."
       },
       "submission": {
         "_why": [
@@ -1123,7 +1123,7 @@
         "silence as the open question — an argument from silence. (c) The rule carries an AFFIRMATIVE",
         "SCOPE STATEMENT, and a rule that applies to personal accounts does not reach a non-personal one.",
         "That is (c), and it took 14 days off the critical path. A closed test remains good practice",
-        "before production; it is simply not a gate. Recorded in company/vendors/google.md.",
+        "before production; it is simply not a gate. Recorded in nikatru/vendors/google.md.",
         "",
         "🟢 THE ENGINEERING PATH IS BUILT (everything except the account and the tester window). `lane`",
         "emits the .aab, `storeMetadataDir` carries a real tree checked by tooling/ci/",
@@ -1438,7 +1438,7 @@
       "accountStatus": {
         "status": "applied",
         "asOf": "2026-08-05",
-        "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see company/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the company/vendors/ restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is company/vendors/microsoft.md."
+        "note": "COMPANY account created and SUBMITTED 2026-08-05 via storedeveloper.microsoft.com. Email ✅ and employment ✅ verified INSTANTLY (the sign-in domain matches the company domain — a Google Workspace identity, see nikatru/vendors/google.md); business verification under review, Microsoft quotes ~5 business days, follow-up armed 13 Aug. D-U-N-S auto-retrieved and validated with nothing uploaded and no document reviewed. ⚠️ THIS FIELD SAID \"none\" AND \"OWNER_QUEUE A-2 currently points at Individual\", AND BOTH WERE FALSE — A-2 stopped pointing at Individual on 2026-07-29 and the account was created as a COMPANY on 2026-08-05. The commit that fixed the very same stale claim in this row's `deferral.alsoBlockedBy` (5cefd88, 2026-08-05) did not touch this field, so one fact lived in two fields of one object and only one was corrected. That is the duplication failure the vendor-file restructure exists to remove, reproduced inside a single JSON row. The one-way door is REAL and retained as the reason the Company choice was deliberate: Microsoft does not support converting Individual to Company, and the only remedy is a second publisher account — exactly the related-account posture [10]D-6 and L21 exist to avoid. The account record is nikatru/vendors/microsoft.md."
       },
       "packageIdentity": {
         "_why": [
@@ -1480,7 +1480,7 @@
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — the SUBMISSION work is deferred. ⚠️ Account REGISTRATION is not deferred and is the fastest real channel: $0, no D-U-N-S required, 2–5 business days.",
-        "alsoBlockedBy": "RESOLVED 2026-08-05 — a COMPANY account was created and submitted. ⚠️ THIS FIELD SAID 'OWNER_QUEUE A-2 points at Individual' AND WAS FALSE FROM 2026-07-29, when A-2 was itself corrected to Company after Microsoft's own category definitions were read. It survived here in the PUBLIC repo, unguarded, describing the channel as blocked by a choice nobody had made — the one-way door it warned about was real, but the claim that we were walking through it was not. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid — so the warning is retained as the REASON the Company choice was deliberate. Business verification under review; see company/vendors/microsoft.md."
+        "alsoBlockedBy": "RESOLVED 2026-08-05 — a COMPANY account was created and submitted. ⚠️ THIS FIELD SAID 'OWNER_QUEUE A-2 points at Individual' AND WAS FALSE FROM 2026-07-29, when A-2 was itself corrected to Company after Microsoft's own category definitions were read. It survived here in the PUBLIC repo, unguarded, describing the channel as blocked by a choice nobody had made — the one-way door it warned about was real, but the claim that we were walking through it was not. Microsoft: changing Individual to Company is not supported; the only remedy is a second publisher account, which is exactly the related-account posture [10]D-6 and L21 exist to avoid — so the warning is retained as the REASON the Company choice was deliberate. Business verification under review; see nikatru/vendors/microsoft.md."
       },
       "notes": [
         "🔴 MSIX PACKAGE IDENTITY IS THIS ROW'S FIELD, not [9]R-7's (stage 3's tripwire bundle routes it",

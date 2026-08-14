@@ -18,6 +18,26 @@
 # "only 22/80/443" claims in this corpus: the two facts sat in different files, in
 # different vocabularies, and no search ever brought them into contact.
 #
+# 🔴 RE-MEASURED 2026-08-14, AND THE EXAMPLE ABOVE IS NOW HALF FALSE — WHICH IS
+#    ITSELF THE POINT, SO IT IS CORRECTED RATHER THAN DELETED.
+#      rg -l "MaxAuthTries" company/  -> runbooks/operations.md, PROJECT_STATE.md
+#    `oracle.md` IS NO LONGER IN company/. [ADR 054] moved the vendor set to the
+#    shared brain at ../../nikatru/, a SIBLING of this repo. So the very command
+#    this file offers as the REMEDY now returns an incomplete answer for the very
+#    fact it was written about.
+#
+# 🔴 AND `.ignore` CANNOT FIX IT — for the same structural reason the `.claude/`
+#    negation below could not. A negation re-includes a path that some ignore rule
+#    excluded; it cannot reach OUTSIDE the search root. `!nikatru/` here would
+#    match nothing, because nikatru/ is not under this directory at all.
+#
+# ✅ SO THE FIX IS AGAIN AN INVOCATION, NOT A RULE — SEARCH BOTH ROOTS BY NAME:
+#      rg "<pattern>" . ../../nikatru/
+#    Anything that greps only this repo for a BUSINESS fact — a vendor, an account
+#    id, the legal name, a compliance date — is asking the wrong tree and will get
+#    a clean, confident, wrong "no matches". CLAUDE.md's "Repo layout" section
+#    carries the one line that says where the brain is.
+#
 # SAFETY: git does not read .ignore. Re-verify after any change with
 #   git check-ignore -v company knowledge CLAUDE.md .claude .claude/secrets.env
 # which must still report all of them as ignored.

@@ -2,7 +2,7 @@
   Android ADAPTIVE ICON — background layer.
 
   The brand tile, FULL-BLEED: the same TILE gradient (#17253F -> #0A111E) and
-  top-light GLOW as company/logo/nikatru-icon.svg, with the `rx="244"` corner
+  top-light GLOW as nikatru/logo/nikatru-icon.svg, with the `rx="244"` corner
   radius removed. The radius is deliberately gone rather than kept: Android's
   launcher supplies the silhouette itself (circle, squircle, rounded square,
   teardrop — it differs per OEM), so a background that carries its own rounded
