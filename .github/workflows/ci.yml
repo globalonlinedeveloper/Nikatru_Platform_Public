@@ -1857,7 +1857,7 @@ jobs:
       # 🔴 NO SHIPPED APP CARRIES FLUTTER'S LAUNCHER ICON. Measured on the real
       # tree 2026-08-04: apps/subly's Android, iOS, macOS and Windows icons were
       # ALL byte-identical to `flutter create` output — 29 files — while its web
-      # icons carried the brand mark and company/logo/logo-usage.md recorded that
+      # icons carried the brand mark and nikatru/logo/logo-usage.md recorded that
       # the refresh had been "rolled out across the app". Five of six platforms
       # were wrong and one document said they were right. Google Play rejects the
       # stock Flutter icon outright, and it is the first thing any reviewer sees.

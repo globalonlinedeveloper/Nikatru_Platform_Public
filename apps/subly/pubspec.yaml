@@ -202,7 +202,7 @@ flutter:
 # while the app shipped Flutter's default logo on ANDROID, iOS, macOS AND
 # WINDOWS — measured 2026-08-04, all 29 native icon files BYTE-IDENTICAL to
 # `flutter create` output. The 23-July brand refresh reached `web/` and nothing
-# else, while company/logo/logo-usage.md recorded that it had been "rolled out
+# else, while nikatru/logo/logo-usage.md recorded that it had been "rolled out
 # across the app (Subly)". A staged block is not a shipped icon.
 # Enforced from now on by tooling/ci/assert-launcher-icons.mjs.
 #
@@ -219,7 +219,7 @@ flutter:
 # web/ is the ONE platform whose icons were already correct, and its plain and
 # MASKABLE assets are deliberately DIFFERENT images: Icon-512 is the rounded
 # tile, Icon-maskable-512 is the full-bleed variant with the mark in the safe
-# zone (company/logo/nikatru-icon-maskable.svg). flutter_launcher_icons derives
+# zone (nikatru/logo/nikatru-icon-maskable.svg). flutter_launcher_icons derives
 # all four from a single `image_path`, so turning web on would overwrite the
 # maskable pair with the non-maskable art and silently undo the one platform
 # that was right — a regression dressed as consistency. It also rewrites
@@ -236,7 +236,7 @@ flutter:
 # `adaptive_icon_foreground_inset: 0` because that inset is ALREADY in the
 # artwork; leaving the default 16 would shrink the mark twice.
 # Both are rasterised from the SVGs beside them, whose path data and gradient
-# stops are copied verbatim from company/logo/nikatru-icon.svg.
+# stops are copied verbatim from nikatru/logo/nikatru-icon.svg.
 #
 # ── `remove_alpha_ios` IS NOT OPTIONAL ───────────────────────────────────────
 # The 1024 master is RGBA. App Store Connect REJECTS an app icon carrying an
@@ -245,16 +245,16 @@ flutter:
 #
 # ⚠️ OPEN DESIGN QUESTION, DELIBERATELY NOT RESOLVED HERE — two of the owner's
 # own documents disagree and only the owner can settle it:
-#   · company/logo/logo-usage.md designates the Nikatru mark as the
+#   · nikatru/logo/logo-usage.md designates the Nikatru mark as the
 #     "App icon (all 6 stores)".
-#   · MASTER_PLAN.md requires every app to carry a DISTINCT icon so the
+#   · company/MASTER_PLAN.md requires every app to carry a DISTINCT icon so the
 #     portfolio does not look templated at 50 apps.
 # Using the company mark is right for app #1 — Subly is the only app, and an
 # unbranded default is strictly worse than a company mark. It is wrong at scale:
 # fifty identical home-screen tiles is the "templated" outcome MASTER_PLAN
 # names. SETTLE IT BEFORE APP #2, not before this ships.
 flutter_launcher_icons:
-  # The company mark at 1024, copied from company/logo/nikatru-icon-1024.png.
+  # The company mark at 1024, copied from nikatru/logo/nikatru-icon-1024.png.
   # Swap this one line for Subly's own glyph when the question above is settled.
   image_path: "assets/icon/app_icon_1024.png"
 

@@ -47,7 +47,7 @@ Applied here, per register:
 Two fields are the split made concrete, and they are the ones to copy when a new register needs one:
 
 - `privateRecord` — a **non-actionable pointer**: the name of the private document that holds the detail
-  (`company/business/company-master.md`, `OWNER_QUEUE O-1`). Never a value, never a path to a secret.
+  (`nikatru/business/company-master.md`, `OWNER_QUEUE O-1`). Never a value, never a path to a secret.
 - `ownerItem` — the owner-queue id that unblocks a row. A guard can assert the id is present and
   well-formed; it cannot read `OWNER_QUEUE.md`, and it does not pretend to.
 

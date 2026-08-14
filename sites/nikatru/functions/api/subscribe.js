@@ -152,7 +152,7 @@ const RATE_WINDOW_SECONDS = 3600;
 // appearance of fixing a bug — while silently deleting the owner's real launch
 // list once the period passed. So the engineering half was built dormant and
 // the policy half was left as ONE VALUE. This is that value, and the decision
-// behind it is recorded in company/decisions/decisions-log.md (2026-08-09).
+// behind it is recorded in nikatru/decisions/decisions-log.md (2026-08-09).
 //
 // WHAT HOLDS THIS NUMBER TO THE REST OF THE SYSTEM — change it and all of these
 // move with it, or the build goes red rather than the claim going stale:

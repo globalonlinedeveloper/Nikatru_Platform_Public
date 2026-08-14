@@ -880,7 +880,7 @@ if (SUBMIT) {
       '     [ADR 031] class A — "promoting any release to the production track" is EXPLICITLY owner-only,',
       '     per instance, and never inferred from the agent holding the capability. The same ADR just as',
       '     explicitly does NOT gate testing-track uploads, which is what this path is for.',
-      '     A production release is a Play Console act by a human. Append a row to company/OWNER_QUEUE.md.',
+      '     A production release is a Play Console act by a human. Append a row to nikatru/OWNER_QUEUE.md.',
     ]);
   }
   if (!ALLOWED_RELEASE_STATUS.includes(releaseStatus)) {

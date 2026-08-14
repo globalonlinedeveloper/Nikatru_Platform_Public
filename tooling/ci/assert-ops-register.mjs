@@ -136,12 +136,20 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ⚠️ THE ONE BLIND SPOT, STATED RATHER THAN PAPERED OVER. `company/` is
-// gitignored and INVISIBLE TO CI. A row may anchor there — the runbooks
-// legitimately live in company/ — but this guard CANNOT check that such an
-// anchor exists, and it says so out loud with a count on every run instead of
-// pretending the check happened. Anchors anywhere else MUST exist. This is why
-// the register itself is in the public tree: a register under company/ would be
-// unenforceable, which is precisely what blocked four stage-8 increments.
+// gitignored and INVISIBLE TO CI, and `nikatru/` — the shared business brain
+// [ADR 054] moved to a sibling repository — is not even on the disk CI checks
+// out. A row may anchor at either; the runbooks legitimately live in company/,
+// and the GST LUT, the Awfis lease and the kill-or-keep review now anchor in the
+// brain. This guard CANNOT check that such an anchor exists, and it says so out
+// loud with a count on every run instead of pretending the check happened.
+// Anchors anywhere else MUST exist. This is why the register itself is in the
+// public tree: a register under company/ would be unenforceable, which is
+// precisely what blocked four stage-8 increments.
+//
+// 🔴 THE PREFIX LIST IS THE WHOLE EXEMPTION, SO IT MUST NOT GROW CASUALLY. Each
+// entry buys a row the right to name a substrate nothing verifies. Two are
+// justified because each is a REPOSITORY BOUNDARY this repo cannot cross; a
+// third would need the same argument, not merely a convenient path.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ⚠️ WHAT THESE SCANS DO NOT WALK INTO, AND THE RULE THAT DECIDES IT.
@@ -196,6 +204,15 @@ const WORKFLOW_DIR_REL = '.github/workflows';
 // alternative silently matched nothing for the entire workflow half of the
 // domain — a check that reported ok because it was looking at an empty set.
 const NAMED_PATH = /(?<![\w/.-])(?:tooling|\.github|services|sites|packages|apps|scripts)\/[A-Za-z0-9_.\-/]*[A-Za-z0-9_-]\.(?:mjs|js|ts|yml|yaml|json|jsonc|sql|ps1|dart|py)\b/g;
+
+/** Prefixes a CI checkout structurally CANNOT contain, so an anchor under one of
+ *  them is counted and printed rather than checked. Both are STRUCTURAL, not
+ *  flags: `company/` is the private-SSoT boundary (gitignored, .gitignore:15) and
+ *  `nikatru/` is the shared business brain, which [ADR 054] moved to a SIBLING
+ *  REPOSITORY outside this working tree entirely — so it is not merely unreadable
+ *  by CI, it is not on the disk CI checks out. A boolean anybody could set would
+ *  make this check optional; a prefix list cannot be set per-row. */
+const OUTSIDE_CI = ['company/', 'nikatru/'];
 
 /** No argument means CI's own invocation against the real repository, where the
  *  git manifest MUST be readable. A fixture root is a weaker situation and says
@@ -603,7 +620,7 @@ export function evaluate(reg, tree, nowMs) {
   let onDemand = 0;
   let unverified = 0;
   let cannotRevert = 0;
-  let companyAnchored = 0;
+  let unverifiableAnchors = 0;
   // Counted so ZERO armed tripwires cannot look like a clean register. If this
   // reaches 0 the `degradedUntil` limb ranges over the empty set, and an empty
   // domain that prints nothing is the defect this whole file is written against.
@@ -661,8 +678,8 @@ export function evaluate(reg, tree, nowMs) {
         if (!nonEmpty(mech[f])) bad(`${id} — \`mechanism.${f}\` is empty.`);
       }
       if (nonEmpty(mech.anchor)) {
-        if (mech.anchor.startsWith('company/')) {
-          companyAnchored++;
+        if (OUTSIDE_CI.some((p) => mech.anchor.startsWith(p))) {
+          unverifiableAnchors++;
         } else if (!tree.paths.has(mech.anchor)) {
           bad(`${id} — \`mechanism.anchor\` names \`${mech.anchor}\`, which is not in the tree. A mechanism that names a substrate that does not exist is a mechanism that does not exist.`);
         }
@@ -1555,7 +1572,7 @@ export function evaluate(reg, tree, nowMs) {
       onDemand,
       unverified,
       cannotRevert,
-      companyAnchored,
+      unverifiableAnchors,
       datedTripwires,
       gaps,
       // [14]O-11 / [14]O-17 — the EXECUTION counts, not the row counts. main()
@@ -2131,7 +2148,7 @@ async function main() {
   console.log(
     `⬜  register: ${stats.rows} rows · ${stats.onDemand} on-demand · ${stats.cannotRevert} cannot-revert · ` +
       `${stats.unverified} unverified · ${stats.datedTripwires} dated tripwire(s) armed · ` +
-      `${stats.companyAnchored} anchored in company/ (gitignored — this guard CANNOT verify those anchors exist)`,
+      `${stats.unverifiableAnchors} anchored outside the CI checkout — ${OUTSIDE_CI.join(' or ')} (this guard CANNOT verify those anchors exist)`,
   );
   // ⬜ [14]O-4's gaps print IN FULL and SEPARATELY from the row-level ones. They
   // are a different question — "if this stops, does anything anywhere notice" —

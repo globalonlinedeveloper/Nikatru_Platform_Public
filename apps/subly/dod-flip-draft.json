@@ -164,7 +164,7 @@
       "asks": "who took the decision",
       "measured": [
         "N-9: 'the gates are his' — the selection gates are the owner's, by requirement.",
-        "company/business/company-master.md:20 — 'Legal / owner: Rajasekar Selvam (Sole Proprietor)'.",
+        "company/business/company-master.md:20 (moved 2026-08-14 to nikatru/business/company-master.md:20, same line) — 'Legal / owner: Rajasekar Selvam (Sole Proprietor)'.",
         "The guard checks only that the string is non-blank; the fixture uses the bare word 'owner'."
       ],
       "draft": "Rajasekar Selvam (owner, sole proprietor)",

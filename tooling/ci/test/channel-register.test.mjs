@@ -1219,7 +1219,7 @@ describe('assert-channel-register — the RELEASE_CHANNEL stamp resolves to a ro
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [10]D-4's agent slice — the channel↔account status is IN THE TREE.
-// `ownerQueue` points into company/OWNER_QUEUE.md, which CI can never open
+// `ownerQueue` points into nikatru/OWNER_QUEUE.md, which CI can never open
 // (.gitignore:15), so before this field "does a publisher account exist for
 // this channel?" had no answer a machine could give. The status cannot be
 // derived — no API this repo can reach knows whether an enrolment completed —

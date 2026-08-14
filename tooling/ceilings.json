@@ -49,7 +49,7 @@
     "scan finds; limb 5's domain is every wrangler config on disk. There is no tuned integer to lower.",
     "",
     "⚠️ NOT A PRICING FILE. These are PLATFORM LIMITS — the point at which a request is refused or a",
-    "write is rejected. Cost projections live in company/business/; they move independently and citing",
+    "write is rejected. Cost projections live in nikatru/business/; they move independently and citing",
     "one for the other is how a limit becomes a guess."
   ],
 

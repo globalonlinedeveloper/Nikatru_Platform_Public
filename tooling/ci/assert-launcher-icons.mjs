@@ -13,7 +13,7 @@
 //     web       0/5  — the brand refresh DID land here
 //
 // The 23-July brand refresh reached `web/` and nothing else, while
-// `company/logo/logo-usage.md` recorded that "the same refresh was rolled out
+// `nikatru/logo/logo-usage.md` recorded that "the same refresh was rolled out
 // across the app (Subly)". It had not been. FIVE OF SIX PLATFORMS WERE WRONG
 // AND ONE DOCUMENT SAID THEY WERE RIGHT — which is why this is a guard and not
 // a correction to that sentence.
