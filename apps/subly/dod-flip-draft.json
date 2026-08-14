@@ -125,7 +125,7 @@
       "field": "selection.record",
       "asks": "the path, under company/, of the per-app selection entry recording the three gate answers and the owner's yes",
       "measured": [
-        "🔴 NO SUCH FILE EXISTS YET, anywhere. N-9's own evidence records it: `ls company/` → no selection register, no app-selection/ directory. Re-checked today: company/ holds business/ decisions/ pipeline/ requirements/ runbooks/ sessions/ tooling/ vendors/ and no selection tree.",
+        "🔴 NO SUCH FILE EXISTS YET, anywhere. N-9's own evidence records it: `ls company/` → no selection register, no app-selection/ directory. Re-checked today: company/ holds business/ decisions/ pipeline/ requirements/ runbooks/ sessions/ tooling/ vendors/ and no selection tree. (That listing is the measurement at `draftedAgainst`; [ADR 054] pass 1 moved business/ and vendors/ to nikatru/ and removed decisions/ and sessions/ on 2026-08-14. The finding is unchanged — there is still no selection register in either tree.)",
         "The path shape the guard's own fixtures use is `company/app-selection/<app>.md` (tooling/ci/test/app-dod.test.mjs:348).",
         "CI can only see that this string is non-blank. Whether it RESOLVES is checked by tooling/scripts/check-selection-record.mjs, locally, which is the only place both trees are readable."
       ],
