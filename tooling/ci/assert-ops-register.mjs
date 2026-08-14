@@ -843,7 +843,9 @@ export function evaluate(reg, tree, nowMs) {
       // `expires: null` and the guard tolerated it, so the arithmetic below had
       // NEVER RUN — twelve rows of apparent coverage over zero checked dates.
       // The dates are genuinely not knowable here (vendor consoles, the Oracle
-      // box, gitignored company/), so the tolerance stays; what it now costs is
+      // box, and — since [ADR 054], 2026-08-14 — the sibling brain repo
+      // `nikatru/business/`, which was gitignored `company/business/` when this
+      // repair was written), so the tolerance stays; what it now costs is
       // this field. "Nobody knows" becomes "nobody has read it FROM HERE", which
       // is a sentence somebody can act on — and deleting the field reddens.
       if (!nonEmpty(r.expiryKnownAt)) {
@@ -974,8 +976,12 @@ export function evaluate(reg, tree, nowMs) {
   // STAYS. Not one of the twelve dates is knowable from this repository — eight
   // are in a vendor console, one is `openssl x509 -enddate` on the Oracle box,
   // one is a non-use clock with no calendar date at all, and two are business
-  // values CLAUDE.md forbids mirroring out of gitignored `company/` into this
-  // public file. Requiring a date would block all of CI on owner-only work
+  // values CLAUDE.md forbids mirroring into this public file — they lived in
+  // gitignored `company/business/` when this was decided and moved to the shared
+  // brain `nikatru/business/` under [ADR 054] on 2026-08-14. (Amended in place
+  // rather than swapped: the paragraph is stamped 2026-08-06, and rewriting the
+  // location outright would make the decision claim a fact that was not yet
+  // true.) Requiring a date would block all of CI on owner-only work
   // (CLAUDE.md C-6, which gets guards disabled) or invite an invented one — and
   // an invented expiry is strictly worse than a null, because the arithmetic
   // would then run and PASS on a fiction.
@@ -1266,7 +1272,15 @@ export function evaluate(reg, tree, nowMs) {
   //
   // `tooling/ops/check-heartbeats.mjs` derives the cron jobs it watches with
   // `kind === 'duty' && mechanism.substrate === 'cloudflare-cron'`, and the
-  // `anchored` map at :1026 in THIS file is built from `kind === 'duty'` alone.
+  // the `anchored` map in THIS file (search `const anchored = new Map()`) is built
+  // from `kind === 'duty'` alone.
+  // 🔴 THIS CITATION USED TO READ `:1026` AND HAD BEEN WRONG BY 13 LINES FOR MONTHS.
+  // A `:NNN` pointer into the file that CONTAINS it is drift by construction: every
+  // edit above it moves the target and nothing recomputes the number. Worse, the
+  // 2026-08-14 [ADR 054] repair shifted the THREE EXTERNAL copies of this same
+  // citation by +17 and left this one alone, so one construction had four different
+  // line numbers and none of them landed on it. Naming the SYMBOL costs one grep and
+  // cannot go stale. Prefer that to a line number whenever the target has a name.
   // So a NON-duty row declaring `cloudflare-cron` is invisible to both: it names
   // a scheduled Cloudflare job that NOTHING watches, and every existing limb
   // passes it. Measured 2026-08-07 by mutation — a `cloudflare-cron` substrate
