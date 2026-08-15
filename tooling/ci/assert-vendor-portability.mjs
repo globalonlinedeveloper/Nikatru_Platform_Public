@@ -259,11 +259,13 @@ for (const [id, v] of Object.entries(vendors)) {
   // The fix follows this repo's own grading rule — NO SILENT SKIPS: a path the
   // guard cannot see is graded `could-not-establish` WITH ITS REASON and
   // printed, never quietly passed. And the exemption is STRUCTURAL, not a flag:
-  // only `Private/company/` qualifies, because that prefix is the private-SSoT boundary
+  // only `Private/` qualifies, because that prefix is the private-corpus boundary
   // itself. A boolean anybody could set would make part 5 optional.
+  // FLATTENED 2026-08-15: was `Private/company/`, which stopped matching when the
+  // flatten removed that segment from every path in the corpus.
   if (v.exportPath?.path) {
     const p = v.exportPath.path;
-    if (p.startsWith('Private/company/')) {
+    if (p.startsWith('Private/')) {
       unverifiableExports.push(`${id} → ${p}`);
     } else if (!existsSync(join(ROOT, p))) {
       problems.push(`vendor \`${id}\` cites export path \`${p}\`, which does not exist. An untested exit is not an exit.`);

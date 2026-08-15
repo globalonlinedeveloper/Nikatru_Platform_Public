@@ -207,12 +207,20 @@ const NAMED_PATH = /(?<![\w/.-])(?:tooling|\.github|services|sites|packages|apps
 
 /** Prefixes a CI checkout structurally CANNOT contain, so an anchor under one of
  *  them is counted and printed rather than checked. Both are STRUCTURAL, not
- *  flags: `Private/company/` is the private-SSoT boundary (gitignored, .gitignore:15) and
+ *  flags: `Private/` is the private corpus boundary (gitignored, .gitignore:23) and
  *  `nikatru/` is the shared business brain, which [ADR 054] moved to a SIBLING
  *  REPOSITORY outside this working tree entirely — so it is not merely unreadable
  *  by CI, it is not on the disk CI checks out. A boolean anybody could set would
  *  make this check optional; a prefix list cannot be set per-row. */
-const OUTSIDE_CI = ['Private/company/', 'nikatru/'];
+/* FLATTENED 2026-08-15: was `Private/company/`. The flatten merged company/ and
+ * knowledge/ into one repo at `Private/`, so every anchor lost a path segment
+ * and this prefix stopped matching any of them. MEASURED, not predicted: 21
+ * register rows went red in one run — "names Private/runbooks/operations.md,
+ * which is not in the tree" — because the anchors fell through to the resolve
+ * branch that a CI checkout structurally cannot satisfy. Widening to `Private/`
+ * restores the exemption at exactly the new boundary and no wider: `Private/` is
+ * the whole gitignored corpus, which is precisely the set CI cannot see. */
+const OUTSIDE_CI = ['Private/', 'nikatru/'];
 
 /** No argument means CI's own invocation against the real repository, where the
  *  git manifest MUST be readable. A fixture root is a weaker situation and says

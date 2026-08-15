@@ -79,8 +79,14 @@ const companyArg = companyAt === -1 ? null : argv[companyAt + 1];
 const positional = argv.filter((a, i) => companyAt === -1 || (i !== companyAt && i !== companyAt + 1));
 
 const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-// Repointed 2026-08-15 - company/ now lives under Private/. --company still overrides.
-const COMPANY = resolve(companyArg ?? join(ROOT, 'Private', 'company'));
+// Repointed 2026-08-15 TWICE. First when company/ moved under Private/; then again
+// when the flatten merged company/ and knowledge/ into ONE repo at Private/, which
+// left this default pointing at a directory that no longer exists. It did not go
+// red - it printed "THE PRIVATE TREE IS NOT IN THIS CHECKOUT" and exited 0, because
+// an absent private tree is the EXPECTED state in CI. So the vacuous pass and the
+// correct CI skip are the same output, and only reading the named path tells them
+// apart. --company still overrides.
+const COMPANY = resolve(companyArg ?? join(ROOT, 'Private'));
 
 /** Apps that predate the selection gates, exempt BY NAME. Every name here must
  *  still be a real workspace member — see `coverageLost` below for why a stale

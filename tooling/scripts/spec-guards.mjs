@@ -106,6 +106,15 @@ const GUARDS = [
   { name: 'assert-spec', speed: 'fast',
     rel: ['Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],
     what: 'the JSON spec is schema-valid, id-unique, origin-locked, and every enforcer it names exists' },
+  /* ADDED 2026-08-15 with the flatten. `Private/README.md` is the index the
+     flatten exists to deliver, and an index is a hand-kept second copy of the
+     tree — the exact artefact this repository has twice watched go stale in
+     silence. The README it replaced still read as authoritative while pointing
+     at `../knowledge/decisions/`, a directory that had not existed for days.
+     Prose cannot announce its own staleness, so the index is asserted instead. */
+  { name: 'assert-index-complete', speed: 'fast',
+    rel: ['Private/spec/tooling/assert-index-complete.mjs', 'tooling/assert-index-complete.mjs'],
+    what: 'Private/README.md names every directory and every navigable file, and its links resolve' },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
