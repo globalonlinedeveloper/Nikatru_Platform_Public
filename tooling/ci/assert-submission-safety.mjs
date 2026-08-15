@@ -75,7 +75,18 @@ const APPS_REL = 'sites/_shared/_data/apps.json';
 const REGISTER_REL = 'tooling/channel-register.json';
 
 /** 🔴 OURS, NOT A STORE'S. Printed verbatim beside the number on every run. */
-const CADENCE_LABEL = 'NIKATRU cadence rule (`MASTER_PLAN.md:277,:281`)';
+// 🔴 CITED BY SECTION, NOT BY LINE, AND THAT IS THE FIX RATHER THAN A STYLE CHOICE.
+// This label read `MASTER_PLAN.md:277,:281` until 2026-08-15, and it is PRINTED VERBATIM into CI
+// (see the failure message below), so every operator who followed it was sent to the wrong place:
+// measured, :277 is BLANK and :281 sits inside an unrelated count-mismatch note. The cadence
+// material is under `## 10. AUTO-MODE execution operating model` (the weekly-cadence paragraph).
+// Nothing flagged the drift because both numbers still landed on REAL lines — `assert-enforcers-exist`
+// only reports a citation that lands on a blank line or a comment, which is the four-fifths of the
+// damage CLAUDE.md already documents it missing.
+// A line number is a pointer into a file other people edit; it is right until someone inserts above
+// it, and nothing recomputes it. This corpus has broken 203 and 218 citations that way on two
+// separate occasions. A section heading survives an insert.
+const CADENCE_LABEL = 'NIKATRU cadence rule (`MASTER_PLAN.md` § 10, AUTO-MODE execution operating model)';
 const CADENCE_MAX = 2;
 
 const SUBMITTING = flag('submitting');
