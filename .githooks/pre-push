@@ -1,12 +1,16 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────────────────
-# pre-push — the FULL spec guards (~10.4 s).
+# pre-push — the FULL spec guards (~1 s).
 #
-# Why the slow guard lives here and not in pre-commit: `assert-enforcers-exist`
-# takes 10.9 s on its own, 94% of the total. On every commit that is the shape of
-# hook people disable within a week, and this corpus has already written that
-# lesson down about a 10-minute one. On every push it is paid a handful of times
-# a day and nobody notices.
+# Why a separate full tier exists at all: it is where a guard too slow for every
+# commit goes. `assert-enforcers-exist` lived here at 10.9 s, 94% of the total —
+# on every commit that is the shape of hook people disable within a week, and this
+# corpus has already written that lesson down about a 10-minute one.
+#
+# ⚠️ 2026-08-15 — THAT GUARD RETIRED WITH THE PROSE CORPUS IT READ, so the slow
+# tier is empty today and --full selects the same set as --fast. Nothing here
+# changes: --full is a superset by construction, so the first slow guard added to
+# spec-guards.mjs is picked up by this hook with no edit.
 #
 # See pre-commit for why no status is ever read across a pipeline.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -32,7 +36,7 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "pre-push: running the full spec guards (~10 s)…"
+echo "pre-push: running the full spec guards…"
 node "$RUNNER" --full
 code=$?
 

@@ -3,7 +3,7 @@
 // spec-guards.mjs — run the spec-integrity guards, from a git hook or by hand.
 //
 // WHY THIS EXISTS. The spec lives under `Private/`, which is gitignored, so no CI
-// job can read it. Its four guards were therefore run by a human who remembered
+// job can read it. Its guards were therefore run by a human who remembered
 // SESSION_BOOTSTRAP step 7 — which is to say the corpus's own integrity was the
 // one thing in this repo that was NOT a build-failing assertion, in a house whose
 // stated doctrine is that a preventable mistake becomes a guard rather than a
@@ -12,14 +12,22 @@
 // the intended backstop LATER, once the spec has been standardised.
 //
 // TWO SPEEDS, AND THE SPLIT IS MEASURED, NOT GUESSED:
-//   assert-status-honest    271 ms
-//   assert-req-ids          273 ms
-//   check-dod-sync          252 ms   →  --fast total ≈ 0.8 s   (pre-commit)
-//   assert-enforcers-exist 10854 ms  →  --full adds this       (pre-push)
-// 🔴 The split is the whole design. This corpus already recorded that "a blocking
-// 10-minute hook gets bypassed within a week", and the same instinct kills an
-// 11-second pre-commit. A guard that is skipped is worth less than no guard,
-// because it also carries the belief that something was checked.
+//   check-dod-sync          252 ms
+//   assert-spec             ~700 ms  →  --fast total ≈ 1 s     (pre-commit)
+//                                       --full is the SAME SET today (pre-push)
+// 🔴 The split is the whole design and is kept even though nothing is slow right
+// now. This corpus already recorded that "a blocking 10-minute hook gets bypassed
+// within a week", and the same instinct kills an 11-second pre-commit. A guard
+// that is skipped is worth less than no guard, because it also carries the belief
+// that something was checked.
+//
+// ⚠️ 2026-08-15 — THE SLOW TIER IS CURRENTLY EMPTY, and that is a real change, not
+// an oversight. `assert-enforcers-exist` was the only `slow` entry at 10,854 ms —
+// 94% of the whole suite — and it spent that time parsing 384,000 words of prose
+// and walking the tree to build a symbol index. Its successor (assert-spec limb 3)
+// resolves the same citations out of parsed JSON. So `--full` and `--fast` select
+// the same two guards, `--full` remains a superset by construction, and a future
+// slow guard needs no change to the hooks to be picked up.
 //
 // EXIT CODES:  0 = every guard run passed · 1 = a guard reported a finding
 //              2 = could not run (a guard is missing, or node cannot reach it)
@@ -62,19 +70,42 @@ function locate(...relCandidates) {
   return null;
 }
 
+/* 🔴 THREE GUARDS WERE REMOVED FROM THIS ARRAY ON 2026-08-15, NOT LEFT TO FAIL.
+   `assert-status-honest`, `assert-req-ids` and `assert-enforcers-exist` all read
+   `Private/company/pipeline/` — 384,000 words of prose that the JSON spec under
+   `Private/company/spec/` replaced and that the same commit deleted. Their entries
+   are gone rather than red because a permanently red guard trains people to pass
+   `--no-verify`, and a hook that is routinely bypassed is worth less than no hook:
+   it also carries the belief that something was checked.
+
+   Where each property went (full reasoning: Private/company/spec/staging/RETIREMENT-PLAN.md,
+   and the four files themselves are readable in Private/company/tooling/retired/):
+     assert-status-honest   → assert-spec limbs 4 + 6. The markdown format kept a
+                              status in three places that could disagree; the JSON
+                              format has no status on an invariant at all, and limb
+                              4 is the ratchet that stops one being re-added.
+     assert-req-ids         → assert-spec limb 9. Its citation half could not be
+                              repointed — after the deletion every `origin` cites a
+                              file that is gone — so the declarations were frozen
+                              into spec/staging/00-ORIGINS.lock.json FIRST, and limb
+                              9 checks both directions against that lock.
+     assert-enforcers-exist → assert-spec limb 3, which is the same check over the
+                              same citations, 10,854 ms → ~700 ms. That is why
+                              assert-spec is `fast` and pre-push no longer carries a
+                              slow guard.
+
+   `check-dod-sync` never read the pipeline (its subjects are tooling/dod-register.json,
+   MASTER_PLAN.md and requirements/definition-of-done.md) and is deliberately
+   untouched — it is the control that proves the deletion broke nothing it did not
+   model. If it ever goes red for this reason, the deletion touched something the
+   plan did not model. */
 const GUARDS = [
-  { name: 'assert-status-honest', speed: 'fast',
-    rel: ['Private/company/tooling/assert-status-honest.mjs', 'tooling/assert-status-honest.mjs'],
-    what: 'each requirement’s status agrees with itself in all three places' },
-  { name: 'assert-req-ids', speed: 'fast',
-    rel: ['Private/company/tooling/assert-req-ids.mjs', 'tooling/assert-req-ids.mjs'],
-    what: 'every stage-qualified citation resolves' },
   { name: 'check-dod-sync', speed: 'fast',
     rel: ['tooling/scripts/check-dod-sync.mjs'],
     what: 'the DoD page, the register and MASTER_PLAN §4 agree' },
-  { name: 'assert-enforcers-exist', speed: 'slow',
-    rel: ['Private/company/tooling/assert-enforcers-exist.mjs', 'tooling/assert-enforcers-exist.mjs'],
-    what: 'every “Enforced by” names something that exists' },
+  { name: 'assert-spec', speed: 'fast',
+    rel: ['Private/company/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],
+    what: 'the JSON spec is schema-valid, id-unique, origin-locked, and every enforcer it names exists' },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
