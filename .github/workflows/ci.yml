@@ -950,7 +950,7 @@ jobs:
         run: node tooling/ci/assert-play-declarations.mjs
       # A sworn declaration may not regress toward the template it was stamped
       # from. Both files sit in the Subly re-stamp's EXCLUDE-verbatim bucket by a
-      # decision no guard enforced (knowledge/plans/subly-restamp-P22-lock.md
+      # decision no guard enforced (Private/knowledge/plans/subly-restamp-P22-lock.md
       # §1.3), and the step above catches only the WHOLESALE swap. Mutation-
       # measured 2026-08-08: eleven PARTIAL regressions were exit 0 there —
       # nulling `dataSecurity.encryptedInTransit.answer`, deleting or emptying
@@ -1328,7 +1328,7 @@ jobs:
       # purpose, and a guard that fires on correct input gets deleted by whoever
       # hits it next. Because the rule is satisfied by CONTENT, there is no
       # exemption list to go stale. ⚠️ It CANNOT see live drift (no PAT in CI) and
-      # in CI it CANNOT see knowledge/ or company/, where three of the four stale
+      # in CI it CANNOT see Private/knowledge/ or Private/company/, where three of the four stale
       # documents lived -- it prints which of those two situations it was in on
       # every run rather than letting green read as "clean".
       - name: One record of how mail is sent, and no document contradicts it
@@ -1780,7 +1780,7 @@ jobs:
       - name: A recipe is a validated input contract, and the shards agree
         run: node tooling/ci/assert-recipe-contract.mjs
       # [pipeline 7]P-5 / G-36. The register is in tooling/legal/ and NOT under
-      # company/, which is gitignored — a guard pointed there reads nothing and
+      # Private/company/, which is gitignored — a guard pointed there reads nothing and
       # reports a clean tree over an empty domain. Uncleared rows for families
       # nothing consumes PRINT; a recipe declaring an uncleared family FAILS.
       - name: No pack ships a licence family nobody cleared

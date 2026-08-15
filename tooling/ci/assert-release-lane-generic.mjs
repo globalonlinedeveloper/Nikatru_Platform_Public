@@ -97,7 +97,7 @@
 //
 // ── WHAT IS DELIBERATELY NOT ASSERTED ────────────────────────────────────────
 // The workflows R-1 owns are `build-platforms.yml` and `e2e.yml` — named by
-// company/pipeline/09-release-engineering.md, reconciliation PART 6.
+// Private/company/pipeline/09-release-engineering.md, reconciliation PART 6.
 // `deploy-web.yml` is `[10]D-2b`'s and is graded HERE, in the same limbs, since
 // 2026-08-07: the requirement is that the web delivery path takes any app id,
 // and the machinery that decides whether a lane is app-generic already lived in
@@ -193,7 +193,7 @@ function coverageLost(lines) {
 // lands rather than on the day somebody remembers this file exists.
 // ─────────────────────────────────────────────────────────────────────────────
 // Every lane graded by limbs A/A′/D, with the stage that owns it. The stage is
-// not decoration: company/pipeline/09-release-engineering.md reconciliation
+// not decoration: Private/company/pipeline/09-release-engineering.md reconciliation
 // PART 6 splits R-1 from D-2b deliberately, and a failure message that cannot
 // say which requirement it belongs to gets routed to the wrong person.
 //

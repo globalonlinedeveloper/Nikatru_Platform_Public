@@ -383,7 +383,7 @@ function tree({
   omitGradleFile = false,
   adrLocked = true,
   adrOnDisk = true,
-  // `knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
+  // `Private/knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
   // check is decided by this ROOT, never by the individual file — see the guard.
   harnessPresent = true,
   // [10]D-10 limb (i). Off by default so every existing case keeps its exact
@@ -466,7 +466,7 @@ function tree({
     // The harness root exists even when the cited ADR does not — that is the
     // distinction the guard turns on, and the case a blanket existsSync() skip
     // would have thrown away.
-    write('knowledge/decisions/README.md', 'the harness is checked out\n');
+    write('Private/knowledge/decisions/README.md', 'the harness is checked out\n');
     if (adrOnDisk) {
       write('knowledge/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
     }
@@ -831,7 +831,7 @@ describe('assert-channel-register — schema, stores and disqualified channels',
 
   // ── the ADR check is MODE-AWARE, and both modes are tested ────────────────
   // Found the hard way: this guard's first CI run failed on run 30609219162
-  // because `knowledge/` is gitignored, so a correct check reported a fault that
+  // because `Private/knowledge/` is gitignored, so a correct check reported a fault that
   // did not exist. The fix must not lose the case below, which is the one that
   // matters — harness present, ADR gone.
   test('FAILS when the harness IS checked out and the cited ADR is not on disk', () => {

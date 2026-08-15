@@ -5,8 +5,8 @@
 // 🔴 WHY THIS IS NOT A CI GUARD, AND MUST NOT BECOME ONE.
 //
 // The stage doc's replacement acceptance for N-1 asks CI to parse
-// `company/MASTER_PLAN.md` §4 *and* `company/requirements/definition-of-done.md`
-// and assert a relationship between them. **`company/` is gitignored.** It is a
+// `Private/company/MASTER_PLAN.md` §4 *and* `Private/company/requirements/definition-of-done.md`
+// and assert a relationship between them. **`Private/company/` is gitignored.** It is a
 // separate private repository nested inside a PUBLIC one, and it is never pushed.
 // So a check living in `tooling/ci/` could never once execute against its own
 // subject — it would exist, print ok, and be enforcing nothing. That is the same
@@ -18,7 +18,7 @@
 //   tooling/dod-register.json          PUBLIC. The machine-readable items.
 //   tooling/ci/assert-app-dod.mjs      PUBLIC. Fails the build on the register
 //                                      and on every app's done-record.
-//   company/requirements/…-done.md     PRIVATE. The prose one-pager.
+//   Private/company/requirements/…-done.md     PRIVATE. The prose one-pager.
 //   THIS FILE                          LOCAL. The only place with read access to
 //                                      BOTH trees, so the only place the
 //                                      cross-tree relationships can be checked
@@ -109,7 +109,10 @@ const companyArg = companyAt === -1 ? null : argv[companyAt + 1];
 const positional = argv.filter((a, i) => companyAt === -1 || (i !== companyAt && i !== companyAt + 1));
 
 const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-const COMPANY = resolve(companyArg ?? join(ROOT, 'company'));
+// Default followed the tree on 2026-08-15: company/ now lives under Private/. `--company`
+// still overrides, and is still the answer when the private tree is not a sibling of the
+// checkout at all — which is why this guard refuses to report ok when it cannot find it.
+const COMPANY = resolve(companyArg ?? join(ROOT, 'Private', 'company'));
 
 const REGISTER = join(ROOT, 'tooling', 'dod-register.json');
 const PLAN = join(COMPANY, 'MASTER_PLAN.md');
@@ -167,7 +170,7 @@ if (missingPrivate.length) {
   console.error('✗ the private tree is not readable from here, so NOTHING was cross-checked:');
   for (const p of missingPrivate) console.error(`    missing: ${p}`);
   console.error('');
-  console.error('  This is a LOCAL check by construction — company/ is gitignored and CI can never run it.');
+  console.error('  This is a LOCAL check by construction — Private/company/ is gitignored and CI can never run it.');
   console.error('  Point it at the private tree explicitly if it is not a sibling of the checkout:');
   console.error('      node tooling/scripts/check-dod-sync.mjs . --company <path-to-company>');
   console.error('');
@@ -186,7 +189,7 @@ const pageText = readFileSync(PAGE, 'utf8');
 const secStart = planText.search(/^##\s*4\./m);
 if (secStart === -1) {
   coverageLost([
-    'company/MASTER_PLAN.md has no `## 4.` heading, so §4 could not be located.',
+    'Private/company/MASTER_PLAN.md has no `## 4.` heading, so §4 could not be located.',
     'R1 compares the register against that section; without it the comparison ranges over nothing.',
   ]);
 }
@@ -196,7 +199,7 @@ const section = secEnd === -1 ? rest : rest.slice(0, secEnd);
 const planLetters = [...section.matchAll(/^\*\*([A-Z])\.\s/gm)].map((m) => m[1]);
 if (planLetters.length === 0) {
   coverageLost([
-    'company/MASTER_PLAN.md §4 was located but declares ZERO lettered items.',
+    'Private/company/MASTER_PLAN.md §4 was located but declares ZERO lettered items.',
     'Either the section format changed, or this parser has stopped seeing it. A scanner that quietly',
     'matches less is the failure this repo keeps re-learning.',
   ]);
@@ -231,7 +234,7 @@ for (const l of actual) {
 const pageRows = [...pageText.matchAll(/^\|\s*\*\*([A-Z])\*\*\s*\|([^|]*)\|\s*`(\w+)`\s*\|/gm)];
 if (pageRows.length === 0) {
   coverageLost([
-    'company/requirements/definition-of-done.md declares no item rows this parser can see.',
+    'Private/company/requirements/definition-of-done.md declares no item rows this parser can see.',
     'R2 and R3 both range over that table; over zero rows they are vacuously true, which is the exact',
     'defect the original N-1 acceptance had — an empty page satisfied all three of its conjuncts.',
   ]);
@@ -269,7 +272,7 @@ for (const id of pageEnforcedBy.keys()) {
 const cutsHeadingAt = pageText.search(/^##\s+Cuts honoured/m);
 if (cutsHeadingAt === -1) {
   coverageLost([
-    'company/requirements/definition-of-done.md has no `## Cuts honoured` heading.',
+    'Private/company/requirements/definition-of-done.md has no `## Cuts honoured` heading.',
     'R3 scans only the region ABOVE it, so without the heading the bound is the whole file and the',
     'page\'s own honest cut list would read as five re-adopted items. A missing heading is also a page',
     'that has stopped recording its cuts at all.',
@@ -513,7 +516,7 @@ if (recorded.length < cuts.length) {
 
 // ── what CI cannot see, printed rather than implied ──────────────────────────
 notes.push(
-  `company/ is gitignored: CI enforces the register (${items.length} item(s)) and every app's ` +
+  `Private/company/ is gitignored: CI enforces the register (${items.length} item(s)) and every app's ` +
     'done-record; the one-pager and MASTER_PLAN §4 are checked HERE and nowhere else.',
 );
 

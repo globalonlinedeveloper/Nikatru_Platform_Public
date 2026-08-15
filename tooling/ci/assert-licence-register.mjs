@@ -75,7 +75,7 @@ if (!existsSync(REGISTER)) {
     `${rel(REGISTER)} does not exist.`,
     'The register is the left-hand side of every comparison here. Absent, this guard compares a real',
     'bundle to nothing and prints ok — see tooling/legal/README.md for why it is in-tree and not under',
-    'company/, which is gitignored and invisible to CI.',
+    'Private/company/, which is gitignored and invisible to CI.',
   );
 }
 let register;

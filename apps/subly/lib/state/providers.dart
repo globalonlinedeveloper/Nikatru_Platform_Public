@@ -2332,4 +2332,4 @@ final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
 // `lib/state/money_providers.dart`, which reads [appConfigProvider],
 // [authRepositoryProvider], [entitlementCacheProvider], [kPlatformBaseUrl] and
 // the re-exported `analyticsProvider` from this file. See
-// knowledge/decisions/026-purchases-adapter-replaces-revenuecat-stub.md.
+// Private/knowledge/decisions/026-purchases-adapter-replaces-revenuecat-stub.md.

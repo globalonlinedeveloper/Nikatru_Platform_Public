@@ -203,15 +203,15 @@ describe('assert-vendor-portability', () => {
     });
 
     // 🔴 THIS PAIR EXISTS BECAUSE CI CAUGHT WHAT THE LOCAL RUN COULD NOT.
-    // The guard runs in the PUBLIC repo, where `company/` is gitignored and
+    // The guard runs in the PUBLIC repo, where `Private/company/` is gitignored and
     // structurally absent — so citing a private runbook as checkable evidence
-    // passes on a dev box (company/ is on disk) and fails in CI. Graded
+    // passes on a dev box (Private/company/ is on disk) and fails in CI. Graded
     // could-not-establish WITH ITS REASON and printed, never silently skipped;
-    // and the exemption is STRUCTURAL (only the `company/` prefix, the
+    // and the exemption is STRUCTURAL (only the `Private/company/` prefix, the
     // private-SSoT boundary itself) rather than a flag anyone could set.
     test('grades a private-SSoT export path instead of failing on it', () => {
       const { code, out } = run(tree({
-        mutate: (r) => { r.vendors.supabase.exportPath.path = 'company/runbooks/operations.md'; return r; },
+        mutate: (r) => { r.vendors.supabase.exportPath.path = 'Private/company/runbooks/operations.md'; return r; },
       }));
       assert.equal(code, 0);
       assert.match(out, /could-not-establish \(1\)/);

@@ -251,19 +251,19 @@ for (const [id, v] of Object.entries(vendors)) {
   // part 5 — the export path must exist on disk.
   //
   // 🔴 CAUGHT BY CI, NOT LOCALLY, AND THE DIVERGENCE IS THE POINT. This guard
-  // runs in the PUBLIC repo, where `company/` is gitignored and structurally
+  // runs in the PUBLIC repo, where `Private/company/` is gitignored and structurally
   // absent — so citing a private runbook as machine-checkable evidence passes on
-  // a dev box (company/ is on disk) and fails in CI. The first version of this
+  // a dev box (Private/company/ is on disk) and fails in CI. The first version of this
   // check did exactly that.
   //
   // The fix follows this repo's own grading rule — NO SILENT SKIPS: a path the
   // guard cannot see is graded `could-not-establish` WITH ITS REASON and
   // printed, never quietly passed. And the exemption is STRUCTURAL, not a flag:
-  // only `company/` qualifies, because that prefix is the private-SSoT boundary
+  // only `Private/company/` qualifies, because that prefix is the private-SSoT boundary
   // itself. A boolean anybody could set would make part 5 optional.
   if (v.exportPath?.path) {
     const p = v.exportPath.path;
-    if (p.startsWith('company/')) {
+    if (p.startsWith('Private/company/')) {
       unverifiableExports.push(`${id} → ${p}`);
     } else if (!existsSync(join(ROOT, p))) {
       problems.push(`vendor \`${id}\` cites export path \`${p}\`, which does not exist. An untested exit is not an exit.`);

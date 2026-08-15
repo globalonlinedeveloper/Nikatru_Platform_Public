@@ -70,7 +70,7 @@
 //   NOT IN THE REGISTER AT ALL. Fifteen ceiling ids, none of them the one the
 //   capacity model divides by, and `grep -n "rows_written_per_event\|amplif"
 //   tooling/ceilings.json` returned nothing. The 5× correction lived in prose in
-//   company/pipeline/11-measurement.md and in no file any guard could reach.
+//   Private/company/pipeline/11-measurement.md and in no file any guard could reach.
 //
 // 🔴 AND THE RED THIS GUARD WAS BUILT TO RECORD, on the tree as it stood:
 //   services/platform/src/routes/events.ts declared `MAX_EVENTS_PER_BATCH = 100`

@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE PROVIDER REGISTER — [pipeline K-5] company/pipeline/08-compliance-legal.md",
+    "THE PROVIDER REGISTER — [pipeline K-5] Private/company/pipeline/08-compliance-legal.md",
     "",
     "Every third party that touches a payment, a user's data, or the delivery of the Services: what role",
     "it plays, whether the published pages name it, and — the field the whole file hangs off — whether it",
@@ -24,7 +24,7 @@
     "    pages now agree that nothing is sold directly from the website yet; the two that are not version-",
     "    gated additionally name the seller that will take the payment.",
     "  · privacy.html says usage statistics AND CRASH REPORTS run on infrastructure provided by",
-    "    Cloudflare. Crash reports run on Oracle Cloud (company/runbooks/glitchtip.md).",
+    "    Cloudflare. Crash reports run on Oracle Cloud (Private/company/runbooks/glitchtip.md).",
     "",
     "🔴 EVERY ONE OF THOSE IS FIXED BY EDITING A PUBLISHED LEGAL PAGE, WHICH IS OWNER WORK (OWNER_QUEUE",
     "O-3). They are therefore carried as `disclosureGap` rows that PRINT on every run — never silently",
@@ -564,11 +564,11 @@
       "namedIn": [
         "privacy.html"
       ],
-      "privateRecord": "company/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
+      "privateRecord": "Private/company/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
       "receives": [
         "crash_report"
       ],
-      "receivesBasis": "🔴 THIS ROW IS WHY THE SINK-DISCLOSURE LIMB EXISTS. Until 2026-08-06 this sink ALSO received `ip_address`, while privacy.html published 'We do not collect or store your IP address' — and nothing in this repository could see it, because the only personal-data store outside Cloudflare appears in no inventory here. Fixed at the sink and verified BY OBSERVATION, not by reading a setting (knowledge/session-notes.md §17): two layers, because either alone is a false fix. (1) The sink refuses — 12 IP keys added to GlitchTip's `sensitive_keys`, which is what catches a CLIENT-SUPPLIED address; tested with 203.0.113.45. (2) Nothing is collected — nginx blanks the 11 client-IP headers in python_ipware's precedence tuple, so `get_client_ip` falls through to the Docker gateway and returns None. Probed after: no `user` object at all on a fresh event; the negative control against the pre-change config returned the address unmodified, so the assertion can fail. The 18 back-catalogue events holding a real address were redacted in place, non-destructively.",
+      "receivesBasis": "🔴 THIS ROW IS WHY THE SINK-DISCLOSURE LIMB EXISTS. Until 2026-08-06 this sink ALSO received `ip_address`, while privacy.html published 'We do not collect or store your IP address' — and nothing in this repository could see it, because the only personal-data store outside Cloudflare appears in no inventory here. Fixed at the sink and verified BY OBSERVATION, not by reading a setting (Private/knowledge/session-notes.md §17): two layers, because either alone is a false fix. (1) The sink refuses — 12 IP keys added to GlitchTip's `sensitive_keys`, which is what catches a CLIENT-SUPPLIED address; tested with 203.0.113.45. (2) Nothing is collected — nginx blanks the 11 client-IP headers in python_ipware's precedence tuple, so `get_client_ip` falls through to the Docker gateway and returns None. Probed after: no `user` object at all on a fresh event; the negative control against the pre-change config returned the address unmodified, so the assertion can fail. The 18 back-catalogue events holding a real address were redacted in place, non-destructively.",
       "transits": {
         "ip_address": "An ingest request necessarily arrives from the device's address; that is TCP, not a choice. Nothing writes it — see `receivesBasis`. ⚠️ AND THIS IS EXACTLY THE DECLARATION A REPO-RESIDENT GUARD CANNOT CHECK. If somebody re-enables IP storage on the live GlitchTip without editing this line, every guard in this repository stays green. Only a probe against the live GlitchTip API can close that, and no such probe exists today: the compose file lives at /opt/glitchtip on the box and is in no tree CI can read."
       },

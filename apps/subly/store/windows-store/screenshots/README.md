@@ -22,7 +22,7 @@ and failing CI on artwork only the owner can produce would block every build on
 
 🔴 **Why this table is empty rather than helpful.** An invented limit fires on
 **correct** input. This repo has already rejected its own fixture at 129
-characters against a made-up "120 or fewer". `company/pipeline/10-distribution-store.md`
+characters against a made-up "120 or fewer". `Private/company/pipeline/10-distribution-store.md`
 D-5 records screenshot dimensions for **every** store as
 `COULD-NOT-ESTABLISH — not fetched; do not write a number here from memory`, and
 that is still true. Fill this table in the same increment that fetches the

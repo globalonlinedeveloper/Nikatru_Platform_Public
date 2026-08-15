@@ -42,7 +42,7 @@
 // was `apps/subly/lib`, and the arrangement had a fault line running straight
 // through it: the canary's dirtiness was a PRODUCT property, owned by nobody
 // here, and scheduled for deletion. Subly's l10n retrofit — Phase 4 of
-// `knowledge/plans/subly-restamp-execution.md` — cleans precisely the literals
+// `Private/knowledge/plans/subly-restamp-execution.md` — cleans precisely the literals
 // the canary counts, so the guard was going to go RED BY IMPROVEMENT: the build
 // breaks BECAUSE somebody did the right thing, and the rational response to
 // that is to weaken the guard. Every switched-off check in this repo's history
@@ -56,7 +56,7 @@
 // rewriting the check.
 //
 // ── 2026-08-08 · THE SUBLY CANARY IS RETIRED, ON SCHEDULE ───────────────────
-// P4 L0 of `knowledge/plans/subly-restamp-execution.md` is the increment the
+// P4 L0 of `Private/knowledge/plans/subly-restamp-execution.md` is the increment the
 // entry named as its own expiry, and this is that increment: the .arb now holds
 // every key Subly's screens need, so the waves that follow will empty
 // `apps/subly/lib` of the literals this guard was counting there. Removing the
@@ -320,7 +320,7 @@ const CANARY_ROOTS = [
     why: "this guard's own fixture: dirty on purpose, owned here, and unreachable by product work. It is the canary that stays.",
   },
   // `apps/subly/lib` sat here until 2026-08-08 and was removed by the increment
-  // its own entry named — P4 L0 of knowledge/plans/subly-restamp-execution.md.
+  // its own entry named — P4 L0 of Private/knowledge/plans/subly-restamp-execution.md.
   // It stays a LIST with one element on purpose: the shape is what let a canary
   // be retired by deleting an object rather than by rewriting the loop below,
   // and the next real tree that is known-dirty in these ways can be added the

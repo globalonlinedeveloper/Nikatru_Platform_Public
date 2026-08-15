@@ -35,7 +35,7 @@
 // `pnpm install` (which resolves loosely without `--frozen-lockfile`) was
 // invisible to it too.
 //
-// Pipeline requirement: company/pipeline/01-foundation.md → F-8.
+// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-8.
 //
 // Usage:  node tooling/ci/assert-lockfile-discipline.mjs [repoRoot]
 // Exit 0 = reproducible, 1 = something can drift (or the scan broke).

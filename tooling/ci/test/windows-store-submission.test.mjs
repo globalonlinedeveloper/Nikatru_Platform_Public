@@ -95,7 +95,7 @@ function tree({
           publisherDisplayName: SENTINEL,
           publisher: `CN=${SENTINEL}`,
         },
-        submission: { runbook: 'company/runbooks/store-submission-windows.md' },
+        submission: { runbook: 'Private/company/runbooks/store-submission-windows.md' },
       },
     ],
   };

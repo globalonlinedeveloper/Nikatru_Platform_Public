@@ -827,7 +827,7 @@ export function renderSitemap(entries) {
 // that DO NOT EXIST IN THIS REPOSITORY — the Udyam registration number, the
 // founding year, the founder's biography — because they live in the shared
 // business brain `nikatru/business/`, a SEPARATE private repo that is not on this
-// checkout at all. (Said "`company/`, which is gitignored" until 2026-08-14; the
+// checkout at all. (Said "`Private/company/`, which is gitignored" until 2026-08-14; the
 // reasoning is unchanged and the conclusion is now stronger — this is not a
 // directory a build could opt into reading, it is a different repository.)
 // A generator could only produce them by

@@ -59,7 +59,7 @@ if (!existsSync(MATRIX)) {
   coverageLost(
     `${rel(MATRIX)} does not exist.`,
     'The matrix IS the subject of every check below. Absent, this guard validates nothing and prints',
-    'ok — see tooling/legal/README.md for why it lives in-tree and not under company/, which is',
+    'ok — see tooling/legal/README.md for why it lives in-tree and not under Private/company/, which is',
     'gitignored and therefore invisible to CI.',
   );
 }

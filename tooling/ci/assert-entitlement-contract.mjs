@@ -3,7 +3,7 @@
 // assert-entitlement-contract.mjs — the money rail's schema is COMPLETE, and it
 // is complete BEFORE the first payment lands.
 //
-// [pipeline 5]M-3 · M-2 · M-7. `company/requirements/schema-evolution.md` makes
+// [pipeline 5]M-3 · M-2 · M-7. `Private/company/requirements/schema-evolution.md` makes
 // migrations ADDITIVE-ONLY, and `entitlements` is the one table in this
 // portfolio whose rows are a stranger's money. The instant the first payment
 // lands, every column missing from it is missing FOREVER for that row: there is
@@ -802,7 +802,7 @@ if (problems.length) {
   for (const p of problems) console.error(`    ${p}`);
   console.error('');
   console.error('  [pipeline 5]M-3 The entitlement record is complete BEFORE the first payment lands.');
-  console.error('  company/requirements/schema-evolution.md makes migrations ADDITIVE-ONLY, so every');
+  console.error('  Private/company/requirements/schema-evolution.md makes migrations ADDITIVE-ONLY, so every');
   console.error('  column above is free today and permanent the instant a stranger pays.');
   // [5]M-2, matching the citation the code itself carries at
   // services/subly-api/src/routes/webhooks.ts:505 ("the conditional DO UPDATE is

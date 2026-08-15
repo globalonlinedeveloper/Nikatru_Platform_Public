@@ -186,7 +186,7 @@ column to type into the console.
   **verified Organization account** (2026-08-04), so there is no tester window and no calendar
   dependency before production access. A closed test remains good practice, not a gate.
   *(This row read `⬜ … A calendar, not a task` until 2026-08-11.)*
-  See `company/runbooks/store-submission-android.md` §1.
+  See `Private/company/runbooks/store-submission-android.md` §1.
 
 ## Regenerating / validating
 

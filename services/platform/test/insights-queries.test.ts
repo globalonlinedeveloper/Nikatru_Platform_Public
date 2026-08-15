@@ -53,7 +53,7 @@ import insightsReadme from '../queries/insights/README.md?raw';
 // in this file. The floor is `REQUIRED_COVERAGE.length`, and REQUIRED_COVERAGE
 // is checked, in order and in both directions, against the numbered list in
 // `queries/insights/README.md` — which is itself checked against the SSoT list
-// in `company/requirements/analytics-events.md` § "The ~5 numbers" on every
+// in `Private/company/requirements/analytics-events.md` § "The ~5 numbers" on every
 // machine that has the private tree. This repo has already shipped a scanner
 // that silently dropped from 5 files to 4 and reported PASS; four numbers and a
 // fifth quietly absent is COVERAGE LOST here, not a smaller green run.
@@ -61,7 +61,7 @@ import insightsReadme from '../queries/insights/README.md?raw';
 
 /**
  * THE FIVE, in the order and with the titles that
- * `company/requirements/analytics-events.md` § "The ~5 numbers these roll up
+ * `Private/company/requirements/analytics-events.md` § "The ~5 numbers these roll up
  * into (the actual dashboard)" uses.
  *
  * Written out rather than derived from the directory: a set derived from the
@@ -152,7 +152,7 @@ const trailingId = (item: string): string | null => item.match(/\(`([a-z0-9_]+)`
 const sqlFileName = (item: string): string | null => item.match(/`(\d{2}-[a-z0-9-]+\.sql)`/)?.[1] ?? null;
 
 // ── the private SSoT, read only if the private tree is here at all ──────────
-// `company/` is gitignored and NEVER reaches a CI runner, so this limb cannot be
+// `Private/company/` is gitignored and NEVER reaches a CI runner, so this limb cannot be
 // the enforcement — the README mirror above is. What it does is stop the mirror
 // from drifting away from the document it mirrors, on every machine that holds
 // the document. `process.getBuiltinModule` rather than `import 'node:fs'` for
@@ -171,8 +171,8 @@ const nodeProcess = (
 ).process;
 const fs = nodeProcess.getBuiltinModule('node:fs');
 
-const SSOT_REL = 'company/requirements/analytics-events.md';
-/** The first ancestor of the cwd that holds a `company/` tree, or null. */
+const SSOT_REL = 'Private/company/requirements/analytics-events.md';
+/** The first ancestor of the cwd that holds a `Private/company/` tree, or null. */
 function privateTreeRoot(): string | null {
   const cwd = nodeProcess.cwd().replaceAll('\\', '/');
   for (const up of ['', '/..', '/../..', '/../../..']) {
@@ -418,12 +418,12 @@ describe('[pipeline 11]E-11 · coverage — the five numbers exist as checked-in
   it('the private SSoT (analytics-events.md) still lists the same five, in the same order', () => {
     const root = privateTreeRoot();
     if (root === null) {
-      // The honest CI state, printed rather than skipped silently. `company/` is
+      // The honest CI state, printed rather than skipped silently. `Private/company/` is
       // gitignored and never reaches a runner, so on CI the enforcement is the
       // README mirror above and this limb has nothing to read.
       console.log(
-        `NOTICE [E-11] no \`company/\` tree above ${nodeProcess.cwd()} — the SSoT list in ${SSOT_REL} was NOT ` +
-          'compared. On CI this is expected and correct (company/ is gitignored); the enforced floor there is the ' +
+        `NOTICE [E-11] no \`Private/company/\` tree above ${nodeProcess.cwd()} — the SSoT list in ${SSOT_REL} was NOT ` +
+          'compared. On CI this is expected and correct (Private/company/ is gitignored); the enforced floor there is the ' +
           'README mirror. On a developer machine it means the private tree is missing, not that the lists agree.',
       );
       return;
@@ -431,7 +431,7 @@ describe('[pipeline 11]E-11 · coverage — the five numbers exist as checked-in
     const docPath = `${root}/${SSOT_REL}`;
     expect(
       fs.existsSync(docPath),
-      `COVERAGE LOST — a \`company/\` tree exists at ${root} but ${SSOT_REL} is not in it. The SSoT moved or was ` +
+      `COVERAGE LOST — a \`Private/company/\` tree exists at ${root} but ${SSOT_REL} is not in it. The SSoT moved or was ` +
         'renamed, so the README mirror is now mirroring nothing and REQUIRED_COVERAGE has no upstream.',
     ).toBe(true);
 

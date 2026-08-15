@@ -27,7 +27,7 @@ chrome and the wrong system fonts. There is also nothing to capture yet — no
 
 🔴 An invented limit fires on **correct** input — this repo has already rejected
 its own fixture at 129 characters against a made-up "120 or fewer".
-`company/pipeline/10-distribution-store.md` D-5 records screenshot dimensions for
+`Private/company/pipeline/10-distribution-store.md` D-5 records screenshot dimensions for
 **every** store as *"COULD-NOT-ESTABLISH — not fetched; do not write a number
 here from memory"*. Fill this table in the same increment that fetches the Snap
 Store's media-requirements page, **with the URL and the date**.

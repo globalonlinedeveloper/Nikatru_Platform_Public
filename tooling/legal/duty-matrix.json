@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE DUTY MATRIX — [pipeline K-13] company/pipeline/08-compliance-legal.md",
+    "THE DUTY MATRIX — [pipeline K-13] Private/company/pipeline/08-compliance-legal.md",
     "",
     "One row per compliance duty this factory has taken on: what it is, whether it is implemented, WHAT",
     "WOULD TRIGGER IT if it is not, and where the claim came from. A tripwire with no stateable trigger is",
@@ -23,7 +23,7 @@
     "",
     "⚠️ THE COVERAGE SET IS THE REQUIREMENT LIST BELOW, AND IT IS INCOMPLETE BY CONSTRUCTION. K-13's",
     "acceptance asks for the stage's 16 requirement ids PLUS its 14 written cuts. The written cuts live in",
-    "company/pipeline/08-compliance-legal.md, and company/ is gitignored — CI cannot read it, and a row",
+    "Private/company/pipeline/08-compliance-legal.md, and Private/company/ is gitignored — CI cannot read it, and a row",
     "set derived from a file no guard can open would be a coverage claim over nothing (the exact defect",
     "that stopped the previous increment). So the declared set here is the requirement ids, in-tree, and",
     "this limitation is written down rather than papered over. See tooling/legal/README.md.",
@@ -95,7 +95,7 @@
   "verificationKinds": {
     "primary-source": "read from the body that wrote or enforces the rule. Requires `source.url` on the allowlist and a `fetched` date.",
     "in-tree": "verifiable inside this repository — a guard, a file, a workflow step. No external source applies.",
-    "decision": "settled by a decision record of ours. `decisionRecord` names it; CI cannot open it (knowledge/ is gitignored), so it is a pointer, not an assertion.",
+    "decision": "settled by a decision record of ours. `decisionRecord` names it; CI cannot open it (Private/knowledge/ is gitignored), so it is a pointer, not an assertion.",
     "COULD-NOT-ESTABLISH": "the rule could not be read from a primary source in this environment. MUST NOT carry a source URL. `wouldNeed` says what would have to be read."
   },
 
@@ -155,7 +155,7 @@
       "source": {
         "url": "https://learn.microsoft.com/en-us/windows/apps/publish/store-policies",
         "fetched": "2026-07-29",
-        "quote": "Microsoft Store Policies §10.5.1 — a privacy policy URL is required in Partner Center for any product that accesses personal information. Recorded in company/pipeline/10-distribution-store.md against that fetch."
+        "quote": "Microsoft Store Policies §10.5.1 — a privacy policy URL is required in Partner Center for any product that accesses personal information. Recorded in Private/company/pipeline/10-distribution-store.md against that fetch."
       }
     },
     {
@@ -185,7 +185,7 @@
       "artefact": "sites/nikatru/privacy.html",
       "trigger": "🔴 THE DAY A PROMOTIONAL SURFACE RENDERS TO A REAL USER IN A SHIPPED BUILD — not the day the component is written, and not the day a config key exists. [ADR 040] makes the published section THE gate on that surface. SATISFIED 2026-08-10, AHEAD OF THE TRIGGER, WHICH IS THE ORDER THIS ROW ALWAYS ASKED FOR: §3 of the notice was published on owner signature while every promo surface is still dormant (features.promo_card_enabled is absent from every served config, and an absent key reads false). ⚠️ THE ROW STAYS IN THE MATRIX BECAUSE THE DUTY IS CONTINUOUS, NOT DISCHARGED: the day the flag is armed is the day somebody must re-read §3 against what actually renders. And the trigger still cannot be detected by the guard that sounds like it should — the advertising claim row in tooling/legal/policy-claims.json asserts `absent` over every pubspec.yaml, so it keys on a DEPENDENCY, and a house-ad surface adds none.",
       "verification": "in-tree",
-      "decisionRecord": "knowledge/decisions/040-cross-promo-v1-lock.md — LOCKED 2026-08-10, decision 3: 'D2 (privacy-policy legal-basis section) is drafted, not flipped. ADR 031 class B stands: the agent produces the ready-to-sign diff; the section goes live only on owner signature. It remains THE gate on any promo surface rendering.' SIGNED 2026-08-10. The reasoning is knowledge/research/44-CROSS-PROMOTION-HOUSE-ADS-OFFERS.md V2/V3/V4; the diff that was signed is docs/legal/privacy-direct-marketing-draft.md.",
+      "decisionRecord": "Private/knowledge/decisions/040-cross-promo-v1-lock.md — LOCKED 2026-08-10, decision 3: 'D2 (privacy-policy legal-basis section) is drafted, not flipped. ADR 031 class B stands: the agent produces the ready-to-sign diff; the section goes live only on owner signature. It remains THE gate on any promo surface rendering.' SIGNED 2026-08-10. The reasoning is Private/knowledge/research/44-CROSS-PROMOTION-HOUSE-ADS-OFFERS.md V2/V3/V4; the diff that was signed is docs/legal/privacy-direct-marketing-draft.md.",
       "note": "PUBLISHED 2026-08-10 as privacy.html §3 'Offers and promotions inside our apps', at policy version 2026-08-10. The signature is the version bump, and it moved in three places at once (the page's data-policy-version and visible date, kPrivacyPolicyVersion in apps/subly, and the same constant in the brick) plus an archive snapshot at sites/nikatru/legal/2026-08-10/en/privacy.html — because privacy.html sits inside the policy-VERSION surface and assert-policy-archive.mjs / assert-seams-wired.mjs make a partial application impossible rather than merely inadvisable. The advertising sentence was narrowed in the same commit to 'no Nikatru app carries third-party advertising', its policy-claims.json row and apps/subly/store/android-play/ads-declaration.json moved with it (they are pinned by exact string equality), and `crossChecks.policyPage.assertsAbsence` went true → false. THAT FLIP IS WHAT OPENED THE GATE: tooling/ci/assert-ads-declarations.mjs had been failing for as long as any promo component existed in-tree beside the unqualified sentence, deliberately, and it now exits 0. ⚠️ NO GUARD ASSERTS THIS ROW'S SUBSTANCE AND NONE CAN: whether a stated legal basis is the correct one is a lawyer's judgement. What IS mechanical is the pairing (set-equality of emphasised spans to register rows), the objection control (`Offers and promotions` asserts `recordPromoObjection(` in the Settings screen) and the on-device claim (`on your device` asserts PromoGate imports nothing)."
     },
     {
@@ -215,8 +215,8 @@
       "ownerItem": "O-3",
       "trigger": "🔴 THE DAY ANY APP RECORDS A REAL STORE PURCHASE — i.e. the first non-sandbox event to POST /v1/webhooks/revenuecat. It is not the day the SDK is added and it is not the day a store account is created; it is the first event carrying a real person's entitlement. Nothing today can send one (every kind:store row in tooling/channel-register.json is served:false), which is precisely why this is easy to still be missing on the day something can.",
       "verification": "decision",
-      "decisionRecord": "knowledge/decisions/039-payment-rails-per-platform.md D5 — LOCKED 2026-08-09: RevenueCat is the mobile-store IAP glue, entering the codebase at the Play-Billing increment and at A-4.",
-      "note": "Two duties in one row because they fail in opposite directions and share one fact. (a) DISCLOSURE: RevenueCat holds an account identifier and entitlement records, so privacy.html §3 owes it a mention — carried as the `iap-aggregator-unnamed` gap, which prints every run. (b) THE ROLE, WHICH IS THE HALF A GUARD CAN GET WRONG FOR US: an aggregator is not a merchant of record. tooling/legal/provider-register.json keeps its `role` at `iap_aggregator`; flip that field and assert-policy-claims.mjs §3(c) would start DEMANDING that terms.html and refund.html name RevenueCat as the seller — a false disclosure the guard itself asked for. Recorded as `decision` rather than `primary-source`: what is asserted here is our own lock, and CI cannot open knowledge/ (gitignored), so the pointer is data and not an assertion."
+      "decisionRecord": "Private/knowledge/decisions/039-payment-rails-per-platform.md D5 — LOCKED 2026-08-09: RevenueCat is the mobile-store IAP glue, entering the codebase at the Play-Billing increment and at A-4.",
+      "note": "Two duties in one row because they fail in opposite directions and share one fact. (a) DISCLOSURE: RevenueCat holds an account identifier and entitlement records, so privacy.html §3 owes it a mention — carried as the `iap-aggregator-unnamed` gap, which prints every run. (b) THE ROLE, WHICH IS THE HALF A GUARD CAN GET WRONG FOR US: an aggregator is not a merchant of record. tooling/legal/provider-register.json keeps its `role` at `iap_aggregator`; flip that field and assert-policy-claims.mjs §3(c) would start DEMANDING that terms.html and refund.html name RevenueCat as the seller — a false disclosure the guard itself asked for. Recorded as `decision` rather than `primary-source`: what is asserted here is our own lock, and CI cannot open Private/knowledge/ (gitignored), so the pointer is data and not an assertion."
     },
     {
       "id": "in-app-legal-links",
@@ -295,7 +295,7 @@
       "artefact": "tooling/ci/assert-repo-posture.mjs",
       "trigger": "Already live. A LICENSE file appearing at the root fails the build — the only irreversible thing in this matrix, because a grant cannot be un-granted.",
       "verification": "decision",
-      "decisionRecord": "company/requirements/master-requirements.md — 'Repo stays PUBLIC, no LICENSE (DECIDED 5)'"
+      "decisionRecord": "Private/company/requirements/master-requirements.md — 'Repo stays PUBLIC, no LICENSE (DECIDED 5)'"
     },
     {
       "id": "duty-matrix-cannot-rot",
@@ -477,8 +477,8 @@
       "ownerItem": "A-1",
       "trigger": "The application itself. Applying before the product, the paywall and the legal pages are live is what causes a rejection, so the trigger is 'the product is complete', not 'we want revenue'.",
       "verification": "decision",
-      "decisionRecord": "knowledge/decisions/004-mor-provider.md — LOCKED 2026-07-23: build the complete product first, then apply.",
-      "note": "Recorded as a `decision` rather than `primary-source` on purpose. The provider's published requirements were read when that record was written; what is asserted HERE is our own sequencing lock, and CI cannot open knowledge/ (gitignored) to check the record itself. The pointer is data, not an assertion — the same split tooling/channel-register.json uses for ownerQueue ids."
+      "decisionRecord": "Private/knowledge/decisions/004-mor-provider.md — LOCKED 2026-07-23: build the complete product first, then apply.",
+      "note": "Recorded as a `decision` rather than `primary-source` on purpose. The provider's published requirements were read when that record was written; what is asserted HERE is our own sequencing lock, and CI cannot open Private/knowledge/ (gitignored) to check the record itself. The pointer is data, not an assertion — the same split tooling/channel-register.json uses for ownerQueue ids."
     },
     {
       "id": "breach-response-has-no-owner",

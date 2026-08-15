@@ -3,7 +3,7 @@
 // assert-e2e-proof-fresh.mjs — the nightly golden-path proof must be RECENT,
 // SCHEDULED, and must still be running the suite it claims to run.
 //
-// [pipeline N-6, clauses 1 and 3] company/pipeline/06-app-build.md
+// [pipeline N-6, clauses 1 and 3] Private/company/pipeline/06-app-build.md
 //
 // N-6 as originally drafted asked that a done-record NAME an end-to-end test and
 // that a workflow CLAIM it. Both were true on 2026-07-29 of a suite that had been
@@ -14,7 +14,7 @@
 // This is the SIBLING of assert-platform-proof-fresh.mjs, deliberately built to
 // the same shape and the same vocabulary rather than as a second dialect. That
 // guard solves this exact problem for `build-platforms.yml`; the plan
-// (knowledge/plans/06-app-build-plan.md, increment 7) offered either generalising
+// (Private/knowledge/plans/06-app-build-plan.md, increment 7) offered either generalising
 // it to a table of workflows or a sibling, and the sibling is what landed:
 // `assert-platform-proof-fresh.mjs` belongs to stage 1 ([1]F-4) and its
 // MAX_AGE_DAYS is under a standing owner lock, so widening it here would mean

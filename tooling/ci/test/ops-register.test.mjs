@@ -179,7 +179,7 @@ function baseRegister() {
         response: 'follow the runbook',
         cadence: '120d',
         lastDrill: '2026-07-26',
-        mechanism: { substrate: 'google-drive', anchor: 'company/runbooks/backup-liveness.md', record: 'a dated file', failingValue: 'a stale date', readBy: 'the backup script' },
+        mechanism: { substrate: 'google-drive', anchor: 'Private/company/runbooks/backup-liveness.md', record: 'a dated file', failingValue: 'a stale date', readBy: 'the backup script' },
         accessProviders: ['google'],
         source: 'verified',
       },
@@ -193,7 +193,7 @@ function baseRegister() {
         lastDone: '2026-07-26',
         takesDown: ['laptop'],
         respondsVia: 'recovery.bundles',
-        // 🔴 DELIBERATELY `nikatru/` WHILE THE ROW ABOVE IS `company/`. `OUTSIDE_CI` holds TWO
+        // 🔴 DELIBERATELY `nikatru/` WHILE THE ROW ABOVE IS `Private/company/`. `OUTSIDE_CI` holds TWO
         // prefixes, and the `unverifiableAnchors` assertion below counts 2 — so this fixture is
         // the only thing making that count span BOTH branches. With both rows on one prefix the
         // other branch would be exercised by nothing and could be deleted in silence, which is
@@ -205,7 +205,7 @@ function baseRegister() {
       },
       // [14]O-4's domain is duties ON A CLOCK, and the three rows above are not
       // on one. Appended (never inserted) so every rows[N] index above still
-      // points where its test thinks it does, and anchored OUTSIDE company/ and
+      // points where its test thinks it does, and anchored OUTSIDE Private/company/ and
       // nikatru/ so the unverifiableAnchors count assertion is untouched.
       {
         id: 'duty.laptop.backup',
@@ -427,14 +427,14 @@ describe('assert-ops-register — O-14: the intersection is over TWO independent
   });
 });
 
-describe('assert-ops-register — mechanism, source and the company/ blind spot', () => {
+describe('assert-ops-register — mechanism, source and the Private/company/ blind spot', () => {
   test('an anchor that is not in the tree FAILS', () => {
     const r = baseRegister();
     r.rows[0].mechanism.anchor = '.github/workflows/gone.yml';
     assert.match(messages(r), /is not in the tree/);
   });
 
-  test('an anchor under company/ is ACCEPTED and COUNTED, because CI cannot read it', () => {
+  test('an anchor under Private/company/ is ACCEPTED and COUNTED, because CI cannot read it', () => {
     const v = run(baseRegister());
     assert.deepEqual(v.errors, []);
     assert.equal(v.stats.unverifiableAnchors, 2);
@@ -573,7 +573,7 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       expiryKnownAt: 'the registrar console',
       ownerGated: true,
       ownerGap: 'console-only',
-      mechanism: { substrate: 'cloudflare-registrar', anchor: 'company/runbooks/operations.md', record: 'the console', failingValue: 'auto-renew off', readBy: 'nothing yet' },
+      mechanism: { substrate: 'cloudflare-registrar', anchor: 'Private/company/runbooks/operations.md', record: 'the console', failingValue: 'auto-renew off', readBy: 'nothing yet' },
       accessProviders: ['cloudflare'],
       source: 'verified',
       ...extra,
@@ -612,7 +612,7 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       detector: 'a heartbeat',
       response: 'run it',
       cadence: '30d',
-      mechanism: { substrate: 'windows-task-scheduler', anchor: 'company/runbooks/backup-liveness.md', record: 'LastTaskResult', failingValue: '!= 0', readBy: 'a monitor' },
+      mechanism: { substrate: 'windows-task-scheduler', anchor: 'Private/company/runbooks/backup-liveness.md', record: 'LastTaskResult', failingValue: '!= 0', readBy: 'a monitor' },
       accessProviders: ['laptop'],
       source: 'verified',
     });
@@ -1168,7 +1168,7 @@ describe('assert-ops-register — [14]O-11 / [14]O-17 · a tolerance that cannot
       expiryKnownAt: 'a vendor console',
       ownerGated: true,
       ownerGap: 'console-only',
-      mechanism: { substrate: 'x', anchor: 'company/runbooks/operations.md', record: 'r', failingValue: 'f', readBy: 'nothing yet' },
+      mechanism: { substrate: 'x', anchor: 'Private/company/runbooks/operations.md', record: 'r', failingValue: 'f', readBy: 'nothing yet' },
       accessProviders: ['cloudflare'],
       source: 'verified',
       ...extra,
@@ -1211,7 +1211,7 @@ describe('assert-ops-register — [14]O-11 / [14]O-17 · a tolerance that cannot
       detector: 'the coverage guard',
       response: 'the sweep',
       cadence: '365d',
-      mechanism: { substrate: 'cloudflare-d1', anchor: 'company/runbooks/operations.md', record: 'the table', failingValue: 'a row older than the period', readBy: 'the coverage guard' },
+      mechanism: { substrate: 'cloudflare-d1', anchor: 'Private/company/runbooks/operations.md', record: 'the table', failingValue: 'a row older than the period', readBy: 'the coverage guard' },
       accessProviders: ['cloudflare'],
       source: 'verified',
     });
@@ -1231,7 +1231,7 @@ describe('assert-ops-register — [14]O-11 / [14]O-17 · a tolerance that cannot
       cadence: '365d',
       ownerGated: true,
       ownerGap: 'the period is a policy decision',
-      mechanism: { substrate: 'cloudflare-kv', anchor: 'company/runbooks/operations.md', record: 'the store', failingValue: 'a key older than the period', readBy: 'the coverage guard' },
+      mechanism: { substrate: 'cloudflare-kv', anchor: 'Private/company/runbooks/operations.md', record: 'the store', failingValue: 'a key older than the period', readBy: 'the coverage guard' },
       accessProviders: ['cloudflare'],
       source: 'verified',
     });
@@ -1275,8 +1275,8 @@ describe('assert-ops-register — a named READER must exist, not merely be named
     assert.deepEqual(run(withPath('mechanism.readBy', 'a human reading the Dependency Dashboard issue')).errors, []);
   });
 
-  test('a company/ path is NOT treated as a missing file, because CI cannot see company/', () => {
-    assert.deepEqual(run(withPath('mechanism.readBy', 'company/runbooks/operations.md §0')).errors, []);
+  test('a Private/company/ path is NOT treated as a missing file, because CI cannot see Private/company/', () => {
+    assert.deepEqual(run(withPath('mechanism.readBy', 'Private/company/runbooks/operations.md §0')).errors, []);
   });
 });
 
@@ -1857,7 +1857,7 @@ describe('assert-ops-register — [14]O-4 · the absence of a scheduled duty mus
 // its id together passes CLEAN — the domain shrinks and the guard reports ok,
 // because nothing anywhere says WHICH ids the external half must contain. That
 // is check-migrations.mjs's 5-files-to-4 defect exactly, and these two rows are
-// the likeliest victims of it: both are pure-`company/` procedures whose entire
+// the likeliest victims of it: both are pure-`Private/company/` procedures whose entire
 // machine-readable existence is the register line.
 //
 // So the list is pinned HERE, against the REAL register, rather than against a
@@ -1874,7 +1874,7 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
   );
 
   /** [14]O-19's contract half and [10]D-12's whole document. Neither is visible
-   *  to any tree walk — `company/` is gitignored — so the register row is the
+   *  to any tree walk — `Private/company/` is gitignored — so the register row is the
    *  only handle CI will ever have on them. */
   const PINNED = ['recovery.app-retirement', 'recovery.store-enforcement-response'];
 
@@ -1887,7 +1887,7 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
       );
     });
 
-    test(`\`${id}\` resolves to a row anchored in company/runbooks/`, () => {
+    test(`\`${id}\` resolves to a row anchored in Private/company/runbooks/`, () => {
       const row = REAL.rows.find((r) => r.id === id);
       assert.ok(row, `${id} is named in _requiredCoverage.ids and is not a row.`);
       assert.equal(row.kind, 'recovery-path');
@@ -1902,7 +1902,7 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
 
   test('🔴 the retirement contract is NOT recorded as executed — lastDrill stays null until it is', () => {
     // [14]O-19's acceptance is "a checklist exists AND has been executed end to
-    // end at least once". Writing company/runbooks/app-retirement.md discharges
+    // end at least once". Writing Private/company/runbooks/app-retirement.md discharges
     // the first half only. This assertion exists so that setting the date is a
     // DELIBERATE act that also edits this line — the built-vs-working confusion
     // this repo keeps paying for arrives precisely as a quiet field change.
