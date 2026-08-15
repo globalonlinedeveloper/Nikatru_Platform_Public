@@ -466,7 +466,7 @@ function tree({
     // The harness root exists even when the cited ADR does not — that is the
     // distinction the guard turns on, and the case a blanket existsSync() skip
     // would have thrown away.
-    write('Private/knowledge/decisions/README.md', 'the harness is checked out\n');
+    write('Private/decisions/README.md', 'the harness is checked out\n');
     if (adrOnDisk) {
       write('knowledge/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
     }

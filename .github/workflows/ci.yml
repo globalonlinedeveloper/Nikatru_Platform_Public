@@ -950,7 +950,7 @@ jobs:
         run: node tooling/ci/assert-play-declarations.mjs
       # A sworn declaration may not regress toward the template it was stamped
       # from. Both files sit in the Subly re-stamp's EXCLUDE-verbatim bucket by a
-      # decision no guard enforced (Private/knowledge/plans/subly-restamp-P22-lock.md
+      # decision no guard enforced (Private/plans/subly-restamp-P22-lock.md
       # §1.3), and the step above catches only the WHOLESALE swap. Mutation-
       # measured 2026-08-08: eleven PARTIAL regressions were exit 0 there —
       # nulling `dataSecurity.encryptedInTransit.answer`, deleting or emptying

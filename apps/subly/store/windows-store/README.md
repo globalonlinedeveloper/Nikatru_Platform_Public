@@ -79,7 +79,7 @@ only one with a citation.
   *"must always have privacy policies"*. `privacy-policy-url.txt` is that URL and
   it must resolve; the page is `sites/nikatru/privacy.html`.
 - **Age rating** is a Partner Center questionnaire, not a repo file. See
-  `Private/company/runbooks/store-submission-windows.md`.
+  `Private/runbooks/store-submission-windows.md`.
 
 ## Regenerating / validating
 

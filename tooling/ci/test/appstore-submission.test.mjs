@@ -91,7 +91,7 @@ const appleRow = (id, over = {}) => ({
     value: BUNDLE,
     declaredIn: id === 'ios-appstore' ? 'apps/{app}/ios/Runner.xcodeproj/project.pbxproj' : 'apps/{app}/macos/Runner/Configs/AppInfo.xcconfig',
   },
-  submission: { runbook: 'Private/company/runbooks/store-submission-apple.md' },
+  submission: { runbook: 'Private/runbooks/store-submission-apple.md' },
   ...over,
 });
 

@@ -949,7 +949,7 @@ jobs:
   #
   # THE MECHANISM IS THREE THINGS, because the acceptance names three properties
   # and no single artefact carries all three:
-  #   · DURABLE      — a GitHub Release. Not a preference: Private/company/requirements/
+  #   · DURABLE      — a GitHub Release. Not a preference: Private/requirements/
   #                    zero-cost-stack.md:46-47 is LOCKED ("GitHub Releases =
   #                    artifact origin for every installer/APK"). A release asset
   #                    has no retention clock; an upload-artifact has a 7-day one.

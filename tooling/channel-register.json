@@ -827,7 +827,7 @@
         "holds subly-web.",
         "⚠️ deploy-web.yml builds with --pwa-strategy=none, so there is no service worker and no offline",
         "support on the one platform the $0 desktop story rests on.",
-        "🔒 THAT IS [ADR 023] (Private/knowledge/decisions/023-web-pwa-strategy.md, LOCKED 2026-07-31), NOT AN",
+        "🔒 THAT IS [ADR 023] (Private/decisions/023-web-pwa-strategy.md, LOCKED 2026-07-31), NOT AN",
         "OVERSIGHT — this citation is the Consequences item ADR 023 itself asked for, and it was",
         "unexecuted until 2026-08-03. ADR 023 also EXPLICITLY REJECTS guarding the flag in CI by name as",
         "over-encoding, so no guard asserts `--pwa-strategy=none` and none should be re-derived.",
@@ -1064,7 +1064,7 @@
         "script": "tooling/release/submit-play.mjs",
         "workflow": ".github/workflows/submit-play.yml",
         "job": "dry-run",
-        "runbook": "Private/company/runbooks/store-submission-android.md"
+        "runbook": "Private/runbooks/store-submission-android.md"
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — native store work is deferred until an app proves it converts strangers.",
@@ -1253,7 +1253,7 @@
         "script": "tooling/release/submit-appstore.mjs",
         "workflow": ".github/workflows/submit-appstore.yml",
         "job": "dry-run",
-        "runbook": "Private/company/runbooks/store-submission-apple.md"
+        "runbook": "Private/runbooks/store-submission-apple.md"
       },
       "deferral": {
         "reason": "🔒 DEFERRED by owner (OWNER_QUEUE A-4) until non-Apple revenue exists — no Apple device, and no Apple ORGANIZATION path exists for a sole proprietorship (Apple: enroll as an individual).",
@@ -1377,7 +1377,7 @@
         "script": "tooling/release/submit-appstore.mjs",
         "workflow": ".github/workflows/submit-appstore.yml",
         "job": "dry-run",
-        "runbook": "Private/company/runbooks/store-submission-apple.md"
+        "runbook": "Private/runbooks/store-submission-apple.md"
       },
       "deferral": {
         "reason": "🔒 DEFERRED by owner with ios-appstore (OWNER_QUEUE A-4).",
@@ -1400,7 +1400,7 @@
         "rail": "paddle",
         "why": "PERMISSION, read from the primary text: Microsoft Store Policies v7.19 (effective 2025-10-14) §10.8.1 lets a non-game PC app use \"a secure third-party purchase API\" for digital goods and §10.8.6 says the same for subscriptions, and the App Developer Agreement exempts third-party commerce from the Store Fee — 0% store tax, so the only cut is Paddle's 7.5%. This row was UNVERIFIED-therefore-denied until the source was read on 2026-08-09.",
         "forbids": ["play-billing", "apple-iap"],
-        "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows. TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are not optional — Paddle must be identified as the seller at purchase time (its hosted checkout does this), and the third-party purchase API must be DECLARED in Partner Center at submission (Private/company/runbooks/store-submission-windows.md carries that step).",
+        "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows. TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are not optional — Paddle must be identified as the seller at purchase time (its hosted checkout does this), and the third-party purchase API must be DECLARED in Partner Center at submission (Private/runbooks/store-submission-windows.md carries that step).",
         "source": "[ADR 039] D1"
       },
       "artifactFormats": [".msix"],
@@ -1476,7 +1476,7 @@
         "script": "tooling/release/submit-windows-store.mjs",
         "workflow": ".github/workflows/submit-windows-store.yml",
         "job": "dry-run",
-        "runbook": "Private/company/runbooks/store-submission-windows.md"
+        "runbook": "Private/runbooks/store-submission-windows.md"
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — the SUBMISSION work is deferred. ⚠️ Account REGISTRATION is not deferred and is the fastest real channel: $0, no D-U-N-S required, 2–5 business days.",
@@ -1743,7 +1743,7 @@
         "recipeScript": "tooling/release/generate-snapcraft.mjs",
         "workflow": ".github/workflows/submit-snap.yml",
         "job": "dry-run",
-        "runbook": "Private/company/runbooks/store-submission-snap.md"
+        "runbook": "Private/runbooks/store-submission-snap.md"
       },
       "deferral": {
         "reason": "[ADR 015] §2 — native Linux is DEFERRED until there is revenue. The web build already serves Linux users at $0, and Linux is the smallest addressable market with no store payments.",
@@ -1876,7 +1876,7 @@
       "id": "flathub",
       "name": "Flathub",
       "platforms": ["linux"],
-      "adr": "Private/knowledge/decisions/015-linux-distribution-channel.md",
+      "adr": "Private/decisions/015-linux-distribution-channel.md",
       "date": "2026-07-25",
       "ownerQueue": "A-5",
       "_tellsWhy": [
@@ -1964,7 +1964,7 @@
         "LOCKED; in a CI checkout, where the harness is gitignored, the limit is PRINTED rather than",
         "passed over silently."
       ],
-      "adr": "Private/knowledge/decisions/022-pack-signing-key-custody.md",
+      "adr": "Private/decisions/022-pack-signing-key-custody.md",
       "custody": "recorded in [ADR 022] (LOCKED 2026-07-27, private SSoT). Public fact only: `k1` is pinned in packages/core/lib/src/content/pack_verifier.dart. Redacted here 2026-07-31 — seed locations belong in the private record, not a public register.",
       "restoreDrill": {
         "date": null,

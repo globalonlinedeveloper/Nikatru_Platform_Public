@@ -179,7 +179,7 @@ function baseRegister() {
         response: 'follow the runbook',
         cadence: '120d',
         lastDrill: '2026-07-26',
-        mechanism: { substrate: 'google-drive', anchor: 'Private/company/runbooks/backup-liveness.md', record: 'a dated file', failingValue: 'a stale date', readBy: 'the backup script' },
+        mechanism: { substrate: 'google-drive', anchor: 'Private/runbooks/backup-liveness.md', record: 'a dated file', failingValue: 'a stale date', readBy: 'the backup script' },
         accessProviders: ['google'],
         source: 'verified',
       },
@@ -573,7 +573,7 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       expiryKnownAt: 'the registrar console',
       ownerGated: true,
       ownerGap: 'console-only',
-      mechanism: { substrate: 'cloudflare-registrar', anchor: 'Private/company/runbooks/operations.md', record: 'the console', failingValue: 'auto-renew off', readBy: 'nothing yet' },
+      mechanism: { substrate: 'cloudflare-registrar', anchor: 'Private/runbooks/operations.md', record: 'the console', failingValue: 'auto-renew off', readBy: 'nothing yet' },
       accessProviders: ['cloudflare'],
       source: 'verified',
       ...extra,
@@ -612,7 +612,7 @@ describe('assert-ops-register — O-11 expiring and O-20 review', () => {
       detector: 'a heartbeat',
       response: 'run it',
       cadence: '30d',
-      mechanism: { substrate: 'windows-task-scheduler', anchor: 'Private/company/runbooks/backup-liveness.md', record: 'LastTaskResult', failingValue: '!= 0', readBy: 'a monitor' },
+      mechanism: { substrate: 'windows-task-scheduler', anchor: 'Private/runbooks/backup-liveness.md', record: 'LastTaskResult', failingValue: '!= 0', readBy: 'a monitor' },
       accessProviders: ['laptop'],
       source: 'verified',
     });
@@ -1168,7 +1168,7 @@ describe('assert-ops-register — [14]O-11 / [14]O-17 · a tolerance that cannot
       expiryKnownAt: 'a vendor console',
       ownerGated: true,
       ownerGap: 'console-only',
-      mechanism: { substrate: 'x', anchor: 'Private/company/runbooks/operations.md', record: 'r', failingValue: 'f', readBy: 'nothing yet' },
+      mechanism: { substrate: 'x', anchor: 'Private/runbooks/operations.md', record: 'r', failingValue: 'f', readBy: 'nothing yet' },
       accessProviders: ['cloudflare'],
       source: 'verified',
       ...extra,
@@ -1211,7 +1211,7 @@ describe('assert-ops-register — [14]O-11 / [14]O-17 · a tolerance that cannot
       detector: 'the coverage guard',
       response: 'the sweep',
       cadence: '365d',
-      mechanism: { substrate: 'cloudflare-d1', anchor: 'Private/company/runbooks/operations.md', record: 'the table', failingValue: 'a row older than the period', readBy: 'the coverage guard' },
+      mechanism: { substrate: 'cloudflare-d1', anchor: 'Private/runbooks/operations.md', record: 'the table', failingValue: 'a row older than the period', readBy: 'the coverage guard' },
       accessProviders: ['cloudflare'],
       source: 'verified',
     });
@@ -1231,7 +1231,7 @@ describe('assert-ops-register — [14]O-11 / [14]O-17 · a tolerance that cannot
       cadence: '365d',
       ownerGated: true,
       ownerGap: 'the period is a policy decision',
-      mechanism: { substrate: 'cloudflare-kv', anchor: 'Private/company/runbooks/operations.md', record: 'the store', failingValue: 'a key older than the period', readBy: 'the coverage guard' },
+      mechanism: { substrate: 'cloudflare-kv', anchor: 'Private/runbooks/operations.md', record: 'the store', failingValue: 'a key older than the period', readBy: 'the coverage guard' },
       accessProviders: ['cloudflare'],
       source: 'verified',
     });
@@ -1276,7 +1276,7 @@ describe('assert-ops-register — a named READER must exist, not merely be named
   });
 
   test('a Private/company/ path is NOT treated as a missing file, because CI cannot see Private/company/', () => {
-    assert.deepEqual(run(withPath('mechanism.readBy', 'Private/company/runbooks/operations.md §0')).errors, []);
+    assert.deepEqual(run(withPath('mechanism.readBy', 'Private/runbooks/operations.md §0')).errors, []);
   });
 });
 
@@ -1887,7 +1887,7 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
       );
     });
 
-    test(`\`${id}\` resolves to a row anchored in Private/company/runbooks/`, () => {
+    test(`\`${id}\` resolves to a row anchored in Private/runbooks/`, () => {
       const row = REAL.rows.find((r) => r.id === id);
       assert.ok(row, `${id} is named in _requiredCoverage.ids and is not a row.`);
       assert.equal(row.kind, 'recovery-path');
@@ -1902,7 +1902,7 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
 
   test('🔴 the retirement contract is NOT recorded as executed — lastDrill stays null until it is', () => {
     // [14]O-19's acceptance is "a checklist exists AND has been executed end to
-    // end at least once". Writing Private/company/runbooks/app-retirement.md discharges
+    // end at least once". Writing Private/runbooks/app-retirement.md discharges
     // the first half only. This assertion exists so that setting the date is a
     // DELIBERATE act that also edits this line — the built-vs-working confusion
     // this repo keeps paying for arrives precisely as a quiet field change.

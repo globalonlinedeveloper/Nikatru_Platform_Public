@@ -14,7 +14,7 @@
 // This is the SIBLING of assert-platform-proof-fresh.mjs, deliberately built to
 // the same shape and the same vocabulary rather than as a second dialect. That
 // guard solves this exact problem for `build-platforms.yml`; the plan
-// (Private/knowledge/plans/06-app-build-plan.md, increment 7) offered either generalising
+// (Private/plans/06-app-build-plan.md, increment 7) offered either generalising
 // it to a table of workflows or a sibling, and the sibling is what landed:
 // `assert-platform-proof-fresh.mjs` belongs to stage 1 ([1]F-4) and its
 // MAX_AGE_DAYS is under a standing owner lock, so widening it here would mean

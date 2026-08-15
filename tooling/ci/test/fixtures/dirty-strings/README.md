@@ -16,7 +16,7 @@ means something because the dirty result came back dirty.
 
 That known-dirty tree used to be `apps/subly/lib`, which made the guard's coverage claim
 hostage to a **product** decision. Subly's l10n retrofit — Phase 4 of
-`Private/knowledge/plans/subly-restamp-execution.md` — cleans exactly the literals the canary
+`Private/plans/subly-restamp-execution.md` — cleans exactly the literals the canary
 counts, so the guard would have gone **red by improvement**: the build breaks *because*
 somebody did the right thing, and the rational response to that is to weaken the guard.
 

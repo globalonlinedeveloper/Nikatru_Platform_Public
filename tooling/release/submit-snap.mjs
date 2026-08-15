@@ -8,7 +8,7 @@
 //
 // This file is limb (i) — "a submission script exists AND resolves to a step in
 // a workflow, parsed not grepped". Limb (ii) is
-// Private/company/runbooks/store-submission-snap.md. Limb (iii) — a submission record in
+// Private/runbooks/store-submission-snap.md. Limb (iii) — a submission record in
 // the [10]D-9 ledger — needs a real submission and stays UNSATISFIED.
 //
 // ── THERE IS NO FASTLANE PATH FOR SNAP ───────────────────────────────────────
@@ -882,7 +882,7 @@ if (problems.length) {
 if (DRY_RUN) {
   console.log('');
   console.log('submit-snap: DRY RUN OK — nothing was sent to the Snap Store, and `snapcraft` was not invoked.');
-  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/company/runbooks/store-submission-snap.md'}`);
+  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-snap.md'}`);
   console.log('   ⬜ The register keeps linux-snap `served: false`, and [10]D-9 has no submission record.');
   console.log('      Only an owner-approved dispatch of submit-snap.yml --submit can create one.');
   process.exit(0);

@@ -85,7 +85,7 @@
       },
       "ownTheRecord": "YES — entitlements and app state live in OUR D1, keyed on the standard `sub` claim. The app depends on our record, not Supabase's.",
       "exportPath": {
-        "path": "Private/company/runbooks/operations.md",
+        "path": "Private/runbooks/operations.md",
         "detail": "pg_dump via the Supabase dashboard/API; the schema is plain Postgres with no proprietary types."
       },
       "exitPlan": {
@@ -144,7 +144,7 @@
       },
       "ownTheRecord": "YES, AND IT IS THE WHOLE STRATEGY — entitlements live in OUR table fed by a per-provider adapter, so the payment vendor is swappable even though payment APIs are not. This is the one line the audit note said to carry forward verbatim.",
       "exportPath": {
-        "path": "Private/company/runbooks/operations.md",
+        "path": "Private/runbooks/operations.md",
         "detail": "Entitlements are ours in D1 and export with it. RevenueCat itself holds no record we depend on."
       },
       "exitPlan": {
@@ -197,7 +197,7 @@
       },
       "ownTheRecord": "N/A — telemetry is a diagnostic stream, not a record the app depends on. Losing history costs insight, never correctness.",
       "exportPath": {
-        "path": "Private/company/runbooks/glitchtip.md",
+        "path": "Private/runbooks/glitchtip.md",
         "detail": "Self-hosted; the whole instance is ours, and the runbook covers the server backup."
       },
       "exitPlan": {

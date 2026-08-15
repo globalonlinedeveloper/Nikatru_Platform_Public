@@ -24,7 +24,7 @@
     "    pages now agree that nothing is sold directly from the website yet; the two that are not version-",
     "    gated additionally name the seller that will take the payment.",
     "  · privacy.html says usage statistics AND CRASH REPORTS run on infrastructure provided by",
-    "    Cloudflare. Crash reports run on Oracle Cloud (Private/company/runbooks/glitchtip.md).",
+    "    Cloudflare. Crash reports run on Oracle Cloud (Private/runbooks/glitchtip.md).",
     "",
     "🔴 EVERY ONE OF THOSE IS FIXED BY EDITING A PUBLISHED LEGAL PAGE, WHICH IS OWNER WORK (OWNER_QUEUE",
     "O-3). They are therefore carried as `disclosureGap` rows that PRINT on every run — never silently",
@@ -564,7 +564,7 @@
       "namedIn": [
         "privacy.html"
       ],
-      "privateRecord": "Private/company/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
+      "privateRecord": "Private/runbooks/glitchtip.md — the self-hosted GlitchTip instance and its operations.",
       "receives": [
         "crash_report"
       ],

@@ -199,7 +199,7 @@ function tree({
         storeMetadataDir: 'apps/{app}/store/android-play',
         ownerQueue: 'A-3',
         submission: {
-          runbook: 'Private/company/runbooks/store-submission-android.md',
+          runbook: 'Private/runbooks/store-submission-android.md',
           workflow: '.github/workflows/submit-play.yml',
           job: 'dry-run',
           script: 'tooling/release/submit-play.mjs',

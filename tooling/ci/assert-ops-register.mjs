@@ -1466,7 +1466,7 @@ export function evaluate(reg, tree, nowMs) {
     if (!nonEmpty(aw.margin)) {
       bad(
         `${id} — \`absenceWatcher.margin\` is empty. An interval EQUAL to the cadence leaves ZERO margin and one late run ` +
-          'reports Down — the rule Private/company/runbooks/backup-liveness.md establishes and the reason the Oracle box posts ' +
+          'reports Down — the rule Private/runbooks/backup-liveness.md establishes and the reason the Oracle box posts ' +
           'hourly against a 3h monitor. Write down how many missed runs it takes to alarm.',
       );
     }

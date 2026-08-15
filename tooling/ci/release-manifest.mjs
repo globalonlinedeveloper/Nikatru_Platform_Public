@@ -19,7 +19,7 @@
 // three, so the mechanism is three things wired together rather than a choice
 // between them:
 //
-//   DURABLE      a GitHub Release. Not a preference: Private/company/requirements/
+//   DURABLE      a GitHub Release. Not a preference: Private/requirements/
 //                zero-cost-stack.md:46-47 is LOCKED — "Build SOURCE stays CI ->
 //                signed artifact on GitHub Releases regardless" and "GitHub
 //                Releases = artifact origin for every installer/APK". A Release

@@ -1,7 +1,7 @@
 {
   "_readme": [
     "THE MAIL TRANSPORT REGISTER — the ONE machine-readable record of how this factory sends mail.",
-    "Recorded by Private/knowledge/decisions/029-email-sending-architecture.md (ADR 029).",
+    "Recorded by Private/decisions/029-email-sending-architecture.md (ADR 029).",
     "",
     "🔴 WHY IT EXISTS — a false 🔴🔴 store-submission blocker, 2026-08-03/04.",
     "An audit agent concluded that Supabase Auth could not deliver mail to real users and escalated it",
@@ -37,7 +37,7 @@
     "you must write, GET the full config first and send it back COMPLETE."
   ],
 
-  "recordedBy": "Private/knowledge/decisions/029-email-sending-architecture.md",
+  "recordedBy": "Private/decisions/029-email-sending-architecture.md",
   "verifiedLiveOn": "2026-08-04",
 
   "rails": [

@@ -73,12 +73,12 @@ function locate(...relCandidates) {
 /* 🔴 THREE GUARDS WERE REMOVED FROM THIS ARRAY ON 2026-08-15, NOT LEFT TO FAIL.
    `assert-status-honest`, `assert-req-ids` and `assert-enforcers-exist` all read
    `Private/company/pipeline/` — 384,000 words of prose that the JSON spec under
-   `Private/company/spec/` replaced and that the same commit deleted. Their entries
+   `Private/spec/` replaced and that the same commit deleted. Their entries
    are gone rather than red because a permanently red guard trains people to pass
    `--no-verify`, and a hook that is routinely bypassed is worth less than no hook:
    it also carries the belief that something was checked.
 
-   Where each property went (full reasoning: Private/company/spec/staging/RETIREMENT-PLAN.md,
+   Where each property went (full reasoning: Private/spec/staging/RETIREMENT-PLAN.md,
    and the four files themselves are readable in Private/company/tooling/retired/):
      assert-status-honest   → assert-spec limbs 4 + 6. The markdown format kept a
                               status in three places that could disagree; the JSON
@@ -104,7 +104,7 @@ const GUARDS = [
     rel: ['tooling/scripts/check-dod-sync.mjs'],
     what: 'the DoD page, the register and MASTER_PLAN §4 agree' },
   { name: 'assert-spec', speed: 'fast',
-    rel: ['Private/company/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],
+    rel: ['Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],
     what: 'the JSON spec is schema-valid, id-unique, origin-locked, and every enforcer it names exists' },
 ];
 

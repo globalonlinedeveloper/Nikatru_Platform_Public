@@ -53,7 +53,7 @@ import insightsReadme from '../queries/insights/README.md?raw';
 // in this file. The floor is `REQUIRED_COVERAGE.length`, and REQUIRED_COVERAGE
 // is checked, in order and in both directions, against the numbered list in
 // `queries/insights/README.md` — which is itself checked against the SSoT list
-// in `Private/company/requirements/analytics-events.md` § "The ~5 numbers" on every
+// in `Private/requirements/analytics-events.md` § "The ~5 numbers" on every
 // machine that has the private tree. This repo has already shipped a scanner
 // that silently dropped from 5 files to 4 and reported PASS; four numbers and a
 // fifth quietly absent is COVERAGE LOST here, not a smaller green run.
@@ -61,7 +61,7 @@ import insightsReadme from '../queries/insights/README.md?raw';
 
 /**
  * THE FIVE, in the order and with the titles that
- * `Private/company/requirements/analytics-events.md` § "The ~5 numbers these roll up
+ * `Private/requirements/analytics-events.md` § "The ~5 numbers these roll up
  * into (the actual dashboard)" uses.
  *
  * Written out rather than derived from the directory: a set derived from the
@@ -171,7 +171,7 @@ const nodeProcess = (
 ).process;
 const fs = nodeProcess.getBuiltinModule('node:fs');
 
-const SSOT_REL = 'Private/company/requirements/analytics-events.md';
+const SSOT_REL = 'Private/requirements/analytics-events.md';
 /** The first ancestor of the cwd that holds a `Private/company/` tree, or null. */
 function privateTreeRoot(): string | null {
   const cwd = nodeProcess.cwd().replaceAll('\\', '/');

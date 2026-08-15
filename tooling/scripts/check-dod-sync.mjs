@@ -5,7 +5,7 @@
 // 🔴 WHY THIS IS NOT A CI GUARD, AND MUST NOT BECOME ONE.
 //
 // The stage doc's replacement acceptance for N-1 asks CI to parse
-// `Private/company/MASTER_PLAN.md` §4 *and* `Private/company/requirements/definition-of-done.md`
+// `Private/MASTER_PLAN.md` §4 *and* `Private/requirements/definition-of-done.md`
 // and assert a relationship between them. **`Private/company/` is gitignored.** It is a
 // separate private repository nested inside a PUBLIC one, and it is never pushed.
 // So a check living in `tooling/ci/` could never once execute against its own
@@ -18,7 +18,7 @@
 //   tooling/dod-register.json          PUBLIC. The machine-readable items.
 //   tooling/ci/assert-app-dod.mjs      PUBLIC. Fails the build on the register
 //                                      and on every app's done-record.
-//   Private/company/requirements/…-done.md     PRIVATE. The prose one-pager.
+//   Private/requirements/…-done.md     PRIVATE. The prose one-pager.
 //   THIS FILE                          LOCAL. The only place with read access to
 //                                      BOTH trees, so the only place the
 //                                      cross-tree relationships can be checked
@@ -112,7 +112,9 @@ const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url
 // Default followed the tree on 2026-08-15: company/ now lives under Private/. `--company`
 // still overrides, and is still the answer when the private tree is not a sibling of the
 // checkout at all — which is why this guard refuses to report ok when it cannot find it.
-const COMPANY = resolve(companyArg ?? join(ROOT, 'Private', 'company'));
+// Repointed again 2026-08-15: the flatten merged company/ and knowledge/ into ONE repo at
+// Private/, so the private tree root is Private/ itself. --company still overrides.
+const COMPANY = resolve(companyArg ?? join(ROOT, 'Private'));
 
 const REGISTER = join(ROOT, 'tooling', 'dod-register.json');
 const PLAN = join(COMPANY, 'MASTER_PLAN.md');
@@ -189,7 +191,7 @@ const pageText = readFileSync(PAGE, 'utf8');
 const secStart = planText.search(/^##\s*4\./m);
 if (secStart === -1) {
   coverageLost([
-    'Private/company/MASTER_PLAN.md has no `## 4.` heading, so §4 could not be located.',
+    'Private/MASTER_PLAN.md has no `## 4.` heading, so §4 could not be located.',
     'R1 compares the register against that section; without it the comparison ranges over nothing.',
   ]);
 }
@@ -199,7 +201,7 @@ const section = secEnd === -1 ? rest : rest.slice(0, secEnd);
 const planLetters = [...section.matchAll(/^\*\*([A-Z])\.\s/gm)].map((m) => m[1]);
 if (planLetters.length === 0) {
   coverageLost([
-    'Private/company/MASTER_PLAN.md §4 was located but declares ZERO lettered items.',
+    'Private/MASTER_PLAN.md §4 was located but declares ZERO lettered items.',
     'Either the section format changed, or this parser has stopped seeing it. A scanner that quietly',
     'matches less is the failure this repo keeps re-learning.',
   ]);
@@ -234,7 +236,7 @@ for (const l of actual) {
 const pageRows = [...pageText.matchAll(/^\|\s*\*\*([A-Z])\*\*\s*\|([^|]*)\|\s*`(\w+)`\s*\|/gm)];
 if (pageRows.length === 0) {
   coverageLost([
-    'Private/company/requirements/definition-of-done.md declares no item rows this parser can see.',
+    'Private/requirements/definition-of-done.md declares no item rows this parser can see.',
     'R2 and R3 both range over that table; over zero rows they are vacuously true, which is the exact',
     'defect the original N-1 acceptance had — an empty page satisfied all three of its conjuncts.',
   ]);
@@ -272,7 +274,7 @@ for (const id of pageEnforcedBy.keys()) {
 const cutsHeadingAt = pageText.search(/^##\s+Cuts honoured/m);
 if (cutsHeadingAt === -1) {
   coverageLost([
-    'Private/company/requirements/definition-of-done.md has no `## Cuts honoured` heading.',
+    'Private/requirements/definition-of-done.md has no `## Cuts honoured` heading.',
     'R3 scans only the region ABOVE it, so without the heading the bound is the whole file and the',
     'page\'s own honest cut list would read as five re-adopted items. A missing heading is also a page',
     'that has stopped recording its cuts at all.',

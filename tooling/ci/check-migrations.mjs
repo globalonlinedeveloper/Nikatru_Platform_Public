@@ -7,7 +7,7 @@
 // portfolio-wide outage, and a column dropped under a released client an
 // unrecoverable data loss. So: migrations may only ADD.
 //
-// Banned outright — see Private/company/requirements/schema-evolution.md:
+// Banned outright — see Private/requirements/schema-evolution.md:
 //   DROP TABLE · DROP COLUMN · RENAME (table or column) · ALTER/MODIFY COLUMN
 //   ADD COLUMN … NOT NULL with no DEFAULT (SQLite refuses it at runtime anyway;
 //   failing here names the reason instead of a wrangler stack trace)
@@ -383,7 +383,7 @@ if (approved.length) {
 if (violations > 0) {
   console.error(
     `\ncheck-migrations: ${violations} violation(s) across ${files.length} migration file(s).\n` +
-      'Schema evolution is ADDITIVE-ONLY — see Private/company/requirements/schema-evolution.md.\n' +
+      'Schema evolution is ADDITIVE-ONLY — see Private/requirements/schema-evolution.md.\n' +
       'If a contraction is genuinely required it needs an owner decision + an ADR, not a bypass.',
   );
   process.exit(1);

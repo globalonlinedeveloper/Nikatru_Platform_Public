@@ -11,7 +11,7 @@
 // limb (i) — "a submission script exists AND resolves to a step in a workflow,
 // parsed not grepped" — and it is deliberately the FIRST script in
 // `tooling/release/`, a directory that did not exist until now. Limb (ii) is
-// Private/company/runbooks/store-submission-windows.md. Limb (iii) — a submission
+// Private/runbooks/store-submission-windows.md. Limb (iii) — a submission
 // record in the [10]D-9 ledger — needs a real submission and stays UNSATISFIED;
 // it is the only one of the three that can prove the path was walked rather
 // than merely written, and nothing here pretends otherwise.
@@ -141,7 +141,7 @@ if (SUBMIT) {
   console.error('     source. Guessing one does not fail here — it fails against a live store account,');
   console.error('     mid-submission. Source them (URL + date, the way the D-5 limits table does), then');
   console.error('     write the calls. Until then the console path in the runbook is the submission path:');
-  console.error('       Private/company/runbooks/store-submission-windows.md');
+  console.error('       Private/runbooks/store-submission-windows.md');
   console.error('');
   console.error('     Nothing was validated: this refusal is BEFORE the checks on purpose, so there is no');
   console.error('     path on which a submission gets halfway.');
@@ -466,7 +466,7 @@ if (problems.length) {
 if (DRY_RUN) {
   console.log('');
   console.log('submit-windows-store: DRY RUN OK — nothing was sent to Microsoft.');
-  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/company/runbooks/store-submission-windows.md'}`);
+  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-windows.md'}`);
   process.exit(0);
 }
 

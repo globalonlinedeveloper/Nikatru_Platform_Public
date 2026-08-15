@@ -11,7 +11,7 @@
 // Auth was on the provider's own sender, and escalated "no real user can sign
 // up" to a 🔴🔴 store-submission blocker. It was false — `smtp_host` reads
 // smtp.resend.com and always had — and SUPABASE_PAT sat in the vault the whole
-// time. See ADR 029 (Private/knowledge/decisions/029-email-sending-architecture.md).
+// time. See ADR 029 (Private/decisions/029-email-sending-architecture.md).
 //
 // ⚠️ THE MUTATION RUN AGAINST THE REAL TREE IS THE PROOF, NOT THIS FILE. A
 // fixture encodes whatever misunderstanding wrote it — this repo has the receipt:
@@ -74,7 +74,7 @@ after(() => { if (TMP) rmSync(TMP, { recursive: true, force: true }); });
 /** A register that satisfies every structural invariant, so each test can break
  *  exactly one thing and attribute the failure to it. */
 const GOOD_REGISTER = () => ({
-  recordedBy: 'Private/knowledge/decisions/029-email-sending-architecture.md',
+  recordedBy: 'Private/decisions/029-email-sending-architecture.md',
   verifiedLiveOn: '2026-08-04',
   rails: [
     { id: 'workspace', domain: 'example.test', role: 'mailbox', sendsAutomatedMail: false },

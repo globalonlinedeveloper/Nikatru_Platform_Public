@@ -10,7 +10,7 @@
 // NO GUARD COULD SEE IT. sites/nikatru/privacy.html said "We do not collect or
 // store your IP address"; the self-hosted GlitchTip on the Oracle box was
 // storing `user.ip_address`, re-observed on two independent events. It has since
-// been fixed at the sink and verified by observation (Private/knowledge/session-notes.md
+// been fixed at the sink and verified by observation (Private/session-notes.md
 // §17). Every existing check was structurally blind to it:
 //
 //   · assert-policy-claims.mjs compares published TEXT to repo TEXT. It can
@@ -42,7 +42,7 @@
 // observe a Django setting on an Oracle VM whose compose file lives at
 // /opt/glitchtip and is in no tree CI can read.
 //
-// Under this repository's gate-vs-monitor rule (Private/company/PROJECT_STATE.md) that
+// Under this repository's gate-vs-monitor rule (Private/PROJECT_STATE.md) that
 // makes this file:
 //   · a GATE for THE DECLARATION — the falsifier (a register row contradicting
 //     a published page) is reachable from the repo with no credentials, it

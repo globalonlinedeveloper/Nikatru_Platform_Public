@@ -27,10 +27,17 @@ const REPO = resolve(HERE, '..', '..');
 const HOOKS = join(REPO, '.githooks');
 const CHECK_ONLY = process.argv.includes('--check');
 
+/* 🔴 ONE PRIVATE REPO SINCE THE 2026-08-15 FLATTEN, NOT TWO — and the old list did
+   not merely go stale, it went QUIET. `Private/company` and `Private/knowledge`
+   stopped existing as repos, this script printed "no .git here — skipped" for both,
+   and then printed "every repo is pointed at .githooks/" and exited 0. Two of three
+   subjects vanished and the check reported success: the exact vacuous pass this
+   corpus exists to eliminate, in the installer written that same morning to prevent
+   an uninstalled hook. The `expected` flag below is the fix — a repo declared here
+   and absent on disk is now a FAILURE, not a skip. */
 const REPOS = [
-  { name: 'public repo', path: REPO },
-  { name: 'Private/company', path: join(REPO, 'Private', 'company') },
-  { name: 'Private/knowledge', path: join(REPO, 'Private', 'knowledge') },
+  { name: 'public repo', path: REPO, expected: true },
+  { name: 'Private', path: join(REPO, 'Private'), expected: true },
 ];
 
 function git(cwd, args) {
@@ -58,7 +65,15 @@ console.log('');
 let failures = 0;
 for (const r of REPOS) {
   if (!existsSync(join(r.path, '.git'))) {
-    console.log(`  --   ${r.name.padEnd(20)} no .git here — skipped`);
+    // A DECLARED repo that is absent is a finding. Skipping it and still exiting 0
+    // is how this script reported "every repo is pointed at .githooks/" while two
+    // of its three subjects no longer existed.
+    if (r.expected) {
+      console.log(`  RED  ${r.name.padEnd(20)} DECLARED HERE BUT NO .git ON DISK — not skipped, failed`);
+      failures++;
+    } else {
+      console.log(`  --   ${r.name.padEnd(20)} no .git here — skipped`);
+    }
     continue;
   }
   // Each repo needs a path RELATIVE TO ITSELF, because Private/company/ is its

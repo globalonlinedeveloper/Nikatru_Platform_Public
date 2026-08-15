@@ -92,7 +92,7 @@ is what submits this channel.
   that grants are per-app and unbuilt. ⚠️ The exact required entitlement set is
   **UNVERIFIED** — not fetched.
 
-Full ordered console procedure: `Private/company/runbooks/store-submission-apple.md`.
+Full ordered console procedure: `Private/runbooks/store-submission-apple.md`.
 
 ## Regenerating / validating
 

@@ -101,8 +101,8 @@ const PAGE = `# Definition of Done
 
 const build = ({ register = REGISTER, plan = PLAN, page = PAGE } = {}) => fixture({
   'tooling/dod-register.json': register === null ? null : JSON.stringify(register, null, 2),
-  'Private/company/MASTER_PLAN.md': plan,
-  'Private/company/requirements/definition-of-done.md': page,
+  'Private/MASTER_PLAN.md': plan,
+  'Private/requirements/definition-of-done.md': page,
 });
 
 describe('check-dod-sync', () => {
@@ -190,7 +190,7 @@ describe('check-dod-sync', () => {
 
   test('REFUSES rather than reporting ok when the private tree is unreadable', () => {
     const dir = build();
-    rmSync(join(dir, 'Private/company/requirements/definition-of-done.md'));
+    rmSync(join(dir, 'Private/requirements/definition-of-done.md'));
     const { code, out } = run(SYNC, dir);
     assert.equal(code, 1, 'silence about an unperformed check is how apparent coverage inflates');
     assert.match(out, /NOTHING was cross-checked/);
@@ -231,7 +231,7 @@ describe('check-selection-record', () => {
     'apps/probe/dod.json': record,
     ...(companyFile === null ? {} : { 'company/app-selection/probe.md': companyFile }),
     // A Private/company/ that EXISTS but does not hold the target — see the resolve case.
-    ...(companyDecoy ? { 'Private/company/README.md': '# private tree\n' } : {}),
+    ...(companyDecoy ? { 'Private/README.md': '# private tree\n' } : {}),
   });
 
   test('passes, and says so, when nothing is linked yet', () => {

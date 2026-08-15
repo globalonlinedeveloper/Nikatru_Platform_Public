@@ -23,7 +23,7 @@
 //      transport must also state the current one.
 //
 // ⚠️ WHY THE RULE IS "STATE THE CORRECTION", NOT "NEVER SAY THE WORDS".
-// ADR 029, `Private/company/PROJECT_STATE.md` and both Supabase guards describe the old
+// ADR 029, `Private/PROJECT_STATE.md` and both Supabase guards describe the old
 // state ON PURPOSE — the incident is worth recording. A guard that forbade the
 // phrases outright would fire on correct input, and this repository has already
 // recorded what happens next: `assert-supabase-templates.mjs` failed its own

@@ -247,7 +247,7 @@ flutter:
 # own documents disagree and only the owner can settle it:
 #   · nikatru/logo/logo-usage.md designates the Nikatru mark as the
 #     "App icon (all 6 stores)".
-#   · Private/company/MASTER_PLAN.md requires every app to carry a DISTINCT icon so the
+#   · Private/MASTER_PLAN.md requires every app to carry a DISTINCT icon so the
 #     portfolio does not look templated at 50 apps.
 # Using the company mark is right for app #1 — Subly is the only app, and an
 # unbranded default is strictly worse than a company mark. It is wrong at scale:

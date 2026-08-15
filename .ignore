@@ -67,8 +67,23 @@
 # broken — "no matches" never announces itself as an absence of search.
 !Private/
 !private/
-!Private/company/
-!Private/knowledge/
+# ── FLATTENED 2026-08-15 ─────────────────────────────────────────────────────
+# `!Private/company/` and `!Private/knowledge/` stood here until the flatten
+# merged both into one repo whose top level is topics. They are deleted rather
+# than kept-and-inert: the note above records that the CHILDREN needed their own
+# negations, and a reader who finds two negations for directories that no longer
+# exist cannot tell whether they are load-bearing. Measured after deleting them —
+# `rg -l PROJECT_STATE Private` reaches 69 files, the same 69 as before the move,
+# because `!Private/` re-includes the whole tree in one line now that the tree is
+# one directory. Fewer negations, same reach; verified, not assumed.
+#
+# 🔴 `Private.pre-flatten/` IS DELIBERATELY *NOT* NEGATED, AND THAT IS THE POINT.
+# It is the frozen pre-migration copy kept until the restore gate passes, and it
+# holds a COMPLETE SECOND COPY of every file below. Negating it would double every
+# search hit in this corpus and silently offer a stale line beside the live one —
+# and a wrong hit is indistinguishable from a right one in a search result. It
+# stays invisible to `rg` (via `.gitignore`'s `private.*/`) for as long as it
+# exists, and it is meant to stop existing.
 !CLAUDE.md
 
 # ── ADDED 2026-08-13, and DELIBERATELY NARROWER THAN `.claude/` ──────────────

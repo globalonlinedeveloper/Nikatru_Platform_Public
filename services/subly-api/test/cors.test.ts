@@ -87,7 +87,7 @@ describe('subly-api CORS — exact allowlist', () => {
 describe('the localhost exception is a RECORDED per-app trade', () => {
   // `flutter drive -d web-server` serves on http://localhost:<random-port>, so
   // the CI integration_test harness cannot name its own origin in advance.
-  // Documented in Private/company/requirements/master-requirements.md and as INC13.
+  // Documented in Private/requirements/master-requirements.md and as INC13.
   it('allows any localhost port, http or https, on top of the list', async () => {
     const call = appWith(SHIPPED);
     for (const o of [

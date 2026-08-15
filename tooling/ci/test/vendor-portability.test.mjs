@@ -211,7 +211,7 @@ describe('assert-vendor-portability', () => {
     // private-SSoT boundary itself) rather than a flag anyone could set.
     test('grades a private-SSoT export path instead of failing on it', () => {
       const { code, out } = run(tree({
-        mutate: (r) => { r.vendors.supabase.exportPath.path = 'Private/company/runbooks/operations.md'; return r; },
+        mutate: (r) => { r.vendors.supabase.exportPath.path = 'Private/runbooks/operations.md'; return r; },
       }));
       assert.equal(code, 0);
       assert.match(out, /could-not-establish \(1\)/);

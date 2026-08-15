@@ -13,7 +13,7 @@ const String kFirstLaunchEmittedKey = 'nikatru.analytics.first_launch_done';
 const String kLastOpenKey = 'nikatru.analytics.last_open';
 
 /// The three launch-time events of the locked taxonomy
-/// (`Private/company/requirements/analytics-events.md` §1 Open & acquire, §6 Retain),
+/// (`Private/requirements/analytics-events.md` §1 Open & acquire, §6 Retain),
 /// implemented ONCE for every app the factory stamps.
 ///
 /// 🔴 WHY THIS IS IN `core` AND NOT IN AN APP. It shipped as `AnalyticsFunnel`

@@ -15,7 +15,7 @@
 // ── THE FAILURE THIS EXISTS FOR, MEASURED, NOT IMAGINED ─────────────────────
 // The Subly re-stamp (ADR 037) put both files in the EXCLUDE-verbatim bucket:
 // "keep the live file, drop the stamp's". That is a decision recorded in
-// Private/knowledge/plans/subly-restamp-P22-lock.md §1.3 and enforced by nothing. A
+// Private/plans/subly-restamp-P22-lock.md §1.3 and enforced by nothing. A
 // `git apply` of the wrong bucket, a merge resolution that takes "theirs", or a
 // future re-stamp run with overwrite-on-conflict replaces 898 measured lines
 // with 59 nulls — and the app keeps building, keeps testing and keeps deploying.
@@ -908,7 +908,7 @@ if (problems.length) {
   console.error('');
   console.error('  [ADR 037 P2.7] The Data safety and content-rating files are SWORN DECLARATIONS. They were');
   console.error('  placed in the re-stamp\'s EXCLUDE-verbatim bucket by a decision no guard enforced until now:');
-  console.error('  Private/knowledge/plans/subly-restamp-P22-lock.md §1.3.');
+  console.error('  Private/plans/subly-restamp-P22-lock.md §1.3.');
   console.error('\nassert-sworn-store-files: FAILED');
   process.exitCode = 1;
 } else {

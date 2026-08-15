@@ -218,7 +218,7 @@ if (WRAPPED.size < MIN_WRAPPED) {
 
 // ── Grandfathered bypasses. Dated, reasoned, and PRINTED on every run. ───────
 // These are real violations of limb (c) that predate the guard. They are not
-// forgiven — they are a work item (see Private/company/PROJECT_STATE.md). Fixing them is
+// forgiven — they are a work item (see Private/PROJECT_STATE.md). Fixing them is
 // an app refactor, and failing the build on day one would have blocked every
 // unrelated change until that refactor landed, which is how a guard gets
 // switched off. Anything NEW fails immediately.
