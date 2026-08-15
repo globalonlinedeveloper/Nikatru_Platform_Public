@@ -437,7 +437,7 @@ describe('submit-play — the submission path is walkable', () => {
 
   test('names the runbook the console-only steps live in', () => {
     const { out } = run(tree());
-    assert.match(out, /company\/runbooks\/store-submission-android\.md/);
+    assert.match(out, /Private\/runbooks\/store-submission-android\.md/);
   });
 
   // 🔴 THIS CASE USED TO ASSERT THE OPPOSITE, AND THAT IS THE POINT OF KEEPING IT.
