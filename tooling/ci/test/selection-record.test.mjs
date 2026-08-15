@@ -73,9 +73,9 @@ function tree({ workspace = ['apps/subly'], onDisk = null, company = {}, dod = {
     writeFileSync(abs, typeof body === 'string' ? body : JSON.stringify(body, null, 2));
   }
   if (company !== null) {
-    mkdirSync(join(root, 'company'), { recursive: true });
+    mkdirSync(join(root, 'Private'), { recursive: true });
     for (const [rel, body] of Object.entries(company)) {
-      const abs = join(root, 'company', rel);
+      const abs = join(root, 'Private', rel);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, body);
     }
@@ -185,7 +185,7 @@ describe('N-9 · the sha256 half, which is the only reason this script is local'
 describe('N-9 · a checkout with no Private/company/ reports what it could not do', () => {
   test('🔴 PRINTS and exits 0 — this is the CI shape, and failing it would make the lane permanently red', () => {
     const root = tree({ workspace: ['apps/subly'] });
-    rmSync(join(root, 'company'), { recursive: true, force: true });
+    rmSync(join(root, 'Private'), { recursive: true, force: true });
     const { code, out } = run(root);
     assert.equal(code, 0, out);
     assert.match(out, /THE PRIVATE TREE IS NOT IN THIS CHECKOUT/);
@@ -198,7 +198,7 @@ describe('N-9 · a checkout with no Private/company/ reports what it could not d
       workspace: ['apps/subly', 'apps/lingo'],
       dod: { 'apps/lingo/dod.json': { status: 'done', selection: { record: 'company/selection/lingo.md', sha256: 'a'.repeat(64) } } },
     });
-    rmSync(join(root, 'company'), { recursive: true, force: true });
+    rmSync(join(root, 'Private'), { recursive: true, force: true });
     const { code, out } = run(root);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /does not resolve/);

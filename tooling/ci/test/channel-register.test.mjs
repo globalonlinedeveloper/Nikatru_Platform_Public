@@ -427,7 +427,7 @@ function tree({
         id: 'flathub',
         name: 'Flathub',
         platforms: ['linux'],
-        adr: 'knowledge/decisions/015-linux.md',
+        adr: 'Private/decisions/015-linux.md',
         date: '2026-07-25',
         ownerQueue: 'A-5',
         reason: ['bans AI-assisted code'],
@@ -468,7 +468,7 @@ function tree({
     // would have thrown away.
     write('Private/decisions/README.md', 'the harness is checked out\n');
     if (adrOnDisk) {
-      write('knowledge/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
+      write('Private/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
     }
   }
   if (withSubmission) {
@@ -837,7 +837,7 @@ describe('assert-channel-register — schema, stores and disqualified channels',
   test('FAILS when the harness IS checked out and the cited ADR is not on disk', () => {
     const { code, out } = run(tree({ adrOnDisk: false }));
     assert.equal(code, 1, out);
-    assert.match(out, /which is not on disk although `knowledge\/` is/);
+    assert.match(out, /which is not on disk although `Private\/` is/);
   });
 
   test('FAILS when the harness IS checked out and the ADR is not LOCKED', () => {
@@ -1355,14 +1355,14 @@ describe('assert-channel-register — a signing identity cites an openable, LOCK
       {
         id: 'content-pack-k1',
         keyKind: 'app-signing-key',
-        adr: 'knowledge/decisions/022-pack.md',
+        adr: 'Private/decisions/022-pack.md',
         restoreDrill: { date: null, required: true, note: 'never drilled' },
         ...over,
       },
     ];
   };
   const withAdrFile = (root, locked = true) => ({
-    'knowledge/decisions/022-pack.md': locked ? '# 022\n**Status:** LOCKED 2026-07-27\n' : '# 022\n**Status:** proposed\n',
+    'Private/decisions/022-pack.md': locked ? '# 022\n**Status:** LOCKED 2026-07-27\n' : '# 022\n**Status:** proposed\n',
   });
 
   test('PASSES and PRINTS the undrilled key when the ADR is LOCKED and on disk', () => {
@@ -1382,7 +1382,7 @@ describe('assert-channel-register — a signing identity cites an openable, LOCK
   test('FAILS when the cited ADR is not on disk although the harness IS', () => {
     const { code, out } = run(tree({ mutate: withIdentity() }));
     assert.equal(code, 1);
-    assert.match(out, /which is not on disk although `knowledge\/` is/);
+    assert.match(out, /which is not on disk although `Private\/` is/);
   });
 
   test('FAILS when the cited ADR does not record itself LOCKED', () => {

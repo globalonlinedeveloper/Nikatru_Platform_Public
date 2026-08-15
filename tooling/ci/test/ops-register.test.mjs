@@ -1874,7 +1874,7 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
   );
 
   /** [14]O-19's contract half and [10]D-12's whole document. Neither is visible
-   *  to any tree walk — `Private/company/` is gitignored — so the register row is the
+   *  to any tree walk — `Private/` is gitignored — so the register row is the
    *  only handle CI will ever have on them. */
   const PINNED = ['recovery.app-retirement', 'recovery.store-enforcement-response'];
 
@@ -1893,7 +1893,13 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
       assert.equal(row.kind, 'recovery-path');
       assert.match(
         row.mechanism.anchor,
-        /^company\/runbooks\/.+\.md$/,
+        /* FLATTENED 2026-08-15. This pattern was `^company\/runbooks\/` and had been
+           stale since the MORNING of the same day, when company/ moved under Private/ —
+           it survived the citation sweep precisely because it does NOT carry a
+           `Private/` prefix, so a scan for `Private/company/` could never see it.
+           A stale pattern that names no current directory is invisible to exactly the
+           search you would run to find it. */
+        /^Private\/runbooks\/.+\.md$/,
         'The anchor must stay a runbook. Repointing it at an in-tree file CI can read would make ' +
           'the row look verifiable while the procedure it stands for stayed unwritten.',
       );

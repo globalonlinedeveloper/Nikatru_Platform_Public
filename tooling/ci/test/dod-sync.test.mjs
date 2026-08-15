@@ -229,7 +229,15 @@ describe('check-selection-record', () => {
   const tree = ({ record = dod(), companyFile = null, companyDecoy = false } = {}) => fixture({
     'pubspec.yaml': 'name: fixture\nworkspace:\n  - apps/subly\n  - apps/probe\n',
     'apps/probe/dod.json': record,
-    ...(companyFile === null ? {} : { 'company/app-selection/probe.md': companyFile }),
+    /* FLATTENED 2026-08-15. The guard resolves a link as
+         join(COMPANY, link.replace(/^company\//, ''))
+       and COMPANY is now `<root>/Private`, so `company/app-selection/probe.md`
+       lands at `<root>/Private/app-selection/probe.md`. The fixture wrote it at
+       `<root>/company/...`, which matched only while COMPANY was `<root>/company`
+       — i.e. this fixture has been wrong since the MORNING move, and the suite
+       has been red ever since. The link string itself is deliberately left as
+       `company/...` because the guard's legacy strip is what this case exercises. */
+    ...(companyFile === null ? {} : { 'Private/app-selection/probe.md': companyFile }),
     // A Private/company/ that EXISTS but does not hold the target — see the resolve case.
     ...(companyDecoy ? { 'Private/README.md': '# private tree\n' } : {}),
   });

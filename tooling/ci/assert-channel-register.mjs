@@ -1290,7 +1290,7 @@ for (const d of disqualified) {
     // missing decision. Say so on every run rather than passing quietly.
     prints.push(`DISQUALIFIED: ${summary}`);
     prints.push(
-      `   └─ ADR UNVERIFIABLE IN THIS CHECKOUT — \`${adrRoot(d.adr)}/\` is not present (it is gitignored, .gitignore:14-15). The citation's CONTENT is checked only where the harness is checked out, i.e. locally. This is a stated limit, not a pass.`,
+      `   └─ ADR UNVERIFIABLE IN THIS CHECKOUT — \`${adrRoot(d.adr)}/\` is not present (it is gitignored, .gitignore:23). The citation's CONTENT is checked only where the harness is checked out, i.e. locally. This is a stated limit, not a pass.`,
     );
     continue;
   }
