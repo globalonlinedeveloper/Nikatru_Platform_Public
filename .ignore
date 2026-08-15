@@ -41,8 +41,34 @@
 # SAFETY: git does not read .ignore. Re-verify after any change with
 #   git check-ignore -v company knowledge CLAUDE.md .claude .claude/secrets.env
 # which must still report all of them as ignored.
-!company/
-!knowledge/
+# 🔴 REPOINTED 2026-08-15, AND IT WAS INERT FOR HOURS BEFORE ANYONE NOTICED.
+# `company/` and `knowledge/` moved under `Private/` that morning. These two
+# negations then matched NOTHING, while `.gitignore` gained `Private/` — so the
+# whole private corpus went invisible to search again, by the same mechanism this
+# file was written to defeat, in the same session that wrote the move.
+#   MEASURED before the fix:
+#     rg -l "PROJECT_STATE" .            -> 0 files under Private/
+#     rg --no-ignore --hidden … Private  -> 81 files actually contain it
+# Every measurement taken from the repo root between the move and this fix read a
+# smaller corpus than it thought — including the measurements OF the move.
+# 📌 A negation is a pointer at a path, and it goes silently inert the moment that
+# path moves. It cannot fail loudly, because "no matches" is a valid answer.
+# ⚠️ BOTH CASES, AND THE FIRST ATTEMPT FAILED WITHOUT SAYING SO. `.gitignore`
+# carries `Private/` AND `private/`; the rule that actually matched was the
+# LOWERCASE one (`git check-ignore` reported `.gitignore:23:private/`). A single
+# `!Private/` left the search at zero and looked exactly like a fix. Windows'
+# filesystem is case-insensitive; ripgrep's glob matching is not.
+# ⚠️ AND THE CHILDREN NEED THEIR OWN NEGATIONS — the second failed fix.
+# `.gitignore:14` (`knowledge/`) and `:15` (`company/`) are UNANCHORED, so they
+# match at ANY depth: re-including `Private/` still left `Private/company/` and
+# `Private/knowledge/` excluded by the rules written for their old locations.
+# Two negations that each looked correct, and the search stayed at zero through
+# both. Measured after each attempt, which is the only reason this is not still
+# broken — "no matches" never announces itself as an absence of search.
+!Private/
+!private/
+!Private/company/
+!Private/knowledge/
 !CLAUDE.md
 
 # ── ADDED 2026-08-13, and DELIBERATELY NARROWER THAN `.claude/` ──────────────

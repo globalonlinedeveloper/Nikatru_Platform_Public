@@ -79,7 +79,8 @@ const companyArg = companyAt === -1 ? null : argv[companyAt + 1];
 const positional = argv.filter((a, i) => companyAt === -1 || (i !== companyAt && i !== companyAt + 1));
 
 const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-const COMPANY = resolve(companyArg ?? join(ROOT, 'company'));
+// Repointed 2026-08-15 - company/ now lives under Private/. --company still overrides.
+const COMPANY = resolve(companyArg ?? join(ROOT, 'Private', 'company'));
 
 /** Apps that predate the selection gates, exempt BY NAME. Every name here must
  *  still be a real workspace member — see `coverageLost` below for why a stale
