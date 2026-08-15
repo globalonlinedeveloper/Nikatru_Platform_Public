@@ -1,0 +1,46 @@
+#!/bin/sh
+# ─────────────────────────────────────────────────────────────────────────────
+# pre-push — the FULL spec guards (~10.4 s).
+#
+# Why the slow guard lives here and not in pre-commit: `assert-enforcers-exist`
+# takes 10.9 s on its own, 94% of the total. On every commit that is the shape of
+# hook people disable within a week, and this corpus has already written that
+# lesson down about a 10-minute one. On every push it is paid a handful of times
+# a day and nobody notices.
+#
+# See pre-commit for why no status is ever read across a pipeline.
+# ─────────────────────────────────────────────────────────────────────────────
+set -u
+
+RUNNER=''
+for c in \
+  "tooling/scripts/spec-guards.mjs" \
+  "../../tooling/scripts/spec-guards.mjs" \
+  "../tooling/scripts/spec-guards.mjs"
+do
+  if [ -f "$c" ]; then RUNNER="$c"; break; fi
+done
+
+if [ -z "$RUNNER" ]; then
+  echo "pre-push: spec-guards.mjs not found from $(pwd). Refusing." >&2
+  echo "  Re-install with: node tooling/scripts/install-hooks.mjs" >&2
+  exit 1
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-push: node is not on PATH, so the spec guards did not run. Refusing." >&2
+  exit 1
+fi
+
+echo "pre-push: running the full spec guards (~10 s)…"
+node "$RUNNER" --full
+code=$?
+
+if [ "$code" -ne 0 ]; then
+  echo "" >&2
+  echo "pre-push: the spec guards are not clean. Push refused." >&2
+  echo "  Deliberate override:  git push --no-verify" >&2
+  exit "$code"
+fi
+
+exit 0
