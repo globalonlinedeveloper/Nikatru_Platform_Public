@@ -20,6 +20,7 @@
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-08-02",
       "prompt": "Write the single most common everyday greeting in each declared locale, in the form a traveller would say it to a stranger.",
+      "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#greeting.hello"
     },
