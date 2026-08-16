@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE SERVED-CHANNEL REGISTER — [pipeline R-5] company/pipeline/09-release-engineering.md",
+    "THE SERVED-CHANNEL REGISTER — [pipeline R-5] Private/company/pipeline/09-release-engineering.md",
     "",
     "The complete set of channels this factory can release to: what artifact each one accepts, what",
     "signing identity it needs, which lane produces it, which toolchain floor gates it, and — the field",
@@ -96,9 +96,9 @@
     "that decision is machine-readable. Prose elsewhere CITES the field. It must not restate it.",
     "",
     "WHY IT MOVED HERE, MEASURED RATHER THAN ASSERTED. The rail answer lived only in prose and prose did",
-    "not hold it. On 2026-08-13 `company/pipeline/05-money-rail.md` still carried \"no requirement here",
+    "not hold it. On 2026-08-13 `Private/company/pipeline/05-money-rail.md` still carried \"no requirement here",
     "demands a native IAP rail\" as a CUT BEING HONOURED, while [ADR 039] D2/D3 had locked exactly that",
-    "rail on three channels four days earlier — and `company/pipeline/10-distribution-store.md`, the",
+    "rail on three channels four days earlier — and `Private/company/pipeline/10-distribution-store.md`, the",
     "stage that owns store submission, contained the string \"IAP\" ZERO times. Both documents have since",
     "been corrected in prose (05's sentence is now struck through and re-labelled a gap; 10 now carries",
     "12 occurrences). That is the argument FOR this field, not against it: a fact restated in N documents",
@@ -245,7 +245,7 @@
         "additionalFiles": ["subtitle.txt", "keywords.txt", "promotional-text.txt"],
         "maxChars": {
           "_why": [
-            "THE ONLY TWO APPLE NUMBERS THAT WERE SOURCED. company/pipeline/10-distribution-store.md",
+            "THE ONLY TWO APPLE NUMBERS THAT WERE SOURCED. Private/company/pipeline/10-distribution-store.md",
             "D-5's limits table records the rest as COULD-NOT-ESTABLISH against the same fetch — the",
             "keywords field, description and promotional text are NOT on the page that carries Name",
             "and Subtitle, and the corpus's '100 chars' for keywords is not on it either. They are",
@@ -254,11 +254,11 @@
           "title.txt": {
             "max": 30,
             "min": 2,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
           },
           "subtitle.txt": {
             "max": 30,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
           }
         }
       },
@@ -273,11 +273,11 @@
           "title.txt": {
             "max": 30,
             "min": 2,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
           },
           "subtitle.txt": {
             "max": 30,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
           }
         }
       },
@@ -827,7 +827,7 @@
         "holds subly-web.",
         "⚠️ deploy-web.yml builds with --pwa-strategy=none, so there is no service worker and no offline",
         "support on the one platform the $0 desktop story rests on.",
-        "🔒 THAT IS [ADR 023] (knowledge/decisions/023-web-pwa-strategy.md, LOCKED 2026-07-31), NOT AN",
+        "🔒 THAT IS [ADR 023] (Private/decisions/023-web-pwa-strategy.md, LOCKED 2026-07-31), NOT AN",
         "OVERSIGHT — this citation is the Consequences item ADR 023 itself asked for, and it was",
         "unexecuted until 2026-08-03. ADR 023 also EXPLICITLY REJECTS guarding the flag in CI by name as",
         "over-encoding, so no guard asserts `--pwa-strategy=none` and none should be re-derived.",
@@ -1056,15 +1056,15 @@
       "submission": {
         "_why": [
           "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
-          "parsed rather than grepped. Limb (ii) is the runbook below — company/ is gitignored so no CI",
+          "parsed rather than grepped. Limb (ii) is the runbook below — Private/company/ is gitignored so no CI",
           "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
-          "is in one place a guard could reach if company/ ever ships. Limb (iii) — a submission record",
+          "is in one place a guard could reach if Private/company/ ever ships. Limb (iii) — a submission record",
           "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
         ],
         "script": "tooling/release/submit-play.mjs",
         "workflow": ".github/workflows/submit-play.yml",
         "job": "dry-run",
-        "runbook": "company/runbooks/store-submission-android.md"
+        "runbook": "Private/runbooks/store-submission-android.md"
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — native store work is deferred until an app proves it converts strangers.",
@@ -1241,9 +1241,9 @@
       "submission": {
         "_why": [
           "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
-          "parsed rather than grepped. Limb (ii) is the runbook below — company/ is gitignored so no CI",
+          "parsed rather than grepped. Limb (ii) is the runbook below — Private/company/ is gitignored so no CI",
           "guard can open it; the path is recorded here so it is in one place a guard could reach if",
-          "company/ ever ships. Limb (iii) — a submission record in the [10]D-9 ledger — stays",
+          "Private/company/ ever ships. Limb (iii) — a submission record in the [10]D-9 ledger — stays",
           "UNSATISFIED and cannot be satisfied without a real submission.",
           "",
           "ONE SCRIPT SERVES BOTH APPLE ROWS because both authenticate with the SAME App Store Connect",
@@ -1253,7 +1253,7 @@
         "script": "tooling/release/submit-appstore.mjs",
         "workflow": ".github/workflows/submit-appstore.yml",
         "job": "dry-run",
-        "runbook": "company/runbooks/store-submission-apple.md"
+        "runbook": "Private/runbooks/store-submission-apple.md"
       },
       "deferral": {
         "reason": "🔒 DEFERRED by owner (OWNER_QUEUE A-4) until non-Apple revenue exists — no Apple device, and no Apple ORGANIZATION path exists for a sole proprietorship (Apple: enroll as an individual).",
@@ -1377,7 +1377,7 @@
         "script": "tooling/release/submit-appstore.mjs",
         "workflow": ".github/workflows/submit-appstore.yml",
         "job": "dry-run",
-        "runbook": "company/runbooks/store-submission-apple.md"
+        "runbook": "Private/runbooks/store-submission-apple.md"
       },
       "deferral": {
         "reason": "🔒 DEFERRED by owner with ios-appstore (OWNER_QUEUE A-4).",
@@ -1400,7 +1400,7 @@
         "rail": "paddle",
         "why": "PERMISSION, read from the primary text: Microsoft Store Policies v7.19 (effective 2025-10-14) §10.8.1 lets a non-game PC app use \"a secure third-party purchase API\" for digital goods and §10.8.6 says the same for subscriptions, and the App Developer Agreement exempts third-party commerce from the Store Fee — 0% store tax, so the only cut is Paddle's 7.5%. This row was UNVERIFIED-therefore-denied until the source was read on 2026-08-09.",
         "forbids": ["play-billing", "apple-iap"],
-        "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows. TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are not optional — Paddle must be identified as the seller at purchase time (its hosted checkout does this), and the third-party purchase API must be DECLARED in Partner Center at submission (company/runbooks/store-submission-windows.md carries that step).",
+        "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows. TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are not optional — Paddle must be identified as the seller at purchase time (its hosted checkout does this), and the third-party purchase API must be DECLARED in Partner Center at submission (Private/runbooks/store-submission-windows.md carries that step).",
         "source": "[ADR 039] D1"
       },
       "artifactFormats": [".msix"],
@@ -1468,15 +1468,15 @@
       "submission": {
         "_why": [
           "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
-          "parsed rather than grepped. Limb (ii) is the runbook below — company/ is gitignored so no CI",
+          "parsed rather than grepped. Limb (ii) is the runbook below — Private/company/ is gitignored so no CI",
           "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
-          "is in one place a guard could reach if company/ ever ships. Limb (iii) — a submission record",
+          "is in one place a guard could reach if Private/company/ ever ships. Limb (iii) — a submission record",
           "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
         ],
         "script": "tooling/release/submit-windows-store.mjs",
         "workflow": ".github/workflows/submit-windows-store.yml",
         "job": "dry-run",
-        "runbook": "company/runbooks/store-submission-windows.md"
+        "runbook": "Private/runbooks/store-submission-windows.md"
       },
       "deferral": {
         "reason": "39-CHASSIS §4 cut 5 — the SUBMISSION work is deferred. ⚠️ Account REGISTRATION is not deferred and is the fastest real channel: $0, no D-U-N-S required, 2–5 business days.",
@@ -1743,7 +1743,7 @@
         "recipeScript": "tooling/release/generate-snapcraft.mjs",
         "workflow": ".github/workflows/submit-snap.yml",
         "job": "dry-run",
-        "runbook": "company/runbooks/store-submission-snap.md"
+        "runbook": "Private/runbooks/store-submission-snap.md"
       },
       "deferral": {
         "reason": "[ADR 015] §2 — native Linux is DEFERRED until there is revenue. The web build already serves Linux users at $0, and Linux is the smallest addressable market with no store payments.",
@@ -1876,7 +1876,7 @@
       "id": "flathub",
       "name": "Flathub",
       "platforms": ["linux"],
-      "adr": "knowledge/decisions/015-linux-distribution-channel.md",
+      "adr": "Private/decisions/015-linux-distribution-channel.md",
       "date": "2026-07-25",
       "ownerQueue": "A-5",
       "_tellsWhy": [
@@ -1960,11 +1960,11 @@
         "The `adr` path below is the MECHANICAL half of the same rule `disqualified` rows already carry:",
         "a decision cited only in prose is a decision that cannot be opened, and this entry's own notes",
         "cite [ADR 022] three times without ever naming a file. assert-channel-register.mjs now checks it",
-        "the same MODE-AWARE way — where `knowledge/` is checked out the ADR must exist and record itself",
+        "the same MODE-AWARE way — where `Private/knowledge/` is checked out the ADR must exist and record itself",
         "LOCKED; in a CI checkout, where the harness is gitignored, the limit is PRINTED rather than",
         "passed over silently."
       ],
-      "adr": "knowledge/decisions/022-pack-signing-key-custody.md",
+      "adr": "Private/decisions/022-pack-signing-key-custody.md",
       "custody": "recorded in [ADR 022] (LOCKED 2026-07-27, private SSoT). Public fact only: `k1` is pinned in packages/core/lib/src/content/pack_verifier.dart. Redacted here 2026-07-31 — seed locations belong in the private record, not a public register.",
       "restoreDrill": {
         "date": null,

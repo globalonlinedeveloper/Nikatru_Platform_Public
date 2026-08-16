@@ -442,7 +442,7 @@ if (!clientApp && !backendApp) {
 if (failures.length) {
   console.error('\nCLONE CONTRACT VIOLATED:');
   for (const f of failures) console.error(`  ✗ ${f}`);
-  console.error('\nSee knowledge/decisions/020-brick-clone-contract.md.');
+  console.error('\nSee Private/decisions/020-brick-clone-contract.md.');
   process.exit(1);
 }
 console.log('clone contract holds.');

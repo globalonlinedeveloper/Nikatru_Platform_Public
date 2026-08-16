@@ -139,7 +139,7 @@ jobs:
       # unapplied while subly_db still had no budget_categories.id.
       #
       # Migrations run FIRST because the schema standard is additive-only
-      # (company/requirements/schema-evolution.md): new columns are harmless to
+      # (Private/requirements/schema-evolution.md): new columns are harmless to
       # code that predates them, whereas deploying code that reads a column the
       # database does not have yet is an outage. Expand, then deploy.
       - name: Apply APP_DB migrations (before deploy)
@@ -168,7 +168,7 @@ jobs:
       # leaves migrations applied and the old code serving — which is the SAFE
       # half-state precisely because the schema standard is additive-only (see
       # the "MIGRATIONS BEFORE DEPLOY" note above and
-      # company/requirements/schema-evolution.md): new columns are harmless to
+      # Private/requirements/schema-evolution.md): new columns are harmless to
       # code that predates them. The unsafe half-state is the other order.
       #
       # BLOCKING, and exit 2 ("could not look") blocks too. The check retries a

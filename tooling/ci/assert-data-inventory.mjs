@@ -72,7 +72,7 @@ if (!existsSync(REGISTER)) {
     `${rel(REGISTER)} does not exist.`,
     'The inventory is the left-hand side of every comparison below. Absent, this guard compares the',
     'tree to nothing and prints ok — see tooling/legal/README.md for why it lives in-tree and not',
-    'under company/, which is gitignored and invisible to CI.',
+    'under Private/company/, which is gitignored and invisible to CI.',
   );
 }
 let register;

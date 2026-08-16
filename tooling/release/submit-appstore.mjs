@@ -9,7 +9,7 @@
 //
 // D-10's replacement acceptance has three re-checkable limbs. This file is
 // limb (i) — "a submission script exists AND resolves to a step in a workflow,
-// parsed not grepped". Limb (ii) is company/runbooks/store-submission-apple.md.
+// parsed not grepped". Limb (ii) is Private/runbooks/store-submission-apple.md.
 // Limb (iii) — a submission record in the [10]D-9 ledger — needs a real
 // submission and stays UNSATISFIED; it is the only one of the three that can
 // prove the path was walked rather than merely written, and nothing here
@@ -166,7 +166,7 @@ if (SUBMIT) {
   console.error('     source. Guessing one does not fail here — it fails against a live App Store Connect');
   console.error('     account, mid-upload. Source them (URL + date, the way the D-5 limits table does),');
   console.error('     then write the calls. Until then the console path in the runbook is the submission');
-  console.error('     path:  company/runbooks/store-submission-apple.md');
+  console.error('     path:  Private/runbooks/store-submission-apple.md');
   console.error('');
   console.error('     Nothing was validated: this refusal is BEFORE the checks on purpose, so there is no');
   console.error('     path on which a submission gets halfway.');
@@ -480,7 +480,7 @@ if (problems.length) {
 if (DRY_RUN) {
   console.log('');
   console.log('submit-appstore: DRY RUN OK — nothing was sent to Apple.');
-  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'company/runbooks/store-submission-apple.md'}`);
+  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-apple.md'}`);
   process.exit(0);
 }
 

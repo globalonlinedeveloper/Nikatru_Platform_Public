@@ -4,7 +4,7 @@
 // depend on it.
 //
 // [pipeline S-2] "The stamp wires every chassis capability the register says it
-// must." company/pipeline/03-stamper.md
+// must." Private/company/pipeline/03-stamper.md
 //
 // 🔴 WHY THIS GUARD REPLACES THE ONE THE SPEC ORIGINALLY DESCRIBED.
 // S-2's acceptance criterion was written as "for every C-1 register entry

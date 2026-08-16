@@ -22,7 +22,7 @@
 //   The second mode is reached by running a COPY of the guard from inside the
 //   fixture, which is exactly how CI runs it from inside the repo.
 //
-// Pipeline requirement: company/pipeline/01-foundation.md → F-9 / F-10.
+// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-9 / F-10.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────

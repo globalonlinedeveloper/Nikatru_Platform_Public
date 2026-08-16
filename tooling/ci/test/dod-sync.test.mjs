@@ -3,7 +3,7 @@
 //
 // [pipeline N-1 · N-9] `tooling/scripts/check-dod-sync.mjs` and
 // `tooling/scripts/check-selection-record.mjs` are deliberately NOT in
-// `tooling/ci/`: both read `company/`, which is gitignored, so a CI guard could
+// `tooling/ci/`: both read `Private/company/`, which is gitignored, so a CI guard could
 // never once execute against its own subject. They are still checks, and a check
 // nobody feeds bad input to has only ever run against valid input.
 //
@@ -101,8 +101,8 @@ const PAGE = `# Definition of Done
 
 const build = ({ register = REGISTER, plan = PLAN, page = PAGE } = {}) => fixture({
   'tooling/dod-register.json': register === null ? null : JSON.stringify(register, null, 2),
-  'company/MASTER_PLAN.md': plan,
-  'company/requirements/definition-of-done.md': page,
+  'Private/MASTER_PLAN.md': plan,
+  'Private/requirements/definition-of-done.md': page,
 });
 
 describe('check-dod-sync', () => {
@@ -190,7 +190,7 @@ describe('check-dod-sync', () => {
 
   test('REFUSES rather than reporting ok when the private tree is unreadable', () => {
     const dir = build();
-    rmSync(join(dir, 'company/requirements/definition-of-done.md'));
+    rmSync(join(dir, 'Private/requirements/definition-of-done.md'));
     const { code, out } = run(SYNC, dir);
     assert.equal(code, 1, 'silence about an unperformed check is how apparent coverage inflates');
     assert.match(out, /NOTHING was cross-checked/);
@@ -229,9 +229,17 @@ describe('check-selection-record', () => {
   const tree = ({ record = dod(), companyFile = null, companyDecoy = false } = {}) => fixture({
     'pubspec.yaml': 'name: fixture\nworkspace:\n  - apps/subly\n  - apps/probe\n',
     'apps/probe/dod.json': record,
-    ...(companyFile === null ? {} : { 'company/app-selection/probe.md': companyFile }),
-    // A company/ that EXISTS but does not hold the target — see the resolve case.
-    ...(companyDecoy ? { 'company/README.md': '# private tree\n' } : {}),
+    /* FLATTENED 2026-08-15. The guard resolves a link as
+         join(COMPANY, link.replace(/^company\//, ''))
+       and COMPANY is now `<root>/Private`, so `company/app-selection/probe.md`
+       lands at `<root>/Private/app-selection/probe.md`. The fixture wrote it at
+       `<root>/company/...`, which matched only while COMPANY was `<root>/company`
+       — i.e. this fixture has been wrong since the MORNING move, and the suite
+       has been red ever since. The link string itself is deliberately left as
+       `company/...` because the guard's legacy strip is what this case exercises. */
+    ...(companyFile === null ? {} : { 'Private/app-selection/probe.md': companyFile }),
+    // A Private/company/ that EXISTS but does not hold the target — see the resolve case.
+    ...(companyDecoy ? { 'Private/README.md': '# private tree\n' } : {}),
   });
 
   test('passes, and says so, when nothing is linked yet', () => {
@@ -242,10 +250,10 @@ describe('check-selection-record', () => {
 
   test('FAILS when the linked record does not resolve', () => {
     const record = dod({ selection: { record: 'company/app-selection/probe.md', sha256: 'x', decided: '2026-07-30', decidedBy: 'owner', gates: {} } });
-    // 🔴 THE FIXTURE NOW SHIPS A company/ THAT DOES NOT CONTAIN THE TARGET, and
-    // the distinction is the whole point. "company/ is absent" and "the link
+    // 🔴 THE FIXTURE NOW SHIPS A Private/company/ THAT DOES NOT CONTAIN THE TARGET, and
+    // the distinction is the whole point. "Private/company/ is absent" and "the link
     // points at nothing" used to be the same fixture, and they are not the same
-    // fact: the first is every CI checkout (company/ is gitignored) and must
+    // fact: the first is every CI checkout (Private/company/ is gitignored) and must
     // print, the second is a real defect and must fail. Modelling the defect as
     // an absent tree meant wiring this script into CI would have failed every
     // run the moment one app carried a link.
@@ -262,7 +270,7 @@ describe('check-selection-record', () => {
     assert.match(out, /The gate answers the owner signed are not the gate answers on disk/);
   });
 
-  test('passes when the sha256 really matches the file in company/', async () => {
+  test('passes when the sha256 really matches the file in Private/company/', async () => {
     const body = 'G1b: meaningfully different because …\n';
     const { createHash } = await import('node:crypto');
     const sha = createHash('sha256').update(Buffer.from(body)).digest('hex');

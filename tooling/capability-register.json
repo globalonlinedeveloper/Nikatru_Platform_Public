@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE CAPABILITY REGISTER — [pipeline C-1] company/pipeline/02-shared-chassis.md",
+    "THE CAPABILITY REGISTER — [pipeline C-1] Private/company/pipeline/02-shared-chassis.md",
     "",
     "The complete set of non-app-specific capabilities the factory provides: what it is, which package",
     "owns it, which SEAM INTERFACE (file + symbol + methods) others code against, and who consumes it.",
@@ -85,7 +85,7 @@
       },
       "ownTheRecord": "YES — entitlements and app state live in OUR D1, keyed on the standard `sub` claim. The app depends on our record, not Supabase's.",
       "exportPath": {
-        "path": "company/runbooks/operations.md",
+        "path": "Private/runbooks/operations.md",
         "detail": "pg_dump via the Supabase dashboard/API; the schema is plain Postgres with no proprietary types."
       },
       "exitPlan": {
@@ -144,7 +144,7 @@
       },
       "ownTheRecord": "YES, AND IT IS THE WHOLE STRATEGY — entitlements live in OUR table fed by a per-provider adapter, so the payment vendor is swappable even though payment APIs are not. This is the one line the audit note said to carry forward verbatim.",
       "exportPath": {
-        "path": "company/runbooks/operations.md",
+        "path": "Private/runbooks/operations.md",
         "detail": "Entitlements are ours in D1 and export with it. RevenueCat itself holds no record we depend on."
       },
       "exitPlan": {
@@ -197,7 +197,7 @@
       },
       "ownTheRecord": "N/A — telemetry is a diagnostic stream, not a record the app depends on. Losing history costs insight, never correctness.",
       "exportPath": {
-        "path": "company/runbooks/glitchtip.md",
+        "path": "Private/runbooks/glitchtip.md",
         "detail": "Self-hosted; the whole instance is ours, and the runbook covers the server backup."
       },
       "exitPlan": {
@@ -634,7 +634,7 @@
           "detail": "A third, independent implementation: its own `class NotificationService` singleton calling flutter_local_notifications 17.x directly, and importing Subly's own Subscription model. This is the exact fork [2]C-1's audit note cites as the reason the register exists. ⚠️ MEASURED 2026-08-12 — 'FORK' IS ACCURATE FOR THE GUARD AND MISLEADING FOR THE READER, so here is the surface. Seam (packages/core/lib/src/notifications/notification_service.dart:70-100): init · requestPermission · showNow · scheduleDaily · cancel · cancelAll · notificationTaps. This class: init · requestPermissions · scheduleRenewalReminder · scheduleWeeklyDigest · cancelWeeklyDigest · cancelForSubscription · cancelAll · syncAll. ONLY `init` and `cancelAll` overlap even by NAME. This is a DOMAIN reminder scheduler over Subly's Subscription model, not a copy of the seam — what actually trips check 5 is the NAME COLLISION on `class NotificationService`, plus a second wrap of the same process-singleton plugin. 🔴 CONSEQUENCE FOR WHOEVER TAKES THIS: a rename alone (e.g. SublyReminderScheduler) WOULD GO GREEN AND FIX NOTHING — the duplicate plugin wrap would remain. Both providers coexist on purpose today: providers.dart:1074 notificationServiceProvider = the chassis seam, :1090 sublyNotificationServiceProvider = this class.",
           "declaredOn": "2026-07-28",
           "fixOwner": "OWNER_QUEUE D-8 — define or retire [2]C-3's de-forking increment",
-          "blockedBy": "🔄 RE-MEASURED 2026-08-12, AND THE PREVIOUS REASON HAD BEEN VOID FOR FOUR DAYS. It read: '39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting this fork reverses an agreed cut, which the standing authorization does not cover — owner decided 2026-07-28 to declare it rather than move it.' [ADR 036] (2026-08-08, OWNER-ORDERED, knowledge/decisions/036-subly-freeze-dissolved-by-owner-order.md:61) DISSOLVED that freeze: 'Cut 1's freeze on apps/subly is DISSOLVED.' So the stated block had no subject, and the waiver went on reading as managed. Nothing re-measures a waiver's REASON — assert-no-seam-forks.mjs:272-283 says exactly that of itself, and it is why this sat. WHAT ACTUALLY BLOCKS IT, measured the same day: 'de-fork' is the WRONG VERB, so there is no mechanical move to perform. The surfaces barely overlap (see detail), which leaves a genuine DESIGN choice nobody has made — either the chassis seam grows a schedule-many / cancel-by-key surface able to carry renewal reminders and a weekly digest, or this class is renamed and re-based onto the seam. Second, [ADR 037] Phase 3 currently KEEPS it BY DESIGN: knowledge/plans/subly-restamp-execution.md:44-47 rules the pubspec merge a UNION and says 'Do NOT drop bypassed deps yet ... dep-removal + bypass-entry-removal = one commit each, Phase 3', and Phase 3 is unwritten. So removing this fork is a dependency of a phase that does not exist yet. Owner decision queued as OWNER_QUEUE D-8."
+          "blockedBy": "🔄 RE-MEASURED 2026-08-12, AND THE PREVIOUS REASON HAD BEEN VOID FOR FOUR DAYS. It read: '39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting this fork reverses an agreed cut, which the standing authorization does not cover — owner decided 2026-07-28 to declare it rather than move it.' [ADR 036] (2026-08-08, OWNER-ORDERED, Private/knowledge/decisions/036-subly-freeze-dissolved-by-owner-order.md:61) DISSOLVED that freeze: 'Cut 1's freeze on apps/subly is DISSOLVED.' So the stated block had no subject, and the waiver went on reading as managed. Nothing re-measures a waiver's REASON — assert-no-seam-forks.mjs:272-283 says exactly that of itself, and it is why this sat. WHAT ACTUALLY BLOCKS IT, measured the same day: 'de-fork' is the WRONG VERB, so there is no mechanical move to perform. The surfaces barely overlap (see detail), which leaves a genuine DESIGN choice nobody has made — either the chassis seam grows a schedule-many / cancel-by-key surface able to carry renewal reminders and a weekly digest, or this class is renamed and re-based onto the seam. Second, [ADR 037] Phase 3 currently KEEPS it BY DESIGN: Private/knowledge/plans/subly-restamp-execution.md:44-47 rules the pubspec merge a UNION and says 'Do NOT drop bypassed deps yet ... dep-removal + bypass-entry-removal = one commit each, Phase 3', and Phase 3 is unwritten. So removing this fork is a dependency of a phase that does not exist yet. Owner decision queued as OWNER_QUEUE D-8."
         }
       ],
       "capabilityMatrix": {

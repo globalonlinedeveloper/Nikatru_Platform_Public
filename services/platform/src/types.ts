@@ -326,7 +326,7 @@ export interface AppConfig {
 // in migrations/0002_analytics.sql; the /v1/events route lands with G-12.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** One client-sent analytics event. Mirrors `company/requirements/analytics-events.md`. */
+/** One client-sent analytics event. Mirrors `Private/requirements/analytics-events.md`. */
 export interface AnalyticsEvent {
   /** Client UUIDv4 — the exactly-once key. Batches retry, so ingest dedups. */
   event_id: string;

@@ -135,15 +135,15 @@
 //    resolves to NO provider FAILS as "cannot be checked" rather than passing.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ⚠️ THE ONE BLIND SPOT, STATED RATHER THAN PAPERED OVER. `company/` is
+// ⚠️ THE ONE BLIND SPOT, STATED RATHER THAN PAPERED OVER. `Private/company/` is
 // gitignored and INVISIBLE TO CI, and `nikatru/` — the shared business brain
 // [ADR 054] moved to a sibling repository — is not even on the disk CI checks
-// out. A row may anchor at either; the runbooks legitimately live in company/,
+// out. A row may anchor at either; the runbooks legitimately live in Private/company/,
 // and the GST LUT, the Awfis lease and the kill-or-keep review now anchor in the
 // brain. This guard CANNOT check that such an anchor exists, and it says so out
 // loud with a count on every run instead of pretending the check happened.
 // Anchors anywhere else MUST exist. This is why the register itself is in the
-// public tree: a register under company/ would be unenforceable, which is
+// public tree: a register under Private/company/ would be unenforceable, which is
 // precisely what blocked four stage-8 increments.
 //
 // 🔴 THE PREFIX LIST IS THE WHOLE EXEMPTION, SO IT MUST NOT GROW CASUALLY. Each
@@ -195,7 +195,7 @@ const REGISTER_REL = 'tooling/ops/register.json';
 const WORKFLOW_DIR_REL = '.github/workflows';
 
 /** Any repo-relative path a row NAMES, in the fields that make a claim about a
- *  mechanism: the detector, the record, and the thing that reads it. `company/`
+ *  mechanism: the detector, the record, and the thing that reads it. `Private/company/`
  *  is excluded because it is gitignored and CI genuinely cannot see it — that
  *  blind spot is counted and printed rather than pretended away. */
 // ⚠️ THE LEADING BOUNDARY IS A LOOKBEHIND, NOT `\b`, AND A NEGATIVE TEST IS WHY.
@@ -207,12 +207,20 @@ const NAMED_PATH = /(?<![\w/.-])(?:tooling|\.github|services|sites|packages|apps
 
 /** Prefixes a CI checkout structurally CANNOT contain, so an anchor under one of
  *  them is counted and printed rather than checked. Both are STRUCTURAL, not
- *  flags: `company/` is the private-SSoT boundary (gitignored, .gitignore:15) and
+ *  flags: `Private/` is the private corpus boundary (gitignored, .gitignore:23) and
  *  `nikatru/` is the shared business brain, which [ADR 054] moved to a SIBLING
  *  REPOSITORY outside this working tree entirely — so it is not merely unreadable
  *  by CI, it is not on the disk CI checks out. A boolean anybody could set would
  *  make this check optional; a prefix list cannot be set per-row. */
-const OUTSIDE_CI = ['company/', 'nikatru/'];
+/* FLATTENED 2026-08-15: was `Private/company/`. The flatten merged company/ and
+ * knowledge/ into one repo at `Private/`, so every anchor lost a path segment
+ * and this prefix stopped matching any of them. MEASURED, not predicted: 21
+ * register rows went red in one run — "names Private/runbooks/operations.md,
+ * which is not in the tree" — because the anchors fell through to the resolve
+ * branch that a CI checkout structurally cannot satisfy. Widening to `Private/`
+ * restores the exemption at exactly the new boundary and no wider: `Private/` is
+ * the whole gitignored corpus, which is precisely the set CI cannot see. */
+const OUTSIDE_CI = ['Private/', 'nikatru/'];
 
 /** No argument means CI's own invocation against the real repository, where the
  *  git manifest MUST be readable. A fixture root is a weaker situation and says
@@ -1466,7 +1474,7 @@ export function evaluate(reg, tree, nowMs) {
     if (!nonEmpty(aw.margin)) {
       bad(
         `${id} — \`absenceWatcher.margin\` is empty. An interval EQUAL to the cadence leaves ZERO margin and one late run ` +
-          'reports Down — the rule company/runbooks/backup-liveness.md establishes and the reason the Oracle box posts ' +
+          'reports Down — the rule Private/runbooks/backup-liveness.md establishes and the reason the Oracle box posts ' +
           'hourly against a 3h monitor. Write down how many missed runs it takes to alarm.',
       );
     }
@@ -1908,7 +1916,7 @@ async function main() {
   }
 
   // Every file the register anchors to must be checkable, so build the path set
-  // once. `company/` is excluded from the tree by .gitignore and is handled
+  // once. `Private/company/` is excluded from the tree by .gitignore and is handled
   // separately and loudly in the pure half.
   const paths = new Set();
   const collect = (dir, rel) => {

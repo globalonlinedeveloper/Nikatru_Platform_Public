@@ -13,6 +13,24 @@
 .claude/
 knowledge/
 company/
+# `Private/` existed as an EMPTY, UNIGNORED directory at the repo root until
+# 2026-08-15. Git does not track empty directories, so nothing had leaked — but
+# the first file placed there would have been staged by `git add -A` into the
+# PUBLIC repo, and a directory called `Private` is precisely where somebody puts
+# the thing that must not be public. Ignored before it was used, rather than
+# after. The case matters on Linux/CI even though Windows would not care.
+Private/
+private/
+# 🔴 AND THE SAFETY COPY, IGNORED BEFORE IT EXISTED — SAME DOCTRINE, ONE DOT OVER.
+# The 2026-08-15 flatten keeps the pre-migration tree as `Private.pre-flatten/`
+# until the restore gate passes. `Private/` above does NOT match it: a gitignore
+# pattern with a trailing slash matches a directory of exactly that name, so
+# `Private.pre-flatten` is a DIFFERENT name and would have been fully stageable —
+# a complete copy of the private corpus, one `git add -A` from the public repo,
+# created by the very migration whose stated first constraint is that nothing
+# leaves Private/. The glob covers any dated or suffixed variant of the same idea.
+Private.*/
+private.*/
 # ANCHORED to the repo root on purpose. Without the leading slash this pattern
 # matches a directory named `scripts` at ANY depth — it was written for the
 # local helper scripts here, and it silently swallowed tooling/scripts/ the

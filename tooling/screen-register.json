@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE SCREEN REGISTER — [pipeline C-13] company/pipeline/02-shared-chassis.md",
+    "THE SCREEN REGISTER — [pipeline C-13] Private/company/pipeline/02-shared-chassis.md",
     "",
     "The complete set of NON-APP-SPECIFIC screens: the ones that are the same in all fifty apps and",
     "therefore ship in the chassis rather than being written per app. Sourced from DoD §4-A.",

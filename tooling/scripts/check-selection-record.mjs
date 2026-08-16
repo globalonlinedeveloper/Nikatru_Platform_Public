@@ -7,7 +7,7 @@
 // done-record "carries the link — a done-record with no selection link fails
 // assert-app-dod.mjs (the link is checkable even though the judgment is not)".
 // That sentence is FALSE AS WRITTEN. `assert-app-dod.mjs` runs in the public
-// repo; the selection entry lives under `company/`, which is gitignored and
+// repo; the selection entry lives under `Private/company/`, which is gitignored and
 // invisible to CI. A guard there can assert that a STRING is present; it can
 // never assert the string RESOLVES. This file is the correction, not the
 // implementation of that sentence.
@@ -19,7 +19,7 @@
 //                              on every run rather than reporting a check it did
 //                              not perform.
 //   HERE (local)             — the sha256 really resolves against the file in
-//                              company/. Corrupt or move the record and this
+//                              Private/company/. Corrupt or move the record and this
 //                              goes red.
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@
 // script cannot see, and it would enter the factory ungated while this printed
 // "0 non-exempt apps" and exited 0).
 //
-// ⚠️ AND IN CI THERE IS NO `company/`. It is gitignored, so a CI checkout cannot
+// ⚠️ AND IN CI THERE IS NO `Private/company/`. It is gitignored, so a CI checkout cannot
 // resolve a single selection record. That is stated and exited 0 rather than
 // failed — it is the same "not verifiable from the public repo" line
 // assert-app-dod.mjs already prints, and reporting a check that could not run as
@@ -79,7 +79,14 @@ const companyArg = companyAt === -1 ? null : argv[companyAt + 1];
 const positional = argv.filter((a, i) => companyAt === -1 || (i !== companyAt && i !== companyAt + 1));
 
 const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
-const COMPANY = resolve(companyArg ?? join(ROOT, 'company'));
+// Repointed 2026-08-15 TWICE. First when company/ moved under Private/; then again
+// when the flatten merged company/ and knowledge/ into ONE repo at Private/, which
+// left this default pointing at a directory that no longer exists. It did not go
+// red - it printed "THE PRIVATE TREE IS NOT IN THIS CHECKOUT" and exited 0, because
+// an absent private tree is the EXPECTED state in CI. So the vacuous pass and the
+// correct CI skip are the same output, and only reading the named path tells them
+// apart. --company still overrides.
+const COMPANY = resolve(companyArg ?? join(ROOT, 'Private'));
 
 /** Apps that predate the selection gates, exempt BY NAME. Every name here must
  *  still be a real workspace member — see `coverageLost` below for why a stale
@@ -171,18 +178,18 @@ if (apps.length === 0) {
 }
 
 // ── CAN THE PRIVATE TREE BE REACHED AT ALL? ─────────────────────────────────
-// `company/` is gitignored, so a CI checkout has none. Saying so and exiting 0
+// `Private/company/` is gitignored, so a CI checkout has none. Saying so and exiting 0
 // is the honest report of a check that could not run — the same line
 // assert-app-dod.mjs prints for the same reason. Failing instead would make any
 // lane that wires this permanently red for a structural reason, which is how a
 // guard gets removed rather than fixed.
 const COMPANY_PRESENT = existsSync(COMPANY) && statSync(COMPANY).isDirectory();
 
-// ⚠️ THE LOOP STILL RUNS WITH NO `company/`, and the first version did not — it
+// ⚠️ THE LOOP STILL RUNS WITH NO `Private/company/`, and the first version did not — it
 // skipped the whole thing, which threw away three checks that never needed the
 // private tree at all: a MISSING done-record, an unparseable one, and the note
 // that an app has not linked a record yet. Caught by dod-sync.test.mjs, whose
-// fixtures build no `company/`; the skip is now exactly as wide as the fact that
+// fixtures build no `Private/company/`; the skip is now exactly as wide as the fact that
 // justifies it, which is the resolve-and-hash step and nothing else.
 let verified = 0;
 let unresolvable = 0;
@@ -240,7 +247,7 @@ for (const appDir of apps) {
 if (!COMPANY_PRESENT) {
   prints.push(
     `THE PRIVATE TREE IS NOT IN THIS CHECKOUT (${COMPANY}), so ${unresolvable} linked selection record(s) ` +
-      "went unresolved and no sha256 was compared. company/ is gitignored — this is the expected state in CI, " +
+      "went unresolved and no sha256 was compared. Private/company/ is gitignored — this is the expected state in CI, " +
       "and it is the reason [pipeline N-9]'s stage doc is WRONG where it says a done-record with no selection " +
       'link "fails assert-app-dod.mjs": a guard in the public repo can assert a STRING is present, never that ' +
       'it RESOLVES. Everything that does not need the private tree still ran — the domain, the exemptions, the ' +

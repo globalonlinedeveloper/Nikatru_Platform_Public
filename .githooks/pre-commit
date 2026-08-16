@@ -1,0 +1,50 @@
+#!/bin/sh
+# ─────────────────────────────────────────────────────────────────────────────
+# pre-commit — the FAST spec guards (~0.5 s).
+#
+# Installed by:  node tooling/scripts/install-hooks.mjs
+# Shared by the public repo AND Private/company/, which is why the runner is
+# located by search rather than by a fixed relative path.
+#
+# 🔴 NO PIPELINES IN A DECISION PATH. `cmd | grep …; if [ $? ]` reports the LAST
+# stage's status, so a failing guard reads as success. This corpus has been bitten
+# by that twice — once while testing a guard written to catch exactly that trap.
+# Every status below is captured on its own line, immediately, before anything
+# else runs.
+# ─────────────────────────────────────────────────────────────────────────────
+set -u
+
+# Locate the runner from either repo root. Checked in order; first hit wins.
+RUNNER=''
+for c in \
+  "tooling/scripts/spec-guards.mjs" \
+  "../../tooling/scripts/spec-guards.mjs" \
+  "../tooling/scripts/spec-guards.mjs"
+do
+  if [ -f "$c" ]; then RUNNER="$c"; break; fi
+done
+
+if [ -z "$RUNNER" ]; then
+  echo "pre-commit: spec-guards.mjs not found from $(pwd)." >&2
+  echo "  A hook that cannot find its runner has checked nothing. Refusing." >&2
+  echo "  Re-install with: node tooling/scripts/install-hooks.mjs" >&2
+  exit 1
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node is not on PATH, so the spec guards did not run." >&2
+  echo "  Refusing rather than passing — an unrun check is not a clean one." >&2
+  exit 1
+fi
+
+node "$RUNNER" --fast
+code=$?          # captured immediately; nothing may run between these two lines
+
+if [ "$code" -ne 0 ]; then
+  echo "" >&2
+  echo "pre-commit: the spec guards are not clean. Commit refused." >&2
+  echo "  Deliberate override:  git commit --no-verify   (and say why in the message)" >&2
+  exit "$code"
+fi
+
+exit 0

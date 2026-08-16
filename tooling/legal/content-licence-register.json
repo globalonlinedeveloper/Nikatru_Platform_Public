@@ -3,7 +3,7 @@
     "[pipeline 7]P-5 / G-36 — no asset ships in a content pack without a cleared licence row.",
     "",
     "🔴 WHY THIS IS IN tooling/legal/ AND NOT company/compliance/. The stage-7 requirement specifies the",
-    "licence register 'under company/'. company/ is GITIGNORED (.gitignore line 15) and is not in the",
+    "licence register 'under Private/company/'. Private/company/ is GITIGNORED (.gitignore line 15) and is not in the",
     "public repository at all, so a CI guard pointed there reads NOTHING: existsSync returns false, the",
     "row set is empty, and the guard reports a clean tree over an empty domain. That is this repo's most",
     "repeated failure, and it is the same defect that stopped four stage-8 increments (PR #114) until the",

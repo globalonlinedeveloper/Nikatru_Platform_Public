@@ -3,7 +3,7 @@
 // provision-backend.mjs — take a freshly stamped backend app from placeholder to
 // deployable, in one command, with no hand-editing.
 //
-// [pipeline S-12] company/pipeline/03-stamper.md — limbs 2 and 3.
+// [pipeline S-12] Private/company/pipeline/03-stamper.md — limbs 2 and 3.
 //
 // WHAT IT REPLACES. The stamp's own checklist used to say: run
 // `wrangler d1 create <id>_db --location apac`, PASTE the returned uuid into

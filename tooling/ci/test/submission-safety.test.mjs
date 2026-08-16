@@ -160,7 +160,11 @@ describe('assert-submission-safety — the cadence limb is OURS and says so', ()
     assert.equal(code, 0, out);
     assert.match(out, /CADENCE UNREAD/);
     assert.match(out, /UNKNOWN, not zero/);
-    assert.match(out, /NIKATRU cadence rule \(`MASTER_PLAN\.md:277,:281`\)/);
+    /* The label was `MASTER_PLAN.md:277,:281` until 75374e4 repointed it at a
+       SECTION instead of two line numbers — precisely because a line number is a
+       pointer into a file other people edit, and nothing recomputes it. The guard
+       moved; this assertion did not, and the suite has been red since. */
+    assert.match(out, /NIKATRU cadence rule \(`MASTER_PLAN\.md` § 10, AUTO-MODE execution operating model\)/);
   });
 
   test('an EMPTY ledger prints zero with the reason — no account exists yet', () => {

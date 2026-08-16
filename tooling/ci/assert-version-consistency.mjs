@@ -15,7 +15,7 @@
 // GitHub Actions cannot interpolate a file into `with:`, so the values are still
 // written at each call site. What this guard removes is the SILENT miss.
 //
-// Pipeline requirement: company/pipeline/01-foundation.md → F-2.
+// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-2.
 //
 // Usage:  node tooling/ci/assert-version-consistency.mjs [repoRoot]
 // Exit 0 = every literal matches tooling/versions.json, 1 = drift.

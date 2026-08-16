@@ -1,6 +1,6 @@
 # The five decision numbers — `[pipeline 11]E-11`
 
-The taxonomy in `company/requirements/analytics-events.md` exists to produce **five numbers**.
+The taxonomy in `Private/requirements/analytics-events.md` exists to produce **five numbers**.
 Until now nothing in the tree could produce any of them: `services/platform/src/routes/` holds
 `config.ts` and `events.ts` only, so **nothing reads the `events` table**, and the four indexes
 shipped in advance for these very queries (`migrations/0002_analytics.sql:58-63`, whose comment
@@ -34,7 +34,7 @@ satisfied by the tested query set alone.
 5. **Feature adoption** — the `feature_used{name}` distribution across active installs (stage 4).
    → `05-feature-adoption.sql` (`feature_adoption`)
 
-The wording and the ORDER above mirror `company/requirements/analytics-events.md`
+The wording and the ORDER above mirror `Private/requirements/analytics-events.md`
 § *"The ~5 numbers these roll up into (the actual dashboard)"*. That document is the SSoT and it is
 **gitignored** — it never reaches CI — so this file is its public mirror and the test enforces the
 mirror in both directions **whenever the private tree is present** (i.e. on every developer machine,

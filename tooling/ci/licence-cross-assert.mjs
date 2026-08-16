@@ -114,12 +114,12 @@ export const ASSET_REGISTER_REL = 'tooling/legal/asset-register.json';
  *  Duplication is a decay mechanism, so it is guarded rather than trusted: if
  *  the register's copy is edited, this check fails and names the two
  *  requirement texts that must be re-synced. The corpus copies live under
- *  company/ (gitignored) and cannot be read from CI, which is why the assertion
+ *  Private/company/ (gitignored) and cannot be read from CI, which is why the assertion
  *  is anchored on the copy CI CAN see. */
 export const BOUNDARY_SENTENCE =
   'An app can ship a font it never generated with; a pack can carry a voice the app binary never sees.';
 
-const CORPUS_COPIES = ['company/pipeline/07-content-pipeline.md ([7]P-5)', 'company/pipeline/08-compliance-legal.md ([8]K-10)'];
+const CORPUS_COPIES = ['Private/company/pipeline/07-content-pipeline.md ([7]P-5)', 'Private/company/pipeline/08-compliance-legal.md ([8]K-10)'];
 
 /** Normalise a licence identity for comparison. Case and surrounding space are
  *  noise; nothing else is touched, because a licence id is an identifier and

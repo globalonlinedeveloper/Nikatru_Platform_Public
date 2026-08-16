@@ -23,7 +23,7 @@
 //      transport must also state the current one.
 //
 // ⚠️ WHY THE RULE IS "STATE THE CORRECTION", NOT "NEVER SAY THE WORDS".
-// ADR 029, `company/PROJECT_STATE.md` and both Supabase guards describe the old
+// ADR 029, `Private/PROJECT_STATE.md` and both Supabase guards describe the old
 // state ON PURPOSE — the incident is worth recording. A guard that forbade the
 // phrases outright would fire on correct input, and this repository has already
 // recorded what happens next: `assert-supabase-templates.mjs` failed its own
@@ -50,7 +50,7 @@
 //   · IT CANNOT JUDGE WHICH OF TWO ADJACENT SENTENCES A READER WILL BELIEVE. It
 //     enforces that the correction is PRESENT, never that the stale claim was
 //     removed. A document can satisfy it and still mislead.
-//   · IN CI IT SEES ONLY THE TRACKED TREE. `knowledge/` and `company/` are
+//   · IN CI IT SEES ONLY THE TRACKED TREE. `Private/knowledge/` and `Private/company/` are
 //     gitignored — the public repo does not carry them — and three of the four
 //     documents behind the incident lived there. On a machine that has them it
 //     scans them too, and it PRINTS which of the two situations it was in on

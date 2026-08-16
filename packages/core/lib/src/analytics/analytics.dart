@@ -5,7 +5,7 @@ import 'ids.dart';
 /// every event in a batch (`app_id`, `anon_id`, `platform`, `app_version`) are
 /// carried by the batch, not repeated per row.
 ///
-/// Envelope + taxonomy are LOCKED — `company/requirements/analytics-events.md`.
+/// Envelope + taxonomy are LOCKED — `Private/requirements/analytics-events.md`.
 class AnalyticsEvent {
   AnalyticsEvent({
     required this.event,

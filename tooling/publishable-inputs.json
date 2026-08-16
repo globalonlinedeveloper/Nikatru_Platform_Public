@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE PUBLISHABLE-INPUTS ALLOWLIST — [pipeline 9]R-12 company/pipeline/09-release-engineering.md",
+    "THE PUBLISHABLE-INPUTS ALLOWLIST — [pipeline 9]R-12 Private/company/pipeline/09-release-engineering.md",
     "",
     "Every value any workflow compiles INTO a Flutter artifact, with the reason it is safe to ship and",
     "the residual risk of shipping it. A `--dart-define` is not a secret store: the value is written",

@@ -3,8 +3,8 @@
 // assert-content-licences.mjs — [pipeline 7]P-5 / G-36: no asset ships in a
 // content pack without a cleared licence row.
 //
-// 🔴 THE REGISTER IS IN tooling/legal/, AND THE STAGE FILE SAYS company/. That is
-// not a filing preference. `company/` is gitignored (.gitignore line 15) and is
+// 🔴 THE REGISTER IS IN tooling/legal/, AND THE STAGE FILE SAYS Private/company/. That is
+// not a filing preference. `Private/company/` is gitignored (.gitignore line 15) and is
 // not in the public repository, so a guard pointed at
 // `company/compliance/licence-register` reads NOTHING on a runner: existsSync
 // returns false, the row set is empty, and the guard prints a clean tree over an
@@ -57,7 +57,7 @@ if (!existsSync(REGISTER)) {
   coverageLost(
     `${REGISTER_REL} does not exist.`,
     'The register is the left-hand side of every comparison here. Absent, this guard compares a recipe to',
-    'nothing and prints ok — which is precisely what a register under the gitignored company/ would do on',
+    'nothing and prints ok — which is precisely what a register under the gitignored Private/company/ would do on',
     'every CI run, forever.',
   );
 }

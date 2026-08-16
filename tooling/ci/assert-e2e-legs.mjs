@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-e2e-legs.mjs — the nightly must have EXERCISED the legs it claims.
 //
-// [pipeline N-6, clause 4] company/pipeline/06-app-build.md
+// [pipeline N-6, clause 4] Private/company/pipeline/06-app-build.md
 //
 // A green tick is not coverage. `assert-e2e-proof-fresh.mjs` (clause 1/3) proves
 // the nightly RAN, recently, on its timer. It cannot prove the suite it ran walks

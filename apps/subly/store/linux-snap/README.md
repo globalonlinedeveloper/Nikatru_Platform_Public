@@ -107,7 +107,7 @@ nothing about the icon is snap-specific, which is why it was not written as a
 snap file. `tooling/ci/assert-launcher-icons.mjs` limb 7 re-derives them on every
 CI run and fails on any drift.
 
-Full ordered console procedure: `company/runbooks/store-submission-snap.md`.
+Full ordered console procedure: `Private/runbooks/store-submission-snap.md`.
 
 ## Regenerating / validating
 

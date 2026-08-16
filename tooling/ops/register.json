@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE OPERATIONS REGISTER — [pipeline O-1] company/pipeline/14-operations.md",
+    "THE OPERATIONS REGISTER — [pipeline O-1] Private/company/pipeline/14-operations.md",
     "",
     "Every failure this factory can suffer, every recurring duty it performs, every surface it serves,",
     "every revert path, every recovery drill, every expiring thing and every retention obligation — each",
@@ -31,10 +31,10 @@
     "unparseable, empty, or blind to a custom domain this repo deploys. Delegation that cannot fail is",
     "just an absence with better manners.",
     "",
-    "WHY THE PUBLIC REPO AND NOT company/. CI cannot read company/ — it is gitignored and invisible to",
+    "WHY THE PUBLIC REPO AND NOT Private/company/. CI cannot read Private/company/ — it is gitignored and invisible to",
     "every workflow, which is exactly what blocked four stage-8 increments. This file holds surface names,",
     "cadences and dates. No credential, no business identifier, no PII. The private CONTENT (the runbooks",
-    "themselves) stays in company/, the owner queue in nikatru/; the STRUCTURAL FACTS a guard reads live here.",
+    "themselves) stays in Private/company/, the owner queue in nikatru/; the STRUCTURAL FACTS a guard reads live here.",
     "",
     "Enforced by tooling/ci/assert-ops-register.mjs (schema, coverage, staleness, revert mitigations,",
     "access-path intersection) and tooling/ci/assert-retention-coverage.mjs (the `retention` rows against",
@@ -404,7 +404,7 @@
         "retiredOn": "2026-08-14",
         "retiredWhy": "🔴 THE TASK WAS REMOVED, SO THE DUTY NO LONGER EXISTS — OWNER DECISION 2026-08-14: \"NikatruProjectBackup - Remove it, we only keep in business google Drive.\" `Unregister-ScheduledTask NikatruProjectBackup` was run and verified: the only NIKATRU task remaining is `NIKATRU daily backup` (Ready, LastTaskResult 0). A `duty` row whose substrate has been deleted is the register asserting coverage it does not have — the 'zero readers' defect this stage was written to end, so the row goes rather than being left to print a gap nobody can close.\n\nWHY THE TASK WENT, AND IT IS NOT THE EXIT CODE'S FAULT: its `LastTaskResult = 1` was CORRECT BEHAVIOUR — the 2026-08-07 SMART preflight refusing to write to `ST1000LM048-2E7172`, a disk in Predictive Failure. The task conflated two legs, a healthy Google Drive copy and a doomed `D:\\Backups\\nikatru` copy, so the failing half took the working half down with it and somebody disabled the whole thing on 2026-08-12. The owner's resolution removes the conflation at the root: Drive is the single destination, and there is no local-disk leg left to fail.",
         "evidence": "Task XML exported before removal (Actions: powershell -File .claude/scripts/backup-project.ps1; Trigger: MSFT_TaskDailyTrigger 02:30 IST from 2026-07-26; State: Disabled; LastRun 2026-08-12 08:13:00; LastTaskResult 1). Post-removal `Get-ScheduledTask NikatruProjectBackup` returns nothing. The `project` plain-file set it wrote is ALREADY absent from Drive — a listing of gbiz:nikatru-backup via the Drive API returns exactly 7 folders (brain, brain-personal, bundles, glitchtip, signing, transcripts, vault) and no `project`; it disappeared when [ADR 046] retired the gcrypt remote on 2026-08-12 and was never re-copied.",
-        "whatTheRetirementCosts": "🔴 STATED RATHER THAN GLOSSED: the code repo and company/ now have NO browsable plain-file copy off-site. They are covered by `bundles/code.bundle` and `bundles/company.bundle`, refreshed on every 8-hourly run, plus the `company` subtree in nikatru-private. A git bundle IS a complete cloneable repository, so this is a full backup and not a partial one — but it captures COMMITTED state only. That gap is closed by an assertion that already runs in backup-knowledge.ps1 on every pass: \"nothing uncommitted in the code repo — every state is in a set or a bundle\". If that assertion is ever weakened, this retirement becomes a hole. Anything gitignored is carried by its own set: .claude -> vault, release-keystore -> signing, nikatru/ -> brain + brain-personal.\n⬜ ALSO NOW UNREFERENCED: `.claude/scripts/backup-project.ps1` is called by nothing. Left in place deliberately rather than deleted in the same stroke — it holds the D:\\ preflight logic and the owner may want a local leg again once the disk is replaced.",
+        "whatTheRetirementCosts": "🔴 STATED RATHER THAN GLOSSED: the code repo and Private/company/ now have NO browsable plain-file copy off-site. They are covered by `bundles/code.bundle` and `bundles/company.bundle`, refreshed on every 8-hourly run, plus the `company` subtree in nikatru-private. A git bundle IS a complete cloneable repository, so this is a full backup and not a partial one — but it captures COMMITTED state only. That gap is closed by an assertion that already runs in backup-knowledge.ps1 on every pass: \"nothing uncommitted in the code repo — every state is in a set or a bundle\". If that assertion is ever weakened, this retirement becomes a hole. Anything gitignored is carried by its own set: .claude -> vault, release-keystore -> signing, nikatru/ -> brain + brain-personal.\n⬜ ALSO NOW UNREFERENCED: `.claude/scripts/backup-project.ps1` is called by nothing. Left in place deliberately rather than deleted in the same stroke — it holds the D:\\ preflight logic and the owner may want a local leg again once the disk is replaced.",
         "row": {
           "id": "duty.laptop.nikatru-project-backup",
           "kind": "duty",
@@ -414,7 +414,7 @@
           "cadence": "1d",
           "mechanism": {
             "substrate": "windows-task-scheduler",
-            "anchor": "company/runbooks/scheduled-tasks.md",
+            "anchor": "Private/runbooks/scheduled-tasks.md",
             "record": "Windows Task Scheduler LastTaskResult — and NOTHING reads it",
             "failingValue": "LastTaskResult != 0 — currently 1",
             "readBy": "nothing yet — this is the gap, named rather than hidden",
@@ -846,18 +846,18 @@
       "id": "duty.oci-console-session",
       "kind": "duty",
       "what": "The recurring Oracle Cloud console session: the memory-utilisation alarm, a CUSTOM boot-volume backup policy, Docker log rotation, the >=80% disk alert, and the console login itself.",
-      "detector": "This row. 🔴 Nothing in this repository can reach that host, so the register row IS the detector — the alternative is the state it replaces, where company/runbooks/operations.md §0 PRIME DIRECTIVE sat entirely unexecuted and nothing said so.",
+      "detector": "This row. 🔴 Nothing in this repository can reach that host, so the register row IS the detector — the alternative is the state it replaces, where Private/runbooks/operations.md §0 PRIME DIRECTIVE sat entirely unexecuted and nothing said so.",
       "response": "Owner performs the session and records the date. ⚠️ The free boot-volume backup cap is 5 TOTAL and the stock Bronze/Silver/Gold policies all overflow it, so a custom policy is required rather than a stock one.",
       "cadence": "30d",
       "mechanism": {
         "substrate": "oci-console",
-        "anchor": "company/runbooks/operations.md",
+        "anchor": "Private/runbooks/operations.md",
         "record": "the OCI console's own audit + the runbook checkboxes",
         "failingValue": "the 30-day abandonment clock elapsing with no login, or the alarms still absent",
         "readBy": "nothing in this repo can read a vendor console — this row is the only enumeration, which is why it prints on every run",
         "recordQuery": {
           "reader": "unreachable",
-          "why": "The record is the OCI console's own audit log plus runbook checkboxes in gitignored company/. There is no API this repo holds a credential for, and the runbook half is a human ticking a box — neither is a machine record a query can return a run from."
+          "why": "The record is the OCI console's own audit log plus runbook checkboxes in gitignored Private/company/. There is no API this repo holds a credential for, and the runbook half is a human ticking a box — neither is a machine record a query can return a run from."
         }
       },
       "absenceWatcher": {
@@ -883,7 +883,7 @@
       "cadence": "8h",
       "mechanism": {
         "substrate": "windows-task-scheduler",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": "Windows Task Scheduler LastTaskResult + the GlitchTip heartbeat monitor",
         "failingValue": "LastTaskResult != 0, or the heartbeat not arriving inside its grace window",
         "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop)",
@@ -896,7 +896,7 @@
         "substrate": "glitchtip-heartbeat",
         "what": "GlitchTip heartbeat monitor 6 'Laptop daily backup', project `ops`, on the Oracle box. The script POSTs on success; the monitor alarms on the POST NOT ARRIVING.",
         "signal": "No heartbeat inside the monitor's interval -> Down transition -> the project's uptime alert rule -> email to support@nikatru.com. The laptop being off, unbootable, or the task silently disabled all produce the same POST-shaped silence, which is the point.",
-        "margin": "Monitor interval 43200s (12h) against an 8h duty cadence = 1.5x, the same ratio check-heartbeats.mjs uses and for the same reason: an interval EQUAL to the cadence leaves zero margin and one late run reports Down. company/runbooks/backup-liveness.md is where that rule is written down.",
+        "margin": "Monitor interval 43200s (12h) against an 8h duty cadence = 1.5x, the same ratio check-heartbeats.mjs uses and for the same reason: an interval EQUAL to the cadence leaves zero margin and one late run reports Down. Private/runbooks/backup-liveness.md is where that rule is written down.",
         "downTransitionDrill": {
           "date": "2026-08-05",
           "how": "Shrank the heartbeat window to 60s so the production fetch() saw no heartbeat inside it, then enqueued the production perform_checks task — the same task dispatch_checks enqueues, not a test double. Real Down transition 08:56:20Z, real recovery 08:57:01Z after a real POST to the heartbeat endpoint. Interval restored to 43200s; endpoint_id never changed, so the laptop's heartbeat URL still works.",
@@ -932,8 +932,8 @@
         "where the count of duties sitting on it becomes readable.",
         "",
         "The schedules live ONLY in root crontab on the box (`crontab -l` -> crontab-root.txt, regenerated",
-        "into the backup set at the start of every run). company/runbooks/operations.md and",
-        "company/runbooks/glitchtip.md are the anchors; CI cannot read either, and this guard says so with",
+        "into the backup set at the start of every run). Private/runbooks/operations.md and",
+        "Private/runbooks/glitchtip.md are the anchors; CI cannot read either, and this guard says so with",
         "a count rather than pretending the check happened."
       ],
       "id": "duty.oci.glitchtip-pg-dump",
@@ -944,7 +944,7 @@
       "cadence": "1d",
       "mechanism": {
         "substrate": "oci-cron",
-        "anchor": "company/runbooks/glitchtip.md",
+        "anchor": "Private/runbooks/glitchtip.md",
         "record": "the gt-*.sql.gz files in /opt/glitchtip/backups and their mtimes and sizes",
         "failingValue": "no dump newer than the window, or one small enough to be truncated — 3,379,805 bytes was the healthy size measured 2026-08-05",
         "readBy": "/opt/glitchtip/backup-liveness.py on the box",
@@ -960,7 +960,7 @@
         "downTransitionDrill": {
           "date": "2026-08-05",
           "how": "Two failures were FORCED against the real checker rather than simulated: a stale dump and a truncated one. Each produced a real GlitchTip event. ⚠️ This drilled the OUTCOME-EVENT leg, not the heartbeat-ABSENCE leg — the monitor-16 Down transition itself has never been forced. The two are different code paths (process_event_alerts + send_notification vs send_monitor_notification), which is precisely why the box's disk alert was tested rather than assumed on the same day.",
-          "evidence": "Both events delivered in one mail, '2 errors reported in ops', 13:38:15Z; test issues OPS-3 and OPS-4, both resolved. Recorded in company/runbooks/operations.md."
+          "evidence": "Both events delivered in one mail, '2 errors reported in ops', 13:38:15Z; test issues OPS-3 and OPS-4, both resolved. Recorded in Private/runbooks/operations.md."
         },
         "gap": "🔴 THE WATCHER IS ON THE MACHINE IT WATCHES. backup-liveness.py, the GlitchTip instance holding monitor 16, the alert evaluation and the Resend hop are all on this one Oracle box — including monitor id 1, which watches GlitchTip itself. If the box is down, the check that would notice is down and the mail that would say so is down with it. Proving the chain delivers WHILE THE BOX IS UP says nothing about the case that matters most. [pipeline E-9b], owner-gated and recorded as undecided in tooling/monitor-register.json -> observability.spof; do NOT read a green verify-alarm-chains.mjs run as an answer to it. The third path — a non-zero exit so cron mails root — does not depend on GlitchTip but still depends on the box."
       },
@@ -981,7 +981,7 @@
       "cadence": "1d",
       "mechanism": {
         "substrate": "oci-cron",
-        "anchor": "company/runbooks/glitchtip.md",
+        "anchor": "Private/runbooks/glitchtip.md",
         "record": "the objects under gbiz:nikatru-backup/glitchtip/ on Drive (PLAINTEXT since [ADR 046] — browsable is a recovery property), plus /opt/glitchtip/.gt-drive-sync.done",
         "failingValue": "the newest dump absent from Drive, or the .done stamp older than the newest dump",
         "readBy": "/opt/glitchtip/backup-liveness.py on the box",
@@ -1014,7 +1014,7 @@
       "cadence": "1h",
       "mechanism": {
         "substrate": "oci-cron",
-        "anchor": "company/runbooks/operations.md",
+        "anchor": "Private/runbooks/operations.md",
         "record": "the heartbeat POSTs recorded against GlitchTip monitor 16, and the events raised in project `ops`",
         "failingValue": "no POST inside the 3h monitor interval",
         "readBy": "GlitchTip monitor 16 — which runs on this same box",
@@ -1027,7 +1027,7 @@
         "substrate": "glitchtip-heartbeat",
         "what": "GlitchTip monitor 16, interval 3h against an hourly poster.",
         "ownerGated": true,
-        "margin": "🟢 THE MARGIN IS THE DESIGN, and it is why the poster is hourly rather than once per backup. The box backs up DAILY and GlitchTip caps a monitor interval at 86400s — exactly 24h — so a once-per-backup heartbeat could have no margin at all and one late run would report Down. Hourly poster + 3h interval = three consecutive failures before it alarms. company/runbooks/backup-liveness.md establishes the rule from the laptop's chain.",
+        "margin": "🟢 THE MARGIN IS THE DESIGN, and it is why the poster is hourly rather than once per backup. The box backs up DAILY and GlitchTip caps a monitor interval at 86400s — exactly 24h — so a once-per-backup heartbeat could have no margin at all and one late run would report Down. Hourly poster + 3h interval = three consecutive failures before it alarms. Private/runbooks/backup-liveness.md establishes the rule from the laptop's chain.",
         "gap": "🔴 THE MOST CIRCULAR ROW IN THE REGISTER, and it is worth stating plainly rather than leaving as an inference: this duty IS the box's watcher, and the only thing watching ITS absence is a monitor hosted on the same box, evaluated by a process on the same box, mailing through a hop on the same box. Everything from the failure to the notification shares one machine. [pipeline E-9b], owner-gated and undecided. The closing move is the same one duty.workflow.ops-watch.yml needs — an absence signal on a second provider — which is the shape of O-4 repeating one level down."
       },
       "accessProviders": [
@@ -1047,7 +1047,7 @@
       "cadence": "1h",
       "mechanism": {
         "substrate": "oci-cron",
-        "anchor": "company/runbooks/operations.md",
+        "anchor": "Private/runbooks/operations.md",
         "record": "events in the GlitchTip `ops` project",
         "failingValue": "no event when usage is over the threshold — which is indistinguishable from no event because usage is under it",
         "readBy": "nothing — this row is the only enumeration",
@@ -1238,12 +1238,12 @@
       "kind": "recovery-path",
       "what": "Rebuild every repository from the offsite git bundles, with no GitHub account and no laptop.",
       "detector": "This row's cadence against lastDrill. The mechanism it copies already exists in miniature: backup-knowledge.ps1 compares a $DrillMaxDays ceiling against .claude/last-restore-drill.txt and WARNS rather than fails, deliberately, because only a human can perform a drill.",
-      "response": "Follow company/runbooks/backup-liveness.md.",
+      "response": "Follow Private/runbooks/backup-liveness.md.",
       "cadence": "120d",
       "lastDrill": "2026-07-26",
       "mechanism": {
         "substrate": "google-drive",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt on the laptop",
         "failingValue": "a drill date older than the ceiling",
         "readBy": "backup-knowledge.ps1 on every run (warn, not fail)"
@@ -1258,12 +1258,12 @@
       "kind": "recovery-path",
       "what": "Rebuild working access from the credential vault alone.",
       "detector": "This row's cadence against lastDrill.",
-      "response": "Follow company/runbooks/backup-liveness.md.",
+      "response": "Follow Private/runbooks/backup-liveness.md.",
       "cadence": "120d",
       "lastDrill": "2026-07-26",
       "mechanism": {
         "substrate": "google-drive",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt on the laptop",
         "failingValue": "a drill date older than the ceiling",
         "readBy": "backup-knowledge.ps1 on every run (warn, not fail)"
@@ -1312,7 +1312,7 @@
       "lastDrill": null,
       "mechanism": {
         "substrate": "laptop",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt on the laptop",
         "failingValue": "no dated drill",
         "readBy": "backup-knowledge.ps1 (warn, not fail)"
@@ -1329,13 +1329,13 @@
       "kind": "recovery-path",
       "what": "Restore the GlitchTip Postgres database from its dump.",
       "detector": "This row's cadence against lastDrill.",
-      "response": "company/runbooks/operations.md §C.5.",
+      "response": "Private/runbooks/operations.md §C.5.",
       "cadence": "180d",
       "lastDrill": "2026-08-05",
       "drillEvidence": "FIRST EVER RESTORE PERFORMED 2026-08-05, and it found two defects a successful dump can never reveal. (1) The dump was plain SQL piped to gzip while §C.5 documents `pg_restore -j4` and §C.4 gates uploads on `pg_restore --list` — both FAILED: 'input file appears to be a text format dump. Please use psql.' Fixed to `pg_dump -Fc`; the gate now returns exit 0 over 6963 archive entries. (2) `pg_restore -j4` DEADLOCKS on this partitioned schema (ALTER INDEX ... ATTACH PARTITION, and the issueevent release_id FK), INTERMITTENTLY — 2 ignored errors on one pass, 4 on the next — and pg_restore IGNORES them, so it finishes looking successful with objects missing. Serial restore is clean in one pass. Verified by row counts against live: issues 13=13, projects 2=2, users 1=1, releases 6=6, orgs 1=1; uptime_monitorcheck 114527 vs 114513 = ~2 min of continuous checks written after the snapshot, not loss. Restored into scratch databases; the live database was never touched.",
       "mechanism": {
         "substrate": "oci-docker",
-        "anchor": "company/runbooks/operations.md",
+        "anchor": "Private/runbooks/operations.md",
         "record": "the dump files and their timestamps on the Oracle box",
         "failingValue": "no dated restore drill",
         "readBy": "nothing yet"
@@ -1353,12 +1353,12 @@
       "kind": "recovery-path",
       "what": "Restore the Oracle box's boot volume.",
       "detector": "This row's cadence against lastDrill.",
-      "response": "company/runbooks/operations.md §0.",
+      "response": "Private/runbooks/operations.md §0.",
       "cadence": "180d",
       "lastDrill": null,
       "mechanism": {
         "substrate": "oci",
-        "anchor": "company/runbooks/operations.md",
+        "anchor": "Private/runbooks/operations.md",
         "record": "the OCI console's backup list",
         "failingValue": "no backup policy, or no dated restore drill",
         "readBy": "nothing yet"
@@ -1428,7 +1428,7 @@
       "lastDone": "2026-07-26",
       "mechanism": {
         "substrate": "google-drive",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt",
         "failingValue": "the response path needing a provider this failure takes down",
         "readBy": "tooling/ci/assert-ops-register.mjs — it intersects takesDown against the response row's own accessProviders, two lists written independently"
@@ -1452,7 +1452,7 @@
       "lastDone": "2026-07-26",
       "mechanism": {
         "substrate": "laptop",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt",
         "failingValue": "the response path needing github",
         "readBy": "tooling/ci/assert-ops-register.mjs"
@@ -1477,7 +1477,7 @@
       "lastDone": null,
       "mechanism": {
         "substrate": "laptop",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt",
         "failingValue": "the response path needing google",
         "readBy": "tooling/ci/assert-ops-register.mjs"
@@ -1500,7 +1500,7 @@
       "leadDays": 30,
       "mechanism": {
         "substrate": "cloudflare-registrar",
-        "anchor": "company/runbooks/operations.md",
+        "anchor": "Private/runbooks/operations.md",
         "record": "the registrar console",
         "failingValue": "auto-renew off, or a renewal date inside the lead window",
         "readBy": "nothing yet — the console is not machine-readable from CI"
@@ -1524,7 +1524,7 @@
       "leadDays": 30,
       "mechanism": {
         "substrate": "hostinger",
-        "anchor": "company/runbooks/operations.md",
+        "anchor": "Private/runbooks/operations.md",
         "record": "the registrar console",
         "failingValue": "auto-renew off, or a renewal date inside the lead window",
         "readBy": "nothing yet"
@@ -1548,7 +1548,7 @@
       "leadDays": 30,
       "mechanism": {
         "substrate": "oci",
-        "anchor": "company/runbooks/glitchtip.md",
+        "anchor": "Private/runbooks/glitchtip.md",
         "record": "the certificate file's own notAfter",
         "failingValue": "notAfter inside the lead window",
         "readBy": "nothing yet — the cert is on a host this repo cannot reach"
@@ -1572,7 +1572,7 @@
       "leadDays": 30,
       "mechanism": {
         "substrate": "google-cloud-console",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": "the Google Cloud console's OAuth consent screen",
         "failingValue": "publication state = testing",
         "readBy": "nothing yet"
@@ -1598,7 +1598,7 @@
       "satisfiedBy": "duty.laptop.nikatru-daily-backup",
       "mechanism": {
         "substrate": "google-drive",
-        "anchor": "company/runbooks/backup-liveness.md",
+        "anchor": "Private/runbooks/backup-liveness.md",
         "record": "the backup task's own run record — every success is a token use",
         "failingValue": "the backup duty's cadence lengthening past the non-use window",
         "readBy": "tooling/ci/assert-ops-register.mjs — it checks satisfiedBy resolves to a real row whose cadence is inside the window"
@@ -1752,9 +1752,9 @@
         "microsoft"
       ],
       "ownerGated": true,
-      "ownerGap": "Console-only. Owner action; see company/runbooks/microsoft-store-registration.md.",
+      "ownerGap": "Console-only. Owner action; see Private/runbooks/microsoft-store-registration.md.",
       "source": "verified",
-      "expiryKnownAt": "Partner Center -> Account settings -> Developer account. See company/runbooks/microsoft-store-registration.md. Console-only."
+      "expiryKnownAt": "Partner Center -> Account settings -> Developer account. See Private/runbooks/microsoft-store-registration.md. Console-only."
     },
     {
       "id": "expiring.store-enrolment.snap",
@@ -1807,15 +1807,15 @@
       "kind": "recovery-path",
       "what": "Orderly withdrawal of an app from the portfolio — THE RETIREMENT CONTRACT that `review.kill-or-keep` below has instructed its reader to execute since this register was written. Until 2026-08-06 no such document existed, so the portfolio's kill switch terminated in a pointer to nothing — which reads worse than an admitted gap, because it looks as though the hard part was already written down.",
       "detector": "This row's cadence against lastDrill. 🔴 `lastDrill` is null and null is the ACCURATE value: the procedure is WRITTEN and has NEVER BEEN EXECUTED. [14]O-19's acceptance has two halves — a checklist derived from the surface enumeration, and an end-to-end execution at least once — and writing the file discharges only the first.",
-      "response": "company/runbooks/app-retirement.md. 🔴 THE CONTRACT HALF FIRST — what stays alive and for how long (the config route services/platform/src/routes/config.ts, the entitlement read, the account-deletion URL), how the install base is told (the min_supported_version floor enforced by packages/core/lib/src/config/version_gate.dart is the ONLY channel that reaches a shipped client), and the fate of anything already sold. THEN the teardown half, which walks tooling/channel-register.json, tooling/monitor-register.json, this register's own retention rows and sites/_shared/_data/apps.json rather than restating them, because the surface set grows with every stamped app and a hand-copied list is stale on arrival.",
+      "response": "Private/runbooks/app-retirement.md. 🔴 THE CONTRACT HALF FIRST — what stays alive and for how long (the config route services/platform/src/routes/config.ts, the entitlement read, the account-deletion URL), how the install base is told (the min_supported_version floor enforced by packages/core/lib/src/config/version_gate.dart is the ONLY channel that reaches a shipped client), and the fate of anything already sold. THEN the teardown half, which walks tooling/channel-register.json, tooling/monitor-register.json, this register's own retention rows and sites/_shared/_data/apps.json rather than restating them, because the surface set grows with every stamped app and a hand-copied list is stale on arrival.",
       "cadence": "180d",
       "lastDrill": null,
       "mechanism": {
         "substrate": "runbook",
-        "anchor": "company/runbooks/app-retirement.md",
+        "anchor": "Private/runbooks/app-retirement.md",
         "record": "the runbook's §8 execution log — deliberately EMPTY until a retirement happens; an entry is the filled §2 contract table with real dates plus which halves were exercised",
         "failingValue": "an app withdrawn with no dated §8 entry; a lastDrill older than this cadence; or — the shape that started this — a register row instructing its reader to execute a document that does not exist",
-        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. 🔴 It CANNOT read the runbook's contents: company/ is gitignored and invisible to CI, so the execution half is held as a DATE here rather than as a claim in prose nothing can check."
+        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. 🔴 It CANNOT read the runbook's contents: Private/company/ is gitignored and invisible to CI, so the execution half is held as a DATE here rather than as a claim in prose nothing can check."
       },
       "accessProviders": [
         "owner",
@@ -1835,15 +1835,15 @@
       "kind": "recovery-path",
       "what": "The response to a store suspension, policy strike or takedown demand, written BEFORE there is an account to suspend: who is notified, which console screen holds the appeal lever, what the appeal deadline is, and what the portfolio does while one app is down — because L21 stakes every app on one identity per platform and Play's enforcement extends to related accounts.",
       "detector": "This row's cadence against lastDrill, where THE DRILL IS DEFINED AS RE-READING THE FOUR STORES' OWN PUBLISHED ENFORCEMENT PAGES and reconciling them against the runbook — not as being suspended. That is the only form of this drill anybody can perform on demand, and the store pages are the thing that actually moves: Play's 180-day account-termination window only came into effect on 2026-01-28.",
-      "response": "company/runbooks/store-enforcement-response.md — one section per row of tooling/channel-register.json (8 channels, including the three we host ourselves, whose enforcer is Cloudflare or a DMCA notice rather than a store), plus the emergency app-level unpublish path [8]K-9 consumes.",
+      "response": "Private/runbooks/store-enforcement-response.md — one section per row of tooling/channel-register.json (8 channels, including the three we host ourselves, whose enforcer is Cloudflare or a DMCA notice rather than a store), plus the emergency app-level unpublish path [8]K-9 consumes.",
       "cadence": "180d",
       "lastDrill": "2026-08-06",
       "mechanism": {
         "substrate": "app-stores",
-        "anchor": "company/runbooks/store-enforcement-response.md",
+        "anchor": "Private/runbooks/store-enforcement-response.md",
         "record": "the stores' own published pages, re-read on the date above — and, when one ever arrives, the enforcement email itself, which is the ONLY document that states the deadline Play and Apple decline to publish",
         "failingValue": "lastDrill older than this cadence — nobody has re-read the store pages in six months while the runbook goes on asserting their console paths and the one deadline that is established",
-        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. That is [10]D-12 acceptance limb (d), and it is the ONLY limb of D-12 a machine can hold: company/ is gitignored, so CI cannot read one word of the runbook it is keeping fresh."
+        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. That is [10]D-12 acceptance limb (d), and it is the ONLY limb of D-12 a machine can hold: Private/company/ is gitignored, so CI cannot read one word of the runbook it is keeping fresh."
       },
       "accessProviders": [
         "owner",

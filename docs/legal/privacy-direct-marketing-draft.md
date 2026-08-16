@@ -4,8 +4,8 @@
 asks for: *"the agent produces the ready-to-sign diff; the section goes live only on owner signature. It
 remains THE gate on any promo surface rendering."*
 
-- **Decision record:** `knowledge/decisions/040-cross-promo-v1-lock.md` (LOCKED 2026-08-10), decision 3.
-- **Reasoning:** `knowledge/research/44-CROSS-PROMOTION-HOUSE-ADS-OFFERS.md` §3 V2 / V3 / V4 and §4.
+- **Decision record:** `Private/decisions/040-cross-promo-v1-lock.md` (LOCKED 2026-08-10), decision 3.
+- **Reasoning:** `Private/research/44-CROSS-PROMOTION-HOUSE-ADS-OFFERS.md` §3 V2 / V3 / V4 and §4.
 - **Duty row:** `first-party-promotion-legal-basis` in `tooling/legal/duty-matrix.json` (K-3, owner-gated,
   prints on every CI run until this is signed or the programme is dropped).
 - **Class:** [ADR 031] class B — published legal copy. An agent may propose the wording; only the owner
@@ -311,7 +311,7 @@ guard de-duplicates spans within a page, so the existing row covers both occurre
 
 ## 7. Sources, so every sentence above can be re-checked
 
-Primary text, quoted in `knowledge/research/44-CROSS-PROMOTION-HOUSE-ADS-OFFERS.md` §3 with its citations:
+Primary text, quoted in `Private/research/44-CROSS-PROMOTION-HOUSE-ADS-OFFERS.md` §3 with its citations:
 
 - **GDPR Recital 47** — *"The processing of personal data for direct marketing purposes may be regarded as
   carried out for a legitimate interest"*, qualified by reasonable expectation and *"a relevant and

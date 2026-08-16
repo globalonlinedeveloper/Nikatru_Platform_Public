@@ -20,7 +20,7 @@
 // out shallow, and history scanning is heavier separate work). Nothing private
 // has ever entered this repo's history — verified 2026-07-26.
 //
-// Pipeline requirement: company/pipeline/01-foundation.md → F-6.
+// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-6.
 //
 // Usage:  node tooling/ci/scan-secrets.mjs [repoRoot] [--gitleaks <path>]
 // Exit 0 = clean, 1 = a finding, a broken scanner, or a failed self-test.

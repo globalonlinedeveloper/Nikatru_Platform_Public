@@ -22,8 +22,8 @@
 //
 // 🔴 THE REAL-TREE MUTATIONS CAME FIRST. Recorded 2026-08-06 against a scratch
 // copy of HEAD's pubspec.yaml, restored and re-run green afterwards:
-//   T1  HEAD state, company/ present   => exit 0, "NO APP HAS ENTERED THE FACTORY"
-//   T2  HEAD state, company/ removed   => exit 0, + "THE PRIVATE TREE IS NOT IN THIS CHECKOUT"
+//   T1  HEAD state, Private/company/ present   => exit 0, "NO APP HAS ENTERED THE FACTORY"
+//   T2  HEAD state, Private/company/ removed   => exit 0, + "THE PRIVATE TREE IS NOT IN THIS CHECKOUT"
 //   T3  apps/subly renamed to apps/sublite (workspace AND disk)
 //                                      => exit 1, "EXEMPT name(s) are not workspace members"
 //   T4  apps/ghost created on disk only => exit 1, "not in the root pubspec.yaml `workspace:` block"
@@ -57,7 +57,7 @@ after(() => {
 const PUBSPEC = (apps) => `name: nikatru_workspace\n\nenvironment:\n  sdk: ^3.9.0\n\nworkspace:\n  - packages/core\n${apps.map((a) => `  - ${a}\n`).join('')}\ndev_dependencies:\n  melos: ^8.2.2\n`;
 
 /**
- * A tree with a root pubspec, the apps it names, and optionally a company/.
+ * A tree with a root pubspec, the apps it names, and optionally a Private/company/.
  * `EXEMPT` in the script names `apps/subly`, so a fixture that wants the empty
  * domain has to carry that app — which is the point: the exemption is a claim
  * about a specific app, and a fixture that fakes it would be testing nothing.
@@ -73,9 +73,9 @@ function tree({ workspace = ['apps/subly'], onDisk = null, company = {}, dod = {
     writeFileSync(abs, typeof body === 'string' ? body : JSON.stringify(body, null, 2));
   }
   if (company !== null) {
-    mkdirSync(join(root, 'company'), { recursive: true });
+    mkdirSync(join(root, 'Private'), { recursive: true });
     for (const [rel, body] of Object.entries(company)) {
-      const abs = join(root, 'company', rel);
+      const abs = join(root, 'Private', rel);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, body);
     }
@@ -182,10 +182,10 @@ describe('N-9 · the sha256 half, which is the only reason this script is local'
   });
 });
 
-describe('N-9 · a checkout with no company/ reports what it could not do', () => {
+describe('N-9 · a checkout with no Private/company/ reports what it could not do', () => {
   test('🔴 PRINTS and exits 0 — this is the CI shape, and failing it would make the lane permanently red', () => {
     const root = tree({ workspace: ['apps/subly'] });
-    rmSync(join(root, 'company'), { recursive: true, force: true });
+    rmSync(join(root, 'Private'), { recursive: true, force: true });
     const { code, out } = run(root);
     assert.equal(code, 0, out);
     assert.match(out, /THE PRIVATE TREE IS NOT IN THIS CHECKOUT/);
@@ -198,7 +198,7 @@ describe('N-9 · a checkout with no company/ reports what it could not do', () =
       workspace: ['apps/subly', 'apps/lingo'],
       dod: { 'apps/lingo/dod.json': { status: 'done', selection: { record: 'company/selection/lingo.md', sha256: 'a'.repeat(64) } } },
     });
-    rmSync(join(root, 'company'), { recursive: true, force: true });
+    rmSync(join(root, 'Private'), { recursive: true, force: true });
     const { code, out } = run(root);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /does not resolve/);

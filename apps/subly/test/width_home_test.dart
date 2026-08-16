@@ -5,7 +5,7 @@
 // lands, this wrapper can be deleted with every test still green". This file is
 // what landed, and that comment now reads `✅ POLICED` and points here. The
 // block below is the one pre-drafted in
-// `knowledge/plans/prefab-artifacts/p26b-home/width-behaviour.md` §4, with its
+// `Private/plans/prefab-artifacts/p26b-home/width-behaviour.md` §4, with its
 // imports adapted to `support/width_harness.dart` (the harness was extracted
 // from `responsive_width_test.dart` after that draft was written, so the draft's
 // "append to responsive_width_test.dart" is now "a file of its own, on the

@@ -27,7 +27,7 @@ external_email_enabled  true   rate_limit_email_sent  100   mailer_autoconfirm  
 
 The architecture is recorded once, machine-readably, in
 [`tooling/mail-transport.json`](../../../tooling/mail-transport.json), and in full in
-**ADR 029** ([`knowledge/decisions/029-email-sending-architecture.md`][adr029], local-only tree):
+**ADR 029** ([`Private/decisions/029-email-sending-architecture.md`][adr029], local-only tree):
 
 > **Workspace = the owner's mailbox · Resend = everything a machine sends.**
 > `nikatru.com` is Google Workspace and carries **human mail only**.

@@ -15,7 +15,7 @@
 // what shipped. Treat it as a real failure — an unrecorded deploy is the state
 // this script exists to abolish.
 //
-// Pipeline requirement: company/pipeline/01-foundation.md → F-5b, and
+// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-5b, and
 // [pipeline 10]D-9 for the store half below.
 //
 // ── THE STORE HALF, DECIDED BEFORE THE FIRST SUBMISSION — [10]D-9 ────────────

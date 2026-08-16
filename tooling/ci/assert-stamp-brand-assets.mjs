@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-stamp-brand-assets.mjs — a stamped app carries ITS brand, not Flutter's.
 //
-// [pipeline S-14] company/pipeline/03-stamper.md
+// [pipeline S-14] Private/company/pipeline/03-stamper.md
 //
 // WHY. Measured 2026-07-29: every one of the five icons the brick stamped was
 // BYTE-IDENTICAL to stock `flutter create` output. DoD §4-G already records the

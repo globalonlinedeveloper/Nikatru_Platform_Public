@@ -203,19 +203,22 @@ describe('assert-vendor-portability', () => {
     });
 
     // 🔴 THIS PAIR EXISTS BECAUSE CI CAUGHT WHAT THE LOCAL RUN COULD NOT.
-    // The guard runs in the PUBLIC repo, where `company/` is gitignored and
+    // The guard runs in the PUBLIC repo, where `Private/` is gitignored and
     // structurally absent — so citing a private runbook as checkable evidence
-    // passes on a dev box (company/ is on disk) and fails in CI. Graded
+    // passes on a dev box (Private/ is on disk) and fails in CI. Graded
     // could-not-establish WITH ITS REASON and printed, never silently skipped;
-    // and the exemption is STRUCTURAL (only the `company/` prefix, the
-    // private-SSoT boundary itself) rather than a flag anyone could set.
+    // and the exemption is STRUCTURAL (only the `Private/` prefix, the private
+    // corpus boundary itself) rather than a flag anyone could set.
+    // FLATTENED 2026-08-15: the fixture path below was repointed by the citation
+    // sweep; the ASSERTION was not, because `company/runbooks/...` carries no
+    // `Private/` prefix for a sweep to match on. Same trap as ops-register.
     test('grades a private-SSoT export path instead of failing on it', () => {
       const { code, out } = run(tree({
-        mutate: (r) => { r.vendors.supabase.exportPath.path = 'company/runbooks/operations.md'; return r; },
+        mutate: (r) => { r.vendors.supabase.exportPath.path = 'Private/runbooks/operations.md'; return r; },
       }));
       assert.equal(code, 0);
       assert.match(out, /could-not-establish \(1\)/);
-      assert.match(out, /supabase → company\/runbooks\/operations\.md/);
+      assert.match(out, /supabase → Private\/runbooks\/operations\.md/);
     });
 
     // …but if EVERY export path were private, part 5 would be recorded

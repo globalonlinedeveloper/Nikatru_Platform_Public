@@ -9,7 +9,7 @@
 // D-10's replacement acceptance has three re-checkable limbs. This file is
 // limb (i) for `android-play` — "a submission script exists AND resolves to a
 // step in a workflow, parsed not grepped". Limb (ii) is
-// company/runbooks/store-submission-android.md. Limb (iii) — a submission record
+// Private/runbooks/store-submission-android.md. Limb (iii) — a submission record
 // in the [10]D-9 ledger — needs a real submission and stays UNSATISFIED; it is
 // the only one of the three that can prove the path was walked rather than
 // merely written, and nothing here pretends otherwise.
@@ -915,7 +915,7 @@ if (problems.length) {
 if (DRY_RUN) {
   console.log('');
   console.log('submit-play: DRY RUN OK — nothing was sent to Google.');
-  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'company/runbooks/store-submission-android.md'}`);
+  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-android.md'}`);
   console.log('   ⬜ The 12-tester / 14-continuous-day closed test does NOT gate this account and never did.');
   console.log('      Google scopes that rule to "personal accounts created after November 13, 2023"');
   console.log('      (support.google.com/googleplay/android-developer/answer/14151465); NIKATRU is a verified');

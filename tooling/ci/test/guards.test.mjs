@@ -19,7 +19,7 @@
 // repo. No network — the two API-backed guards are covered for argument and
 // decision handling only, which is exactly where the real defect was.
 //
-// Pipeline requirement: company/pipeline/01-foundation.md → F-10.
+// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-10.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"   (glob, so every *.test.mjs runs;
 //       a bare directory path is treated as a module on Windows and throws)

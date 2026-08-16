@@ -518,7 +518,7 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
 // of the trimmed field, which is the shape Apple's App Name and Subtitle take.
 // Those two are the ONLY Apple listing limits this repo has a primary source for
 // — the keywords field, description and promotional text are all recorded as
-// COULD-NOT-ESTABLISH in company/pipeline/10-distribution-store.md D-5 and carry
+// COULD-NOT-ESTABLISH in Private/company/pipeline/10-distribution-store.md D-5 and carry
 // no number anywhere.
 //
 // 🔴 THE THREE CASES THAT MATTER ARE THE LAST THREE. An invented limit fires on

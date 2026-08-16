@@ -48,7 +48,7 @@ section of the same name. The tagline is 37 characters and Apple's Subtitle is
 
 | Field | Limit | Source |
 |---|---|---|
-| App Name | **30** characters, minimum **2** | `developer.apple.com/help/app-store-connect/reference/app-information/` — fetched **2026-07-29**, recorded in `company/pipeline/10-distribution-store.md` D-5 |
+| App Name | **30** characters, minimum **2** | `developer.apple.com/help/app-store-connect/reference/app-information/` — fetched **2026-07-29**, recorded in `Private/company/pipeline/10-distribution-store.md` D-5 |
 | Subtitle | **30** characters | *ibid.* |
 | Keywords field | ⚠️ **COULD-NOT-ESTABLISH** | the fetched page carries **Name and Subtitle only** |
 | Description | ⚠️ **COULD-NOT-ESTABLISH** | not on the fetched page |
@@ -92,7 +92,7 @@ is what submits this channel.
   that grants are per-app and unbuilt. ⚠️ The exact required entitlement set is
   **UNVERIFIED** — not fetched.
 
-Full ordered console procedure: `company/runbooks/store-submission-apple.md`.
+Full ordered console procedure: `Private/runbooks/store-submission-apple.md`.
 
 ## Regenerating / validating
 

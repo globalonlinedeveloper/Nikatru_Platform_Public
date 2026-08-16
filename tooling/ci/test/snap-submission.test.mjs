@@ -105,7 +105,7 @@ function tree({
         ownerQueue: 'A-6',
         signing: { keyKind: 'none' },
         submission: {
-          runbook: 'company/runbooks/store-submission-snap.md',
+          runbook: 'Private/runbooks/store-submission-snap.md',
           ...(withRecipeScript ? { recipeScript: 'tooling/release/generate-snapcraft.mjs' } : {}),
         },
       },
