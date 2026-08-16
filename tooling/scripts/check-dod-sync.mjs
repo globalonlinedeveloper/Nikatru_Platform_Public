@@ -6,7 +6,7 @@
 //
 // The stage doc's replacement acceptance for N-1 asks CI to parse
 // `Private/MASTER_PLAN.md` §4 *and* `Private/requirements/definition-of-done.md`
-// and assert a relationship between them. **`Private/company/` is gitignored.** It is a
+// and assert a relationship between them. **`Private/` is gitignored.** It is a
 // separate private repository nested inside a PUBLIC one, and it is never pushed.
 // So a check living in `tooling/ci/` could never once execute against its own
 // subject — it would exist, print ok, and be enforcing nothing. That is the same
@@ -172,7 +172,7 @@ if (missingPrivate.length) {
   console.error('✗ the private tree is not readable from here, so NOTHING was cross-checked:');
   for (const p of missingPrivate) console.error(`    missing: ${p}`);
   console.error('');
-  console.error('  This is a LOCAL check by construction — Private/company/ is gitignored and CI can never run it.');
+  console.error('  This is a LOCAL check by construction — Private/ is gitignored and CI can never run it.');
   console.error('  Point it at the private tree explicitly if it is not a sibling of the checkout:');
   console.error('      node tooling/scripts/check-dod-sync.mjs . --company <path-to-company>');
   console.error('');
@@ -518,7 +518,7 @@ if (recorded.length < cuts.length) {
 
 // ── what CI cannot see, printed rather than implied ──────────────────────────
 notes.push(
-  `Private/company/ is gitignored: CI enforces the register (${items.length} item(s)) and every app's ` +
+  `Private/ is gitignored: CI enforces the register (${items.length} item(s)) and every app's ` +
     'done-record; the one-pager and MASTER_PLAN §4 are checked HERE and nowhere else.',
 );
 

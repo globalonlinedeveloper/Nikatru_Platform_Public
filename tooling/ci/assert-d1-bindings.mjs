@@ -3,7 +3,8 @@
 // assert-d1-bindings.mjs — a deployable Worker may not point at a database that
 // does not exist, and two Workers naming one database must mean the same one.
 //
-// [pipeline S-12] Private/company/pipeline/03-stamper.md — limb 1 of the replacement
+// [pipeline S-12] Private/requirements/ (was pipeline/03-stamper.md, folded into
+// that JSON spec 2026-08-15) — limb 1 of the replacement
 // acceptance ("no stamped or committed config contains the all-zeros
 // placeholder"), plus a consistency check the spec did not ask for and the tree
 // needed.

@@ -153,7 +153,7 @@ void run(HookContext context) {
         'those two from .claude/secrets.env rather than sourcing it — least '
         'exposure — and strip the surrounding quotes. [pipeline S-12])',
       )
-      // [pipeline S-1r] NOT "add DNS". [ADR 006] locked a proxied wildcard
+      // [pipeline S-1r] (absent from the frozen pipeline origin lock by construction — S-1r is a residual of S-1, raised by Private/plans/03-stamper-plan.md after that lock was taken; the lock file is not named here because this file's own phantom-filename limb requires every `*.json` it mentions to exist in the tree) NOT "add DNS". [ADR 006] locked a proxied wildcard
       // `*.nikatru.com`, so a stamped app needs ZERO new DNS — and the old step
       // sent the owner to create a record that already resolves, while the thing
       // actually keeping the app dark went unnamed. Re-measured 2026-08-01 over
@@ -224,7 +224,7 @@ void run(HookContext context) {
         'also run:  node tooling/store/render-linux-icons.mjs --app $id  '
         '(writes linux/packaging/; CI re-derives it and fails on drift).',
       )
-      // [pipeline S-1r] Same correction as the backend branch above — see the
+      // [pipeline S-1r] (absent from the frozen pipeline origin lock by construction — S-1r is a residual id, never a pipeline heading) Same correction as the backend branch above — see the
       // note there for the measurement. The wildcard makes this a NON-step; the
       // real one is attachment, and saying "add DNS" hid it.
       ..info(

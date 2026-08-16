@@ -50,10 +50,11 @@
 //   · IT CANNOT JUDGE WHICH OF TWO ADJACENT SENTENCES A READER WILL BELIEVE. It
 //     enforces that the correction is PRESENT, never that the stale claim was
 //     removed. A document can satisfy it and still mislead.
-//   · IN CI IT SEES ONLY THE TRACKED TREE. `Private/knowledge/` and `Private/company/` are
-//     gitignored — the public repo does not carry them — and three of the four
-//     documents behind the incident lived there. On a machine that has them it
-//     scans them too, and it PRINTS which of the two situations it was in on
+//   · IN CI IT SEES ONLY THE TRACKED TREE. `Private/` is gitignored — the public
+//     repo does not carry it; this line named `knowledge/` and `company/` until the
+//     2026-08-15 flatten merged both into it — and three of the four
+//     documents behind the incident lived there. On a machine that has it, it
+//     scans those too, and it PRINTS which of the two situations it was in on
 //     every run, because "I did not look there" must never read as "it is clean".
 //
 // Usage:  node tooling/ci/assert-mail-transport-claims.mjs [repoRoot]

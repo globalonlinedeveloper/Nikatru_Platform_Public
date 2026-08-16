@@ -51,7 +51,7 @@ avoid.
 
 | Field | Limit | Source |
 |---|---|---|
-| App Name | **30** characters, minimum **2** | `developer.apple.com/help/app-store-connect/reference/app-information/` — fetched **2026-07-29**, recorded in `Private/company/pipeline/10-distribution-store.md` D-5 |
+| App Name | **30** characters, minimum **2** | `developer.apple.com/help/app-store-connect/reference/app-information/` — fetched **2026-07-29**, recorded against D-5 and now `Private/requirements/ledger.json`’s `[10]D-5` entry |
 | Subtitle | **30** characters | *ibid.* |
 | Keywords field | ⚠️ **COULD-NOT-ESTABLISH** | the fetched page carries **Name and Subtitle only**. The corpus's *"100 chars"* is **not** on it, so it is not used here |
 | Description | ⚠️ **COULD-NOT-ESTABLISH** | not on the fetched page |

@@ -12,9 +12,13 @@ const String kFirstLaunchEmittedKey = 'nikatru.analytics.first_launch_done';
 /// denominator.
 const String kLastOpenKey = 'nikatru.analytics.last_open';
 
-/// The three launch-time events of the locked taxonomy
-/// (`Private/requirements/analytics-events.md` §1 Open & acquire, §6 Retain),
-/// implemented ONCE for every app the factory stamps.
+/// The three launch-time events of the locked taxonomy — §1 Open & acquire and
+/// §6 Retain of `analytics-events.md`, the prose page that was folded into
+/// `Private/requirements/` on 2026-08-16 (commit e88fdcf) and now reads as
+/// origin `[REQ]analytics-events §standard-events`, which carries the standard
+/// event list verbatim. The deleted page itself is still
+/// `git -C Private show e88fdcf^:requirements/analytics-events.md`.
+/// Implemented ONCE for every app the factory stamps.
 ///
 /// 🔴 WHY THIS IS IN `core` AND NOT IN AN APP. It shipped as `AnalyticsFunnel`
 /// inside `apps/subly`, so a stamped app inherited `app_open` and nothing else:

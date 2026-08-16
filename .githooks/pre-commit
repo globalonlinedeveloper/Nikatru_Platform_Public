@@ -3,7 +3,7 @@
 # pre-commit — the FAST spec guards (~0.5 s).
 #
 # Installed by:  node tooling/scripts/install-hooks.mjs
-# Shared by the public repo AND Private/company/, which is why the runner is
+# Shared by the public repo AND Private/, which is why the runner is
 # located by search rather than by a fixed relative path.
 #
 # 🔴 NO PIPELINES IN A DECISION PATH. `cmd | grep …; if [ $? ]` reports the LAST

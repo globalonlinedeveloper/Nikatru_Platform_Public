@@ -70,7 +70,9 @@
 //   NOT IN THE REGISTER AT ALL. Fifteen ceiling ids, none of them the one the
 //   capacity model divides by, and `grep -n "rows_written_per_event\|amplif"
 //   tooling/ceilings.json` returned nothing. The 5× correction lived in prose in
-//   Private/company/pipeline/11-measurement.md and in no file any guard could reach.
+//   pipeline/11-measurement.md and in no file any guard could reach. That prose is
+//   now Private/requirements/ledger.json’s [11]E-14 body ("one event = 5 rows"),
+//   folded there 2026-08-15 — and still in no file CI can open, which is the point.
 //
 // 🔴 AND THE RED THIS GUARD WAS BUILT TO RECORD, on the tree as it stood:
 //   services/platform/src/routes/events.ts declared `MAX_EVENTS_PER_BATCH = 100`

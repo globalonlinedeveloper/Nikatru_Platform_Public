@@ -4,5 +4,15 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- REQUIRED FOR THE APP TO WORK AT ALL ON macOS, and it was missing until
+	     2026-08-17. Under App Sandbox an outbound socket needs this entitlement
+	     explicitly; without it every request to Supabase and to the Workers under
+	     services/ fails at the OS layer, in a RELEASE build only, on the one
+	     platform this repo cannot build locally to notice. This file was stock
+	     `flutter create` output that nobody had revisited — DebugProfile carried
+	     `network.server` (Flutter's debug VM service) and neither file carried
+	     `network.client`. https://docs.flutter.dev/platform-integration/macos/building#setting-up-entitlements -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

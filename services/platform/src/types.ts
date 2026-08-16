@@ -326,7 +326,15 @@ export interface AppConfig {
 // in migrations/0002_analytics.sql; the /v1/events route lands with G-12.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** One client-sent analytics event. Mirrors `Private/requirements/analytics-events.md`. */
+/**
+ * One client-sent analytics event. Mirrors the locked taxonomy in
+ * `Private/requirements/` — the prose `analytics-events.md` this used to name was
+ * folded into that JSON spec on 2026-08-16 (commit e88fdcf), where the event list
+ * survives verbatim under origin `[REQ]analytics-events §standard-events` and the
+ * envelope these fields mirror is pinned column by column as INV-1101/1102/1105 in
+ * invariants.json. The deleted page reads back with
+ * `git -C Private show e88fdcf^:requirements/analytics-events.md`.
+ */
 export interface AnalyticsEvent {
   /** Client UUIDv4 — the exactly-once key. Batches retry, so ingest dedups. */
   event_id: string;

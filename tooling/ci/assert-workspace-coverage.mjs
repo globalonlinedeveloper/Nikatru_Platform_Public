@@ -27,7 +27,9 @@
 // pubspec.yaml, so it is invisible to this scan by construction — it is gated
 // by its own CI lane instead. No exception list to maintain.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-1.
+// Pipeline requirement: Private/requirements/ → F-1.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/assert-workspace-coverage.mjs
 // Exit 0 = clean, 1 = a package is ungated (or a member is missing).

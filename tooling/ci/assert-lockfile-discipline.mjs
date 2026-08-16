@@ -35,7 +35,9 @@
 // `pnpm install` (which resolves loosely without `--frozen-lockfile`) was
 // invisible to it too.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-8.
+// Pipeline requirement: Private/requirements/ → F-8.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/assert-lockfile-discipline.mjs [repoRoot]
 // Exit 0 = reproducible, 1 = something can drift (or the scan broke).

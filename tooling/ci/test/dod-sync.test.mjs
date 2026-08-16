@@ -3,7 +3,7 @@
 //
 // [pipeline N-1 · N-9] `tooling/scripts/check-dod-sync.mjs` and
 // `tooling/scripts/check-selection-record.mjs` are deliberately NOT in
-// `tooling/ci/`: both read `Private/company/`, which is gitignored, so a CI guard could
+// `tooling/ci/`: both read `Private/`, which is gitignored, so a CI guard could
 // never once execute against its own subject. They are still checks, and a check
 // nobody feeds bad input to has only ever run against valid input.
 //
@@ -111,8 +111,11 @@ describe('check-dod-sync', () => {
     assert.equal(code, 0, out);
     assert.match(out, /ok {2}DoD sync/);
     // It must SAY what it could not check, because the whole point of the split
-    // is that CI cannot read the private half at all.
-    assert.match(out, /company\/ is gitignored/);
+    // is that CI cannot read the private half at all. The pattern was
+    // `company\/ is gitignored` until the 2026-08-15 flatten renamed the tree the
+    // script names in that note — a test pinned to a printed string is part of
+    // that string's contract, and it does not move on its own.
+    assert.match(out, /Private\/ is gitignored/);
   });
 
   test('FAILS when §4 gains a lettered item the register does not carry', () => {
@@ -232,13 +235,13 @@ describe('check-selection-record', () => {
     /* FLATTENED 2026-08-15. The guard resolves a link as
          join(COMPANY, link.replace(/^company\//, ''))
        and COMPANY is now `<root>/Private`, so `company/app-selection/probe.md`
-       lands at `<root>/Private/app-selection/probe.md`. The fixture wrote it at
+       lands at `<root>/Private/app-selection/probe.md` (never existed under this repo — `<root>` is the case's temp dir and `probe` its invented app). The fixture wrote it at
        `<root>/company/...`, which matched only while COMPANY was `<root>/company`
        — i.e. this fixture has been wrong since the MORNING move, and the suite
        has been red ever since. The link string itself is deliberately left as
        `company/...` because the guard's legacy strip is what this case exercises. */
-    ...(companyFile === null ? {} : { 'Private/app-selection/probe.md': companyFile }),
-    // A Private/company/ that EXISTS but does not hold the target — see the resolve case.
+    ...(companyFile === null ? {} : { 'Private/app-selection/probe.md': companyFile }),  // (never existed under this repo — a key this case CREATES inside its own temp root, for an app called `probe` that only the fixture has)
+    // A Private/ that EXISTS but does not hold the target — see the resolve case.
     ...(companyDecoy ? { 'Private/README.md': '# private tree\n' } : {}),
   });
 
@@ -250,10 +253,10 @@ describe('check-selection-record', () => {
 
   test('FAILS when the linked record does not resolve', () => {
     const record = dod({ selection: { record: 'company/app-selection/probe.md', sha256: 'x', decided: '2026-07-30', decidedBy: 'owner', gates: {} } });
-    // 🔴 THE FIXTURE NOW SHIPS A Private/company/ THAT DOES NOT CONTAIN THE TARGET, and
-    // the distinction is the whole point. "Private/company/ is absent" and "the link
+    // 🔴 THE FIXTURE NOW SHIPS A Private/ THAT DOES NOT CONTAIN THE TARGET, and
+    // the distinction is the whole point. "Private/ is absent" and "the link
     // points at nothing" used to be the same fixture, and they are not the same
-    // fact: the first is every CI checkout (Private/company/ is gitignored) and must
+    // fact: the first is every CI checkout (Private/ is gitignored) and must
     // print, the second is a real defect and must fail. Modelling the defect as
     // an absent tree meant wiring this script into CI would have failed every
     // run the moment one app carried a link.
@@ -270,7 +273,7 @@ describe('check-selection-record', () => {
     assert.match(out, /The gate answers the owner signed are not the gate answers on disk/);
   });
 
-  test('passes when the sha256 really matches the file in Private/company/', async () => {
+  test('passes when the sha256 really matches the file in Private/', async () => {
     const body = 'G1b: meaningfully different because …\n';
     const { createHash } = await import('node:crypto');
     const sha = createHash('sha256').update(Buffer.from(body)).digest('hex');

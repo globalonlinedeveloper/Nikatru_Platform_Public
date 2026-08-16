@@ -2,7 +2,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-catalog-reachable.mjs — the public catalogue may not advertise a dead app.
 //
-// [pipeline S-7a] Private/company/pipeline/03-stamper.md — the open sub-item under S-7.
+// [pipeline S-7a] Private/requirements/ — the open sub-item under S-7. (Its stage
+// prose, pipeline/03-stamper.md, was folded into that JSON spec 2026-08-15.)
 //
 // WHY. `[3]S-7` proves a stamp WRITES itself into sites/_shared/_data/apps.json,
 // and that half is genuinely verified on every push. Its second promise —

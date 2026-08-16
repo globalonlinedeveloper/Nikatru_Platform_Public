@@ -2,7 +2,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-config-registry.mjs — ONBOARDING AN APP IS A DATA EDIT, NOT A SOURCE ONE.
 //
-// [pipeline 4]B-2, Private/company/pipeline/04-backend-platform.md.
+// [pipeline 4]B-2, Private/requirements/ (was pipeline/04-backend-platform.md,
+// folded into that JSON spec 2026-08-15).
 //
 // ── THE SENTENCE, AND WHAT WOULD MAKE IT FALSE ───────────────────────────────
 // "The set of apps the shared config service serves is DATA; adding an app to

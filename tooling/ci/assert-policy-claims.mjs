@@ -83,7 +83,7 @@ const readJson = (path, label) => {
       `${rel(path)} does not exist, so the ${label} ranged over nothing.`,
       'An absent register is not an empty one. A guard whose right-hand side is missing rejects',
       'nothing and prints ok — see tooling/legal/README.md for why these files are IN-TREE and not',
-      'under Private/company/, which is gitignored and invisible to CI.',
+      'under Private/, which is gitignored and invisible to CI.',
     );
   }
   try {

@@ -383,7 +383,7 @@ function tree({
   omitGradleFile = false,
   adrLocked = true,
   adrOnDisk = true,
-  // `Private/knowledge/` is gitignored, so a CI checkout has no harness at all. The ADR
+  // `Private/` is gitignored, so a CI checkout has no harness at all. The ADR
   // check is decided by this ROOT, never by the individual file — see the guard.
   harnessPresent = true,
   // [10]D-10 limb (i). Off by default so every existing case keeps its exact
@@ -427,7 +427,7 @@ function tree({
         id: 'flathub',
         name: 'Flathub',
         platforms: ['linux'],
-        adr: 'Private/decisions/015-linux.md',
+        adr: 'Private/decisions/015-linux-distribution-channel.md',
         date: '2026-07-25',
         ownerQueue: 'A-5',
         reason: ['bans AI-assisted code'],
@@ -466,9 +466,15 @@ function tree({
     // The harness root exists even when the cited ADR does not — that is the
     // distinction the guard turns on, and the case a blanket existsSync() skip
     // would have thrown away.
+    // ⚠️ The fixture ADR filenames here and in the signing-identity suite below are
+    // the REAL ones (`015-linux-distribution-channel.md`, `022-pack-signing-key-custody.md`).
+    // They were invented short forms — `015-linux.md`, `022-pack.md` — until 2026-08-17,
+    // which no guard could see because a fixture path is only ever written and read by
+    // this file. assert-public-citations.mjs now checks every `Private/...` named in the
+    // public tree, so a made-up path fails the build. Do not shorten them back.
     write('Private/decisions/README.md', 'the harness is checked out\n');
     if (adrOnDisk) {
-      write('Private/decisions/015-linux.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
+      write('Private/decisions/015-linux-distribution-channel.md', adrLocked ? '# 015\n**Status:** LOCKED 2026-07-25\n' : '# 015\n**Status:** proposed\n');
     }
   }
   if (withSubmission) {
@@ -831,7 +837,7 @@ describe('assert-channel-register — schema, stores and disqualified channels',
 
   // ── the ADR check is MODE-AWARE, and both modes are tested ────────────────
   // Found the hard way: this guard's first CI run failed on run 30609219162
-  // because `Private/knowledge/` is gitignored, so a correct check reported a fault that
+  // because `Private/` is gitignored, so a correct check reported a fault that
   // did not exist. The fix must not lose the case below, which is the one that
   // matters — harness present, ADR gone.
   test('FAILS when the harness IS checked out and the cited ADR is not on disk', () => {
@@ -1355,14 +1361,14 @@ describe('assert-channel-register — a signing identity cites an openable, LOCK
       {
         id: 'content-pack-k1',
         keyKind: 'app-signing-key',
-        adr: 'Private/decisions/022-pack.md',
+        adr: 'Private/decisions/022-pack-signing-key-custody.md',
         restoreDrill: { date: null, required: true, note: 'never drilled' },
         ...over,
       },
     ];
   };
   const withAdrFile = (root, locked = true) => ({
-    'Private/decisions/022-pack.md': locked ? '# 022\n**Status:** LOCKED 2026-07-27\n' : '# 022\n**Status:** proposed\n',
+    'Private/decisions/022-pack-signing-key-custody.md': locked ? '# 022\n**Status:** LOCKED 2026-07-27\n' : '# 022\n**Status:** proposed\n',
   });
 
   test('PASSES and PRINTS the undrilled key when the ADR is LOCKED and on disk', () => {

@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE ASSET LICENCE REGISTER — [pipeline K-10]/[K-11] Private/company/pipeline/08-compliance-legal.md",
+    "THE ASSET LICENCE REGISTER — [pipeline K-10]/[K-11] Private/requirements/ (was pipeline/08-compliance-legal.md, folded into the JSON spec 2026-08-15)",
     "",
     "One row for every asset that ships inside a build, with the licence it ships under and the SOURCE of",
     "that licence claim. Plus the other half of K-11: every app shows those licences from a real screen.",

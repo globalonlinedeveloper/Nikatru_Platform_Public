@@ -96,11 +96,13 @@ const DEPLOY_MARKERS =
 // same number becomes Play's `versionCode`, which Play caps and which can NEVER
 // BE REUSED — an upload at or above the ceiling, or at a code already used, is
 // rejected outright with nothing in the app to explain it. The ceiling is
-// recorded in Private/company/pipeline/09-release-engineering.md as 2,100,000,000 and
+// recorded in Private/requirements/ledger.json under [9]R-2 as 2,100,000,000 and
 // is marked **UNVERIFIED** here on purpose: it was carried from the stage
-// document and was NOT re-fetched from a Google primary source. Do not restate
-// it as fact and do not hard-code it — 9 digits sits an order of magnitude
-// under the smallest plausible reading of it, which is the safe direction.
+// document (pipeline/09-release-engineering.md, folded into that JSON spec and
+// deleted 2026-08-15) and was NOT re-fetched from a Google primary source. Do
+// not restate it as fact and do not hard-code it — 9 digits sits an order of
+// magnitude under the smallest plausible reading of it, which is the safe
+// direction.
 //
 // 🔴 AND `github.run_number` IS PER-WORKFLOW-FILE, WHICH IS A TRAP WITH NO
 // DIAGNOSTIC. It counts runs of the workflow FILE. Rename `deploy-web.yml`,

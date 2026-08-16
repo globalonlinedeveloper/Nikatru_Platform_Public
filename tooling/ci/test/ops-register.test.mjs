@@ -193,7 +193,7 @@ function baseRegister() {
         lastDone: '2026-07-26',
         takesDown: ['laptop'],
         respondsVia: 'recovery.bundles',
-        // 🔴 DELIBERATELY `nikatru/` WHILE THE ROW ABOVE IS `Private/company/`. `OUTSIDE_CI` holds TWO
+        // 🔴 DELIBERATELY `nikatru/` WHILE THE ROW ABOVE IS `Private/`. `OUTSIDE_CI` holds TWO
         // prefixes, and the `unverifiableAnchors` assertion below counts 2 — so this fixture is
         // the only thing making that count span BOTH branches. With both rows on one prefix the
         // other branch would be exercised by nothing and could be deleted in silence, which is
@@ -205,7 +205,7 @@ function baseRegister() {
       },
       // [14]O-4's domain is duties ON A CLOCK, and the three rows above are not
       // on one. Appended (never inserted) so every rows[N] index above still
-      // points where its test thinks it does, and anchored OUTSIDE Private/company/ and
+      // points where its test thinks it does, and anchored OUTSIDE Private/ and
       // nikatru/ so the unverifiableAnchors count assertion is untouched.
       {
         id: 'duty.laptop.backup',
@@ -427,14 +427,14 @@ describe('assert-ops-register — O-14: the intersection is over TWO independent
   });
 });
 
-describe('assert-ops-register — mechanism, source and the Private/company/ blind spot', () => {
+describe('assert-ops-register — mechanism, source and the Private/ blind spot', () => {
   test('an anchor that is not in the tree FAILS', () => {
     const r = baseRegister();
     r.rows[0].mechanism.anchor = '.github/workflows/gone.yml';
     assert.match(messages(r), /is not in the tree/);
   });
 
-  test('an anchor under Private/company/ is ACCEPTED and COUNTED, because CI cannot read it', () => {
+  test('an anchor under Private/ is ACCEPTED and COUNTED, because CI cannot read it', () => {
     const v = run(baseRegister());
     assert.deepEqual(v.errors, []);
     assert.equal(v.stats.unverifiableAnchors, 2);
@@ -1275,7 +1275,7 @@ describe('assert-ops-register — a named READER must exist, not merely be named
     assert.deepEqual(run(withPath('mechanism.readBy', 'a human reading the Dependency Dashboard issue')).errors, []);
   });
 
-  test('a Private/company/ path is NOT treated as a missing file, because CI cannot see Private/company/', () => {
+  test('a Private/ path is NOT treated as a missing file, because CI cannot see Private/', () => {
     assert.deepEqual(run(withPath('mechanism.readBy', 'Private/runbooks/operations.md §0')).errors, []);
   });
 });
@@ -1857,7 +1857,7 @@ describe('assert-ops-register — [14]O-4 · the absence of a scheduled duty mus
 // its id together passes CLEAN — the domain shrinks and the guard reports ok,
 // because nothing anywhere says WHICH ids the external half must contain. That
 // is check-migrations.mjs's 5-files-to-4 defect exactly, and these two rows are
-// the likeliest victims of it: both are pure-`Private/company/` procedures whose entire
+// the likeliest victims of it: both are pure-`Private/` procedures whose entire
 // machine-readable existence is the register line.
 //
 // So the list is pinned HERE, against the REAL register, rather than against a
@@ -1896,7 +1896,7 @@ describe('assert-ops-register — the two written-procedure rows cannot vanish q
         /* FLATTENED 2026-08-15. This pattern was `^company\/runbooks\/` and had been
            stale since the MORNING of the same day, when company/ moved under Private/ —
            it survived the citation sweep precisely because it does NOT carry a
-           `Private/` prefix, so a scan for `Private/company/` could never see it.
+           `Private/` prefix, so a scan for `Private/company/` (deleted 2026-08-15) could never see it.
            A stale pattern that names no current directory is invisible to exactly the
            search you would run to find it. */
         /^Private\/runbooks\/.+\.md$/,

@@ -87,7 +87,13 @@ describe('subly-api CORS — exact allowlist', () => {
 describe('the localhost exception is a RECORDED per-app trade', () => {
   // `flutter drive -d web-server` serves on http://localhost:<random-port>, so
   // the CI integration_test harness cannot name its own origin in advance.
-  // Documented in Private/requirements/master-requirements.md and as INC13.
+  // Documented in Private/requirements/ and as INC13 — the prose
+  // `master-requirements.md` that used to be named here ("CORS scoped to the
+  // app's origins + localhost") was folded into that JSON spec on 2026-08-16 in
+  // commit e88fdcf, and its origins now read `[REQ]master-requirements §…`. The
+  // localhost clause got no successor row of its own, so the sentence survives
+  // only in the deleted page:
+  // `git -C Private show e88fdcf^:requirements/master-requirements.md`.
   it('allows any localhost port, http or https, on top of the list', async () => {
     const call = appWith(SHIPPED);
     for (const o of [

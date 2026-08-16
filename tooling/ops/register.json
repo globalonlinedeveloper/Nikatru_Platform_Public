@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE OPERATIONS REGISTER — [pipeline O-1] Private/company/pipeline/14-operations.md",
+    "THE OPERATIONS REGISTER — [pipeline O-1] Private/requirements/ (was pipeline/14-operations.md, folded into the JSON spec 2026-08-15)",
     "",
     "Every failure this factory can suffer, every recurring duty it performs, every surface it serves,",
     "every revert path, every recovery drill, every expiring thing and every retention obligation — each",
@@ -31,10 +31,10 @@
     "unparseable, empty, or blind to a custom domain this repo deploys. Delegation that cannot fail is",
     "just an absence with better manners.",
     "",
-    "WHY THE PUBLIC REPO AND NOT Private/company/. CI cannot read Private/company/ — it is gitignored and invisible to",
+    "WHY THE PUBLIC REPO AND NOT Private/. CI cannot read Private/ — it is gitignored and invisible to",
     "every workflow, which is exactly what blocked four stage-8 increments. This file holds surface names,",
     "cadences and dates. No credential, no business identifier, no PII. The private CONTENT (the runbooks",
-    "themselves) stays in Private/company/, the owner queue in nikatru/; the STRUCTURAL FACTS a guard reads live here.",
+    "themselves) stays in Private/, the owner queue in nikatru/; the STRUCTURAL FACTS a guard reads live here.",
     "",
     "Enforced by tooling/ci/assert-ops-register.mjs (schema, coverage, staleness, revert mitigations,",
     "access-path intersection) and tooling/ci/assert-retention-coverage.mjs (the `retention` rows against",
@@ -404,7 +404,7 @@
         "retiredOn": "2026-08-14",
         "retiredWhy": "🔴 THE TASK WAS REMOVED, SO THE DUTY NO LONGER EXISTS — OWNER DECISION 2026-08-14: \"NikatruProjectBackup - Remove it, we only keep in business google Drive.\" `Unregister-ScheduledTask NikatruProjectBackup` was run and verified: the only NIKATRU task remaining is `NIKATRU daily backup` (Ready, LastTaskResult 0). A `duty` row whose substrate has been deleted is the register asserting coverage it does not have — the 'zero readers' defect this stage was written to end, so the row goes rather than being left to print a gap nobody can close.\n\nWHY THE TASK WENT, AND IT IS NOT THE EXIT CODE'S FAULT: its `LastTaskResult = 1` was CORRECT BEHAVIOUR — the 2026-08-07 SMART preflight refusing to write to `ST1000LM048-2E7172`, a disk in Predictive Failure. The task conflated two legs, a healthy Google Drive copy and a doomed `D:\\Backups\\nikatru` copy, so the failing half took the working half down with it and somebody disabled the whole thing on 2026-08-12. The owner's resolution removes the conflation at the root: Drive is the single destination, and there is no local-disk leg left to fail.",
         "evidence": "Task XML exported before removal (Actions: powershell -File .claude/scripts/backup-project.ps1; Trigger: MSFT_TaskDailyTrigger 02:30 IST from 2026-07-26; State: Disabled; LastRun 2026-08-12 08:13:00; LastTaskResult 1). Post-removal `Get-ScheduledTask NikatruProjectBackup` returns nothing. The `project` plain-file set it wrote is ALREADY absent from Drive — a listing of gbiz:nikatru-backup via the Drive API returns exactly 7 folders (brain, brain-personal, bundles, glitchtip, signing, transcripts, vault) and no `project`; it disappeared when [ADR 046] retired the gcrypt remote on 2026-08-12 and was never re-copied.",
-        "whatTheRetirementCosts": "🔴 STATED RATHER THAN GLOSSED: the code repo and Private/company/ now have NO browsable plain-file copy off-site. They are covered by `bundles/code.bundle` and `bundles/company.bundle`, refreshed on every 8-hourly run, plus the `company` subtree in nikatru-private. A git bundle IS a complete cloneable repository, so this is a full backup and not a partial one — but it captures COMMITTED state only. That gap is closed by an assertion that already runs in backup-knowledge.ps1 on every pass: \"nothing uncommitted in the code repo — every state is in a set or a bundle\". If that assertion is ever weakened, this retirement becomes a hole. Anything gitignored is carried by its own set: .claude -> vault, release-keystore -> signing, nikatru/ -> brain + brain-personal.\n⬜ ALSO NOW UNREFERENCED: `.claude/scripts/backup-project.ps1` is called by nothing. Left in place deliberately rather than deleted in the same stroke — it holds the D:\\ preflight logic and the owner may want a local leg again once the disk is replaced.",
+        "whatTheRetirementCosts": "🔴 STATED RATHER THAN GLOSSED: the code repo and Private/ now have NO browsable plain-file copy off-site. They are covered by `bundles/code.bundle` and `bundles/company.bundle`, refreshed on every 8-hourly run, plus the `company` subtree in nikatru-private. A git bundle IS a complete cloneable repository, so this is a full backup and not a partial one — but it captures COMMITTED state only. That gap is closed by an assertion that already runs in backup-knowledge.ps1 on every pass: \"nothing uncommitted in the code repo — every state is in a set or a bundle\". If that assertion is ever weakened, this retirement becomes a hole. Anything gitignored is carried by its own set: .claude -> vault, release-keystore -> signing, nikatru/ -> brain + brain-personal.\n⬜ ALSO NOW UNREFERENCED: `.claude/scripts/backup-project.ps1` is called by nothing. Left in place deliberately rather than deleted in the same stroke — it holds the D:\\ preflight logic and the owner may want a local leg again once the disk is replaced.",
         "row": {
           "id": "duty.laptop.nikatru-project-backup",
           "kind": "duty",
@@ -857,7 +857,7 @@
         "readBy": "nothing in this repo can read a vendor console — this row is the only enumeration, which is why it prints on every run",
         "recordQuery": {
           "reader": "unreachable",
-          "why": "The record is the OCI console's own audit log plus runbook checkboxes in gitignored Private/company/. There is no API this repo holds a credential for, and the runbook half is a human ticking a box — neither is a machine record a query can return a run from."
+          "why": "The record is the OCI console's own audit log plus runbook checkboxes in gitignored Private/runbooks/. There is no API this repo holds a credential for, and the runbook half is a human ticking a box — neither is a machine record a query can return a run from."
         }
       },
       "absenceWatcher": {
@@ -1815,7 +1815,7 @@
         "anchor": "Private/runbooks/app-retirement.md",
         "record": "the runbook's §8 execution log — deliberately EMPTY until a retirement happens; an entry is the filled §2 contract table with real dates plus which halves were exercised",
         "failingValue": "an app withdrawn with no dated §8 entry; a lastDrill older than this cadence; or — the shape that started this — a register row instructing its reader to execute a document that does not exist",
-        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. 🔴 It CANNOT read the runbook's contents: Private/company/ is gitignored and invisible to CI, so the execution half is held as a DATE here rather than as a claim in prose nothing can check."
+        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. 🔴 It CANNOT read the runbook's contents: Private/ is gitignored and invisible to CI, so the execution half is held as a DATE here rather than as a claim in prose nothing can check."
       },
       "accessProviders": [
         "owner",
@@ -1843,7 +1843,7 @@
         "anchor": "Private/runbooks/store-enforcement-response.md",
         "record": "the stores' own published pages, re-read on the date above — and, when one ever arrives, the enforcement email itself, which is the ONLY document that states the deadline Play and Apple decline to publish",
         "failingValue": "lastDrill older than this cadence — nobody has re-read the store pages in six months while the runbook goes on asserting their console paths and the one deadline that is established",
-        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. That is [10]D-12 acceptance limb (d), and it is the ONLY limb of D-12 a machine can hold: Private/company/ is gitignored, so CI cannot read one word of the runbook it is keeping fresh."
+        "readBy": "tooling/ci/assert-ops-register.mjs — lastDrill against this cadence. That is [10]D-12 acceptance limb (d), and it is the ONLY limb of D-12 a machine can hold: Private/ is gitignored, so CI cannot read one word of the runbook it is keeping fresh."
       },
       "accessProviders": [
         "owner",

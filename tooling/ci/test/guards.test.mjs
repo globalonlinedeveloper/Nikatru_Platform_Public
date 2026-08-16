@@ -19,7 +19,9 @@
 // repo. No network — the two API-backed guards are covered for argument and
 // decision handling only, which is exactly where the real defect was.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-10.
+// Pipeline requirement: Private/requirements/ → F-10.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"   (glob, so every *.test.mjs runs;
 //       a bare directory path is treated as a module on Windows and throws)

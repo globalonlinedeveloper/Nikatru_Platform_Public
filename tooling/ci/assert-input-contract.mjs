@@ -360,7 +360,7 @@ if (scanned === 0) {
   ok(`no phantom filenames in ${scanned} brick file(s)`);
 }
 
-// ── 3 · [pipeline S-1r] NO PRINTED STEP MAY BE ONE A LOCKED ADR RETIRED ─────
+// ── 3 · [pipeline S-1r] NO PRINTED STEP MAY BE ONE A LOCKED ADR RETIRED ───── (absent from origins.lock.json by construction — S-1r is a residual of S-1, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen)
 // The checklist is the ONLY instruction a stamped app ever gives its owner, and
 // a false step there costs more than silence: for months it said
 // "Add DNS for <host>", which [ADR 006] had already made unnecessary by locking

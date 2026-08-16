@@ -251,9 +251,9 @@ for (const [id, v] of Object.entries(vendors)) {
   // part 5 — the export path must exist on disk.
   //
   // 🔴 CAUGHT BY CI, NOT LOCALLY, AND THE DIVERGENCE IS THE POINT. This guard
-  // runs in the PUBLIC repo, where `Private/company/` is gitignored and structurally
+  // runs in the PUBLIC repo, where `Private/` is gitignored and structurally
   // absent — so citing a private runbook as machine-checkable evidence passes on
-  // a dev box (Private/company/ is on disk) and fails in CI. The first version of this
+  // a dev box (Private/ is on disk) and fails in CI. The first version of this
   // check did exactly that.
   //
   // The fix follows this repo's own grading rule — NO SILENT SKIPS: a path the
@@ -261,8 +261,8 @@ for (const [id, v] of Object.entries(vendors)) {
   // printed, never quietly passed. And the exemption is STRUCTURAL, not a flag:
   // only `Private/` qualifies, because that prefix is the private-corpus boundary
   // itself. A boolean anybody could set would make part 5 optional.
-  // FLATTENED 2026-08-15: was `Private/company/`, which stopped matching when the
-  // flatten removed that segment from every path in the corpus.
+  // FLATTENED 2026-08-15: was `Private/company/` (deleted that day), which stopped
+  // matching when the flatten removed that segment from every path in the corpus.
   if (v.exportPath?.path) {
     const p = v.exportPath.path;
     if (p.startsWith('Private/')) {

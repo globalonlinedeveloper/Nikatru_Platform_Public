@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE DEFINITION-OF-DONE REGISTER — [pipeline N-1] Private/company/pipeline/06-app-build.md",
+    "THE DEFINITION-OF-DONE REGISTER — [pipeline N-1] Private/requirements/ (was pipeline/06-app-build.md, folded into the JSON spec 2026-08-15)",
     "",
     "The machine-readable half of the factory's Definition of Done: one row per DoD item, each naming",
     "HOW it is enforced. The prose one-pager lives at Private/requirements/definition-of-done.md and",
@@ -8,7 +8,7 @@
     "",
     "WHY THE SPLIT, AND WHY THIS HALF IS PUBLIC.",
     "The stage doc's acceptance for N-1 asks CI to parse Private/MASTER_PLAN.md §4 and the DoD page.",
-    "Both live under Private/company/, which is GITIGNORED — CI cannot read either, so as written the",
+    "Both live under Private/, which is GITIGNORED — CI cannot read either, so as written the",
     "requirement was unenforceable from the only place a build can fail. Exactly the class of blocker",
     "stage 8 hit, and its resolution there was to give the machine-checkable half an in-tree home",
     "(tooling/legal/); this mirrors that reasoning. So:",
@@ -198,7 +198,7 @@
       "id": "e2e-per-environment",
       "what": "integration E2E per environment (six)",
       "decided": "2026-07-29",
-      "by": "Private/company/pipeline/06-app-build.md N-6",
+      "by": "Private/requirements/ [6]N-6 — was pipeline/06-app-build.md N-6, folded into the JSON spec 2026-08-15",
       "pageMustNotContain": "per environment",
       "why": "MASTER_PLAN §4-H wins on intent, N-6 on cost: ONE web E2E is kept. The cost is stated rather than hidden — five of six platforms have no end-to-end proof under any requirement in any of the fourteen stages, and the purchase->unlock leg cannot be reversed on iOS/Android at all under store billing policy"
     },

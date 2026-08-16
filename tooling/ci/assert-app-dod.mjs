@@ -84,7 +84,7 @@
 // `fetch-depth: 0`; removing it turns this guard RED rather than quietly hollow.
 //
 // 🔴 WHAT CI CANNOT SEE, IT PRINTS (N-9). The selection record lives in
-// `Private/company/`, which is gitignored — CI can assert that a link's FIELDS are there;
+// `Private/`, which is gitignored — CI can assert that a link's FIELDS are there;
 // it can never assert the link RESOLVES. The stage doc's "the link is checkable
 // even though the judgment is not" is false as written. So CI checks the four
 // fields it can see and PRINTS the unverifiable half on every run;
@@ -980,7 +980,7 @@ for (const appDir of domain) {
     if (typeof sel.record === 'string' && sel.record.trim() !== '') {
       unverifiable.push(
         `${appId}: selection record "${sel.record}" sha256 "${sel.sha256 ?? ''}" is NOT verifiable from the ` +
-          'public repo — Private/company/ is gitignored. Run `node tooling/scripts/check-selection-record.mjs` locally.',
+          'public repo — Private/ is gitignored. Run `node tooling/scripts/check-selection-record.mjs` locally.',
       );
     }
   }

@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE SERVED-CHANNEL REGISTER — [pipeline R-5] Private/company/pipeline/09-release-engineering.md",
+    "THE SERVED-CHANNEL REGISTER — [pipeline R-5] Private/requirements/ (was pipeline/09-release-engineering.md, folded into the JSON spec 2026-08-15)",
     "",
     "The complete set of channels this factory can release to: what artifact each one accepts, what",
     "signing identity it needs, which lane produces it, which toolchain floor gates it, and — the field",
@@ -96,9 +96,9 @@
     "that decision is machine-readable. Prose elsewhere CITES the field. It must not restate it.",
     "",
     "WHY IT MOVED HERE, MEASURED RATHER THAN ASSERTED. The rail answer lived only in prose and prose did",
-    "not hold it. On 2026-08-13 `Private/company/pipeline/05-money-rail.md` still carried \"no requirement here",
+    "not hold it. On 2026-08-13 `pipeline/05-money-rail.md` (that prose corpus was folded into Private/requirements/ and deleted 2026-08-15) still carried \"no requirement here",
     "demands a native IAP rail\" as a CUT BEING HONOURED, while [ADR 039] D2/D3 had locked exactly that",
-    "rail on three channels four days earlier — and `Private/company/pipeline/10-distribution-store.md`, the",
+    "rail on three channels four days earlier — and `pipeline/10-distribution-store.md`, the",
     "stage that owns store submission, contained the string \"IAP\" ZERO times. Both documents have since",
     "been corrected in prose (05's sentence is now struck through and re-labelled a gap; 10 now carries",
     "12 occurrences). That is the argument FOR this field, not against it: a fact restated in N documents",
@@ -245,7 +245,7 @@
         "additionalFiles": ["subtitle.txt", "keywords.txt", "promotional-text.txt"],
         "maxChars": {
           "_why": [
-            "THE ONLY TWO APPLE NUMBERS THAT WERE SOURCED. Private/company/pipeline/10-distribution-store.md",
+            "THE ONLY TWO APPLE NUMBERS THAT WERE SOURCED. Private/requirements/ledger.json entry [10]D-5 (was pipeline/10-distribution-store.md, folded into the JSON spec 2026-08-15).",
             "D-5's limits table records the rest as COULD-NOT-ESTABLISH against the same fetch — the",
             "keywords field, description and promotional text are NOT on the page that carries Name",
             "and Subtitle, and the corpus's '100 chars' for keywords is not on it either. They are",
@@ -254,11 +254,11 @@
           "title.txt": {
             "max": 30,
             "min": 2,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — app name 30 (min 2)\""
           },
           "subtitle.txt": {
             "max": 30,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — subtitle 30\""
           }
         }
       },
@@ -273,11 +273,11 @@
           "title.txt": {
             "max": 30,
             "min": 2,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — app name 30 (min 2)\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — app name 30 (min 2)\""
           },
           "subtitle.txt": {
             "max": 30,
-            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/company/pipeline/10-distribution-store.md D-5: \"Apple — subtitle 30\""
+            "source": "developer.apple.com/help/app-store-connect/reference/app-information/ — fetched 2026-07-29, recorded in Private/requirements/ledger.json entry [10]D-5: \"Apple — subtitle 30\""
           }
         }
       },
@@ -1056,9 +1056,9 @@
       "submission": {
         "_why": [
           "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
-          "parsed rather than grepped. Limb (ii) is the runbook below — Private/company/ is gitignored so no CI",
+          "parsed rather than grepped. Limb (ii) is the runbook below — Private/ is gitignored so no CI",
           "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
-          "is in one place a guard could reach if Private/company/ ever ships. Limb (iii) — a submission record",
+          "is in one place a guard could reach if Private/ ever ships. Limb (iii) — a submission record",
           "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
         ],
         "script": "tooling/release/submit-play.mjs",
@@ -1241,9 +1241,9 @@
       "submission": {
         "_why": [
           "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
-          "parsed rather than grepped. Limb (ii) is the runbook below — Private/company/ is gitignored so no CI",
+          "parsed rather than grepped. Limb (ii) is the runbook below — Private/ is gitignored so no CI",
           "guard can open it; the path is recorded here so it is in one place a guard could reach if",
-          "Private/company/ ever ships. Limb (iii) — a submission record in the [10]D-9 ledger — stays",
+          "Private/ ever ships. Limb (iii) — a submission record in the [10]D-9 ledger — stays",
           "UNSATISFIED and cannot be satisfied without a real submission.",
           "",
           "ONE SCRIPT SERVES BOTH APPLE ROWS because both authenticate with the SAME App Store Connect",
@@ -1468,9 +1468,9 @@
       "submission": {
         "_why": [
           "[10]D-10 limb (i): a submission script that EXISTS and RESOLVES TO A STEP IN A WORKFLOW,",
-          "parsed rather than grepped. Limb (ii) is the runbook below — Private/company/ is gitignored so no CI",
+          "parsed rather than grepped. Limb (ii) is the runbook below — Private/ is gitignored so no CI",
           "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
-          "is in one place a guard could reach if Private/company/ ever ships. Limb (iii) — a submission record",
+          "is in one place a guard could reach if Private/ ever ships. Limb (iii) — a submission record",
           "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
         ],
         "script": "tooling/release/submit-windows-store.mjs",
@@ -1960,7 +1960,7 @@
         "The `adr` path below is the MECHANICAL half of the same rule `disqualified` rows already carry:",
         "a decision cited only in prose is a decision that cannot be opened, and this entry's own notes",
         "cite [ADR 022] three times without ever naming a file. assert-channel-register.mjs now checks it",
-        "the same MODE-AWARE way — where `Private/knowledge/` is checked out the ADR must exist and record itself",
+        "the same MODE-AWARE way — where `Private/` is checked out the ADR must exist and record itself",
         "LOCKED; in a CI checkout, where the harness is gitignored, the limit is PRINTED rather than",
         "passed over silently."
       ],

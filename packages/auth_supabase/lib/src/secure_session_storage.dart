@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 /// Persists the Supabase session in the platform SECURE store, not in
 /// `shared_preferences`.
 ///
-/// 🔴 [pipeline C-15 / G-43] THIS EXISTS BECAUSE THE DEFAULT IS WRONG FOR US.
+/// 🔴 [pipeline C-15 / G-43] (absent from origins.lock.json by construction — G-43 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/MASTER_PLAN.md) THIS EXISTS BECAUSE THE DEFAULT IS WRONG FOR US.
 /// `supabase_flutter` defaults to `SharedPreferencesLocalStorage`, which writes
 /// the session — a live bearer token and its refresh token — as **plaintext**:
 /// an XML file in app-private storage on Android, a plist on iOS/macOS, a JSON

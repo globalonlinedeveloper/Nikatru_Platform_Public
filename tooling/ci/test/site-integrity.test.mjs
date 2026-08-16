@@ -22,7 +22,9 @@
 //   The second mode is reached by running a COPY of the guard from inside the
 //   fixture, which is exactly how CI runs it from inside the repo.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-9 / F-10.
+// Pipeline requirement: Private/requirements/ → F-9 / F-10.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────

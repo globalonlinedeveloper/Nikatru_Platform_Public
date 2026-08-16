@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE SERVED CONFIG VALUES — [pipeline 4]B-2, Private/company/pipeline/04-backend-platform.md",
+    "THE SERVED CONFIG VALUES — [pipeline 4]B-2, Private/requirements/ (was pipeline/04-backend-platform.md, folded into the JSON spec 2026-08-15)",
     "",
     "WHAT THIS FILE IS NOT: it is NOT the list of apps this Worker serves. That set comes from",
     "sites/_shared/_data/apps.json — the catalogue the STAMP already writes (post_gen.dart",

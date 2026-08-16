@@ -53,16 +53,22 @@ import insightsReadme from '../queries/insights/README.md?raw';
 // in this file. The floor is `REQUIRED_COVERAGE.length`, and REQUIRED_COVERAGE
 // is checked, in order and in both directions, against the numbered list in
 // `queries/insights/README.md` — which is itself checked against the SSoT list
-// in `Private/requirements/analytics-events.md` § "The ~5 numbers" on every
-// machine that has the private tree. This repo has already shipped a scanner
+// in `analytics-events.md` § "The ~5 numbers" on every machine that has the
+// private tree. That page was folded into `Private/requirements/` on 2026-08-16
+// (commit e88fdcf) and the "~5 numbers" § acquired no successor row there, so
+// the list survives only in the deleted page —
+// `git -C Private show e88fdcf^:requirements/analytics-events.md` — which is why
+// SSOT_REL below is left naming it rather than repointed at a page that would
+// not hold the list. This repo has already shipped a scanner
 // that silently dropped from 5 files to 4 and reported PASS; four numbers and a
 // fifth quietly absent is COVERAGE LOST here, not a smaller green run.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * THE FIVE, in the order and with the titles that
- * `Private/requirements/analytics-events.md` § "The ~5 numbers these roll up
- * into (the actual dashboard)" uses.
+ * THE FIVE, in the order and with the titles that `analytics-events.md`
+ * § "The ~5 numbers these roll up into (the actual dashboard)" uses — the page
+ * folded into `Private/requirements/` at e88fdcf, recoverable with
+ * `git -C Private show e88fdcf^:requirements/analytics-events.md`.
  *
  * Written out rather than derived from the directory: a set derived from the
  * files it is meant to police loses an entry at exactly the moment the file it
@@ -152,7 +158,7 @@ const trailingId = (item: string): string | null => item.match(/\(`([a-z0-9_]+)`
 const sqlFileName = (item: string): string | null => item.match(/`(\d{2}-[a-z0-9-]+\.sql)`/)?.[1] ?? null;
 
 // ── the private SSoT, read only if the private tree is here at all ──────────
-// `Private/company/` is gitignored and NEVER reaches a CI runner, so this limb cannot be
+// `Private/` is gitignored and NEVER reaches a CI runner, so this limb cannot be
 // the enforcement — the README mirror above is. What it does is stop the mirror
 // from drifting away from the document it mirrors, on every machine that holds
 // the document. `process.getBuiltinModule` rather than `import 'node:fs'` for
@@ -171,8 +177,23 @@ const nodeProcess = (
 ).process;
 const fs = nodeProcess.getBuiltinModule('node:fs');
 
-const SSOT_REL = 'Private/requirements/analytics-events.md';
-/** The first ancestor of the cwd that holds a `Private/company/` tree, or null. */
+/** The private SSoT this limb reads — and it is DELETED, which is why it is left
+ *  named rather than repointed. `analytics-events.md` was folded into
+ *  `Private/requirements/` on 2026-08-16 (commit e88fdcf); the standard-event
+ *  taxonomy survives there under origin `[REQ]analytics-events §standard-events`,
+ *  but the "~5 numbers" § THIS limb parses acquired NO successor row, so nothing
+ *  in the JSON spec would answer the section lookup below. Repointing at a page
+ *  that cannot hold the list would turn a dead pointer into a confidently wrong
+ *  one. The wording itself is still readable, and that is the whole recovery:
+ *  `git -C Private show e88fdcf^:requirements/analytics-events.md`. */
+const SSOT_REL = 'Private/requirements/analytics-events.md'; // (deleted 2026-08-16 in e88fdcf)
+/** The first ancestor of the cwd that holds a `company/` tree, or null.
+ *  ⚠️ THE PREDICATE IS PRE-FLATTEN AND IS LEFT AS IT IS, DELIBERATELY. The private
+ *  tree has been `Private/` since 2026-08-15, so `${root}/company` now matches
+ *  nothing on any machine and the limb below takes its NOTICE branch everywhere,
+ *  not just on CI. Repointing it at `Private/` is not a rename this citation sweep
+ *  can make on its own: `SSOT_REL` names a document the flatten did not carry
+ *  over, so the limb needs a target before it needs a root. */
 function privateTreeRoot(): string | null {
   const cwd = nodeProcess.cwd().replaceAll('\\', '/');
   for (const up of ['', '/..', '/../..', '/../../..']) {
@@ -418,12 +439,12 @@ describe('[pipeline 11]E-11 · coverage — the five numbers exist as checked-in
   it('the private SSoT (analytics-events.md) still lists the same five, in the same order', () => {
     const root = privateTreeRoot();
     if (root === null) {
-      // The honest CI state, printed rather than skipped silently. `Private/company/` is
+      // The honest CI state, printed rather than skipped silently. `Private/` is
       // gitignored and never reaches a runner, so on CI the enforcement is the
       // README mirror above and this limb has nothing to read.
       console.log(
-        `NOTICE [E-11] no \`Private/company/\` tree above ${nodeProcess.cwd()} — the SSoT list in ${SSOT_REL} was NOT ` +
-          'compared. On CI this is expected and correct (Private/company/ is gitignored); the enforced floor there is the ' +
+        `NOTICE [E-11] no private tree above ${nodeProcess.cwd()} — the SSoT list in ${SSOT_REL} was NOT ` +
+          'compared. On CI this is expected and correct (Private/ is gitignored); the enforced floor there is the ' +
           'README mirror. On a developer machine it means the private tree is missing, not that the lists agree.',
       );
       return;
@@ -431,7 +452,7 @@ describe('[pipeline 11]E-11 · coverage — the five numbers exist as checked-in
     const docPath = `${root}/${SSOT_REL}`;
     expect(
       fs.existsSync(docPath),
-      `COVERAGE LOST — a \`Private/company/\` tree exists at ${root} but ${SSOT_REL} is not in it. The SSoT moved or was ` +
+      `COVERAGE LOST — a private tree exists at ${root} but ${SSOT_REL} is not in it. The SSoT moved or was ` +
         'renamed, so the README mirror is now mirroring nothing and REQUIRED_COVERAGE has no upstream.',
     ).toBe(true);
 

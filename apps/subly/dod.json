@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THIS APP'S DONE-RECORD — [pipeline N-2] Private/company/pipeline/06-app-build.md",
+    "THIS APP'S DONE-RECORD — [pipeline N-2] Private/requirements/ (was pipeline/06-app-build.md, folded into the JSON spec 2026-08-15)",
     "",
     "Stamped with the app. It answers 'is this app done?' as a QUERY rather than a memory, and",
     "tooling/ci/assert-app-dod.mjs fails the build on it. The right-hand side of every set comparison",

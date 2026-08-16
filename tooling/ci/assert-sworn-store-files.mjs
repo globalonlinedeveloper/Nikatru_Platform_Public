@@ -3,7 +3,7 @@
 // assert-sworn-store-files.mjs — A SWORN DECLARATION MAY NOT REGRESS TOWARD THE
 // TEMPLATE IT WAS STAMPED FROM.
 //
-// [pipeline K-8 / G-32, ADR 037 P2.7] Two files under a channel's store
+// [pipeline K-8 / G-32, ADR 037 P2.7] (absent from origins.lock.json by construction — G-32 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/MASTER_PLAN.md) Two files under a channel's store
 // directory are not metadata — they are declarations a human swears to:
 //   · store/android-play/data-safety.json   (898 lines answered · 59 stamped)
 //   · store/android-play/content-rating.json (186 lines answered · 53 stamped)

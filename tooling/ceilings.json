@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE CEILINGS REGISTER — [pipeline B-6] Private/company/pipeline/04-backend-platform.md",
+    "THE CEILINGS REGISTER — [pipeline B-6] Private/requirements/ (was pipeline/04-backend-platform.md, folded into the JSON spec 2026-08-15)",
     "",
     "Every free-tier ceiling this portfolio runs against, recorded ONCE, each with the URL it was read",
     "from and the date it was read. Every hard cap in the Worker source DERIVES from a row here.",

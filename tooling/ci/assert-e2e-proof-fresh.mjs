@@ -3,7 +3,8 @@
 // assert-e2e-proof-fresh.mjs — the nightly golden-path proof must be RECENT,
 // SCHEDULED, and must still be running the suite it claims to run.
 //
-// [pipeline N-6, clauses 1 and 3] Private/company/pipeline/06-app-build.md
+// [pipeline N-6, clauses 1 and 3] Private/requirements/ (was pipeline/06-app-build.md,
+// folded into that JSON spec 2026-08-15)
 //
 // N-6 as originally drafted asked that a done-record NAME an end-to-end test and
 // that a workflow CLAIM it. Both were true on 2026-07-29 of a suite that had been

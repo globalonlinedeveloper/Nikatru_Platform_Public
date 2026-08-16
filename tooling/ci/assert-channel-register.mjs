@@ -75,19 +75,20 @@
 // work prints the gap on every run rather than blocking all CI on work only the
 // owner can do. A known gap nobody sees becomes permanent.
 //
-// 🔴 CI CANNOT SEE Private/company/ OR Private/knowledge/. Both are gitignored (.gitignore:14-15)
-// and absent from the public checkout. Two consequences, and the second one bit
-// this guard on its own first CI run:
+// 🔴 CI CANNOT SEE Private/ — ONE directory since the 2026-08-15 flatten merged
+// company/ + knowledge/ into it. It is gitignored (.gitignore:22-23) and absent
+// from the public checkout. Two consequences, and the second one bit this guard
+// on its own first CI run:
 //   · [10]D-4's OWNER_QUEUE limbs are NOT implementable in CI at all. The
 //     register carries the row ids as data; asserting on them is local-only.
 //   · every ADR path a guard cites is unresolvable in CI. This guard's
 //     disqualified-channel check failed on run 30609219162 for exactly that
 //     reason — a correct check reporting a fault that did not exist.
 // The fix is NOT to drop the check and it is NOT a silent skip ("silence is not
-// success"). It is to decide from the HARNESS ROOT: if Private/knowledge/ is present the
-// full check runs and a deleted or downgraded ADR fails; if Private/knowledge/ is absent
+// success"). It is to decide from the HARNESS ROOT: if Private/ is present the
+// full check runs and a deleted or downgraded ADR fails; if Private/ is absent
 // ENTIRELY the guard says so, loudly, on every run. A single missing ADR inside a
-// present Private/knowledge/ is still a failure — which is the case that matters, and it
+// present Private/ is still a failure — which is the case that matters, and it
 // is the one a blanket existsSync() skip would have thrown away.
 //
 // Usage:  node tooling/ci/assert-channel-register.mjs [repoRoot]
@@ -401,7 +402,7 @@ for (const c of channels) {
     req(c.submittable === true, 'is a store channel but is not `submittable`. A store you cannot submit to is not a store channel.');
     // [10]D-4 "every store channel has a publisher account" is mapped by the
     // register's own _readme onto `kind=store + ownerQueue`. The id's CONTENTS
-    // stay uncheckable in CI by design (Private/company/ is gitignored, and the _readme
+    // stay uncheckable in CI by design (Private/ is gitignored, and the _readme
     // says so) — but its PRESENCE needs nothing private, and without this check
     // the mapping was decorative: found 2026-07-31 with linux-snap already
     // shipping `kind: "store"` + `ownerQueue: null`, and nulling the ids on ALL
@@ -676,7 +677,7 @@ if (packagingResolved > 0) {
 // owner-gated work ([pipeline C-6]): Play submission is deferred by 39-CHASSIS
 // §4 cut 5, so failing here would block all CI on work nobody has licensed,
 // while staying silent would make the gap permanent. Everything read here is
-// .github/, which is in the public repo, so there is no Private/company/ mode to handle.
+// .github/, which is in the public repo, so there is no Private/ mode to handle.
 //
 // What a target leaves on disk, per platform. Deliberately conservative: only
 // PACKAGED FILE artifacts are listed, because those are the things a channel
@@ -1044,10 +1045,10 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 
 // ── 6c. the channel↔account status, published into the tree ──────────────────
 // [10]D-4's AGENT SLICE. The register already maps every store row to its
-// OWNER_QUEUE id, and CI can never read OWNER_QUEUE.md (`Private/company/` is
-// gitignored, .gitignore:15) — so the mapping was data with no status beside
-// it, and "which of these accounts exists?" had no answer any machine could
-// give.
+// OWNER_QUEUE id, and CI can never read OWNER_QUEUE.md ([ADR 054] moved it to the
+// sibling `nikatru/` brain, which is not on the disk CI checks out) — so the
+// mapping was data with no status beside it, and "which of these accounts
+// exists?" had no answer any machine could give.
 //
 // `accountStatus` is an OWNER-ASSERTED, DATED claim: `none | applied |
 // verified`. It cannot be derived — no API this repo can reach knows whether a
@@ -1262,7 +1263,7 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 
 // ── 7. disqualified channels ─────────────────────────────────────────────────
 // The ADR check is MODE-AWARE, and the mode is decided by the harness ROOT, not
-// by the individual file. `Private/knowledge/` is gitignored, so in a CI checkout every
+// by the individual file. `Private/` is gitignored, so in a CI checkout every
 // ADR path is unresolvable — reporting that as "the decision is missing" is a
 // false fault, and skipping it silently is worse. Decide once, say which.
 const disqualified = Array.isArray(register.disqualified) ? register.disqualified : [];
@@ -1315,7 +1316,7 @@ for (const d of disqualified) {
 // path, so nothing could tell whether the decision it rests on still says what
 // the entry claims. A citation nobody can open is a citation that rots.
 //
-// MODE-AWARE, exactly as the disqualified check is: where `Private/knowledge/` is
+// MODE-AWARE, exactly as the disqualified check is: where `Private/` is
 // checked out the ADR must exist and record itself LOCKED; in a CI checkout the
 // harness is gitignored, so the limit is PRINTED rather than passed over.
 for (const s of register.nonChannelSigningIdentities ?? []) {

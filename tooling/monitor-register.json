@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE MONITOR REGISTER — [pipeline E-9] Private/company/pipeline/11-measurement.md",
+    "THE MONITOR REGISTER — [pipeline E-9] Private/requirements/ (was pipeline/11-measurement.md, folded into the JSON spec 2026-08-15)",
     "",
     "Every hostname this factory serves, and whether anything is watching it.",
     "",
@@ -159,7 +159,10 @@
       "indistinguishable from everything being healthy.",
       "",
       "This is [pipeline E-9b] and it is OWNER-GATED: either fund/accept an off-box checker",
-      "(Private/requirements/zero-cost-stack.md keeps Gatus on the adopt-nothing-until-trigger menu), or",
+      "(Private/requirements/ keeps Gatus on the adopt-nothing-until-trigger menu — the prose",
+      "zero-cost-stack.md that used to be named here was folded into that JSON spec on 2026-08-16 in",
+      "commit e88fdcf, and the sentence now lives in the heldReason of this requirement's row in",
+      "gates.json; recover the page with `git -C Private show e88fdcf^:requirements/zero-cost-stack.md`), or",
       "write the single point of failure down as ACCEPTED, with a date and a name. 'Not noticed' is not",
       "an answer; 'accepted and recorded' is. No agent can make that call.",
       "",

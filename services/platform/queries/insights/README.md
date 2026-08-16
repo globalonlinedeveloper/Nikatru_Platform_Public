@@ -1,6 +1,6 @@
 # The five decision numbers — `[pipeline 11]E-11`
 
-The taxonomy in `Private/requirements/analytics-events.md` exists to produce **five numbers**.
+The taxonomy in `Private/requirements/` exists to produce **five numbers**.
 Until now nothing in the tree could produce any of them: `services/platform/src/routes/` holds
 `config.ts` and `events.ts` only, so **nothing reads the `events` table**, and the four indexes
 shipped in advance for these very queries (`migrations/0002_analytics.sql:58-63`, whose comment
@@ -34,12 +34,19 @@ satisfied by the tested query set alone.
 5. **Feature adoption** — the `feature_used{name}` distribution across active installs (stage 4).
    → `05-feature-adoption.sql` (`feature_adoption`)
 
-The wording and the ORDER above mirror `Private/requirements/analytics-events.md`
-§ *"The ~5 numbers these roll up into (the actual dashboard)"*. That document is the SSoT and it is
+The wording and the ORDER above mirror `analytics-events.md`
+§ *"The ~5 numbers these roll up into (the actual dashboard)"*. That document was the SSoT; on
+2026-08-16 (commit `e88fdcf`) it was folded into the JSON spec at `Private/requirements/`, where the
+standard-event taxonomy survives verbatim under origin `[REQ]analytics-events §standard-events` —
+but the *"~5 numbers"* section itself got **no successor row**, so the deleted page is the only place
+that wording still exists: `git -C Private show e88fdcf^:requirements/analytics-events.md`. What the
+spec does hold over this list is `INV-1119` in `Private/requirements/invariants.json`, which names
+`test/insights-queries.test.ts` as its guard. `Private/requirements/` is still
 **gitignored** — it never reaches CI — so this file is its public mirror and the test enforces the
 mirror in both directions **whenever the private tree is present** (i.e. on every developer machine,
 never on a runner). Read `test/insights-queries.test.ts`'s `NOTICE` line to see which of the two
-checks actually ran.
+checks actually ran. ⚠️ Today that line prints everywhere, developer machines included, because the
+limb still probes for a `Private/company/` tree (removed by the 2026-08-15 flatten).
 
 ## Calling convention
 

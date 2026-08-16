@@ -89,7 +89,7 @@
     "THE APPLE TOOLCHAIN FLOOR — AND IT IS A STORE POLICY, NOT A PACKAGE VERSION.",
     "",
     "developer.apple.com/news/upcoming-requirements/ (fetched 2026-07-29, recorded in",
-    "Private/company/pipeline/10-distribution-store.md): apps uploaded to App Store Connect 'must be built",
+    "Private/requirements/ — was pipeline/10-distribution-store.md, folded into the JSON spec 2026-08-15): apps uploaded to App Store Connect 'must be built",
     "with Xcode 26 or later' — effective 28 April 2026, so it is ALREADY IN FORCE, not upcoming.",
     "",
     "WHY IT IS DECLARED HERE WHILE NO LANE READS IT YET. tooling/channel-register.json's",
