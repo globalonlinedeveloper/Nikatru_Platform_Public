@@ -73,12 +73,12 @@ function locate(...relCandidates) {
 /* 🔴 THREE GUARDS WERE REMOVED FROM THIS ARRAY ON 2026-08-15, NOT LEFT TO FAIL.
    `assert-status-honest`, `assert-req-ids` and `assert-enforcers-exist` all read
    `Private/company/pipeline/` — 384,000 words of prose that the JSON spec under
-   `Private/spec/` replaced and that the same commit deleted. Their entries
+   `Private/requirements/` replaced and that the same commit deleted. Their entries
    are gone rather than red because a permanently red guard trains people to pass
    `--no-verify`, and a hook that is routinely bypassed is worth less than no hook:
    it also carries the belief that something was checked.
 
-   Where each property went (full reasoning: Private/spec/staging/RETIREMENT-PLAN.md,
+   Where each property went (full reasoning: Private/notes/RETIREMENT-PLAN.md,
    and the four files themselves are readable in Private/company/tooling/retired/):
      assert-status-honest   → assert-spec limbs 4 + 6. The markdown format kept a
                               status in three places that could disagree; the JSON
@@ -87,7 +87,7 @@ function locate(...relCandidates) {
      assert-req-ids         → assert-spec limb 9. Its citation half could not be
                               repointed — after the deletion every `origin` cites a
                               file that is gone — so the declarations were frozen
-                              into spec/staging/00-ORIGINS.lock.json FIRST, and limb
+                              into Private/requirements/origins.lock.json FIRST, and limb
                               9 checks both directions against that lock.
      assert-enforcers-exist → assert-spec limb 3, which is the same check over the
                               same citations, 10,854 ms → ~700 ms. That is why
@@ -104,7 +104,7 @@ const GUARDS = [
     rel: ['tooling/scripts/check-dod-sync.mjs'],
     what: 'the DoD page, the register and MASTER_PLAN §4 agree' },
   { name: 'assert-spec', speed: 'fast',
-    rel: ['Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],
+    rel: ['Private/requirements/tooling/assert-spec.mjs', 'Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],
     what: 'the JSON spec is schema-valid, id-unique, origin-locked, and every enforcer it names exists' },
   /* ADDED 2026-08-15 with the flatten. `Private/README.md` is the index the
      flatten exists to deliver, and an index is a hand-kept second copy of the
@@ -113,8 +113,48 @@ const GUARDS = [
      at `../knowledge/decisions/`, a directory that had not existed for days.
      Prose cannot announce its own staleness, so the index is asserted instead. */
   { name: 'assert-index-complete', speed: 'fast',
-    rel: ['Private/spec/tooling/assert-index-complete.mjs', 'tooling/assert-index-complete.mjs'],
+    rel: ['Private/requirements/tooling/assert-index-complete.mjs', 'Private/spec/tooling/assert-index-complete.mjs', 'tooling/assert-index-complete.mjs'],
     what: 'Private/README.md names every directory and every navigable file, and its links resolve' },
+  /* ADDED 2026-08-16 with the streamline. `assert-index-complete` deliberately
+     does NOT enumerate `research/` — 51 filenames in the corpus index would bury
+     the sixteen runbooks that index exists to surface — and the cost of that
+     judgement was measured on the day: `research/README.md` named 8 of its 51
+     files, and carried a link to `../../company/MASTER_PLAN.md` for a day after
+     that path stopped existing. So the directory gets its own register and its
+     own guard, at its own depth. Same doctrine, one level down. */
+  { name: 'assert-research-archive', speed: 'fast',
+    rel: ['Private/requirements/tooling/assert-research-archive.mjs', 'Private/spec/tooling/assert-research-archive.mjs', 'tooling/assert-research-archive.mjs'],
+    what: 'research/index.json, the files on disk and research/README.md are in bijection, and no successor pointer dangles' },
+  /* ADDED 2026-08-16 with the decisions/ streamline. The ADR set had ONE property
+     nothing could check and nothing structurally could: whether a cited number is
+     a decision at all. Three — 012, 014, 018 — were pre-allocated as headings in
+     `research/29-SYNTHESIS-A-S.md`, never written, and are cited 63 times today
+     from 17 files, one of them in the PUBLIC tree. A bare `[ADR 012]` is not a
+     markdown link, so `assert-index-complete`'s link limb cannot see it, and the
+     README table lists only files that exist, so a number with no file is
+     invisible to any check that walks files. Existing phantoms are DECLARED and
+     printed on every run rather than banned — the citations sit inside the
+     finished spec, which must not be restructured — so what this ratchets is the
+     NEXT one: an ADR cited before it lands fails the commit that writes it. */
+  { name: 'assert-adr-citations', speed: 'fast',
+    rel: ['Private/requirements/tooling/assert-adr-citations.mjs', 'Private/spec/tooling/assert-adr-citations.mjs', 'tooling/assert-adr-citations.mjs'],
+    what: 'decisions/index.json matches the ADRs on disk, and every `ADR NNN` under Private/ resolves' },
+  /* ADDED 2026-08-17 with the session-log index. `session-notes.md` is 11k lines
+     and 149 entries, APPEND-ONLY and correct that way — the log is the durable
+     memory, and truncating it would destroy what the corpus is for. What it had
+     no map, so in practice nobody read past the top: every finding after the
+     first week was on disk and effectively unreachable. `notes/session-notes-index.json`
+     is that map. ⚠️ It is also the FOURTH hand-kept second copy of a tree in this
+     corpus, and the other three each went stale in silence — so it gets the same
+     treatment as the other three registers rather than a promise. The drift here
+     is not hypothetical or slow: appending an entry IS the ritual of that file,
+     and the row is forgotten the first time somebody appends in a hurry. The
+     title limb is the sharp one — it catches an INSERTION, which shifts every
+     line below it and would otherwise leave each row pointing confidently at
+     somebody else's entry, exactly the `ci.yml:NNNN` failure one file over. */
+  { name: 'assert-session-index', speed: 'fast',
+    rel: ['Private/requirements/tooling/assert-session-index.mjs', 'Private/spec/tooling/assert-session-index.mjs', 'tooling/assert-session-index.mjs'],
+    what: 'every `## ` entry in session-notes.md has an index row, every row resolves, and the titles are byte-identical' },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
