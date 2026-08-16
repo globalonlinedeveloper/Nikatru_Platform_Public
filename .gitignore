@@ -93,6 +93,17 @@ apps/subly/config/*.json
 **/ios/Pods/
 **/android/.gradle/
 **/android/local.properties
+# Kotlin compiler session files (`.kotlin/sessions/*.salive`). FOUND THE ONLY WAY
+# THIS CLASS EVER GETS FOUND — by running a real Android build, 2026-08-17, which
+# created `apps/subly/android/.kotlin/` UNTRACKED AND UNIGNORED. Never committed
+# (`git log --all -- apps/subly/android/.kotlin` is empty), so nothing leaked; the
+# rule is added before the first `git add -A` rather than after, which is the same
+# doctrine as the `Private/` and `Private.*/` lines above.
+# ⚠️ It appears only on a machine that has actually built for Android, and this
+# repo's Android builds happen in WSL or on a CI runner — so on the Windows host
+# where `git add -A` is most likely to be typed, the directory does not exist to
+# warn you. Globbed at `**/` because every stamped app inherits the same layout.
+**/android/.kotlin/
 **/*/GeneratedPluginRegistrant.*
 **/windows/flutter/ephemeral/
 **/linux/flutter/ephemeral/
