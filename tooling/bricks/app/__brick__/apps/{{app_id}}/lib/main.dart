@@ -78,7 +78,7 @@ Future<void> main() async {
           createLocalNotificationService();
       await notifications.init();
 
-      // 🔴 [pipeline C-15 / G-43] IDENTITY, BEFORE THE FIRST FRAME — and this
+      // 🔴 [pipeline C-15 / G-43] (absent from origins.lock.json by construction — G-43 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/MASTER_PLAN.md) IDENTITY, BEFORE THE FIRST FRAME — and this
       // call is the only thing that makes the identity --dart-defines work.
       //
       // Nothing in the brick used to initialise the SDK at all, while

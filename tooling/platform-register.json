@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "THE SHARED-SERVER REGISTER — [pipeline B-1] Private/company/pipeline/04-backend-platform.md",
+    "THE SHARED-SERVER REGISTER — [pipeline B-1] Private/requirements/ (was pipeline/04-backend-platform.md, folded into the JSON spec 2026-08-15)",
     "",
     "The complete set of capabilities the ONE shared `platform` Worker provides — every ROUTE it mounts",
     "and every BINDING any Worker in this repo declares — together with what each one is FOR, who calls",

@@ -28,7 +28,9 @@
 // sustainable is Renovate raising bump PRs, which is stage 14. Until that
 // exists, these pins go stale; that is a known cost, not an oversight.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-11.
+// Pipeline requirement: Private/requirements/ → F-11.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/assert-workflow-hardening.mjs [repoRoot]
 // Exit 0 = hardened, 1 = a movable reference or a missing permissions block.

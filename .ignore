@@ -60,16 +60,16 @@
 # filesystem is case-insensitive; ripgrep's glob matching is not.
 # ⚠️ AND THE CHILDREN NEED THEIR OWN NEGATIONS — the second failed fix.
 # `.gitignore:14` (`knowledge/`) and `:15` (`company/`) are UNANCHORED, so they
-# match at ANY depth: re-including `Private/` still left `Private/company/` and
-# `Private/knowledge/` excluded by the rules written for their old locations.
+# match at ANY depth: re-including `Private/` still left `Private/company/` (deleted
+# 2026-08-15) and `Private/knowledge/` (deleted 2026-08-15) excluded by the old rules.
 # Two negations that each looked correct, and the search stayed at zero through
 # both. Measured after each attempt, which is the only reason this is not still
 # broken — "no matches" never announces itself as an absence of search.
 !Private/
 !private/
 # ── FLATTENED 2026-08-15 ─────────────────────────────────────────────────────
-# `!Private/company/` and `!Private/knowledge/` stood here until the flatten
-# merged both into one repo whose top level is topics. They are deleted rather
+# `!Private/company/` and `!Private/knowledge/` (deleted 2026-08-15) stood here until
+# the flatten merged both into one repo whose top level is topics. They are deleted rather
 # than kept-and-inert: the note above records that the CHILDREN needed their own
 # negations, and a reader who finds two negations for directories that no longer
 # exist cannot tell whether they are load-bearing. Measured after deleting them —

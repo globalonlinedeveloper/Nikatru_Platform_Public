@@ -89,7 +89,7 @@ ${vars.map((x) => `  final ${x}_x = v('${x}');\n  if (${x}_x == 'no') { problems
 }
 `;
 
-// [pipeline S-1r] The fixture now PRINTS A CHECKLIST, both branches, because the
+// [pipeline S-1r] (absent from origins.lock.json by construction — S-1r is a residual of S-1, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen) The fixture now PRINTS A CHECKLIST, both branches, because the
 // guard reads it. A post_gen with no checklist is COVERAGE LOST, not a pass —
 // so a fixture without one would have quietly disabled the new limb for every
 // case in this file.
@@ -340,7 +340,7 @@ describe('assert-input-contract', () => {
     assert.equal(code, 0, 'brick.yaml exists in the fixture and is allowlisted');
   });
 
-  // ── [pipeline S-1r] no printed step may be one a locked ADR retired ────────
+  // ── [pipeline S-1r] no printed step may be one a locked ADR retired ──────── (absent from origins.lock.json by construction — S-1r is a residual id, never a pipeline heading)
   // The checklist said "Add DNS for <host>" for months after [ADR 006] locked a
   // proxied wildcard that made it unnecessary — and it named the WRONG LAYER: an
   // unattached host resolves fine and answers 522, so an owner debugging a dark

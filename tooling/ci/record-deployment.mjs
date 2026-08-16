@@ -15,8 +15,10 @@
 // what shipped. Treat it as a real failure — an unrecorded deploy is the state
 // this script exists to abolish.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-5b, and
+// Pipeline requirement: Private/requirements/ → F-5b, and
 // [pipeline 10]D-9 for the store half below.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // ── THE STORE HALF, DECIDED BEFORE THE FIRST SUBMISSION — [10]D-9 ────────────
 // A web deploy has one state ("live") and a fixed URL, so a prose description

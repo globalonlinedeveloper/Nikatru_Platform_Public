@@ -4,7 +4,7 @@
 // questionnaire are SWORN DECLARATIONS ABOUT WHAT THE CODE DOES, so they are
 // compared to the code.
 //
-// [pipeline K-8 / G-32] Two Play Console artefacts had NO representation in this
+// [pipeline K-8 / G-32] (absent from origins.lock.json by construction — G-32 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/MASTER_PLAN.md) Two Play Console artefacts had NO representation in this
 // repository at all until 2026-08-04, and the store README said so in prose:
 // "⬜ Data safety form — a Play Console questionnaire. Blocking, and it has no
 // repo representation." The Play organisation account verified the same day,
@@ -1383,7 +1383,7 @@ if (problems.length) {
   console.error('');
   for (const p of problems) console.error(`FAIL ${p}`);
   console.error('');
-  console.error('  [pipeline K-8 / G-32] The Data safety label is a sworn declaration about what the code does.');
+  console.error('  [pipeline K-8 / G-32] The Data safety label is a sworn declaration about what the code does.');  // G-32: (absent from origins.lock.json by construction — a MASTER_PLAN §3 gap id, never a pipeline heading). Kept out of the printed string: CI output is for the failure, not for citation bookkeeping.
   console.error('  Google: "The developer is responsible for the accuracy of the label."');
   console.error('\nassert-play-declarations: FAILED');
   process.exitCode = 1;

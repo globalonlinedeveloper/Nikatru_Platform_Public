@@ -8,8 +8,11 @@ tree, to the published pages, or to both. This directory is where those register
 The stage-8 plan specified every register under `company/legal/**`. That is wrong, and the previous
 increment (PR #114) stopped rather than build on it.
 
-`Private/company/` is **gitignored** (`.gitignore` line 15) — it is the private business SSoT and it is not in the
-public repository at all. A guard that reads `company/legal/data-inventory.json` in CI reads *nothing*:
+`Private/` is **gitignored** (`.gitignore` line 22) — it is the private corpus and it is not in the
+public repository at all. This paragraph named `Private/company/` (deleted 2026-08-15) at `.gitignore`
+line 15 until the flatten merged company/ and knowledge/ into one repo; the line that ignores the corpus
+is now :22, and nothing else about the argument changes.
+A guard that reads `company/legal/data-inventory.json` in CI reads *nothing*:
 `existsSync` returns false, the row set is empty, and the guard reports a clean tree over an empty domain.
 That is this repository's single most-repeated failure mode, and building four more guards on it would have
 been building four more instances of it deliberately.
@@ -36,7 +39,7 @@ record lives (`OWNER_QUEUE S-4`) — never where the key is, or how it is protec
 
 Applied here, per register:
 
-| register | public part (here) | private part (stays out of this repo — `nikatru/` or `Private/company/`) |
+| register | public part (here) | private part (stays out of this repo — `nikatru/` or `Private/`) |
 |---|---|---|
 | `provider-register.json` | the provider's name, role, the route or page that names it, whether it is disclosed | the seller account itself: merchant IDs, KYC state, bank/payout details, contract terms |
 | `data-inventory.json` | which stores exist, what CATEGORY of data each holds, its declared retention, which code writes it | the data itself, and any per-subject record. No row names a person, an address, or a key |

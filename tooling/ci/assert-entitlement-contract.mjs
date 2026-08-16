@@ -3,8 +3,14 @@
 // assert-entitlement-contract.mjs — the money rail's schema is COMPLETE, and it
 // is complete BEFORE the first payment lands.
 //
-// [pipeline 5]M-3 · M-2 · M-7. `Private/requirements/schema-evolution.md` makes
-// migrations ADDITIVE-ONLY, and `entitlements` is the one table in this
+// [pipeline 5]M-3 · M-2 · M-7. `Private/requirements/` makes migrations
+// ADDITIVE-ONLY — the prose `schema-evolution.md` this line used to name was
+// folded into that JSON spec on 2026-08-16 in commit e88fdcf, and the rule is
+// now INV-505 (these migrations) + INV-S3-10 (the brick's starter schema) in
+// invariants.json, with the client-side half kept as a ledger entry under origin
+// `[REQ]schema-evolution §what-this-buys`. The deleted page reads back with
+// `git -C Private show e88fdcf^:requirements/schema-evolution.md`.
+// And `entitlements` is the one table in this
 // portfolio whose rows are a stranger's money. The instant the first payment
 // lands, every column missing from it is missing FOREVER for that row: there is
 // no back-fill for a fact the provider only ever sent once, in a notification we
@@ -802,7 +808,7 @@ if (problems.length) {
   for (const p of problems) console.error(`    ${p}`);
   console.error('');
   console.error('  [pipeline 5]M-3 The entitlement record is complete BEFORE the first payment lands.');
-  console.error('  Private/requirements/schema-evolution.md makes migrations ADDITIVE-ONLY, so every');
+  console.error('  Private/requirements/ makes migrations ADDITIVE-ONLY (INV-505, INV-S3-10), so every');
   console.error('  column above is free today and permanent the instant a stranger pays.');
   // [5]M-2, matching the citation the code itself carries at
   // services/subly-api/src/routes/webhooks.ts:505 ("the conditional DO UPDATE is

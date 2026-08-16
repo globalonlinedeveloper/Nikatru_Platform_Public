@@ -139,9 +139,15 @@ jobs:
       # unapplied while subly_db still had no budget_categories.id.
       #
       # Migrations run FIRST because the schema standard is additive-only
-      # (Private/requirements/schema-evolution.md): new columns are harmless to
-      # code that predates them, whereas deploying code that reads a column the
-      # database does not have yet is an outage. Expand, then deploy.
+      # (Private/requirements/ — the prose `schema-evolution.md` that used to be
+      # cited here was folded into that JSON spec on 2026-08-16 in commit
+      # e88fdcf, and the rule is now INV-505 for these migrations and INV-S3-10
+      # for the brick's starter schema, both in invariants.json; the deleted page
+      # still reads back with
+      # `git -C Private show e88fdcf^:requirements/schema-evolution.md`): new
+      # columns are harmless to code that predates them, whereas deploying code
+      # that reads a column the database does not have yet is an outage. Expand,
+      # then deploy.
       - name: Apply APP_DB migrations (before deploy)
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
@@ -167,9 +173,10 @@ jobs:
       # yesterday's columns proves nothing about today's. So a failure here
       # leaves migrations applied and the old code serving — which is the SAFE
       # half-state precisely because the schema standard is additive-only (see
-      # the "MIGRATIONS BEFORE DEPLOY" note above and
-      # Private/requirements/schema-evolution.md): new columns are harmless to
-      # code that predates them. The unsafe half-state is the other order.
+      # the "MIGRATIONS BEFORE DEPLOY" note above, which carries the recovery
+      # command for the folded `schema-evolution.md`, and Private/requirements/,
+      # the JSON spec that absorbed it): new columns are harmless to code that
+      # predates them. The unsafe half-state is the other order.
       #
       # BLOCKING, and exit 2 ("could not look") blocks too. The check retries a
       # dropped socket once by itself; past that, deploying code whose SQL nobody

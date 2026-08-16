@@ -29,7 +29,9 @@
 // `privacy.html` used to pass this lane, pass ci-gate, and deploy — the first
 // signal would have been a store takedown. Nothing in the repo noticed.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-9.
+// Pipeline requirement: Private/requirements/ → F-9.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/check-site-integrity.mjs [repoRoot] [claimedRoot...]
 // Exit 0 = clean, 1 = a site is broken or the scan lost its coverage.

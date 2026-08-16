@@ -637,7 +637,7 @@ describe('assert-guard-coverage', () => {
     });
   });
 
-  // ── [pipeline S-12r] executables OUTSIDE tooling/ci that a workflow runs ───
+  // ── [pipeline S-12r] executables OUTSIDE tooling/ci that a workflow runs ─── (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen)
   // DERIVED from the workflows now, not a hand-written list. tooling/scripts/
   // provision-backend.mjs — the one command the stamp's printed checklist tells
   // the owner to run — had neither F-10 property purely because it sits one

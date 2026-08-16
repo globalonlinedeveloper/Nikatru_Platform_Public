@@ -22,7 +22,9 @@
 //   node package   → named in some file under .github/workflows/
 //   site           → named in some file under .github/workflows/
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-9.
+// Pipeline requirement: Private/requirements/ → F-9.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/assert-lane-coverage.mjs [repoRoot]
 // Exit 0 = every unit is claimed, 1 = something is unclaimed (or the scan broke).

@@ -296,7 +296,8 @@ const WIRED_SURFACES_THAT_MAY_NOT_REGRESS = [
 
 /** `[<stage 1-14>]<Letter>-<number>` — the pipeline id form used across the
  *  register and the plans. This checks the SHAPE and the stage range only, and
- *  says so: Private/company/pipeline/ is gitignored, so CI cannot resolve an id to a
+ *  says so: the requirement corpus (Private/requirements/, since the pipeline prose
+ *  was folded into it 2026-08-15) is gitignored, so CI cannot resolve an id to a
  *  real requirement. A shape check still rules out the failure that mattered —
  *  a fix owner that is a sentence nobody is accountable for. */
 const PIPELINE_ID = /\[(?:[1-9]|1[0-4])\][A-Z]-\d+/;
@@ -304,7 +305,7 @@ const PIPELINE_ID = /\[(?:[1-9]|1[0-4])\][A-Z]-\d+/;
 /** A declared violation's `fixOwner` must name a TRACKABLE work item, in one of
  *  the two forms this corpus actually uses: a pipeline id (`[2]C-3`) or an
  *  owner-queue row (`OWNER_QUEUE D-8`). Same deliberate ceiling as PIPELINE_ID
- *  above, for the same reason — Private/company/ is gitignored, so CI can check the
+ *  above, for the same reason — Private/ is gitignored, so CI can check the
  *  FORM and never the EXISTENCE of the thing named.
  *
  *  🔴 WHY THIS EXISTS (2026-08-12). `violations[].fixOwner` was checked for

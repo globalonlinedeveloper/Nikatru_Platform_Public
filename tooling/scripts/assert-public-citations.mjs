@@ -7,8 +7,8 @@
 // `assert-adr-citations` is scoped to `Private/` — so a public file could point
 // at anything at all and no build would notice. Measured 2026-08-17, before this
 // guard existed: 205 lines across 95 tracked public files named
-// `Private/company/` or `Private/knowledge/`, directories deleted in the
-// 2026-08-15 flatten, including the opening line of sixteen JSON registers.
+// `Private/company/` or `Private/knowledge/` (deleted in the 2026-08-15 flatten),
+// including the opening line of sixteen JSON registers.
 //
 // This is the public half of ST-3 ("every pointer resolves"). The private half is
 // `assert-index-complete` + `assert-adr-citations`.
@@ -46,7 +46,16 @@
 //              1 = a citation does not resolve
 //              2 = could not run (no subject, or the spec could not be parsed)
 //
-// Usage:  node tooling/ci/assert-public-citations.mjs
+// 🔴 IT LIVES IN tooling/scripts/, NOT tooling/ci/, AND THAT IS THE PRECEDENT NOT A
+// PREFERENCE. `check-dod-sync.mjs` is the same shape — a guard whose SUBJECT is
+// under `Private/`, which CI can never read — and it sits here for that reason.
+// A guard in `tooling/ci/` is expected by `assert-guard-coverage.mjs` to be
+// invoked by a workflow; this one would answer NOT APPLICABLE on every CI run,
+// which is a check that always passes, i.e. exactly the vacuous pass it exists to
+// catch. It was written into tooling/ci/ first and moved the same day, after
+// `assert-guard-coverage` correctly reported it as an orphan.
+//
+// Usage:  node tooling/scripts/assert-public-citations.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -54,7 +63,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO = resolve(HERE, '..', '..');
+const REPO = resolve(HERE, '..', '..');   // tooling/scripts -> repo root
 const PRIVATE = join(REPO, 'Private');
 const SPEC = join(PRIVATE, 'requirements');
 

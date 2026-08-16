@@ -459,7 +459,7 @@ describe('assert-app-dod', () => {
   });
 
   // ⚠️ The honest limit, asserted rather than described: CI cannot resolve a link
-  // into Private/company/, and this guard says so on every run instead of reporting a
+  // into Private/, and this guard says so on every run instead of reporting a
   // check it did not perform.
   test('PRINTS the unverifiable half rather than claiming to have checked it', () => {
     const rec = JSON.parse(record('{{app_id}}'));

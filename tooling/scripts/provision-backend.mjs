@@ -3,7 +3,8 @@
 // provision-backend.mjs — take a freshly stamped backend app from placeholder to
 // deployable, in one command, with no hand-editing.
 //
-// [pipeline S-12] Private/company/pipeline/03-stamper.md — limbs 2 and 3.
+// [pipeline S-12] Private/requirements/ (was pipeline/03-stamper.md, folded into
+// that JSON spec 2026-08-15) — limbs 2 and 3.
 //
 // WHAT IT REPLACES. The stamp's own checklist used to say: run
 // `wrangler d1 create <id>_db --location apac`, PASTE the returned uuid into
@@ -85,7 +86,7 @@ const VALID_HINTS = ['wnam', 'enam', 'weur', 'eeur', 'apac', 'oc'];
  *  It lives up here, above the credential gate, because `--self-check` must
  *  exercise THE REAL EXPRESSION. A self-check with its own copy of the pattern
  *  proves that the copy works, which is worth nothing: the two would rot apart
- *  and the check would go on passing. [pipeline S-12r] */
+ *  and the check would go on passing. [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen) */
 const APP_DB_BLOCK = /("binding"\s*:\s*"APP_DB"[\s\S]{0,400}?"database_id"\s*:\s*")([^"]+)(")/;
 
 const args = process.argv.slice(2);
@@ -124,7 +125,7 @@ if (!existsSync(cfgPath)) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// `--self-check` — the OFFLINE exercise, and the whole of [pipeline S-12r].
+// `--self-check` — the OFFLINE exercise, and the whole of [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual id, never a pipeline heading).
 //
 // WHY IT EXISTS. Until now nothing ran this script and nothing tested it:
 // `grep -rn provision-backend .github/` returned zero, and it sits under

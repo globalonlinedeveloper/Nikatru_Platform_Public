@@ -22,8 +22,10 @@
 //
 // 🔴 THE REAL-TREE MUTATIONS CAME FIRST. Recorded 2026-08-06 against a scratch
 // copy of HEAD's pubspec.yaml, restored and re-run green afterwards:
-//   T1  HEAD state, Private/company/ present   => exit 0, "NO APP HAS ENTERED THE FACTORY"
-//   T2  HEAD state, Private/company/ removed   => exit 0, + "THE PRIVATE TREE IS NOT IN THIS CHECKOUT"
+//   T1  HEAD state, the private tree present   => exit 0, "NO APP HAS ENTERED THE FACTORY"
+//   T2  HEAD state, the private tree removed   => exit 0, + "THE PRIVATE TREE IS NOT IN THIS CHECKOUT"
+// (that tree was `Private/company/` (deleted 2026-08-15) when T1/T2 were run; the flatten
+//  merged company/ and knowledge/ into the single `Private/` the fixtures below build.)
 //   T3  apps/subly renamed to apps/sublite (workspace AND disk)
 //                                      => exit 1, "EXEMPT name(s) are not workspace members"
 //   T4  apps/ghost created on disk only => exit 1, "not in the root pubspec.yaml `workspace:` block"
@@ -57,7 +59,7 @@ after(() => {
 const PUBSPEC = (apps) => `name: nikatru_workspace\n\nenvironment:\n  sdk: ^3.9.0\n\nworkspace:\n  - packages/core\n${apps.map((a) => `  - ${a}\n`).join('')}\ndev_dependencies:\n  melos: ^8.2.2\n`;
 
 /**
- * A tree with a root pubspec, the apps it names, and optionally a Private/company/.
+ * A tree with a root pubspec, the apps it names, and optionally a Private/.
  * `EXEMPT` in the script names `apps/subly`, so a fixture that wants the empty
  * domain has to carry that app — which is the point: the exemption is a claim
  * about a specific app, and a fixture that fakes it would be testing nothing.
@@ -182,7 +184,7 @@ describe('N-9 · the sha256 half, which is the only reason this script is local'
   });
 });
 
-describe('N-9 · a checkout with no Private/company/ reports what it could not do', () => {
+describe('N-9 · a checkout with no Private/ reports what it could not do', () => {
   test('🔴 PRINTS and exits 0 — this is the CI shape, and failing it would make the lane permanently red', () => {
     const root = tree({ workspace: ['apps/subly'] });
     rmSync(join(root, 'Private'), { recursive: true, force: true });

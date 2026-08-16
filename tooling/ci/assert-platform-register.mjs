@@ -2,7 +2,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-platform-register.mjs — the SHARED SERVER must know what it provides.
 //
-// [pipeline B-1] Private/company/pipeline/04-backend-platform.md — "the factory declares,
+// [pipeline B-1] Private/requirements/ (was pipeline/04-backend-platform.md, folded
+// into that JSON spec 2026-08-15) — "the factory declares,
 // in one machine-readable place, every capability the shared server provides …
 // and a capability with no client is not counted as delivered."
 // [pipeline B-18] — "one shared bucket, and every bound bucket has a reader."

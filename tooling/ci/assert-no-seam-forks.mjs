@@ -411,7 +411,7 @@ const PARITY_PAIRS = [
       '🔴 THIS PAIR IS IN NO ADR. [ADR 042]:256-260 enumerates THREE pairs and calls that the tree; it is ' +
       'not. Found 2026-08-12 by enumerating every brick screen that has a Subly counterpart (11) and ' +
       'measuring each, instead of trusting the list — the same false-negative shape CLAUDE.md records for ' +
-      'ripgrep and Private/company/: a table is an assertion about files somebody once looked at. Both sides pass ' +
+      'ripgrep and Private/: a table is an assertion about files somebody once looked at. Both sides pass ' +
       '`platformCanSchedule: caps.canSchedule`. C = F = {canSchedule} when it landed.',
   },
 ];

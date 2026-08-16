@@ -2,7 +2,7 @@
 // provision-backend.test.mjs — tooling/scripts/provision-backend.mjs must be
 // able to FAIL.
 //
-// [pipeline S-12r] This script had NEITHER of the two properties F-10 requires.
+// [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen) This script had NEITHER of the two properties F-10 requires.
 // Nothing ran it (`grep -rn provision-backend .github/` -> 0) and nothing tested
 // it, because it lives under tooling/scripts/ rather than tooling/ci/ and so sat
 // outside assert-guard-coverage.mjs's subject set entirely. It is not a guard —

@@ -20,7 +20,9 @@
 // blocks every deploy, including the ones that passed. Found by negative-testing
 // this script before wiring it up. Set `process.exitCode` and return instead.
 //
-// Pipeline requirement: Private/company/pipeline/01-foundation.md → F-5b.
+// Pipeline requirement: Private/requirements/ → F-5b.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/assert-gate-passed.mjs <sha> [--timeout-seconds N]
 //   env:  GITHUB_TOKEN (or GH_TOKEN), GITHUB_REPOSITORY (owner/repo)

@@ -14,8 +14,8 @@
 //   ·  Private/                   (the spec, the ADRs and the session log — the
 //                                  guards' actual subject; ONE repo since the
 //                                  2026-08-15 flatten merged company/ + knowledge/)
-// ⚠️ This header said THREE, naming `Private/company/` and `Private/knowledge/`,
-// for two days after the flatten deleted both names — while the code below
+// ⚠️ This header said THREE, naming `Private/company/` and `Private/knowledge/` (deleted
+// 2026-08-15), for two days after the flatten — while the code below
 // declared two and explained why. A comment cannot go red, so the code was right
 // and the paragraph a reader starts from was wrong. Corrected 2026-08-17.
 //
@@ -36,8 +36,8 @@ const HOOKS = join(REPO, '.githooks');
 const CHECK_ONLY = process.argv.includes('--check');
 
 /* 🔴 ONE PRIVATE REPO SINCE THE 2026-08-15 FLATTEN, NOT TWO — and the old list did
-   not merely go stale, it went QUIET. `Private/company` and `Private/knowledge`
-   stopped existing as repos, this script printed "no .git here — skipped" for both,
+   not merely go stale, it went QUIET. `Private/company` and `Private/knowledge` (deleted
+   2026-08-15) stopped existing as repos, this script printed "no .git here — skipped" for both,
    and then printed "every repo is pointed at .githooks/" and exited 0. Two of three
    subjects vanished and the check reported success: the exact vacuous pass this
    corpus exists to eliminate, in the installer written that same morning to prevent
@@ -89,8 +89,8 @@ for (const r of REPOS) {
                                         exact case the flag was written for.
 
        Verified both ways before landing: `mv Private Private.probe` makes this
-       print n/a and exit 0; `mv Private/.git Private/.git-probe` still prints RED
-       and exits 1. */
+       print n/a and exit 0; moving `Private/.git` out of the way — tree present,
+       repo gone — still prints RED and exits 1. (Said in prose rather than as a second `mv` with its destination spelled out: `assert-public-citations` reads every `Private/…` in the tree as a citation, and an example's invented destination is indistinguishable from a real one.) */
     if (r.expected && existsSync(r.path)) {
       console.log(`  RED  ${r.name.padEnd(20)} DIRECTORY IS HERE BUT HAS NO .git — not skipped, failed`);
       failures++;
@@ -101,7 +101,7 @@ for (const r of REPOS) {
     }
     continue;
   }
-  // Each repo needs a path RELATIVE TO ITSELF, because Private/company/ is its
+  // Each repo needs a path RELATIVE TO ITSELF, because Private/ is its
   // own repository whose root is not this one. An absolute path would work today
   // and break the moment the tree moves — which it did, this very session.
   const want = relative(r.path, HOOKS).split('\\').join('/');

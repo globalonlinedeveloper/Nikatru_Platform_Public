@@ -174,7 +174,7 @@ const NOT_A_SCANNER = new Map([
   ],
 ]);
 
-/** [pipeline S-12r] EXECUTABLES OUTSIDE tooling/ci THAT A WORKFLOW RUNS, and
+/** [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen) EXECUTABLES OUTSIDE tooling/ci THAT A WORKFLOW RUNS, and
  *  which are NOT required to carry a negative test — with the reason.
  *
  *  🔴 This used to be the opposite list: `COVERED_SCRIPTS`, a hand-written map
@@ -616,7 +616,7 @@ for (const guard of guards) {
   }
 }
 
-// ── [pipeline S-12r] the workflow-invoked executables OUTSIDE tooling/ci ─────
+// ── [pipeline S-12r] the workflow-invoked executables OUTSIDE tooling/ci ───── (absent from origins.lock.json by construction — S-12r is a residual id, never a pipeline heading)
 // DERIVED, not hand-listed: whatever the tracked workflows run under tooling/
 // that is not a guard must still carry a negative test, or appear in
 // NO_NEGATIVE_TEST_NEEDED with a reason. `tooling/scripts/provision-backend.mjs`

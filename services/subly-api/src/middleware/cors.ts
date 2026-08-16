@@ -21,9 +21,9 @@
 // port, http/https) are allowed on top of the list because `flutter drive -d
 // web-server` serves the app on http://localhost:<random-port>, which is a
 // cross-origin caller to api.nikatru.com — the CI integration_test harness
-// cannot name its own port in advance. Documented in
-// Private/requirements/master-requirements.md ("CORS scoped to the app's
-// origins + localhost") and as the INC13 fix. It is a PER-APP trade: the shared
+// cannot name its own port in advance. Documented as "CORS scoped to the app's
+// origins + localhost" in Private/requirements/ (prose master-requirements.md,
+// folded in at e88fdcf) and as the INC13 fix. It is a PER-APP trade: the shared
 // platform Worker deliberately does not carry it.
 //
 // Non-browser clients (mobile/desktop apps, curl, server-to-server) send no

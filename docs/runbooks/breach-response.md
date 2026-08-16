@@ -4,9 +4,9 @@
 > which carries the rehearsal cadence. If the drill date goes stale, `assert-ops-register.mjs`
 > says so — that is the only thing keeping this file from becoming a document nobody has read.
 
-## Why this lives in the public repo and not in `Private/company/`
+## Why this lives in the public repo and not in `Private/`
 
-The same reason the operations register does: **CI cannot read `Private/company/`**, so a procedure that
+The same reason the operations register does: **CI cannot read `Private/`**, so a procedure that
 lives there is a procedure no mechanism can hold to a cadence. This file contains obligations,
 clocks and a sequence — no credentials, no business identifiers, no personal data. The two facts
 that *are* owner-private (who files, and from which address) are deliberately **not** written here;

@@ -1328,7 +1328,7 @@ jobs:
       # purpose, and a guard that fires on correct input gets deleted by whoever
       # hits it next. Because the rule is satisfied by CONTENT, there is no
       # exemption list to go stale. ⚠️ It CANNOT see live drift (no PAT in CI) and
-      # in CI it CANNOT see Private/knowledge/ or Private/company/, where three of the four stale
+      # in CI it CANNOT see Private/ (one repo since the 2026-08-15 flatten), where three of the four stale
       # documents lived -- it prints which of those two situations it was in on
       # every run rather than letting green read as "clean".
       - name: One record of how mail is sent, and no document contradicts it
@@ -1780,7 +1780,7 @@ jobs:
       - name: A recipe is a validated input contract, and the shards agree
         run: node tooling/ci/assert-recipe-contract.mjs
       # [pipeline 7]P-5 / G-36. The register is in tooling/legal/ and NOT under
-      # Private/company/, which is gitignored — a guard pointed there reads nothing and
+      # Private/, which is gitignored — a guard pointed there reads nothing and
       # reports a clean tree over an empty domain. Uncleared rows for families
       # nothing consumes PRINT; a recipe declaring an uncleared family FAILS.
       - name: No pack ships a licence family nobody cleared
@@ -2083,7 +2083,7 @@ jobs:
           mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
-      # [pipeline S-12r] EXERCISE THE PROVISIONER. Same reasoning the four
+      # [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen) EXERCISE THE PROVISIONER. Same reasoning the four
       # release scripts above already carry — "a release script nobody runs rots
       # exactly like a guard nobody feeds bad input to" — applied to the one
       # command the stamp's own checklist tells the owner to run. Nothing ran
