@@ -69,6 +69,15 @@ chassis is stamped into the next app. Two conventions are worth knowing before y
 - **An assertion that cannot fail is worse than none**, because it inflates apparent coverage. Every
   guard is expected to carry a recorded, executed failing case in its header.
 
+**Stated gap: there is no JavaScript or TypeScript linter here.** The Dart tree is analysed by
+`melos run gate` and the JSON registers are checked by their own guards, but nothing lints the
+roughly 36,000 lines of Worker TypeScript, guard `.mjs` and site JavaScript. A `biome.json` sat at
+the root from the first week and was wired to nothing; it was removed on 2026-08-17 rather than
+left, because a config file for a tool that never runs advertises coverage the repo does not have.
+Measured before removing it: `biome ci .` reports **824 errors and 251 warnings across 477 files**,
+almost all of them its formatter wanting to reflow comment blocks that are deliberately written the
+way they are. Adopting a linter here is a real decision with a real diff, not a housekeeping commit.
+
 ```bash
 node tooling/scripts/guard-sweep.mjs
 ```
