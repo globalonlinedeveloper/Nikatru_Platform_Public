@@ -8,5 +8,12 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<!-- `network.server` above is Flutter's debug VM service listening locally; it
+	     does NOT grant outbound calls. `network.client` is what lets the app reach
+	     Supabase and the Workers, and its absence here is why a debug run would have
+	     failed the same way a release build does. Added 2026-08-17 alongside the
+	     Release.entitlements fix — both files were stock `flutter create` output. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

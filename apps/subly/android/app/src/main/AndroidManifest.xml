@@ -41,5 +41,21 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- ADDED 2026-08-17, AND WITHOUT IT EVERY EXTERNAL LINK IN THE APP IS A
+             DEAD BUTTON ON ANDROID 11+. Package visibility (API 30) hides other
+             apps unless you declare what you intend to resolve, so
+             `canLaunchUrl(Uri.https(...))` returns FALSE — url_launcher then
+             declines, no exception is thrown, and the tap does nothing at all.
+             It fails SILENTLY and only on a real device at API >= 30, which is
+             why a green test suite never showed it. The links this covers are the
+             privacy policy, the terms, and the support page — the ones a store
+             reviewer clicks first. The block above was stock `flutter create`
+             output (PROCESS_TEXT, for the Flutter engine's own text plugin) and
+             had never been added to.
+             https://developer.android.com/training/package-visibility -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>
