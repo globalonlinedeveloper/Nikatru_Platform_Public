@@ -29,8 +29,35 @@
 // the same two guards, `--full` remains a superset by construction, and a future
 // slow guard needs no change to the hooks to be picked up.
 //
-// EXIT CODES:  0 = every guard run passed · 1 = a guard reported a finding
-//              2 = could not run (a guard is missing, or node cannot reach it)
+// 🔴 2026-08-17 — AND THE HOOK MADE THE PUBLIC REPO UNCOMMITTABLE BY ANYONE WHO
+// CLONED IT. Every guard below has its subject under `Private/`, which is
+// gitignored and therefore absent from every public clone by design. The coverage
+// floor then fired on all six, exited 2, and `.githooks/pre-commit` refused the
+// commit. Reproduced end to end: clone the public repo, run the documented
+// `install-hooks.mjs`, `git commit` → `CANNOT RUN — 5 of 6 spec guard(s) not
+// found` … `Commit refused`. That is not a hypothetical contributor: it is also
+// every agent worktree, which is a fresh checkout with no `Private/` in it.
+//
+// THE FLOOR WAS RIGHT AND ITS TEST WAS TOO COARSE. It could not tell
+//   (a) the corpus is here and a guard has gone missing   — a real defect, refuse
+// from
+//   (b) the corpus is not here at all                     — the subject is absent
+//                                                           by design, so there is
+//                                                           nothing to check
+// and it treated (b) as (a). The distinguishing fact is checkable and is now
+// checked: does a `Private/` DIRECTORY exist under any candidate root? On the
+// owner's machine it does, so (a) still refuses exactly as before — verified by
+// renaming a guard and confirming exit 2. In a clone it does not, so the guards
+// are reported NOT APPLICABLE, by name, and the commit proceeds.
+//
+// ⚠️ Exiting 0 having checked nothing is the vacuous pass this file exists to
+// eliminate, so it is allowed here on ONE condition, the same one `guard-sweep.mjs`
+// uses for LIBRARY / MUTATES / NEEDS-CI: the skip is DERIVED from a mechanism and
+// PRINTED every run. A silent skip would be the defect; a declared one is a fact.
+//
+// EXIT CODES:  0 = every applicable guard passed (or none applied — printed)
+//              1 = a guard reported a finding
+//              2 = could not run (the corpus IS present and a guard is missing)
 //
 // Usage:  node tooling/scripts/spec-guards.mjs --fast
 //         node tooling/scripts/spec-guards.mjs --full
@@ -70,6 +97,12 @@ function locate(...relCandidates) {
   return null;
 }
 
+/* IS THE PRIVATE CORPUS PRESENT AT ALL? This is the whole (a)-vs-(b) test from the
+   header, and it is deliberately a DIRECTORY check rather than a guard-file check:
+   a `Private/` that exists but has lost a guard is defect (a) and must still
+   refuse. `locate` is reused so the answer holds from either invocation root. */
+const PRIVATE_ROOT = locate('Private');
+
 /* 🔴 THREE GUARDS WERE REMOVED FROM THIS ARRAY ON 2026-08-15, NOT LEFT TO FAIL.
    `assert-status-honest`, `assert-req-ids` and `assert-enforcers-exist` all read
    `Private/company/pipeline/` — 384,000 words of prose that the JSON spec under
@@ -100,10 +133,10 @@ function locate(...relCandidates) {
    model. If it ever goes red for this reason, the deletion touched something the
    plan did not model. */
 const GUARDS = [
-  { name: 'check-dod-sync', speed: 'fast',
+  { name: 'check-dod-sync', speed: 'fast', needsPrivate: true,
     rel: ['tooling/scripts/check-dod-sync.mjs'],
     what: 'the DoD page, the register and MASTER_PLAN §4 agree' },
-  { name: 'assert-spec', speed: 'fast',
+  { name: 'assert-spec', speed: 'fast', needsPrivate: true,
     rel: ['Private/requirements/tooling/assert-spec.mjs', 'Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],
     what: 'the JSON spec is schema-valid, id-unique, origin-locked, and every enforcer it names exists' },
   /* ADDED 2026-08-15 with the flatten. `Private/README.md` is the index the
@@ -112,7 +145,7 @@ const GUARDS = [
      silence. The README it replaced still read as authoritative while pointing
      at `../knowledge/decisions/`, a directory that had not existed for days.
      Prose cannot announce its own staleness, so the index is asserted instead. */
-  { name: 'assert-index-complete', speed: 'fast',
+  { name: 'assert-index-complete', speed: 'fast', needsPrivate: true,
     rel: ['Private/requirements/tooling/assert-index-complete.mjs', 'Private/spec/tooling/assert-index-complete.mjs', 'tooling/assert-index-complete.mjs'],
     what: 'Private/README.md names every directory and every navigable file, and its links resolve' },
   /* ADDED 2026-08-16 with the streamline. `assert-index-complete` deliberately
@@ -122,7 +155,7 @@ const GUARDS = [
      files, and carried a link to `../../company/MASTER_PLAN.md` for a day after
      that path stopped existing. So the directory gets its own register and its
      own guard, at its own depth. Same doctrine, one level down. */
-  { name: 'assert-research-archive', speed: 'fast',
+  { name: 'assert-research-archive', speed: 'fast', needsPrivate: true,
     rel: ['Private/requirements/tooling/assert-research-archive.mjs', 'Private/spec/tooling/assert-research-archive.mjs', 'tooling/assert-research-archive.mjs'],
     what: 'research/index.json, the files on disk and research/README.md are in bijection, and no successor pointer dangles' },
   /* ADDED 2026-08-16 with the decisions/ streamline. The ADR set had ONE property
@@ -136,7 +169,7 @@ const GUARDS = [
      printed on every run rather than banned — the citations sit inside the
      finished spec, which must not be restructured — so what this ratchets is the
      NEXT one: an ADR cited before it lands fails the commit that writes it. */
-  { name: 'assert-adr-citations', speed: 'fast',
+  { name: 'assert-adr-citations', speed: 'fast', needsPrivate: true,
     rel: ['Private/requirements/tooling/assert-adr-citations.mjs', 'Private/spec/tooling/assert-adr-citations.mjs', 'tooling/assert-adr-citations.mjs'],
     what: 'decisions/index.json matches the ADRs on disk, and every `ADR NNN` under Private/ resolves' },
   /* ADDED 2026-08-17 with the session-log index. `session-notes.md` is 11k lines
@@ -152,22 +185,45 @@ const GUARDS = [
      title limb is the sharp one — it catches an INSERTION, which shifts every
      line below it and would otherwise leave each row pointing confidently at
      somebody else's entry, exactly the `ci.yml:NNNN` failure one file over. */
-  { name: 'assert-session-index', speed: 'fast',
+  { name: 'assert-session-index', speed: 'fast', needsPrivate: true,
     rel: ['Private/requirements/tooling/assert-session-index.mjs', 'Private/spec/tooling/assert-session-index.mjs', 'tooling/assert-session-index.mjs'],
     what: 'every `## ` entry in session-notes.md has an index row, every row resolves, and the titles are byte-identical' },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
 
-/* 🔴 COVERAGE FLOOR. A hook that resolves zero guards and prints "ok" is the
-   vacuous pass this corpus keeps finding. Refuse instead. */
-const resolved = selected.map((g) => ({ ...g, path: locate(...g.rel) }));
+/* 🔴 CASE (b) FROM THE HEADER — NO PRIVATE CORPUS ON DISK, SO NO SUBJECT EXISTS.
+   Print every guard being skipped, by name, with the reason derived from the
+   missing directory rather than from a hand-kept list. Then get out of the way:
+   a public clone must be able to commit, and refusing here made the repository
+   unusable by the audience it is published for. */
+const inapplicable = PRIVATE_ROOT ? [] : selected.filter((g) => g.needsPrivate);
+if (inapplicable.length === selected.length) {
+  console.log(`\n  NOT APPLICABLE — no \`Private/\` on disk, so all ${selected.length} spec guard(s) have no subject:`);
+  for (const g of inapplicable) console.log(`    --   ${g.name.padEnd(24)} ${g.what}`);
+  console.log('  This checkout is a clone without the private corpus. Nothing was checked, and that is');
+  console.log('  said out loud rather than reported as a pass. The public guards are CI\'s job, not this');
+  console.log("  hook's — `.github/workflows/ci.yml` is the gate for everything in the public tree.\n");
+  process.exit(0);
+}
+
+/* 🔴 COVERAGE FLOOR — CASE (a). The corpus IS here (or some guards do not need it),
+   so a guard that cannot be found is a real defect. A hook that resolves zero
+   guards and prints "ok" is the vacuous pass this corpus keeps finding. Refuse
+   instead. Note this still fires when `Private/` exists and a guard inside it has
+   been renamed or deleted — the property the floor was written for is unchanged. */
+const applicable = selected.filter((g) => !inapplicable.includes(g));
+const resolved = applicable.map((g) => ({ ...g, path: locate(...g.rel) }));
 const missing = resolved.filter((g) => !g.path);
 if (missing.length) {
-  console.error(`\n  CANNOT RUN — ${missing.length} of ${selected.length} spec guard(s) not found:`);
+  console.error(`\n  CANNOT RUN — ${missing.length} of ${applicable.length} spec guard(s) not found:`);
   for (const m of missing) console.error(`    ${m.name}   looked for: ${m.rel.join(' , ')}`);
   console.error('  A hook that cannot find its guards has checked nothing. Refusing rather than passing.\n');
   process.exit(2);
+}
+if (inapplicable.length) {
+  console.log(`\n  ${inapplicable.length} guard(s) skipped — no \`Private/\` on disk, so they have no subject:`);
+  for (const g of inapplicable) console.log(`    --   ${g.name}`);
 }
 
 const t0 = Date.now();
