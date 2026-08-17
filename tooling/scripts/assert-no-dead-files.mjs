@@ -269,15 +269,29 @@ const KINDS = new Set([
 ]);
 
 const EXEMPTIONS = [
-  {
-    path: 'tooling/scripts/preflight.mjs',
-    kind: 'human-entry-point',
-    since: '2026-08-17',
-    why:
-      'the local pre-push gate a session runs by hand — `node tooling/scripts/preflight.mjs [--fast]`. Its ' +
-      'whole purpose is to run BEFORE the push (its header records the four consecutive red pushes of ' +
-      '2026-08-11 that produced it), so no workflow will ever invoke it and there is no caller to find.',
-  },
+  // 🔴 THE ROW FOR tooling/scripts/preflight.mjs IS GONE, REMOVED 2026-08-17.
+  // It waived "the local pre-push gate a session runs by hand", on the reasoning
+  // that "no workflow will ever invoke it and there is no caller to find". The
+  // first half is still true and the second half stopped being true: this guard
+  // printed the stale-permission note below on EVERY run — `path-reference` now
+  // reaches it — and that note exists precisely so a row cannot quietly outlive
+  // its reason.
+  //
+  // ⚠️ "SOMETHING MENTIONS IT" WOULD NOT HAVE BEEN ENOUGH, because the resolvers
+  // here are generous by design and a single new mention in a tracked .md flips
+  // `path-reference`. The row went on a BUILD-FAILING binding instead, measured
+  // on the real tree rather than argued: tooling/ci/assert-guards-refuse-empty.mjs
+  // carries preflight.mjs in its EXEMPT map ("a probe of it is an outward-facing
+  // or unbounded act"), and that map's own limb fails when an entry names a file
+  // the scan did not enumerate. `git rm -f tooling/scripts/preflight.mjs` →
+  // assert-guards-refuse-empty.mjs EXIT 1, "is excused ... and this scan did not
+  // enumerate it". Restored immediately. So the file is now held by a guard that
+  // goes red without it, which is strictly stronger than this waiver was, and a
+  // second claim over the same file would only be a second thing to keep true.
+  // (The same mutation also proved the anti-rot limb below: with the file gone
+  // and the row still present, this guard exited 1 — "waives tooling/scripts/
+  // preflight.mjs, which is neither tracked nor on disk".)
+  //
   // 🔴 THE ROW THAT WAIVED THIS FILE ITSELF IS GONE, and its own instruction is
   // why: "Delete this row the moment a workflow or a hook names it." ci.yml's
   // `No dead tracked files` step now runs `node tooling/scripts/assert-no-dead-
@@ -291,10 +305,20 @@ const EXEMPTIONS = [
     why:
       'the only read-back-verified writer for GlitchTip\'s full-replace monitor API, run by hand with ' +
       '--apply against the live instance. [ADR 043] records what that API does unattended: nine monitors ' +
-      'silently detached from their projects. 🔴 The real defect is that it has no row in ' +
+      'silently detached from their projects. 🔴 WHO OPENS IT AND WHEN, which is the part a waiver owes: ' +
+      'the operator, EVERY TIME A NEW UPTIME MONITOR IS CREATED — not once at provisioning. Its POLICY ' +
+      '(set-monitor-thresholds.mjs:124) is `{ GET: 2 }`, a rule over a monitor TYPE rather than a list of ' +
+      'ids, and GlitchTip creates every monitor at `confirmationThreshold: 1` (its default, the header\'s ' +
+      'measured cause of the 122-alert flap that consumed the shared Resend quota and blocked signup ' +
+      'confirmation mail for a day). So each new GET monitor arrives non-compliant and this is what makes ' +
+      'it compliant. It is also idempotent and DRY-RUN BY DEFAULT (--apply writes), so a bare run is ' +
+      'itself the audit: it prints any monitor that has drifted back to 1 and writes nothing. ' +
+      '⚠️ THAT IS WHY "IT HAS ALREADY BEEN RUN" IS NOT AN ARGUMENT FOR DELETING IT — the tree it acts on ' +
+      'is the live instance, which grows. 🔴 The real defect is that it has no row in ' +
       'tooling/ops/register.json — guard-sweep.mjs sweeps only tooling/ci, so nothing ever declared it — ' +
       'and the repair is that row, NOT a deletion. When the row lands, mechanism.readBy should name this ' +
-      'script so deleting it reddens assert-ops-register.mjs, and this waiver can go.',
+      'script so deleting it reddens assert-ops-register.mjs, and this waiver can go — the same ' +
+      'build-failing-binding test that retired the preflight.mjs row above on 2026-08-17.',
   },
   {
     path: 'tooling/release/RELEASE-RUNBOOK.md',
@@ -796,9 +820,24 @@ function othersFor(index, key, self) {
 // 0, find `assets:` nested under it, take the list items nested under THAT, and
 // stop at the first line whose indent leaves the block.
 //
-// A DIRECTORY entry (`- assets/brand/`) bundles every member. That is why
-// `assets/brand/nikatru-icon.png` ships in all six platform builds with no code
-// anywhere loading it — declared by its directory, never by its name.
+// A DIRECTORY entry (`- assets/brand/`) bundles every member — declared by its
+// directory, never by its name. That is why this resolver has to exist at all:
+// `apps/subly/lib/features/shared/widgets.dart` names only the two wordmark
+// lockups, so without it every other member of a declared directory would read
+// as dead.
+//
+// ⚠️ THIS COMMENT USED TO CITE `assets/brand/nikatru-icon.png` AS THE WORKED
+// EXAMPLE — "ships in all six platform builds with no code anywhere loading it".
+// It was true, and it was the whole problem: on 2026-08-17 that file was deleted
+// as a byte-identical duplicate of the launcher master
+// `apps/subly/assets/icon/app_icon_1024.png` (same sha256, 261,948 bytes), which
+// is NOT under a declared `assets:` entry and so never shipped. 256 KB rode into
+// six bundles on the strength of a directory entry. The mechanism below is
+// unchanged; only its illustration is, and it is recorded rather than swapped
+// because "a resolver whose example turned out to be the bug" is the reason this
+// resolver is generous ON PURPOSE: it keeps such files GREEN here, so nothing in
+// this guard would ever have found that one. Bundle bloat is a different
+// question from a dead tracked file, and this guard does not answer it.
 const assetDirs = []; // { prefix, pubspec }
 const assetFiles = new Map(); // path -> pubspec
 for (const p of tracked) {

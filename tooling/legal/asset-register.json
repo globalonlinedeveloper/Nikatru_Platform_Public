@@ -103,11 +103,26 @@
     "_why": [
       "Floors measured on the tree the day this file landed: 12 pubspec.yaml files, 3 declared asset files",
       "(apps/subly/assets/brand/). A walk that finds fewer has BROKEN — an assets: entry renamed, a",
-      "directory moved — and an asset register that enumerates nothing reports every asset accounted for."
+      "directory moved — and an asset register that enumerates nothing reports every asset accounted for.",
+      "",
+      "🔴 minDeclaredAssets WAS 3 AND IS NOW 2, LOWERED DELIBERATELY ON 2026-08-17. It was NOT lowered to",
+      "make a red guard go green: apps/subly/assets/brand/ genuinely holds two files now, because",
+      "nikatru-icon.png was deleted as an exact duplicate — sha256 e1b05e51aee8617b02721b04c30e2bb898e327de",
+      "52082675dc7eba200cfb41fc, byte-for-byte and 261,948 bytes identical to the launcher master at",
+      "apps/subly/assets/icon/app_icon_1024.png, which is NOT under a declared assets: entry and so never",
+      "shipped. The duplicate sat in the one directory that does ship, putting 256 KB of it into all six",
+      "platform bundles with no Dart string naming it. Zero unique bytes left the repo; its row",
+      "(`brand-nikatru-icon`) went in the same change, and the reason text it carried was promoted onto",
+      "brand-nikatru-logo rather than dropped, so the two surviving rows cite a live id.",
+      "",
+      "⚠️ THE FLOOR MOVES ONLY WITH A DELETION THAT IS WRITTEN DOWN, AND IT IS NEVER REMOVED. Lowering a",
+      "REQUIRED_COVERAGE number to match whatever the walk happened to find is precisely how a guard stops",
+      "checking while still printing ok. Negative-tested on the real tree the day it moved: deleting a",
+      "second brand PNG dropped the walk to 1 and assert-licence-register.mjs exited 1 on this floor."
     ],
     "workspaceRoots": ["apps", "packages", "tooling/bricks"],
     "minPubspecs": 10,
-    "minDeclaredAssets": 3,
+    "minDeclaredAssets": 2,
     "appRoots": ["apps"],
     "brickAppRoot": "tooling/bricks/app/__brick__/apps/{{app_id}}",
     "minApps": 2
@@ -237,11 +252,11 @@
       "shippedIn": "every web build, found by the --bundle walk."
     },
     {
-      "id": "brand-nikatru-icon",
+      "id": "brand-nikatru-logo",
       "contentFamily": null,
       "contentFamilyWhy": "Own-work brand art, drawn once and committed. It is NOT hand-authored-content: that P-5 family covers what the content pipeline PRODUCES (phrases and deterministic container bytes), and no pack carries this file.",
-      "path": "apps/subly/assets/brand/nikatru-icon.png",
-      "name": "NIKATRU icon",
+      "path": "apps/subly/assets/brand/nikatru-logo.png",
+      "name": "NIKATRU wordmark lockup (light background)",
       "origin": "own-work",
       "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
       "licence": "proprietary-all-rights-reserved",
@@ -253,25 +268,9 @@
       "shippedIn": "apps/subly (declared under flutter: assets: assets/brand/)"
     },
     {
-      "id": "brand-nikatru-logo",
-      "contentFamily": null,
-      "contentFamilyWhy": "Own-work brand art; same reason as brand-nikatru-icon. Shipped in the binary, never inside a pack.",
-      "path": "apps/subly/assets/brand/nikatru-logo.png",
-      "name": "NIKATRU wordmark lockup (light background)",
-      "origin": "own-work",
-      "owner": "Rajasekar Selvam (sole proprietor, trading as NIKATRU)",
-      "licence": "proprietary-all-rights-reserved",
-      "attributionRequired": false,
-      "attributedIn": null,
-      "source": {
-        "note": "Our own brand mark; see brand-nikatru-icon."
-      },
-      "shippedIn": "apps/subly (declared under flutter: assets: assets/brand/)"
-    },
-    {
       "id": "brand-nikatru-logo-dark",
       "contentFamily": null,
-      "contentFamilyWhy": "Own-work brand art; same reason as brand-nikatru-icon. Shipped in the binary, never inside a pack.",
+      "contentFamilyWhy": "Own-work brand art; same reason as brand-nikatru-logo. Shipped in the binary, never inside a pack.",
       "path": "apps/subly/assets/brand/nikatru-logo-dark-bg.png",
       "name": "NIKATRU wordmark lockup (dark background)",
       "origin": "own-work",
@@ -280,7 +279,7 @@
       "attributionRequired": false,
       "attributedIn": null,
       "source": {
-        "note": "Our own brand mark; see brand-nikatru-icon."
+        "note": "Our own brand mark; see brand-nikatru-logo."
       },
       "shippedIn": "apps/subly (declared under flutter: assets: assets/brand/)"
     }

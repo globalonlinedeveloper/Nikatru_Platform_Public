@@ -177,7 +177,14 @@ flutter:
   # flag on and no l10n.yaml present.
   generate: true
 
-  # Nikatru co-branding lockups (light + dark) and icon, used by NikatruWordmark.
+  # Nikatru co-branding lockups (light + dark), used by NikatruWordmark.
+  # ⚠️ A DIRECTORY ENTRY SHIPS EVERY MEMBER, so anything dropped in here enters
+  # all six platform bundles whether or not a Dart string names it. Said "and
+  # icon" until 2026-08-17: nikatru-icon.png was byte-identical to the launcher
+  # master assets/icon/app_icon_1024.png (which is NOT declared here and so never
+  # shipped), no Dart file loaded it, and it rode 256 KB into every build on the
+  # strength of this one line. Deleted; the two lockups left are both loaded at
+  # lib/features/shared/widgets.dart:603-604.
   assets:
     - assets/brand/
 
