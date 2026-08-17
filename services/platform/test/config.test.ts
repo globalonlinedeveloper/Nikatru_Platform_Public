@@ -8,7 +8,7 @@ import {
   mergeConfig,
   resolveConfig,
 } from '../src/config';
-import catalogue from '../../../sites/_shared/_data/apps.json';
+import catalogue from '../../../catalog/apps.json';
 import configData from '../src/app-config-data.json';
 
 describe('CFG-1 config resolution', () => {

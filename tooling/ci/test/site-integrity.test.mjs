@@ -462,7 +462,7 @@ function urlTree(name, over = {}, opts = {}) {
     'sites/b/404.html': '<html></html>\n',
     'sites/b/robots.txt': 'x\n',
     'sites/b/_headers': 'x\n',
-    'sites/_shared/_data/apps.json': '[]\n',
+    'catalog/apps.json': '[]\n',
   };
   return fixture(name, { ...files, ...over }, opts);
 }
@@ -751,7 +751,7 @@ describe('check-site-integrity · the site app list vs apps.json', () => {
   const withApps = (name, body, status) =>
     urlTree(name, {
       'sites/nikatru/index.html': page(ORIGIN, '', `<script>const APPS = [${body}];</script>`),
-      'sites/_shared/_data/apps.json': registry(status),
+      'catalog/apps.json': registry(status),
     });
 
   test('FAILS when the homepage lists an app the registry does not mark live', () => {
@@ -805,7 +805,7 @@ describe('check-site-integrity · the site app list vs apps.json', () => {
           '',
           '<script>/* Example:\n{ name: "My Notes App", links: { ios: "..." } }\n*/\nconst APPS = [\n  // add your first app here\n];</script>',
         ),
-        'sites/_shared/_data/apps.json': registry('beta'),
+        'catalog/apps.json': registry('beta'),
       }),
     );
     assert.equal(code, 0, out);
@@ -899,7 +899,7 @@ describe('check-site-integrity · llms.txt vs the app registry', () => {
       'sites/nikatru/terms.html': legalPage,
       'sites/nikatru/refund.html': legalPage,
       'sites/nikatru/delete-account.html': legalPage,
-      'sites/_shared/_data/apps.json': LIVE,
+      'catalog/apps.json': LIVE,
       'sites/nikatru/llms.txt': honest,
       ...over,
     });
@@ -939,7 +939,7 @@ describe('check-site-integrity · llms.txt vs the app registry', () => {
   // The other direction, and the one that matches the homepage limb's rule: a
   // name with nothing behind it is a promise made to a stranger.
   test('FAILS when llms.txt advertises an app the registry does not call live', () => {
-    const { code, out } = run(appFacing('llms-unbacked', { 'sites/_shared/_data/apps.json': PREVIEW }));
+    const { code, out } = run(appFacing('llms-unbacked', { 'catalog/apps.json': PREVIEW }));
     assert.equal(code, 1);
     assert.match(out, /names https:\/\/subly\.test, and .* status "preview"/);
   });
@@ -948,7 +948,7 @@ describe('check-site-integrity · llms.txt vs the app registry', () => {
   // of scope for the catalogue half — it may still not advertise a non-live app.
   test('a non-app-facing root is not required to carry the catalogue', () => {
     const { code, out } = run(urlTree('llms-mirror', {
-      'sites/_shared/_data/apps.json': LIVE,
+      'catalog/apps.json': LIVE,
       'sites/nikatru/llms.txt': '# N\n\n> A studio. See the catalogue elsewhere.\n',
     }));
     assert.equal(code, 0, out);

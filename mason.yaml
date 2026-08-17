@@ -1,5 +1,5 @@
 # Mason brick registry. Root-oriented: run from the repo root with `-o .` so a
-# stamp lands in place and appends to sites/_shared/_data/apps.json:
+# stamp lands in place and appends to catalog/apps.json:
 #   mason get && mason make app -c <vars>.json -o . --on-conflict overwrite
 #
 # The DEFAULT stamp emits only apps/<id>/ — client-only, no Worker, no D1, no R2

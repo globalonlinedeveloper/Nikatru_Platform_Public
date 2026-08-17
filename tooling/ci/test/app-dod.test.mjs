@@ -185,7 +185,7 @@ const build = ({ register = REGISTER, ci = CI_YML, workspace = ['packages/core',
     [`${BRICK}/lib/features/settings/settings_screen.dart`]: SETTINGS_DART,
   };
   for (const g of guards) files[`tooling/ci/${g}`] = '// a guard\n';
-  if (catalogue !== null) files['sites/_shared/_data/apps.json'] = JSON.stringify(catalogue, null, 2);
+  if (catalogue !== null) files['catalog/apps.json'] = JSON.stringify(catalogue, null, 2);
   for (const [dir, over] of Object.entries(apps)) {
     files[`${dir}/dod.json`] = over.record ?? record(dir.split('/').pop());
     files[`${dir}/test/chassis_properties_test.dart`] = over.testDart ?? TEST_DART;

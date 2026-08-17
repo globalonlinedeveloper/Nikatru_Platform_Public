@@ -457,7 +457,7 @@ function tree({
     ? (register.channels.find((c) => c.id === ANDROID_ID)?.signing?.ciSecrets?.names ?? []).filter((n) => typeof n === 'string')
     : [];
 
-  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
+  write('catalog/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
   write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel, laneSecrets: [...laneSecrets, ...androidNames] }));
   if (withAndroid && !omitGradleFile) write(GRADLE_TEMPLATE.split('{app}').join('subly'), gradleFile(gradle));

@@ -27,7 +27,7 @@
 //      **COVERAGE LOST**, not a pass.
 //
 // ── THE RELATIONSHIP, WHICH IS WHAT MAKES IT GROW BY ITSELF ──────────────────
-//   subjects = { every app in sites/_shared/_data/apps.json }
+//   subjects = { every app in catalog/apps.json }
 //            × { every register row that declares an `identity` block }
 //   restricted to pairs where the app HAS that platform's folder — a web-only
 //   app is not failing to declare an Android package name, it has no Android.
@@ -55,7 +55,7 @@ import { resolveIdentity } from './read-identity.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
-const APPS_REL = 'sites/_shared/_data/apps.json';
+const APPS_REL = 'catalog/apps.json';
 
 /** architecture §24's canonical identity form. ONE string per app, on every
  *  platform: each store binds its record to it permanently, so three platforms

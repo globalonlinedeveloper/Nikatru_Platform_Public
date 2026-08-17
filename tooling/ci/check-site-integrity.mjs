@@ -22,7 +22,7 @@
 //   · a page's `data-policy-version` and its sitemap `lastmod` agree
 //   · a Function that reads the client IP fingerprints it with a KEYED hash
 //   · a promise a Function quotes from the site copy is still ON the site copy
-//   · the site's app list and sites/_shared/_data/apps.json do not disagree
+//   · the site's app list and catalog/apps.json do not disagree
 //
 // That last one is not cosmetic. Both app stores require a reachable privacy
 // policy; `sites/nikatru` is the policy host for every app we publish. Deleting
@@ -698,7 +698,7 @@ for (const root of siteRoots) {
   }
 }
 
-// ── the site's app list vs sites/_shared/_data/apps.json ─────────────────────
+// ── the site's app list vs catalog/apps.json ─────────────────────
 // 🔴 THIS LIMB DELIBERATELY DOES NOT DECIDE WHETHER AN APP IS ANNOUNCED.
 // Whether a "live" app is named on the public homepage is a launch decision the
 // OWNER makes (soft launch vs launched), and no decision record answers it. What
@@ -715,7 +715,7 @@ for (const root of siteRoots) {
 //     wolf gets switched off (assert-lane-coverage.mjs:14-17).
 let appsArrayFound = false;
 {
-  const appsJsonPath = join(repoRoot, 'sites', '_shared', '_data', 'apps.json');
+  const appsJsonPath = join(repoRoot, 'catalog', 'apps.json');
   const siteIndex = join(SITES, 'nikatru', 'index.html');
   if (existsSync(siteIndex)) {
     // A MISSING or unparseable apps.json is assert-channel-claims.mjs's
@@ -769,14 +769,14 @@ let appsArrayFound = false;
       for (const listed of onSite) {
         if (!live.has(listed)) {
           problems.push(
-            `sites/nikatru/index.html lists an app "${listed}" in its APPS array, and sites/_shared/_data/apps.json has no entry with that name and status "live". The homepage is advertising an app the registry does not say is live — one of the two files is wrong, and a store button with nothing behind it is a promise made to a stranger.`,
+            `sites/nikatru/index.html lists an app "${listed}" in its APPS array, and catalog/apps.json has no entry with that name and status "live". The homepage is advertising an app the registry does not say is live — one of the two files is wrong, and a store button with nothing behind it is a promise made to a stranger.`,
           );
         }
       }
       for (const [key, app] of live) {
         if (!onSite.has(key)) {
           prints.push(
-            `UNANNOUNCED: sites/_shared/_data/apps.json marks "${app.name}" status "live" (${app.url ?? 'no url'}), and sites/nikatru/index.html still ships an empty APPS array with the copy "our first releases are on the way". ` +
+            `UNANNOUNCED: catalog/apps.json marks "${app.name}" status "live" (${app.url ?? 'no url'}), and sites/nikatru/index.html still ships an empty APPS array with the copy "our first releases are on the way". ` +
               'The two disagree. WHICH ONE IS RIGHT IS AN OWNER DECISION — a soft launch that is deliberately not announced is a legitimate state, and so is an announcement that was simply never written; no decision record answers it. ' +
               'Resolve it by either adding the app to the APPS array (and refreshing the pre-launch copy), or changing its apps.json status to something other than "live". Printed, not failed, so this cannot block CI on owner-only work — and printed EVERY run so it cannot become permanent.',
           );
@@ -792,7 +792,7 @@ let appsArrayFound = false;
 // the pages, and it had ZERO coverage: the string appeared in this file exactly
 // once, inside a comment. It was measurably lying — `sites/nikatru/llms.txt`
 // said "First releases are on the way" and "Status: pre-launch" while
-// `sites/_shared/_data/apps.json` marked `subly` live and
+// `catalog/apps.json` marked `subly` live and
 // `assert-catalog-reachable.mjs` proved its URL answers.
 //
 // 🔴 WHY THIS FAILS WHERE THE HOMEPAGE LIMB ONLY PRINTS. The homepage limb
@@ -811,7 +811,7 @@ let appsArrayFound = false;
 // site copy is the owner's voice; two guards on one fault is how a fix chases
 // the wrong message.
 {
-  const appsJsonPath = join(repoRoot, 'sites', '_shared', '_data', 'apps.json');
+  const appsJsonPath = join(repoRoot, 'catalog', 'apps.json');
   let registry = [];
   try {
     registry = JSON.parse(readFileSync(appsJsonPath, 'utf8'));
@@ -855,7 +855,7 @@ let appsArrayFound = false;
     for (const app of notLive) {
       if (text.includes(app.url)) {
         problems.push(
-          `sites/${name}/llms.txt names ${app.url}, and sites/_shared/_data/apps.json gives "${app.name ?? app.slug}" status ` +
+          `sites/${name}/llms.txt names ${app.url}, and catalog/apps.json gives "${app.name ?? app.slug}" status ` +
             `"${app.status}". An assistant reading this file will send someone to an app the registry does not say is live.`,
         );
       }
@@ -868,7 +868,7 @@ let appsArrayFound = false;
       const m = text.match(re);
       if (m) {
         problems.push(
-          `sites/${name}/llms.txt says ${JSON.stringify(m[0])} while sites/_shared/_data/apps.json marks ` +
+          `sites/${name}/llms.txt says ${JSON.stringify(m[0])} while catalog/apps.json marks ` +
             `${live.map((a) => `"${a.name ?? a.slug}"`).join(', ')} live at ${live.map((a) => a.url).join(', ')}. ` +
             'The two files contradict each other. This is NOT the announcement question the homepage limb ' +
             'leaves to the owner — one of these two statements is simply false, and either side is an ' +
@@ -886,7 +886,7 @@ let appsArrayFound = false;
     for (const app of live) {
       if (!text.includes(app.url)) {
         problems.push(
-          `sites/${name}/llms.txt does not name ${app.url}, which sites/_shared/_data/apps.json marks live. ` +
+          `sites/${name}/llms.txt does not name ${app.url}, which catalog/apps.json marks live. ` +
             'This file exists to tell a machine reader what the site is; a live app it omits is a page the ' +
             'assistant will never mention and a user will never reach.',
         );
@@ -1052,7 +1052,7 @@ if (SCANNING_OWN_REPO) {
     lost.push('NO deploy root had its sitemap compared to its indexable pages. That limb used to sit behind an existsSync() skip, so a root with no sitemap produced silence; it is now a required file, and this says so if the comparison itself stops happening.');
   }
   if (llmsFilesChecked === 0) {
-    lost.push('NO llms.txt was read against sites/_shared/_data/apps.json, so the machine-readable description of these sites was compared to nothing. Both deploy roots ship one.');
+    lost.push('NO llms.txt was read against catalog/apps.json, so the machine-readable description of these sites was compared to nothing. Both deploy roots ship one.');
   }
   if (lastmodChecked === 0) {
     lost.push(

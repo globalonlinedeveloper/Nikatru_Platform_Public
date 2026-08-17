@@ -2,7 +2,7 @@
 // cors-allowlist.test.mjs — assert-cors-allowlist.mjs must be able to FAIL.
 //
 // [4]B-2 (CORS half) + [3]S-11. The Worker allowlists are DERIVED from
-// sites/_shared/_data/apps.json; nothing about a new app's origin may depend on
+// catalog/apps.json; nothing about a new app's origin may depend on
 // a human remembering to edit a comma-separated string in two wrangler configs.
 //
 // ⚠️ REAL-TREE NEGATIVE TESTS FIRST (2026-08-07, three, against the live repo —
@@ -65,7 +65,7 @@ const REAL = {
  */
 function tree({ apps = [SUBLY], workers = REAL, extraComment = '' } = {}) {
   const root = join(TMP, `r${seq++}`);
-  const dataDir = join(root, 'sites', '_shared', '_data');
+  const dataDir = join(root, 'catalog');
   mkdirSync(dataDir, { recursive: true });
   if (apps !== null) writeFileSync(join(dataDir, 'apps.json'), JSON.stringify(apps, null, 2));
 
@@ -213,7 +213,7 @@ describe('assert-cors-allowlist', () => {
   test('COVERAGE LOST when the catalogue file is absent', () => {
     const { code, out } = run(tree({ apps: null }));
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — no catalogue at sites\/_shared\/_data\/apps\.json/);
+    assert.match(out, /COVERAGE LOST — no catalogue at catalog\/apps\.json/);
   });
 
   test('COVERAGE LOST when fewer than two Worker configs are found', () => {

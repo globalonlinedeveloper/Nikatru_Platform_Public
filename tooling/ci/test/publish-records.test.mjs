@@ -60,11 +60,11 @@ let n = 0;
 function fixture({ channels, workflows }) {
   const root = join(TMP, `fx${n++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
-  mkdirSync(join(root, 'sites/_shared/_data'), { recursive: true });
+  mkdirSync(join(root, 'catalog'), { recursive: true });
   mkdirSync(join(root, '.github/workflows'), { recursive: true });
   writeFileSync(join(root, 'tooling/channel-register.json'), JSON.stringify({ channels }, null, 2));
   writeFileSync(
-    join(root, 'sites/_shared/_data/apps.json'),
+    join(root, 'catalog/apps.json'),
     JSON.stringify([{ slug: 'subly', platforms: ['web', 'android'], status: 'live' }], null, 2),
   );
   for (const [name, body] of Object.entries(workflows)) {
@@ -277,7 +277,7 @@ jobs:
   test('the environment set is DERIVED — a second app makes a second requirement', () => {
     const root = served({ 'deploy-web.yml': DEPLOY_WEB_OK });
     writeFileSync(
-      join(root, 'sites/_shared/_data/apps.json'),
+      join(root, 'catalog/apps.json'),
       JSON.stringify([
         { slug: 'subly', platforms: ['web'], status: 'live' },
         { slug: 'drift', platforms: ['web'], status: 'live' },
@@ -510,7 +510,7 @@ describe('assert-publish-records — the floor cannot range over zero', () => {
 
   test('COVERAGE LOST when no app declares the served channel\'s platforms', () => {
     const root = served({ 'deploy-web.yml': DEPLOY_WEB_OK });
-    writeFileSync(join(root, 'sites/_shared/_data/apps.json'), JSON.stringify([{ slug: 'subly', platforms: ['ios'] }]));
+    writeFileSync(join(root, 'catalog/apps.json'), JSON.stringify([{ slug: 'subly', platforms: ['ios'] }]));
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /REQUIRED_COVERAGE\.requiredEnvironments is 0/);

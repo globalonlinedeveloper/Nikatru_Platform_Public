@@ -1,0 +1,11 @@
+[
+  {
+    "slug": "subly",
+    "name": "Subly",
+    "tagline": "Track every subscription in one place",
+    "url": "https://subly.nikatru.com",
+    "api": "https://api.nikatru.com",
+    "platforms": ["web"],
+    "status": "live"
+  }
+]

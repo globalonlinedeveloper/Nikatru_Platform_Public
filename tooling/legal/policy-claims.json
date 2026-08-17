@@ -323,7 +323,7 @@
       "page": "privacy.html",
       "claim": "Nikatru apps only",
       "type": "descriptive",
-      "why": "The scope limit, and the sentence a store reviewer reads to decide whether the surface is an ad network. Descriptive today because v1 is SAME-APP ONLY ([ADR 040] decision 2) and there is no second app to promote — so nothing in the tree can yet be pointed at that would refute it. 🔴 IT BECOMES ASSERTABLE THE DAY A CROSS-APP SURFACE SHIPS ([research/44] §7 rung 6): the payload's app ids must all resolve to rows in sites/_shared/_data/apps.json, and that is the row to re-point this at rather than a new one."
+      "why": "The scope limit, and the sentence a store reviewer reads to decide whether the surface is an ad network. Descriptive today because v1 is SAME-APP ONLY ([ADR 040] decision 2) and there is no second app to promote — so nothing in the tree can yet be pointed at that would refute it. 🔴 IT BECOMES ASSERTABLE THE DAY A CROSS-APP SURFACE SHIPS ([research/44] §7 rung 6): the payload's app ids must all resolve to rows in catalog/apps.json, and that is the row to re-point this at rather than a new one."
     },
     {
       "page": "privacy.html",

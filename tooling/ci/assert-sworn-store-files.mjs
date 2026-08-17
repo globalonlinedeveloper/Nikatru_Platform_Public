@@ -510,8 +510,18 @@ function strings(obj, path = '', out = []) {
 /** Repository-relative paths named inside prose. Restricted to tokens ending in
  *  a known source extension: a bare directory ("tooling/legal") is a reference,
  *  a file is a citation, and only the second can be checked for existence
- *  without arguing about trailing slashes. */
-const PATH_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|mjs|html|txt|xml|sql|arb|md)/g;
+ *  without arguing about trailing slashes.
+ *
+ *  🔴 THE ALTERNATION IS AN ALLOWLIST OF TOP-LEVEL DIRECTORIES, AND A CITATION
+ *  UNDER A DIRECTORY THAT IS NOT LISTED IS NOT "UNCHECKED" — IT IS INVISIBLE.
+ *  It never becomes a citation, so nothing asserts the file exists and this
+ *  guard PASSES on it, in the exact words it prints today. `catalog` was added
+ *  when the app catalogue inverted to `catalog/apps.json`: measured before the
+ *  edit, `'catalog/apps.json'.match(PATH_RE)` returned `null` while
+ *  `'catalog/apps.json'` matched, so every re-pointed citation
+ *  would have dropped out of the checked set silently. Widen this BEFORE any
+ *  prose cites a new top-level directory, never after. */
+const PATH_RE = /(?:apps|catalog|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|mjs|html|txt|xml|sql|arb|md)/g;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE RUN

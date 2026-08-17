@@ -118,7 +118,7 @@ const dead = (p) => `http://127.0.0.1:${CLOSED_PORT}${p}`;
 
 function tree(entries) {
   const root = join(TMP, `r${seq++}`);
-  const dir = join(root, 'sites', '_shared', '_data');
+  const dir = join(root, 'catalog');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'apps.json'), JSON.stringify(entries, null, 2));
   return root;

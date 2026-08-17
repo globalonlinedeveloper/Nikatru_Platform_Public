@@ -2009,19 +2009,27 @@ jobs:
       # having nothing new to check, which is this requirement's original defect.
       - name: A freshly stamped app carries a COMPLETE, spec-derived store listing
         run: node tooling/ci/assert-store-metadata.mjs
-      - name: SHOW-1 — probe is in apps.json, and a RE-STAMP changes nothing
+      # 🔴 SUBJECT MOVED 2026-08-17 — the stamp now appends to catalog/apps.json,
+      # the PUBLISHED catalogue, and sites/_shared/_data/apps.json is GENERATED
+      # from it. Every line below reads the catalogue, because that is what the
+      # stamp writes. Reading the generated file here would have made this step
+      # an assertion that cannot fail: the probe row would never appear in it,
+      # and a `diff` of a file the stamp never touches is trivially empty.
+      - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           export NIKATRU_ALLOW_OVERWRITE=1
-          grep -q '"slug": "probe"' sites/_shared/_data/apps.json
-          cp sites/_shared/_data/apps.json "$RUNNER_TEMP/apps-after-1.json"
+          grep -q '"slug": "probe"' catalog/apps.json
+          cp catalog/apps.json "$RUNNER_TEMP/apps-after-1.json"
           cp pubspec.yaml "$RUNNER_TEMP/pubspec-after-1.yaml"
           mason make app -c tooling/bricks/app/_probe_vars.json -o . --on-conflict overwrite
           # diff, not `grep -c`: a second `probe` row and a missing one both fail
           # a count check for opposite reasons, and only the diff says which.
-          diff -u "$RUNNER_TEMP/apps-after-1.json" sites/_shared/_data/apps.json
+          diff -u "$RUNNER_TEMP/apps-after-1.json" catalog/apps.json
           diff -u "$RUNNER_TEMP/pubspec-after-1.yaml" pubspec.yaml
-          git checkout -- sites/_shared/_data/apps.json
+          # BOTH files: the catalogue the stamp wrote, and the site feed derived
+          # from it. Reverting one leaves the other carrying the throwaway probe.
+          git checkout -- catalog/apps.json sites/_shared/_data/apps.json
       # THE CLONE CONTRACT, asserted rather than documented. A default stamp
       # that quietly regains a Worker/D1/R2 is how the portfolio walks back
       # into the 10-database free-tier ceiling. Checks are structural (the
@@ -2143,7 +2151,7 @@ jobs:
       - name: Backend stamp derived its own web origin, API host and release id
         run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_backend_vars.json --service services/probeapi-api
       - name: Revert the catalogue — both probes are throwaway
-        run: git checkout -- sites/_shared/_data/apps.json
+        run: git checkout -- catalog/apps.json sites/_shared/_data/apps.json
       - name: Stamped backend app is dart format-clean
         run: dart format --output=none --set-exit-if-changed apps/probeapi
       - name: Analyze the stamped backend app
@@ -2226,6 +2234,15 @@ jobs:
       # cannot drift from the checking.
       - name: Site integrity
         run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam
+      - name: The published catalogue satisfies its contract
+        run: node tooling/ci/assert-catalog-contract.mjs
+      - name: Delete the feed so the generator has to produce it
+        run: rm -f sites/_shared/_data/apps.json
+      - run: node tooling/sites/generate-apps-data.mjs
+      - name: The generator actually wrote the feed
+        run: test -s sites/_shared/_data/apps.json
+      - name: Site feed must equal a fresh generation from the catalogue
+        run: git diff --exit-code -- sites/_shared/_data/apps.json
       # [pipeline S-7a] apps.json is PUBLIC, so a `live` entry is a promise to a
       # stranger that the link works. Under the wildcard `*.nikatru.com` ([ADR
       # 006]) every name resolves and almost every name fails — measured

@@ -52,7 +52,7 @@
 // actually wrote, not against the hook's source.
 //
 // 🔴 ORDERING IS LOAD-BEARING for check 4: `ci.yml` reverts
-// sites/_shared/_data/apps.json after each variant to keep the tree clean, so
+// catalog/apps.json after each variant to keep the tree clean, so
 // this guard must run BEFORE that revert. It exits COVERAGE LOST rather than
 // passing when the row is absent, which is what makes the ordering enforce
 // itself instead of living in a comment.
@@ -523,20 +523,20 @@ if (releaseExpr === null) {
 }
 
 // ── 4 · the public catalogue got the app's NAME, not a fragment of it ────────
-const catalogPath = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+const catalogPath = join(ROOT, 'catalog', 'apps.json');
 if (!existsSync(catalogPath)) {
-  lost(`sites/_shared/_data/apps.json is missing, so the catalogue entry the stamp wrote cannot be checked.`);
+  lost(`catalog/apps.json is missing, so the catalogue entry the stamp wrote cannot be checked.`);
 }
 let catalog;
 try {
   catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
 } catch (e) {
-  lost(`sites/_shared/_data/apps.json is not parseable JSON (${e.message}).`);
+  lost(`catalog/apps.json is not parseable JSON (${e.message}).`);
 }
 const row = Array.isArray(catalog) ? catalog.find((r) => r && r.slug === appId) : null;
 if (!row) {
   lost(
-    `sites/_shared/_data/apps.json holds no row for "${appId}". post_gen appends it on every stamp, so ` +
+    `catalog/apps.json holds no row for "${appId}". post_gen appends it on every stamp, so ` +
       'either the SHOW-1 append broke or this guard ran AFTER the lane reverted the catalogue — check ' +
       "ci.yml's step order. Either way nothing about the published name was checked.",
   );

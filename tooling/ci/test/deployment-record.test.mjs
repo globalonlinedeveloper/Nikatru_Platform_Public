@@ -215,7 +215,7 @@ describe('deployment-record — the environment resolves against the register', 
     // of the call-site regex was one of the three that could not read it (it
     // matched nothing, and only the floor below noticed). The reader is
     // workflow-scan.mjs's now, shared with the two guards that need it.
-    const slugs = JSON.parse(readFileSync(resolve(ROOT, 'sites/_shared/_data/apps.json'), 'utf8'))
+    const slugs = JSON.parse(readFileSync(resolve(ROOT, 'catalog/apps.json'), 'utf8'))
       .map((a) => a?.slug)
       .filter(Boolean);
     assert.ok(slugs.length > 0, 'the app catalogue yielded no slug — a matrix leg would expand to nothing');

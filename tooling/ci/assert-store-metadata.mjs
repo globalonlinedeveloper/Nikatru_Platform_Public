@@ -101,7 +101,7 @@ import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 
 const problems = [];
 const prints = [];

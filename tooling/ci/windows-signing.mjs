@@ -123,7 +123,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
 
-export const APPS = 'sites/_shared/_data/apps.json';
+export const APPS = 'catalog/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
 export const CHANNEL_ID = 'windows-direct';
 export const STORE_CHANNEL_ID = 'windows-store';

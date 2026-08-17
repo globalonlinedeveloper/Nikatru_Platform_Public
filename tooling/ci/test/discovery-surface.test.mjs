@@ -873,7 +873,7 @@ describe('the real repository', () => {
     // the owner-reserved decision this increment deliberately did not take.
     const site = spawnSync(process.execPath, [join(CI_DIR, 'check-site-integrity.mjs'), REPO], { encoding: 'utf8' });
     assert.equal(site.status, 0, site.stdout + site.stderr);
-    assert.match(site.stdout, /UNANNOUNCED: sites\/_shared\/_data\/apps\.json marks "Subly" status "live"/);
+    assert.match(site.stdout, /UNANNOUNCED: catalog\/apps\.json marks "Subly" status "live"/);
   });
 
   test('the deferred stage-12 triggers are MEASURED and printed, not asserted from prose', () => {

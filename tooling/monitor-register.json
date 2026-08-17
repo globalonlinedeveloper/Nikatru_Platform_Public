@@ -59,7 +59,7 @@
 
   "_derivation": {
     "workerCustomDomains": "every routes[] entry with custom_domain: true across services/*/wrangler.jsonc",
-    "appCatalogue": "every url and api host in sites/_shared/_data/apps.json",
+    "appCatalogue": "every url and api host in catalog/apps.json",
     "siteCanonicals": "the <link rel=\"canonical\"> host of each sites/*/index.html (_shared is not a site)",
     "declared": [
       "A hostname NO deploy config can mention, because it is the thing doing the watching.",

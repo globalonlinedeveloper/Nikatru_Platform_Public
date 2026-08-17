@@ -234,7 +234,7 @@ function fixture(mutate = () => {}) {
   };
   const state = { register, files };
   mutate(state);
-  write(root, 'sites/_shared/_data/apps.json', Buffer.from(JSON.stringify([{ slug: 'subly' }])));
+  write(root, 'catalog/apps.json', Buffer.from(JSON.stringify([{ slug: 'subly' }])));
   write(root, 'tooling/channel-register.json', Buffer.from(JSON.stringify(state.register)));
   // The guard imports ./tree-walk.mjs relative to ITSELF, so the fixture only
   // needs the data tree, not a copy of tooling/ci.
@@ -990,7 +990,7 @@ describe('assert-listing-assets.mjs — COVERAGE LOST, not a pass', () => {
 
   test('no apps is COVERAGE LOST', () => {
     const root = build();
-    writeFileSync(join(root, 'sites', '_shared', '_data', 'apps.json'), '[]');
+    writeFileSync(join(root, 'catalog', 'apps.json'), '[]');
     const r = run(root);
     assert.equal(r.code, 1);
     assert.match(r.out, /COVERAGE LOST.*carries no app entries/s);

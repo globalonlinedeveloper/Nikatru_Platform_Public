@@ -21,7 +21,7 @@
 // ── THE THREE LIMBS, AND WHY THEY HAVE DIFFERENT STRENGTHS ───────────────────
 //
 // 1. TAGLINE — BUILD-FAILING. Empty or duplicate (after normalising) across
-//    `sites/_shared/_data/apps.json`. It is `tagline` and NOT `description`:
+//    `catalog/apps.json`. It is `tagline` and NOT `description`:
 //    D-6's original criterion looked for a `description` key that does not
 //    exist in that file, so it ranged over nothing and reported clean forever.
 //    ⚠️ VACUOUS AT n=1 — apps.json has exactly ONE entry today, so the
@@ -71,7 +71,7 @@ const opt = (n) => {
 const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')));
 const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
-const APPS_REL = 'sites/_shared/_data/apps.json';
+const APPS_REL = 'catalog/apps.json';
 const REGISTER_REL = 'tooling/channel-register.json';
 
 /** 🔴 OURS, NOT A STORE'S. Printed verbatim beside the number on every run. */
@@ -279,7 +279,7 @@ if (ledgerEntries === null) {
 
 // ── the limb that PRINTS because it has no data to check ─────────────────────
 prints.push(
-  'VISUAL IDENTITY: NOT CHECKED, and deliberately not. `sites/_shared/_data/apps.json` carries no seed, ' +
+  'VISUAL IDENTITY: NOT CHECKED, and deliberately not. `catalog/apps.json` carries no seed, ' +
     "palette or icon field, so there is nothing to compare across apps; `brick.yaml`'s `seed_hex` default " +
     'is stage 2\'s to fix. This is an owner judgement before a submission, not an assertion — a guard that ' +
     'pretended to check it would always pass.',

@@ -5,8 +5,13 @@ import 'package:mason/mason.dart';
 
 import 'brand_assets.dart';
 
-/// After a stamp: (1) append the app to sites/_shared/_data/apps.json (SHOW-1,
-/// automated), then (2) print the owner's manual, non-automatable checklist.
+/// After a stamp: (1) append the app to catalog/apps.json (SHOW-1, automated),
+/// then (2) print the owner's manual, non-automatable checklist.
+///
+/// 🔴 THE CATALOGUE IS THE PUBLISHED RECORD; THE SITE'S DATA FILE IS DERIVED
+/// FROM IT. `sites/_shared/_data/apps.json` is no longer hand-kept — it is
+/// generated from `catalog/apps.json`, so this hook writing anywhere else is a
+/// row the website never sees.
 void run(HookContext context) {
   final v = context.vars;
   final id = (v['app_id'] ?? '').toString();
@@ -303,23 +308,45 @@ void _appendToAppsJson(
   required List<String> markets,
   required String audience,
 }) {
-  final file = File('sites/_shared/_data/apps.json');
-  if (!file.existsSync()) {
-    context.logger.warn(
-      'apps.json not found at ${file.path}; skipped SHOW-1 append.',
-    );
-    return;
+  // The basename is deliberately still `apps.json`. assert-input-contract.mjs
+  // allowlists the BASENAMES it scrapes out of these hooks, and the log phrases
+  // below are read by assert-stamp-platforms.mjs — both survive the move only
+  // because the file is still called apps.json.
+  final file = File('catalog/apps.json');
+
+  // 🔴 CREATE IT, DO NOT SKIP. This branch used to `warn` and return, which was
+  // defensible while the catalogue was hand-written and therefore always
+  // committed: absent meant "wrong working directory", and writing a stray file
+  // was worse than doing nothing. It is NOT defensible now. The catalogue is the
+  // published record of what this factory ships, and a stamp that SUCCEEDS while
+  // the app is never listed is exactly the failure this inversion exists to
+  // remove — the stamp reports clean, CI passes, and nikatru.com silently never
+  // lists the app. A warning is that failure with a log line in front of it.
+  // So the stamp is TOTAL: when it returns, the catalogue lists the app.
+  final created = !file.existsSync();
+  List<dynamic> rows;
+  if (created) {
+    rows = <dynamic>[];
+  } else {
+    final decoded = jsonDecode(file.readAsStringSync());
+    if (decoded is! List) {
+      // Deliberately NOT repaired by overwriting. An unparseable-as-array
+      // catalogue still holds bytes somebody wrote, and replacing them with a
+      // fresh one-row array would destroy every other app to publish this one.
+      // tooling/ci/assert-catalog-contract.mjs fails the gate on this shape,
+      // so the gap is caught rather than carried.
+      context.logger.warn(
+        'apps.json is not a JSON array; "$id" was NOT added to ${file.path}.',
+      );
+      return;
+    }
+    rows = decoded;
   }
-  final decoded = jsonDecode(file.readAsStringSync());
-  if (decoded is! List) {
-    context.logger.warn('apps.json is not a JSON array; skipped.');
-    return;
-  }
-  if (decoded.any((e) => e is Map && e['slug'] == id)) {
+  if (rows.any((e) => e is Map && e['slug'] == id)) {
     context.logger.info('apps.json already lists "$id"; left unchanged.');
     return;
   }
-  decoded.add(<String, dynamic>{
+  rows.add(<String, dynamic>{
     'slug': id,
     'name': name,
     'tagline': tagline,
@@ -330,9 +357,51 @@ void _appendToAppsJson(
     'audience': audience,
     'status': 'preview',
   });
-  const encoder = JsonEncoder.withIndent('  ');
-  file.writeAsStringSync('${encoder.convert(decoded)}\n');
-  context.logger.success('apps.json: added "$id" (SHOW-1).');
+  file.parent.createSync(recursive: true);
+  file.writeAsStringSync('${_encodeCatalogue(rows)}\n');
+  context.logger.success(
+    created
+        ? 'apps.json: created ${file.path} and added "$id" (SHOW-1).'
+        : 'apps.json: added "$id" (SHOW-1).',
+  );
+}
+
+/// Serialise the catalogue the way the catalogue is actually written.
+///
+/// 🔴 `JsonEncoder.withIndent('  ')` IS NOT THE FORMAT ON DISK, AND THIS HOOK
+/// USED IT. Measured against the committed catalogue: the real file is 235
+/// bytes and carries `"platforms": ["web"]` INLINE on one line; the standard
+/// encoder expands that array to three lines and produces 247 bytes. So the
+/// producer and the bytes it maintains have disagreed all along, and the first
+/// stamp of a real app would have reformatted the whole file — which now flows
+/// straight through to `sites/_shared/_data/apps.json`, the file the live site
+/// reads. This encoder reproduces all 235 bytes exactly (verified against the
+/// real file before it was written).
+///
+/// The rule is: two-space indent, and an array whose elements are ALL scalars
+/// stays on one line. Arrays holding maps or lists stay expanded.
+///
+/// ⚠️ The obvious one-liner for the inline case — `jsonEncode(v).replaceAll(',',
+/// ', ')` — is WRONG and its wrongness is invisible on today's data: it rewrites
+/// commas inside string values too, turning `["a,b"]` into `["a, b"]`. Both
+/// forms agree byte-for-byte on every row in the catalogue today, so a test
+/// against the current file cannot tell them apart. Encoding each element and
+/// joining is comma-safe by construction.
+String _encodeCatalogue(Object? value, [String indent = '']) {
+  if (value is List) {
+    if (value.every((e) => e is! Map && e is! List)) {
+      return '[${value.map(jsonEncode).join(', ')}]';
+    }
+    final inner = '$indent  ';
+    return '[\n${value.map((e) => '$inner${_encodeCatalogue(e, inner)}').join(',\n')}\n$indent]';
+  }
+  if (value is Map) {
+    if (value.isEmpty) return '{}';
+    final inner = '$indent  ';
+    return '{\n${value.entries.map((e) => '$inner${jsonEncode(e.key)}: '
+        '${_encodeCatalogue(e.value, inner)}').join(',\n')}\n$indent}';
+  }
+  return jsonEncode(value);
 }
 
 /// [pipeline S-14] Generate the app's web icons from its spec.

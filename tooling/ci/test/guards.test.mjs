@@ -421,7 +421,7 @@ describe('assert-cors-allowlist', () => {
    *  guard is supposed to insist that every service it knows about is present. */
   const build = (name, { platform = config(PLATFORM), subly = config(SUBLY), extra = {} } = {}) =>
     fixture(name, {
-      'sites/_shared/_data/apps.json': CATALOGUE,
+      'catalog/apps.json': CATALOGUE,
       'services/platform/wrangler.jsonc': platform,
       'services/subly-api/wrangler.jsonc': subly,
       ...extra,
@@ -497,7 +497,7 @@ describe('assert-cors-allowlist', () => {
     // The rename case: services/subly-api moves and the guard keeps printing a
     // healthy tally over whatever is left.
     const dir = fixture('cors-renamed', {
-      'sites/_shared/_data/apps.json': CATALOGUE,
+      'catalog/apps.json': CATALOGUE,
       'services/platform/wrangler.jsonc': config(PLATFORM),
       'services/subly-backend/wrangler.jsonc': config(SUBLY),
     });
@@ -509,7 +509,7 @@ describe('assert-cors-allowlist', () => {
 
   test('FAILS its own coverage check when fewer Workers than expected are found', () => {
     const dir = fixture('cors-one-worker', {
-      'sites/_shared/_data/apps.json': CATALOGUE,
+      'catalog/apps.json': CATALOGUE,
       'services/platform/wrangler.jsonc': config(PLATFORM),
     });
     const { code, out } = run('assert-cors-allowlist.mjs', { cwd: dir });
@@ -4562,7 +4562,7 @@ export interface AppConfig {
   // A text search would "find" it and fail on a comment — the recorded
   // [pipeline F-10] lesson — and there is a passing case below that proves it
   // does not, which is only true because the guard reads parsed structure.
-  const PLATFORM_CATALOGUE = 'sites/_shared/_data/apps.json';
+  const PLATFORM_CATALOGUE = 'catalog/apps.json';
   const goodPlatformCatalogue = JSON.stringify([
     { slug: 'subly', name: 'Subly', api: 'https://api.nikatru.com', platforms: ['web'], status: 'live' },
   ]);
@@ -4858,7 +4858,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       cwd: build('sp-d8-noreg', { platformCatalogue: '[]' }),
     });
     assert.equal(code, 1);
-    assert.match(out, /parsed 0 app\(s\) out of sites\/_shared\/_data\/apps\.json/);
+    assert.match(out, /parsed 0 app\(s\) out of catalog\/apps\.json/);
   });
 
   test('limb (c) refuses a value document with no `defaults`', () => {

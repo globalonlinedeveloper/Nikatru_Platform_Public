@@ -150,7 +150,7 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
  *  split assert-guard-coverage.mjs makes, for the same reason. */
 const scanningRealRepo = process.argv[2] === undefined;
 const REGISTER = 'tooling/channel-register.json';
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 
 const problems = [];
 const prints = [];

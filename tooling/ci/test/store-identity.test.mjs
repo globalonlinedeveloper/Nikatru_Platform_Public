@@ -78,7 +78,7 @@ function fixture({ register = REGISTER(), apps = [{ slug: 'subly', platforms: ['
     writeFileSync(abs, body);
   };
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
-  write('sites/_shared/_data/apps.json', JSON.stringify(apps, null, 2));
+  write('catalog/apps.json', JSON.stringify(apps, null, 2));
   const defaults = {
     'apps/subly/android/app/build.gradle.kts': 'android {\n    namespace = "com.nikatru.subly"\n    defaultConfig {\n        applicationId = "com.nikatru.subly"\n    }\n}\n',
     'apps/subly/linux/CMakeLists.txt': 'cmake_minimum_required(VERSION 3.13)\nset(APPLICATION_ID "com.nikatru.subly")\n',

@@ -5,7 +5,7 @@
 // [pipeline S-7a] Private/requirements/ — the open sub-item under S-7. (Its stage
 // prose, pipeline/03-stamper.md, was folded into that JSON spec 2026-08-15.)
 //
-// WHY. `[3]S-7` proves a stamp WRITES itself into sites/_shared/_data/apps.json,
+// WHY. `[3]S-7` proves a stamp WRITES itself into catalog/apps.json,
 // and that half is genuinely verified on every push. Its second promise —
 // "never publishes a hostname that will not resolve" — is FALSE IN PRODUCTION,
 // and measurably so: under the wildcard `*.nikatru.com` ([ADR 006]) EVERY name
@@ -131,7 +131,7 @@ const EMIT_SLUG = emitAt === -1 ? null : (argv[emitAt + 1] ?? null);
 const positional = emitAt === -1 ? argv : argv.filter((_, i) => i !== emitAt && i !== emitAt + 1);
 
 const ROOT = resolve(positional[0] ?? process.cwd());
-const CATALOG = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+const CATALOG = join(ROOT, 'catalog', 'apps.json');
 
 const selfDir = dirname(fileURLToPath(import.meta.url));
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
@@ -512,7 +512,7 @@ if (isMain) {
     for (const p of problems) console.error(`    ${p}`);
     console.error('');
     console.error('  [pipeline S-7a] a `live` entry is a promise to a stranger that the link works.');
-    console.error(`  Catalogue: sites/_shared/_data/apps.json`);
+    console.error(`  Catalogue: catalog/apps.json`);
     done(1);
   }
 

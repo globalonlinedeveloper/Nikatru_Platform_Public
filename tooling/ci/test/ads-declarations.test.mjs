@@ -154,7 +154,7 @@ function tree(over = {}) {
         },
       ],
       configPayloads: ['services/platform/src/app-config-data.json'],
-      appRegistry: 'sites/_shared/_data/apps.json',
+      appRegistry: 'catalog/apps.json',
     },
     crossChecks: {
       dataSafetyPurpose: {
@@ -221,7 +221,7 @@ function tree(over = {}) {
     ...payload,
   });
 
-  files['sites/_shared/_data/apps.json'] = json(registry ?? [{ slug: 'app1' }]);
+  files['catalog/apps.json'] = json(registry ?? [{ slug: 'app1' }]);
 
   files['tooling/legal/policy-claims.json'] = json({
     siteRoot: 'sites/nikatru',
@@ -814,7 +814,7 @@ describe('the guard knows when it is not looking', () => {
             minFiles: 1,
             requiredCoverage: [{ file: 'packages/design_system/lib/paywall_gate.dart', symbol: 'PaywallGate', why: 'control' }],
             configPayloads: ['services/platform/src/app-config-data.json'],
-            appRegistry: 'sites/_shared/_data/apps.json',
+            appRegistry: 'catalog/apps.json',
           },
         },
       }),
@@ -833,7 +833,7 @@ describe('the guard knows when it is not looking', () => {
   });
 
   test('COVERAGE LOST when the walk reads fewer files than the declared floor', () => {
-    const { code, out } = run(tree({ decl: { formatScan: { roots: ['apps/app1/lib', 'packages/design_system/lib'], minFiles: 50, requiredCoverage: [{ file: 'packages/design_system/lib/paywall_gate.dart', symbol: 'PaywallGate', why: 'control' }], configPayloads: ['services/platform/src/app-config-data.json'], appRegistry: 'sites/_shared/_data/apps.json' } } }));
+    const { code, out } = run(tree({ decl: { formatScan: { roots: ['apps/app1/lib', 'packages/design_system/lib'], minFiles: 50, requiredCoverage: [{ file: 'packages/design_system/lib/paywall_gate.dart', symbol: 'PaywallGate', why: 'control' }], configPayloads: ['services/platform/src/app-config-data.json'], appRegistry: 'catalog/apps.json' } } }));
     assert.equal(code, 1);
     assert.match(out, /floors it at 50/);
   });
@@ -865,7 +865,7 @@ describe('the guard knows when it is not looking', () => {
             minFiles: 2,
             requiredCoverage: [{ file: 'packages/design_system/lib/paywall_gate.dart', symbol: 'PaywallGate', why: 'control' }],
             configPayloads: [],
-            appRegistry: 'sites/_shared/_data/apps.json',
+            appRegistry: 'catalog/apps.json',
           },
         },
       }),

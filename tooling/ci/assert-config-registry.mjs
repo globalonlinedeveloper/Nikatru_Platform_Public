@@ -50,7 +50,7 @@ import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 
-const CATALOGUE = 'sites/_shared/_data/apps.json';
+const CATALOGUE = 'catalog/apps.json';
 const CONFIG_TS = 'services/platform/src/config.ts';
 const DATA = 'services/platform/src/app-config-data.json';
 const TYPES_TS = 'services/platform/src/types.ts';
@@ -142,7 +142,7 @@ if (problems.length) done();
 // Two halves, because either alone is satisfiable with the defect present: an
 // import nothing uses is dead, and a builder fed a literal is the old registry.
 {
-  const imp = /import\s+(\w+)\s+from\s+'(?:\.\.\/)+sites\/_shared\/_data\/apps\.json'/.exec(configSrc);
+  const imp = /import\s+(\w+)\s+from\s+'(?:\.\.\/)+catalog\/apps\.json'/.exec(configSrc);
   if (!imp) {
     fail(
       `[4]B-2: ${CONFIG_TS} does not import ${CATALOGUE}. The set of apps this Worker serves is then ` +

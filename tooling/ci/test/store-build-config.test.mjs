@@ -82,11 +82,11 @@ function makeRoot({
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
-  mkdirSync(join(root, 'sites', '_shared', '_data'), { recursive: true });
+  mkdirSync(join(root, 'catalog'), { recursive: true });
   mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
   mkdirSync(join(root, 'apps', 'subly', 'lib', 'core', 'config'), { recursive: true });
 
-  writeFileSync(join(root, 'sites', '_shared', '_data', 'apps.json'), JSON.stringify([{ slug: 'subly' }]));
+  writeFileSync(join(root, 'catalog', 'apps.json'), JSON.stringify([{ slug: 'subly' }]));
   if (config !== null) {
     const rel = configLayout === 'stamp'
       ? join('apps', 'subly', 'lib', 'core', 'app_config.dart')

@@ -154,7 +154,7 @@
       }
     ],
     "configPayloads": ["services/platform/src/app-config-data.json"],
-    "appRegistry": "sites/_shared/_data/apps.json",
+    "appRegistry": "catalog/apps.json",
     "disarmedLevers": {
       "max_promos_per_week": "The promotional-notification cap, served at 0 and compiled in at 0 (packages/core/lib/src/config/app_config.dart). A promo-token config key whose value is disarmed is a LEVER, not a surface: it declares that the cap exists before the sender does. Raising it above zero is a promotional touch and makes this declaration re-derivable — the guard prints every disarmed lever it finds and fails on an armed one. The notification half of that rule (nothing outside app_config.dart may read the cap) belongs to tooling/ci/assert-adapter-capabilities.mjs and is deliberately not repeated here."
     }

@@ -99,7 +99,7 @@ function tree({
     }
   }
   if (redirectsBody !== null) write('sites/nikatru/_redirects', redirectsBody);
-  write('sites/_shared/_data/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
+  write('catalog/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write(`tooling/ci/check-site-integrity.mjs`, `const ${siblingConst} = ${minSites};\n`);
   if (!omitRegister) {
     write('tooling/channel-register.json', JSON.stringify({ channels, disqualified }, null, 2));

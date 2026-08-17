@@ -782,7 +782,7 @@ for (const cap of capabilities) {
 //     time — mustache eats it — so unless it is written back into a new per-app
 //     file there is nothing on disk to quantify over, and inventing a per-app
 //     spec file to hold one boolean puts app metadata in a fourth place beside
-//     pubspec.yaml, sites/_shared/_data/apps.json and the registers, which is
+//     pubspec.yaml, catalog/apps.json and the registers, which is
 //     the [C-1] "one declared home" argument turned on itself. Worse, it would
 //     be a domain that EXCLUDES THE ONLY SHIPPED APP: apps/subly was never
 //     stamped by this brick and would carry no such field. A scan whose domain

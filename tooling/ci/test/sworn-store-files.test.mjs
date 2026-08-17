@@ -53,8 +53,15 @@ const README = `${SUBLY_STORE}/README.md`;
  * trees instead fixed the correctness and made the suite time out — 21 cases ×
  * a ~100 MB copy. Deriving the set gives 43 files, and it cannot go stale:
  * cite a new file in the declaration and the fixture copies it.
+ *
+ * 🔴 IT CAN GO STALE IN ONE WAY, AND IT IS THE ALTERNATION. This must stay
+ * identical to `PATH_RE` in assert-sworn-store-files.mjs. A citation under a
+ * top-level directory only one of the two lists never lands in the fixture
+ * tree, so the copied file is absent and the guard under test COVERAGE-LOSTs
+ * on a subject the real repository has. `catalog` was added to both together
+ * when the app catalogue became `catalog/apps.json`.
  */
-const CITED_RE = /(?:apps|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|mjs|html|txt|xml|sql|arb|md)/g;
+const CITED_RE = /(?:apps|catalog|packages|services|tooling|sites)\/[A-Za-z0-9_.\/{}-]*\.(?:dart|json|jsonc|yaml|yml|ts|tsx|mjs|html|txt|xml|sql|arb|md)/g;
 function citedPaths() {
   const set = new Set();
   // …and the channel README, which limb 9 resolves. Derived, not listed: the

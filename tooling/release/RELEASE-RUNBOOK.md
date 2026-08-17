@@ -28,7 +28,7 @@ this file to release from it.
 
 `<unit>` is the **app slug** — the directory name under `apps/`, which is also the
 entry in the root `pubspec.yaml`'s `workspace:` list and the `slug` in
-`sites/_shared/_data/apps.json`. Today there is exactly one: `subly`.
+`catalog/apps.json`. Today there is exactly one: `subly`.
 
 | Example | Verdict |
 | --- | --- |

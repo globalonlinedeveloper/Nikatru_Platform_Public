@@ -57,7 +57,7 @@ import { spawnSync } from 'node:child_process';
 
 const CHANNEL_ID = 'windows-store';
 const REGISTER = 'tooling/channel-register.json';
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 
 // ── arguments ────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
