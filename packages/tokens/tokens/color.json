@@ -1,7 +1,7 @@
 {
   "color": {
     "$type": "color",
-    "$description": "NIKATRU light palette. Canonical values mirror the live nikatru.com :root.",
+    "$description": "NIKATRU light palette. Canonical values mirror the live nikatru.com :root — TRUE AS OF 2026-08-17 AND NOT BEFORE, which is why it is dated. This sentence was here while `text` was #334155 and 14 of 15 live pages rendered #1E293B, so it asserted a mirroring that did not hold and nothing could fail on it: no served page links the generated tokens.css, so the two halves could drift indefinitely in silence. The palette convergence closed the gap in the direction of the pages (the token moved, not the 14), and the one page that already matched this file — the nikatru homepage — was brought to the majority in the same change. Re-read this claim before trusting it: it is prose about two files that no build compares.",
     "ink": { "$value": "#0B1220" },
     "ink-2": { "$value": "#111C33" },
     "primary": { "$value": "#2E6FF2" },
@@ -9,9 +9,13 @@
     "bg": { "$value": "#F6F8FC" },
     "card": { "$value": "#FFFFFF" },
     "card-2": { "$value": "#F8FAFD" },
-    "text": { "$value": "#334155" },
+    "text": { "$value": "#1E293B" },
     "strong": { "$value": "#0B1220" },
     "muted": { "$value": "#586275" },
-    "line": { "$value": "#E2E8F0" }
+    "line": { "$value": "#E2E8F0" },
+    "soft": {
+      "$value": "#F6F8FC",
+      "$description": "Recessed panel tint used INSIDE a card - .note/.plan/.privacy/.c/.shots img, all of which sit in a main element whose background is var(--card). Declared by 13 pages, 17 var(--soft) uses. DELIBERATELY A LITERAL, NOT AN ALIAS, measured 2026-08-17: it equals bg in light (#F6F8FC) but NOT in dark (soft #0E1830 vs bg #0B1220), so aliasing to color.bg would be false on the dark side; and it equals card-2 in dark exactly but not in light (#F6F8FC vs #F8FAFD), so aliasing to dark.card-2 would be false on the light side. It is an alias of neither. NOTE: do not write curly-brace token paths in a $description - Style Dictionary parses braces in ANY string field as a reference and fails the build with an unresolved-reference error. See style-dictionary.config.mjs for the open soft-vs-card-2 collapse question."
+    }
   }
 }
