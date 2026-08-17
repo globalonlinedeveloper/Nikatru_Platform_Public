@@ -68,8 +68,59 @@ import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
-/** The trees whose Dart SHIPS, plus the template every stamped app inherits. */
-const SCOPE = ['apps', 'packages', 'tooling/bricks'];
+/**
+ * The trees whose Dart SHIPS, plus the template every stamped app inherits.
+ *
+ * 🔴 A FLOOR OVER A UNION IS NOT A FLOOR, AND THAT IS WHAT THIS USED TO BE.
+ * SCOPE was a bare array and the only coverage assertion was `files.length === 0`
+ * over the three roots COMBINED. `tooling/bricks` contributes 22 shipped files
+ * that no product change can remove, so the union could never reach zero while
+ * the brick was intact — which means `apps` and `packages`, the entire shipped
+ * product, could go to ZERO and the floor still held.
+ *
+ * MEASURED, on a copy of this repository (2026-08-17): delete `apps/` and
+ * `packages/` outright, leave `tooling/bricks/` alone, and this guard printed
+ *   `ok  no TLS pinning — 22 shipped .dart file(s) scanned across apps, packages,
+ *    tooling/bricks`
+ * and exited 0. 158 of 180 shipped files — 88% of the subject — left the scan in
+ * silence, and the passing line still named all three roots as though it had read
+ * them. Deleting the brick as well finally made it red, which is the proof that
+ * the floor only ever ranged over the union.
+ *
+ * So the declaration is now one entry PER ROOT with its OWN floor. A root that
+ * is absent, that yields no Dart, whose files are all test doubles, or that falls
+ * below its floor is COVERAGE LOST — never a pass carried by a neighbour.
+ */
+const REQUIRED_COVERAGE = [
+  {
+    dir: 'apps',
+    floor: 20,
+    label: 'the shipped apps — the code an end user actually installs (54 shipped .dart today)',
+  },
+  {
+    dir: 'packages',
+    floor: 40,
+    label: 'the shared chassis every app links, and where the HTTP client itself lives (104 shipped .dart today)',
+  },
+  {
+    dir: 'tooling/bricks',
+    floor: 10,
+    label: 'the template every future app is born from — one pin here reaches all fifty at once (22 shipped .dart today)',
+  },
+];
+
+const SCOPE = REQUIRED_COVERAGE.map((r) => r.dir);
+
+/**
+ * The floors above are measurements of THIS repository and mean nothing over a
+ * synthetic root: the unit tests legitimately model one tree at a time with three
+ * files in it. So they are applied only when ROOT is a full checkout, detected by
+ * this guard's OWN file being present under it — a sentinel that sits outside
+ * every subject tree above and therefore survives any mutation OF a subject,
+ * which a sentinel inside `apps/` or `packages/` would not. Which branch was
+ * taken is PRINTED on every run rather than implied.
+ */
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-no-tls-pinning.mjs'));
 
 /** Never walked: generated output and package caches are not our source. */
 const SKIP_DIRS = new Set(['build', '.dart_tool', '.git', 'node_modules', 'ephemeral', 'Pods']);
@@ -142,19 +193,30 @@ const isTestFile = (rel) => {
   return parts.includes('test') || parts.includes('integration_test') || /_test\.dart$/.test(parts[parts.length - 1]);
 };
 
+/** Per-root tallies. The union total is reported, never asserted on. */
+const perRoot = new Map(REQUIRED_COVERAGE.map((r) => [r.dir, { present: false, found: 0, shipped: 0, tests: 0 }]));
+
 const files = [];
-for (const s of SCOPE) {
-  const abs = join(ROOT, s);
+for (const r of REQUIRED_COVERAGE) {
+  const abs = join(ROOT, r.dir);
+  const tally = perRoot.get(r.dir);
+  // 🔴 This `continue` used to be the whole story for a missing root — silently
+  //    skipped, contributing nothing, and indistinguishable from a clean one.
   if (!existsSync(abs) || !statSync(abs).isDirectory()) continue;
-  files.push(...dartFiles(abs));
+  tally.present = true;
+  const found = dartFiles(abs);
+  tally.found = found.length;
+  files.push(...found);
 }
 
-if (files.length === 0) {
-  coverageLost([
-    `scanned ${SCOPE.join(', ')} under ${ROOT} and found no .dart file at all.`,
-    'This guard states an ABSENCE — no client overrides TLS trust — and an absence over an empty set is',
-    'true of every tree including one where the scan is broken. There is no weaker failure than this one.',
-  ]);
+/** Which declared root a scanned path belongs to. Longest prefix wins, so a root
+ *  nested under another would still be attributed to the more specific one. */
+function rootOf(rel) {
+  let best = null;
+  for (const r of REQUIRED_COVERAGE) {
+    if ((rel === r.dir || rel.startsWith(`${r.dir}/`)) && (best === null || r.dir.length > best.length)) best = r.dir;
+  }
+  return best;
 }
 
 // The false-alarm surface must still be IN the scan. If the pack verifier is no
@@ -166,14 +228,17 @@ let testDoubles = 0;
 
 for (const abs of files) {
   const rel = relative(ROOT, abs).split(sep).join('/');
+  const tally = perRoot.get(rootOf(rel));
   const raw = readFileSync(abs, 'utf8');
   const code = stripSourceComments(raw, '.dart');
 
   if (isTestFile(rel)) {
     testDoubles++;
+    if (tally) tally.tests++;
     continue;
   }
   shipped++;
+  if (tally) tally.shipped++;
 
   for (const rule of TRUST_OVERRIDES) {
     if (!rule.re.test(code)) continue;
@@ -214,10 +279,37 @@ for (const s of SCOPE) {
   walk(abs);
 }
 
-if (shipped === 0) {
+// ── THE COVERAGE FLOOR, ONE PER DECLARED ROOT ───────────────────────────────
+// Every root reports its own verdict and they are reported TOGETHER, because a
+// tree can lose two roots for two different reasons and naming only the first
+// sends the reader to fix half of it.
+const lost = [];
+for (const r of REQUIRED_COVERAGE) {
+  const t = perRoot.get(r.dir);
+  if (!t.present) {
+    lost.push(`\`${r.dir}\` is not a directory under ${ROOT} — ${r.label}.`);
+  } else if (t.found === 0) {
+    lost.push(`\`${r.dir}\` exists but contains no .dart file at all — ${r.label}.`);
+  } else if (t.shipped === 0) {
+    lost.push(
+      `every one of the ${t.found} .dart file(s) under \`${r.dir}\` was classified as a test double, so its ` +
+        'shipped set is empty — the exclusion rule has swallowed the subject R-8 is about.',
+    );
+  } else if (IS_FULL_CHECKOUT && t.shipped < r.floor) {
+    lost.push(
+      `\`${r.dir}\` yielded only ${t.shipped} shipped .dart file(s), below its floor of ${r.floor} — ${r.label}.`,
+    );
+  }
+}
+if (lost.length) {
   coverageLost([
-    `every one of the ${files.length} .dart file(s) found was classified as a test double.`,
-    'The shipped set is what R-8 is about; if it is empty the exclusion rule has swallowed the subject.',
+    `${lost.length} of the ${REQUIRED_COVERAGE.length} declared root(s) did not deliver a subject to scan:`,
+    ...lost.map((l) => `· ${l}`),
+    '',
+    'This guard states an ABSENCE — no client overrides TLS trust — and an absence over an empty set is',
+    'true of every tree including one where the scan is broken. There is no weaker failure than this one.',
+    'Each root carries its OWN floor deliberately: a single floor over the three combined was satisfied by',
+    'the brick alone, so apps/ and packages/ could both empty while the guard printed ok. Measured, not feared.',
   ]);
 }
 if (packVerifier.length === 0) {
@@ -242,9 +334,24 @@ if (notes.length) {
   for (const n of notes) console.log(`    ${n}`);
 }
 
+// 🔴 THE PASSING LINE PRINTS THE SPLIT, NOT THE TOTAL. It used to read "180
+// shipped .dart file(s) scanned across apps, packages, tooling/bricks" — one
+// number and a list of roots it had not necessarily read. That sentence was
+// still literally true at 22 files with apps/ and packages/ deleted, which is
+// how a reader confirms coverage from a line that no longer has any. A per-root
+// breakdown cannot be true of a collapsed tree.
+const split = REQUIRED_COVERAGE.map((r) => {
+  const t = perRoot.get(r.dir);
+  return `${r.dir}=${t.shipped}${IS_FULL_CHECKOUT ? `/floor ${r.floor}` : ''}`;
+}).join(', ');
+
 console.log(
-  `ok  no TLS pinning — ${shipped} shipped .dart file(s) scanned across ${SCOPE.join(', ')} ` +
+  `ok  no TLS pinning — ${shipped} shipped .dart file(s) scanned [${split}] ` +
     `(${testDoubles} test double(s) excluded by path, ${pubspecs} pubspec(s) read); ` +
     `${packVerifier.length} pack-verifier file(s) in scope and correctly NOT flagged ([ADR 016] pins a ` +
-    'content-pack key, which is not TLS)',
+    'content-pack key, which is not TLS)' +
+    (IS_FULL_CHECKOUT
+      ? ''
+      : '. NOTE: this root is not a checkout of this repository, so the per-root floors were NOT applied — ' +
+        'only the structural "every declared root delivered a shipped file" check ran.'),
 );

@@ -48,7 +48,48 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
 
 const MIN_APPS = 1;
+/** The union floor. It is what a fixture root is held to — a unit test legitimately
+ *  models one shared tree with a dozen files in it — and it is NOT sufficient on
+ *  its own; see REQUIRED_COVERAGE below for why. */
 const MIN_SCANNED = 10;
+
+/**
+ * 🔴 `MIN_SCANNED` IS A FLOOR OVER A UNION, AND THE UNION HAS A CONSTANT IN IT.
+ * "Shared code" here is two independent trees: every `packages/<name>/lib` (103
+ * .dart today) and `tooling/bricks` (29). One number over their sum is met by
+ * either one alone, and the brick is the half no product change can shrink.
+ *
+ * MEASURED, on a copy of this repository (2026-08-17): delete `packages/`
+ * outright, leave `apps/` and `tooling/bricks/` untouched, and this guard printed
+ *   `ok  no clone tells — 29 shared file(s) scanned for 1 app name(s) and
+ *    6 domain word(s); comments exempt`
+ * and exited 0. 103 of 132 files — 78% of the subject, and every shared package
+ * the apps actually link — left the scan in silence, while the passing line still
+ * called what remained "shared file(s)" without saying which shared tree.
+ *
+ * Note this is NOT caught by the MIN_APPS check above: that one fires when `apps/`
+ * empties, which is a different tree entirely and was the only collapse anybody
+ * had tested. `packages/` emptying is the one that matters for C-10, because
+ * packages/ IS the shared code the rule is about.
+ *
+ * So each shared tree now carries its own floor. Applied only on a full checkout —
+ * detected by this guard's own file, which sits outside both trees and so survives
+ * any mutation OF either — because these are measurements of THIS repository and
+ * a fixture root legitimately holds one tree. Which branch ran is PRINTED.
+ */
+const REQUIRED_COVERAGE = [
+  {
+    key: 'packages',
+    floor: 60,
+    label: 'every packages/*/lib — the shared chassis the apps link, and the tree C-10 is actually about (103 .dart today)',
+  },
+  {
+    key: 'tooling/bricks',
+    floor: 10,
+    label: 'the brick template — a clone tell here is born into all fifty future apps at once (29 .dart today)',
+  },
+];
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-no-clone-tells.mjs'));
 
 function fail(lines) {
   for (const l of lines) console.error(l);
@@ -108,7 +149,10 @@ function dartFiles(absDir, rel, out) {
     else if (e.name.endsWith('.dart')) out.push(r);
   }
 }
-const sharedFiles = [];
+/** Collected PER TREE, never straight into one bucket — the whole point of the
+ *  block above is that the two counts have to stay tellable apart. */
+const byRoot = new Map(REQUIRED_COVERAGE.map((r) => [r.key, []]));
+
 for (const pkg of (() => {
   try {
     return listDir(join(ROOT, 'packages'), { withFileTypes: true }).filter((e) => e.isDirectory());
@@ -116,15 +160,33 @@ for (const pkg of (() => {
     return [];
   }
 })()) {
-  dartFiles(join(ROOT, 'packages', pkg.name, 'lib'), `packages/${pkg.name}/lib`, sharedFiles);
+  dartFiles(join(ROOT, 'packages', pkg.name, 'lib'), `packages/${pkg.name}/lib`, byRoot.get('packages'));
 }
-dartFiles(join(ROOT, 'tooling', 'bricks'), 'tooling/bricks', sharedFiles);
+dartFiles(join(ROOT, 'tooling', 'bricks'), 'tooling/bricks', byRoot.get('tooling/bricks'));
+
+const sharedFiles = REQUIRED_COVERAGE.flatMap((r) => byRoot.get(r.key));
 
 if (sharedFiles.length < MIN_SCANNED) {
   fail([
     `✗ COVERAGE LOST — scanned ${sharedFiles.length} shared dart file(s), expected at least ${MIN_SCANNED}.`,
     `  repo root used: ${ROOT}. The scan is broken, not the tree.`,
   ]);
+}
+
+// ── the per-tree floors, which the union above cannot express ────────────────
+if (IS_FULL_CHECKOUT) {
+  const lost = REQUIRED_COVERAGE.filter((r) => byRoot.get(r.key).length < r.floor);
+  if (lost.length) {
+    fail([
+      `✗ COVERAGE LOST — ${lost.length} of the ${REQUIRED_COVERAGE.length} shared tree(s) fell below their own floor:`,
+      ...lost.map((r) => `    · ${r.key} — ${byRoot.get(r.key).length} .dart scanned, floor ${r.floor}. ${r.label}`),
+      '',
+      `  The union floor (MIN_SCANNED=${MIN_SCANNED}) was SATISFIED here — ${sharedFiles.length} file(s) across both trees —`,
+      '  which is exactly the hole this check closes: either tree alone clears it, so the surviving one',
+      '  vouches for the missing one. If a tree really did shrink this far, move its floor in the same',
+      '  commit and say why; do not widen the union.',
+    ]);
+  }
 }
 
 /** Comments carry history and rationale and are legitimately allowed to name an
@@ -218,7 +280,19 @@ if (problems.length) {
   process.exit(1);
 }
 
+// 🔴 THE PASSING LINE NAMES EACH SHARED TREE AND ITS COUNT. It used to say
+// "132 shared file(s) scanned", and the same sentence read "29 shared file(s)
+// scanned" with every shared package deleted — true either way, and useless for
+// telling the two apart. A per-tree split cannot be true of a collapsed tree.
+const split = REQUIRED_COVERAGE.map(
+  (r) => `${r.key}=${byRoot.get(r.key).length}${IS_FULL_CHECKOUT ? `/floor ${r.floor}` : ''}`,
+).join(', ');
+
 console.log(
-  `ok  no clone tells — ${sharedFiles.length} shared file(s) scanned for ${appNames.length} app name(s) ` +
-    `and ${domainNouns.length} domain word(s); comments exempt`,
+  `ok  no clone tells — ${sharedFiles.length} shared file(s) scanned [${split}] for ${appNames.length} app name(s) ` +
+    `and ${domainNouns.length} domain word(s); comments exempt` +
+    (IS_FULL_CHECKOUT
+      ? ''
+      : '. NOTE: this root is not a checkout of this repository, so only the union floor ' +
+        `(MIN_SCANNED=${MIN_SCANNED}) applied — the per-tree floors did not run here.`),
 );
