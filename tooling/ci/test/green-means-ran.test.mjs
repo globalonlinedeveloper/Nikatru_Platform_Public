@@ -196,12 +196,20 @@ describe('§B — a job cannot green-skip its own body when a secret is absent',
   test('the green-skip is caught wherever it appears, not only in e2e.yml', () => {
     // Same shape, different file: the scan is over every workflow, and the
     // REQUIRED_SECRET_GATES list is a coverage floor, not the scan's scope.
+    // ⚠️ THE ANCHOR MATCHES THE `sites:` JOB'S `steps:` LINE THROUGH WHATEVER
+    // JOB-LEVEL KEYS SIT ABOVE IT, rather than spelling that block out. It used
+    // to be the literal `  sites:\n    name: …\n    runs-on: ubuntu-24.04\n
+    // steps:\n`, which meant ANY unrelated key added to that job broke it — and
+    // on 2026-08-17 one was (`timeout-minutes: 10`), turning this test red for a
+    // reason that had nothing to do with the green-skip it exists to catch. The
+    // `mutant` helper correctly refused to pass over an edit that did not apply,
+    // so the failure was loud rather than silent; this keeps that property while
+    // removing the coupling to the job's exact key list.
     const root = mutant([
       [
         'ci.yml',
-        '  sites:\n    name: Static sites (functions parse + required files)\n    runs-on: ubuntu-24.04\n    steps:\n',
-        '  sites:\n    name: Static sites (functions parse + required files)\n    runs-on: ubuntu-24.04\n    steps:\n' +
-          '      - name: preflight\n        id: sitespre\n        env:\n          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n' +
+        /( {2}sites:\n(?: {4}(?!steps:)\S[^\n]*\n)* {4}steps:\n)/,
+        '$1      - name: preflight\n        id: sitespre\n        env:\n          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n' +
           '        run: |\n          if [ -z "$TOKEN" ]; then\n            echo "run=false" >> "$GITHUB_OUTPUT"\n          fi\n',
       ],
     ]);

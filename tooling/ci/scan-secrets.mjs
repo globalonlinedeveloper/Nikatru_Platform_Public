@@ -261,7 +261,11 @@ if (version.error || version.status !== 0) {
   console.error('  Install it in the job, or pass --gitleaks <path>.');
   process.exit(1);
 }
-console.log(`gitleaks ${(version.stdout ?? '').trim()}`);
+// Kept, not just printed: step 5's volume parser reads a gitleaks LOG LINE, and
+// the only thing that can honestly explain "I could not read it" is which
+// gitleaks wrote it. See VALIDATED_AGAINST below.
+const runningVersion = (version.stdout ?? '').trim();
+console.log(`gitleaks ${runningVersion}`);
 
 // ── 2. THE RULE SET MUST EXIST, and both runs must use the SAME one ──────────
 // 🔴 THE DEFECT THIS CLOSES. `--config` used to be applied ONLY to the real scan,
@@ -387,4 +391,138 @@ if (real.status !== 0) {
 }
 rmSync(reportDir, { recursive: true, force: true });
 
-console.log('ok  secret scan — no findings in the working tree');
+// ── 5. COVERAGE: "no findings" is only worth anything over a NON-EMPTY scan ───
+// 🔴 THE MARKER CHECK AT STEP 0 IS NOT THIS CHECK, AND UNTIL 2026-08-17 IT WAS
+// THE ONLY ONE. That check proves four directories EXIST at repoRoot; it says
+// nothing about whether gitleaks then READ anything. The two are different
+// questions and the gap between them is exactly the failure this file's own
+// step-0 comment describes — "gitleaks over an empty or wrong directory exits 0
+// and prints no findings, which is byte-for-byte the same result as a clean
+// repo". Measured against gitleaks 8.30.1 — the version ci.yml pins and
+// checksum-verifies, so the message this parses is the message CI will get: an empty directory yields
+// `scanned ~0 bytes (0)` and EXIT 0, indistinguishable at the exit code from
+// the real repository, and the passing line said "no findings in the working
+// tree" either way. An over-broad `[allowlist] paths` in the config, or a
+// `--source` that resolves to some other directory that exists and holds
+// nothing, both land here while every self-test above still passes — because
+// those prove the SCANNER detects, not that the SCAN reached the tree.
+//
+// ⚠️ `.gitleaksignore` WAS IN THAT LIST WHEN THIS CHECK LANDED, AND IT DOES NOT
+// BELONG THERE. Measured against 8.30.1 on 2026-08-17, over a directory holding
+// one 133-byte planted key:
+//   · no ignore file            → `scanned ~133 bytes`, exit 1, leaks found: 1
+//   · `.gitleaksignore` naming that finding's fingerprint
+//                               → `scanned ~334 bytes`, exit 0, no leaks found
+// It filters FINDINGS by fingerprint after the bytes have been read, and the
+// ignore file is itself scanned — so it cannot drive this number to zero; it
+// RAISES it. Naming it as a cause of a zero would have sent the next reader
+// hunting for a file that was never the problem. (It is a real hazard of a
+// different shape: it turns exit 1 into exit 0 at full volume, which nothing in
+// this script would notice. That is a separate gap, not this one, and writing
+// it into this list would have buried it rather than raised it.)
+//
+// The two causes above ARE measured, same day, same binary: a global
+// `[allowlist] paths = ['''.*''']` over that same directory yields `scanned ~0
+// bytes (0)` and exit 0, and so does an empty directory. A `--source` that
+// resolves to a path which does not exist is NOT a member — gitleaks exits
+// non-zero with a fatal error there, so it never reaches this line.
+//
+// gitleaks reports the volume itself, on stderr, so the floor is measured
+// rather than assumed.
+
+/** 🔴 THE RELEASE THIS PARSER WAS MEASURED AGAINST. `scanned ~N bytes` is a LOG
+ *  LINE, not an API: it carries no compatibility promise, and gitleaks is free
+ *  to reword it in any release. When it does, `parseScannedBytes` returns null,
+ *  the volume floor below stops applying, and every scan afterwards passes with
+ *  the coverage claim quietly missing — the floor does not fail, it evaporates.
+ *
+ *  So the parse is VERSIONED. This is the version ci.yml pins and
+ *  checksum-verifies (.github/workflows/ci.yml, GITLEAKS_VERSION), which is what
+ *  makes the comparison worth making: the message this parses is the message CI
+ *  will get, and a mismatch is a real signal rather than local drift. */
+const VALIDATED_AGAINST = '8.30.1';
+
+const parseScannedBytes = (stderr) => {
+  const m = `${stderr ?? ''}`.match(/scanned\s*~?\s*([\d,]+)\s*bytes/i);
+  return m ? Number(m[1].replace(/,/g, '')) : null;
+};
+
+// ── the volume parser's OWN canary, run on every invocation ──────────────────
+// The same protection the coverage-marker detector in assert-guard-coverage.mjs
+// carries, and for the same reason: a parser whose only failure mode is
+// returning null degrades to silence, and silence here reads exactly like a
+// scanner that works. These are REAL lines CAPTURED from gitleaks 8.30.1 — ANSI
+// colour codes and all, because the regex has to match INSIDE `\u001b[1m…` and a
+// hand-typed sample would quietly drop that requirement. One large, one small
+// (the parenthetical switches from `(15.45 MB)` to `(133 bytes)` between them,
+// which is exactly the kind of variation a lazier pattern would trip on), plus
+// one line that reports no volume at all and MUST come back null — without that
+// third case a regex loosened to match anything would sail through.
+const VOLUME_CANARIES = [
+  ['\u001b[90m10:51AM\u001b[0m \u001b[32mINF\u001b[0m \u001b[1mscanned ~15450725 bytes (15.45 MB) in 1.84s\u001b[0m', 15450725],
+  ['\u001b[90m10:51AM\u001b[0m \u001b[32mINF\u001b[0m \u001b[1mscanned ~133 bytes (133 bytes) in 507ms\u001b[0m', 133],
+  ['\u001b[90m10:51AM\u001b[0m \u001b[32mINF\u001b[0m \u001b[1mno leaks found\u001b[0m', null],
+];
+for (const [line, expected] of VOLUME_CANARIES) {
+  const got = parseScannedBytes(line);
+  if (got !== expected) {
+    console.error('✗ COVERAGE LOST — the "scanned ~N bytes" parser no longer reads its own captured samples.');
+    console.error(`  A line validated against gitleaks ${VALIDATED_AGAINST} parsed to ${got}, expected ${expected}.`);
+    console.error('  Until this holds, the volume floor below is not a floor: an unreadable line returns null,');
+    console.error('  which is PRINTED and passed, so the coverage claim would go missing without failing.');
+    process.exit(1);
+  }
+}
+
+const scannedBytes = parseScannedBytes(real.stderr);
+
+if (scannedBytes === 0) {
+  console.error('✗ COVERAGE LOST — gitleaks scanned 0 bytes and therefore found nothing.');
+  console.error(`  Subject: ${repoRoot}`);
+  console.error('  This is NOT a clean repository. The four marker directories checked at step 0 exist,');
+  console.error('  so the path is right, but nothing under it was actually read. Both measured causes are');
+  console.error('  in the config or the invocation: an over-broad [allowlist] paths in .gitleaks.toml, or');
+  console.error('  a --source that resolved to a different directory which exists and holds nothing.');
+  console.error('  NOT .gitleaksignore — that filters findings after the bytes are read and is itself');
+  console.error('  scanned, so it can only RAISE this number. Do not go looking for one.');
+  console.error('  Every self-test above still passed, because those prove the SCANNER detects; they');
+  console.error('  cannot prove the SCAN arrived. Fix the scope before trusting a clean result.');
+  process.exit(1);
+}
+
+// An unreadable volume is a could-not-establish, PRINTED not hidden, and
+// deliberately not a failure: the self-tests have already demonstrated that this
+// gitleaks runs and that every rule fires, so the only thing lost is the number.
+// Failing here would turn a gitleaks release that reworded one log line into a
+// red build on every push, which is how a scanner gets switched off.
+//
+// 🔴 BUT IT MUST NAME THE VERSION, and that is the whole reason VALIDATED_AGAINST
+// exists. "gitleaks did not report a volume" is a symptom with two completely
+// different causes, and the old message left the reader to guess which: on a
+// gitleaks that is NOT the validated one, a reworded log line is the obvious
+// explanation and the fix is to re-measure and move the constant; on the
+// validated one it is not an explanation at all, and something nearer — the
+// invocation, the stream, this parser — is wrong. The canary above has already
+// proven the parser reads 8.30.1's lines by the time control gets here, so on a
+// version match the remaining suspects are few and worth saying out loud.
+if (scannedBytes === null) {
+  const mismatch = runningVersion !== VALIDATED_AGAINST;
+  console.log(
+    '⬜ could-not-establish — gitleaks did not report a "scanned ~N bytes" line, so the volume floor ' +
+      'above could not be applied. The self-tests still passed, so the scanner works; only the volume ' +
+      'claim is lost. ' +
+      (mismatch
+        ? `VERSION MISMATCH: this parser was validated against gitleaks ${VALIDATED_AGAINST} and you are ` +
+          `running "${runningVersion}". A reworded log line is the likely cause — re-measure the message ` +
+          `on ${runningVersion}, then move VALIDATED_AGAINST and the captured canary lines together.`
+        : `You are running gitleaks ${VALIDATED_AGAINST}, the exact version this parser was validated ` +
+          'against, and its captured sample lines parsed correctly moments ago — so a reworded release ' +
+          'note is NOT the explanation. Look at the invocation and the stream instead.'),
+  );
+}
+
+const volume = scannedBytes === null ? 'volume unreported' : `${scannedBytes.toLocaleString('en-US')} bytes scanned`;
+console.log(
+  `ok  secret scan — no findings in the working tree (${volume} under ${repoRoot}; ` +
+    `${CANARIES.length} planted shape(s) detected, ${NEGATIVE_CANARIES.length} real tracked line(s) left quiet)`,
+);

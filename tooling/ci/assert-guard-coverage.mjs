@@ -114,6 +114,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI = join(ROOT, 'tooling', 'ci');
@@ -132,6 +133,35 @@ const scanningRealRepo = process.argv[2] === undefined;
  *  because it is already this repo's idiom, so the check enforces the existing
  *  convention rather than inventing a second one. */
 const COVERAGE_MARKER = 'COVERAGE LOST';
+
+/**
+ * 🔴 THE MARKER IS LOOKED FOR IN CODE, NEVER IN PROSE — comments are stripped
+ * first. Until 2026-08-17 limb 2 below was `source.includes(COVERAGE_MARKER)`
+ * over the RAW file, so a guard satisfied "has a coverage self-check" by
+ * MENTIONING coverage loss in a comment. That is this repository's most-repeated
+ * defect wearing the costume of the check that exists to catch it — the same
+ * class as the `grep '"r2_buckets"'` that matched the template comment
+ * explaining why there are no r2_buckets, which `assert-clone-contract.mjs`
+ * records as the reason it parses instead of greps.
+ *
+ * It was not hypothetical. THREE files passed on prose alone, and all three say
+ * in their own headers that they are not scanners:
+ *   · read-identity.mjs      — "IT SCANS NOTHING AND OWNS NO COVERAGE CLAIM …
+ *                              the caller must report COVERAGE LOST"
+ *   · migration-tables.mjs   — "Callers own the COVERAGE LOST decision"
+ *   · flutter-stock-assets.mjs — "it reports its own coverage failures to them
+ *                              by throwing", the thrown `lines` being "a
+ *                              ready-to-print COVERAGE LOST explanation"
+ * Each was counted in the `scanners` total while carrying no floor at all, and
+ * the sentence that earned the pass was the sentence disclaiming the duty. They
+ * are now in NOT_A_SCANNER, where they always belonged; the prose grep is what
+ * kept them out of it, because it saw no problem to report.
+ *
+ * The marker legitimately lives in a STRING LITERAL (`console.error('✗ COVERAGE
+ * LOST — …')`), so only comments are removed — stripping literals too would
+ * delete every real self-check and invert the check.
+ */
+const markerInCode = (source) => stripSourceComments(source, '.mjs').includes(COVERAGE_MARKER);
 
 /** Files under tooling/ci that do not scan a tree, with the reason. NOT a waiver
  *  list — each entry is a claim that the coverage question does not apply, and
@@ -170,7 +200,24 @@ const NOT_A_SCANNER = new Map([
   ],
   [
     'text-reductions.mjs',
-    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree, imported by NINE guards — check-site-integrity, assert-policy-archive, assert-policy-claims, assert-data-inventory, assert-licence-register, assert-analytics-contract, assert-e2e-legs, assert-flag-exposure and assert-worker-error-sink, of which seven take stripSourceComments. (This entry said "five" until 2026-08-02, when a defect in that stripper was triaged against the undercount; the list is now derived from the actual import statements.) The coverage question belongs to those nine — each carries its own COVERAGE LOST over what it reads — and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree. MEASURED 2026-08-17: 39 files import it — 37 non-test (35 flat in tooling/ci, plus tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) and 2 test files — of which 36 take stripSourceComments. The coverage question belongs to those importers, each of which carries its own COVERAGE LOST over what IT reads, and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. 🔴 THE COUNT ABOVE IS PROSE AND IT HAS NOW BEEN WRONG TWICE: it said "five" until 2026-08-02, then "NINE guards … of which seven take stripSourceComments" until 2026-08-17, by which time the true figures were 39 and 36 — an entry that undercounted the blast radius by a factor of four while claiming, in the same sentence, that "the list is now derived from the actual import statements". It was not derived; it was typed, and nothing re-reads it. Re-measure rather than trust it — the ripgrep recipe, with the two flags it cannot be run without, is written out beside the markerInCode canary further down this file; run it with the specifier alone for the 39 and with the stripSourceComments brace-clause in front for the 36. Both flags are load-bearing: without `-a` the answers come back 38 and 35, because assert-release-lane-generic.mjs carries NUL bytes and ripgrep skips it as binary without a word. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+  ],
+  // ── the three the PROSE GREP hid until 2026-08-17 ──────────────────────────
+  // None of these is a new judgement. Each file's own header already said it was
+  // not a scanner; what was missing was any mechanism that noticed they were
+  // absent from this map, because `source.includes('COVERAGE LOST')` was
+  // satisfied by the very sentence disclaiming the duty. See markerInCode above.
+  [
+    'read-identity.mjs',
+    'is not a guard: it is the ONE reading of "what identity does this app declare on this platform" — the [10]D-3 readers that tooling/ci/assert-store-identity.mjs (`resolveIdentity`), tooling/release/submit-appstore.mjs (`readAppleBundleId`) and tooling/release/submit-play.mjs (`readGradleApplicationId`) all share, so that a duplicated reader cannot report agreement between two things it read wrongly. It reads the one path it is handed and answers one of exactly three ways — `{ value }`, `{ missing }` for a file that declares no identity, and `{ lost }` for a reader that cannot see what it is meant to see. That third channel IS the coverage report, raised to the caller instead of exited on, and it exists because Windows was green for weeks while having no identity at all read exactly like having the right one. The file each identity lives in is declared once in tooling/channel-register.json, never here. Its own failing cases are in test/store-identity.test.mjs. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+  ],
+  [
+    'migration-tables.mjs',
+    'is not a guard: it is the ONE reading of "what tables does this database have, and what columns does each carry" — a comment-stripped, string-literal-stripped DDL parse (0004_money_rail.sql carries the literal text `CREATE TABLE` inside a comment at :52, which a grep-based enumerator reads as a table). It exists so that [pipeline B-17]\'s two limbs range over the SAME derived table set: the secretless gate tooling/ci/assert-prod-provenance.mjs and the credentialled monitor tooling/ops/check-prod-provenance.mjs both call `enumerateMigrationTables`, and two hand-kept copies of "the tables" drift in the one way that reports clean. It reports what it read (`filesRead`, `tables.size`) and never exits, so the COVERAGE LOST decision is the callers\' — each carries its own over that count. Its own failing cases are in test/prod-provenance.test.mjs. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+  ],
+  [
+    'flutter-stock-assets.mjs',
+    'is not a guard: it is the ONE answer to "what bytes does `flutter create` write for this asset", obtained by actually running `flutter create` into a cache and reading the result, because all three cheaper approximations were wrong SILENTLY — reading the SDK template directory compared two of five assets against zero-byte `.img.tmpl` placeholders that could never have matched, while printing `5 stock asset(s) compared` and exiting 0, with six fixture tests green throughout. It scans nothing of its own and asserts nothing about any tree; it is the shared reader consumed by tooling/ci/assert-launcher-icons.mjs and tooling/ci/assert-stamp-brand-assets.mjs (`flutterSdkRoot`, `readStockAssets`, `StockAssetsUnavailable`). It reports its own coverage failures to those two by THROWING — `StockAssetsUnavailable.lines` is a ready-to-print COVERAGE LOST explanation the caller frames and exits on — which is why the marker appears in its prose and not in its code. Its own failing cases are in test/launcher-icons.test.mjs. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
 ]);
 
@@ -228,6 +275,48 @@ if (!existsSync(CI) || !existsSync(TESTS)) {
   coverageLost([
     `expected ${CI} and ${TESTS} to exist.`,
     'The scan is broken, not the tree.',
+  ]);
+}
+
+// ── the detector's OWN negative test, run on every invocation ───────────────
+// `markerInCode` is only worth anything if it can still tell a comment from
+// code. If `stripSourceComments` ever regressed to a no-op — a plausible edit,
+// it is imported by 36 FILES (measured 2026-08-17, see the recipe below) — this
+// check would silently become the raw prose grep it replaced, and go on
+// printing a healthy scanner count. That is the exact failure this whole file
+// exists to catch, so it is not left to the suite: two synthetic sources, one
+// marker in a comment and one in a string literal, must come out FALSE and TRUE
+// on every run.
+//
+// 🔴 THAT NUMBER SAID "ten" WHEN THIS COMMENT WAS FIRST WRITTEN, hours earlier,
+// and nobody had counted. Writing a fresh false count inside the very check that
+// exists to stop prose being trusted is the defect eating its own tail, so the
+// re-measurement recipe travels with the number:
+//
+//     rg -laU --multiline-dotall "import\s*\{[^}]*stripSourceComments[^}]*\}\s*from\s*'[^']*text-reductions\.mjs'" tooling
+//
+// ⚠️ `-a` IS LOAD-BEARING, not tidiness. Without it ripgrep answers 35: it
+// classifies tooling/ci/assert-release-lane-generic.mjs as binary (that file
+// carries two NUL bytes, both on line 379, at byte offsets 22908 and 22916) and
+// SKIPS it silently — the same false-negative shape as searching this repo from
+// the root and never opening the gitignored trees. Those NUL bytes are in HEAD
+// and predate this change; they are worth removing on their own, in whichever
+// change owns that file. `--multiline-dotall` is load-bearing too: two importers
+// (assert-ads-declarations, assert-policy-claims) spread the braces over
+// several lines, and a line-anchored pattern misses both.
+//
+// The count is prose and prose rots; the check below does not. It fails on the
+// BEHAVIOUR, whatever the blast radius turns out to be on the day.
+const CANARY_COMMENT_ONLY = `// the caller must report ${COVERAGE_MARKER} rather than pass\nconst x = 1;\n`;
+const CANARY_IN_CODE = `console.error('✗ ${COVERAGE_MARKER} — nothing was scanned');\n`;
+if (markerInCode(CANARY_COMMENT_ONLY) || !markerInCode(CANARY_IN_CODE)) {
+  coverageLost([
+    'the coverage-self-check DETECTOR no longer distinguishes code from comments.',
+    `A marker in a comment read as ${markerInCode(CANARY_COMMENT_ONLY)} (must be false) and a marker in a`,
+    `string literal read as ${markerInCode(CANARY_IN_CODE)} (must be true).`,
+    'Until this holds, every "carries a coverage self-check" verdict below is the prose grep that let',
+    'read-identity.mjs, migration-tables.mjs and flutter-stock-assets.mjs pass on the very sentence in',
+    'which they disclaimed being scanners. Fix stripSourceComments before trusting anything this prints.',
   ]);
 }
 
@@ -593,7 +682,7 @@ for (const guard of guards) {
 
   // 2. a coverage self-check, unless it genuinely has nothing to scan
   const source = readFileSync(join(CI, guard), 'utf8');
-  const hasMarker = source.includes(COVERAGE_MARKER);
+  const hasMarker = markerInCode(source);
   const reason = NOT_A_SCANNER.get(guard);
   if (hasMarker) {
     scanners++;

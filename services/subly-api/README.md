@@ -5,7 +5,22 @@ template for every other app in the portfolio. Data is plain REST so it works on
 all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase JWTs
 (it never issues them).
 
-> Scaffold-only. Nothing here provisions or deploys live cloud resources.
+> 🔴 **THIS IS A LIVE PRODUCTION WORKER.** It answers real traffic on
+> **`api.nikatru.com`** (a custom domain declared in `wrangler.jsonc` `routes` and
+> read back from the live Cloudflare account on 2026-08-03) and it holds the
+> flagship app's **real user rows** in `subly_db`. Every push to `main` under
+> `services/subly-api/**` runs `.github/workflows/deploy-workers.yml`, which —
+> after `assert-gate-passed.mjs` confirms ci-gate went green for that commit —
+> applies `d1 migrations apply APP_DB --remote` and then `wrangler deploy`, and
+> `tooling/ops/post-deploy-smoke.mjs` joins the deploy to a commit through
+> `GET /v1/health`'s `build` field.
+>
+> *(This line read "Scaffold-only. Nothing here provisions or deploys live cloud
+> resources." until 2026-08-17. It was true when the directory was a template and
+> false from the first deploy onward — and a "scaffold" label on the one Worker
+> holding user rows is the kind of stale reassurance that gets a `--remote`
+> command run casually. Corrected rather than deleted, because the sentence was
+> load-bearing in the wrong direction.)*
 
 ## API surface
 
@@ -23,6 +38,81 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 | PUT | `/v1/budget` | Supabase JWT | Upsert budget + caps |
 | GET | `/v1/entitlements` | Supabase JWT | `is_pro` + entitlements for this app |
 | DELETE | `/v1/account` | **ES256/JWKS only** | Erase this user from every user-owned table in `subly_db` |
+
+### ⚠️ `GET /v1/renewals` and `GET /v1/entitlements` are SERVED AND UNCONSUMED
+
+**`GET /v1/renewals` — nothing in this repository calls it.** `ApiClient`
+(`apps/subly/lib/data/api/api_client.dart`) declares no renewals method at all —
+the app's "Upcoming renewals" surface derives its list client-side from
+`GET /v1/subscriptions`, which it already holds.
+
+**`GET /v1/entitlements` — a client method for it exists, and NOTHING CALLS THAT
+METHOD.** The chain that looks like a caller is
+`DioApiClient.getEntitlements()` (`apps/subly/lib/data/api/dio_api_client.dart:113`,
+`GET /entitlements` on this Worker's base) wrapped by
+`SubscriptionRepository.entitlements()`
+(`apps/subly/lib/data/subscriptions/subscription_repository.dart:20`) — and it
+stops there. Measured 2026-08-17 over `apps packages tooling sites` (1059 files):
+`rg "\.entitlements\("` returns **zero** call sites, and `rg "getEntitlements"`
+returns five matches in five files, none of them a use — the abstract method
+(`api_client.dart:26`), two implementations (`seed_api_client.dart:80`,
+`dio_api_client.dart:113`), the single call inside the unreached repository
+method (`subscription_repository.dart:20`), and one line of prose in
+`apps/subly/README.md:94`. No screen, controller, provider or test reaches any of
+them.
+
+🔴 **THE APP'S ENTITLEMENT READ GOES TO THE OTHER WORKER, WHICH IS WHY THIS ONE
+HAS NO CALLER.** The live path is `entitlementsProvider`
+(`apps/subly/lib/state/money_providers.dart:126`) → `entitlementTransportProvider`
+(same file, `:44`) → `DioEntitlementTransport`
+(`packages/api_client/lib/src/dio_entitlement_transport.dart:40`), which issues
+`GET {PLATFORM_BASE_URL}/v1/entitlements?app_id=<id>`. `kPlatformBaseUrl` defaults
+to `https://platform.nikatru.com` (`apps/subly/lib/state/providers.dart:476`), so
+that read lands on **`services/platform`** — `platform/src/index.ts:105-106` — and
+never on `api.nikatru.com`. `PaywallGate`, `manage_plan_screen.dart:90` and
+`refreshEntitlements()` all watch THAT provider. The two Workers expose the same
+path and answer the same question; only the platform one is wired, because
+`platform_db.entitlements` is shared portfolio-wide and lives behind that Worker.
+
+*(⚠️ CORRECTED 2026-08-17, same day it was written. This section first covered
+`/v1/renewals` alone and claimed every other row in the table "either has a named
+in-repo caller … or a named external sender". For `/v1/entitlements` that was
+false, and falsely reassuring: the evidence stopped at `dio_api_client.dart`, a
+method that EXISTS, without asking whether anything calls it. "A client method
+exists" and "the endpoint is consumed" are different claims, and only the second
+is what this section is about.)*
+
+Both are kept rather than deleted, and that is a decision rather than an oversight:
+
+- they are **live authed endpoints on a public hostname**, so "no in-repo client"
+  is not "no caller" — removing one is an API-contract change, not a cleanup;
+- each has a test that is the regression proof for a real defect the route had.
+  `test/renewals.test.ts`: `?withinDays` had a floor and no ceiling, so
+  `?withinDays=1e15` made `toISOString()` throw a `RangeError` that surfaced as a
+  generic 500. `test/entitlements.test.ts`: an expiry the route could not parse
+  granted Pro permanently and silently, with no error, no log and no failing test.
+  Deleting a route deletes the only thing holding its bound;
+- **the data behind them is actively maintained**, so they are read halves of live
+  machinery rather than orphans. Renewals: the platform Worker's nightly
+  `recomputeRenewals` fan-out (`services/platform/src/renewals.ts`) rolls past-due
+  `next_renewal` values forward over this app's `APP_DB` and writes a
+  `payment_history` row per crossed charge, every night. Entitlements: this
+  Worker's own `POST /v1/webhooks/revenuecat` upserts the rows the route reads.
+
+⚠️ Neither is part of what app #2 inherits: the brick's backend template carries
+`src/routes/account.ts` and nothing else, so a stamped Worker has no renewals or
+entitlements route to leave unconsumed. Whatever is decided here is a decision
+about THIS Worker only.
+
+The honest state is therefore: two routes with zero clients, kept on purpose.
+⚠️ Unlike the platform Worker's unconsumed routes (`POST /v1/checkout`,
+`POST /v1/money/:provider`), that claim is **not machine-checked** —
+`tooling/platform-register.json` and `assert-platform-register.mjs` reconcile
+routes against clients for `services/platform` ONLY, and no equivalent register
+covers this Worker. So this section is prose that can rot, and the day a client
+appears nothing will notice. It rotted once already, within hours of being
+written, in exactly the direction a register would have caught: a declaration
+counted as a call.
 
 ### 🔴 `DELETE /v1/account` sits on a STRICTER auth boundary than everything above
 
@@ -91,8 +181,25 @@ npm install
 wrangler d1 migrations apply APP_DB --local        # npm run db:migrate:local
 
 # Apply the SHARED entitlements schema to the local platform_db.
-# (0002 targets PLATFORM_DB, not APP_DB — run it explicitly:)
-wrangler d1 execute PLATFORM_DB --local --file=migrations/0002_entitlements.sql
+#
+# 🔴 THE FILES ARE NOT IN THIS DIRECTORY, AND THAT IS THE POINT. platform_db is
+# owned and migrated by services/platform, its SOLE applier — this Worker binds
+# PLATFORM_DB with NO `migrations_dir`, precisely so that
+# `d1 migrations apply APP_DB` can never reach it. `migrations/` here holds
+# 0001_init.sql and 0002_schema_debt.sql, and both are APP_DB.
+#
+# They are `execute`d from HERE rather than `migrations apply`d from ../platform
+# because a local D1 lives under the WORKING DIRECTORY's `.wrangler/state`:
+# running the apply over there would build a perfectly good platform_db that
+# `wrangler dev` in this directory cannot see.
+#
+# The whole directory in order, not a named file: this Worker's entitlements
+# route SELECTs `provider_environment`, which 0004_money_rail.sql adds — 0001
+# alone gives you a table that is missing the column the route reads, i.e. a
+# local failure that looks like a code bug.
+for f in ../platform/migrations/*.sql; do
+  wrangler d1 execute PLATFORM_DB --local --file="$f"
+done
 
 # Secrets for local dev:
 cp .dev.vars.example .dev.vars     # then fill in if needed (never commit)
@@ -141,23 +248,42 @@ portfolio shares ONE cron (staying under the 5-cron-triggers/account Free cap):
    past-due `next_renewal` forward one cycle (monthly/yearly), inserting a
    `payment_history` row per crossed charge, over each app's bound `APP_DB`.
 
-The renewals HTTP read endpoint (`GET /v1/renewals`) still lives here.
+The renewals HTTP read endpoint (`GET /v1/renewals`) still lives here — served,
+and with no in-repo client; see the note under the API surface table above.
 
 ## Clone for the next app
 
-The template is designed so each new tracker app is a copy with three edits:
+⚠️ **NOT BY HAND-COPYING THIS DIRECTORY.** App #2's backend is STAMPED from the
+Mason brick at
+`tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/`,
+then provisioned with ONE command:
 
-1. In `wrangler.jsonc`: change `name`, `vars.APP_ID`, and the **APP_DB**
-   `database_name` + `database_id` (run `wrangler d1 create <newapp>_db`).
-2. Keep **PLATFORM_DB** (`platform_db`) identical — all apps share one
-   entitlements table.
-3. Keep **SUPABASE_URL** identical — all apps share one Supabase identity project.
+```bash
+node tooling/scripts/provision-backend.mjs <app_id>
+```
 
-Then apply `migrations/0001_init.sql` to the new APP_DB. The shared
-entitlements schema (`platform_db`) is owned + migrated by **`services/platform`**
-(its `migrations/0001_entitlements.sql`), applied once for the whole portfolio.
+which creates the D1 (`--location apac`), writes the returned id into APP_DB's
+`database_id`, and applies the starter migration. `assert-d1-bindings.mjs` fails
+any config under `services/` still carrying the all-zeros placeholder, so the
+"did I remember to fill it in" question is answered by the build.
 
-### REPLACE_ tokens to fill before going live
+What the stamp keeps identical, and why:
 
-- `wrangler.jsonc` → `SUPABASE_URL`, APP_DB `database_id` (`REPLACE_WITH_D1_ID`),
-  PLATFORM_DB `database_id` (`REPLACE_SHARED_D1_ID`), KV `id` (`REPLACE_KV_ID`).
+1. **APP_DB** is the only resource the new Worker owns outright — its own
+   `name`, `vars.APP_ID`, `database_name` and `database_id`.
+2. **PLATFORM_DB** (`platform_db`) is shared — all apps read one entitlements
+   table, and the binding carries **no `migrations_dir`** because
+   `services/platform` is its sole applier.
+3. **SUPABASE_URL** is shared — all apps use one Supabase identity project.
+
+⚠️ D1 Free is **10 databases per account**; `platform_db` is one of them, so
+per-app databases run out after nine apps. That is why a backend is opt-in in the
+brick (`needs_backend`) rather than stamped for every app.
+
+*(This section ended in "### REPLACE_ tokens to fill before going live", listing
+`REPLACE_WITH_D1_ID` / `REPLACE_SHARED_D1_ID` / `REPLACE_KV_ID`. Removed 2026-08-17
+rather than edited: `rg REPLACE services/` finds those three strings in THIS FILE
+and nowhere else in the tree. This Worker's `wrangler.jsonc` carries real ids, a
+real Supabase project and a real custom domain, and the brick uses an all-zeros
+UUID that a script fills — so the checklist described a state no file has been in
+for some time, sitting under a heading that read as a live pre-launch TODO.)*

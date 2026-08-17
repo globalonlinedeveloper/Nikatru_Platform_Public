@@ -53,6 +53,12 @@ jobs:
   gate:
     name: Require ci-gate to have passed
     runs-on: ubuntu-24.04
+    # 25, not 10, and the number comes from the script rather than from the clock:
+    # assert-gate-passed.mjs POLLS for up to its own 1200 s default (this call
+    # leaves `--timeout-seconds` unset), so any bound at or under 20 kills it
+    # mid-poll and replaces "timed out waiting for ci-gate" with an opaque
+    # cancellation. Kept byte-identical in all five `gate:` jobs. [pipeline F-5b]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -66,6 +72,12 @@ jobs:
   dry-run:
     name: Validate the submission path
     runs-on: macos-26
+    # ⬜ NEVER RUN — no dispatch of this workflow has ever completed, so there is
+    # no observation to size this from. The nearest measured neighbour is
+    # build-platforms.yml's `apple` job, which builds the same two Apple targets
+    # on the same runner label in 10m52s worst case; 45 is that with room for a
+    # cold Xcode/CocoaPods cache. Re-pin it against the first real run.
+    timeout-minutes: 45
     needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

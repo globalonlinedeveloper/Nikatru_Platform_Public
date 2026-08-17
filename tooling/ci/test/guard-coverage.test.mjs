@@ -118,7 +118,11 @@ function repo(
   // invokes tree-walk.mjs, and that is the point. It is reached only through the
   // import graph, which is exactly the FOUND ⊆ REACHED path these fixtures
   // otherwise never exercise.
-  const deps = real ? ['tree-walk.mjs'] : [];
+  // text-reductions.mjs joined tree-walk.mjs here on 2026-08-17, when the
+  // coverage-self-check limb stopped grepping raw prose and started asking
+  // `stripSourceComments` what is actually CODE. Both are pure modules with no
+  // imports of their own, so copying the two files is the whole dependency.
+  const deps = real ? ['tree-walk.mjs', 'text-reductions.mjs'] : [];
   for (const dep of deps) writeFileSync(join(ci, dep), readFileSync(join(CI_DIR, dep), 'utf8'));
 
   for (const [name, src] of Object.entries(all)) writeFileSync(join(ci, name), src);
@@ -270,7 +274,11 @@ describe('assert-guard-coverage', () => {
         repo(
           {
             ...compliant(),
-            'assert-thing-0.mjs': "import { x } from './shared-thing.mjs';\n// COVERAGE LOST\nconsole.log(x);\n",
+            // The self-check is IN CODE, not in a comment. It read
+            // `// COVERAGE LOST` until 2026-08-17 and passed, because the guard
+            // grepped raw prose; when that limb learned to strip comments this
+            // fixture went red and was the first thing to say so.
+            'assert-thing-0.mjs': "import { x } from './shared-thing.mjs';\nif (!x) throw new Error('COVERAGE LOST');\nconsole.log(x);\n",
             'shared-thing.mjs': SHARED_MODULE,
           },
           { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs'] },
@@ -299,14 +307,25 @@ describe('assert-guard-coverage', () => {
         repo(
           {
             ...compliant(),
-            'assert-thing-0.mjs': "// import { x } from './shared-thing.mjs';\n// COVERAGE LOST\n",
+            // ONLY the import is commented out — that is the subject. The
+            // self-check stays in CODE so this fixture has exactly ONE fault
+            // and the assertions below can name it. When both were comments,
+            // the guard failed for two reasons at once and `status === 1` plus
+            // a bare filename match could not tell which, so the test would
+            // have gone on passing if the reachability limb had been deleted.
+            'assert-thing-0.mjs': "// import { x } from './shared-thing.mjs';\nif (0) throw new Error('COVERAGE LOST');\n",
             'shared-thing.mjs': SHARED_MODULE,
           },
           { invoke: ['assert-thing-0.mjs', 'assert-thing-1.mjs', 'assert-thing-2.mjs', 'assert-thing-3.mjs'] },
         ),
       );
       assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /neither invoked by a workflow nor imported/);
       assert.match(r.stderr, /shared-thing\.mjs/);
+      // The commented-out import must be the ONLY complaint: no guard here is
+      // missing a self-check, so if that phrase appears the fixture has drifted
+      // and this test is no longer measuring reachability.
+      assert.doesNotMatch(r.stderr, /no "COVERAGE LOST" self-check/);
     });
 
     test('a COMMENTED-OUT invocation does not count as wiring', () => {
@@ -613,6 +632,56 @@ describe('assert-guard-coverage', () => {
       assert.match(r.stderr, /no "COVERAGE LOST" self-check/);
       // The message must offer the legitimate escape, or people invent a worse one.
       assert.match(r.stderr, /NOT_A_SCANNER with a reason/);
+    });
+
+    // ── the marker must be CODE, never prose ──────────────────────────────
+    // 🔴 THE DEFECT THESE THREE REPLACE WAS LIVE UNTIL 2026-08-17. The limb was
+    // `source.includes('COVERAGE LOST')` over the RAW file, so a guard earned
+    // its self-check credit by MENTIONING coverage loss in a comment — the same
+    // class as the `grep '"r2_buckets"'` that matched the template comment
+    // explaining why there are no r2_buckets. It was not theoretical: THREE real
+    // files passed on prose alone (read-identity.mjs, migration-tables.mjs,
+    // flutter-stock-assets.mjs), and in each the sentence that earned the pass
+    // was the sentence DISCLAIMING the duty — "the caller must report COVERAGE
+    // LOST". All three are now in NOT_A_SCANNER, where the prose grep had been
+    // quietly keeping them from being noticed as missing.
+    test('a guard whose ONLY marker is in a COMMENT is not credited with a self-check', () => {
+      const r = run(
+        repo(
+          compliant({
+            'assert-prose.mjs': '// This guard exits COVERAGE LOST when its scan reaches nothing.\nconsole.log("ok, scanned everything");\n',
+          }),
+        ),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /assert-prose\.mjs — no "COVERAGE LOST" self-check/);
+    });
+
+    test('the same marker in a STRING LITERAL does count — that is how a real self-check prints', () => {
+      // The other half of the rule, and the one that would break every genuine
+      // guard if the stripper ever removed string literals as well as comments.
+      const r = run(
+        repo(
+          compliant({
+            'assert-real.mjs': "if (files.length === 0) { console.error('✗ COVERAGE LOST — nothing scanned'); process.exit(1); }\n",
+          }),
+        ),
+      );
+      assert.equal(r.status, 0, r.stderr);
+    });
+
+    test('a JSDoc block naming the marker does not count either', () => {
+      // `/** … */` is the shape the three real files used, so it gets its own
+      // case rather than riding on the `//` one.
+      const r = run(
+        repo(
+          compliant({
+            'assert-jsdoc.mjs': '/**\n * Callers own the COVERAGE LOST decision — this module only reports what it read.\n */\nexport const read = () => 1;\n',
+          }),
+        ),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /assert-jsdoc\.mjs — no "COVERAGE LOST" self-check/);
     });
 
     test('a named non-scanner is exempt, and the exemption is counted out loud', () => {

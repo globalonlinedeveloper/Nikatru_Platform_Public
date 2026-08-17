@@ -149,6 +149,12 @@ jobs:
   gate:
     name: Require ci-gate to have passed
     runs-on: ubuntu-24.04
+    # 25, not 10, and the number comes from the script rather than from the clock:
+    # assert-gate-passed.mjs POLLS for up to its own 1200 s default (this call
+    # leaves `--timeout-seconds` unset), so any bound at or under 20 kills it
+    # mid-poll and replaces "timed out waiting for ci-gate" with an opaque
+    # cancellation. Kept byte-identical in all five `gate:` jobs. [pipeline F-5b]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -162,6 +168,7 @@ jobs:
   dry-run:
     name: Validate the submission path
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -272,6 +279,11 @@ jobs:
   submit:
     name: Upload to Google Play (owner-approved)
     runs-on: ubuntu-24.04
+    # ⬜ NEVER RUN — it needs `confirm: SUBMIT-TO-PLAY` and nobody has typed it.
+    # It REBUILDS the bundle rather than downloading dry-run's (see the note
+    # above), so it repeats that job's measured 8m06s and then uploads; 30 is
+    # dry-run's bound, which is the closest thing to a measurement this job has.
+    timeout-minutes: 30
     needs: [gate, dry-run]
     if: inputs.confirm == 'SUBMIT-TO-PLAY'
     environment: store-publish

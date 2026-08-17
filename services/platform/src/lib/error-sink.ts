@@ -2,6 +2,25 @@
 // error-sink.ts — [pipeline 11]E-8. A Worker's unhandled error reaches a sink,
 // not just `console.error`.
 //
+// ⚠️ THIS FILE HAS A TWIN AT services/subly-api/src/lib/error-sink.ts, and the
+// duplication is deliberate — that copy's header carries the full reasoning and
+// the measurement behind it. What matters HERE is that a fix applied to this
+// copy alone is a RED BUILD: `test/twinned-worker-modules.test.ts` compares the
+// two files declaration by declaration. The `appId` field on `SinkContext` and
+// its `app_id` envelope tag are the only sanctioned differences (this is the one
+// Worker serving every app, so a report has to say whose app broke) and both are
+// declared in that test — which also fails if they ever STOP differing, so the
+// exemption cannot outlive the reason for it.
+//
+// 🔴 "THE ONLY SANCTIONED DIFFERENCES" IS ENFORCED, AND IT WAS NOT ALWAYS. That
+// test's exemption is LINE-SCOPED: it names those two lines, subtracts them from
+// both copies and compares everything that is left, so the rest of
+// `buildEnvelope` and of `SinkContext` really is held equal. Until 2026-08-17 the
+// exemption was whole-DECLARATION — naming `buildEnvelope` switched the whole
+// function off — and this sentence was therefore false: changing `logger:
+// 'worker'` here and nowhere else left the suite green (5 passed, exit 0), which
+// is how it was found. Do not widen an exemption back to a declaration name.
+//
 // 🔴 THE DEFECT THIS CLOSES. `app.onError` logged and returned 500. A `wrangler
 // tail` is a live stream nobody is watching at 3am and Cloudflare's Free plan
 // keeps no searchable log history, so an unhandled error on the SHARED Worker —

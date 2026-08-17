@@ -597,7 +597,7 @@
         "n": 2,
         "name": "THE PACK FORMAT ALLOWLIST",
         "what": "assert FORMAT_ALLOWLIST carries no entry with modality 'video', and — because it DOES carry one with modality 'audio' — assert that the audio entry stays paired with limb 3's absent player, printing both facts every run",
-        "halfOfThisALREADYEXISTS": "assert-pack-inert.mjs:72 already fails the build if the allowlist gains a video modality ('Video is DORMANT — 39-CHASSIS §4 cut 8'). THE VIDEO HALF IS BUILT AND WIRED (ci.yml:1801). The AUDIO half is not built and CANNOT take the same shape, because audio is deliberately allowed by [ADR 017] — which is precisely why limb 3 is the load-bearing one"
+        "halfOfThisALREADYEXISTS": "assert-pack-inert.mjs:72 already fails the build if the allowlist gains a video modality ('Video is DORMANT — 39-CHASSIS §4 cut 8'). THE VIDEO HALF IS BUILT AND WIRED (ci.yml's `content_gate` job, step `A pack is inert data in only the locked formats` — cited by step name, not by line number, which shifts whenever anything is inserted above it). The AUDIO half is not built and CANNOT take the same shape, because audio is deliberately allowed by [ADR 017] — which is precisely why limb 3 is the load-bearing one"
       },
       {
         "n": 3,

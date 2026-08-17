@@ -33,6 +33,7 @@ jobs:
   subly_api:
     name: subly-api Worker (typecheck + test + dry-run)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: services/subly-api
@@ -64,6 +65,7 @@ jobs:
   platform:
     name: platform Worker (typecheck + test + dry-run)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     # Job-level override of the workflow's `contents: read`. assert-platform-proof-
     # fresh.mjs reads build-platforms.yml's run history, which needs `actions: read`
     # — granted HERE rather than workflow-wide so the other lanes keep the smaller
@@ -1687,6 +1689,7 @@ jobs:
   tokens:
     name: Site design tokens (build + drift)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: packages/tokens
@@ -1723,6 +1726,7 @@ jobs:
   site_shared:
     name: Shared site build
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: sites/_shared
@@ -1750,6 +1754,7 @@ jobs:
   content_gate:
     name: Content pipeline (recipe -> pack -> sign -> gate)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1824,6 +1829,7 @@ jobs:
   app_brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -2169,6 +2175,7 @@ jobs:
   sites:
     name: Static sites (functions parse + required files)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -2226,6 +2233,7 @@ jobs:
   workspace_gate:
     name: Workspace gate (melos analyze + test)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -2285,6 +2293,7 @@ jobs:
   ci-gate:
     name: ci-gate
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: [subly_api, platform, tokens, site_shared, content_gate, app_brick, sites, workspace_gate]
     # LOAD-BEARING. Without `always()` this job inherits the default `success()`
     # and would itself report SKIPPED whenever a lane failed — and GitHub counts
