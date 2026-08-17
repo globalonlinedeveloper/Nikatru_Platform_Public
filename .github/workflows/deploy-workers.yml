@@ -37,6 +37,12 @@ jobs:
   detect:
     name: Detect changed services
     runs-on: ubuntu-24.04
+    # 25 because the gate check below polls for up to assert-gate-passed.mjs's own
+    # 1200 s default. That is not hypothetical here: this job's longest recorded
+    # run is 20m06s — the poll expiring — against a 5m59s worst case when ci-gate
+    # was already green. A bound under 21 would cut the poll short and report a
+    # cancellation instead of "timed out waiting for ci-gate". [pipeline F-5b]
+    timeout-minutes: 25
     outputs:
       subly_api: ${{ steps.decide.outputs.subly_api }}
       platform: ${{ steps.decide.outputs.platform }}
@@ -117,6 +123,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.subly_api == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     # Job-level, so `detect` does not inherit write access it never uses.
     permissions:
       contents: read
@@ -251,6 +258,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.platform == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     # Job-level, so `detect` does not inherit write access it never uses.
     permissions:
       contents: read

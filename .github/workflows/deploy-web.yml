@@ -147,6 +147,11 @@ jobs:
   deploy-web:
     name: Build & deploy web to Cloudflare Pages
     runs-on: ubuntu-24.04
+    # 35 because this job carries BOTH halves: assert-gate-passed.mjs polls for up
+    # to its own 1200 s default before the build starts (a shorter bound would kill
+    # the poll and hide why the gate never arrived), and the build+deploy behind it
+    # has been observed at 9m03s. 20 + 9 with a little air. [pipeline F-5b]
+    timeout-minutes: 35
     needs: prepare
     # The two grants the workflow level no longer makes, held by the only job
     # that uses them: `checks: read` for assert-gate-passed.mjs (it reads

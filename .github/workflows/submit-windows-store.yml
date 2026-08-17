@@ -43,6 +43,12 @@ jobs:
   gate:
     name: Require ci-gate to have passed
     runs-on: ubuntu-24.04
+    # 25, not 10, and the number comes from the script rather than from the clock:
+    # assert-gate-passed.mjs POLLS for up to its own 1200 s default (this call
+    # leaves `--timeout-seconds` unset), so any bound at or under 20 kills it
+    # mid-poll and replaces "timed out waiting for ci-gate" with an opaque
+    # cancellation. Kept byte-identical in all five `gate:` jobs. [pipeline F-5b]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -56,6 +62,11 @@ jobs:
   dry-run:
     name: Validate the submission path
     runs-on: windows-2025
+    # ⬜ NEVER RUN — no dispatch of this workflow has ever completed. Sized off
+    # build-platforms.yml's `windows` job, the same runner label building the same
+    # target at 12m24s worst case, plus the MSIX packaging step that job does not
+    # have. Re-pin it against the first real run.
+    timeout-minutes: 30
     needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

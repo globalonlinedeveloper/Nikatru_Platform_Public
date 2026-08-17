@@ -932,8 +932,13 @@ describe('assert-lockfile-discipline', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-workflow-hardening', () => {
   const SHA = 'a'.repeat(40);
+  /** ⚠️ THE JOB CARRIES `runs-on:` AND `timeout-minutes:` BECAUSE A REAL ONE DOES.
+   *  These fixtures used to be `jobs:\n  j:\n    steps:` — a job shape GitHub
+   *  would reject outright — and the timeout limb REFUSES (exit 2) on a job it
+   *  cannot classify, which is how the omission surfaced. A fixture that is not
+   *  a legal workflow tests the guard against input the guard will never see. */
   const wf = (uses, { withPermissions = true } = {}) =>
-    `name: X\non: push\n${withPermissions ? 'permissions:\n  contents: read\n' : ''}jobs:\n  j:\n    steps:\n` +
+    `name: X\non: push\n${withPermissions ? 'permissions:\n  contents: read\n' : ''}jobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n` +
     uses.map((u) => `      - uses: ${u}\n`).join('');
 
   /** 12 refs across 3 files clears the scan's own MIN_USES / MIN_WORKFLOWS floor. */
@@ -977,7 +982,7 @@ describe('assert-workflow-hardening', () => {
   test('does NOT trip on a tag reference inside a comment', () => {
     const dir = fixture('wh-comment', {
       '.github/workflows/a.yml':
-        `name: X\npermissions:\n  contents: read\njobs:\n  j:\n    steps:\n      # was uses: actions/checkout@v4\n` +
+        `name: X\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      # was uses: actions/checkout@v4\n` +
         Array.from({ length: 12 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
       '.github/workflows/b.yml': wf([`actions/x@${SHA}`]),
       '.github/workflows/c.yml': wf([`actions/y@${SHA}`]),
@@ -1064,7 +1069,8 @@ describe('assert-workflow-hardening', () => {
     test('FAILS when not one `uses:` survives — a dead matcher, not an action-free CI', () => {
       const files = {};
       for (const f of ['a', 'b', 'c']) {
-        files[`.github/workflows/${f}.yml`] = 'name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    steps:\n      - run: echo hi\n';
+        files[`.github/workflows/${f}.yml`] =
+          'name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - run: echo hi\n';
       }
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-uses-none', files)] });
       assert.equal(code, 1);
@@ -1087,7 +1093,7 @@ describe('assert-workflow-hardening', () => {
 
     test('FAILS on workflow-level `permissions: write-all`', () => {
       const files = three({
-        b: `name: X\non: push\npermissions: write-all\njobs:\n  j:\n    steps:\n` +
+        b: `name: X\non: push\npermissions: write-all\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n` +
           Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
       });
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-writeall', files)] });
@@ -1098,7 +1104,9 @@ describe('assert-workflow-hardening', () => {
 
     test('FAILS on JOB-level `permissions: write-all` too — the same blast radius, one indent in', () => {
       const files = three({
-        c: `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    permissions: write-all\n    steps:\n` +
+        // `permissions: write-all` stays on line 7 — the runner keys go AFTER it,
+        // so the line number this test asserts still points at the real defect.
+        c: `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    permissions: write-all\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n` +
           Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
       });
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-writeall-job', files)] });
@@ -1108,7 +1116,7 @@ describe('assert-workflow-hardening', () => {
 
     test('`read-all` is least-privilege enough to pass', () => {
       const files = three({
-        a: `name: X\non: push\npermissions: read-all\njobs:\n  j:\n    steps:\n` +
+        a: `name: X\non: push\npermissions: read-all\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n` +
           Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
       });
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-readall', files)] });
@@ -1119,12 +1127,269 @@ describe('assert-workflow-hardening', () => {
       // Printed rather than pretended-checked: blocking it would make the build
       // red on arrival, and a rule added red gets deleted rather than fixed.
       const files = three({
-        a: `name: X\non: push\npermissions:\n  contents: read\n  deployments: write\njobs:\n  j:\n    steps:\n` +
+        a: `name: X\non: push\npermissions:\n  contents: read\n  deployments: write\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n` +
           Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join(''),
       });
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-write-scope', files)] });
       assert.equal(code, 0, out);
       assert.match(out, /a\.yml grants `deployments: write` at the WORKFLOW level/);
+    });
+  });
+
+  // ── limb 4: every job bounds itself ────────────────────────────────────────
+  // 2026-08-17. 29 of this tree's 42 jobs declared no `timeout-minutes`, so each
+  // of them inherited GitHub's 360-minute default. Every case below was
+  // FIRST proven against the real .github/workflows — green at 42 jobs, one
+  // `timeout-minutes:` line removed from ops-watch.yml's `alert`, the guard
+  // naming that exact job and exiting 1, then a byte-exact restore back to
+  // green — because a fixture written by whoever wrote the guard encodes the
+  // same misunderstanding as the guard. These re-run that evidence on every
+  // build, cheaply and without mutating the tree.
+  describe('every job bounds its own runtime', () => {
+    const three = (over = {}) => {
+      const files = {};
+      for (const f of ['a', 'b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = over[f] ?? wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+      }
+      return files;
+    };
+    /** One job, written out, so a test can change exactly one of its keys. */
+    const job = (keys) =>
+      `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n${keys}    steps:\n` +
+      Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join('');
+
+    test('the control: three bounded jobs pass, and the ok line SAYS three', () => {
+      // The count is the point — but a printed count is only evidence once
+      // something else derives it too, which is the JOB ACCOUNTING block below.
+      // (Real tree on 2026-08-17: `42 job(s)`, both derivations agreeing.)
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-ok', three())] });
+      assert.equal(code, 0, out);
+      assert.match(out, /3 job\(s\) all bounded by `timeout-minutes`/);
+      assert.match(out, /two independent job-id counts agree per file, 3 = 3/);
+    });
+
+    test('FAILS naming the exact job that declares none', () => {
+      const files = three({ b: job('    runs-on: ubuntu-24.04\n') });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-missing', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /b\.yml job `j` declares no `timeout-minutes:`/);
+      assert.match(out, /360-minute default/);
+    });
+
+    test('a STEP-level `timeout-minutes` does NOT bound the job', () => {
+      // 🔴 THE ` {4}` ANCHOR, TESTED. A step timeout bounds one step and leaves
+      // the other forty unbounded, and it is the single likeliest thing to be
+      // mistaken for a bounded job — the job below has one and is still wrong.
+      const files = three({
+        b:
+          `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n` +
+          `      - uses: actions/act0@${SHA}\n        timeout-minutes: 5\n` +
+          Array.from({ length: 3 }, (_, i) => `      - uses: actions/act${i + 1}@${SHA}\n`).join(''),
+      });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-step', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /b\.yml job `j` declares no `timeout-minutes:`/);
+    });
+
+    test('a COMMENTED-OUT declaration does not satisfy it — the whole reason this is parsed', () => {
+      // `grep -c timeout-minutes` on this fixture answers 3 and would pass it.
+      // The corpus has paid for that once already: a `grep '"r2_buckets"'` that
+      // matched the comment explaining why there is no `r2_buckets`.
+      const files = three({ b: job('    runs-on: ubuntu-24.04\n    # timeout-minutes: 5\n') });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-comment', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /b\.yml job `j` declares no `timeout-minutes:`/);
+    });
+
+    test('FAILS on a value that bounds nothing, naming the line', () => {
+      const files = three({ b: job('    runs-on: ubuntu-24.04\n    timeout-minutes: 0\n') });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-zero', files)] });
+      assert.equal(code, 1);
+      // Line 8, asserted exactly: the reported number must still point into the
+      // real file, which is only true because comments are BLANKED, not deleted.
+      assert.match(out, /b\.yml:8 job `j` sets `timeout-minutes: 0`, which bounds nothing/);
+    });
+
+    test('an expression GitHub resolves is accepted — a rule that fires on right input gets deleted', () => {
+      const files = three({ b: job('    runs-on: ubuntu-24.04\n    timeout-minutes: ${{ matrix.timeout }}\n') });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-expr', files)] });
+      assert.equal(code, 0, out);
+    });
+
+    // ── the four REFUSALS, exit 2 ──────────────────────────────────────────
+    // A different code from a defect on purpose: "I looked and found nothing
+    // wrong" and "I could not look" must not be the same signal, because the
+    // second one reading as the first is how a scan over an empty subject
+    // becomes a pass.
+    test('REFUSES (exit 2) on a job it cannot classify, rather than demanding the impossible', () => {
+      // The shape braced for: a job that DELEGATES to a reusable workflow.
+      // GitHub rejects `timeout-minutes` there, so demanding one would be an
+      // unsatisfiable red — and silently skipping it would be an unadvertised
+      // hole. There is NO exemption list here; the guard says it cannot tell.
+      const files = three({ b: job('    uses: ./.github/workflows/a.yml\n') });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-nounsonjob', files)] });
+      assert.equal(code, 2);
+      assert.match(out, /REFUSING TO REPORT — 1 job\(s\) this limb cannot classify/);
+      assert.match(out, /b\.yml job `j` declares no `runs-on:`/);
+    });
+
+    test('REFUSES (exit 2) when a workflow parses to ZERO jobs', () => {
+      const files = three({ b: wf([`actions/x@${SHA}`]).replace(/^jobs:\n/m, '') });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-to-nojobs', files)] });
+      assert.equal(code, 2);
+      assert.match(out, /REFUSING TO REPORT — 1 workflow\(s\) parsed to ZERO jobs: b\.yml/);
+    });
+
+    test('REFUSES (exit 2) when the directory holds not one workflow', () => {
+      // The directory EXISTS and is empty of workflows — distinct from "no
+      // .github/workflows at all", and the shape that prints ok over nothing.
+      const dir = fixture('wh-to-nowf', { '.github/workflows/README.md': '# not a workflow\n' });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir] });
+      assert.equal(code, 2);
+      assert.match(out, /REFUSING TO REPORT — not one workflow file under/);
+    });
+  });
+
+  // ── JOB ACCOUNTING: the printed count derived twice ────────────────────────
+  // 🔴 REPRODUCED ON THE REAL TREE FIRST, and the mutation is the verifier's,
+  // not one invented to suit the fix. Quote ONE job id in `.github/workflows/
+  // ops-watch.yml` — `  "digest":`, legal YAML naming the identical job GitHub
+  // already runs — and the shared reader's ` {2}<id>:` matcher stops seeing it:
+  //
+  //   before  ok  … 42 job(s) all bounded by `timeout-minutes`      exit 0
+  //   mutated ok  … 41 job(s) all bounded by `timeout-minutes`      exit 0   ⟵
+  //
+  // A job left limb 4 entirely — never checked for a bound — and the only trace
+  // was a digit nobody diffs. Since the second derivation landed, the same
+  // mutation prints `REFUSING TO REPORT — 1 workflow(s) where two independent
+  // job-id counts disagree · ops-watch.yml: the shared reader found 7 job id(s),
+  // an independent scan of the same file found 8`, exit 2; `git checkout` back
+  // to a byte-identical file returns it to exit 0 at 42. That is the same
+  // two-derivations doctrine the `uses:` accounting already uses, one nesting
+  // level in — a count is not evidence until something else computes it too.
+  describe('the job count is derived twice and the two must agree', () => {
+    const three = (over = {}) => {
+      const files = {};
+      for (const f of ['a', 'b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = over[f] ?? wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+      }
+      return files;
+    };
+
+    test('REFUSES (exit 2) on a QUOTED job id — the mutation that silently shrank the count', () => {
+      const files = three();
+      files['.github/workflows/b.yml'] = files['.github/workflows/b.yml'].replace('\njobs:\n  j:\n', '\njobs:\n  "j":\n');
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-jobs-quoted', files)] });
+      assert.equal(code, 2);
+      assert.match(out, /two independent job-id counts disagree/);
+      assert.match(out, /b\.yml: the shared reader found 0 job id\(s\), an independent scan of the same file found 1/);
+    });
+
+    test('names EVERY file that disagrees, not just a bottom-line total', () => {
+      // The comparison is per FILE and the report names each one, because
+      // "41 vs 42" tells a reader a job vanished and nothing about where. It is
+      // also the honest reason the loop is written per file rather than as one
+      // subtraction at the end: the loose matcher is a SUPERSET of the reader by
+      // construction today, so the totals could not cancel — but that is a
+      // property of two regexes somebody may edit, not a guarantee, and a
+      // per-file comparison does not depend on it holding.
+      const files = three();
+      for (const f of ['b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = files[`.github/workflows/${f}.yml`].replace('\njobs:\n  j:\n', '\njobs:\n  "j":\n');
+      }
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-jobs-two', files)] });
+      assert.equal(code, 2);
+      assert.match(out, /2 workflow\(s\) where two independent job-id counts disagree/);
+      assert.match(out, /b\.yml: the shared reader found 0 job id\(s\), an independent scan of the same file found 1/);
+      assert.match(out, /c\.yml: the shared reader found 0 job id\(s\), an independent scan of the same file found 1/);
+      assert.match(out, /Totals: 1 vs 3 across 3 workflow\(s\)/);
+    });
+
+    test('does NOT fire on a legal tree — a check that reddens correct input gets deleted', () => {
+      // 🔴 THE NEGATIVE HALF, AND IT CAUGHT A REAL DEFECT IN THE VERY CHECK IT
+      // TESTS. The first `looseJobIds` tested the block end (`/^\S/`) BEFORE
+      // skipping comments, so the column-0 `# ── the build lane ──` below ended
+      // its scan there and every job under it went uncounted — the guard refused
+      // on a workflow GitHub runs happily. Four legal shapes, all of them things
+      // the two matchers read by different routes: a trailing comment on `jobs:`,
+      // a comment at column 0 BETWEEN jobs, a dashed job id, and a commented-out
+      // id at job indent.
+      const files = three({
+        b:
+          `name: X\non: push\npermissions:\n  contents: read\njobs:  # the block\n  build-and-test:\n` +
+          `    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n  #  retired-job:\n    steps:\n` +
+          Array.from({ length: 2 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join('') +
+          `# ── the build lane ──\n  second:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n` +
+          Array.from({ length: 2 }, (_, i) => `      - uses: actions/act${i + 2}@${SHA}\n`).join(''),
+      });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-jobs-legal', files)] });
+      assert.equal(code, 0, out);
+      assert.match(out, /two independent job-id counts agree per file, 4 = 4/);
+      assert.match(out, /4 job\(s\) all bounded by `timeout-minutes`/);
+    });
+  });
+
+  // ── a stop must not swallow what was already found ────────────────────────
+  // 🔴 THE VERIFIER'S EXACT SCENARIO. Both stop paths called `process.exit` with
+  // `problems` still in memory — the report block sits at the BOTTOM of the
+  // guard — so a limb-4 refusal deleted every limb-1/2/3 finding on its way out.
+  // Measured before the fix: this fixture printed the refusal alone, exit 2, and
+  // not one word about `actions/checkout@v4` in b.yml. A movable action
+  // reference is the single thing this guard was written for, and a parse
+  // complaint about a different file was silently outranking it.
+  describe('findings survive a stop', () => {
+    test('a limb-1 movable reference is PRINTED even when limb 4 refuses', () => {
+      const SHA40 = SHA;
+      const files = {
+        '.github/workflows/a.yml': wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA40}`)),
+        // the finding: an unpinned action, in a file the parse reads fine
+        '.github/workflows/b.yml': wf([`actions/checkout@v4`, `actions/act1@${SHA40}`, `actions/act2@${SHA40}`, `actions/act3@${SHA40}`]),
+        // the stop: a job with no `runs-on:`, which limb 4 refuses to classify
+        '.github/workflows/c.yml':
+          `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    uses: ./.github/workflows/a.yml\n    steps:\n` +
+          Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA40}\n`).join(''),
+      };
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-stop-keeps-findings', files)] });
+      assert.equal(code, 2, out);
+      assert.match(out, /ALREADY established before this stop/);
+      assert.match(out, /b\.yml:\d+ `actions\/checkout@v4` is a movable reference/);
+      assert.match(out, /REFUSING TO REPORT — 1 job\(s\) this limb cannot classify/);
+    });
+
+    test('a COVERAGE LOST exit keeps them too — same defect, same fix, both paths', () => {
+      // The `uses:` accounting stop, with a real movable reference already
+      // found. `uses : x` is YAML-legal and the strict matcher cannot read it.
+      const files = {};
+      for (const f of ['a', 'b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+      }
+      files['.github/workflows/a.yml'] = files['.github/workflows/a.yml'].replace(`actions/act0@${SHA}`, 'actions/checkout@v4');
+      files['.github/workflows/b.yml'] = files['.github/workflows/b.yml'].replace(
+        `      - uses: actions/act0@${SHA}\n`,
+        `      - uses : actions/act0@${SHA}\n`,
+      );
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-stop-coverage', files)] });
+      assert.equal(code, 1);
+      assert.match(out, /ALREADY established before this stop/);
+      assert.match(out, /`actions\/checkout@v4` is a movable reference/);
+      assert.match(out, /COVERAGE LOST — 12 `uses:` line\(s\) are present but only 11 were accounted for/);
+    });
+
+    test('a CLEAN stop prints no findings block — an empty list is not printed as evidence', () => {
+      // The negative half: `printPending` must stay silent when there is nothing
+      // to say, or every refusal grows a header claiming findings it does not
+      // have — which is the false-claim shape this corpus keeps paying for.
+      const files = {};
+      for (const f of ['a', 'b', 'c']) {
+        files[`.github/workflows/${f}.yml`] = wf(Array.from({ length: 4 }, (_, i) => `actions/act${i}@${SHA}`));
+      }
+      files['.github/workflows/b.yml'] =
+        `name: X\non: push\npermissions:\n  contents: read\njobs:\n  j:\n    uses: ./.github/workflows/a.yml\n    steps:\n` +
+        Array.from({ length: 4 }, (_, i) => `      - uses: actions/act${i}@${SHA}\n`).join('');
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [fixture('wh-stop-clean', files)] });
+      assert.equal(code, 2);
+      assert.doesNotMatch(out, /ALREADY established before this stop/);
+      assert.match(out, /REFUSING TO REPORT — 1 job\(s\) this limb cannot classify/);
     });
   });
 });
@@ -1160,9 +1425,66 @@ describe('assert-version-consistency', () => {
     `      - run: dart pub global activate mason_cli ${mason}\n` +
     extra;
 
+  // ── the three targets the guard REFUSES to run without ─────────────────────
+  // Each of these is required rather than existsSync-gated, so every fixture
+  // must carry one. That is the property, not an inconvenience: the gated
+  // version let hiding a file make the guard pass having scanned LESS, measured
+  // 2026-08-17 at `ok … 85 reference(s) across 14 file(s)` with the Android
+  // module moved aside. A fixture set that could omit them could not test it.
+
+  /** The workspace root manifest — the melos `melos run gate` resolves. Named
+   *  `rootManifest` and not `pubspec` because a module-level `pubspec` helper
+   *  already exists above and means something else. */
+  const rootManifest = (melos = DECL.melos) =>
+    `name: ws\nworkspace:\n  - packages/core\n\ndev_dependencies:\n  melos: ${melos}\n\n` +
+    `melos:\n  scripts:\n    gate:\n      run: melos run analyze && melos run test\n`;
+
+  /** README's copy-paste build block — a real call site, read by the same rule
+   *  that reads ci.yml. A human installs whatever this line says. */
+  const readmeDoc = (melos = DECL.melos) =>
+    `# ws\n\n## Building it\n\n\`\`\`bash\ndart pub global activate melos ${melos}\nflutter pub get\nmelos run gate\n\`\`\`\n`;
+
+  /** An app's Android module: the Gradle pair fixes the class-file version the
+   *  build EMITS, the Kotlin one fixes the JVM target of the Kotlin half. The
+   *  workflow `java-version:` input only chooses which JDK is INSTALLED. */
+  const androidModule = (java = DECL.java, extra = '') =>
+    `android {\n` +
+    `    compileOptions {\n` +
+    `        sourceCompatibility = JavaVersion.VERSION_${java}\n` +
+    `        targetCompatibility = JavaVersion.VERSION_${java}\n` +
+    `    }\n` +
+    `    kotlin {\n` +
+    `        compilerOptions {\n` +
+    `            jvmTarget = JvmTarget.JVM_${java}\n` +
+    `        }\n` +
+    `    }\n` +
+    `}\n` +
+    extra;
+
+  const ANDROID = 'apps/demo/android/app/build.gradle.kts';
+
   const build = (name, opts = {}) => {
-    const { wranglerPin = DECL.wrangler, brick = true, ...wfOpts } = opts;
-    const files = { 'tooling/versions.json': JSON.stringify(DECL), '.github/workflows/ci.yml': wf(wfOpts) };
+    const {
+      wranglerPin = DECL.wrangler,
+      brick = true,
+      melosPin = DECL.melos,
+      manifestBody,
+      readmeMelos = DECL.melos,
+      readmeBody,
+      java = DECL.java,
+      gradleExtra = '',
+      android = true,
+      ...wfOpts
+    } = opts;
+    const files = {
+      'tooling/versions.json': JSON.stringify(DECL),
+      '.github/workflows/ci.yml': wf(wfOpts),
+      // `null` is fixture()'s "this file is ABSENT" — the only way to reach the
+      // guard's required-target refusals.
+      'pubspec.yaml': manifestBody === undefined ? rootManifest(melosPin) : manifestBody,
+      'README.md': readmeBody === undefined ? readmeDoc(readmeMelos) : readmeBody,
+    };
+    if (android) files[ANDROID] = androidModule(java, gradleExtra);
     if (brick) files[BRICK] = brickPkg(wranglerPin);
     return fixture(name, files);
   };
@@ -1217,16 +1539,22 @@ describe('assert-version-consistency', () => {
   });
 
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
-    // The brick is present (its absence is a DIFFERENT COVERAGE LOST, tested
-    // below), so the only failure here is the MIN_OCCURRENCES floor itself.
+    // Every REQUIRED target is present and yielding (their absence is a
+    // DIFFERENT COVERAGE LOST, tested below), so the only failure here is the
+    // global MIN_OCCURRENCES floor itself. The 6 it does find are the brick's
+    // wrangler pin, melos in pubspec.yaml and README.md, and the Android
+    // module's three java literals — the workflow contributes nothing.
     const dir = fixture('vc-cov', {
       'tooling/versions.json': JSON.stringify(DECL),
       '.github/workflows/ci.yml': `name: X\njobs:\n  j:\n    steps:\n      - run: echo hi\n`,
+      'pubspec.yaml': rootManifest(),
+      'README.md': readmeDoc(),
+      [ANDROID]: androidModule(),
       [BRICK]: brickPkg(DECL.wrangler),
     });
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — matched 1 version reference/);
+    assert.match(out, /COVERAGE LOST — matched 6 version reference\(s\), expected at least 10/);
   });
 
   // ── the two rules PR #79 added, untested until triage 2026-07-31 ───────────
@@ -1287,6 +1615,163 @@ describe('assert-version-consistency', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
     assert.equal(code, 1);
     assert.match(out, /no tooling\/versions\.json/);
+  });
+
+  // ── the melos dev_dependency rule, added 2026-08-17 and shipped untested ───
+  test('PASSES when the workspace pubspec pins melos exactly to the declaration', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-melos-ok')] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the workspace melos pin grows a caret — the pin CI installs and the pin `melos run gate` resolves may not float apart', () => {
+    // The same defect class as the brick's `^4.0.0`: a caret wrapping the
+    // current version is unequal to an exact pin only if the rule captures the
+    // range operator INSIDE the group. Put it outside and "^8.2.2" captures
+    // "8.2.2", equals the declaration, and passes while floating.
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-melos-caret', { melosPin: '^8.2.2' })] });
+    assert.equal(code, 1);
+    assert.match(out, /Melos \(workspace dev_dependency\) is "\^8\.2\.2" but versions\.json declares "8\.2\.2"/);
+  });
+
+  test('FAILS on a drifted workspace melos pin, naming the rule and both values', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-melos-drift', { melosPin: '8.1.0' })] });
+    assert.equal(code, 1);
+    assert.match(out, /Melos \(workspace dev_dependency\) is "8\.1\.0" but versions\.json declares "8\.2\.2"/);
+  });
+
+  test('COVERAGE LOST when the melos key is rewritten past the rule instead of drifting', () => {
+    // Quoting the value is enough: the rule requires the first character to be a
+    // digit or a range operator, so `melos: "8.2.2"` yields NOTHING. The file
+    // still declares a version; the rule simply stopped seeing it — which reads
+    // exactly like agreement, and is what REQUIRED_YIELD exists for.
+    const dir = build('vc-melos-renamed', { manifestBody: rootManifest().replace('melos: 8.2.2', 'melos: "8.2.2"') });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — pubspec\.yaml yielded 0 `melos` reference\(s\), expected at least 1/);
+  });
+
+  test("COVERAGE LOST when melos moves out of the root manifest's dev_dependencies entirely", () => {
+    const dir = build('vc-melos-moved', { manifestBody: 'name: ws\nworkspace:\n  - packages/core\n' });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — pubspec\.yaml yielded 0 `melos`/);
+  });
+
+  test('REFUSES when the root pubspec.yaml is missing — a required target may not vanish quietly', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-nopubspec', { manifestBody: null })] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — required target pubspec\.yaml is missing/);
+  });
+
+  // ── README.md is a real call site: a human copy-pastes its activate line ───
+  test("FAILS when README's build block installs a melos the declaration does not name", () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-readme-drift', { readmeMelos: '8.1.0' })] });
+    assert.equal(code, 1);
+    assert.match(out, /README\.md:\d+ Melos is "8\.1\.0" but versions\.json declares "8\.2\.2"/);
+  });
+
+  test('COVERAGE LOST when README stops carrying an activate line at all', () => {
+    const dir = build('vc-readme-quiet', { readmeBody: '# ws\n\nBuild it however you like.\n' });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — README\.md yielded 0 `melos` reference\(s\), expected at least 1/);
+  });
+
+  test('REFUSES when README.md is missing', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-noreadme', { readmeBody: null })] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — required target README\.md is missing/);
+  });
+
+  // ── the Android module: what the build EMITS, not what CI INSTALLS ─────────
+  test('PASSES when the Android module compiles to the declared Java', () => {
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-android-ok')] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the Android module targets a Java the declaration does not name', () => {
+    // VERSION_21 against a declared 17: the workflow `java-version:` input still
+    // says 17 and still agrees with versions.json, so nothing outside this file
+    // can see it. The class-file version every APK carries is decided here.
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-android-21', { java: '21' })] });
+    assert.equal(code, 1);
+    assert.match(out, /build\.gradle\.kts:\d+ Java \(Gradle compileOptions\) is "21" but versions\.json declares "17"/);
+    assert.match(out, /Java \(Kotlin jvmTarget\) is "21"/);
+  });
+
+  test('reports the LITERAL somebody wrote — Gradle\'s legacy VERSION_1_8 comes back as "1_8", never truncated to "1"', () => {
+    const dir = build('vc-android-legacy', { java: '1_8' });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /Java \(Gradle compileOptions\) is "1_8"/);
+    assert.doesNotMatch(out, /Java \(Gradle compileOptions\) is "1"/);
+  });
+
+  test('strips Kotlin `//` comments, so a sentence about a PAST pin is not a drift', () => {
+    // The very first run against the real Android module reported
+    // `build.gradle.kts:132 Flutter is "3.44.8`"` — produced entirely by prose
+    // inside a `//` comment. A guard that reddens on documentation teaches
+    // people to stop writing it.
+    const dir = build('vc-android-comment', {
+      gradleExtra: '// we were on JavaVersion.VERSION_11 until the AGP bump; flutter-version: 9.9.9\n',
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('COVERAGE LOST when the Gradle java literals are rewritten past the rules', () => {
+    // Gradle's call syntax — `sourceCompatibility(JavaVersion.VERSION_17)` — is
+    // valid, does the same thing, and matches neither rule. The file still pins
+    // Java; the guard just stopped reading it.
+    const dir = build('vc-android-rewritten', {
+      android: true,
+      gradleExtra: '',
+      java: DECL.java,
+    });
+    // Rebuild the module in call syntax rather than assignment syntax.
+    const alt = fixture('vc-android-callsyntax', {
+      'tooling/versions.json': JSON.stringify(DECL),
+      '.github/workflows/ci.yml': wf(),
+      'pubspec.yaml': rootManifest(),
+      'README.md': readmeDoc(),
+      [ANDROID]: 'android {\n    compileOptions {\n        sourceCompatibility(JavaVersion.VERSION_17)\n    }\n}\n',
+      [BRICK]: brickPkg(DECL.wrangler),
+    });
+    assert.equal(run('assert-version-consistency.mjs', { args: [dir] }).code, 0);
+    const { code, out } = run('assert-version-consistency.mjs', { args: [alt] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — .*build\.gradle\.kts yielded 0 `java` reference\(s\), expected at least 3/);
+  });
+
+  test('REFUSES when not one Android module is discovered — discovery finding nothing is a silent shrink', () => {
+    // Mutation-proven on the REAL tree 2026-08-17: with
+    // apps/subly/android/app/build.gradle.kts moved aside the existsSync-gated
+    // version printed `ok  version consistency — 85 reference(s) across 14
+    // file(s)` and exited 0, against 88/15 with it present. It passed having
+    // checked LESS. MIN_OCCURRENCES could not see it: that floor is GLOBAL and
+    // the workflows clear it alone.
+    const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-noandroid', { android: false })] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — not one apps\/\*\/android\/app\/build\.gradle\.kts was found/);
+  });
+
+  // ── the report is ONE report ───────────────────────────────────────────────
+  test('a coverage loss does NOT conceal a real drift found in the same run', () => {
+    // The first REQUIRED_YIELD implementation called process.exit(1) the moment
+    // an entry came up short, throwing away every `problems` entry already
+    // accumulated. Measured on the real tree: quoting the melos pin AND drifting
+    // wsl-setup.sh's openjdk pin printed the coverage loss alone — the live java
+    // drift was found, held, and never shown. One real finding suppressing
+    // another is this guard's own failure mode, one level up.
+    const dir = build('vc-both', {
+      manifestBody: rootManifest().replace('melos: 8.2.2', 'melos: "8.2.2"'),
+      java: '21',
+    });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /COVERAGE LOST — pubspec\.yaml yielded 0 `melos`/, 'coverage loss must be reported');
+    assert.match(out, /Java \(Gradle compileOptions\) is "21"/, 'the drift found in the same run must ALSO be reported');
+    assert.match(out, /version drift problem\(s\)/);
   });
 });
 
@@ -1353,9 +1838,11 @@ const walk = (d) => readdirSync(d).flatMap((e) => {
   return statSync(p).isDirectory() ? walk(p) : [p];
 });
 const findings = [];
+let scannedBytes = 0;
 for (const f of walk(src)) {
   let t;
   try { t = readFileSync(f, 'utf8'); } catch { continue; }
+  scannedBytes += Buffer.byteLength(t);
   for (const r of RULES) {
     if (!r.re || !r.id) continue;
     let re;
@@ -1369,6 +1856,12 @@ for (const f of walk(src)) {
   }
 }
 if (reportPath) writeFileSync(reportPath, JSON.stringify(findings));
+// Real gitleaks reports its volume on STDERR ("scanned ~14172 bytes (14.17 KB)
+// in 354ms", measured against 8.30.1), and scan-secrets now reads that number to
+// prove the scan actually arrived. A stub that stayed silent would leave the
+// guard's volume floor permanently unexercised — the coverage line would report
+// "volume unreported" in every test and no fixture could ever reach the check.
+console.error('INF scanned ~' + scannedBytes + ' bytes (' + scannedBytes + ') in 1ms');
 if (findings.length) { console.log('finding: a known secret shape'); process.exit(1); }
 process.exit(0);
 `;
@@ -1379,6 +1872,44 @@ const a = process.argv.slice(2);
 if (a[0] === 'version') { console.log('8.30.1-blind'); process.exit(0); }
 process.exit(0);
 `;
+
+  /** A scanner that RUNS, DETECTS CORRECTLY, and reaches NOTHING — the shape an
+   *  over-broad `[allowlist] paths`, or a `--source` that resolves to some other
+   *  directory which exists and holds nothing, actually produces. Exit 0, no
+   *  findings, zero volume: byte-for-byte a clean result.
+   *
+   *  ⚠️ THIS LIST NAMED `.gitleaksignore` FIRST UNTIL IT WAS MEASURED, and that
+   *  was wrong — it filters findings by fingerprint after the bytes have been
+   *  read, and the ignore file is itself scanned, so it RAISES the byte count
+   *  rather than zeroing it (gitleaks 8.30.1, one 133-byte planted key: 133
+   *  bytes/exit 1 without it, 334 bytes/exit 0 with it). The full measurement is
+   *  recorded at step 5 of scan-secrets.mjs. Naming a cause that cannot produce
+   *  the symptom is the same defect as a guard that passes on prose: it reads
+   *  like knowledge and sends the next reader somewhere there is nothing to find.
+   *
+   *  🔴 DERIVED FROM `HONEST`, NOT WRITTEN AGAIN. It must still pass all ten
+   *  planted-canary self-tests — those run over their own temp directories,
+   *  which do have content — so a hand-written stub would have to re-implement
+   *  the whole config parser and would drift from it exactly as the previous
+   *  hand-written SHAPES list did on 2026-08-05. The only behaviour changed is
+   *  the one under test: over a tree carrying the repository's four marker
+   *  directories, report that nothing was read. */
+  const EMPTY_SCAN = HONEST.replace(
+    'const reportPath = reportIdx === -1 ? null : a[reportIdx + 1];',
+    `const reportPath = reportIdx === -1 ? null : a[reportIdx + 1];
+const __isRepo = ['.github', 'tooling', 'packages', 'apps'].every((m) => {
+  try { return statSync(join(src, m)).isDirectory(); } catch { return false; }
+});
+if (__isRepo) {
+  if (reportPath) writeFileSync(reportPath, '[]');
+  console.error('INF scanned ~0 bytes (0) in 1ms');
+  process.exit(0);
+}`,
+  );
+  // `String.replace` returns the subject UNCHANGED when the anchor is absent, so
+  // a renamed line in HONEST would silently make EMPTY_SCAN a second copy of it
+  // — and the volume-floor test below would then pass while exercising nothing.
+  assert.notEqual(EMPTY_SCAN, HONEST, 'the EMPTY_SCAN derivation did not apply: its anchor line is gone from HONEST');
 
   /** The stub lives OUTSIDE the scanned tree — both because a real scanner binary
    *  is not in the repo, and because the stub's own source contains the PEM
@@ -1418,6 +1949,36 @@ process.exit(0);
     assert.equal(code, 0, out);
     assert.match(out, /self-test — a planted secret is still detected/);
     assert.match(out, /no findings/);
+    // The passing line must say HOW MUCH was read, not merely that nothing was
+    // found — "no findings" is the identical sentence over a scan that reached
+    // nothing. A bare `ok` here is the defect the next test exercises.
+    assert.match(out, /\d[\d,]* bytes scanned/);
+    assert.doesNotMatch(out, /volume unreported/);
+  });
+
+  test('COVERAGE: a scan that reaches NOTHING FAILS, though every self-test passed', () => {
+    // 🔴 THE MARKER CHECK ABOVE DOES NOT CATCH THIS, WHICH IS WHY THIS TEST IS
+    // SEPARATE FROM ITS NEIGHBOUR. There the root was wrong and the four marker
+    // directories were absent. Here the root is RIGHT — every marker is present,
+    // the config is real, the scanner runs and passes all ten planted-canary
+    // self-tests — and it still reads zero bytes of the tree. Until 2026-08-17
+    // that combination printed "ok  secret scan — no findings in the working
+    // tree" and exited 0.
+    //
+    // Proven against the real thing before this fixture existed: gitleaks 8.30.1
+    // over a directory holding only the four marker dirs and .gitleaks.toml
+    // reports `scanned ~0 bytes (0)` and exits 0, and the committed guard called
+    // that repository clean.
+    const { repo, stub } = build('ss-empty-scan', EMPTY_SCAN);
+    const { code, out } = run('scan-secrets.mjs', { args: [repo, '--gitleaks', stub] });
+    assert.equal(code, 1, out);
+    // The self-tests must have PASSED — otherwise this is testing a blind
+    // scanner, which the next test already covers, and the coverage limb would
+    // never be reached.
+    assert.match(out, /self-test — a planted secret is still detected/);
+    assert.match(out, /COVERAGE LOST — gitleaks scanned 0 bytes/);
+    assert.match(out, /This is NOT a clean repository/);
+    assert.doesNotMatch(out, /ok {2}secret scan/);
   });
 
   test('COVERAGE: a tree that is not the repo FAILS instead of reporting clean', () => {

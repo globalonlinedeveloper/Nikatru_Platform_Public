@@ -26,8 +26,47 @@ workspace:
   - packages/telemetry
   - apps/subly
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 EXACT, NOT `^8.2.2`. This line is the one no guard looked at until
+# 2026-08-17, when mutating the declaration named ci.yml and nothing else.
+#
+# 📏 SIX PLACES, MEASURED RATHER THAN RECALLED. This comment read "THE THIRD
+# PLACE THE MELOS VERSION IS WRITTEN" until the count was actually run:
+#   rg -n --hidden "8\.2\.2" -g '!Private/**' -g '!**/node_modules/**' -g '!.git/**' .
+# (--hidden matters: without it ripgrep skips .github/ entirely and the count
+# comes back one SHORT, which is how a number like this goes wrong twice.)
+# What it returns, outside the fixtures:
+#   1. tooling/versions.json         the single declaration everything is compared to
+#   2. .github/workflows/ci.yml      `dart pub global activate melos 8.2.2` — the CI runner
+#   3. THIS LINE                     the workspace dev_dependency `melos run gate` resolves
+#   4. README.md, build block        `dart pub global activate melos 8.2.2` — what a human copies
+#   5. README.md, toolchain summary  the "… · Melos 8.2.2 · …" prose line
+#   6. pubspec.lock                  written by the resolver, never by hand
+# — plus four test fixtures carrying `^8.2.2` deliberately, which are inputs to
+# guards and not call sites. An undercount inside a comment about drift is itself
+# the drift, so the number now travels with the command that produced it.
+#
+# 🛡️ FOUR OF THE SIX ARE GUARDED — 1-4, by tooling/ci/assert-version-consistency.mjs
+# (README.md became a target in the same 2026-08-17 change). NOT guarded, and said
+# plainly rather than glossed: 5, because it is prose and no rule parses it, and 6,
+# because what ties the lock to this file is `flutter pub get --enforce-lockfile`.
+#
+# WHY THE PIN AND THE ACTIVATE ARE NOT REDUNDANT. CI activates a GLOBAL melos;
+# `melos run gate` — §14's definition of green — runs the one resolved HERE. A
+# caret lets those be different runners with no diff in the repo, which is the
+# same shape as the `^4.0.0` that floated the brick's stamped service onto a
+# wrangler whose miniflare had been unpublished (tooling/versions.json
+# $wrangler_comment).
+#
+# Measured before pinning rather than assumed: with `8.2.2` exact,
+# `flutter pub get --enforce-lockfile` exits 0 and pubspec.lock is BYTE-IDENTICAL
+# — the lock already resolved 8.2.2, so the caret was buying range it never used.
+# tooling/ci/assert-version-consistency.mjs now compares this literal whole, so a
+# range operator coming back is unequal to the pin and fails, and its
+# REQUIRED_YIELD entry fails if melos ever stops being matched here at all.
+# ─────────────────────────────────────────────────────────────────────────────
 dev_dependencies:
-  melos: ^8.2.2
+  melos: 8.2.2
 
 # ─────────────────────────────────────────────────────────────────────────────
 # THE ONE OVERRIDE, AND WHY IT IS NOT A SHRUG

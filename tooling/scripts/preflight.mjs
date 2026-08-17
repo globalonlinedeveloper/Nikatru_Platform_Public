@@ -98,7 +98,14 @@ step(
 // ── 3 · format drift, PRINTED, NEVER FAILED ─────────────────────────────────
 // 🔴 THIS LEG WAS A HARD FAILURE FOR ONE REVISION AND THAT WAS WRONG. It format-
 // checked every tracked .dart file — but ci.yml checks exactly TWO paths,
-// `apps/probe` (ci.yml:1983) and `apps/probeapi` (:2095), both STAMPED apps. The
+// `apps/probe` and `apps/probeapi`, both STAMPED apps — the `app_brick` job's
+// `Stamped app is dart format-clean` and `Stamped backend app is dart format-clean`
+// steps. CITED BY STEP NAME, and the reason is sitting in this file's own history:
+// the two `ci.yml:NNNN` numbers that stood here had ALREADY drifted off their
+// steps before anyone noticed — :1983 onto the `SHOW-1` step and :2095 onto a bare
+// comment — because nothing recomputes a line number when someone inserts above
+// it, and no guard resolves a public→public path citation. A step name moves with
+// the step. The
 // tree at large has never been format-gated, and three files are unformatted
 // today (notifications/…/local_notification_service_stub.dart,
 // purchases/…/rail_config.dart, purchases/test/rail_config_url_shape_test.dart).

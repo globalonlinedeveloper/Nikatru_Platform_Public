@@ -7,9 +7,37 @@
 // packages with separate tsconfigs and separate deploys, and neither can import
 // the other. The alternative is a shared package that both must resolve, which
 // buys one copy of thirty lines at the cost of a build-order dependency between
-// two independently deployable units. tooling/ci/assert-worker-error-sink.mjs
-// asserts BOTH copies exist and are wired, so a fix applied to one and not the
-// other is a build failure rather than a discovery.
+// two independently deployable units — and, measured 2026-08-17, at the cost of
+// a silent staleness in the release path: `deploy-workers.yml` triggers on
+// `services/subly-api/**` and `services/platform/**` and filters PER SERVICE on
+// the same two globs, so a file under neither would deploy NOTHING while CI went
+// green. That workflow's own header records what that costs — incident #155, a
+// merged fix reporting success with production broken for six hours.
+//
+// 🔴 THE CHECK THAT HOLDS THE COPIES EQUAL IS
+// `services/platform/test/twinned-worker-modules.test.ts`, NOT THE ONE THIS
+// PARAGRAPH USED TO NAME. Until 2026-08-17 these lines said
+// `tooling/ci/assert-worker-error-sink.mjs` makes "a fix applied to one and not
+// the other a build failure rather than a discovery". Read that guard: every
+// limb it has — the module exists, exports `reportWorkerError`, calls `fetch`,
+// carries `server_name` and `release`, does not read `API_VERSION` — is
+// satisfied by EACH COPY ALONE. It has never compared the two files. The
+// `res.ok` correction below landed in both by hand; had it landed in one, the
+// whole tree would have stayed green. The test named above compares them
+// declaration by declaration, with the two deliberate differences (the `appId`
+// field and its envelope tag, which only the SHARED Worker needs) declared there
+// and re-checked so that a difference which stops differing also fails.
+//
+// ⚠️ AND THE EXEMPTION IS LINE-SCOPED, WHICH IS THE PART THAT MAKES THE SENTENCE
+// ABOVE WORTH ANYTHING. Each declared row names the exact lines allowed to
+// differ; the test subtracts those lines from both copies and compares the
+// remainder. So "declaration by declaration" does NOT mean a named declaration
+// is skipped — everything in `buildEnvelope` other than the one `app_id` tag
+// line is still held equal, byte for byte. It meant exactly that until
+// 2026-08-17, when the exemption was whole-declaration and editing `logger:
+// 'worker'` in the platform copy alone kept the suite green (5 passed, exit 0).
+// A guard that stops checking is the failure this file already has one story
+// about; that was the second.
 //
 // 🔴 THE DEFECT THIS CLOSES. `app.onError` logged and returned 500. A `wrangler
 // tail` is a live stream nobody is watching at 3am and Cloudflare's Free plan
