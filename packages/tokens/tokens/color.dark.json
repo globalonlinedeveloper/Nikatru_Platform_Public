@@ -8,6 +8,7 @@
     "text": { "$value": "#C7D2E3" },
     "strong": { "$value": "#F1F5F9" },
     "muted": { "$value": "#93A1BC" },
-    "line": { "$value": "#22304D" }
+    "line": { "$value": "#22304D" },
+    "soft": { "$value": "#0E1830" }
   }
 }
