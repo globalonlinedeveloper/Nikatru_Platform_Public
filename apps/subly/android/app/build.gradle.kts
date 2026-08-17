@@ -222,7 +222,7 @@ dependencies {
     // The desugaring runtime that `isCoreLibraryDesugaringEnabled` above needs.
     // Both halves are required — enabling the flag without this dependency
     // fails the build just as surely as omitting the flag.
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 
 flutter {
