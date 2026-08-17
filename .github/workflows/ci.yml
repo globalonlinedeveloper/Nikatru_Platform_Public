@@ -2252,6 +2252,8 @@ jobs:
       # the wrong one.
       - name: Discovery surfaces match the registry that generated them
         run: node tooling/ci/assert-discovery-surface.mjs
+      - name: Every inline palette copy still matches the token source
+        run: node tooling/ci/assert-palette-consistent.mjs
 
   workspace_gate:
     name: Workspace gate (melos analyze + test)
