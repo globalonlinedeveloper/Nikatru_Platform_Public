@@ -63,7 +63,7 @@ function fixture({ apps = [SUBLY], ledger = null } = {}) {
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
   };
-  write('sites/_shared/_data/apps.json', JSON.stringify(apps, null, 2));
+  write('catalog/apps.json', JSON.stringify(apps, null, 2));
   write('tooling/channel-register.json', JSON.stringify(REGISTER, null, 2));
   if (ledger !== null) write('ledger.json', JSON.stringify(ledger, null, 2));
   return root;
@@ -144,7 +144,7 @@ describe('assert-submission-safety — the web-prove-first rule', () => {
   test('FAILS in --submitting mode for an app the catalogue does not list', () => {
     const { code, out } = run(fixture(), ['--submitting', '--app', 'ghost']);
     assert.equal(code, 1);
-    assert.match(out, /is not in sites\/_shared\/_data\/apps\.json/);
+    assert.match(out, /is not in catalog\/apps\.json/);
   });
 
   test('COVERAGE LOST when --submitting is given with no --app', () => {

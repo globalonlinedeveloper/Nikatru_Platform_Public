@@ -58,7 +58,7 @@
     "",
     "⚠️ THIS RECORD IS NOT YET GRADED. assert-app-dod.mjs EXEMPTs `apps/subly` by name",
     "(39-CHASSIS §4 cut 1), so nothing below can fail a build today. Two things are true at once and",
-    "the flip has to handle both in ONE commit: sites/_shared/_data/apps.json already advertises this",
+    "the flip has to handle both in ONE commit: catalog/apps.json already advertises this",
     "app as `\"status\": \"live\"`, so dropping the exemption while this file still says `stamped` turns",
     "the lifecycle anchor red on the first push — which is the anchor working, not a defect."
   ],

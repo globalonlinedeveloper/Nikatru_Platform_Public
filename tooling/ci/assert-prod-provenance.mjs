@@ -77,14 +77,14 @@ const ROOT = resolve(process.argv[2] ?? process.cwd());
 const REGISTER_REL = 'tooling/prod-provenance.json';
 const MONITOR_REL = 'tooling/ops/check-prod-provenance.mjs';
 const OPS_WATCH_REL = '.github/workflows/ops-watch.yml';
-/** ⚠️ THE CATALOGUE IS `sites/_shared/_data/apps.json`, NOT the channel register.
+/** ⚠️ THE CATALOGUE IS `catalog/apps.json`, NOT the channel register.
  *  The channel register has no `apps` key at all — assert-channel-register.mjs
  *  reads this same path into its own `apps` and compares the two. Pointing here
  *  is what keeps this guard and that one speaking about one portfolio. (The
  *  first draft of this limb read `channel-register.json.apps`, got an empty set,
  *  and limb 6b failed it as COVERAGE LOST rather than passing every row — which
  *  is the only reason the mistake was visible at all.) */
-const CATALOGUE_REL = 'sites/_shared/_data/apps.json';
+const CATALOGUE_REL = 'catalog/apps.json';
 
 const appSlugs = new Set();
 try {

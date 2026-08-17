@@ -34,7 +34,7 @@
     "A row here is NOT a claim that the factory ships to that channel. Rows exist for channels that are",
     "deferred, so their researched facts (formats, identities, toolchain floors, real costs) are recorded",
     "once instead of rediscovered at submission time. Only `served: true` licenses a claim in",
-    "sites/_shared/_data/apps.json. Adding \"windows\" to an app's `platforms` array fails the build today",
+    "catalog/apps.json. Adding \"windows\" to an app's `platforms` array fails the build today",
     "precisely because both windows rows exist and neither is served.",
     "",
     "Enforced by tooling/ci/assert-channel-register.mjs:",

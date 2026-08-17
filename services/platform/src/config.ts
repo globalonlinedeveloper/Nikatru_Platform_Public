@@ -24,7 +24,7 @@
 // Worker — the per-app manual step this factory exists to abolish, sitting on the
 // launch path of all fifty apps at once.
 //
-// ── WHY sites/_shared/_data/apps.json AND NOT tooling/channel-register.json ───
+// ── WHY catalog/apps.json AND NOT tooling/channel-register.json ───
 // Both were candidates. The catalogue wins on three grounds, and the reason is
 // written here rather than in a session note because the next person to touch
 // this line needs it:
@@ -51,7 +51,7 @@
 // is what B-2 asks for; a redeploy is CI's job and already automated.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppConfig } from './types';
-import catalogueJson from '../../../sites/_shared/_data/apps.json';
+import catalogueJson from '../../../catalog/apps.json';
 import configDataJson from './app-config-data.json';
 
 /**

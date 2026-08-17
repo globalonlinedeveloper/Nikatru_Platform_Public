@@ -164,8 +164,15 @@ const MIN_EXECUTABLES = { 'tooling/ci': 120, 'tooling/scripts': 8 };
 const MIN_PROBED = 110;
 
 /** If any of these is inside the built tree, it is not subject-free and every
- *  refusal below could be a refusal about something else entirely. */
-const PRODUCT_ROOTS = ['apps', 'packages', 'services', 'sites', 'docs', '.github', 'content'];
+ *  refusal below could be a refusal about something else entirely.
+ *
+ *  ⚠️ `catalog` is listed because it is where the app catalogue lives since the
+ *  inversion (`catalog/apps.json`). A catalogue surviving into the probe tree
+ *  would hand every guard below a real app to find, so each would report on
+ *  subly instead of refusing — and this file would print `ok` unchanged. A new
+ *  top-level directory that holds product data belongs here the day it is
+ *  created, not the day a refusal is discovered to be measuring the wrong tree. */
+const PRODUCT_ROOTS = ['apps', 'catalog', 'packages', 'services', 'sites', 'docs', '.github', 'content'];
 
 /** The tokens a legitimately-vacuous run prints. Membership in VACUOUS is by
  *  name AND the run must still print one of these — neither alone is enough. */

@@ -236,6 +236,13 @@ describe('§C — a drift check cannot pass by diffing the checkout against itse
   const RM_STEP =
     '      - name: Delete the artifact so the build has to produce it\n' +
     '        run: rm -f ../../sites/_shared/assets/tokens.css\n';
+  /* The site feed's drift lane, added 2026-08-17 with the catalogue inversion.
+     Named here so the removal test above can take out EVERY drift lane rather
+     than assuming there is only one. */
+  const FEED_DIFF_STEP =
+    '      - name: Site feed must equal a fresh generation from the catalogue\n' +
+    '        run: git diff --exit-code -- sites/_shared/_data/apps.json\n';
+
   const DIFF_STEP =
     '      - name: Site tokens.css must equal a fresh build\n' +
     '        run: git diff --exit-code -- ../../sites/_shared/assets/tokens.css\n';
@@ -251,14 +258,35 @@ describe('§C — a drift check cannot pass by diffing the checkout against itse
   });
 
   test('removing the drift check itself is COVERAGE LOST, not a clean sweep', () => {
-    const root = mutant([['ci.yml', DIFF_STEP, '']]);
+    // BOTH drift lanes must go: the guard's REQUIRED_DRIFT_CHECKS asks whether
+    // ci.yml contains ANY drift check, so removing one of two proves nothing.
+    // Until 2026-08-17 there was exactly one and this line removed it; the site
+    // feed's lane made that assumption false. Derive the removal from the lanes
+    // that exist rather than naming one.
+    const root = mutant([['ci.yml', DIFF_STEP, ''], ['ci.yml', FEED_DIFF_STEP, '']]);
     caught(run(root), /COVERAGE LOST[\s\S]*ci\.yml contains no `git diff --exit-code -- <path>` drift check/);
   });
 
   test('the committed lane satisfies it, and the count is reported', () => {
     const r = run(mutant([]));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /1 drift check\(s\) delete their artifact before rebuilding it/);
+    // 🔴 DERIVED, NOT HARDCODED. This read `1 drift check(s)` until 2026-08-17 and
+    // went red the moment a SECOND legitimate drift lane was added for the site
+    // feed — a test made stale by a correct change, which is the drift class this
+    // whole suite exists to catch, one level up. Count the lanes in the real
+    // workflow and assert the guard reports that many.
+    const laneCount = (readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')
+      .match(/git diff --exit-code --/g) ?? []).length;
+    assert.ok(laneCount >= 1, `expected at least one drift lane in ci.yml, found ${laneCount}`);
+    // A plain substring, not a RegExp. The first version built the pattern with
+    // `new RegExp(...)`, where the `(s)` in "drift check(s)" became a CAPTURE
+    // GROUP instead of two literal parens — so the assertion could never match,
+    // however right the count was. An escaping bug in a test reads exactly like a
+    // real failure and costs the same time to diagnose.
+    assert.ok(
+      r.out.includes(`${laneCount} drift check(s) delete their artifact before rebuilding it`),
+      `guard did not report ${laneCount} drift check(s). Output:\n${r.out}`,
+    );
   });
 });
 

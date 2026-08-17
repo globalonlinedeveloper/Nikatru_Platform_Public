@@ -22,7 +22,7 @@
 // compared them against a `POLICY` literal inside this file — so the allowlist
 // was still a HAND-EDITED list, merely moved from wrangler.jsonc into the guard
 // that was supposed to derive it. Mutation-proven 2026-08-07 on the real tree:
-// adding a second live app to sites/_shared/_data/apps.json with a brand-new
+// adding a second live app to catalog/apps.json with a brand-new
 // origin (`https://drift.nikatru.com`) and changing nothing else produced
 // BYTE-IDENTICAL output and exit 0 — while that app's every browser request
 // would have been refused at runtime. This is [4]B-2's CORS half and [3]S-11:
@@ -30,7 +30,7 @@
 // edit a comma-separated string in two Worker configs.
 //
 // THE DERIVATION (there is no hand-maintained origin list left):
-//   • sites/_shared/_data/apps.json is the app catalogue. Each row's `url`
+//   • catalog/apps.json is the app catalogue. Each row's `url`
 //     contributes exactly one browser ORIGIN.
 //   • `platform` is the SHARED Worker (config.nikatru.com / platform.nikatru.com)
 //     that EVERY app's web build calls → it must list EVERY catalogue origin.
@@ -49,7 +49,7 @@ import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? '.');
 const SERVICES = join(ROOT, 'services');
-const CATALOGUE = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+const CATALOGUE = join(ROOT, 'catalog', 'apps.json');
 
 /**
  * Workers whose audience is NOT derivable from a `<slug>-api` directory name.
@@ -144,7 +144,7 @@ if (!existsSync(SERVICES)) {
 
 if (!existsSync(CATALOGUE)) {
   console.error(
-    'assert-cors-allowlist: COVERAGE LOST — no catalogue at sites/_shared/_data/apps.json.\n' +
+    'assert-cors-allowlist: COVERAGE LOST — no catalogue at catalog/apps.json.\n' +
       '    Every required origin is DERIVED from that file. Without it this guard\n' +
       '    has nothing to require, and would wave through an allowlist that had\n' +
       '    dropped every live app.',
@@ -330,7 +330,7 @@ for (const { service, path, where } of configs) {
       problems.push(
         `✗ ${where} — "${origin}" is listed but NOTHING justifies it.\n` +
           '    It is not a catalogue app\'s origin and it is not in EXTRAS. Either\n' +
-          '    add the app to sites/_shared/_data/apps.json, or add an EXTRAS entry\n' +
+          '    add the app to catalog/apps.json, or add an EXTRAS entry\n' +
           '    in this guard saying why it is there. An unexplained origin is a\n' +
           '    standing CORS grant nobody reviewed.',
       );

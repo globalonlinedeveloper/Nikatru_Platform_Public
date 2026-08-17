@@ -94,7 +94,7 @@ import { parseWorkflow } from '../ci/workflow-scan.mjs';
 
 const CHANNEL_ID = 'linux-snap';
 const REGISTER = 'tooling/channel-register.json';
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRIMARY SOURCES — every remote fact `--submit` depends on, and where it came

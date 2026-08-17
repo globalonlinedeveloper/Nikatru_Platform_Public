@@ -18,7 +18,7 @@
 //   · workerCustomDomains — `routes[]` entries with `custom_domain: true`
 //     across services/*/wrangler.jsonc. A custom domain IS a public hostname.
 //   · appCatalogue        — the `url` and `api` hosts in
-//     sites/_shared/_data/apps.json, which is what the public site advertises.
+//     catalog/apps.json, which is what the public site advertises.
 //   · siteCanonicals      — each sites/*/index.html's `<link rel="canonical">`.
 //     A site's own canonical URL is the one place it names the host it is
 //     served from; the directory name is not that (`sites/nikatru` ⇒
@@ -69,7 +69,7 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 const REGISTER = 'tooling/monitor-register.json';
 const SERVICES = 'services';
 const SITES = 'sites';
-const CATALOGUE = 'sites/_shared/_data/apps.json';
+const CATALOGUE = 'catalog/apps.json';
 
 /** The three DERIVED sources. Each must contribute at least one hostname: a
  *  source that silently stops yielding anything makes the coverage check true

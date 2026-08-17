@@ -142,7 +142,7 @@ if (stock.size === 0) {
 // ships, so it scales when a native platform is added without being reworded.
 const appId = basename(appDir);
 let claimed = null;
-const catalogue = join(appDir, '..', '..', 'sites', '_shared', '_data', 'apps.json');
+const catalogue = join(appDir, '..', '..', 'catalog', 'apps.json');
 if (existsSync(catalogue)) {
   try {
     const entry = JSON.parse(readFileSync(catalogue, 'utf8')).find((e) => e && e.slug === appId);

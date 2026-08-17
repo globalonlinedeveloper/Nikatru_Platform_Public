@@ -74,7 +74,7 @@ import { readAppleBundleId } from '../ci/read-identity.mjs';
 
 const CHANNELS = ['ios-appstore', 'macos-appstore'];
 const REGISTER = 'tooling/channel-register.json';
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 
 // ── arguments ────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);

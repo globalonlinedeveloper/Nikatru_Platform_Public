@@ -136,7 +136,7 @@ function tree({
   // lane reverts it — so a fixture that omitted it would exercise the guard's
   // COVERAGE LOST path rather than its checking path.
   write(
-    'sites/_shared/_data/apps.json',
+    'catalog/apps.json',
     `${JSON.stringify(
       [
         { slug: 'subly', name: 'Subly', tagline: '', url: 'https://subly.nikatru.com', api: '' },
@@ -411,7 +411,7 @@ describe('assert-stamp-text-fidelity', () => {
         name,
         mutate: ({ write, app }) =>
           write(
-            'sites/_shared/_data/apps.json',
+            'catalog/apps.json',
             `${JSON.stringify([{ slug: app, name: 'E', url: `https://${app}.nikatru.com` }], null, 2)}\n`,
           ),
       }),
@@ -435,7 +435,7 @@ describe('assert-stamp-text-fidelity', () => {
       tree({
         mutate: ({ write, app }) =>
           write(
-            'sites/_shared/_data/apps.json',
+            'catalog/apps.json',
             `${JSON.stringify([{ slug: app, name: 'Something Else' }], null, 2)}\n`,
           ),
       }),
@@ -448,7 +448,7 @@ describe('assert-stamp-text-fidelity', () => {
     const r = run(
       tree({
         mutate: ({ write, app }) =>
-          write('sites/_shared/_data/apps.json', `${JSON.stringify([{ slug: app, name: '' }], null, 2)}\n`),
+          write('catalog/apps.json', `${JSON.stringify([{ slug: app, name: '' }], null, 2)}\n`),
       }),
     );
     assert.equal(r.code, 1, r.out);
@@ -461,7 +461,7 @@ describe('assert-stamp-text-fidelity', () => {
     const r = run(
       tree({
         mutate: ({ write }) =>
-          write('sites/_shared/_data/apps.json', `${JSON.stringify([{ slug: 'subly', name: 'Subly' }], null, 2)}\n`),
+          write('catalog/apps.json', `${JSON.stringify([{ slug: 'subly', name: 'Subly' }], null, 2)}\n`),
       }),
     );
     assert.equal(r.code, 1, r.out);
@@ -473,7 +473,7 @@ describe('assert-stamp-text-fidelity', () => {
     const r = run(
       tree({
         mutate: ({ root }) =>
-          rmSync(join(root, 'sites', '_shared', '_data', 'apps.json'), { force: true }),
+          rmSync(join(root, 'catalog', 'apps.json'), { force: true }),
       }),
     );
     assert.equal(r.code, 1, r.out);

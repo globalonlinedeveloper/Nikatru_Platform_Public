@@ -1955,7 +1955,7 @@ async function main() {
   // assert-publish-records.mjs builds the REQUIRED environment set from, so the
   // recorded environment and the required one are two readings of one list.
   let appSlugs = [];
-  const catalogue = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+  const catalogue = join(ROOT, 'catalog', 'apps.json');
   if (existsSync(catalogue)) {
     try {
       const cat = JSON.parse(readFileSync(catalogue, 'utf8'));
@@ -1966,7 +1966,7 @@ async function main() {
     const expanded = expandMatrixEnvironment(raw, appSlugs);
     if (expanded.length === 0) {
       coverageLost([
-        `a deploy job records \`${raw}\` and the app catalogue at sites/_shared/_data/apps.json yielded no slug.`,
+        `a deploy job records \`${raw}\` and the app catalogue at catalog/apps.json yielded no slug.`,
         'The environment cannot be expanded, so this limb would attribute the deploy to a literal `${{ … }}`',
         'and never match an exemption or a register row — an unreadable domain reported as a clean one.',
       ]);

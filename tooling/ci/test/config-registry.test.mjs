@@ -72,7 +72,7 @@ const CONFIG_TS = `// Until B-2 the registry was a literal here:
 //     export const DEFAULT_CONFIGS = { subly: { app_id: 'subly' } };
 // which is why 'lingo' 404'd. It is derived now.
 import type { AppConfig } from './types';
-import catalogueJson from '../../../sites/_shared/_data/apps.json';
+import catalogueJson from '../../../catalog/apps.json';
 import configDataJson from './app-config-data.json';
 
 export const APP_ID_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
@@ -119,7 +119,7 @@ const preGen = (base = 'https://platform.nikatru.com/v1') => `void run(HookConte
 function tree({ catalogue = CATALOGUE, data = DATA, configTs = CONFIG_TS, typesTs = TYPES_TS, hook = preGen(), omit = null } = {}) {
   const root = join(TMP, `t${seq++}`);
   const files = {
-    'sites/_shared/_data/apps.json': JSON.stringify(catalogue, null, 2),
+    'catalog/apps.json': JSON.stringify(catalogue, null, 2),
     'services/platform/src/app-config-data.json': typeof data === 'string' ? data : JSON.stringify(data, null, 2),
     'services/platform/src/config.ts': configTs,
     'services/platform/src/types.ts': typesTs,
@@ -160,7 +160,7 @@ describe('assert-config-registry — the passing case', () => {
 
 describe('assert-config-registry — COVERAGE', () => {
   for (const rel of [
-    'sites/_shared/_data/apps.json',
+    'catalog/apps.json',
     'services/platform/src/config.ts',
     'services/platform/src/app-config-data.json',
     'services/platform/src/types.ts',

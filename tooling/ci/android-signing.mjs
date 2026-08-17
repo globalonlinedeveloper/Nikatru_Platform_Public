@@ -89,7 +89,7 @@ import { join, resolve, dirname, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 const REGISTER = 'tooling/channel-register.json';
 const CHANNEL_ID = 'android-play';
 /** The transport for the keystore FILE. It is not one of Gradle's four names —

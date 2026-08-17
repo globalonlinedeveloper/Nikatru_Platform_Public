@@ -227,7 +227,7 @@ const PLATFORM_TYPES = 'services/platform/src/types.ts';
 // no longer holds the registry (it derives it), so the two files below are what
 // "the registry that serves it" means: WHICH apps (the public catalogue the stamp
 // writes) × WHAT each is served (the value document, `defaults` + per-app).
-const PLATFORM_CATALOGUE = 'sites/_shared/_data/apps.json';
+const PLATFORM_CATALOGUE = 'catalog/apps.json';
 const PLATFORM_CONFIG_DATA = 'services/platform/src/app-config-data.json';
 // …and the set of channels a binary can be built for. `update_url` is resolved
 // per app but SPENT per channel: each channel compiles its own `UPDATE_URL`

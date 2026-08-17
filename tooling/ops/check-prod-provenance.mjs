@@ -172,7 +172,7 @@ function servedLaneWorkflows() {
  *  with the workspace directories as the floor so this reader still works on a
  *  tree that carries apps and no catalogue. */
 function appSlugs() {
-  const cat = join(ROOT, 'sites', '_shared', '_data', 'apps.json');
+  const cat = join(ROOT, 'catalog', 'apps.json');
   if (existsSync(cat)) {
     try {
       const parsed = JSON.parse(readFileSync(cat, 'utf8'));

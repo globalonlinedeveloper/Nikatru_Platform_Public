@@ -182,13 +182,13 @@ function makeRoot({
 } = {}) {
   const root = join(TMP, `root${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
-  mkdirSync(join(root, 'sites', '_shared', '_data'), { recursive: true });
+  mkdirSync(join(root, 'catalog'), { recursive: true });
   if (register) {
     const row = { id: channelId, signing: { uploadCertificate: { sha256: pin ?? null } } };
     if (submissionWorkflow !== null) row.submission = { workflow: submissionWorkflow };
     writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({ channels: [row] }));
   }
-  if (apps !== null) writeFileSync(join(root, 'sites', '_shared', '_data', 'apps.json'), JSON.stringify(apps));
+  if (apps !== null) writeFileSync(join(root, 'catalog', 'apps.json'), JSON.stringify(apps));
   if (gradle !== null) {
     mkdirSync(join(root, 'apps', 'subly', 'android', 'app'), { recursive: true });
     writeFileSync(join(root, 'apps', 'subly', 'android', 'app', 'build.gradle.kts'), gradle);

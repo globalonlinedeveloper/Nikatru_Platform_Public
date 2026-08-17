@@ -126,7 +126,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-arming.mjs';
 
-export const APPS = 'sites/_shared/_data/apps.json';
+export const APPS = 'catalog/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
 /** BOTH Apple rows. One Apple Developer account, one distribution identity, two
  *  App Store Connect records — so the two rows must declare the SAME secret set

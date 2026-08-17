@@ -545,7 +545,7 @@ describe('check-prod-provenance — a failed run that DID deploy', () => {
 // not a copy — so these grade the thing that runs.
 describe('check-prod-provenance — the environments witness (b) is read from', () => {
   const CHANNELS = 'tooling/channel-register.json';
-  const CATALOGUE = 'sites/_shared/_data/apps.json';
+  const CATALOGUE = 'catalog/apps.json';
 
   function emit(build) {
     const root = mkdtempSync(join(tmpdir(), 'nikatru-served-envs-'));
@@ -595,7 +595,7 @@ describe('check-prod-provenance — the environments witness (b) is read from', 
 
     const templates = [...lane.matchAll(/record-deployment\.mjs\s+(\S+)/g)].map((m) => m[1]);
     assert.ok(templates.length > 0, 'deploy-web.yml must still call record-deployment.mjs');
-    const slugs = JSON.parse(readFileSync(join(REPO, 'sites', '_shared', '_data', 'apps.json'), 'utf8')).map((a) => a.slug);
+    const slugs = JSON.parse(readFileSync(join(REPO, 'catalog', 'apps.json'), 'utf8')).map((a) => a.slug);
     assert.ok(slugs.length > 0, 'the app catalogue must name at least one app');
     for (const t of templates) {
       for (const s of slugs) {

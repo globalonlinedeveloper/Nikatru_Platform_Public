@@ -17,7 +17,7 @@
 // versa)" — zero release jobs on one side, one uncontested row on the other.
 // Neither direction could ever produce a mismatch. So this guard is written to
 // the replacement acceptance: anchor the register to a set that already exists
-// and is already maintained, `sites/_shared/_data/apps.json`.
+// and is already maintained, `catalog/apps.json`.
 //
 // Checks, in order:
 //   1. COVERAGE self-check — the register exists, is non-empty, and something in
@@ -107,7 +107,7 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
  *  Same idiom, same reason, as assert-android-target-sdk.mjs. */
 const scanningRealRepo = process.argv[2] === undefined;
 const REGISTER = 'tooling/channel-register.json';
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 const VERSIONS = 'tooling/versions.json';
 
 const problems = [];

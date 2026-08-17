@@ -128,7 +128,7 @@ import { resolveEnvironment, STATES, SUBMIT_TIME_STATES, STATE_MEANING } from '.
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
-const APPS_REL = 'sites/_shared/_data/apps.json';
+const APPS_REL = 'catalog/apps.json';
 const RECORDER = 'record-deployment.mjs';
 
 const problems = [];

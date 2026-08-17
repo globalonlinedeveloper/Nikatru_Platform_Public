@@ -237,7 +237,7 @@ function tree({
   if (withPlay) register.channels.push(playRow());
   if (mutateRegister) mutateRegister(register);
 
-  write('sites/_shared/_data/apps.json', JSON.stringify(apps, null, 2));
+  write('catalog/apps.json', JSON.stringify(apps, null, 2));
   if (!omitRegister) write('tooling/channel-register.json', JSON.stringify(register, null, 2));
 
   for (const app of apps) {
@@ -498,7 +498,7 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
     mkdirSync(join(root, 'apps', 'probe'), { recursive: true });
     writeFileSync(join(root, 'apps', 'probe', 'pubspec.yaml'), 'name: probe\nversion: 1.0.0+1\n');
     writeFileSync(
-      join(root, 'sites', '_shared', '_data', 'apps.json'),
+      join(root, 'catalog', 'apps.json'),
       JSON.stringify([
         { slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] },
         { slug: 'probe', name: 'Probe', tagline: 'A probe', platforms: ['web'] },
@@ -582,7 +582,7 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
   if (mutateRegister) mutateRegister(register);
 
   const apps = [{ slug: 'subly', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'] }];
-  write('sites/_shared/_data/apps.json', JSON.stringify(apps, null, 2));
+  write('catalog/apps.json', JSON.stringify(apps, null, 2));
   write('tooling/channel-register.json', JSON.stringify(register, null, 2));
   write('apps/subly/lib/core/config/app_config.dart', appConfig());
   write('apps/subly/pubspec.yaml', 'name: subly\nversion: 1.0.0+1\n');

@@ -11,7 +11,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     // [pipeline 4]B-2. src/config.ts imports the app catalogue
-    // (sites/_shared/_data/apps.json) and src/app-config-data.json, so the
+    // (catalog/apps.json) and src/app-config-data.json, so the
     // served app set is DATA rather than a literal in the Worker's source.
     // esbuild (wrangler) inlines both at build time — a Worker has no
     // filesystem — and tsc needs this flag to type the same two imports.

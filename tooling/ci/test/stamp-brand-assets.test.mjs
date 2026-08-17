@@ -155,9 +155,9 @@ function world({
     writeFileSync(p, useStock.includes(rel) ? png(8, STOCK_COLOUR) : png(8, appColour));
   }
 
-  mkdirSync(join(root, 'sites', '_shared', '_data'), { recursive: true });
+  mkdirSync(join(root, 'catalog'), { recursive: true });
   writeFileSync(
-    join(root, 'sites', '_shared', '_data', 'apps.json'),
+    join(root, 'catalog', 'apps.json'),
     JSON.stringify([{ slug: 'probe', url: 'https://probe.nikatru.com', platforms, status: 'preview' }]),
   );
   return { root, appDir, sdkRoot: join(root, 'sdk') };

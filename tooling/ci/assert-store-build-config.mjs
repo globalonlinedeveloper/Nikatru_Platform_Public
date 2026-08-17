@@ -69,7 +69,7 @@ import { parseAllWorkflows } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = 'tooling/channel-register.json';
-const APPS = 'sites/_shared/_data/apps.json';
+const APPS = 'catalog/apps.json';
 /** ORDERED CANDIDATE LAYOUTS, read from the register — NOT one hard-coded path.
  *
  *  🔴 THIS WAS `apps/<slug>/lib/core/config/app_config.dart` AND IT MEMORISED THE

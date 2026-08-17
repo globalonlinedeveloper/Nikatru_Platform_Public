@@ -117,7 +117,7 @@ function makeRepo(edit = (f) => f) {
   const root = join(TMP, `r${seq++}`);
   const files = edit({
     'services/platform/wrangler.jsonc': PLATFORM_WRANGLER,
-    'sites/_shared/_data/apps.json': APPS_JSON,
+    'catalog/apps.json': APPS_JSON,
     'sites/main/index.html': SITE_HTML('main.example.test'),
     'sites/founder/index.html': SITE_HTML('founder.example.test'),
     'tooling/monitor-register.json': JSON.stringify(REGISTER(), null, 2),
@@ -167,8 +167,8 @@ describe('assert-monitor-coverage — the deployed set is derived, not typed', (
   test('FAILS when the app catalogue advertises a host nothing declares', () => {
     const r = run(makeRepo((f) => ({
       ...f,
-      'sites/_shared/_data/apps.json': JSON.stringify(
-        [...JSON.parse(f['sites/_shared/_data/apps.json']),
+      'catalog/apps.json': JSON.stringify(
+        [...JSON.parse(f['catalog/apps.json']),
           { slug: 'two', name: 'Two', url: 'https://two.example.test', status: 'live' }],
         null,
         2,

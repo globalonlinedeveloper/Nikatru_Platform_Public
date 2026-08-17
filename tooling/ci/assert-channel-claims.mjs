@@ -61,7 +61,7 @@ import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const SITES = join(ROOT, 'sites');
-const APPS_JSON = 'sites/_shared/_data/apps.json';
+const APPS_JSON = 'catalog/apps.json';
 const REGISTER = 'tooling/channel-register.json';
 const SIBLING = 'tooling/ci/check-site-integrity.mjs';
 

@@ -35,7 +35,7 @@
 // `status: "claiming-done"` enforces everything. A lifecycle field is itself a
 // vacuity risk — if `stamped` never has to become `claiming-done`, the deferred
 // clauses are quantifying over ∅ under a new name. The falsifiable anchor is
-// cross-tree: an app whose row in `sites/_shared/_data/apps.json` says
+// cross-tree: an app whose row in `catalog/apps.json` says
 // `"status": "live"` while its `dod.json` still says `stamped` FAILS. That is a
 // red somebody can produce today, and if it is ever dropped the whole lifecycle
 // idea must be dropped with it.
@@ -121,7 +121,7 @@ const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 // `stamped` — every blank check below is inside `if (done)` — and becomes 25
 // failures the moment the status flips. TWO things fail today, and only two:
 //
-//   1. THE LIFECYCLE ANCHOR. `sites/_shared/_data/apps.json` advertises subly as
+//   1. THE LIFECYCLE ANCHOR. `catalog/apps.json` advertises subly as
 //      `"status": "live"` while this record still says `"status": "stamped"`.
 //      That red is the anchor doing its job, not a defect to route around.
 //
@@ -592,11 +592,11 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  *  reverted at various points of the brick lane — but a MALFORMED one is, because
  *  the anchor would then silently stop anchoring. */
 let catalogue = null;
-if (has('sites/_shared/_data/apps.json')) {
+if (has('catalog/apps.json')) {
   try {
-    catalogue = JSON.parse(read('sites/_shared/_data/apps.json'));
+    catalogue = JSON.parse(read('catalog/apps.json'));
   } catch (e) {
-    coverageLost([`sites/_shared/_data/apps.json could not be parsed (${e.message}) — the lifecycle anchor reads it.`]);
+    coverageLost([`catalog/apps.json could not be parsed (${e.message}) — the lifecycle anchor reads it.`]);
   }
 }
 
@@ -716,7 +716,7 @@ for (const appDir of domain) {
     const row = catalogue.find((r) => r && r.slug === appId);
     if (row && row.status === 'live' && !done) {
       fail(
-        `${appId}: sites/_shared/_data/apps.json advertises it as "live" to the public while its ` +
+        `${appId}: catalog/apps.json advertises it as "live" to the public while its ` +
           'done-record still says `status: "stamped"`. `stamped` means nobody has claimed the app is ' +
           'finished; `live` is a promise to a stranger that it is. One of the two is wrong, and the ' +
           'catalogue is the one users can see.',

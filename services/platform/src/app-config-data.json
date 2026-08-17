@@ -3,7 +3,7 @@
     "THE SERVED CONFIG VALUES — [pipeline 4]B-2, Private/requirements/ (was pipeline/04-backend-platform.md, folded into the JSON spec 2026-08-15)",
     "",
     "WHAT THIS FILE IS NOT: it is NOT the list of apps this Worker serves. That set comes from",
-    "sites/_shared/_data/apps.json — the catalogue the STAMP already writes (post_gen.dart",
+    "catalog/apps.json — the catalogue the STAMP already writes (post_gen.dart",
     "_appendToAppsJson, SHOW-1). An app absent from `apps` below is still SERVED; it simply resolves to",
     "`defaults` in full. Adding a key here for an app that is not in the catalogue serves nobody, and",
     "tooling/ci/assert-config-registry.mjs fails on exactly that, because dead data that reads as",
