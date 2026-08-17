@@ -98,29 +98,50 @@
 //     a shared rule, not something to bolt onto this one. It is why the canary
 //     pins a `from` in the SAME service instead of trusting the count.
 //
-// ── WHY tooling/scripts/ AND NOT tooling/ci/ ─────────────────────────────────
-// ⚠️ Stated plainly because the usual precedent points the other way. The
-// precedent is `check-dod-sync.mjs` / `assert-public-citations.mjs`: they live
-// here because their SUBJECT is under `Private/` and CI could never read it. That
-// argument does NOT apply to this file — its subject is `git ls-files`, which a
-// CI checkout resolves perfectly well. Three other reasons put it here:
+// ── WHERE IT IS WIRED, AND THE ONE PLACE IT MUST NOT BE ──────────────────────
+// 🔴 IT IS A MERGE GATE AS OF 2026-08-17. `.github/workflows/ci.yml`, the
+// `No dead tracked files` step in the `platform:` job — which is in `ci-gate`'s
+// `needs`, so a finding here is a red required check. Wiring it was the whole
+// point of the guard; until then it was a tool somebody had to remember.
 //
-//   · A new `tooling/ci/*.mjs` is not a free addition. `guard-sweep.mjs`
-//     classifies a runnable file that no workflow invokes as UNREACHED and exits
-//     1 (guard-sweep.mjs:126-137), and `assert-guard-coverage.mjs` requires every
-//     guard to be named by a file in `tooling/ci/test/`. Landing it there means a
-//     coupled edit to `.github/workflows/ci.yml` and a new test file in the same
-//     commit — or the tree is red the moment it arrives.
-//   · A tree-shape assertion whose false-positive cost is a BLOCKED MERGE should
-//     bed in before it becomes a merge gate. The exemption table has to shrink
-//     from "today's inventory" to "the real entry points", and that shrinking
-//     happens by running the thing, not by gating on it.
-//   · The slow tier of `.githooks/pre-push` is empty today (spec-guards.mjs
-//     records why), and this is the shape that tier is for.
+// ⚠️ IT STAYED IN `tooling/scripts/` RATHER THAN MOVING TO `tooling/ci/`, and
+// the reason is mechanical rather than aesthetic. `guard-sweep.mjs` sweeps ONLY
+// its `CI_DIR`, which is `tooling/ci` — so a file landing there must be invoked
+// by a workflow or it is swept as UNREACHED and the sweep exits 1. Staying here
+// sidesteps that entirely, and `tooling/scripts/check-selection-record.mjs` —
+// wired into this same `platform:` job, just above this guard's step — is the
+// standing precedent for a `tooling/scripts` guard that CI runs. The move was
+// measured end-to-end anyway and is green in four edits if it is ever wanted;
+// nothing in this file needs to change for it, because `ROOT =
+// resolve(HERE,'..','..')` is the repo root from either directory.
 //
-// Promoting it to `tooling/ci/` later is a three-file change — move it, add the
-// `ci.yml` step, add `tooling/ci/test/no-dead-files.test.mjs` — and nothing in
-// this file needs to change to make that work.
+// It still owes `assert-guard-coverage.mjs` a negative test, because that guard
+// DERIVES its subject set from the workflows rather than from a hand list: every
+// `tooling/**` script a workflow invokes must be named, on an EXECUTABLE line, by
+// a file under `tooling/ci/test/` (its `invokedOutside` loop). That file is
+// `tooling/ci/test/no-dead-files.test.mjs`, and it mutates a real-tree copy
+// rather than a hand-built fixture — see its header for why a fixture would not
+// have counted.
+//
+// 🔴 NOT `.githooks/pre-push`, AND NOT `tooling/scripts/spec-guards.mjs`. The
+// slow tier of the hook is empty and this is exactly the shape that tier is for,
+// which is what makes the exclusion worth stating rather than assuming. It is
+// excluded because THE HOOK RUNS ON DIRTY TREES BY CONSTRUCTION while this
+// guard's answer is only reproducible on a clean one (see the mixed-snapshot
+// section below).
+//
+// MEASURED 2026-08-17, on a real-tree copy rather than argued: strip the token
+// `defaults.example.json` from the working-tree bodies of the FOUR tracked files
+// that write it, stage nothing, and the index still holds all 1212 paths — the
+// COMMIT is clean — while this guard exits 1 with
+// `apps/subly/config/defaults.example.json — no resolver reaches it`. That is a
+// red gate over uncommitted work-in-progress, which is the cry-wolf failure that
+// gets a hook bypassed with `--no-verify`; and a bypassed hook leaves its subject
+// worse off than no hook, because the belief that something is being checked
+// survives. (The scoping brief put that number at two sources. It is four:
+// apps/subly/README.md, apps/subly/lib/core/app_config.dart,
+// tooling/ci/assert-stamp-text-fidelity.mjs and its test.) A CI checkout is clean
+// by construction, so in CI the drift is always 0 and this hazard cannot arise.
 //
 // ── COVERAGE FLOOR ───────────────────────────────────────────────────────────
 // "Every scanner needs a test that it is still scanning what it thinks." Three
@@ -145,25 +166,41 @@
 // ── 🔴 THE RUN IS ONLY AS REPRODUCIBLE AS THE WORKING TREE IS CLEAN ──────────
 // The MANIFEST comes from the git INDEX (`git ls-files`); the BODIES come from
 // the WORKING TREE (`readFileSync`). Those are two different snapshots, and on a
-// dirty tree they disagree. Three consequences, all real:
+// dirty tree they disagree. TWO consequences, both measured:
 //
 //   · an UNSTAGED edit that adds a reference makes a path look reached;
-//   · an UNSTAGED edit that removes one makes a path look dead;
-//   · a NEW file that is not yet staged is not a subject at all, but IS a
-//     reference source, so it can keep another path alive without being checked.
+//   · an UNSTAGED edit that removes one makes a path look dead — the case the
+//     placement note above measures in full, and the reason this is not a hook.
 //
-// A verifier hit exactly this on 2026-08-17 and could not reproduce a result.
+// ⚠️ A THIRD BULLET STOOD HERE UNTIL 2026-08-17 AND IT WAS FALSE. It claimed "a
+// NEW file that is not yet staged is not a subject at all, but IS a reference
+// source, so it can keep another path alive without being checked." It is
+// neither. Bodies are read only for paths in `tracked` (the `for (const p of
+// tracked)` loop below), and the reference index iterates those same bodies, so
+// an untracked file contributes nothing in either direction. Measured rather
+// than reasoned: an untracked `UNTRACKED-probe.md` naming two WAIVED paths left
+// the output byte-identical — same 1212/1208/4, and zero stale-permission notes,
+// which is exactly what would have appeared had it counted as a source.
+//
+// The bullet mattered because it was the most alarming of the three and the only
+// one nobody could reproduce; a caveat that overstates its own hazard gets the
+// true ones discounted with it.
+//
+// A verifier hit the two real cases on 2026-08-17 and could not reproduce a
+// result.
 // 🔴 THE MIXED SNAPSHOT IS DELIBERATE AND IT IS NOT GOING TO BE FIXED BY READING
 // THE INDEX. Two reasons, and the second is the decisive one:
 //
 //   · Reading `git show :path` for every tracked path is ~1200 process spawns on
 //     Windows; the batch form (`git cat-file --batch`) is a second body reader
 //     that could drift from this one.
-//   · This is a HAND-RUN pre-push tool (see the placement note below). Answering
-//     about the index would answer about a tree the operator is not about to
-//     push, and it would disagree with the exemption table's anti-rot limb, which
-//     asks `existsSync` — i.e. the working tree — on purpose. The working tree is
-//     the honest subject for how this thing is actually used.
+//   · It has TWO callers now, and the working tree is the right subject for both.
+//     In CI (the placement note ABOVE — this stopped being a hand-run-only tool on
+//     2026-08-17) the checkout is clean, so index and working tree are the same
+//     snapshot and the distinction is void. Run by hand, answering about the index
+//     would answer about a tree the operator is not about to push, and it would
+//     disagree with the exemption table's anti-rot limb, which asks `existsSync`
+//     — i.e. the working tree — on purpose.
 //
 // So the constraint is DOCUMENTED rather than removed, and it is not documented
 // only here where it can be skipped: every run counts the tracked paths that
@@ -241,15 +278,12 @@ const EXEMPTIONS = [
       'whole purpose is to run BEFORE the push (its header records the four consecutive red pushes of ' +
       '2026-08-11 that produced it), so no workflow will ever invoke it and there is no caller to find.',
   },
-  {
-    path: 'tooling/scripts/assert-no-dead-files.mjs',
-    kind: 'human-entry-point',
-    since: '2026-08-17',
-    why:
-      'this guard itself, run by hand. It is deliberately not wired into ci.yml or .githooks/pre-push yet — ' +
-      'see the placement note at the top of this file — because both are coupled edits the change that ' +
-      'introduced it did not own. Delete this row the moment a workflow or a hook names it.',
-  },
+  // 🔴 THE ROW THAT WAIVED THIS FILE ITSELF IS GONE, and its own instruction is
+  // why: "Delete this row the moment a workflow or a hook names it." ci.yml's
+  // `No dead tracked files` step now runs `node tooling/scripts/assert-no-dead-
+  // files.mjs`, so `path-reference` reaches this file from a real consumer and
+  // the waiver had become a claim about nothing. Left in place it would have
+  // printed the stale-permission note below on every run, forever.
   {
     path: 'tooling/ops/set-monitor-thresholds.mjs',
     kind: 'operator-tool',
@@ -281,19 +315,23 @@ const EXEMPTIONS = [
       "service's README happens to name it — an asymmetry between two READMEs, not a difference in how the " +
       'two files are used, so waiving this one is the honest treatment rather than a hint that it is dead.',
   },
-  {
-    path: 'tooling/preflight_check.py',
-    kind: 'removal-candidate',
-    since: '2026-08-17',
-    why:
-      'a NUL-byte / bracket-balance pre-push gate with no runner anywhere: no workflow, no melos script, no ' +
-      'hook, no register row. It guards a failure mode the 2026-07-22 local-first migration retired — its ' +
-      'own docstring cites the sandbox mount\'s truncating read cache, and there is no mount any more — and ' +
-      'its usage line still cites `tool/preflight_check.py`, a path gone since the tool/ -> tooling/ rename. ' +
-      '🔴 Wiring it up is the WRONG repair: run against this tree it exits 1 naming four files as corrupt, ' +
-      'all four FALSE (the guards that carry deliberate NUL sentinels — see DELIBERATE_NUL_TEXT below). ' +
-      'Removal is the expected outcome; delete this row in the same change that deletes the file.',
-  },
+  // 🔴 AND SO IS THE `removal-candidate` ROW FOR tooling/preflight_check.py —
+  // together with the file. That row was the one kind expected to be deleted
+  // rather than to persist, and its own last clause said how: "delete this row
+  // in the same change that deletes the file." Both went on 2026-08-17.
+  //
+  // ⚠️ THE RATIONALE THAT TRAVELLED WITH THAT DELETION IN REVIEW — "the only
+  // Python file in a Dart/JS repo" — IS FALSE, and it is recorded here because
+  // acting on it would break the release lane. `git ls-files | grep '\.py$'`
+  // returns TWO paths, and the other one is live: build-platforms.yml runs
+  // `python3 tooling/ci/patch-flutter-macos-aot.py "$FLUTTER_ROOT"` in its macOS
+  // lane. Python 3 remains a hard requirement there, and this deletion must
+  // never be cited as licence to strip python setup from any workflow.
+  // (Deliberately NO `build-platforms.yml:NNN` here. A line number is a pointer
+  // into a file somebody else edits, correct only until an insert above it, and
+  // nothing recomputes it — the re-cite tax CLAUDE.md measured at 203 and 218
+  // broken citations for two single-hunk edits to ci.yml. The grep above finds
+  // it in any revision.)
 ];
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -539,8 +577,11 @@ const trackedSet = new Set(tracked);
 // is printed with the verdict on EVERY run — green or red — because a caveat
 // that only appears on failure is a caveat nobody reads.
 //
-// This is NOT a floor: a dirty tree is the normal state of a hand-run pre-push
-// tool and must not fail it. It is a qualifier on the answer.
+// This is NOT a floor, and it must not become one now that ci.yml runs this
+// guard. A dirty tree is the normal state when a session runs it by hand, and
+// failing on drift would punish the ordinary case; in CI the checkout is clean by
+// construction so the count is always 0 and this limb never speaks. It is a
+// qualifier on the answer, never a verdict.
 const dirtyTracked = (() => {
   const d = spawnSync('git', ['diff', '--name-only', '-z'], {
     cwd: ROOT,

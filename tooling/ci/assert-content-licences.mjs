@@ -153,8 +153,36 @@ const collectPubspecs = (dir, depth) => {
     else if (e.name === 'pubspec.yaml') pubspecs.push(abs);
   }
 };
-for (const top of ['apps', 'packages', 'tooling']) collectPubspecs(join(repoRoot, top), 0);
+// 🔴 ONE FLOOR PER SCOPE ROOT, NEVER ONE FLOOR OVER THE UNION.
+// `tooling` holds the brick template, and the brick is a CONSTANT: it ships a
+// pubspec.yaml no matter what happens to the product tree. A single
+// `pubspecs.length === 0` floor over the union is therefore satisfied by the
+// brick ALONE while every real app and package disappears.
+// Measured on the real tree 2026-08-17 by emptying `apps/` and `packages/` and
+// keeping `tooling/`: this scan fell from 12 pubspec(s) to 2, and the tripwire
+// limb below still printed `appears in none of the 2 pubspec(s) scanned` and
+// exited 0. A tripwire that reads the brick and pronounces the product tree
+// clean is exactly the vacuous pass this corpus keeps paying for.
+const PRODUCT_ROOTS = ['apps', 'packages'];
+const SCAN_ROOTS = [...PRODUCT_ROOTS, 'tooling'];
+const perRoot = new Map();
+for (const top of SCAN_ROOTS) {
+  const before = pubspecs.length;
+  collectPubspecs(join(repoRoot, top), 0);
+  perRoot.set(top, pubspecs.length - before);
+}
 if (existsSync(join(repoRoot, 'pubspec.yaml'))) pubspecs.push(join(repoRoot, 'pubspec.yaml'));
+const perRootSummary = SCAN_ROOTS.map((r) => `${r}=${perRoot.get(r)}`).join(', ');
+for (const top of PRODUCT_ROOTS) {
+  if (perRoot.get(top) === 0) {
+    coverageLost(
+      `found 0 pubspec.yaml under ${top}/, so every tripwire below judged the product tree without reading it.`,
+      `Per-root counts: ${perRootSummary}.`,
+      'The floor is PER ROOT and deliberately 1, not today\'s count: a floor pinned to the current number is a',
+      'floor somebody lowers, while a floor of 1 per root can only fire when a whole root stopped being scanned.',
+    );
+  }
+}
 if (pubspecs.length === 0) {
   coverageLost('no pubspec.yaml was found anywhere, so every tripwire below scanned nothing and reported clean.');
 }
@@ -171,7 +199,7 @@ for (const row of families) {
         `${row.tripwire.why}`,
     );
   } else if (!present) {
-    prints.push(`tripwire "${row.family}" armed and not tripped — "${row.tripwire.token}" appears in none of the ${pubspecs.length} pubspec(s) scanned`);
+    prints.push(`tripwire "${row.family}" armed and not tripped — "${row.tripwire.token}" appears in none of the ${pubspecs.length} pubspec(s) scanned (${perRootSummary}, root=${existsSync(join(repoRoot, 'pubspec.yaml')) ? 1 : 0})`);
   }
 }
 

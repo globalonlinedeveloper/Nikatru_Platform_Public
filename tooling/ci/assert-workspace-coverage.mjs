@@ -47,8 +47,16 @@ const SCAN_ROOTS = ['packages', 'apps'];
 const SKIP_DIRS = new Set(['build', '.dart_tool', 'node_modules', '.git', 'ios', 'android', 'macos', 'windows', 'linux', 'web']);
 
 /** A scan that silently matches nothing would report "clean" forever. The repo
- *  has 8 members today; anything below this floor means the scan itself broke
- *  (a rename, a moved directory, a bad cwd) rather than the tree being empty. */
+ *  has 10 members today (9 under `packages/`, 1 under `apps/`); anything below
+ *  this floor means the scan itself broke (a rename, a moved directory, a bad
+ *  cwd) rather than the tree being empty.
+ *
+ *  ⚠️ THIS NUMBER RANGES OVER THE UNION OF `SCAN_ROOTS`, so on its own it cannot
+ *  see one root go quiet — `packages/` alone clears 5 twice over. The per-root
+ *  floor further down is what covers that, and the two are not interchangeable.
+ *  *(The count here read "8 members" from the day it was written until
+ *  2026-08-17, while the guard printed 10 on every run. A floor reasoned from a
+ *  stale number is a floor nobody can check by reading.)* */
 const MIN_EXPECTED_PACKAGES = 5;
 
 function fail(lines) {
@@ -99,9 +107,15 @@ function findPackages(dir, rel, out) {
 }
 
 const onDisk = [];
+/** What each scan root contributed, kept separately so the floor below can be
+ *  asked per root instead of once over the total. */
+const perRoot = new Map();
 for (const root of SCAN_ROOTS) {
   const abs = join(repoRoot, root);
-  if (existsSync(abs) && statSync(abs).isDirectory()) findPackages(abs, root, onDisk);
+  if (!existsSync(abs) || !statSync(abs).isDirectory()) continue;
+  const before = onDisk.length;
+  findPackages(abs, root, onDisk);
+  perRoot.set(root, onDisk.length - before);
 }
 
 // ── 3. coverage self-check, BEFORE reporting anything as clean ───────────────
@@ -111,6 +125,42 @@ if (onDisk.length < MIN_EXPECTED_PACKAGES) {
     `  expected at least ${MIN_EXPECTED_PACKAGES}. The scan is broken, not the tree.`,
     `  repo root used: ${repoRoot}`,
   ]);
+}
+
+// 🔴 ONE FLOOR PER SCAN ROOT, because the count above is one number over a UNION
+// and a union floor cannot see one member fall to zero. `packages/` holds 9 of
+// the 10 members, so it clears 5 on its own and `apps/` — the root this whole
+// repository exists to fill — can contribute NOTHING while the line above is
+// comfortably satisfied.
+//
+// MEASURED on a copy of this repository, 2026-08-17: with `apps/` emptied (the
+// directory kept) AND `- apps/subly` dropped from the `workspace:` block, this
+// guard exited 0 and printed "ok  workspace coverage — 9 dart package(s) on
+// disk, all gated". Section 4's two directions are both relationships between
+// the declaration and the disk, so when a root leaves BOTH of them at once
+// there is nothing left for them to disagree about — they go quiet together,
+// which is precisely when a count is the only thing still watching.
+//
+// Only roots that EXIST are floored, and the residual is worth stating exactly
+// rather than leaving to be rediscovered: a root that is ABSENT ALTOGETHER and
+// declares nothing contributes zero here without tripping this floor. In a
+// fixture tree that is correct — no `apps/` directory is a legitimately smaller
+// subject. In THIS repository it is unreachable: the `workspace:` block names
+// `apps/subly`, so deleting `apps/` leaves a declared member with nothing on
+// disk and section 4's "listed but missing" direction fails first. Absence is
+// therefore covered by the declaration, and this floor covers the case the
+// declaration cannot see — a root that empties on BOTH sides at once.
+{
+  const quiet = [...perRoot].filter(([, n]) => n === 0).map(([root]) => root);
+  if (quiet.length) {
+    fail([
+      `✗ COVERAGE LOST — ${quiet.map((r) => `${r}/`).join(', ')} exist(s) but yielded ZERO dart package(s).`,
+      `  ${onDisk.length} package(s) were found in the other root(s), which is why the ${MIN_EXPECTED_PACKAGES}-package`,
+      '  floor above stayed green — it counts the union, so it can never report a root that went silent.',
+      '  Nothing under that root is gated by this run, and both checks below would still print "all gated".',
+      `  repo root used: ${repoRoot}`,
+    ]);
+  }
 }
 
 // ── 4. the two directions ────────────────────────────────────────────────────

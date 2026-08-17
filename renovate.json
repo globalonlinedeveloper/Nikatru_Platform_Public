@@ -79,6 +79,57 @@
       "prPriority": -1
     },
     {
+      "description": [
+        "MAJOR PROPOSALS ONLY for the `java` and `node` toolchain floors. Both are declared",
+        "in tooling/versions.json as a BARE MAJOR on purpose, and that file says so itself in",
+        "$xcode_comment: 'THE VALUE IS A FLOOR, SO IT IS A MAJOR AND NOT A FULL VERSION ...",
+        "Same shape as `node` and `java` above, which are majors for the same reason.' The",
+        "installer resolves the patch at runtime, so a patch written into the PIN buys no",
+        "security fix at all -- it only moves a number nothing reads.",
+        "",
+        "🔴 java PROVES IT, LIVE AND TODAY: PR #316 'update dependency java to v17.0.20+8'",
+        "rewrote tooling/versions.json ALONE and is RED on ci-gate. It is UNFIXABLE rather",
+        "than merely unsynced, and that distinction is the whole reason for this rule.",
+        "tooling/ci/assert-version-consistency.mjs was WIDENED on 2026-08-17 from 3 java call",
+        "sites to 8, and ALL FIVE IT GAINED CANNOT EXPRESS A PATCH IN ANY SYNTAX:",
+        "`JavaVersion.VERSION_17` (x2) and `JvmTarget.JVM_17` are ENUM CONSTANTS -- there is",
+        "no VERSION_17_0_20 -- while `openjdk-17-jdk-headless` and `java-17-openjdk-amd64` are",
+        "an apt package name and a JVM directory. Three of the five decide what the Android",
+        "build EMITS (class-file version, Kotlin JVM target); the other two decide which JDK a",
+        "local WSL build runs on at all. Only the 3 ORIGINAL `java-version:` inputs could even",
+        "hold `17.0.20+8`, and they merely choose which JDK is installed. A proposal that five",
+        "call sites cannot accept is a PR that can only ever be closed by hand, forever.",
+        "",
+        "⚠️ node IS PROPHYLACTIC HERE, AND STATING THE DIFFERENCE IS THE POINT -- do not let a",
+        "later reader flatten the two into one proven case. Its 18 call sites are all",
+        "`node-version:` inputs, which CAN carry a full version, and node has never been",
+        "proposed at all: 0 of the 11 chore/renovate-* PRs ever opened name it. So node is NOT",
+        "a reproduced defect and this half of the rule has never fired. What node has is the",
+        "identical DESIGN -- a declared major floor whose installer resolves the patch --",
+        "differing only in that its customManager below carries `versioningTemplate: node`",
+        "while java's carries none. That asymmetry is the most likely reason java got PR #316",
+        "and node did not, but it is INFERRED FROM THE PR RECORD, NOT MEASURED: nothing here",
+        "ran Renovate. Either way the exposure is one deleted line away, and this rule makes",
+        "the intent survive that edit rather than depend on it.",
+        "",
+        "Matched on `matchDatasources` because those two ids are declared in THIS file, on the",
+        "customManagers below, so the binding is checkable by reading one screen -- a manager",
+        "id or a glob would be a guess. MAJORS ARE NOT SUPPRESSED: 17 -> 21 is precisely the",
+        "change a human must land across all eight sites in one commit."
+      ],
+      "matchDatasources": [
+        "java-version",
+        "node-version"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Dev-only tooling can travel together; it cannot reach users.",
       "matchDepTypes": [
         "devDependencies",

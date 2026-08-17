@@ -218,6 +218,47 @@ if (!bundles.some((b) => b.dir === BRICK_WEB)) {
     'reaches fifty apps. Either the brick moved or this walk narrowed; neither is "clean".',
   ]);
 }
+// 🔴 THE MIRROR OF THE `sites/` FLOOR BELOW, AND IT WAS MISSING UNTIL 2026-08-17.
+// The two checks above are a floor over a UNION plus an anchor on the ONE member
+// of that union that is a constant — so the brick satisfies both of them ALONE,
+// and every real app's web bundle can leave the scan while this guard still
+// prints ok. The `bundles.length === 0` note four lines up says "The brick
+// template alone is always one" and that sentence was the whole defect: it is
+// true, which is exactly why the union floor can never fall.
+//
+// MEASURED, not reasoned — a copy of this repository with `apps/` emptied and
+// the directory kept, run the way ci.yml runs it
+// (`assert-web-cache-policy.mjs . sites/nikatru sites/rajasekarselvam`):
+//   EXIT 0, "ok  web cache policy — 3 bundle(s): 1 flutter-web (entry points +
+//   2 shipped file(s) must revalidate), 2 static-site".
+// The entry-point limb, the shipped-file limb and the icons limb had all fallen
+// back to the template; nothing else in the run said so. The caller-claim check
+// below does not cover this either — ci.yml claims the two SITES, never an app.
+//
+// So this is a floor on the apps ROOT, not another number over the union.
+//
+// ⚠️ AND IT IS DELIBERATELY *NOT* GATED ON `apps/` EXISTING, which is where the
+// first draft of this check was wrong. Written as `existsSync(appsDir) && …` it
+// copied the `sitesDirExists` device one line down, and that device is only
+// sound for a check whose subject may legitimately be absent. This one's is
+// not: the BRICK ANCHOR immediately above has already refused any tree that
+// does not ship `tooling/bricks/app/__brick__/apps/{{app_id}}/web`, so by the
+// time control reaches here the tree is known to carry this repository's
+// app-factory layout — and such a tree with NO `apps/` directory at all is not
+// a smaller subject, it is a missing one. Caught by accident while measuring:
+// the same mirror that exited 1 with `apps/` empty exited 0, "1 flutter-web",
+// once the empty directory itself went away. Absence and emptiness are
+// different bugs and a gated floor only ever saw the second.
+if (!bundles.some((b) => b.kind === 'flutter-web' && b.dir !== BRICK_WEB)) {
+  coverageLost([
+    `${ROOT}/apps produced ZERO flutter-web bundles of its own; only ${BRICK_WEB} was scanned.`,
+    'The template is not evidence about the apps this repo actually ships: it has its own `_headers`, and a',
+    'correct one there says nothing about apps/*/web. Every per-bundle assertion below would then be',
+    'answered by the brick and reported as full coverage.',
+    'Either an app tree stopped matching `apps/*/web`, or the last app left — and the second is not a state',
+    'this factory reaches quietly.',
+  ]);
+}
 // `sites/` present but yielding nothing is the shape this repo keeps hitting: a
 // walk that stops matching reports "clean". Fixture roots have no sites/ at all
 // and are legitimately unaffected.

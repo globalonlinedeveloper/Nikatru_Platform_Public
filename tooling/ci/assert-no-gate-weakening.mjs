@@ -237,7 +237,10 @@ if (missing.length) {
   console.log(
     `note ${missing.length} tracked path(s) are not on disk and were skipped ` +
       `(${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', …' : ''}). This is what a deletion applied but ` +
-      'not yet staged looks like; the REQUIRED_COVERAGE floors below still see it if coverage really left.',
+      'not yet staged looks like. The per-root floors below see it if coverage really left — the REAL-APP ' +
+      'anchor and floor specifically, not the union count, which the brick alone satisfies. ' +
+      '⚠️ That sentence read "the REQUIRED_COVERAGE floors below still see it" until 2026-08-17 and was ' +
+      'FALSE: deleting all of apps/ printed this very note for 117 paths and then exited 0.',
   );
 }
 
@@ -253,6 +256,66 @@ if (!rootsSeen.has(BRICK_APP)) {
     `the scan reached no file under ${BRICK_APP}.`,
     'The template is where a suppression reaches all fifty apps at once, so it is the one root that',
     'must always be covered. Either the brick moved and this guard did not follow, or the path is wrong.',
+  ]);
+}
+
+// ── THE SYMMETRIC ANCHOR: at least one REAL app, not just the template ───────
+//
+// 🔴 THE BRICK ANCHOR ABOVE WAS THE ONLY PER-ROOT FLOOR, AND THAT MADE THE
+// SHIPPED PRODUCT OPTIONAL. `dartFiles.length === 0` is a floor over the UNION
+// of every root, and the brick contributes 26 tracked Dart files that no product
+// change can remove — so `apps/` could empty COMPLETELY and both checks still
+// held: the union was 26, not 0, and the one root that "must always be covered"
+// was the one still there.
+//
+// MEASURED, on a copy of this repository (2026-08-17): delete `apps/` outright,
+// leave the brick alone, and this guard printed
+//   `ok  no gate weakening — 26 tracked Dart file(s) across 1 app root(s)
+//    (tooling/bricks/…), … 0/1 allowlist entr(ies) still describe something real`
+// and exited 0. 114 of 140 files left the scan, the allowlist self-check went
+// quiet because the tree it describes was gone, and nothing was red. The note
+// above even printed "117 tracked path(s) are not on disk and were skipped …
+// the REQUIRED_COVERAGE floors below still see it if coverage really left" —
+// which was FALSE as written, and is the sentence this block makes true.
+//
+// The brick is a CONSTANT and the apps are the VARIABLE; a floor that cannot
+// tell them apart is measuring the constant.
+const realAppRoots = [...rootsSeen].filter((r) => r !== BRICK_APP).sort();
+const realAppDart = dartFiles.filter((f) => f.root !== BRICK_APP);
+const brickDart = dartFiles.filter((f) => f.root === BRICK_APP);
+
+/** Floors measured against THIS repository (114 real-app + 26 brick Dart files
+ *  tracked on 2026-08-17), so they are applied only when ROOT is a full checkout
+ *  of it — detected by this guard's own file, which sits outside `apps/` and the
+ *  brick alike and so survives any mutation OF either. Fixtures legitimately
+ *  model two files per root; the STRUCTURAL floor below applies everywhere. */
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-no-gate-weakening.mjs'));
+const REAL_APP_FLOOR = 40;
+const BRICK_FLOOR = 10;
+
+if (realAppRoots.length === 0) {
+  coverageLost([
+    'the scan reached the brick template and NOT ONE real app under apps/.',
+    'Every clause here is about an app opting ITSELF out of the factory rules. Over the template alone',
+    'they are assertions about a directory nobody ships, and they pass whatever the shipped apps do.',
+    `Trees looked at: ${OWNED.join(', ')} under each apps/*. The brick is a constant — it cannot stand in`,
+    'for the variable, and a union floor that counts them together is measuring the constant.',
+  ]);
+}
+if (IS_FULL_CHECKOUT && realAppDart.length < REAL_APP_FLOOR) {
+  coverageLost([
+    `only ${realAppDart.length} tracked Dart file(s) were scanned across apps/ (floor ${REAL_APP_FLOOR}), in ${realAppRoots.join(', ')}.`,
+    'The roots are still there, so the anchor above is satisfied and only this floor sees it: a tree can',
+    'lose almost all of its app code while still holding one file in one root. This repository tracked 114',
+    'on 2026-08-17. If the apps really did shrink this far, move the floor in the same commit and say why.',
+  ]);
+}
+if (IS_FULL_CHECKOUT && brickDart.length < BRICK_FLOOR) {
+  coverageLost([
+    `only ${brickDart.length} tracked Dart file(s) were scanned under ${BRICK_APP} (floor ${BRICK_FLOOR}).`,
+    'The brick anchor above only asks whether ONE file was reached. This asks whether the template is still',
+    'substantially in the scan — it tracked 26 on 2026-08-17 — because the template is the root where a',
+    'single suppression reaches every future app at once.',
   ]);
 }
 
@@ -409,10 +472,20 @@ if (problems.length) {
   process.exit(1);
 }
 
+// 🔴 THE PASSING LINE SPLITS THE BRICK OUT FROM THE REAL APPS. It used to print
+// one total and a root list — "140 tracked Dart file(s) across 2 app root(s)" —
+// and the identical sentence shape read "26 … across 1 app root(s)" with every
+// shipped app deleted. A reader checking coverage from that line had no way to
+// see that the surviving root was the template. The split cannot say that.
 console.log(
-  `ok  no gate weakening — ${dartFiles.length} tracked Dart file(s) across ${rootsSeen.size} app root(s) ` +
-    `(${[...rootsSeen].sort().join(', ')}), ${optionsChecked} analysis_options.yaml, ` +
+  `ok  no gate weakening — ${dartFiles.length} tracked Dart file(s) ` +
+    `[apps=${realAppDart.length}${IS_FULL_CHECKOUT ? `/floor ${REAL_APP_FLOOR}` : ''} in ${realAppRoots.length} real root(s): ${realAppRoots.join(', ') || 'none'}; ` +
+    `brick=${brickDart.length}${IS_FULL_CHECKOUT ? `/floor ${BRICK_FLOOR}` : ''}], ${optionsChecked} analysis_options.yaml, ` +
     `${testConfigFiles.length} dart_test.yaml; 6 clauses, detectors self-tested first; ` +
     `${allowlistLive}/${ALLOWLIST.length} allowlist entr(ies) still describe something real. ` +
-    'Clause 7 (an app deleting its inherited property test) is assert-stamp-properties.mjs, which reads apps/* too.',
+    'Clause 7 (an app deleting its inherited property test) is assert-stamp-properties.mjs, which reads apps/* too.' +
+    (IS_FULL_CHECKOUT
+      ? ''
+      : ' NOTE: this root is not a checkout of this repository, so the numeric floors were NOT applied — only' +
+        ' the structural anchors (the brick reached, and at least one real app root reached) ran here.'),
 );

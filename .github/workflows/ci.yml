@@ -1599,6 +1599,29 @@ jobs:
       - name: Selection records resolve (N-9)
         working-directory: ${{ github.workspace }}
         run: node tooling/scripts/check-selection-record.mjs
+      # Every tracked path is reached by something, or waived by a dated row in
+      # the guard's own table. Wired HERE and deliberately not into
+      # .githooks/pre-push: its manifest is the git index and its bodies are the
+      # working tree, so on a dirty tree it can report work-in-progress as dead —
+      # measured, and the cry-wolf failure that gets a hook bypassed within a week.
+      # A CI checkout STARTS clean; it does not stay clean by construction, because
+      # earlier steps in this job write to the tree. So the guard PRINTS whether the
+      # tree was clean when it ran, and a dirty run is visible in the log rather
+      # than silently changing the answer. That disclosure is the mitigation here,
+      # not an assumption that drift is always zero.
+      # Probes every executable in tooling/ci + tooling/scripts against a tree with
+      # no subject in it, and requires a refusal. Wired here rather than left inert:
+      # assert-guard-coverage (below) correctly refuses a guard in tooling/ci that
+      # no workflow runs, and it caught this one the moment it became tracked —
+      # an untracked file is invisible to a `git ls-files` domain, so a local run
+      # could not have shown it.
+      - name: Guards refuse an empty subject
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-guards-refuse-empty.mjs
+
+      - name: No dead tracked files
+        working-directory: ${{ github.workspace }}
+        run: node tooling/scripts/assert-no-dead-files.mjs
       # Repo-side secret scanning. GitHub's push protection only matches KNOWN
       # PROVIDER patterns, and `non_provider_patterns` is off — so the secrets
       # this project actually holds (the rclone crypt password, a pasted PEM, any
