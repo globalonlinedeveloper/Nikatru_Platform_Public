@@ -346,12 +346,18 @@ void _appendToAppsJson(
     context.logger.info('apps.json already lists "$id"; left unchanged.');
     return;
   }
+  // [ADR 055] The storefront block. DERIVED — see _deriveListings. A null here
+  // means the vocabulary could not be read, and the row is written WITHOUT the
+  // field rather than with a guessed one: assert-catalog-contract.mjs fails on
+  // the absence, so the gap reaches the gate instead of the public catalogue.
+  final listings = _deriveListings(context, url: url);
   rows.add(<String, dynamic>{
     'slug': id,
     'name': name,
     'tagline': tagline,
     'url': url,
     'api': api,
+    if (listings != null) 'listings': listings,
     'platforms': <String>['web'],
     'markets': markets,
     'audience': audience,
@@ -364,6 +370,80 @@ void _appendToAppsJson(
         ? 'apps.json: created ${file.path} and added "$id" (SHOW-1).'
         : 'apps.json: added "$id" (SHOW-1).',
   );
+}
+
+/// [ADR 055] Build the row's `listings` block — the ONE field the storefront's
+/// product-page buttons, its `/<store>/apps` collection pages and its
+/// `/get/<store>/<slug>` redirects all read.
+///
+/// 🔴 THE KEY SET IS NOT TYPED HERE, AND THAT IS THE WHOLE POINT. [ADR 055]'s
+/// property is that "adding a store becomes data, not code". A literal
+/// `{'play': null, 'appstore': null, …}` in this hook would be a SECOND
+/// declaration of which storefronts exist, free to drift from the first
+/// (tooling/channel-register.json) in the direction that reports clean: a store
+/// added to the register would never reach a stamped row, and every guard would
+/// stay green because the row it graded was the row this hook wrote. So the keys
+/// are the non-null `storefrontKey` values in the register, in its row order,
+/// and tooling/ci/assert-catalog-contract.mjs derives the vocabulary it grades
+/// against from that same field.
+///
+/// EVERY VALUE IS `null` EXCEPT THE ONE THE FACTORY ACTUALLY KNOWS. A stamp
+/// cannot know a store listing URL — the store issues it, months later, after a
+/// review — and inventing a plausible one would publish a link a stranger
+/// follows into a 404. The web channel is the exception and it is DERIVED too:
+/// the row whose `kind` is `web` is our own site, whose address this hook has
+/// already computed as `url`. That makes `listings.web` and `url` two spellings
+/// of one fact, so assert-catalog-contract.mjs asserts they are byte-equal.
+///
+/// Returns null when the register cannot be read or names no storefront. The
+/// caller then omits the field entirely rather than publishing a guess — an
+/// unanswered question, caught at the gate, beats a wrong answer shipped.
+Map<String, dynamic>? _deriveListings(
+  HookContext context, {
+  required String url,
+}) {
+  const register = 'tooling/channel-register.json';
+  final file = File(register);
+  if (!file.existsSync()) {
+    context.logger.err(
+      'listings: $register is missing, so the [ADR 055] storefront key set '
+      'cannot be derived. The row is written WITHOUT `listings` rather than '
+      'with a guessed one — tooling/ci/assert-catalog-contract.mjs fails on the '
+      'absent field, so this reaches the gate instead of the public catalogue.',
+    );
+    return null;
+  }
+  Object? decoded;
+  try {
+    decoded = jsonDecode(file.readAsStringSync());
+  } catch (e) {
+    context.logger.err('listings: $register is not valid JSON ($e); `listings` was NOT written.');
+    return null;
+  }
+  final channels = (decoded is Map ? decoded['channels'] : null);
+  if (channels is! List) {
+    context.logger.err('listings: $register declares no `channels` list; `listings` was NOT written.');
+    return null;
+  }
+  final out = <String, dynamic>{};
+  for (final c in channels) {
+    if (c is! Map) continue;
+    final key = c['storefrontKey'];
+    if (key is! String || key.isEmpty) continue; // null = not a storefront.
+    // The web row is our own site; every store row is unknown until a real
+    // listing URL exists. `kind`, not the key's spelling, decides which — the
+    // key is a name the storefront chose and could be renamed in the register.
+    out[key] = c['kind'] == 'web' ? url : null;
+  }
+  if (out.isEmpty) {
+    context.logger.err(
+      'listings: $register names no `storefrontKey`, so the key set is empty. '
+      'An empty `listings` block would satisfy nothing and advertise nothing; '
+      'the field was NOT written.',
+    );
+    return null;
+  }
+  return out;
 }
 
 /// Serialise the catalogue the way the catalogue is actually written.

@@ -1,0 +1,141 @@
+{
+  "contract": {
+    "what": "The ONE declaration of what FULL SOURCE COPY means, path by path. The owner chose to put a complete copy of this source tree in every store slot (STORE-MATRIX-PLAN.md, decided, not re-argued). That makes the same Dart, the same pubspec and possibly the same guard corpus exist in up to twelve public repos. This corpus's doctrine is that a fact stored twice needs something checking the copies agree; this file is the declaration half of that check and tooling/ci/assert-copy-parity.mjs is the checking half. Neither is useful without the other.",
+    "theProblem": "A security fix lands in one repo and silently not the others. Nothing about that is loud on its own: every repo builds, every test passes, and the divergence is invisible until the day it is exploited. The only thing that makes it loud is a checker that hashes the shared files in every copy and refuses when two disagree.",
+    "whatIsNotHere": "The list of slots carrying a copy. That already lives in catalog/store-matrix.json as state 'live', and re-typing it here would create the exact second copy of a fact this file exists to prevent. assert-copy-parity.mjs DERIVES the copy set from the registry; this file names only the ORIGIN and the RULES.",
+    "readBy": [
+      "tooling/ci/assert-copy-parity.mjs - the only reader. It is NOT wired into .github/workflows/ci.yml, for the same recorded reason assert-store-matrix.mjs is not: any edit to ci.yml shifts every ci.yml:NNNN citation below it (1,647 across the private corpus). Its test file IS picked up automatically - ci.yml:120 runs `node --test \"tooling/ci/test/*.test.mjs\"` by glob - so the guard's own failing cases run in CI even while the guard itself does not. Wiring the guard is a deliberate separate pass, and until it happens tooling/ci/assert-guard-coverage.mjs reports this file as unreached. That is a real, named consequence, not a surprise."
+    ]
+  },
+
+  "identity": {
+    "rule": "CONTENT HASH. Two copies of a path are the same file when their bytes hash identically, and different otherwise. Nothing else counts.",
+    "algorithm": "The git blob id of the RAW WORKTREE BYTES: sha1('blob ' + byteLength + NUL + bytes), which is exactly what `git hash-object --no-filters <path>` prints. Chosen because it is the identity this whole tree already uses, so any disagreement the guard reports can be reproduced with one git command by hand rather than by trusting the guard.",
+    "notMtime": "NOT mtime, NOT size, NOT `diff -q`, NOT a git commit id. mtime is the seductive one and it is wrong in BOTH directions: a copy script sets it to now on every file, so everything looks changed; cp -p or a checkout preserves it, so a changed file looks untouched. Size collides on the single most dangerous edit there is - flipping one character in a boundary check. A commit id answers 'did this repo move', never 'do these two files agree'.",
+    "rawBytesNotFiltered": "The guard hashes what is ON DISK, because that is what gets built and shipped. Measured 2026-08-18 in this repo on packages/core/pubspec.yaml: `git hash-object`, `git hash-object --no-filters` and the in-process sha1 of the raw bytes all printed 761f386652cfaf49303a3187bd5cc39db34577e2. They agree here only because .gitattributes forces '* text=auto eol=lf', so the worktree bytes are already normalised. That agreement is a property of THIS repo's config, not of git, so the guard cross-checks its own hash function against `git hash-object --no-filters` on a real file on every run rather than assuming it.",
+    "crossCheck": "A hash function that silently changed would report perfect parity forever. So the self-test also proves the reverse direction: two files differing by one byte MUST come out with different hashes and be named."
+  },
+
+  "origin": {
+    "store": "Google_Play_Store",
+    "target": "Android",
+    "type": "Apps",
+    "why": "The one slot catalog/store-matrix.json marks live. It is the tree every other copy will be made FROM, so it is the tree every other copy is compared TO. If the owner later declares a different slot canonical, this is the single field that changes.",
+    "mustBeLive": "assert-copy-parity.mjs refuses (exit 2) if this slot is absent from the registry or is not state 'live'. An origin that is a shell means every comparison would be against an empty tree, and comparing against nothing is how a parity checker reports parity forever."
+  },
+
+  "copyMarkers": {
+    "anyOf": ["pubspec.yaml", "package.json", "manifest.json"],
+    "why": "THE EMPTY-SHELL TRAP, and it is not hypothetical here - fourteen of the fifteen slot pairs are pre-created empty directories that answer true to every existence test and hold nothing. A slot the registry calls live whose directory holds no marker is a WRONG PATH, not an absent copy, and the guard exits 2 naming every directory it walked. This is the same three-test rule (is it a directory, is it non-empty, does it hold the marker) that tooling/scripts/spec-guards.mjs already uses to reach the private corpus, and it is here for the same measured reason."
+  },
+
+  "enumeration": {
+    "origin": "`git ls-files` in the origin's public directory. The tracked set is the authoritative answer to 'what is source', and using it means no hand-written ignore list decides what the guard can see - build output, node_modules and .dart_tool are excluded because git already excludes them, not because this file remembered to.",
+    "copy": "`git ls-files` in the copy's public directory when it is a git repository. When it is not - a copy may exist as a plain directory before it is made a repo - the guard falls back to a filesystem walk using ignoreDirs below and PRINTS that it fell back, on that slot, by name. A fallback nobody is told about is how a narrower scan starts reading as a clean result.",
+    "ignoreDirs": [".git", "node_modules", "build", ".dart_tool", ".gradle", ".idea", "Pods", ".claude"],
+    "ignoreDirsCaveat": "Used ONLY on the non-git fallback path. Every suppression it makes is counted and printed, because an ignore list is the easiest place in this design to hide a divergence."
+  },
+
+  "classification": {
+    "how": "Every path in the origin, and every path in every copy, is classified by the FIRST matching rule in `rules` below. Classification is TOTAL - the last rule is a catch-all - so no path is ever unclassified. The catch-all is 'shared', deliberately: an unrecognised path defaults to MUST MATCH, which is the strict direction. A default of 'per-slot' would turn every new file into a silent exemption.",
+    "kinds": {
+      "shared": "Must be byte-identical in every copy. A mismatch is FATAL, never a warning. A shared path present in the origin and MISSING from a copy is equally fatal - that is precisely the shape of a fix that failed to land.",
+      "per-slot": "Legitimately differs between copies and is NEVER compared. Signing configuration, store listing metadata, the platform directory for the slot's own target, and the slot's own build pipeline. These are the files whose whole purpose is to differ.",
+      "excluded": "Not compared and not counted as duplication. Reserved for trees that are not product source at all.",
+      "undecided": "An open decision the tree has not been forced to answer yet. Presence in a copy is a FINDING that names the decision - not a crash, not a pass. The point is that on the day a second copy actually carries the path, the decision stops being theoretical, and the guard says so that day rather than at the next release."
+    },
+    "matching": "Glob-ish, deliberately small: '**' matches any number of path segments, '*' matches within one segment, everything else is literal. Paths are compared with forward slashes on every platform. A larger matcher would be a second implementation of git pathspec with its own bugs."
+  },
+
+  "rules": [
+    {
+      "match": "sites/**",
+      "kind": "excluded",
+      "why": "DO NOT TOUCH. sites/ is the live storefront's rollback target named in CUTOVER-RUNBOOK.md section 6b and it must stay byte-stable until the Cloudflare repoint is verified; STORE-MATRIX-PLAN.md Step 1 then deletes it. Nothing in a store slot has any business carrying it, and a parity checker that read it would be the first thing to report noise about the one tree that must not move. The guard never opens a path under this rule."
+    },
+    {
+      "match": ".github/workflows/**",
+      "kind": "per-slot",
+      "why": "The decision being planned is one Public + one Private repo per slot EACH CARRYING ITS OWN BUILD PIPELINE. A slot that ships to the Microsoft Store does not run submit-play.yml. Comparing these would report a divergence on every workflow in every slot forever, which is the fastest way to teach people to ignore this guard."
+    },
+    {
+      "match": "apps/*/store/**",
+      "kind": "per-slot",
+      "why": "Store listing metadata - title, description, screenshots, age ratings, per-store declarations. Measured 2026-08-18: 59 tracked files under apps/subly/store/, in five per-store subdirectories (android-play, ios-appstore, linux-snap, macos-appstore, windows-store). Differing is what they are FOR."
+    },
+    {
+      "match": "apps/*/@targetPlatformDir/**",
+      "kind": "per-slot",
+      "why": "THE ONE RULE THAT IS SLOT-DEPENDENT, and it is the subtle half of this whole file. A Flutter app carries all six platform directories, but only ONE of them is the slot's own target - and that one holds the signing configuration and the bundle/package identity for that storefront (android/key.properties and app/build.gradle.kts; ios entitlements and provisioning; and their equivalents). Those MUST differ per slot. The other five platform directories are dead weight in that slot: nobody edits them there, so they stay 'shared' and a divergence in them is real drift. '@targetPlatformDir' is expanded per comparison from targetPlatformDirs below using the slot's OWN target field in catalog/store-matrix.json - derived, never listed per slot."
+    },
+    {
+      "match": "README.md",
+      "kind": "per-slot",
+      "why": "Names the repository it is in. A store slot's README describing another slot's repo is worse than one that differs."
+    },
+    {
+      "match": "tooling/**",
+      "kind": "undecided",
+      "why": "STORE-MATRIX-PLAN.md section 5.6 IS OPEN: is tooling/ (481 tracked files, measured 2026-08-18) copied per slot or centralised? It moves the copy cost by roughly 4x, and if the guards themselves are copied then the guards need a guard. Marking it undecided rather than guessing means the guard produces a FINDING - naming section 5.6 - on the first day a real second copy carries it. That is the day the decision actually has to be made, and being told then beats having the guard quietly pick a side now. Change this kind to 'shared' or 'per-slot' when the owner answers; do NOT delete the rule, because the catch-all below would then silently answer it as 'shared'."
+    },
+    {
+      "match": "**",
+      "kind": "shared",
+      "why": "THE CATCH-ALL, AND IT IS STRICT ON PURPOSE. packages/ (the shared Dart layer - 161 .dart files inside 200 tracked files, measured 2026-08-18), apps/*/lib, apps/*/test, services/, docs/, catalog/, the workspace manifests and lockfiles, SECURITY.md, NOTICE.md, CLAUDE.md and the five non-target platform directories all land here. Defaulting an unrecognised path to 'shared' means a new file added to the tree is automatically under the checker; defaulting it to 'per-slot' would mean every new file is born exempt. The guard prints how many paths fell to this rule on every run, so a catch-all quietly swallowing a whole new subtree is visible rather than inferred."
+    }
+  ],
+
+  "targetPlatformDirs": {
+    "note": "Slot target (catalog/store-matrix.json) -> the Flutter platform directory that is that slot's own. Every target present in the registry must appear here or the guard REFUSES: an unmapped target would silently make all six platform directories 'shared' for that slot, which reads as parity right up until two slots sign with different keys.",
+    "Android": ["android"],
+    "iOS": ["ios"],
+    "macOS": ["macos"],
+    "Windows": ["windows"],
+    "Linux": ["linux"],
+    "Web": ["web"],
+    "Chrome": [],
+    "Edge": [],
+    "Firefox": [],
+    "emptyIsMeaningful": "The three extension targets map to NO Flutter platform directory because an extension has none. Empty is a declared answer, not a missing one. Their per-slot surface is the manifest and the store identity, and STORE-MATRIX-PLAN.md section 2.3 records the fact that makes getting it wrong permanent: the AMO gecko.id in identity.json is fixed at first signing and cannot be walked back."
+  },
+
+  "divergences": {
+    "what": "DELIBERATE, RECORDED divergences on paths that are otherwise 'shared'. This is the pressure valve, and a guard without one gets routed around instead of repaired.",
+    "howItCannotBeRoutedAround": "A WAIVER PINS THE ORIGIN HASH IT WAS GRANTED AGAINST. If the origin file later changes - which is exactly what happens when a security fix lands - the pinned hash no longer matches and the waiver becomes STALE: the guard reports a FINDING saying the origin moved under the waiver and the divergence must be re-reviewed. So a waiver silences today's known difference and cannot silence tomorrow's unlanded fix. That is the whole design; a plain path allowlist would silence both.",
+    "alsoChecked": "A waiver on a path that is not 'shared' is meaningless and is a finding. A waiver whose copy now MATCHES the origin is obsolete and is a finding - an unused waiver is a false statement about the tree, and they accumulate until nobody trusts the list.",
+    "fields": {
+      "slot": "store/target/type, exactly as keyed in catalog/store-matrix.json",
+      "path": "repo-relative, forward slashes",
+      "originBlob": "the 40-hex blob id of the ORIGIN file at the moment the waiver was granted - obtain it with `git hash-object --no-filters <path>` in the origin repo",
+      "reason": "why these two files are allowed to differ, in enough detail that a stranger can judge it",
+      "recorded": "ISO date",
+      "recordedBy": "who decided"
+    },
+    "entries": []
+  },
+
+  "selfTest": {
+    "why": "NOT OPTIONAL, AND THE REASON IS MEASURED RATHER THAN ARGUED. Before secret-scanning the storefront for publication the self-test was run FIRST and it FAILED: gitleaks reported 'no leaks found' over a deliberately planted private key, because the canary PEM was too short to trip the rule. A clean result from that invocation would have meant nothing at all. A parity checker that has stopped detecting reports parity forever, and twelve silently diverged copies is strictly worse than not splitting - because it looks like it is working.",
+    "whenItRuns": "EVERY run of the guard, before any real comparison, in a temporary directory. Not only in the test file: the test proves the guard could fail on the day the test ran, and the canaries prove the comparison engine can still fail on the day the guard runs.",
+    "canaries": [
+      "IDENTICAL: two byte-identical files must produce ZERO divergences. Without this, a detector that fires on everything would pass the negative canary and be worthless.",
+      "ONE BYTE: two files differing in one character must produce EXACTLY ONE divergence, naming the path. This is the shape of the edit that matters - a flipped boundary check - and the one a size comparison would miss.",
+      "HASH AGREES WITH GIT: the in-process blob id must equal `git hash-object --no-filters` on a real file from the origin tree. Skipped only if git is unavailable, and PRINTED when skipped.",
+      "EMPTY SHELL REFUSED: a directory that exists and is non-empty but holds no copy marker must be REFUSED by the resolver rather than reported as 'no copies to compare'. These are the two absence rules that must never be answered by the same test."
+    ],
+    "onCanaryFailure": "exit 2. An instrument that fails its own calibration reports nothing, and reporting nothing is not a pass."
+  },
+
+  "exitCodes": {
+    "0": "COMPARED and clean - at least one real comparison was performed and every shared path agreed.",
+    "1": "FINDINGS - a divergence, a missing shared file, a stale or obsolete waiver, an undecided path a copy actually carries, or a dead rule.",
+    "2": "REFUSED - could not run. No anchor; registry or this declaration unreadable; the origin slot missing or not live; a declared live slot resolving to nothing or to an empty shell; an unmapped target; a self-test canary failing. Never 0, for the reason tooling/scripts/spec-guards.mjs records at length.",
+    "3": "NOT PROVEN - the guard ran correctly and COMPARED NOTHING. Today this is the normal state: catalog/store-matrix.json marks exactly one slot live, and a check over one copy has nothing to compare against. It is a SEPARATE NUMBER FROM 0 on purpose. A guard that prints ok over one copy is the vacuous pass this corpus exists to eliminate, and it would keep printing ok all the way to twelve copies if the copy set were ever derived wrongly. It is a separate number from 1 too, because 'nothing to check' and 'something is broken' are different facts, and collapsing them is how a real finding gets read as the usual noise. A CI job that wants to tolerate exit 3 must say so BY NUMBER - a deliberate, greppable act."
+  },
+
+  "notInScope": {
+    "privateTrees": "The private half of each pair is NOT compared by this version. The private corpus is gitignored, CI never has it, and its 229 tracked files are documentation rather than shipped source - so the failure this guard exists to prevent (a fix landing in one repo and not the others) does not have the same shape there. This is a DECLARED gap, printed on every run, not an omission. Extending to the private side needs STORE-MATRIX-PLAN.md section 5.4 answered first, because a private slot with no remote cannot be reached by the published-manifest mechanism at all.",
+    "network": "No network limb. STORE-MATRIX-PLAN.md section 4.3 sketches option (b) - each repo compares against a published manifest of origin hashes fetched over the network, reusing the mechanism assert-vendor-current.mjs already implements. That is the right shape for per-repo CI, which can never see its sibling copies, and it is NOT built here. What is built is the local limb: one workspace, every copy on disk. The guard prints which limb it is on, every run.",
+    "github": "No GitHub API call. Nothing here creates, renames or deletes a repo."
+  }
+}

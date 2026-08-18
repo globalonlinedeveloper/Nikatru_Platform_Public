@@ -89,39 +89,143 @@
 // installer on purpose; until that lands, a clone runs the hook and is refused.
 // ⚠️ Unfixed as of this dated line, and named so it is not mistaken for handled.
 //
+// 🔴 2026-08-18 (SECOND ENTRY THAT DAY — THE TREE MOVED TWICE). The entry above is
+// correct about WHY the corpus is a sibling and wrong about HOW to find it, and the
+// reason is worth more than the fix. It spelled the sibling `${basename(REPO)}_Private`
+// and reached the rest of the world by counting `..` from this repo. Then the owner
+// reorganised everything into a Store × Platform × Type tree: this repo became
+// `Projects/Google_Store/Google_Play_Store/Google_Play_Store_Apps/…_Android_Apps_Public`,
+// three levels deeper than it was that morning, and BOTH derivations broke in the same
+// commit. The name derivation computed `…_Android_Apps_Public_Private` against an actual
+// `…_Android_Apps_Private` (the `_Public` suffix is new and was not stripped), and every
+// `resolve(REPO, '..', '..')` landed on a store directory instead of a workspace.
+//
+// ⚠️ THE REFUSAL WORKED, AND THAT IS THE ONLY REASON THIS WAS CHEAP. The run exited 2
+// and printed all five roots it had tried, so the wrong path was on screen rather than
+// inferred. That behaviour is UNCHANGED here — this entry fixes the derivation and
+// touches no exit code.
+//
+// 🔴 THE FIX IS AN ANCHOR, NOT ANOTHER `..`. Adding one more level is what broke today,
+// twice, and it is a bet that the repo never moves again — a bet already lost twice in
+// one day, with ~20 more repos coming at VARYING depths, so a fixed level count is wrong
+// the moment any one of them moves. Depth is now never counted. This file SEARCHES
+// UPWARD from its own location for the workspace root: the directory that contains BOTH
+// `Projects/` and `nikatru/`. That pair is the anchor because neither exists alone at any
+// other level of the tree, and because the two together are what the whole layout is
+// FOR — the products and the shared brain, side by side. From the anchor:
+//     <anchor>/nikatru      the shared business brain
+//     <anchor>/Projects     the products root
+// and this repo's own corpus is its SIBLING, addressed by NAME rather than by depth:
+// take the repo's directory name, swap a trailing `_Public` for `_Private` (or append
+// `_Private` when there is no such suffix), and look for it beside the repo. A repo at
+// any depth resolves by the same rule, because the rule never mentions depth.
+//
+// ⚠️ AND THE SIBLING MUST BE NON-EMPTY BEFORE IT IS SELECTED. This is not caution, it is
+// the trap the 2026-08-18 entry above already measured once, and it is LIVE in the new
+// tree: `Apple_IOS_Store_Apps/…_Apple_IOS_Apps_Private` and
+// `Linux_Store_Apps/…_Linux_Apps_Private` are both pre-created shells with ZERO entries
+// today. Selecting an empty shell makes every guard under it "not found" and kills the
+// run at the coverage floor, blaming missing guards while the real corpus sits one
+// directory over. So a candidate must be a DIRECTORY, be NON-EMPTY, and contain the
+// `requirements/` marker — three tests, because the empty shell passes the first.
+//
+// 🔴 ANCHOR-NOT-FOUND IS A REFUSAL, WITH EVERY DIRECTORY WALKED NAMED. There is no
+// fallback guess, deliberately: a guessed root is how a runner ends up confidently
+// checking the wrong tree, and every fallback in this file's history has been the thing
+// that later needed removing. If the anchor is gone, the layout changed in a way this
+// file cannot infer, and saying so with the full walk on screen is the honest answer.
+//
 // EXIT CODES:  0 = every applicable guard passed
 //              1 = a guard reported a finding
-//              2 = could not run — either the corpus could not be located at all,
-//                  or it IS present and a guard inside it is missing. Both are
-//                  refusals: neither one checked the thing it claims to check.
+//              2 = could not run — the workspace anchor could not be found, or the
+//                  corpus could not be located at all, or it IS present and a guard
+//                  inside it is missing. All three are refusals: not one of them
+//                  checked the thing it claims to check.
 //
 // Usage:  node tooling/scripts/spec-guards.mjs --fast
 //         node tooling/scripts/spec-guards.mjs --full
 //         node tooling/scripts/spec-guards.mjs --full --verbose
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');          // tooling/scripts -> repo root
+/* ⚠️ THIS `..`/`..` IS NOT THE DEPTH-COUNTING THE 2026-08-18 SECOND ENTRY BANS, and the
+   difference is the whole distinction. It walks up INSIDE this repo, from a file whose
+   position relative to the repo root is fixed by the repo's own layout — move the repo
+   anywhere and `tooling/scripts/` is still two below its root. Everything OUTSIDE the
+   repo is what moves independently, and none of it is reached by counting any more. */
 
 const argv = process.argv.slice(2);
 const FULL = argv.includes('--full');
 const VERBOSE = argv.includes('--verbose');
+
+const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+/* Non-empty, not merely present. See the 2026-08-18 second entry: the empty pre-created
+   shell is a real directory that answers `true` to every existence test and holds nothing. */
+const isNonEmptyDir = (p) => { try { return readdirSync(p).length > 0; } catch { return false; } };
+
+/* 🔴 THE ANCHOR. Everything outside this repo is addressed from here, and this is the one
+   place the tree's shape is learned. Walk UP from this file until a directory holds BOTH
+   `Projects/` and `nikatru/` — the products root and the shared business brain, which are
+   siblings by design and are that pair nowhere else. No level is counted, so a repo that
+   moves three levels deeper (as this one did on 2026-08-18) resolves unchanged. */
+const ANCHOR_MARKERS = ['Projects', 'nikatru'];
+const WALKED = [];
+function findWorkspaceRoot(start) {
+  let dir = resolve(start);
+  for (;;) {
+    WALKED.push(dir);
+    if (ANCHOR_MARKERS.every((m) => isDir(join(dir, m)))) return dir;
+    const up = dirname(dir);
+    if (up === dir) return null;                 // hit the filesystem root; stop, do not guess
+    dir = up;
+  }
+}
+const WORKSPACE_ROOT = findWorkspaceRoot(HERE);
+
+/* 🔴 NO ANCHOR, NO GUESS. Refusing here rather than falling back to a plausible root is
+   the same rule the corpus-not-found branch below follows, for the same reason: a runner
+   pointed at the wrong tree still prints confident sentences. Name every directory walked
+   so the reader can see whether the layout changed or the marker pair did. */
+if (!WORKSPACE_ROOT) {
+  console.error('\n  CANNOT RUN — the workspace anchor was not found, so nothing outside this repo is addressable.');
+  console.error(`  Walked ${WALKED.length} directory(ies) upward from this file, each required to contain ALL of: ${ANCHOR_MARKERS.map((m) => `\`${m}/\``).join(' + ')}`);
+  for (const dir of WALKED) {
+    const have = ANCHOR_MARKERS.filter((m) => isDir(join(dir, m)));
+    console.error(`    --   ${dir}`);
+    console.error(`         ${have.length ? `has only: ${have.join(' , ')}` : 'has neither'}`);
+  }
+  console.error('  The anchor is the directory holding the products root and the shared brain side by side.');
+  console.error('  If the layout changed, fix ANCHOR_MARKERS in this file — it is the single place this');
+  console.error('  runner learns the shape of the tree. Refusing rather than guessing a root.\n');
+  process.exit(2);
+}
+
+const BRAIN = join(WORKSPACE_ROOT, 'nikatru');       // the shared business brain
+const PRODUCTS_ROOT = join(WORKSPACE_ROOT, 'Projects'); // the products root
 
 /* The guards live in two trees and this script may be invoked from EITHER — the
    public repo's hook, or Private/'s own hook, whose repo root is a
    different directory entirely. So each guard is resolved by trying both
    locations rather than by assuming one. A hook that silently finds no guards
    would report success over an empty set, which is precisely the defect class
-   this whole session has been closing. */
+   this whole session has been closing.
+
+   🔴 2026-08-18 (second entry): the two DEPTH-COUNTED entries that stood here — `..` and
+   `../..` from this repo, named for the flatten-era and pre-flatten layouts — are gone.
+   After the Store × Platform × Type reorg they resolved to `Google_Play_Store_Apps/` and
+   `Google_Play_Store/`, which are store directories that have never held a guard, so they
+   had stopped being fallbacks and become two chances to find the wrong file. Their history
+   is preserved in the dated entries above, which is where a dead layout belongs; a live
+   candidate list is not a museum. What replaces them is anchor-derived and cannot drift. */
 const CANDIDATE_ROOTS = [
   REPO,                                  // invoked from the public repo
-  resolve(REPO, '..', '..'),             // the pre-flatten depth: `Private/company` (deleted 2026-08-15)
-                                         // sat two levels below this repo root
-  resolve(REPO, '..'),                   // one level — where `Private/` sits since the flatten
+  PRODUCTS_ROOT,                         // anchor-derived: the products root
+  WORKSPACE_ROOT,                        // anchor-derived: products root + brain, side by side
 ];
 
 /* WHERE THE PRIVATE CORPUS ITSELF LIVES — its own list, ordered newest-first, because
@@ -130,12 +234,29 @@ const CANDIDATE_ROOTS = [
    is no parent directory whose child is the corpus and whose other child is a root we
    already search. Kept as a list rather than a constant so the pre-move layouts still
    resolve — this file has to be correct on both sides of the move, and it is the same
-   file that runs during it. */
+   file that runs during it.
+
+   🔴 2026-08-18 (second entry) — THE SIBLING IS NOW DERIVED BY NAME, NOT BY SPELLING.
+   `${basename(REPO)}_Private` was a literal that happened to be right for one afternoon.
+   The reorg renamed this repo to end in `_Public`, so the literal produced
+   `…_Android_Apps_Public_Private` against an actual `…_Android_Apps_Private`, and the run
+   refused — correctly, loudly, with the bad path printed, which is the only reason this
+   was a five-minute diagnosis instead of the session the 2026-08-17 entry cost. The rule
+   that replaces it is: swap a trailing `_Public` for `_Private`, or append `_Private` when
+   there is no such suffix. That covers both naming eras with one expression and needs no
+   edit when the next repo is created under either convention.
+
+   The two depth-counted `Private/` entries are dropped for the same reason as their twins
+   in CANDIDATE_ROOTS above. What is KEPT is repo-RELATIVE and therefore depth-immune:
+   `REPO/Private` (the pre-move nested corpus) and REPO itself (the corpus's own hook,
+   where the corpus IS the repo root). Neither one counts a level outside this repo. */
+const REPO_NAME = basename(REPO);
+const PRIVATE_SIBLING_NAME = REPO_NAME.endsWith('_Public')
+  ? `${REPO_NAME.slice(0, -'_Public'.length)}_Private`
+  : `${REPO_NAME}_Private`;
 const PRIVATE_ROOT_CANDIDATES = [
-  resolve(REPO, '..', `${basename(REPO)}_Private`),  // 🔴 2026-08-18: the sibling, and the answer from here on
-  resolve(REPO, 'Private'),               // pre-move: the corpus nested inside this repo
-  resolve(REPO, '..', 'Private'),         // the flatten-era one-level-up layout
-  resolve(REPO, '..', '..', 'Private'),   // the pre-flatten depth, same two levels as CANDIDATE_ROOTS
+  join(dirname(REPO), PRIVATE_SIBLING_NAME),  // 🔴 the sibling, addressed by name at whatever depth the repo sits
+  join(REPO, 'Private'),                  // pre-move: the corpus nested inside this repo
   REPO,                                   // invoked from the corpus's OWN hook, where it IS the repo root
 ];
 
@@ -152,9 +273,19 @@ const PRIVATE_ROOT_CANDIDATES = [
    `requirements/definition-of-done.md`. It also cleanly separates the corpus from
    this repo — the public tree has no top-level `requirements/`, verified on the day —
    which is what makes the last candidate above (REPO itself) safe to list. */
+/* 🔴 2026-08-18 (second entry) — AND THE EMPTY SHELL IS NOW ITS OWN NAMED TEST, because
+   the trap the paragraph above measured once is now MULTIPLIED. The reorg pre-created a
+   `_Private` sibling for every product it anticipates, and most are still empty: on this
+   date `…_Apple_IOS_Apps_Private` and `…_Linux_Apps_Private` each hold ZERO entries. The
+   marker test alone already rejects them, so this is not new coverage — it is a distinct
+   DIAGNOSIS. "exists, but is EMPTY" tells the reader the shell was pre-created and the
+   move has not happened; "exists, but no `requirements/` inside" tells them they are
+   looking at some other directory entirely. Collapsing the two costs the reader the hour
+   this file keeps trying to give back. Three tests, in widening order: is it a directory,
+   does it hold anything, does it hold the corpus's spine. */
 const CORPUS_MARKER = 'requirements';
 const PRIVATE_ROOT = PRIVATE_ROOT_CANDIDATES.find(
-  (root) => existsSync(root) && existsSync(join(root, CORPUS_MARKER))
+  (root) => isDir(root) && isNonEmptyDir(root) && isDir(join(root, CORPUS_MARKER))
 ) ?? null;
 
 /* Guards resolve against the corpus FIRST and the public repo second. Two of the
@@ -301,12 +432,19 @@ const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
    rather than a skip — there is no partial answer to give. */
 if (!PRIVATE_ROOT) {
   console.error(`\n  CANNOT RUN — the private corpus was not found, so all ${selected.length} spec guard(s) have no subject.`);
-  console.error(`  Searched ${PRIVATE_ROOT_CANDIDATES.length} root(s), each required to contain \`${CORPUS_MARKER}/\`:`);
+  console.error(`  Searched ${PRIVATE_ROOT_CANDIDATES.length} root(s), each required to be a NON-EMPTY directory containing \`${CORPUS_MARKER}/\`:`);
   for (const root of PRIVATE_ROOT_CANDIDATES) {
-    const mark = existsSync(root) ? `exists, but no \`${CORPUS_MARKER}/\` inside` : 'no such directory';
+    const mark = !isDir(root) ? 'no such directory'
+      : !isNonEmptyDir(root) ? 'exists, but is EMPTY — a pre-created shell, not the corpus'
+      : `exists and is non-empty, but no \`${CORPUS_MARKER}/\` inside`;
     console.error(`    --   ${root}`);
     console.error(`         ${mark}`);
   }
+  // Anchor-derived context (added 2026-08-18, second entry). If the sibling name is right
+  // and the anchor is wrong, or vice versa, this is the line that separates them — without
+  // it "not found" is one message covering two unrelated causes.
+  console.error(`  Workspace anchor: ${WORKSPACE_ROOT}   (brain: ${BRAIN} , products: ${PRODUCTS_ROOT})`);
+  console.error(`  This repo: ${REPO_NAME}   ->   expected private sibling: ${PRIVATE_SIBLING_NAME}`);
   console.error('  These guard(s) were therefore not run:');
   for (const g of selected) console.error(`    --   ${g.name.padEnd(24)} ${g.what}`);
   console.error('  A runner that cannot find its subject has checked nothing, and nothing is not a pass.');

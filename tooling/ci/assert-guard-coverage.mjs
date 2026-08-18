@@ -260,6 +260,87 @@ const NO_NEGATIVE_TEST_NEEDED = new Map([
   ],
 ]);
 
+/** ─────────────────────────────────────────────────────────────────────────────
+ *  THE ONE EXEMPTION R2 HAS — guards NO INVOCATION A CI RUNNER CAN MAKE IS
+ *  CAPABLE OF EXITING 0. Added 2026-08-18, under the licence R2 wrote for itself:
+ *  "if a guard ever genuinely needs to exist unrun, the mechanism gets added
+ *  THEN, with a reason and a failing case of its own."
+ *
+ *  🔴 IT IS NOT A LIST OF NAMES, AND A NAME ALONE BUYS NOTHING. The whole reason
+ *  R2 refused an exemption map the first time is that a hand-maintained list is
+ *  satisfied by typing in it. So every entry states a CLAIM — "a runner cannot
+ *  make this guard pass" — and THE CLAIM IS RE-RUN ON EVERY INVOCATION, three
+ *  ways, all of them able to fail:
+ *
+ *    (a) the file must still be there;
+ *    (b) it must still be UNREACHED — the moment a workflow invokes it, or
+ *        something a workflow runs imports it, the entry describes a state the
+ *        tree has left and this FAILS. Derived from the same graph R2 uses, so
+ *        it cannot disagree with R2 about what "reached" means;
+ *    (c) THE GUARD IS ACTUALLY SPAWNED, with the argv a runner would have, and
+ *        must exit NON-ZERO. If it exits 0 the entry's premise is false — it
+ *        CAN pass in a checkout, so wire it in — or it has grown the vacuous
+ *        pass this whole corpus exists to eliminate. Either way the exemption
+ *        stops applying and the run fails.
+ *
+ *  (c) is what makes this different in kind from a waiver. `assert-guards-refuse-
+ *  empty.mjs` learned the same lesson on 2026-08-18 and its header states it:
+ *  "a waiver that outlives its reason is the thing being guarded against" — two
+ *  of its entries were DELETED that day, not reworded, when the files they
+ *  described started refusing instead of declaring. An entry here cannot outlive
+ *  its reason, because its reason is measured rather than read.
+ *
+ *  ⚠️ WHAT THIS DOES NOT EXCUSE. Nothing else. A guard listed here still owes a
+ *  recorded failing case (limb 1) and still owes a COVERAGE LOST self-check in
+ *  CODE (limb 2) — both run over the full guard set below, this map untouched by
+ *  either. The only thing it answers is "why is this not wired into a workflow".
+ *
+ *  Fields: `since` (dated, because an undated exemption cannot be audited),
+ *  `probe` (the argv a CI runner would use — the mode being claimed unrunnable),
+ *  `why` (the reason, which has to survive being read aloud). */
+const NOT_CI_RUNNABLE = new Map([
+  [
+    'assert-copy-parity.mjs',
+    {
+      since: '2026-08-18',
+      probe: [],
+      why:
+        'its subject is the slot directories declared live in catalog/store-matrix.json, which sit OUTSIDE ' +
+        'any single checkout: it walks UP for the ancestor holding both Projects/ and nikatru/ and reads that ' +
+        "ancestor's siblings (30 slot directories across the workspace today). A runner clones ONE repository, " +
+        'so the anchor is not there and this guard REFUSES — exit 2, naming every directory it walked. On the ' +
+        'workspace, where the anchor IS reachable, it exits 3 NOT PROVEN instead: the registry marks exactly ' +
+        'one slot `live` and that one is the origin itself, so a parity check has nothing to compare against. ' +
+        'It becomes CI-runnable only when a second slot carries a real source copy AND the runner can see both. ' +
+        'Neither is true today, so a CI step could only be permanently non-zero, or tolerate the refusal by ' +
+        'number — and a job that swallows "I compared nothing" is the green tick over an empty set that ' +
+        'check-migrations.mjs and assert-clone-contract.mjs already cost this repo.',
+    },
+  ],
+  [
+    'assert-github-matrix.mjs',
+    {
+      since: '2026-08-18',
+      probe: ['--offline'],
+      why:
+        // ⚠️ The command is described, not spelled. assert-github-matrix.mjs's own LIMB 1b greps
+        // tooling/ci for files that name that command and requires each to read `github.org` from the
+        // registry or carry the declared org literally — a rule about SECOND COPIES OF THE ORG NAME.
+        // This file holds no copy of it and queries nothing; spelling the command here would put it in
+        // that population and produce a finding about a sentence.
+        'its network limb asks GitHub for the org repository listing through an authenticated `gh`, which needs ' +
+        'credentials scoped to the ORGANISATION. ' +
+        'CI has no such credential — GITHUB_TOKEN is an installation token scoped to one repository and has no ' +
+        'org dimension to grant, which tooling/channel-register.json already records one entry over for the ' +
+        'billing endpoint. The only mode a runner could invoke is `--offline`, which SKIPS the org entirely and ' +
+        'exits 3 ON PURPOSE so that an offline run can never be read in a log as a clean one; and without the ' +
+        'Projects/ + nikatru/ anchor it does not reach even that, dying exit 2 "could not look". There is no ' +
+        'invocation of this guard available to a runner that is capable of exiting 0, so a CI step could only ' +
+        'be permanent red or a tolerated exit code that verified nothing about GitHub.',
+    },
+  ],
+]);
+
 const problems = [];
 const notes = [];
 
@@ -472,6 +553,26 @@ if (unfound.length) {
 //       of a shared module and it becomes unreached and FAILS, which is exactly
 //       when it has stopped being covered. Nothing can be added to a list to
 //       silence it; the only way to satisfy it is to be genuinely reachable.
+//
+//       🔴 2026-08-18 — THE LAST SENTENCE ABOVE IS NO LONGER THE WHOLE TRUTH,
+//       AND IT IS LEFT STANDING RATHER THAN REWRITTEN BECAUSE IT RECORDS WHY THE
+//       BAR IS WHERE IT IS. A second genuinely different case arrived, and it is
+//       not the shared-module shape: assert-copy-parity.mjs and
+//       assert-github-matrix.mjs are guards with mains, whose SUBJECTS ARE NOT IN
+//       A CHECKOUT — thirty slot directories across the workspace, and an
+//       organisation only an authenticated `gh` can see. Neither is importable by
+//       anything, so the derived relation cannot reach them, and neither has ANY
+//       invocation a runner could make that is capable of exiting 0. The three
+//       ways to satisfy R2 all failed for a reason that was not the guard's
+//       fault, and the fourth — a CI step run with a flag that makes the guard
+//       vacuous, so the count comes out right — is the precise defect this file
+//       exists to catch.
+//
+//       So NOT_CI_RUNNABLE was added, and it is a list of NAMES ONLY IN ITS
+//       SHAPE. Every entry states a claim that is RE-RUN on every invocation:
+//       the file must still be there, must still be unreached, AND MUST STILL
+//       REFUSE WHEN SPAWNED. Typing a name in it buys nothing; the guard has to
+//       go on failing to be excused for not being run. See the map's own header.
 const importsOf = (file) => {
   // Comments out first. A `// import { x } from './shared.mjs'` in a TODO must
   // not make a module reachable — the same prose-satisfies-a-check rule the
@@ -534,7 +635,99 @@ for (const queue = [...reached]; queue.length > 0; ) {
     }
   }
 }
-const uninvoked = guards.filter((g) => !reached.has(g));
+// ── NOT_CI_RUNNABLE, RE-VERIFIED BEFORE IT IS HONOURED ──────────────────────
+// Order matters and is deliberate: every entry is re-checked HERE, above R2, so
+// that a stale exemption produces its own precise diagnosis instead of being
+// silently downgraded into the generic "nothing runs this" message — or, worse,
+// silencing R2 on a claim that is no longer true.
+const SELF_NAME = fileURLToPath(import.meta.url).split(/[\\/]/).pop();
+/** The probe must not inherit credentials or CI markers. A guard that finds a
+ *  token takes a different path (and may reach the network); a guard that finds
+ *  GITHUB_* believes it is in CI. Either makes the verdict depend on where this
+ *  ran, and the claim under test is specifically about a runner that has none of
+ *  them. Same prefixes assert-guards-refuse-empty.mjs scrubs, same reason. */
+const probeEnv = () => {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) {
+    if (/^(GITHUB_|GH_|CF_|CLOUDFLARE_|SUPABASE_|AWS_|NPM_|PADDLE_|GLITCHTIP_)/.test(k)) delete env[k];
+  }
+  return env;
+};
+/** honoured this run → observed exit code. A Map, not a Set, so the passing line
+ *  can print the MEASUREMENT rather than repeat the claim. */
+const notCiRunnable = new Map();
+const staleExemptions = [];
+for (const [g, entry] of NOT_CI_RUNNABLE) {
+  const shown = `node tooling/ci/${g}${entry.probe.length ? ` ${entry.probe.join(' ')}` : ''}`;
+  // Structural, before anything else: probing THIS file would spawn a copy of
+  // this scan, which would spawn another. The recursion has no base case, so it
+  // is refused by name rather than left to whoever adds the entry.
+  if (g === SELF_NAME) {
+    staleExemptions.push(`${g} — this guard cannot exempt itself: limb (c) would spawn a copy of this scan, which would spawn another.`);
+    continue;
+  }
+  // (a) STALE BY ABSENCE. Real-repo only, for the same reason the
+  //     NO_NEGATIVE_TEST_NEEDED self-check is: this map names THIS repository's
+  //     files, and a fixture root legitimately holds none of them.
+  if (!guards.includes(g)) {
+    if (scanningRealRepo) {
+      staleExemptions.push(
+        `${g} — recorded as not CI-runnable on ${entry.since}, and tooling/ci no longer holds it. ` +
+          'Either it moved and the entry did not follow, or it is retired and the entry should have gone with ' +
+          'it. An exemption for something that is not there reports judgement over nothing.',
+      );
+    }
+    continue;
+  }
+  // (b) STALE BY REACHABILITY, derived from the same graph R2 uses.
+  if (reached.has(g)) {
+    staleExemptions.push(
+      `${g} — recorded as not CI-runnable on ${entry.since}, but it IS reached now: a workflow invokes it, or ` +
+        'something a workflow runs imports it. The entry describes a state the tree has left. Delete it — the ' +
+        'guard is covered by being run, which is what the exemption existed to stand in for.',
+    );
+    continue;
+  }
+  // (c) THE CLAIM ITSELF, RE-RUN. This is the limb that makes the entry cost
+  //     something: the guard is spawned with the argv a runner would have and
+  //     must refuse. A `why` is prose and prose rots; an observed exit code does
+  //     not.
+  const probe = spawnSync(process.execPath, [join(CI, g), ...entry.probe], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 120_000,
+    env: probeEnv(),
+  });
+  if (typeof probe.status !== 'number') {
+    staleExemptions.push(
+      `${g} — \`${shown}\` produced no exit code (${probe.error?.message ?? `signal ${probe.signal}`}). The ` +
+        'claim could not be re-verified, and an exemption that cannot be re-verified is not honoured: that is ' +
+        'the difference between this map and a waiver.',
+    );
+    continue;
+  }
+  if (probe.status === 0) {
+    staleExemptions.push(
+      `${g} — \`${shown}\` EXITED 0. The entry claims no invocation available to a runner can make this guard ` +
+        'pass, and one just did. Either it is CI-runnable now — wire it into a workflow and delete this entry — ' +
+        'or it has grown a vacuous pass over a subject it never reached, which is the defect this file exists ' +
+        'to catch and would now be hiding behind an exemption.',
+    );
+    continue;
+  }
+  notCiRunnable.set(g, probe.status);
+}
+if (staleExemptions.length) {
+  console.error(`✗ COVERAGE LOST — ${staleExemptions.length} NOT_CI_RUNNABLE entr${staleExemptions.length === 1 ? 'y no longer describes' : 'ies no longer describe'} this tree:`);
+  for (const s of staleExemptions) console.error(`    ${s}`);
+  console.error('');
+  console.error('  Every entry in that map is a claim that is RE-RUN here, not a name that is trusted. A waiver');
+  console.error('  describing behaviour a file no longer has is a lie that reads as diligence — the reason two');
+  console.error('  stale entries were deleted from assert-guards-refuse-empty.mjs on 2026-08-18 rather than reworded.');
+  process.exit(1);
+}
+
+const uninvoked = guards.filter((g) => !reached.has(g) && !notCiRunnable.has(g));
 if (uninvoked.length) {
   console.error(
     `✗ COVERAGE LOST — ${uninvoked.length} file(s) in tooling/ci are neither invoked by a workflow nor imported by one that is:`,
@@ -544,6 +737,9 @@ if (uninvoked.length) {
   console.error('  and it inflates every count taken over this directory.');
   console.error('  Wire it into a workflow in the same change, delete it, or — if it is a shared module —');
   console.error('  make something a workflow DOES run import it. Reachability is derived, not declared.');
+  console.error('  The ONE other way out is NOT_CI_RUNNABLE, and only for a guard NO invocation available to a');
+  console.error('  runner can make exit 0: that entry is re-run on every pass — spawned, and required to refuse —');
+  console.error('  so it cannot be satisfied by typing a name into a list.');
   process.exit(1);
 }
 
@@ -778,6 +974,15 @@ if (problems.length) {
   process.exit(1);
 }
 
+if (notCiRunnable.size) {
+  console.log('⬜ tooling/ci guards recorded NOT CI-RUNNABLE, printed not hidden — each claim RE-RUN just now:');
+  for (const [g, status] of notCiRunnable) {
+    const e = NOT_CI_RUNNABLE.get(g);
+    const shown = `node tooling/ci/${g}${e.probe.length ? ` ${e.probe.join(' ')}` : ''}`;
+    console.log(`    ${g} — since ${e.since}. \`${shown}\` exited ${status} on this run (non-zero is the exemption's price of admission).`);
+    console.log(`        ${e.why}`);
+  }
+}
 if (scriptExempt.length) {
   console.log('⬜ workflow-invoked scripts outside tooling/ci with a recorded exception, printed not hidden:');
   for (const s of scriptExempt) console.log(`    ${s}`);
@@ -788,8 +993,9 @@ if (notes.length) {
 }
 
 console.log(
-  `ok  guard coverage — ${guards.length} file(s) in tooling/ci, all reached: ${invokedGuards.size} invoked by ` +
-    `${workflowFiles.length} workflow(s) and ${guards.length - invokedGuards.size} imported by one that is ` +
+  `ok  guard coverage — ${guards.length} file(s) in tooling/ci, all accounted for: ${invokedGuards.size} invoked by ` +
+    `${workflowFiles.length} workflow(s), ${reached.size - invokedGuards.size} imported by one that is, and ` +
+    `${notCiRunnable.size} recorded not CI-runnable and re-verified refusing ` +
     '(identity holds, no floor involved); all named in ' +
     `${testFiles.length} test file(s); ${scanners} carry a coverage self-check, ${exempt} exempt with a ` +
     `recorded reason; ${covered} workflow-invoked script(s) outside tooling/ci also covered, ` +

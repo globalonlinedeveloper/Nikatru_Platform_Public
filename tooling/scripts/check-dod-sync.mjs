@@ -102,7 +102,7 @@
 // usage line records nothing, so it is corrected rather than annotated).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const argv = process.argv.slice(2);
@@ -132,8 +132,21 @@ const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url
 // breaks the tree between the edit and the move is a half-state, and this corpus does not
 // ship those. `--company` still overrides; the refusal below still fires, naming every
 // candidate, when none of them holds the corpus.
+// 🔴 2026-08-18 (third entry) — THE SIBLING'S NAME IS DERIVED, NOT TYPED. The line below
+// spelled the literal `Project_Cross_Platform_Apps_Private` until the owner re-filed every
+// product into a Store x Platform x Type tree, which renamed this repo to
+// `..._Android_Apps_Public` and its corpus to `..._Android_Apps_Private`. A typed name is a
+// second copy of a fact the directory already carries, and it went stale the same day it was
+// written. It is now computed from THIS repo's own leaf: swap a trailing `_Public` for
+// `_Private`, or append `_Private` when there is no such suffix. ~20 more repos are coming at
+// varying depths and every one resolves by the same rule with no edit here.
+// Depth is never counted — the sibling relationship counts nothing, so it survives any move.
+const PRIVATE_SIBLING_NAME = basename(ROOT).endsWith('_Public')
+  ? `${basename(ROOT).slice(0, -'_Public'.length)}_Private`
+  : `${basename(ROOT)}_Private`;
+
 const COMPANY_CANDIDATES = [
-  join(ROOT, '..', 'Project_Cross_Platform_Apps_Private'),
+  join(ROOT, '..', PRIVATE_SIBLING_NAME),
   join(ROOT, 'Private'),
 ];
 // 🔴 THE DISCRIMINATOR IS NON-EMPTINESS, NOT A NAMED MARKER FILE. The sibling was

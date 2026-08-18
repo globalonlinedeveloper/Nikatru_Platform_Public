@@ -47,6 +47,40 @@
 // it is COVERAGE LOST. A vocabulary check against an empty vocabulary accepts
 // everything while looking like it accepted nothing untoward.
 //
+// ── `listings` — [ADR 055]'s DATA HALF, AND WHY IT IS DERIVED TWICE OVER ─────
+// [ADR 055] (LOCKED 2026-08-18) gives a product exactly ONE indexable page and
+// makes every store a LINK on it. Every URL that decision locks — the product
+// page's buttons, the `/<store>/apps` collection pages, the `/get/<store>/<slug>`
+// redirect targets — reads ONE catalogue field: `listings`, an object keyed by
+// storefront with a URL where a listing exists and `null` where it does not.
+// `catalog/extensions.json` in the sibling extension factory already ships that
+// exact shape (`{"chrome":null,"edge":null,"firefox":null}`); this is the apps
+// catalogue catching up, and nothing about the URL shape ships with it.
+//
+// THE KEY SET IS NOT TYPED HERE, for the reason the platform vocabulary is not:
+// it is the non-null `storefrontKey` values in tooling/channel-register.json,
+// which is already the one declaration of what this factory releases to.
+// tooling/bricks/app/hooks/post_gen.dart derives the block it PUBLISHES from the
+// same field, so producer and grader cannot disagree about which stores exist —
+// and the day a store is added, it is a row in the register and nothing else.
+// A register that yields no storefront keys is COVERAGE LOST, not an empty
+// vocabulary quietly accepting every key including nonsense.
+//
+// 🔴 `listings.web` AND `url` ARE THE SAME FACT WRITTEN TWICE, so this file
+// CHECKS THEM. They have to be two fields — `url` is the card link every
+// existing consumer already reads, `listings.web` is what [ADR 055]'s renderer
+// enumerates alongside the stores — but two spellings of one URL is exactly the
+// pair that drifts, and drifts silently, because each side has a reader that
+// never sees the other. A non-null `listings.web` that is not byte-equal to
+// `url` fails.
+//
+// And a non-null listing is a PROMISE: it says a stranger can install this app
+// from that storefront. So a listing is only accepted when the row also declares
+// a platform that storefront's channel serves — the same rule
+// tooling/ci/assert-channel-claims.mjs enforces on the sites, applied to the
+// catalogue that feeds them. `null` is always legal; it is the honest state for
+// every store this factory is not yet on, and it is the state of all five today.
+//
 // ── WHAT IS DELIBERATELY *NOT* REQUIRED ──────────────────────────────────────
 // `markets` and `audience`: post_gen writes both on every stamp, but the one
 // row in the catalogue today (subly) predates them and carries neither.
@@ -154,9 +188,13 @@ if (catalogue.length === 0) {
   done();
 }
 
-// ── THE PLATFORM VOCABULARY, DERIVED ─────────────────────────────────────────
+// ── THE PLATFORM VOCABULARY, AND THE STOREFRONT ONE, BOTH DERIVED ────────────
 const rawRegister = read(REGISTER);
 let vocabulary = null;
+/** storefront key -> the channel that owns it, in the register's ROW ORDER.
+ *  Null (not an empty map) until derivation succeeds, so that "no vocabulary"
+ *  and "a vocabulary containing nothing" cannot be confused by the limb below. */
+let storefronts = null;
 if (rawRegister === null) {
   coverageLost(
     `${REGISTER} is missing, so the platform vocabulary cannot be derived. Checking each row's ` +
@@ -182,6 +220,62 @@ if (rawRegister === null) {
       vocabulary = seen;
       notes.push(`platform vocabulary derived from ${REGISTER}: ${[...seen].sort().join(', ')}`);
     }
+
+    // ── the storefront vocabulary [ADR 055] ─────────────────────────────────
+    // A channel row must ANSWER the question. A string is "this is the key"; an
+    // explicit null is "this channel is not a storefront a listing can point
+    // at" (the two self-distribution rows). A MISSING key is neither, and
+    // treating it as "not a storefront" would let a new store join the register
+    // and silently never appear in `listings` — the shrink this repo pays for.
+    const unanswered = [];
+    const byKey = new Map();
+    const duplicated = [];
+    for (const c of channels) {
+      const id = typeof c?.id === 'string' ? c.id : '(unnamed)';
+      if (!Object.hasOwn(c ?? {}, 'storefrontKey')) {
+        unanswered.push(id);
+        continue;
+      }
+      const k = c.storefrontKey;
+      if (k === null) continue;
+      if (typeof k !== 'string' || k.trim() === '') {
+        problems.push(
+          `${REGISTER} channel "${id}" has a \`storefrontKey\` of ${JSON.stringify(k)} — it must be a ` +
+            `non-empty string, or null to declare "not a storefront".`,
+        );
+        continue;
+      }
+      if (byKey.has(k)) duplicated.push(`${k} (channels "${byKey.get(k).id}" and "${id}")`);
+      // `kind` travels with the key because the URL-equality limb below needs to
+      // know WHICH storefront is our own site, and asking "is the key spelled
+      // web?" would hard-code a name the register is free to change.
+      else byKey.set(k, { id, kind: c.kind, platforms: Array.isArray(c.platforms) ? c.platforms : [] });
+    }
+    if (unanswered.length) {
+      coverageLost(
+        `${REGISTER} channel(s) ${unanswered.map((s) => `"${s}"`).join(', ')} carry no \`storefrontKey\` ` +
+          `key at all. It is the one declaration of the \`listings\` key set [ADR 055], and a channel that ` +
+          `does not answer would be read as "not a storefront" — so a store could join the register and ` +
+          `never appear in the catalogue, with every limb below still reporting clean.`,
+      );
+    } else if (duplicated.length) {
+      problems.push(
+        `${REGISTER} reuses storefront key(s) ${duplicated.join('; ')}. A \`listings\` object is keyed by ` +
+          `this value, so two channels sharing one key can only ever publish one listing between them.`,
+      );
+    } else if (byKey.size === 0) {
+      coverageLost(
+        `${REGISTER} yielded no storefront keys, so the \`listings\` vocabulary is empty and the limb ` +
+          `below would accept any key including nonsense — and would accept a row with an EMPTY ` +
+          `\`listings\` object as complete.`,
+      );
+    } else {
+      storefronts = byKey;
+      notes.push(
+        `storefront vocabulary derived from ${REGISTER} (\`storefrontKey\`, register row order): ` +
+          `${[...byKey.keys()].join(', ')}`,
+      );
+    }
   } catch (e) {
     coverageLost(`${REGISTER} is not valid JSON (${e.message}), so the platform vocabulary cannot be derived.`);
   }
@@ -194,6 +288,21 @@ if (rawRegister === null) {
 const STRING_FIELDS = [
   ['name', (v) => typeof v === 'string' && v.trim() !== '', 'the website renders it as the card heading, and an empty heading is a card nobody can identify'],
   ['tagline', (v) => typeof v === 'string' && v.trim() !== '', 'the website renders it under the name, and the discovery pages publish it as the app description'],
+];
+
+/** Every field a row must CARRY. Named once because the summary line printed at
+ *  the end needs both the COUNT and the LIST, and those were two typings of one
+ *  fact — `STRING_FIELDS.length + 5` beside a hand-written parenthesis is
+ *  exactly the arithmetic that goes stale the moment a field is added, which is
+ *  what happened when `listings` landed. Derived now, so it cannot. */
+const REQUIRED_FIELDS = [
+  'slug',
+  ...STRING_FIELDS.map(([field]) => field),
+  'url',
+  'api',
+  'listings',
+  'platforms',
+  'status',
 ];
 
 const slugsSeen = new Map();
@@ -274,6 +383,75 @@ catalogue.forEach((row, i) => {
     }
   }
 
+  // listings — [ADR 055]'s one data field. See the header.
+  if (!Object.hasOwn(row, 'listings')) {
+    fail(
+      `${at} (${label}) has no \`listings\`. [ADR 055] makes it the ONE field every store link on the ` +
+        `product page, every \`/<store>/apps\` collection page and every \`/get/<store>/<slug>\` redirect ` +
+        `reads; a row without one is a product no storefront surface can place at all. An all-null block ` +
+        `is the correct value until a real listing URL exists — that is a stated absence, not a gap.`,
+    );
+  } else if (row.listings === null || typeof row.listings !== 'object' || Array.isArray(row.listings)) {
+    fail(
+      `${at} (${label}) has a \`listings\` of ${Array.isArray(row.listings) ? 'array' : row.listings === null ? 'null' : typeof row.listings} — ` +
+        `it must be an OBJECT keyed by storefront. Every reader does \`row.listings[store]\`.`,
+    );
+  } else if (storefronts !== null) {
+    const have = Object.keys(row.listings);
+    const missing = [...storefronts.keys()].filter((k) => !Object.hasOwn(row.listings, k));
+    const unknown = have.filter((k) => !storefronts.has(k));
+    if (missing.length) {
+      fail(
+        `${at} (${label}) has a \`listings\` missing key(s) ${missing.map((k) => `"${k}"`).join(', ')}, ` +
+          `which ${REGISTER} declares as \`storefrontKey\`. Absent and null are NOT the same answer: null ` +
+          `says "we are not on that store", absent says nobody has considered it, and the collection page ` +
+          `for a missing key renders from \`undefined\` without anything failing.`,
+      );
+    }
+    if (unknown.length) {
+      fail(
+        `${at} (${label}) has \`listings\` key(s) ${unknown.map((k) => `"${k}"`).join(', ')}, which no ` +
+          `channel in ${REGISTER} declares as its \`storefrontKey\` (${[...storefronts.keys()].join(', ')}). ` +
+          `There is no collection page, no \`/get/\` route and no button for a storefront nobody named.`,
+      );
+    }
+    for (const [key, value] of Object.entries(row.listings)) {
+      const meta = storefronts.get(key);
+      if (value === null) continue; // the honest "not listed there" — always legal.
+      if (typeof value !== 'string' || !/^https:\/\/[^\s/]+/.test(value)) {
+        fail(
+          `${at} (${label}) has \`listings.${key}\` of ${JSON.stringify(value)}, which is neither null nor ` +
+            `an https:// URL. Empty string is NOT the "no listing" spelling here — \`null\` is — because a ` +
+            `renderer testing truthiness and one testing \`!== null\` would disagree about the same row.`,
+        );
+        continue;
+      }
+      // 🔴 the one place `url` is written twice. See the header. WHICH key that
+      // is comes from the register's `kind`, not from the key being spelled
+      // "web" — the key is a storefront-facing name and is free to change.
+      if (meta?.kind === 'web' && typeof row.url === 'string' && value !== row.url) {
+        fail(
+          `${at} (${label}) has \`listings.${key}\` = ${JSON.stringify(value)} but \`url\` = ` +
+            `${JSON.stringify(row.url)}. These are the SAME fact — the app's own web address — and each ` +
+            `has readers that never see the other (\`url\` renders the card, \`listings\` renders ` +
+            `[ADR 055]'s store row), so nothing but this check would ever notice them diverge.`,
+        );
+      }
+      // A listing is a promise a stranger can install from that storefront.
+      if (meta && Array.isArray(row.platforms)) {
+        const unclaimed = meta.platforms.filter((p) => !row.platforms.includes(p));
+        if (unclaimed.length) {
+          fail(
+            `${at} (${label}) publishes a \`listings.${key}\` URL, but the row's \`platforms\` do not ` +
+              `include ${unclaimed.map((p) => `"${p}"`).join(', ')} — the platform(s) channel ` +
+              `"${meta.id}" serves. A store button with nothing behind it is a promise made to a ` +
+              `stranger, and it rots into a lie without anyone editing it.`,
+          );
+        }
+      }
+    }
+  }
+
   // status — the promotion switch assert-catalog-reachable.mjs reads.
   if (!Object.hasOwn(row, 'status')) {
     fail(`${at} (${label}) has no \`status\`. tooling/ci/assert-catalog-reachable.mjs only holds \`live\` rows to their promise; a row with no status is never checked for reachability at all.`);
@@ -305,7 +483,20 @@ for (const row of catalogue) {
   if (row === null || typeof row !== 'object') continue;
   const plats = Array.isArray(row.platforms) ? row.platforms.join('/') : '(none)';
   const api = typeof row.api === 'string' && row.api !== '' ? row.api : '(shared platform Worker)';
+  // [ADR 055] Print the listings SPLIT, not just a count: "0 of 6 live" is the
+  // number a reader needs to see shrink, and naming the live ones is how a
+  // storefront link that appeared without anyone noticing becomes visible here.
+  const listingEntries =
+    row.listings !== null && typeof row.listings === 'object' && !Array.isArray(row.listings)
+      ? Object.entries(row.listings)
+      : null;
+  const live = listingEntries ? listingEntries.filter(([, v]) => typeof v === 'string' && v !== '') : [];
+  const listingsSummary =
+    listingEntries === null
+      ? 'listings=(none)'
+      : `listings=${live.length}/${listingEntries.length} live${live.length ? ` [${live.map(([k]) => k).join(', ')}]` : ''}`;
   const extra = [
+    listingsSummary,
     Array.isArray(row.markets) && row.markets.length ? `markets=${row.markets.join('/')}` : null,
     typeof row.audience === 'string' && row.audience !== '' ? `audience=${row.audience}` : null,
   ].filter(Boolean).join(' ');
@@ -313,8 +504,8 @@ for (const row of catalogue) {
 }
 
 notes.push(
-  `${rowsChecked} of ${catalogue.length} row(s) checked against ${STRING_FIELDS.length + 5} required fields ` +
-    `(slug, name, tagline, url, api, platforms, status)`,
+  `${rowsChecked} of ${catalogue.length} row(s) checked against ${REQUIRED_FIELDS.length} required fields ` +
+    `(${REQUIRED_FIELDS.join(', ')})`,
 );
 
 done();

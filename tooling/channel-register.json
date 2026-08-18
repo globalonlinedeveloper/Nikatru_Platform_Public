@@ -74,6 +74,20 @@
     "  · disqualified channels are named with the LOCKED ADR that killed them, and printed every run",
     "  · COVERAGE LOST when the register is absent, empty, or has nothing served   [D-1 requires loud]",
     "",
+    "🔴 `storefrontKey` IS THE STOREFRONT'S NAME FOR THIS CHANNEL, AND IT LIVES HERE SO THAT ADDING A",
+    "STORE STAYS A ROW. [ADR 055] gives every catalogue row a `listings` block keyed by store, and every",
+    "URL that decision locks — the product page's buttons, the /<store>/apps collection pages, the",
+    "/get/<store>/<slug> redirect targets — reads that one field. The KEY SET is not typed anywhere: it",
+    "is the non-null `storefrontKey` values below, in this file's row order. tooling/bricks/app/hooks/",
+    "post_gen.dart derives the block it publishes from them, and tooling/ci/assert-catalog-contract.mjs",
+    "derives the vocabulary it grades against from them, so neither carries a second copy free to drift.",
+    "",
+    "EVERY channel row carries the key, and `null` is an ANSWER, not an omission: it says this channel is",
+    "not a storefront a listing URL can point at. The two `kind: direct` rows are null because",
+    "self-distribution is dl.nikatru.com/<slug>/<platform>/latest in [ADR 055], NOT a `listings` entry.",
+    "A row that carried no `storefrontKey` at all would be an unanswered question, and the guard reads a",
+    "missing key as COVERAGE LOST rather than as 'not a storefront'.",
+    "",
     "⚠️ `ownerQueue` IDS ARE DATA, NOT AN ASSERTION. OWNER_QUEUE.md moved to nikatru/ ([ADR 054]) — a",
     "SEPARATE private repo, not on the CI checkout at all, so no CI guard can read it. [10]D-4's machine",
     "limbs as written are unimplementable in CI for that reason — they are a LOCAL check. Recorded here",
@@ -787,6 +801,7 @@
       "name": "Web (Cloudflare Pages, app subdomain)",
       "platforms": ["web"],
       "kind": "web",
+      "storefrontKey": "web",
       "served": true,
       "submittable": false,
       "purchaseRail": {
@@ -845,6 +860,7 @@
       "name": "Google Play",
       "platforms": ["android"],
       "kind": "store",
+      "storefrontKey": "play",
       "served": false,
       "submittable": true,
       "purchaseRail": {
@@ -1136,6 +1152,7 @@
       "name": "Apple App Store (iOS)",
       "platforms": ["ios"],
       "kind": "store",
+      "storefrontKey": "appstore",
       "served": false,
       "submittable": true,
       "purchaseRail": {
@@ -1284,6 +1301,7 @@
       "name": "Apple App Store (macOS)",
       "platforms": ["macos"],
       "kind": "store",
+      "storefrontKey": "mac",
       "served": false,
       "submittable": true,
       "purchaseRail": {
@@ -1394,6 +1412,7 @@
       "name": "Microsoft Store",
       "platforms": ["windows"],
       "kind": "store",
+      "storefrontKey": "microsoft",
       "served": false,
       "submittable": true,
       "purchaseRail": {
@@ -1505,6 +1524,7 @@
       "name": "Windows direct download (dl.nikatru.com)",
       "platforms": ["windows"],
       "kind": "direct",
+      "storefrontKey": null,
       "served": false,
       "submittable": false,
       "purchaseRail": {
@@ -1626,6 +1646,7 @@
       "name": "Snap Store",
       "platforms": ["linux"],
       "kind": "store",
+      "storefrontKey": "linux",
       "served": false,
       "submittable": true,
       "purchaseRail": {
@@ -1772,6 +1793,7 @@
       "name": "AppImage from dl.nikatru.com",
       "platforms": ["linux"],
       "kind": "direct",
+      "storefrontKey": null,
       "served": false,
       "submittable": false,
       "purchaseRail": {
