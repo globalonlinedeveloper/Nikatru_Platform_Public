@@ -16,8 +16,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
+# 🔴 2026-08-18 — same repair as pre-commit, for the same measured reason: after the
+# corpus became a sibling repo, every candidate below was written from the pre-move
+# layout and none of them resolved from it. `$0` is the path git invokes this hook
+# by, so `<hooks dir>/../tooling/…` finds the runner from any repo pointed here. The
+# legacy candidates stay, below it, for pre-move checkouts.
 RUNNER=''
 for c in \
+  "$(dirname "$0")/../tooling/scripts/spec-guards.mjs" \
   "tooling/scripts/spec-guards.mjs" \
   "../../tooling/scripts/spec-guards.mjs" \
   "../tooling/scripts/spec-guards.mjs"
@@ -27,6 +33,7 @@ done
 
 if [ -z "$RUNNER" ]; then
   echo "pre-push: spec-guards.mjs not found from $(pwd). Refusing." >&2
+  echo "  hook invoked as: $0   (so the hooks directory is $(dirname "$0"))" >&2
   echo "  Re-install with: node tooling/scripts/install-hooks.mjs" >&2
   exit 1
 fi

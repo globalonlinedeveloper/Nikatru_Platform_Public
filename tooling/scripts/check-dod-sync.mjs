@@ -97,7 +97,9 @@
 // `--company` exists because the private tree does not live inside a git
 // worktree: it is a sibling of the checkout, so an agent working in a worktree
 // has a repo root and a company root in two different places. Defaults to
-// `<repoRoot>/company`.
+// `<repoRoot>/../Project_Cross_Platform_Apps_Private` (2026-08-18; this line still read
+// `<repoRoot>/company` after the default had already moved twice beneath it — an undated
+// usage line records nothing, so it is corrected rather than annotated).
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -114,7 +116,29 @@ const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url
 // checkout at all — which is why this guard refuses to report ok when it cannot find it.
 // Repointed again 2026-08-15: the flatten merged company/ and knowledge/ into ONE repo at
 // Private/, so the private tree root is Private/ itself. --company still overrides.
-const COMPANY = resolve(companyArg ?? join(ROOT, 'Private'));
+// Repointed 2026-08-18: the private tree is moving OUT of the checkout to the SIBLING
+// `Project_Cross_Platform_Apps_Private/`. The default is therefore LOCATION-TOLERANT
+// rather than a hard switch — it tries the sibling first, then the nested path this repo
+// has used since the flatten, and takes the first that actually CONTAINS `MASTER_PLAN.md`.
+//
+// 🔴 THE MARKER IS LOAD-BEARING, NOT DECORATION. The sibling directory ALREADY EXISTS AND
+// IS EMPTY — it was pre-created before the move. A bare `existsSync` on the directory would
+// select it today, find no MASTER_PLAN.md, and refuse while the real corpus sat one
+// directory over. Selecting on a file the corpus must contain is what tells an empty shell
+// apart from the tree.
+//
+// Tolerant on purpose: an earlier version of this line switched to the sibling outright and
+// went red the moment it was written, because the move had not happened yet. A repoint that
+// breaks the tree between the edit and the move is a half-state, and this corpus does not
+// ship those. `--company` still overrides; the refusal below still fires, naming every
+// candidate, when none of them holds the corpus.
+const COMPANY_CANDIDATES = [
+  join(ROOT, '..', 'Project_Cross_Platform_Apps_Private'),
+  join(ROOT, 'Private'),
+];
+const COMPANY = resolve(
+  companyArg ?? COMPANY_CANDIDATES.find((c) => existsSync(join(c, 'MASTER_PLAN.md'))) ?? COMPANY_CANDIDATES[0],
+);
 
 const REGISTER = join(ROOT, 'tooling', 'dod-register.json');
 const PLAN = join(COMPANY, 'MASTER_PLAN.md');

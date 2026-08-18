@@ -432,7 +432,13 @@ const TOOL_CONVENTION = new Map([
   ['.gitignore', 'git locates it by name'],
   ['.gitattributes', 'git locates it by name'],
   ['.editorconfig', 'every editor locates it by name'],
-  ['.ignore', 'ripgrep locates it by name — this one re-enables the Private/ tree for search'],
+  [
+    '.ignore',
+    'ripgrep locates it by name — it re-enables gitignored paths for SEARCH only (git never reads it). ' +
+      'It no longer re-enables the private corpus: that tree moved OUT to the sibling ' +
+      '../Project_Cross_Platform_Apps_Private/ (2026-08-18) and no negation can reach outside the search ' +
+      'root, so the file now carries the dated record of why, and the two-root invocation to use instead',
+  ],
   ['.gitleaks.toml', 'gitleaks locates its config by name'],
   ['renovate.json', 'Renovate locates its config by name'],
   ['mason.yaml', 'mason locates its brick manifest by name'],

@@ -14,9 +14,28 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
-# Locate the runner from either repo root. Checked in order; first hit wins.
+# 🔴 2026-08-18 — THE CORPUS BECAME A SIBLING AND THIS SEARCH LIST STOPPED REACHING
+# THE RUNNER. The three relative candidates below are all written from the PRE-MOVE
+# layout, where the corpus was `<public repo>/Private` and `../tooling/scripts/…`
+# therefore landed in the public repo. From the sibling
+# `../Project_Cross_Platform_Apps_Private` they resolve to `Projects/tooling/…` and
+# `Documents/Claude/tooling/…`, neither of which exists — measured on the day, not
+# reasoned about: the hook fired, found nothing, and refused with exit 1.
+#
+# That refusal is the fail-closed branch working exactly as written, and it is why
+# this was a loud breakage rather than a silent pass. But a hook that can only ever
+# refuse is not a guard either, so the locator is now anchored to something that
+# moves WITH the hooks instead of guessing at the caller's depth: `$0`, the path git
+# invokes this file by, which is derived from `core.hooksPath` and so is correct from
+# any repo pointed at this directory. `<hooks dir>/../tooling/scripts/spec-guards.mjs`
+# is the runner's position relative to the hooks, and that relationship is a fact
+# about THIS repo's layout — the one thing a file inside it may assume.
+#
+# The three legacy candidates are KEPT, and kept BELOW the derived one, so a checkout
+# still sitting in a pre-move layout resolves exactly as it did before.
 RUNNER=''
 for c in \
+  "$(dirname "$0")/../tooling/scripts/spec-guards.mjs" \
   "tooling/scripts/spec-guards.mjs" \
   "../../tooling/scripts/spec-guards.mjs" \
   "../tooling/scripts/spec-guards.mjs"
@@ -26,6 +45,7 @@ done
 
 if [ -z "$RUNNER" ]; then
   echo "pre-commit: spec-guards.mjs not found from $(pwd)." >&2
+  echo "  hook invoked as: $0   (so the hooks directory is $(dirname "$0"))" >&2
   echo "  A hook that cannot find its runner has checked nothing. Refusing." >&2
   echo "  Re-install with: node tooling/scripts/install-hooks.mjs" >&2
   exit 1
