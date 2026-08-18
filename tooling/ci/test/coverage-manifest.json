@@ -46,7 +46,7 @@
   "erasure-reach.test.mjs": 21,
   "flag-exposure.test.mjs": 23,
   "generate-apps-data.test.mjs": 7,
-  "github-matrix.test.mjs": 20,
+  "github-matrix.test.mjs": 24,
   "green-means-ran.test.mjs": 25,
   "guard-coverage.test.mjs": 45,
   "guards-refuse-empty.test.mjs": 13,

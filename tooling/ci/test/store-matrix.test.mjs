@@ -60,7 +60,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, renameSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, renameSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -82,6 +82,21 @@ after(() => {
 const run = (args) => {
   const r = spawnSync(process.execPath, [GUARD, ...args], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+};
+
+/** The guard's own anchor walk, repeated here so the two cases below can state
+ *  WHICH environment they are in instead of assuming the developer's one.
+ *  A workstation holds the thirty slot directories; a CI runner clones ONE
+ *  repository into /home/runner/work and holds neither marker. Both are real,
+ *  and the guard behaves differently — correctly — in each. */
+const anchorReachable = () => {
+  let cur = dirname(GUARD);
+  for (;;) {
+    if (existsSync(join(cur, 'Projects')) && existsSync(join(cur, 'nikatru'))) return true;
+    const up = dirname(cur);
+    if (up === cur) return false;
+    cur = up;
+  }
 };
 
 /** Three rows, one in each state, so that the vocabulary's "every value has a
@@ -164,14 +179,42 @@ describe('assert-store-matrix — positive controls', () => {
     assert.match(out, /checked 15 slot row\(s\)/);
   });
 
-  test('P2 the REAL tree is still REACHED from here, and a verdict is formed', () => {
+  test('P2 a no-flag run REACHES whichever tree is here, and forms a verdict about it', () => {
+    // THIS CASE HAS TWO ENVIRONMENTS AND IT ASSERTS IN BOTH. It is NOT a
+    // conditional skip: neither branch can pass without the guard doing the
+    // thing that branch names.
+    //
+    // Written first as "the REAL tree is still REACHED from here", it asserted a
+    // fact about the DEVELOPER'S HOME DIRECTORY, and it went red on a runner for
+    // that reason alone (measured: run 32148776220). The tree is thirty
+    // directories OUTSIDE this repository and a CI checkout holds one repo, so
+    // "the anchor resolves" is not a property this repository can carry.
+    //
+    // What IS this guard's responsibility is that it never quietly stops
+    // looking, and that has a different, equally checkable shape in each place:
+    //   anchor present -> the tree limb RAN and a verdict was formed, never 2
+    //   anchor absent  -> COVERAGE LOST, exit 2, and the walk PRINTED
+    // The second is case B of the real-tree mutation table in this file's header
+    // ("no anchor, nothing declared -> COVERAGE LOST + walk, exit 2"), which was
+    // recorded as evidence and then had no test. It has one now.
     const r = run([]);
-    // 0 or 1 — a finding about the tree is a true finding and not this suite's
-    // business. 2 is not allowed: that is the anchor failing, which IS this
-    // guard's business and would mean it had quietly stopped looking.
-    assert.ok(r.code === 0 || r.code === 1, `expected 0 or 1, got ${r.code}\n${r.out}`);
-    assert.match(r.out, /tree limb: RAN against/);
-    assert.match(r.out, /across 15 slot path\(s\)/);
+    if (anchorReachable()) {
+      // 0 or 1: a finding about the tree is a true finding and not this suite's
+      // business. 2 is not allowed - that is the anchor failing, which IS this
+      // guard's business and would mean it had quietly stopped looking.
+      assert.ok(r.code === 0 || r.code === 1, `expected 0 or 1, got ${r.code}\n${r.out}`);
+      assert.match(r.out, /tree limb: RAN against/);
+      assert.match(r.out, /across 15 slot path\(s\)/);
+    } else {
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST/);
+      assert.match(r.out, /ANCHOR NOT FOUND/);
+      // The walk is printed, so "I could not look" names where it looked. An
+      // exit 2 with no walk would be the refusal degrading into a shrug.
+      assert.match(r.out, /Walked:/);
+      // and it must NOT have reported a tree verdict it could not have formed.
+      assert.doesNotMatch(r.out, /tree limb: RAN against/);
+    }
   });
 
   test('P3 the constructed tree is clean BEFORE any fault is planted in it', () => {
@@ -358,7 +401,15 @@ describe('assert-store-matrix — the floor', () => {
 
 describe('assert-store-matrix — the two absences are answered by two different tests', () => {
   test('N15 --registry-only where the tree IS reachable refuses itself', () => {
-    const r = run(['--registry-only']);
+    // THE REACHABLE TREE IS GIVEN, NOT INHERITED. This case needs a tree that IS
+    // reachable; taking that from the ambient filesystem made it assert the
+    // developer's home directory, and on a runner - where no tree is reachable -
+    // `--registry-only` is LEGITIMATE, so the guard correctly exited 0 and the
+    // case went red having found no subject (measured: run 32148776220).
+    // `--projects` names a tree that is reachable BY CONSTRUCTION, so the branch
+    // under test is entered on every box. Same refusal, same assertions, no
+    // dependence on where this ran.
+    const r = run(['--registry-only', ...tree(ROWS())]);
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /the store tree IS reachable from here/);

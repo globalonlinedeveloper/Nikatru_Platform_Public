@@ -42,7 +42,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -63,12 +63,95 @@ const cleanEnv = () => {
   return env;
 };
 
-const run = (...argv) => spawnSync(process.execPath, [GUARD, ...argv], { encoding: 'utf8', env: cleanEnv() });
+/* ⚠️ DECLARED HERE, ABOVE THE HOOK THAT READS THEM, AND THAT IS LOAD-BEARING.
+ * node:test runs a root-level `before` in a context where a `const` further down
+ * this file is still in its temporal dead zone. `buildAnchor` reads `reg`, so
+ * with these four lines in their original position the hook threw
+ * `Cannot access 'reg' before initialization` and every case in the file reported
+ * `cancelledByParent` — 24 red with no assertion having run. Measured, not
+ * theorised. Keep them above `before`. */
+const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
+const ORG = reg.github.org;
+const privateDirOf = (s) => String(s.publicDir).replace(/_Public$/, '_Private');
+const dirOf = (s, side) => (side === 'public' ? s.publicDir : privateDirOf(s));
 
+/** 🔴 THE ANCHOR IS CONSTRUCTED HERE, NOT INHERITED FROM THE BOX.
+ *
+ *  The guard locates the store tree by walking UP for the ancestor holding both
+ *  `Projects/` and `nikatru/`, and refuses (exit 2, ANCHOR NOT FOUND) when there
+ *  is none. That refusal is correct and is asserted below — but it also means
+ *  that on a CI runner, which clones ONE repository into /home/runner/work, the
+ *  guard dies at the anchor before it parses a fixture or reaches an exit rule,
+ *  and EVERY case in this file goes red for a reason that has nothing to do with
+ *  the behaviour under test. MEASURED: run 32148776220, 14 of 14 cases here.
+ *
+ *  This file's own header already refuses to let the credentials of the box
+ *  decide the verdict. The FILESYSTEM LAYOUT of the box is the same defect, and
+ *  it was left in. `--projects` closes it: the anchor becomes a directory this
+ *  suite creates, so every case runs identically on a workstation and a runner.
+ *
+ *  ⚠️ IT IS AN ANCHOR, NOT A PASS. The directory is EMPTY, so LIMB 2 finds no
+ *  slot directory and says so as a NOTE about a limb that did not run; it cannot
+ *  turn a finding green, and exit 0 still requires the GitHub limb to have run
+ *  against the real org, which nothing here can do. `the anchor walk is NOT
+ *  disarmed by the flag` below is what keeps that honest. */
 let TMP;
+let ANCHOR;
 let seq = 0;
+
+const run = (...argv) =>
+  spawnSync(process.execPath, [GUARD, ...argv, '--projects', ANCHOR], { encoding: 'utf8', env: cleanEnv() });
+
+/** The guard with NOTHING added — the only way to assert what the seam itself
+ *  does, and what it deliberately does not do. */
+const runRaw = (guardPath, ...argv) =>
+  spawnSync(process.execPath, [guardPath, ...argv], { encoding: 'utf8', env: cleanEnv() });
+
+/**
+ * 🔴 THE FIXTURE TREE IS BUILT FROM THE REGISTRY, NOT TYPED.
+ *
+ * An EMPTY anchor is not enough, and finding that out is the point of writing it
+ * down. `renamePins.observable` declares files in SIBLING repositories, and the
+ * guard REFUSES (exit 2) when a declared `repoDir` is missing from an anchor that
+ * resolved — deliberately, with the reasoning written in its own margin: "a thin
+ * checkout cannot reach this line: it fails the anchor first."
+ *
+ * That reasoning was TRUE while walking up was the only way to get an anchor. The
+ * `--projects` seam makes it false — an explicit anchor resolves while the
+ * siblings are absent — so the probe is now strict enough to reject its own
+ * fixtures. The fix belongs in the FIXTURE, not in the probe: weakening the probe
+ * to excuse a missing sibling would delete a real refusal (a WRONG PATH in the
+ * registry) to make a test pass, and that refusal is the more valuable of the two.
+ *
+ * So the tree is CONSTRUCTED to satisfy the declarations, and it is constructed BY
+ * READING THEM — add a `renamePins.observable` entry and this follows it, instead
+ * of going red for a reason that has nothing to do with the case under test.
+ */
+function buildAnchor(root) {
+  mkdirSync(root, { recursive: true });
+  const pins = reg.github?.renamePins?.observable ?? [];
+  assert.ok(pins.length > 0, 'the registry declares no observable rename pins — buildAnchor would be vacuous');
+  // Every boundRemote the registry declares, so the report counts real subjects
+  // rather than printing "0 of 0" over an array invented to be empty.
+  const rows = [];
+  for (const s of reg.slots) {
+    for (const side of ['public', 'private']) {
+      const bound = s.repos?.[side]?.boundRemote;
+      if (typeof bound === 'string') rows.push({ repo: bound, category: 'fixture', path: 'catalog/vendor/apps.json', state: 'pinned' });
+    }
+  }
+  for (const e of pins) {
+    const fileAbs = join(root, ...String(e.repoDir).split('/'), ...String(e.path).split('/'));
+    mkdirSync(dirname(fileAbs), { recursive: true });
+    writeFileSync(fileAbs, `${JSON.stringify(rows, null, 2)}
+`);
+  }
+  return root;
+}
+
 before(() => {
   TMP = mkdtempSync(join(tmpdir(), 'nikatru-ghm-'));
+  ANCHOR = buildAnchor(join(TMP, 'anchor-projects'));
 });
 after(() => {
   rmSync(TMP, { recursive: true, force: true });
@@ -82,11 +165,6 @@ const fixture = (value) => {
   writeFileSync(p, typeof value === 'string' ? value : JSON.stringify(value, null, 2));
   return p;
 };
-
-const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
-const ORG = reg.github.org;
-const privateDirOf = (s) => String(s.publicDir).replace(/_Public$/, '_Private');
-const dirOf = (s, side) => (side === 'public' ? s.publicDir : privateDirOf(s));
 
 /**
  * THE CLEAN LISTING, DERIVED. Exactly the repos the registry says the org holds,
@@ -164,6 +242,44 @@ describe('assert-github-matrix', () => {
       const r = run('--gh-fixture', join(TMP, 'no-such-file.json'));
       assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /does not exist/);
+    });
+  });
+
+  // ── THE ANCHOR SEAM. It is new, so it owes its own failing cases. ─────────
+  describe('--projects names the anchor, and cannot stand in for one', () => {
+    test('the override is PRINTED in capitals, so a log cannot miss it', () => {
+      const r = run('--offline');
+      assert.match(r.stdout, /--projects OVERRIDE IN USE/);
+      assert.match(r.stdout, /this is NOT the anchored tree/);
+    });
+
+    test('a --projects path that does not exist is REFUSED, not read as "no tree here"', () => {
+      const r = runRaw(GUARD, '--offline', '--projects', join(TMP, 'definitely-not-here'));
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /which does not exist/);
+    });
+
+    test('--projects with no path exits 2 instead of running against a guess', () => {
+      const r = runRaw(GUARD, '--projects');
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /--projects needs a directory path/);
+    });
+
+    test('🔴 the anchor walk is NOT disarmed by the flag existing', () => {
+      // Plant a copy where no ancestor holds Projects/ + nikatru/ — the shape of
+      // a CI checkout — and invoke it with NO override. It must still refuse.
+      // Without this case, adding the flag could have quietly turned the
+      // locator's refusal into a default, which is how a check becomes a skip.
+      const base = join(TMP, `noanchor-${seq++}`);
+      mkdirSync(join(base, 'tooling', 'ci'), { recursive: true });
+      mkdirSync(join(base, 'catalog'), { recursive: true });
+      const copy = join(base, 'tooling', 'ci', 'assert-github-matrix.mjs');
+      writeFileSync(copy, readFileSync(GUARD, 'utf8'));
+      writeFileSync(join(base, 'catalog', 'store-matrix.json'), readFileSync(REGISTRY, 'utf8'));
+      const r = runRaw(copy, '--offline');
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /ANCHOR NOT FOUND/);
+      assert.match(r.stderr, /Walked:/);
     });
   });
 

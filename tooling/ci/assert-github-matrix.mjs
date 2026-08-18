@@ -57,8 +57,24 @@ const NAME = 'assert-github-matrix';
 //   · it is PRINTED, in capitals, so a fixture run cannot be mistaken in a log for a real one; and
 //   · a fixture run NEVER exits 0. Not on success, not on a clean fixture, not ever. A test seam
 //     that can produce the same exit code as a passing real run is a way to fake a passing real run.
-const KNOWN = new Set(['--offline', '--help', '-h', '--gh-fixture']);
+// `--projects <dir>` names the store-tree anchor EXPLICITLY instead of walking up for the ancestor
+// holding both Projects/ and nikatru/. It is the same override assert-store-matrix.mjs already
+// carries, for the same reason and with the same safety property: it is PRINTED in capitals, and a
+// path that does not exist is REFUSED (exit 2) rather than read as "no tree here".
+// 🔴 IT CANNOT MANUFACTURE A PASS. It feeds LIMB 2 (local remotes) and the rename report only;
+// exit 0 still requires the GitHub limb to have actually RUN. Its purpose is that this guard's own
+// suite can construct its subject rather than inherit one from the developer's home directory — a
+// suite whose verdict depends on the filesystem layout of the box it ran on is not a suite, which is
+// the property the credential-scrubbing note below already claims and this flag makes true.
+const KNOWN = new Set(['--offline', '--help', '-h', '--gh-fixture', '--projects']);
 const argv = process.argv.slice(2);
+const pjIdx = argv.indexOf('--projects');
+const PROJECTS_OVERRIDE = pjIdx >= 0 && pjIdx + 1 < argv.length ? argv[pjIdx + 1] : null;
+if (pjIdx >= 0 && !PROJECTS_OVERRIDE) {
+  console.error(`${NAME}: --projects needs a directory path.`);
+  process.exit(2);
+}
+if (PROJECTS_OVERRIDE) argv.splice(pjIdx, 2);
 const fxIdx = argv.indexOf('--gh-fixture');
 const GH_FIXTURE = fxIdx >= 0 && fxIdx + 1 < argv.length ? argv[fxIdx + 1] : null;
 if (fxIdx >= 0 && !GH_FIXTURE) {
@@ -77,6 +93,7 @@ if (argv.includes('--help') || argv.includes('-h')) {
   console.log(`${NAME} — reconcile catalog/store-matrix.json against the real GitHub org (READ-ONLY).`);
   console.log('  (no flags)   full run: structure + local remotes + GitHub. Exit 0 clean, 1 findings, 2 could not look.');
   console.log('  --offline    skip the GitHub limb. ALWAYS exits non-zero (3), never mistakable for clean.');
+  console.log('  --projects <dir>  name the store-tree anchor explicitly instead of walking up for it.');
   process.exit(2); // --help is not a check having passed.
 }
 const OFFLINE = argv.includes('--offline');
@@ -106,7 +123,19 @@ function findAnchor(startDir) {
   }
 }
 
-const { root: PROJECTS, walked } = findAnchor(dirname(SELF));
+let PROJECTS = null;
+let walked = [];
+if (PROJECTS_OVERRIDE) {
+  PROJECTS = resolve(PROJECTS_OVERRIDE);
+  console.log(`!! --projects OVERRIDE IN USE: ${PROJECTS} — this is NOT the anchored tree.`);
+  if (!existsSync(PROJECTS)) {
+    die(`--projects was given ${PROJECTS}, which does not exist.`, [
+      'A wrong path is a defect, not an absence, and is refused rather than read as "no tree here".',
+    ]);
+  }
+} else {
+  ({ root: PROJECTS, walked } = findAnchor(dirname(SELF)));
+}
 if (!PROJECTS) {
   die('ANCHOR NOT FOUND — no ancestor of this file holds both Projects/ and nikatru/.', [
     'Walked:', ...walked.map((w) => '  ' + w),
