@@ -101,7 +101,7 @@
 // `<repoRoot>/company` after the default had already moved twice beneath it — an undated
 // usage line records nothing, so it is corrected rather than annotated).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -136,8 +136,19 @@ const COMPANY_CANDIDATES = [
   join(ROOT, '..', 'Project_Cross_Platform_Apps_Private'),
   join(ROOT, 'Private'),
 ];
+// 🔴 THE DISCRIMINATOR IS NON-EMPTINESS, NOT A NAMED MARKER FILE. The sibling was
+// pre-created as an EMPTY directory before the 2026-08-18 move, so `existsSync` on the
+// directory alone would have selected that shell and refused while the corpus sat one
+// directory over. A named marker (MASTER_PLAN.md, PROJECT_STATE.md) rejects the shell but
+// ALSO rejects this guard's own fixtures, which build a minimal `Private/` holding only the
+// files the case under test needs — measured: 13 cases went red that way. Non-emptiness
+// rejects the shell and accepts both the real corpus and a fixture, which is the property
+// actually wanted.
+const holdsCorpus = (d) => {
+  try { return statSync(d).isDirectory() && readdirSync(d).length > 0; } catch { return false; }
+};
 const COMPANY = resolve(
-  companyArg ?? COMPANY_CANDIDATES.find((c) => existsSync(join(c, 'MASTER_PLAN.md'))) ?? COMPANY_CANDIDATES[0],
+  companyArg ?? COMPANY_CANDIDATES.find((c) => holdsCorpus(c)) ?? COMPANY_CANDIDATES[0],
 );
 
 const REGISTER = join(ROOT, 'tooling', 'dod-register.json');

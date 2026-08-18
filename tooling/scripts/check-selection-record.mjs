@@ -125,8 +125,19 @@ const COMPANY_CANDIDATES = [
   join(ROOT, '..', 'Project_Cross_Platform_Apps_Private'),
   join(ROOT, 'Private'),
 ];
+// 🔴 THE DISCRIMINATOR IS NON-EMPTINESS, NOT A NAMED MARKER FILE. The sibling was
+// pre-created as an EMPTY directory before the 2026-08-18 move, so `existsSync` on the
+// directory alone would have selected that shell and refused while the corpus sat one
+// directory over. A named marker (MASTER_PLAN.md, PROJECT_STATE.md) rejects the shell but
+// ALSO rejects this guard's own fixtures, which build a minimal `Private/` holding only the
+// files the case under test needs — measured: 13 cases went red that way. Non-emptiness
+// rejects the shell and accepts both the real corpus and a fixture, which is the property
+// actually wanted.
+const holdsCorpus = (d) => {
+  try { return statSync(d).isDirectory() && readdirSync(d).length > 0; } catch { return false; }
+};
 const COMPANY = resolve(
-  companyArg ?? COMPANY_CANDIDATES.find((c) => existsSync(join(c, 'PROJECT_STATE.md'))) ?? COMPANY_CANDIDATES[0],
+  companyArg ?? COMPANY_CANDIDATES.find((c) => holdsCorpus(c)) ?? COMPANY_CANDIDATES[0],
 );
 
 /** Apps that predate the selection gates, exempt BY NAME. Every name here must
@@ -312,17 +323,32 @@ if (problems.length) {
 // unresolved ("no record was resolved" reads identically whether there were zero
 // links or fifty), and a run that ALSO has a missing or unparseable done-record
 // still reports both before refusing.
+// 🔴 REVERTED 2026-08-18, THE SAME DAY IT WAS WRITTEN, AND THE SUITE IS WHY.
+// An earlier pass this session made an absent corpus a REFUSAL, reasoning that a check
+// which cannot look has verified nothing. That reasoning is right about THIS MACHINE and
+// wrong about CI, and the two cases are not distinguishable by exit code alone:
+// `Private/` is gitignored, so a CI checkout and every clone NEVER have the corpus. Making
+// absence fatal turns the public lane PERMANENTLY RED on work nobody can do from a clone,
+// and this corpus already wrote down what that teaches — that red is negotiable.
+//
+// Six cases in tooling/ci/test/selection-record.test.mjs and two in dod-sync.test.mjs
+// encode the intended shape by name — "PRINTS and exits 0 — this is the CI shape, and
+// failing it would make the lane permanently red" — and they went red on the change. The
+// tests were right and the change was not. Restored: absence PRINTS, loudly, on every run.
+//
+// The gap is still stated rather than hidden, which is the property that mattered all
+// along ([pipeline C-6]). What DID legitimately change today is only WHERE the corpus is
+// looked for — the sibling — not what happens when it is not there.
 if (!COMPANY_PRESENT) {
-  coverageLost([
-    `the private corpus is not readable at ${COMPANY}, so ${unresolvable} linked selection record(s) went unresolved and no sha256 was compared.`,
-    'Everything that does not need the corpus still ran and is reported above — the domain, the exemptions, the',
-    'apps/-vs-workspace relationship, a missing or unparseable done-record. What did NOT run is the half that only',
-    'this run can do: [pipeline N-9] wants the done-record to carry a link that RESOLVES, and a guard in the public',
-    'repo can assert a STRING is present, never that it points at anything. This is the run that opens the file, and',
-    'it found no tree to open it in — so it is a REFUSAL, not a pass. Nothing else in the factory would have caught',
-    'the difference: printing ok here is exactly how the sha256 half came to be enforced by nobody once already.',
-    `Point it at the corpus with --company <dir>, or run it on a machine that has it (expected default: ${COMPANY}).`,
-  ]);
+  prints.push(
+    `THE PRIVATE TREE IS NOT IN THIS CHECKOUT (${COMPANY}), so ${unresolvable} linked selection record(s) ` +
+      'went unresolved and no sha256 was compared. Private/ is gitignored, so this is the expected state in CI ' +
+      'and in every clone. A guard in the public repo can assert a STRING is present, never that it RESOLVES. ' +
+      'Everything that does not need the private tree still ran — the domain, the exemptions, the ' +
+      'apps/-vs-workspace relationship, a missing or unparseable done-record. The hashing half is LOCAL work, ' +
+      'and it is the only run that finds out whether the gate answers on disk are the ones the record claims. ' +
+      '(2026-08-18: the corpus moved to the SIBLING repo, so the path named above is the sibling, not <repo>/Private.)',
+  );
 }
 
 // 🔴 THE `ok` LINE STATES WHAT IT ACTUALLY DID, and when that is nothing it says
