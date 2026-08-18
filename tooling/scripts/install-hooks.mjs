@@ -11,7 +11,7 @@
 //
 // TWO repos need it, because two repos take commits:
 //   ·  the public repo            (code, tooling, CI)
-//   ·  Private/                   (the spec, the ADRs and the session log — the
+//   ·  the private corpus         (the spec, the ADRs and the session log — the
 //                                  guards' actual subject; ONE repo since the
 //                                  2026-08-15 flatten merged company/ + knowledge/)
 // ⚠️ This header said THREE, naming `Private/company/` and `Private/knowledge/` (deleted
@@ -19,8 +19,16 @@
 // declared two and explained why. A comment cannot go red, so the code was right
 // and the paragraph a reader starts from was wrong. Corrected 2026-08-17.
 //
-// `Private/` is gitignored, so it is absent from every public clone and every
-// agent worktree. That is NOT a failure — see the three-state branch below.
+// 📍 2026-08-18 — THE PRIVATE CORPUS LEFT THIS TREE, AND THE REASON ITS ABSENCE IS
+// TOLERATED CHANGED WITH IT. Until today it was the gitignored subdirectory
+// `<repo>/Private`, and this paragraph said so: "gitignored, so it is absent from
+// every public clone and every agent worktree". It is now the SIBLING directory
+// `Project_Cross_Platform_Apps_Private` — OUTSIDE this repo, so gitignore has
+// nothing to do with it any more. It is simply a different repository, and a
+// public clone still does not get one. So absence is STILL not a failure and the
+// three-state branch below is unchanged in shape — but a reader who went looking
+// for the old reason would not find it, which is why the old wording is quoted
+// here rather than overwritten. The declaration that moved is `PRIVATE`, below.
 //
 // Usage:  node tooling/scripts/install-hooks.mjs           install + verify
 //         node tooling/scripts/install-hooks.mjs --check   verify only, exit 1 if not installed
@@ -43,9 +51,43 @@ const CHECK_ONLY = process.argv.includes('--check');
    corpus exists to eliminate, in the installer written that same morning to prevent
    an uninstalled hook. The `expected` flag below is the fix — a repo declared here
    and absent on disk is now a FAILURE, not a skip. */
+/* 🔴 2026-08-18 — THE PRIVATE CORPUS IS A SIBLING NOW, NOT A SUBDIRECTORY, AND THIS
+   DECLARATION IS THE MACHINE-READ VALUE THAT HAD TO MOVE WITH IT. It was
+   `join(REPO, 'Private')`. Left pointing there after the move it would have found
+   nothing, taken the absent branch below, printed n/a and exited 0 — the corpus
+   unreachable, its hooks uninstalled, and this installer reporting success. That is
+   the same vacuous pass the `expected` flag above was written to end, arriving by a
+   different road: not a repo that vanished, but a declaration that stayed put.
+
+   Resolved from REPO rather than hardcoded, so it still tracks the pair if the whole
+   tree is relocated again — the property the comment below the loop was written for.
+
+   THE hooksPath ARITHMETIC WAS COMPUTED, NOT ASSUMED. `relative(PRIVATE, HOOKS)`
+   from the sibling yields `../Project_Cross_Platform_Apps/.githooks`. The two
+   directory names share a prefix, which is exactly the shape that invites a string
+   bug, but they are two path SEGMENTS and nothing collapses into `../.githooks`;
+   checked with node before landing, and `resolve(PRIVATE, want)` returns HOOKS
+   exactly. */
+// 🔴 LOCATION-TOLERANT, AND THE MARKER PROBE IS THE POINT. The sibling directory
+// `Project_Cross_Platform_Apps_Private` ALREADY EXISTS AND IS EMPTY — pre-created before
+// the move. Selecting on the DIRECTORY would pick that empty shell today and refuse while
+// the corpus sat one directory over, which is a half-state between this edit and the move.
+// Selecting on a FILE the corpus must contain tells the shell apart from the tree, so this
+// is correct before the move and after it, with no second edit on the day.
+const PRIVATE_CANDIDATES = [
+  resolve(REPO, '..', 'Project_Cross_Platform_Apps_Private'),
+  resolve(REPO, 'Private'),
+];
+const PRIVATE =
+  PRIVATE_CANDIDATES.find((c) => existsSync(join(c, '.git'))) ?? PRIVATE_CANDIDATES[0];
+
+/* The pre-2026-08-18 location. Kept ONLY as evidence for the leftover test in the
+   absent branch below — nothing is installed into it. */
+const PRIVATE_WAS = join(REPO, 'Private');
+
 const REPOS = [
   { name: 'public repo', path: REPO, expected: true },
-  { name: 'Private', path: join(REPO, 'Private'), expected: true },
+  { name: 'private corpus', path: PRIVATE, expected: true, movedFrom: PRIVATE_WAS },
 ];
 
 function git(cwd, args) {
@@ -89,21 +131,41 @@ for (const r of REPOS) {
                                         exact case the flag was written for.
 
        Verified both ways before landing: `mv Private Private.probe` makes this
-       print n/a and exit 0; moving `Private/.git` out of the way — tree present,
+       print n/a and exit 0; moving `Private/.git` out of the way — tree present,   ← (no longer exists after the 2026-08-18 move; that is the pre-move layout, and this paragraph is left saying what was actually run on 2026-08-17 rather than re-pointed at a path the run never touched)
        repo gone — still prints RED and exits 1. (Said in prose rather than as a second `mv` with its destination spelled out: `assert-public-citations` reads every `Private/…` in the tree as a citation, and an example's invented destination is indistinguishable from a real one.) */
     if (r.expected && existsSync(r.path)) {
       console.log(`  RED  ${r.name.padEnd(20)} DIRECTORY IS HERE BUT HAS NO .git — not skipped, failed`);
       failures++;
+    } else if (r.expected && r.movedFrom && existsSync(r.movedFrom)) {
+      /* 🔴 2026-08-18 — THE ONE PLACE "MOVED AWAY" AND "NEVER CLONED" ARE TELLABLE
+         APART, so it is checked here rather than lamented in a comment. Absence by
+         itself cannot distinguish them and never could: a public clone and a
+         half-finished move both present an empty space where the corpus should be,
+         and the n/a below would call each of them fine.
+         But a move that did not finish leaves EVIDENCE — the old location still on
+         disk — and a clone never has it. Old location present AND new location
+         absent therefore means the move stalled, which is a FAILURE.
+         This does not re-break what the 2026-08-17 note below fixed: a public clone
+         has NEITHER directory, so it still falls through to n/a and still exits 0. */
+      console.log(`  RED  ${r.name.padEnd(20)} not at ${r.path}`);
+      console.log(`       — but the pre-move location is still on disk: ${r.movedFrom}`);
+      console.log('       a stalled or unstarted move, not a clean checkout. Finish the move, then re-run.');
+      failures++;
     } else if (r.expected) {
-      console.log(`  n/a  ${r.name.padEnd(20)} not in this checkout — gitignored, so absent from every clone`);
+      console.log(`  n/a  ${r.name.padEnd(20)} not in this checkout — a separate sibling repo, never cloned alongside`);
     } else {
       console.log(`  --   ${r.name.padEnd(20)} no .git here — skipped`);
     }
     continue;
   }
-  // Each repo needs a path RELATIVE TO ITSELF, because Private/ is its
+  // Each repo needs a path RELATIVE TO ITSELF, because the private corpus is its
   // own repository whose root is not this one. An absolute path would work today
   // and break the moment the tree moves — which it did, this very session.
+  // 2026-08-18: since the corpus became a sibling, that relative path no longer
+  // just climbs out of it (`../.githooks`) — it climbs out and back into a NAMED
+  // peer, so the public repo's own directory name is now part of the value stored
+  // in the corpus's git config. Rename the public repo directory and this string
+  // goes stale in a config file that lives in the other repo; re-running fixes it.
   const want = relative(r.path, HOOKS).split('\\').join('/');
   const cur = git(r.path, ['config', '--get', 'core.hooksPath']);
 

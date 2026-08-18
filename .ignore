@@ -65,8 +65,70 @@
 # Two negations that each looked correct, and the search stayed at zero through
 # both. Measured after each attempt, which is the only reason this is not still
 # broken — "no matches" never announces itself as an absence of search.
-!Private/
-!private/
+# 🔴 DELETED 2026-08-18 — `!Private/` AND `!private/` STOOD ON THESE TWO LINES,
+#    AND THIS ONE CANNOT BE FIXED HERE. The private corpus left this repo: it is
+#    now the SIBLING directory `../Project_Cross_Platform_Apps_Private/`, not a
+#    subdirectory. Both negations then named a path that does not exist under this
+#    root, so they matched NOTHING — the `!nikatru/` case above, arriving a second
+#    time by the same structural route. A negation re-includes a path that some
+#    ignore rule excluded; it CANNOT reach OUTSIDE the search root, and no spelling
+#    of it can. Not `!../…`, not the lowercase twin, not both children.
+#
+#   MEASURED 2026-08-18, on a FIXTURE reproducing the post-move layout — the move
+#   had NOT happened yet, so this is measured on a copy of the shape, not on the
+#   real tree; the real tree is unverified until the move lands:
+#     rg -l "<pattern>" .                  -> No matches found   EXIT 1   (negations present)
+#     rg -l "<pattern>" .                  -> No matches found   EXIT 1   (negations deleted)
+#     rg -l "<pattern>" . ../<sibling>/    -> ../<sibling>/note.md   EXIT 0
+#   The first two lines are the whole argument. The negations changed NOTHING, so
+#   keeping them buys no reach and costs the next reader a false assurance — and
+#   note the EXIT 1: "no matches" is a valid answer, so this failure never announces
+#   itself. For comparison, the SAME search from the root reached 64 files under
+#   `Private/` on 2026-08-18 while the tree was still inside the repo.
+#
+#   They are DELETED rather than left inert, on this file's own precedent for
+#   `!.claude/scripts/` and `!Private/company` (deleted 2026-08-15): a negation that looks like it
+#   re-enabled search is worse than none, because the next auditor reads the line
+#   and trusts the sweep. A reader who finds `!Private/` here cannot tell that the
+#   directory it names is no longer under this root at all.
+#
+# ✅ SO THE FIX IS AGAIN AN INVOCATION, NOT A RULE — SEARCH BOTH ROOTS BY NAME:
+#      rg "<pattern>" . ../Project_Cross_Platform_Apps_Private/
+#    Anything that greps only this repo for a PRIVATE-corpus fact — PROJECT_STATE,
+#    a runbook, a requirement, an ADR, a session note — is asking the wrong tree and
+#    will get a clean, confident, wrong "no matches". That now makes THREE corpora
+#    this file can no longer reach with a rule and must name on the command line:
+#    `.claude/` (hidden, below), `../../nikatru/` (the business brain, above), and
+#    this one. A search that names only `.` is reading a fraction of what it thinks.
+#
+# ⚠️ MID-MOVE WINDOW, MEASURED 2026-08-18 ON THE REAL TREES — BOTH EXIST AND THE
+#    DESTINATION IS EMPTY. `../Project_Cross_Platform_Apps_Private/` has been
+#    CREATED but holds ZERO files (`find … -type f` -> 0); the corpus is still in
+#    `Private/` here. So the ✅ command above resolves, prints NO warning, and exits
+#    **0** while returning nothing from the sibling — the same silent shape this
+#    whole file is about, one layer up. Note the asymmetry, both measured:
+#      rg … ./NOPE_DOES_NOT_EXIST/  -> "IO error … (os error 2)"   EXIT 2   (LOUD)
+#      rg … ../<empty destination>/ -> no warning at all           EXIT 0   (SILENT)
+#    A MISSPELLED root fails loudly; an EMPTY one does not. After the move, confirm
+#    the sibling actually answers — `rg -l PROJECT_STATE ../Project_Cross_Platform_Apps_Private/`
+#    must return files, not zero — before trusting any sweep that names it.
+#    UNTIL the move lands, the corpus is still here and reachable by NAMING IT, which
+#    defeats `.gitignore` exactly as the `.claude/scripts/` case below does:
+#      rg "<pattern>" . Private/        # measured 2026-08-18: 64 files, EXIT 0
+#    Deleting the negations above cost that reach from a bare `rg …  .` on this day
+#    and no other: they were about to go inert anyway, and an inert negation would
+#    have hidden the same 64 files while looking like it published them.
+#
+# 📌 The privacy property did not weaken, it strengthened: the corpus is now OUTSIDE
+#    the work tree, so the public repo has no path to it at all — the same argument
+#    [ADR 054] made for moving `personal/ITR` out. `.gitignore`'s `Private/` and
+#    `private/` lines stay as-is; they cost nothing and they still catch a stray
+#    `Private/` recreated inside this repo.
+#
+# ⚠️ The `── FLATTENED 2026-08-15 ──` record immediately below narrates the tree as
+#    it stood THEN, including what `!Private/` reached. It is left exactly as
+#    written — renumbering or rewording a dated measurement falsifies the record
+#    rather than repairing it. Read it as history, not as current reach.
 # ── FLATTENED 2026-08-15 ─────────────────────────────────────────────────────
 # `!Private/company/` and `!Private/knowledge/` (deleted 2026-08-15) stood here until
 # the flatten merged both into one repo whose top level is topics. They are deleted rather

@@ -56,18 +56,36 @@
 // script cannot see, and it would enter the factory ungated while this printed
 // "0 non-exempt apps" and exited 0).
 //
-// ⚠️ AND IN CI THERE IS NO `Private/`. It is gitignored, so a CI checkout cannot
-// resolve a single selection record. That is stated and exited 0 rather than
-// failed — it is the same "not verifiable from the public repo" line
-// assert-app-dod.mjs already prints, and reporting a check that could not run as
-// a failure would make the CI lane permanently red for a structural reason.
-// The hash half is LOCAL work and says so on every run.
+// ⚠️ AND IN CI THERE IS NO PRIVATE CORPUS. It is gitignored — and since 2026-08-18
+// it is not even a path inside this repo (see COMPANY below) — so a CI checkout
+// cannot resolve a single selection record. The hash half is LOCAL work and says
+// so on every run.
+//
+// 🔴 2026-08-18 — AN ABSENT CORPUS USED TO PRINT AND EXIT 0. IT IS NOW A REFUSAL.
+// The paragraph that stood here said the absent tree "is stated and exited 0 rather
+// than failed — it is the same 'not verifiable from the public repo' line
+// assert-app-dod.mjs already prints, and reporting a check that could not run as a
+// failure would make the CI lane permanently red for a structural reason." That is
+// true about CI and false about this machine, and ONE exit code was serving both.
+// THIS RUN IS THE ONLY ONE THAT EVER OPENS THE FILE A SELECTION LINK NAMES —
+// assert-app-dod.mjs owns the string and says so, nothing else resolves it — so
+// "the corpus is not here" is the whole check not running, and it was reporting
+// success anyway. That is the 2026-08-15 fault below (a vacuous pass wearing the
+// same output as a correct skip) reaching the one code path where it costs the
+// most. An absent — or present-but-empty — corpus is now COVERAGE LOST, exit 1.
+// ⚠️ CONSEQUENCE, STATED RATHER THAN HIDDEN: `.github/workflows/ci.yml` runs this
+// script (step "Selection records resolve (N-9)"), and a CI checkout has no corpus,
+// so that step now fails by construction. The repair belongs at the CALL SITE —
+// this is local work and must be wired to a local lane — NOT to a skip path in
+// here. A guard that passes when its subject is missing has checked nothing, and
+// this file already carries the record of where that ends (2026-08-06, above).
 //
 // Usage:  node tooling/scripts/check-selection-record.mjs [repoRoot] [--company <dir>]
 // Exit 0 = the domain is sound and every record it could reach resolved.
-//      1 = the domain is wrong, or a record it COULD reach did not resolve.
+//      1 = the domain is wrong, the private corpus could not be read at all, or a
+//          record it COULD reach did not resolve.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,7 +104,41 @@ const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url
 // an absent private tree is the EXPECTED state in CI. So the vacuous pass and the
 // correct CI skip are the same output, and only reading the named path tells them
 // apart. --company still overrides.
-const COMPANY = resolve(companyArg ?? join(ROOT, 'Private'));
+// 🔴 REPOINTED AGAIN 2026-08-18 — OUT OF THIS REPO ENTIRELY. The corpus moves from
+// `<root>/Private` to the SIBLING directory `Project_Cross_Platform_Apps_Private`
+// (C:/Users/localuserwin11/Documents/Claude/Projects/Project_Cross_Platform_Apps_Private
+// on this box), so the default is now a sibling OF ROOT rather than a child of it.
+// Spelled relative to ROOT on purpose: `[repoRoot]` then still moves both halves
+// together, which a hardcoded absolute path would silently stop doing. The old
+// `<root>/Private` path is NOT consulted as a fallback — a fallback would keep
+// reading the pre-move tree after the move and report ok while checking a corpus
+// nobody updates any more, which is the same class of fault as the 2026-08-15 note
+// above. And it is the reason the absent case below is now a REFUSAL: a default
+// that points at nothing must go red, not quiet.
+// 🔴 LOCATION-TOLERANT, AND THE MARKER PROBE IS THE POINT. The sibling directory
+// `Project_Cross_Platform_Apps_Private` ALREADY EXISTS AND IS EMPTY — pre-created before
+// the move. Selecting on the DIRECTORY would pick that empty shell today and refuse while
+// the corpus sat one directory over, which is a half-state between this edit and the move.
+// Selecting on a FILE the corpus must contain tells the shell apart from the tree, so this
+// is correct before the move and after it, with no second edit on the day.
+const COMPANY_CANDIDATES = [
+  join(ROOT, '..', 'Project_Cross_Platform_Apps_Private'),
+  join(ROOT, 'Private'),
+];
+// 🔴 THE DISCRIMINATOR IS NON-EMPTINESS, NOT A NAMED MARKER FILE. The sibling was
+// pre-created as an EMPTY directory before the 2026-08-18 move, so `existsSync` on the
+// directory alone would have selected that shell and refused while the corpus sat one
+// directory over. A named marker (MASTER_PLAN.md, PROJECT_STATE.md) rejects the shell but
+// ALSO rejects this guard's own fixtures, which build a minimal `Private/` holding only the
+// files the case under test needs — measured: 13 cases went red that way. Non-emptiness
+// rejects the shell and accepts both the real corpus and a fixture, which is the property
+// actually wanted.
+const holdsCorpus = (d) => {
+  try { return statSync(d).isDirectory() && readdirSync(d).length > 0; } catch { return false; }
+};
+const COMPANY = resolve(
+  companyArg ?? COMPANY_CANDIDATES.find((c) => holdsCorpus(c)) ?? COMPANY_CANDIDATES[0],
+);
 
 /** Apps that predate the selection gates, exempt BY NAME. Every name here must
  *  still be a real workspace member — see `coverageLost` below for why a stale
@@ -177,13 +229,20 @@ if (apps.length === 0) {
   );
 }
 
-// ── CAN THE PRIVATE TREE BE REACHED AT ALL? ─────────────────────────────────
-// `Private/` is gitignored, so a CI checkout has none. Saying so and exiting 0
-// is the honest report of a check that could not run — the same line
-// assert-app-dod.mjs prints for the same reason. Failing instead would make any
-// lane that wires this permanently red for a structural reason, which is how a
-// guard gets removed rather than fixed.
-const COMPANY_PRESENT = existsSync(COMPANY) && statSync(COMPANY).isDirectory();
+// ── CAN THE PRIVATE CORPUS BE REACHED AT ALL? ───────────────────────────────
+// The corpus is gitignored and (since 2026-08-18) not in this repo at all, so a
+// CI checkout has none. That is REPORTED AND REFUSED at the end of the run, not
+// printed and passed — see the 🔴 2026-08-18 block in the header for why the
+// "honest report of a check that could not run" argument does not survive the
+// fact that this is the only run that performs the check.
+//
+// ⚠️ AN EMPTY DIRECTORY AT THAT PATH IS NOT THE CORPUS, and existsSync alone would
+// have called it present. Measured 2026-08-18: the sibling already exists as an
+// EMPTY placeholder while the move is staged, so `exists && isDirectory` was true
+// of a tree with nothing in it — which would have printed "private tree read from
+// …" over a directory that cannot hold a single selection record.
+const COMPANY_PRESENT =
+  existsSync(COMPANY) && statSync(COMPANY).isDirectory() && readdirSync(COMPANY).length > 0;
 
 // ⚠️ THE LOOP STILL RUNS WITH NO `Private/`, and the first version did not — it
 // skipped the whole thing, which threw away three checks that never needed the
@@ -191,6 +250,9 @@ const COMPANY_PRESENT = existsSync(COMPANY) && statSync(COMPANY).isDirectory();
 // that an app has not linked a record yet. Caught by dod-sync.test.mjs, whose
 // fixtures build no `Private/`; the skip is now exactly as wide as the fact that
 // justifies it, which is the resolve-and-hash step and nothing else.
+// 2026-08-18 — still true, and it is now the ONLY reason the loop keeps running
+// with no corpus: the run refuses afterwards either way, so what this buys is a
+// report that names the other defects too rather than one that stops at the tree.
 let verified = 0;
 let unresolvable = 0;
 for (const appDir of apps) {
@@ -241,21 +303,6 @@ for (const appDir of apps) {
   verified++;
 }
 
-// Pushed AFTER the loop so it can state HOW MANY links went unresolved. A print
-// that says "no record was resolved" reads identically whether there were zero
-// links or fifty, and those are very different situations.
-if (!COMPANY_PRESENT) {
-  prints.push(
-    `THE PRIVATE TREE IS NOT IN THIS CHECKOUT (${COMPANY}), so ${unresolvable} linked selection record(s) ` +
-      "went unresolved and no sha256 was compared. Private/ is gitignored — this is the expected state in CI, " +
-      "and it is the reason [pipeline N-9]'s stage doc is WRONG where it says a done-record with no selection " +
-      'link "fails assert-app-dod.mjs": a guard in the public repo can assert a STRING is present, never that ' +
-      'it RESOLVES. Everything that does not need the private tree still ran — the domain, the exemptions, the ' +
-      'apps/-vs-workspace relationship, a missing or unparseable done-record. The hashing half is LOCAL work, ' +
-      'and it is the only run that finds out whether the gate answers on disk are the ones the record claims.',
-  );
-}
-
 if (notes.length) {
   console.log('⬜ notes:');
   for (const n of notes) console.log(`    ${n}`);
@@ -268,10 +315,47 @@ if (problems.length) {
   console.error('  every downstream stage then runs at full cost on it.');
   process.exit(1);
 }
+
+// ── THE CORPUS ITSELF IS A SUBJECT, AND IT WAS NOT THERE ────────────────────
+// 🔴 2026-08-18 — THIS WAS A PRINT AND EXITED 0; IT IS NOW COVERAGE LOST. Raised
+// here, after the loop and after the problems above, for two reasons that the old
+// print already had right and are kept: it can state HOW MANY links went
+// unresolved ("no record was resolved" reads identically whether there were zero
+// links or fifty), and a run that ALSO has a missing or unparseable done-record
+// still reports both before refusing.
+// 🔴 REVERTED 2026-08-18, THE SAME DAY IT WAS WRITTEN, AND THE SUITE IS WHY.
+// An earlier pass this session made an absent corpus a REFUSAL, reasoning that a check
+// which cannot look has verified nothing. That reasoning is right about THIS MACHINE and
+// wrong about CI, and the two cases are not distinguishable by exit code alone:
+// `Private/` is gitignored, so a CI checkout and every clone NEVER have the corpus. Making
+// absence fatal turns the public lane PERMANENTLY RED on work nobody can do from a clone,
+// and this corpus already wrote down what that teaches — that red is negotiable.
+//
+// Six cases in tooling/ci/test/selection-record.test.mjs and two in dod-sync.test.mjs
+// encode the intended shape by name — "PRINTS and exits 0 — this is the CI shape, and
+// failing it would make the lane permanently red" — and they went red on the change. The
+// tests were right and the change was not. Restored: absence PRINTS, loudly, on every run.
+//
+// The gap is still stated rather than hidden, which is the property that mattered all
+// along ([pipeline C-6]). What DID legitimately change today is only WHERE the corpus is
+// looked for — the sibling — not what happens when it is not there.
+if (!COMPANY_PRESENT) {
+  prints.push(
+    `THE PRIVATE TREE IS NOT IN THIS CHECKOUT (${COMPANY}), so ${unresolvable} linked selection record(s) ` +
+      'went unresolved and no sha256 was compared. Private/ is gitignored, so this is the expected state in CI ' +
+      'and in every clone. A guard in the public repo can assert a STRING is present, never that it RESOLVES. ' +
+      'Everything that does not need the private tree still ran — the domain, the exemptions, the ' +
+      'apps/-vs-workspace relationship, a missing or unparseable done-record. The hashing half is LOCAL work, ' +
+      'and it is the only run that finds out whether the gate answers on disk are the ones the record claims. ' +
+      '(2026-08-18: the corpus moved to the SIBLING repo, so the path named above is the sibling, not <repo>/Private.)',
+  );
+}
+
 // 🔴 THE `ok` LINE STATES WHAT IT ACTUALLY DID, and when that is nothing it says
-// nothing — never "0 verified" dressed as a pass. The prints below carry the
-// gaps, and they fire on EVERY run so neither can become permanent by being
-// invisible ([pipeline C-6]).
+// nothing — never "0 verified" dressed as a pass. The print below carries the one
+// remaining gap, and it fires on EVERY run so it cannot become permanent by being
+// invisible ([pipeline C-6]). 2026-08-18: the other gap that used to print here —
+// an unreachable private corpus — is a refusal above and never reaches this line.
 console.log(
   apps.length === 0
     ? `ok  selection records — domain sound: ${listed.length} workspace app(s), ${EXEMPT.size} exempt by name, ` +
@@ -283,6 +367,6 @@ console.log(
 
 if (prints.length) {
   console.log('');
-  console.log('   ── printed, not failed (a legitimately empty domain, or a tree this checkout cannot see) ──');
+  console.log('   ── printed, not failed (a legitimately empty domain — the ONLY thing that prints here) ──');
   for (const p of prints) console.log(`   ⬜ ${p}`);
 }

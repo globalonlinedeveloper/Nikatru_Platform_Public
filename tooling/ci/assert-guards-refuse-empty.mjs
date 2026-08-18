@@ -190,14 +190,18 @@ const VACUOUS = new Map([
     'tooling/ci/assert-runner-budget.mjs',
     '2026-08-17 — the owner-gated half of the runner-budget check. With no billing token in the environment it prints `runner budget UNREAD` and exits 0 by design, because failing the build on a credential only the owner can supply blocks every unrelated change. The gap is PRINTED on every run, which is the repo\'s stated shape for an owner-gated capability, and it is the reason this entry is not a defect.',
   ],
-  [
-    'tooling/scripts/assert-public-citations.mjs',
-    '2026-08-17 — resolves citations from the public tree INTO the private corpus. A checkout without that corpus has no subject at all, and it prints `NOT APPLICABLE: no private requirements on disk` and exits 0 rather than reporting 1213 clean files it never checked. Its own floor still fires when the corpus is present and the tracked set collapses.',
-  ],
-  [
-    'tooling/scripts/spec-guards.mjs',
-    '2026-08-17 — the git-hook runner for the spec guards, all of whose subjects are in the private corpus. Absent it, it prints `NOT APPLICABLE` naming each of the seven guards it did not run, and exits 0. It is a runner, and its own coverage question belongs to the seven.',
-  ],
+  // 🔴 TWO ENTRIES WERE REMOVED HERE ON 2026-08-18, AND THIS GUARD IS WHY.
+  // `tooling/scripts/assert-public-citations.mjs` and `tooling/scripts/spec-guards.mjs`
+  // were both waived on 2026-08-17 for printing `NOT APPLICABLE` and exiting 0 when the
+  // private corpus was absent. The corpus moved out of this repo to a sibling that day,
+  // and both were rewritten to REFUSE (exit 2) naming every root they searched, because a
+  // runner that cannot find its whole subject and exits 0 is the vacuous pass this file
+  // exists to catch — it would have silently disarmed all seven spec guards.
+  //
+  // This guard caught the stale waivers on the first CI run after that change, with the
+  // right verdict: "That is good news and a stale exemption". A waiver describing
+  // behaviour a file no longer has is a lie that reads as diligence, so the entries are
+  // DELETED rather than reworded. Recoverable from this file's history.
 ]);
 
 /** Executables where RUNNING is itself the problem. Not "coverage does not

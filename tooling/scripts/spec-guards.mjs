@@ -55,9 +55,45 @@
 // uses for LIBRARY / MUTATES / NEEDS-CI: the skip is DERIVED from a mechanism and
 // PRINTED every run. A silent skip would be the defect; a declared one is a fact.
 //
-// EXIT CODES:  0 = every applicable guard passed (or none applied — printed)
+// 🔴 2026-08-18 — THE CORPUS MOVED OUT OF THIS REPO, AND THAT TURNED THE PARAGRAPH
+// ABOVE INTO A LOADED GUN. `Private/` is becoming the SIBLING directory
+// `../Project_Cross_Platform_Apps_Private`. The locator asked exactly one question —
+// is there a `Private/` DIRECTORY under a candidate root — so on the day of the move
+// the answer flips to no, all seven guards are declared NOT APPLICABLE by name, and
+// the runner exits 0. Every printed word of that is true and the conclusion is
+// still false: the subject did not cease to exist, it moved, and the mechanism the
+// skip was DERIVED from had quietly stopped modelling reality. That is the failure
+// mode this repo keeps re-finding under a new coat — "a check that silently stopped
+// checking" — and being printed does not save it, because what gets printed is a
+// confident sentence about an absence that is not real.
+//
+// SO TWO THINGS CHANGED HERE, AND ONLY THE SECOND IS A REVERSAL:
+//   1. The corpus is now located by its own candidate list, sibling FIRST, and a
+//      candidate only counts if it CONTAINS `requirements/` — see PRIVATE_ROOT
+//      below for why the marker is load-bearing rather than belt-and-braces.
+//   2. 🔴 CORPUS-NOT-FOUND NOW EXITS 2 INSTEAD OF 0. A runner that cannot find its
+//      subject has checked nothing, and nothing is not a pass. It now names every
+//      root it searched, which is the output that would have made the 2026-08-17
+//      diagnosis take minutes instead of a session.
+//
+// ⚠️ THE 2026-08-17 CLONE PROBLEM IS REAL AND THIS RE-OPENS IT — SAID OUT LOUD
+// RATHER THAN DISCOVERED LATER. A public clone has no corpus, so it now takes exit 2
+// and `.githooks/pre-commit` refuses the commit, which is precisely the breakage the
+// 2026-08-17 entry above records fixing. The judgement is that the two cases are not
+// symmetrical and were only ever conflated because one cheap test happened to answer
+// both: "this checkout never had the corpus" is a property of the CHECKOUT and
+// belongs to whatever decides that a hook should be installed at all, whereas "the
+// corpus is not where I look" is a property of THIS FILE and is the one thing it
+// must never answer with silence. Putting the clone escape back HERE would restore a
+// skip path that a future move re-arms exactly as this one did. It is left to the
+// installer on purpose; until that lands, a clone runs the hook and is refused.
+// ⚠️ Unfixed as of this dated line, and named so it is not mistaken for handled.
+//
+// EXIT CODES:  0 = every applicable guard passed
 //              1 = a guard reported a finding
-//              2 = could not run (the corpus IS present and a guard is missing)
+//              2 = could not run — either the corpus could not be located at all,
+//                  or it IS present and a guard inside it is missing. Both are
+//                  refusals: neither one checked the thing it claims to check.
 //
 // Usage:  node tooling/scripts/spec-guards.mjs --fast
 //         node tooling/scripts/spec-guards.mjs --full
@@ -65,7 +101,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { resolve, dirname, join } from 'node:path';
+import { resolve, dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -88,8 +124,46 @@ const CANDIDATE_ROOTS = [
   resolve(REPO, '..'),                   // one level — where `Private/` sits since the flatten
 ];
 
+/* WHERE THE PRIVATE CORPUS ITSELF LIVES — its own list, ordered newest-first, because
+   after 2026-08-18 the corpus is no longer a `Private/` child of anything. It is a
+   SIBLING of this repo, so the old "root + 'Private'" shape cannot express it: there
+   is no parent directory whose child is the corpus and whose other child is a root we
+   already search. Kept as a list rather than a constant so the pre-move layouts still
+   resolve — this file has to be correct on both sides of the move, and it is the same
+   file that runs during it. */
+const PRIVATE_ROOT_CANDIDATES = [
+  resolve(REPO, '..', `${basename(REPO)}_Private`),  // 🔴 2026-08-18: the sibling, and the answer from here on
+  resolve(REPO, 'Private'),               // pre-move: the corpus nested inside this repo
+  resolve(REPO, '..', 'Private'),         // the flatten-era one-level-up layout
+  resolve(REPO, '..', '..', 'Private'),   // the pre-flatten depth, same two levels as CANDIDATE_ROOTS
+  REPO,                                   // invoked from the corpus's OWN hook, where it IS the repo root
+];
+
+/* 🔴 THE MARKER IS LOAD-BEARING, NOT A BELT-AND-BRACES EXISTENCE CHECK, AND THIS WAS
+   MEASURED ON 2026-08-18 RATHER THAN REASONED ABOUT. On that date the sibling
+   `../Project_Cross_Platform_Apps_Private` ALREADY EXISTED ON DISK AND WAS EMPTY —
+   the move had been staged and not performed. A bare `existsSync` on the sibling
+   therefore selects it, every guard under it is then "not found", and the run dies at
+   the coverage floor with a message blaming missing guards while the real corpus sits
+   untouched one directory over. Refusing for the wrong reason is better than passing,
+   but it is still a wrong answer, and it costs whoever reads it the same hour.
+   `requirements/` is the marker because it is the corpus's spine: five of the seven
+   guards below are files INSIDE it, and `check-dod-sync` reads
+   `requirements/definition-of-done.md`. It also cleanly separates the corpus from
+   this repo — the public tree has no top-level `requirements/`, verified on the day —
+   which is what makes the last candidate above (REPO itself) safe to list. */
+const CORPUS_MARKER = 'requirements';
+const PRIVATE_ROOT = PRIVATE_ROOT_CANDIDATES.find(
+  (root) => existsSync(root) && existsSync(join(root, CORPUS_MARKER))
+) ?? null;
+
+/* Guards resolve against the corpus FIRST and the public repo second. Two of the
+   seven live in the public tree and read the corpus; the other five live inside it.
+   Trying both keeps that split out of the call sites, and keeps the old `Private/…`
+   spellings in the fallback chains working from either invocation root. */
 function locate(...relCandidates) {
-  for (const root of CANDIDATE_ROOTS) {
+  const roots = PRIVATE_ROOT ? [PRIVATE_ROOT, ...CANDIDATE_ROOTS] : CANDIDATE_ROOTS;
+  for (const root of roots) {
     for (const rel of relCandidates) {
       const p = join(root, rel);
       if (existsSync(p)) return p;
@@ -97,12 +171,6 @@ function locate(...relCandidates) {
   }
   return null;
 }
-
-/* IS THE PRIVATE CORPUS PRESENT AT ALL? This is the whole (a)-vs-(b) test from the
-   header, and it is deliberately a DIRECTORY check rather than a guard-file check:
-   a `Private/` that exists but has lost a guard is defect (a) and must still
-   refuse. `locate` is reused so the answer holds from either invocation root. */
-const PRIVATE_ROOT = locate('Private');
 
 /* 🔴 THREE GUARDS WERE REMOVED FROM THIS ARRAY ON 2026-08-15, NOT LEFT TO FAIL.
    `assert-status-honest`, `assert-req-ids` and `assert-enforcers-exist` all read
@@ -147,7 +215,7 @@ const GUARDS = [
     rel: ['tooling/scripts/check-dod-sync.mjs'],
     what: 'the DoD page, the register and MASTER_PLAN §4 agree' },
   { name: 'assert-spec', speed: 'fast', needsPrivate: true,
-    rel: ['Private/requirements/tooling/assert-spec.mjs', 'Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],  // fallback chain — `locate` takes the FIRST that exists, so only one candidate need resolve; the middle entry names the pre-flatten layout (retired 2026-08-16, when spec/ dissolved into requirements/) and is kept on purpose. Same shape as the four entries below it.
+    rel: ['requirements/tooling/assert-spec.mjs', 'Private/requirements/tooling/assert-spec.mjs', 'Private/spec/tooling/assert-spec.mjs', 'tooling/assert-spec.mjs'],  // fallback chain — `locate` takes the FIRST that exists, so only one candidate need resolve. 🔴 2026-08-18: the LEADING entry is now corpus-RELATIVE, which is what survives the move — `locate` joins it onto PRIVATE_ROOT, so it resolves to `Private/requirements/…` before the move and `..._Private/requirements/…` after it, with no second edit on the day. The `Private/…` spelling is demoted to a fallback rather than deleted because it is still how the path resolves from the OTHER candidate roots. The `spec/` entry names the pre-flatten layout (retired 2026-08-16, when spec/ dissolved into requirements/) and is kept on purpose. Same shape as the four entries below it.
     what: 'the JSON spec is schema-valid, id-unique, origin-locked, and every enforcer it names exists' },
   /* ADDED 2026-08-15 with the flatten. `Private/README.md` is the index the
      flatten exists to deliver, and an index is a hand-kept second copy of the
@@ -156,7 +224,7 @@ const GUARDS = [
      at `../knowledge/decisions/`, a directory that had not existed for days.
      Prose cannot announce its own staleness, so the index is asserted instead. */
   { name: 'assert-index-complete', speed: 'fast', needsPrivate: true,
-    rel: ['Private/requirements/tooling/assert-index-complete.mjs', 'Private/spec/tooling/assert-index-complete.mjs', 'tooling/assert-index-complete.mjs'],  // same fallback chain (retired 2026-08-16 layout in the middle slot) — see the assert-spec entry above
+    rel: ['requirements/tooling/assert-index-complete.mjs', 'Private/requirements/tooling/assert-index-complete.mjs', 'Private/spec/tooling/assert-index-complete.mjs', 'tooling/assert-index-complete.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
     what: 'Private/README.md names every directory and every navigable file, and its links resolve' },
   /* ADDED 2026-08-16 with the streamline. `assert-index-complete` deliberately
      does NOT enumerate `research/` — 51 filenames in the corpus index would bury
@@ -166,7 +234,7 @@ const GUARDS = [
      that path stopped existing. So the directory gets its own register and its
      own guard, at its own depth. Same doctrine, one level down. */
   { name: 'assert-research-archive', speed: 'fast', needsPrivate: true,
-    rel: ['Private/requirements/tooling/assert-research-archive.mjs', 'Private/spec/tooling/assert-research-archive.mjs', 'tooling/assert-research-archive.mjs'],  // same fallback chain (retired 2026-08-16 layout in the middle slot) — see the assert-spec entry above
+    rel: ['requirements/tooling/assert-research-archive.mjs', 'Private/requirements/tooling/assert-research-archive.mjs', 'Private/spec/tooling/assert-research-archive.mjs', 'tooling/assert-research-archive.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
     what: 'research/index.json, the files on disk and research/README.md are in bijection, and no successor pointer dangles' },
   /* ADDED 2026-08-16 with the decisions/ streamline. The ADR set had ONE property
      nothing could check and nothing structurally could: whether a cited number is
@@ -180,7 +248,7 @@ const GUARDS = [
      finished spec, which must not be restructured — so what this ratchets is the
      NEXT one: an ADR cited before it lands fails the commit that writes it. */
   { name: 'assert-adr-citations', speed: 'fast', needsPrivate: true,
-    rel: ['Private/requirements/tooling/assert-adr-citations.mjs', 'Private/spec/tooling/assert-adr-citations.mjs', 'tooling/assert-adr-citations.mjs'],  // same fallback chain (retired 2026-08-16 layout in the middle slot) — see the assert-spec entry above
+    rel: ['requirements/tooling/assert-adr-citations.mjs', 'Private/requirements/tooling/assert-adr-citations.mjs', 'Private/spec/tooling/assert-adr-citations.mjs', 'tooling/assert-adr-citations.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
     what: 'decisions/index.json matches the ADRs on disk, and every `ADR NNN` under Private/ resolves' },
   /* ADDED 2026-08-17 with the session-log index. `session-notes.md` is 11k lines
      and 149 entries, APPEND-ONLY and correct that way — the log is the durable
@@ -215,26 +283,45 @@ const GUARDS = [
     rel: ['tooling/scripts/assert-public-citations.mjs'],
     what: 'every `Private/` path and every `[pipeline]` requirement id cited in the PUBLIC tree resolves' },
   { name: 'assert-session-index', speed: 'fast', needsPrivate: true,
-    rel: ['Private/requirements/tooling/assert-session-index.mjs', 'Private/spec/tooling/assert-session-index.mjs', 'tooling/assert-session-index.mjs'],  // same fallback chain (retired 2026-08-16 layout in the middle slot) — see the assert-spec entry above
+    rel: ['requirements/tooling/assert-session-index.mjs', 'Private/requirements/tooling/assert-session-index.mjs', 'Private/spec/tooling/assert-session-index.mjs', 'tooling/assert-session-index.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
     what: 'every `## ` entry in session-notes.md has an index row, every row resolves, and the titles are byte-identical' },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');
 
-/* 🔴 CASE (b) FROM THE HEADER — NO PRIVATE CORPUS ON DISK, SO NO SUBJECT EXISTS.
-   Print every guard being skipped, by name, with the reason derived from the
-   missing directory rather than from a hand-kept list. Then get out of the way:
-   a public clone must be able to commit, and refusing here made the repository
-   unusable by the audience it is published for. */
-const inapplicable = PRIVATE_ROOT ? [] : selected.filter((g) => g.needsPrivate);
-if (inapplicable.length === selected.length) {
-  console.log(`\n  NOT APPLICABLE — no \`Private/\` on disk, so all ${selected.length} spec guard(s) have no subject:`);
-  for (const g of inapplicable) console.log(`    --   ${g.name.padEnd(24)} ${g.what}`);
-  console.log('  This checkout is a clone without the private corpus. Nothing was checked, and that is');
-  console.log('  said out loud rather than reported as a pass. The public guards are CI\'s job, not this');
-  console.log("  hook's — `.github/workflows/ci.yml` is the gate for everything in the public tree.\n");
-  process.exit(0);
+/* 🔴 CORPUS NOT LOCATED — REFUSE. Changed 2026-08-18 from exit 0; the header carries
+   the reasoning and the cost. This branch used to be "case (b)" and printed NOT
+   APPLICABLE over the whole set. The distinction it rested on — corpus absent BY
+   DESIGN versus a guard gone missing — was sound, but it inferred "absent by design"
+   from "not at the one path I know", and those are the same observation whenever the
+   corpus MOVES. A locator is not a witness to absence. It only ever reports its own
+   reach, so the honest output is the reach itself: every root tried, spelled out
+   absolutely, so the reader can see at a glance whether the list is wrong or the
+   corpus is genuinely gone. Nothing downstream of here can run, so this is terminal
+   rather than a skip — there is no partial answer to give. */
+if (!PRIVATE_ROOT) {
+  console.error(`\n  CANNOT RUN — the private corpus was not found, so all ${selected.length} spec guard(s) have no subject.`);
+  console.error(`  Searched ${PRIVATE_ROOT_CANDIDATES.length} root(s), each required to contain \`${CORPUS_MARKER}/\`:`);
+  for (const root of PRIVATE_ROOT_CANDIDATES) {
+    const mark = existsSync(root) ? `exists, but no \`${CORPUS_MARKER}/\` inside` : 'no such directory';
+    console.error(`    --   ${root}`);
+    console.error(`         ${mark}`);
+  }
+  console.error('  These guard(s) were therefore not run:');
+  for (const g of selected) console.error(`    --   ${g.name.padEnd(24)} ${g.what}`);
+  console.error('  A runner that cannot find its subject has checked nothing, and nothing is not a pass.');
+  console.error('  If the corpus moved, add its new home to PRIVATE_ROOT_CANDIDATES in this file — that');
+  console.error('  list is the single place this runner learns where the corpus lives.\n');
+  process.exit(2);
 }
+
+/* Per-guard NOT APPLICABLE survives, and ONLY at this granularity: a guard whose own
+   subject is legitimately absent while the corpus is present. Every entry today sets
+   `needsPrivate: true` and the corpus is present by the time we reach this line, so
+   the list is empty on every current run — it is the seam for a future guard with an
+   optional subject, not a live skip path. The whole-corpus case above can no longer
+   reach it, which is the entire point of the 2026-08-18 change. */
+const inapplicable = [];
 
 /* 🔴 COVERAGE FLOOR — CASE (a). The corpus IS here (or some guards do not need it),
    so a guard that cannot be found is a real defect. A hook that resolves zero
@@ -247,11 +334,18 @@ const missing = resolved.filter((g) => !g.path);
 if (missing.length) {
   console.error(`\n  CANNOT RUN — ${missing.length} of ${applicable.length} spec guard(s) not found:`);
   for (const m of missing) console.error(`    ${m.name}   looked for: ${m.rel.join(' , ')}`);
+  // Print the corpus root that WAS located (added 2026-08-18). Without it this
+  // message is ambiguous in exactly the way that costs an hour: "guard not found"
+  // reads as a deleted guard when the real cause can be a corpus root resolved one
+  // directory off, which is a live risk for as long as two plausible roots exist.
+  console.error(`  Corpus root in use: ${PRIVATE_ROOT}`);
+  console.error(`  Also searched, relative to: ${CANDIDATE_ROOTS.join(' , ')}`);
   console.error('  A hook that cannot find its guards has checked nothing. Refusing rather than passing.\n');
   process.exit(2);
 }
 if (inapplicable.length) {
-  console.log(`\n  ${inapplicable.length} guard(s) skipped — no \`Private/\` on disk, so they have no subject:`);
+  console.log(`\n  ${inapplicable.length} guard(s) skipped — the corpus is present at ${PRIVATE_ROOT},`);
+  console.log('  but these have no subject of their own inside it:');
   for (const g of inapplicable) console.log(`    --   ${g.name}`);
 }
 
