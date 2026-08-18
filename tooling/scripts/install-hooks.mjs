@@ -30,12 +30,23 @@
 // for the old reason would not find it, which is why the old wording is quoted
 // here rather than overwritten. The declaration that moved is `PRIVATE`, below.
 //
+// 📍 2026-08-18, LATER THE SAME DAY — AND THEN THE WHOLE TREE WAS REORGANISED INTO
+// Store × Platform × Type. This repo now sits THREE LEVELS DEEPER
+// (`Projects/Google_Store/Google_Play_Store/Google_Play_Store_Apps/…_Public`) and both it
+// and its corpus were RENAMED along the way (`…_Cross_Platform_Android_Apps_Public` and
+// `…_Cross_Platform_Android_Apps_Private`). The paragraph above still describes the SHAPE
+// correctly — sibling corpus, three-state branch, absence tolerated — so it stands as the
+// dated record of the morning; but every path written in it is stale by three levels, and
+// that is TWICE IN ONE DAY that a path derived by counting `..` went wrong. What changed
+// underneath it is HOW the corpus is found: by ANCHORING on the workspace root rather than
+// counting levels from here. The reasoning is in the block above `PRIVATE`, below.
+//
 // Usage:  node tooling/scripts/install-hooks.mjs           install + verify
 //         node tooling/scripts/install-hooks.mjs --check   verify only, exit 1 if not installed
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
-import { resolve, dirname, join, relative } from 'node:path';
+import { existsSync, statSync, readdirSync } from 'node:fs';
+import { resolve, dirname, basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -68,22 +79,89 @@ const CHECK_ONLY = process.argv.includes('--check');
    bug, but they are two path SEGMENTS and nothing collapses into `../.githooks`;
    checked with node before landing, and `resolve(PRIVATE, want)` returns HOOKS
    exactly. */
-// 🔴 LOCATION-TOLERANT, AND THE MARKER PROBE IS THE POINT. The sibling directory
-// `Project_Cross_Platform_Apps_Private` ALREADY EXISTS AND IS EMPTY — pre-created before
-// the move. Selecting on the DIRECTORY would pick that empty shell today and refuse while
-// the corpus sat one directory over, which is a half-state between this edit and the move.
-// Selecting on a FILE the corpus must contain tells the shell apart from the tree, so this
-// is correct before the move and after it, with no second edit on the day.
-const PRIVATE_CANDIDATES = [
-  resolve(REPO, '..', 'Project_Cross_Platform_Apps_Private'),
-  resolve(REPO, 'Private'),
-];
-const PRIVATE =
-  PRIVATE_CANDIDATES.find((c) => existsSync(join(c, '.git'))) ?? PRIVATE_CANDIDATES[0];
+/* 🔴 2026-08-18, SECOND MOVE OF THE DAY — LEVEL-COUNTING IS THE BUG, NOT THE DEPTH.
+   This declaration was `resolve(REPO, '..', 'Project_Cross_Platform_Apps_Private')`,
+   correct from this morning's move until this afternoon's reorg and wrong after it. A
+   third `..` would buy one more afternoon: ~20 more repos are coming at VARYING depths,
+   and any fixed level count is wrong again the moment one of them is nested differently.
+   So nothing below counts levels. It ANCHORS.
 
-/* The pre-2026-08-18 location. Kept ONLY as evidence for the leftover test in the
-   absent branch below — nothing is installed into it. */
-const PRIVATE_WAS = join(REPO, 'Private');
+   THE ANCHOR IS THE WORKSPACE ROOT: walk UP from this file until a directory holds BOTH
+   `Projects/` and `nikatru/` — the products root and the shared business brain. Neither
+   the depth nor the absolute path is written down anywhere here; that is the whole point.
+   Nest this repo ten levels deeper and the walk takes ten more steps and still lands.
+
+   IT IS NOT DECORATION, AND IT IS NOT USED TO BUILD THE CORPUS PATH — the corpus is this
+   repo's SIBLING, so `dirname(REPO)` locates that. What the anchor buys is a TRUSTWORTHY
+   ABSENT BRANCH, which is the thing this script has never had. Two states have looked
+   identical from in here all day:
+     anchor found, sibling absent   →  the corpus is not in this workspace. n/a, exit 0 —
+                                       a public clone, the 2026-08-17 contributor fix intact.
+     no anchor at all               →  this script does not know where it is. REFUSE (exit
+                                       2), naming every directory walked.
+   Treating the second as the first is precisely the vacuous pass this file is about: a
+   wrong private path finds nothing, installs nothing, and reports success. There is no
+   fallback and no default — a fallback here IS a guess, and a level count is a guess that
+   has now been wrong twice in eight hours. */
+const ANCHOR_MARKERS = ['Projects', 'nikatru'];
+function findWorkspaceAnchor(from) {
+  const walked = [];
+  let dir = from;
+  for (;;) {
+    walked.push(dir);
+    const holds = (n) => { try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } };
+    if (ANCHOR_MARKERS.every(holds)) return { anchor: dir, walked };
+    const up = dirname(dir);
+    if (up === dir) return { anchor: null, walked };   // filesystem root — stop, never wrap
+    dir = up;
+  }
+}
+const { anchor: ANCHOR, walked: WALKED } = findWorkspaceAnchor(HERE);
+if (!ANCHOR) {
+  console.error(`\n  CANNOT RUN — no workspace root above ${HERE}.`);
+  console.error(`  Looked for ONE directory holding BOTH ${ANCHOR_MARKERS.map((m) => `${m}/`).join(' and ')}.`);
+  console.error('  Walked, in order, and none of these qualified:');
+  for (const d of WALKED) console.error(`    ${d}`);
+  console.error('  Refusing rather than guessing: an unanchored private path installs nothing and reports success.\n');
+  process.exit(2);
+}
+
+/* The corpus is this repo's SIBLING and is NAMED after it — `…_Public` → `…_Private`,
+   or `_Private` appended when there is no `_Public` suffix to swap. Derived from the
+   directory name rather than spelled out, so today's rename (`Project_Cross_Platform_Apps`
+   → `Project_Cross_Platform_Android_Apps_Public`) needed no edit here and the next one
+   will not either. */
+const REPO_DIR = basename(REPO);
+const PRIVATE_NAME = REPO_DIR.endsWith('_Public')
+  ? `${REPO_DIR.slice(0, -'_Public'.length)}_Private`
+  : `${REPO_DIR}_Private`;
+const PRIVATE = join(dirname(REPO), PRIVATE_NAME);
+
+/* 🔴 THE EMPTY-SHELL TRAP IS STILL LIVE AND IT GOT ELEVEN TIMES BIGGER TODAY. The note
+   here used to read: "The sibling directory `Project_Cross_Platform_Apps_Private` ALREADY
+   EXISTS AND IS EMPTY — pre-created before the move. Selecting on the DIRECTORY would pick
+   that empty shell today and refuse while the corpus sat one directory over." The
+   reasoning is unchanged and still load-bearing; only the census moved. Counted on
+   2026-08-18 after the reorg: `find Projects -maxdepth 4 -type d -name '*_Private*'`
+   returns THIRTEEN, and ELEVEN are empty pre-created shells (Apple iOS/macOS apps+games,
+   Android games, Linux apps+games, Microsoft apps+games, Web apps+games). Exactly one is
+   this repo's corpus, and a name-derived path lands on a shell for any repo whose corpus
+   has not been filled yet.
+   So EMPTINESS is the test, not existence:
+     directory empty              →  never had the corpus. Absence, n/a — see the branch below.
+     directory non-empty, no .git →  a real corpus that is BROKEN. Still RED, still a
+                                     failure — the case the `expected` flag was written for. */
+const isNonEmpty = (d) => { try { return readdirSync(d).length > 0; } catch { return false; } };
+
+/* The pre-2026-08-18 locations, newest first. Kept ONLY as evidence for the leftover test
+   in the absent branch below — nothing is installed into either. Both are real former
+   homes from the SAME DAY: the flat sibling under `Projects/` that stood for a few hours
+   this morning, and the in-repo subdirectory it replaced. The first is addressed off the
+   anchor because it is not this repo's sibling any more. */
+const PRIVATE_WAS = [
+  join(ANCHOR, 'Projects', 'Project_Cross_Platform_Apps_Private'),
+  join(REPO, 'Private'),
+];
 
 const REPOS = [
   { name: 'public repo', path: REPO, expected: true },
@@ -133,10 +211,15 @@ for (const r of REPOS) {
        Verified both ways before landing: `mv Private Private.probe` makes this
        print n/a and exit 0; moving `Private/.git` out of the way — tree present,   ← (no longer exists after the 2026-08-18 move; that is the pre-move layout, and this paragraph is left saying what was actually run on 2026-08-17 rather than re-pointed at a path the run never touched)
        repo gone — still prints RED and exits 1. (Said in prose rather than as a second `mv` with its destination spelled out: `assert-public-citations` reads every `Private/…` in the tree as a citation, and an example's invented destination is indistinguishable from a real one.) */
-    if (r.expected && existsSync(r.path)) {
+    /* 2026-08-18: an EMPTY directory is not "here" — eleven empty pre-created shells now
+       sit in this tree and the name-derived path lands on one for every product whose
+       corpus has not been filled. See `isNonEmpty` above for the count and the rule. */
+    const shellOnly = existsSync(r.path) && !isNonEmpty(r.path);
+    const leftover = (r.movedFrom ?? []).find((p) => existsSync(p));
+    if (r.expected && existsSync(r.path) && !shellOnly) {
       console.log(`  RED  ${r.name.padEnd(20)} DIRECTORY IS HERE BUT HAS NO .git — not skipped, failed`);
       failures++;
-    } else if (r.expected && r.movedFrom && existsSync(r.movedFrom)) {
+    } else if (r.expected && leftover) {
       /* 🔴 2026-08-18 — THE ONE PLACE "MOVED AWAY" AND "NEVER CLONED" ARE TELLABLE
          APART, so it is checked here rather than lamented in a comment. Absence by
          itself cannot distinguish them and never could: a public clone and a
@@ -148,9 +231,14 @@ for (const r of REPOS) {
          This does not re-break what the 2026-08-17 note below fixed: a public clone
          has NEITHER directory, so it still falls through to n/a and still exits 0. */
       console.log(`  RED  ${r.name.padEnd(20)} not at ${r.path}`);
-      console.log(`       — but the pre-move location is still on disk: ${r.movedFrom}`);
+      console.log(`       — but a pre-move location is still on disk: ${leftover}`);
       console.log('       a stalled or unstarted move, not a clean checkout. Finish the move, then re-run.');
       failures++;
+    } else if (r.expected && shellOnly) {
+      /* Named rather than folded into the n/a below. Both are "no corpus here" and both
+         exit 0, but only one of them has a directory sitting there looking like a corpus,
+         and a reader who is mid-move needs to be told which one they are looking at. */
+      console.log(`  n/a  ${r.name.padEnd(20)} only an EMPTY pre-created shell at ${r.path} — never held the corpus`);
     } else if (r.expected) {
       console.log(`  n/a  ${r.name.padEnd(20)} not in this checkout — a separate sibling repo, never cloned alongside`);
     } else {
@@ -166,6 +254,15 @@ for (const r of REPOS) {
   // peer, so the public repo's own directory name is now part of the value stored
   // in the corpus's git config. Rename the public repo directory and this string
   // goes stale in a config file that lives in the other repo; re-running fixes it.
+  // 📍 2026-08-18, LATER — THAT HAZARD CAME DUE THE SAME AFTERNOON, AND IT IS THE ONE
+  // FAILURE MODE NO ANCHOR CAN PREVENT, because the stale value lives in the OTHER repo's
+  // config file where nothing in this tree reads it. The reorg renamed the public repo, so
+  // the corpus was still carrying `../Project_Cross_Platform_Apps/.githooks` — a path with
+  // no directory at the end of it, i.e. hooks silently not running — until this run
+  // rewrote it to `../Project_Cross_Platform_Android_Apps_Public/.githooks`. Read back out
+  // of `git -C <corpus> config --get core.hooksPath` and confirmed to reach the two real
+  // hook files. RE-RUN THIS SCRIPT AFTER ANY RENAME OR RE-NEST; it is the only thing that
+  // repairs the other repo's copy.
   const want = relative(r.path, HOOKS).split('\\').join('/');
   const cur = git(r.path, ['config', '--get', 'core.hooksPath']);
 

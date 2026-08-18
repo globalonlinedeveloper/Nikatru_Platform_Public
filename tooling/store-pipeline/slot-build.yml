@@ -1,0 +1,210 @@
+name: Slot build
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE PER-SLOT BUILD PIPELINE. ONE FILE, FIFTEEN SLOTS, NO PER-SLOT EDITS.
+#
+# 🔴 THIS FILE IS INSTALLED BYTE-IDENTICALLY IN EVERY SLOT REPOSITORY, and
+# `tooling/store-pipeline/assert-slot-pipeline.mjs` proves that on every run by
+# comparing this file against tooling/store-pipeline/slot-build.yml in the SAME
+# checkout. GitHub Actions requires a workflow to live under .github/workflows,
+# so the duplication is forced by the platform rather than chosen — which is
+# precisely why something has to check the two copies agree. Edit the template,
+# re-copy, never edit the installed copy.
+#
+# ⚠️ catalog/copy-origins.json classifies `.github/workflows/**` as PER-SLOT,
+# meaning assert-copy-parity.mjs never compares this file ACROSS slots. Fifteen
+# copies of it could therefore drift silently, and the within-repo comparison
+# above is the only thing standing against that. Do not treat it as a formality.
+#
+# WHAT IS PARAMETERISED, AND BY WHAT: everything. The `slot` job resolves this
+# checkout against catalog/store-matrix.json and tooling/channel-register.json
+# and emits the answer as job outputs; every job below consumes those outputs.
+# There is no store name, no runner label, no toolchain version and no build
+# verb written anywhere in this file. Grep it and see.
+#
+# 🔴 WHAT THIS FILE DELIBERATELY DOES NOT DO:
+#   · it does not sign anything;
+#   · it references NO secret, of any kind, in any job;
+#   · it contacts no store, and invokes no `--submit` verb.
+# Signing material and store credentials are genuinely per-store and live in
+# slot-submit.yml, which is dispatch-only and gated. A build lane that on a
+# normal push could reach a store is a one-way door left ajar, and for at least
+# one store in this matrix the door has no handle on the other side: FullShot's
+# AMO add-on id is fixed PERMANENTLY at first signing.
+# ═══════════════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    # The three documented branch prefixes plus main, matching ci.yml. That list
+    # watched only `feat/**` once, and every fix/ and chore/ branch got no CI at
+    # all — silently, because `gh run list` returns nothing for a branch nothing
+    # watches, which is indistinguishable from "queued".
+    branches: [main, 'feat/**', 'fix/**', 'chore/**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: slot-build-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege. Nothing here publishes through GITHUB_TOKEN.
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # WHICH SLOT IS THIS? Everything downstream is this job's answer.
+  # ─────────────────────────────────────────────────────────────────────────
+  slot:
+    name: Resolve the slot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      store: ${{ steps.plan.outputs.store }}
+      target: ${{ steps.plan.outputs.target }}
+      type: ${{ steps.plan.outputs.type }}
+      storeChannel: ${{ steps.plan.outputs.storeChannel }}
+      runner: ${{ steps.plan.outputs.runner }}
+      flutterVersion: ${{ steps.plan.outputs.flutterVersion }}
+      flutterTargets: ${{ steps.plan.outputs.flutterTargets }}
+      artifactFormats: ${{ steps.plan.outputs.artifactFormats }}
+      toolchain: ${{ steps.plan.outputs.toolchain }}
+      productState: ${{ steps.plan.outputs.productState }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # persist-credentials: false — actions/checkout otherwise writes
+          # GITHUB_TOKEN into .git/config and leaves it there for the whole job,
+          # where any later step that packages the workspace ships it inside the
+          # artifact. Nothing here pushes, so no checkout needs the credential.
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      # FIRST, before anything is believed: the pipeline must still be the
+      # pipeline. This proves the installed workflow is byte-identical to its
+      # template, that the submission workflow's gates are intact, and that the
+      # one typed table in this template still matches the channel register.
+      # It runs before the resolver because a tampered template resolving
+      # cleanly is worse than one that fails.
+      - name: The pipeline must still be the pipeline
+        run: node tooling/store-pipeline/assert-slot-pipeline.mjs
+      # 🔴 NO `--require-product` HERE, AND THAT IS DELIBERATE. This job's answer
+      # for an empty slot is "there is no product", printed, exit 0 — because
+      # eleven of the fifteen slots are empty by design today and a build that
+      # is red forever on work nobody intends to do teaches everyone that red is
+      # negotiable. The `build` job below takes the flag; this one reports.
+      - name: Which slot is this, and what does it build?
+        id: plan
+        run: node tooling/store-pipeline/resolve-slot.mjs --github-output
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # THE BUILD. Runner, toolchain, version and build verb all come from the
+  # resolved plan. Nothing in this job knows which store it is serving.
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build this slot's artifact
+    needs: slot
+    if: needs.slot.outputs.productState == 'present'
+    runs-on: ${{ needs.slot.outputs.runner }}
+    # ⬜ NEVER RUN in any slot but one — the other fourteen have no product and
+    # take the `no-product` job instead. Re-pin against the first real run.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      # Java is set up only when the resolved toolchain says so. The condition
+      # reads the register through the plan; it does not name a store.
+      - if: contains(needs.slot.outputs.toolchain, 'java')
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - if: contains(needs.slot.outputs.toolchain, 'flutter')
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          # Read out of the lane workflow this repository already pins, never
+          # typed here — fifteen copies of a version number is fifteen chances
+          # to disagree with the lane that actually builds.
+          flutter-version: ${{ needs.slot.outputs.flutterVersion }}
+      - if: contains(needs.slot.outputs.toolchain, 'flutter')
+        name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      # 🔴 THE FLAG THIS JOB HAS AND THE `slot` JOB DOES NOT. If the product
+      # vanished between the two jobs — a bad checkout, a resolver that stopped
+      # reaching the tree — this fails instead of building nothing and calling
+      # it a build.
+      - name: There must actually be a product here
+        run: node tooling/store-pipeline/resolve-slot.mjs --require-product
+      # The build verb comes from artifact-build.mjs via the plan. A channel
+      # declaring more than one format yields more than one verb, so this is a
+      # loop rather than a single command.
+      - name: Build
+        env:
+          FLUTTER_TARGETS: ${{ needs.slot.outputs.flutterTargets }}
+        run: |
+          for t in $FLUTTER_TARGETS; do
+            echo "== flutter build $t --release"
+            flutter build "$t" --release
+          done
+        working-directory: apps
+        shell: bash
+      # ⚠️ THE POSTURE IS IN THE NAME, and on this lane it is always UNSIGNED.
+      # This workflow holds no signing material by design, so what it produces
+      # cannot be submitted anywhere — and the artifact says so, rather than
+      # sitting in the run history looking like a release candidate. The lane
+      # that signs is slot-submit.yml, which is dispatch-only and gated.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ needs.slot.outputs.store }}-${{ needs.slot.outputs.target }}-${{ needs.slot.outputs.type }}-unsigned
+          path: apps/*/build
+          retention-days: 7
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 🔴 THE JOB THAT EXISTS SO AN EMPTY SLOT CANNOT LOOK LIKE A BUILT ONE.
+  #
+  # Without it, an empty slot's `build` job is SKIPPED and the workflow shows a
+  # green tick — the exact shape of a check that has stopped checking. This job
+  # runs in precisely the complementary case, and its whole output is a summary
+  # line that says what actually happened. Green here means "correctly found
+  # nothing", and it is written in words so nobody has to infer it from a colour.
+  #
+  # assert-slot-pipeline.mjs requires BOTH jobs to exist and requires their
+  # conditions to be exact complements, so deleting this one to tidy the run
+  # list turns the pipeline red rather than quietly restoring the vacuous green.
+  # ─────────────────────────────────────────────────────────────────────────
+  no-product:
+    name: This slot has no product
+    needs: slot
+    if: needs.slot.outputs.productState != 'present'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Say so, in words, in the summary
+        env:
+          STORE: ${{ needs.slot.outputs.store }}
+          TARGET: ${{ needs.slot.outputs.target }}
+          TYPE: ${{ needs.slot.outputs.type }}
+          STATE: ${{ needs.slot.outputs.productState }}
+        run: |
+          {
+            echo "## ⬜ NEVER BUILT — no product in this slot"
+            echo
+            echo "- slot: \`$STORE / $TARGET / $TYPE\`"
+            echo "- product state: \`$STATE\`"
+            echo
+            echo "This run is GREEN because the pipeline correctly found nothing to build."
+            echo "It is **not** evidence that this slot's pipeline works. A pipeline for a"
+            echo "slot with no source is a pipeline that has never run, and nothing on this"
+            echo "page should be read as a build."
+            echo
+            echo "See tooling/store-pipeline/README.md — 'How a slot proves its pipeline"
+            echo "works before it ships anything'."
+          } >> "$GITHUB_STEP_SUMMARY"
+        shell: bash

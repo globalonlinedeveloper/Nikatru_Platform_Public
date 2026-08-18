@@ -1,0 +1,595 @@
+{
+  "contract": {
+    "what": "The ONE declaration of every store slot. A slot is a Store x Target x Type cell: the pair of directories under Projects/ that hold one product's public and private trees for one storefront. Fifteen slots exist on disk today. This file is the primary key of the whole matrix - every copy script, parity checker, pipeline generator and storefront collection page is meant to enumerate THIS, never the filesystem and never a list pasted into a plan.",
+    "theRule": "A NEW STORE IS A ROW. Adding a store, a target or a content type must be an edit to `slots` below and nothing else. The day a store needs a code change to appear, this file has failed and the failure is the code's, not the row's.",
+    "readBy": [
+      "tooling/ci/assert-store-matrix.mjs - the STRUCTURAL reader. It re-derives every derived value, re-measures the tree, and exits non-zero on any disagreement. WIRED into .github/workflows/ci.yml on 2026-08-18, at the END of the `sites` job (where the other catalogue guards run), as `--registry-only`. The placement is deliberate: an insertion shifts every `ci.yml:NNNN` citation below it, so it went where it moves the fewest - measured +25 lines inserted at old line 2292, so citations at ci.yml:2292 and below are off by 25 and the private corpus's ~1,647 of them are dated records, to be re-cited going forward rather than rewritten. `--registry-only` is NOT a waiver: a CI checkout holds one repo and never the 30 slot directories, so without the flag the guard REFUSES (exit 2) rather than passing over an absent tree, and WITH the flag it refuses anyway if the tree turns out to be reachable. In CI it therefore checks this file's internal consistency only, and prints the number of disk assertions it did not make. The tree limbs are run by hand, without the flag, from a checkout inside the tree.",
+      "tooling/ci/assert-github-matrix.mjs - the RECONCILER, added 2026-08-18. It reads `github.org`, `github.outOfMatrix` and `github.renamePins`, and reconciles this file against the ACTUAL org using READ-ONLY `gh repo list`: which declared repo names exist, which repos the org holds that are declared NOWHERE (orphans), visibility against what is declared here, each slot directory's real git origin against its `boundRemote`, and any row whose intended name differs from the name GitHub has NOW. Its exit rule is the load-bearing part: OWNER-ONLY work - a rename, a visibility change, a Cloudflare reconnect - PRINTS on every run and does NOT fail the build, because a build held red on work the build cannot do teaches everyone that red is negotiable; work that needs nobody's permission - a malformed row, an orphan, a stale measured field - FAILS. Floors: an empty or truncated `gh` listing REFUSES rather than passing vacuously, --offline exits 3, and --gh-fixture can never exit 0. Like the guard above it is NOT wired into ci.yml, for the same ci.yml:NNNN citation reason, and is run by hand.",
+      "PARTLY BUILT - do not cite any of these as if they PASS. `assert-copy-parity` (plan section 4.3) was BUILT on 2026-08-18 and ships in the same commit as this line, so it is no longer planned; but it exits 3 NOT PROVEN, never 0, because the registry marks exactly one slot `live` and one copy gives it nothing to compare against. Still genuinely ABSENT: the copy script (STORE-MATRIX-PLAN.md Step 7) and the storefront store collection pages /<store>/apps ([ADR 055], which locks that work behind the Cloudflare repoint). Naming the absent two here is a statement of intent, and if one is still absent when the matrix is built, that is a finding."
+    ],
+    "whenItDisagrees": "The tree wins on EXISTENCE; this file wins on INTENT. If a directory named in `slots` is missing from disk, or a slot directory on disk has no row, the checker fails and a human decides which is wrong - nothing is auto-created and nothing is auto-deleted. If a row's `state` disagrees with what the disk shows, the checker fails: it never silently rewrites the row to match, because a registry that edits itself to agree with reality can never report that reality drifted. `repos.*.existsOnGitHub` is different in kind - a name that does not exist yet is the NORMAL case here, which is why it is recorded as a measured boolean beside the intent rather than treated as an error.",
+    "whatIsNotHere": "Volume. No file counts, no commit counts, no byte sizes. Those change on every commit, so a registry carrying them is stale the moment it is written and every reader inherits a number that was true once. Volume is measured at the moment it is needed; STORE-MATRIX-PLAN.md section 4.1 is the dated record of what it was on 2026-08-18.",
+    "voice": "Follows Project_Web_Presence/catalog/README.md and Project_Web_Presence/catalog/upstreams.json: declare the shape, never sniff it; state the failure mode next to the rule that prevents it; and say plainly what has NOT been measured."
+  },
+
+  "derivations": {
+    "note": "DERIVE, DO NOT TYPE. Each value below is computed from a row, never stored in it. If you find yourself adding one of these as a field, you are adding a second copy of a fact that will one day disagree with the first. `path` and `privateDir` in particular are absent BY DESIGN, and that is why a row is this short.",
+    "path": "store + '/' + target + '/' + type, relative to Projects/ - e.g. Google_Play_Store/Android/Apps",
+    "publicPath": "path + '/' + publicDir",
+    "privateDir": "publicDir with a trailing '_Public' replaced by '_Private'. This is the same swap tooling/scripts/spec-guards.mjs uses to reach the private corpus from the public repo, and it is the reason a pair must be renamed in both halves or neither.",
+    "privatePath": "path + '/' + privateDir",
+    "repos.public.intendedName": "= publicDir. See `naming` below - this is the plan's PROPOSAL, not a settled decision.",
+    "repos.private.intendedName": "= privateDir, by the same swap.",
+    "checkedBy": "tooling/ci/assert-store-matrix.mjs recomputes all of the above, resolves each against the real filesystem, and fails by name when one does not resolve. It also asserts the row set and the on-disk slot set are the same set IN BOTH DIRECTIONS - a row with no directory and a directory with no row are both failures, because a check that only looks one way cannot notice a slot created behind its back."
+  },
+
+  "github": {
+    "note": "The ONE place the GitHub org name is written down, and the ONE place a repo may be declared out of the matrix. tooling/ci/assert-store-matrix.mjs (--github limb) and tooling/ci/assert-github-matrix.mjs both READ the org from here; neither spells it. Everything either script does against GitHub is READ-ONLY: `gh repo list`. Nothing in this repository creates, renames or deletes a repository, and nothing here is capable of doing so.",
+    "org": "globalonlinedeveloper",
+
+    "accountingRule": "Every repository the org actually holds must be accounted for by EXACTLY ONE of: (a) a slot row's intended repo name - `publicDir`, or its trailing _Public -> _Private swap; (b) a slot row's `repos.<side>.boundRemote`; (c) an entry in `outOfMatrix` below. Anything the org holds that matches none of those is an ORPHAN, and assert-github-matrix.mjs FAILS on it. That is a hard failure and not a notice, because the fix is one line in THIS file and needs nobody's permission. A stale line here - an `outOfMatrix` entry naming a repo the org does not hold - fails for the same reason and in the same direction: deleting a line needs nobody's permission either.",
+
+    "outOfMatrixRule": "Repos that exist in the org and are deliberately NOT part of the store matrix. Each carries `why` in prose. A bare allow-list is a place to silence findings; a list where every line must say what it is for is a list somebody has to defend. `measured` records HOW MUCH is actually known about the entry, so a name-only declaration cannot be read later as a statement about the repo's contents.",
+    "outOfMatrix": [
+      {
+        "repo": "Project_Web_Presence",
+        "why": "The storefront - the CONSUMER of the catalogues, not a product in one. backing.products[storefront] deliberately claims no slot: Nikatru_Web_Store/Web/Apps by the tree's own pattern means 'products shipped to a web store', and filing the store there makes the store a product of itself and hands the rename rules to the very repo holding the pinned owner/repo strings. STORE-MATRIX-PLAN.md section 5.3 is OPEN; this is an absence on purpose.",
+        "measured": "2026-08-18: local sibling Projects/Project_Web_Presence has origin https://github.com/globalonlinedeveloper/Project_Web_Presence.git"
+      },
+      {
+        "repo": "Project_Cross_browser_Extensions",
+        "why": "Public half of backing.products[fullshot]. It BACKS three slots (Chrome/Edge/Firefox Extensions) and is filed into none of them - those three rows are `shell-claimed` with boundRemote null, because whether one repo becomes three is STORE-MATRIX-PLAN.md section 5.2 and it is OPEN. Declaring it out-of-matrix records that it is known and unfiled, which is different from unnoticed.",
+        "measured": "2026-08-18: local sibling Projects/Project_Cross_browser_Extensions has origin https://github.com/globalonlinedeveloper/Project_Cross_browser_Extensions.git"
+      },
+      {
+        "repo": "Project_Cross_browser_Extensions_Private",
+        "why": "Private half of backing.products[fullshot]. Same open question, same unfiled state.",
+        "measured": "2026-08-18: local sibling Projects/Project_Cross_browser_Extensions_Private has origin https://github.com/globalonlinedeveloper/Project_Cross_browser_Extensions_Private.git"
+      },
+      {
+        "repo": "Project_Cross_Platform_Apps_Private",
+        "why": "THE LATENT COLLISION OF STORE-MATRIX-PLAN.md section 2.5, AND IT IS REAL - this repo EXISTS in the org, measured read-only on 2026-08-18. The live slot's private half (Google_Play_Store/Android/Apps/Nikatru_Android_Apps_Private) has NO remote: `git remote -v` printed nothing. So this GitHub repo is NOT that directory's remote, and the corpus records that the two hold DIFFERENT SHAPES - the remote carries the corpus under a `private/` subtree prefix plus plain files at its root. It is declared out-of-matrix so it stops reading as an orphan; it is NOT declared as any slot's boundRemote, because it is not bound to one. If the private slots ever get remotes (STORE-MATRIX-PLAN.md section 5.4), pushing the wrong shape into this name is a data-loss-shaped event.",
+        "measured": "2026-08-18: exists in the org, PRIVATE. Its CONTENTS were NOT fetched or compared - the shape difference above is quoted from the corpus, not measured here."
+      },
+      {
+        "repo": "nikatru-private",
+        "why": "Not part of the store matrix. Declared by NAME ONLY so that a NEW repo appearing in the org is loud instead of drowned.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined. This line is not a statement about what the repo holds."
+      },
+      {
+        "repo": "ATS",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "Project_R",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "Project_Char",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "ratel",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "pdfcraftai",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "chatwithpdfai",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "globalonlinecalculator",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "coursera",
+        "why": "Not part of the store matrix. Declared by NAME ONLY.",
+        "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      }
+    ],
+    "renamePins": {
+      "note": "Things OUTSIDE this repository that pin a GitHub repo BY NAME. This block exists because a rename is the one matrix operation whose blast radius is not visible from inside the repo being renamed. assert-github-matrix.mjs prints every entry below whenever a row's intended repo name differs from the name GitHub currently has - and it prints the unobservable ones EVERY time, because the pin whose state cannot be read is the one most likely to be forgotten.",
+      "whyNotAFailure": "A rename can only be performed by the owner, in the GitHub UI or with a write-scoped API call this repository deliberately does not make. A build that stays red until the owner does owner-work teaches everybody that red is negotiable, and this corpus has already written that lesson down. So a pending rename PRINTS on every run and does not change the exit code.",
+      "observable": [
+        {
+          "id": "storefront-upstreams",
+          "kind": "json-file",
+          "repoDir": "Project_Web_Presence",
+          "path": "catalog/upstreams.json",
+          "matchField": "repo",
+          "shape": "top-level array of entries; each entry's `repo` is an owner/name string",
+          "byteComparedBy": "Project_Web_Presence/tooling/ci/assert-vendor-current.mjs",
+          "why": "read-catalogues.mjs builds https://raw.githubusercontent.com/${repo}/${ref}/${path} from that string and assert-vendor-current BYTE-COMPARES the fetched blob against the vendored copy. Its own measured trap: raw answers 404 identically (14 bytes) for a missing path, and A BYTE MISMATCH IS NEVER RETRIED. Repoint upstreams.json BEFORE any rename, never after.",
+          "countedNotTyped": "assert-github-matrix.mjs OPENS this file and counts the entries that name the old repo. The number is never written down here - a typed count is a second copy of a fact that will one day disagree with the first.",
+          "renameRedirectCaveat": "Measured 2026-08-18 with a throwaway repo: raw.githubusercontent.com DOES follow a GitHub repo rename - a file created AFTER the rename served under the OLD name with 200 and an empty redirect_url. That is not a licence to skip this step: GitHub frees the old name on rename, so the redirect dies the moment anything re-claims it."
+        }
+      ],
+      "unobservable": [
+        {
+          "id": "cloudflare-pages",
+          "what": "Cloudflare Pages Git bindings for the two Pages projects `nikatru` and `rajasekarselvam` (root directories sites/nikatru and sites/rajasekarselvam, output /, framework preset None, build command blank - CUTOVER-RUNBOOK.md section 4).",
+          "why": "The binding lives in the Cloudflare dashboard, OUTSIDE git. NOTHING in any repository in this tree can observe it, and this guard does not pretend to. CUTOVER-RUNBOOK.md section 6b - the ROLLBACK procedure - names globalonlinedeveloper/Project_Cross_Platform_Apps literally as the repo to reconnect to.",
+          "notMeasured": "Whether a Cloudflare Pages Git binding SURVIVES a repository rename is NOT MEASURED and MUST NOT BE ASSUMED. It is plausible either way; it is owner-verifiable in minutes; and a guess in this position is how the storefront goes dark. STORE-MATRIX-PLAN.md section 5.8."
+        }
+      ]
+    }
+  },
+
+  "naming": {
+    "directoryRule": "Nikatru_<target>_<type>_<Public|Private>. Holds for all 30 directories measured on 2026-08-18, which is why `publicDir` is CHECKED against it rather than derived from it. It is stored per row because it is what is literally on disk, and disk is the authority on existence.",
+    "repoNameRule": "PROPOSED: the GitHub repo name equals the directory name. NOT SETTLED - STORE-MATRIX-PLAN.md section 5.5 is open and only the owner closes it. Answering 'no, repo names stay short' deletes the single most dangerous item in that plan (the rename in section 2.2) at zero cost, so this file records the proposal and does not act on it.",
+    "consequenceIfSettledYes": "Renaming globalonlinedeveloper/Project_Cross_Platform_Apps. That string is pinned in two places outside git that nothing in any repo can observe: the Cloudflare Pages bindings for nikatru.com and rajasekarselvam.com, and Project_Web_Presence/catalog/upstreams.json, which byte-compares raw.githubusercontent.com blobs with no retry. Measured 2026-08-18 with a throwaway repo: raw.githubusercontent.com DOES follow a rename - a file created AFTER the rename served under the OLD name with 200 and an empty redirect_url. The caveat is the whole caveat: GitHub frees the old name, so the redirect dies the moment anything re-claims it. Whether a Cloudflare Pages Git binding survives a rename is STILL NOT MEASURED and must not be assumed."
+  },
+
+  "stateVocabulary": {
+    "note": "Closed vocabulary, exactly one value per slot. Every value below has at least one member today - a state nothing is in is a state nobody maintains. Adding a value requires a row that needs it.",
+    "live": "The slot's own directories hold a real source tree: non-empty, with git history. There is a product here now.",
+    "shell-claimed": "The directory pair exists and BOTH halves are empty - 0 files, no .git, no remote, no history - but a real product exists elsewhere in the tree for which this slot is the declared destination. An empty pre-created shell with something to put in it.",
+    "shell-empty": "The directory pair exists and both halves are empty, and NO product exists anywhere that belongs here. Nothing to copy, nothing to build, nothing to ship. This is the 'no product behind it at all' case, and it is the majority of the matrix.",
+    "derivedFrom": "state is recomputable: non-empty dirs => live; empty dirs and backing != null => shell-claimed; empty dirs and backing == null => shell-empty. It is stored anyway because it is the field a reader actually wants. assert-store-matrix.mjs recomputes it from the disk and from `backing` and fails on disagreement - that check is the only reason storing it is not simply a second copy of a fact."
+  },
+
+  "counts": {
+    "asOf": "2026-08-18",
+    "note": "Stated so a reader can recount rather than believe. assert-store-matrix.mjs recomputes every number here from `slots` and fails if one drifts - they are a summary OF the rows, never an independent claim beside them.",
+    "slots": 15,
+    "directories": 30,
+    "live": 1,
+    "shell-claimed": 3,
+    "shell-empty": 11,
+    "intendedReposExistingOnGitHub": 0,
+    "loudest": "ZERO of the 30 intended repo names exist on GitHub. The one live slot is bound to a repo of a DIFFERENT name (Project_Cross_Platform_Apps) and its private half has no remote at all. On GitHub, the matrix is entirely unbuilt.",
+    "discrepancyOnRecord": "The task that commissioned this file carried '12 of 15 slots have no product'. Re-measured here the number is 11, under the rule in `backing.rule`. The three extension slots are backed by a product that exists (FullShot) and simply is not filed into them, so they are shell-claimed rather than empty: 11 + 3 + 1 = 15. Recorded rather than reconciled. An inherited number that does not reproduce is a finding, and writing the counting rule down beside it means the disagreement can be settled by arguing about the rule instead of by re-typing the number."
+  },
+
+  "backing": {
+    "rule": "A slot is BACKED when a real source tree exists TODAY that this slot's product would be built from - either sitting in the slot (filed: true) or sitting elsewhere under Projects/ with this slot as its declared destination (filed: false). CAPABILITY IS NOT BACKING: apps/subly carries all six Flutter platform targets, so the Flutter tree COULD fill twelve slots, but a tree that could be copied somewhere is not a product that is there. Counting capability instead of existence is exactly how fourteen empty directories start reading as a portfolio.",
+    "products": [
+      {
+        "product": "subly",
+        "sourceDirs": [
+          "Google_Play_Store/Android/Apps/Nikatru_Android_Apps_Public",
+          "Google_Play_Store/Android/Apps/Nikatru_Android_Apps_Private"
+        ],
+        "declaredBy": "catalog/apps.json in this repo - one row, slug subly, platforms ['web'], status live",
+        "claimsSlots": [
+          "Google_Play_Store/Android/Apps"
+        ],
+        "note": "The catalogue declares platforms ['web'] while the source carries android, ios, macos, linux, windows and web targets. That is the capability/backing distinction above, visible in the data: what SHIPS is one web app; what COULD ship is six platforms. Only the slot it actually sits in is claimed."
+      },
+      {
+        "product": "fullshot",
+        "sourceDirs": [
+          "Project_Cross_browser_Extensions",
+          "Project_Cross_browser_Extensions_Private"
+        ],
+        "declaredBy": "Project_Cross_browser_Extensions/catalog/extensions.json - one row, slug fullshot, platforms ['chrome','edge','firefox'], all three `listings` null, status preview",
+        "claimsSlots": [
+          "Chrome_Web_Store/Chrome/Extensions",
+          "Edge_Add_ons/Edge/Extensions",
+          "Firefox_AMO/Firefox/Extensions"
+        ],
+        "note": "ONE repo pair claims THREE slots, and it sits outside the store tree entirely. Whether it splits into three or stays one is STORE-MATRIX-PLAN.md section 5.2 and it is OPEN. What makes getting it wrong expensive: the AMO gecko.id in identity.json is fixed permanently at first signing, and the existing fatal check compares two files WITHIN one repo - a three-way split puts three copies of that one fact in three trees with nothing checking across them."
+      },
+      {
+        "product": "storefront",
+        "sourceDirs": [
+          "Project_Web_Presence"
+        ],
+        "declaredBy": "Project_Web_Presence/catalog/upstreams.json - it is the CONSUMER of the catalogues, not a row in one",
+        "claimsSlots": [],
+        "note": "DELIBERATELY BACKS NO SLOT. Nikatru_Web_Store/Web/Apps by the tree's own pattern means 'products shipped to a web store', so putting the storefront there makes the store a product of itself and hands the rename rules to the very repo that holds the pinned owner/repo strings. STORE-MATRIX-PLAN.md section 5.3 is open; until it closes this is an absence on purpose, recorded so it cannot be mistaken for an oversight."
+      }
+    ]
+  },
+
+  "measured": {
+    "date": "2026-08-18",
+    "by": "direct enumeration of the real tree. No list was trusted, including the table in STORE-MATRIX-PLAN.md section 1.",
+    "commands": {
+      "slots": "find Projects -mindepth 4 -maxdepth 4 -type d -name '*_Public' -o -mindepth 4 -maxdepth 4 -type d -name '*_Private' | sort   -> 30 directories",
+      "emptiness": "per directory: find <dir> -type f -not -path '*/.git/*' | wc -l   and   test -d <dir>/.git",
+      "binding": "git -C <dir> remote get-url origin   - prints nothing where there is no remote. Absence of a remote is measured here, not assumed.",
+      "github": "gh repo list globalonlinedeveloper --limit 100 --json name,visibility   - READ-ONLY. No repo was created, renamed or deleted by this work."
+    },
+    "githubReposSeen": [
+      "Project_Cross_Platform_Apps",
+      "Project_Cross_browser_Extensions_Private",
+      "Project_Cross_browser_Extensions",
+      "Project_Web_Presence",
+      "Project_Cross_Platform_Apps_Private",
+      "nikatru-private",
+      "ATS",
+      "Project_R",
+      "Project_Char",
+      "ratel",
+      "pdfcraftai",
+      "chatwithpdfai",
+      "globalonlinecalculator",
+      "coursera"
+    ],
+    "supersedes": "STORE-MATRIX-PLAN.md section 1 lists the flagship under Google_Store/Google_Play_Store/Google_Play_Store_Apps/Project_Cross_Platform_Android_Apps_{Public,Private}. That path DOES NOT EXIST on 2026-08-18: `ls -d Projects/Google_Store` exits 2, 'No such file or directory'. The owner has re-filed it to Google_Play_Store/Android/Apps/Nikatru_Android_Apps_{Public,Private}. Consequence, stated because it is good news and good news goes stale unnoticed: the section 2.1 blocker - TWO GOOGLE ROOTS, SAME STORE, TWO NAMING CONVENTIONS - NO LONGER REPRODUCES. There is one Google root and it uses the Nikatru_ convention like every other slot, so section 5.1 is answered by the tree. The plan's own table is NOT edited to match: it is a dated record of what the tree was on the day it was written, and rewriting a dated record falsifies it rather than repairing it.",
+    "notMeasured": [
+      "Whether a Cloudflare Pages Git binding survives a repo rename. The binding lives in the dashboard, outside git; nothing in any repo can observe it. Not measured, not assumed - a guess in this position is how the storefront goes dark.",
+      "Whether the private slots are ever meant to have GitHub remotes at all. The one existing private tree has none. STORE-MATRIX-PLAN.md section 5.4.",
+      "Anything about GitHub beyond the read-only repo listing above: no branch, no binding, no workflow, no visibility change was inspected or touched."
+    ]
+  },
+
+  "collisions": [
+    {
+      "id": "latent-backup-remote-name",
+      "slot": "Google_Play_Store/Android/Apps",
+      "what": "globalonlinedeveloper/Project_Cross_Platform_Apps_Private EXISTS on GitHub (visibility PRIVATE) and is NOT this slot's private repo. It is the backup remote written by .claude/scripts/sync-private-repo.ps1 and it carries a DIFFERENT SHAPE - the corpus under a `private/` subtree prefix plus plain files at its root. The slot's private directory has no remote configured, measured.",
+      "whyItMatters": "Latent today only because no private slot has a remote. It goes live the moment section 5.4 is answered 'yes': a private slot pointed at a same-named backup repo and pushed is a data-loss-shaped event, and the name would look exactly right while it happened."
+    }
+  ],
+
+  "openDecisions": [
+    {
+      "ref": "STORE-MATRIX-PLAN.md 5.1",
+      "question": "Which Google root wins?",
+      "status": "ANSWERED BY THE TREE on 2026-08-18 - Google_Store no longer exists and Google_Play_Store/Android/{Apps,Games} is the only root. Kept in the list and marked answered rather than deleted: a question that quietly disappears cannot be told apart from one nobody asked."
+    },
+    {
+      "ref": "STORE-MATRIX-PLAN.md 5.2",
+      "question": "Do the extensions split into three slots or stay one repo?",
+      "status": "OPEN - blocks all three shell-claimed rows entirely"
+    },
+    {
+      "ref": "STORE-MATRIX-PLAN.md 5.3",
+      "question": "Where does Project_Web_Presence live?",
+      "status": "OPEN - see backing.products.storefront"
+    },
+    {
+      "ref": "STORE-MATRIX-PLAN.md 5.4",
+      "question": "Do the private slots get GitHub remotes at all?",
+      "status": "OPEN - answering yes re-arms the collision above"
+    },
+    {
+      "ref": "STORE-MATRIX-PLAN.md 5.5",
+      "question": "Does the repo name equal the directory name?",
+      "status": "OPEN - see naming.repoNameRule. This file records the proposal and acts on nothing."
+    },
+    {
+      "ref": "STORE-MATRIX-PLAN.md 5.6",
+      "question": "Is tooling/ copied per slot or centralised?",
+      "status": "OPEN - moves the copy cost by roughly 4x"
+    },
+    {
+      "ref": "STORE-MATRIX-PLAN.md 5.9",
+      "question": "Which slot ships first?",
+      "status": "OPEN - it should be the store the owner actually intends to submit to next, not the alphabetically first shell"
+    },
+    {
+      "ref": "ADR 055",
+      "question": "Storefront URL shape",
+      "status": "LOCKED - one product page /apps/<slug> carrying every store link; store COLLECTION pages /<store>/apps; /<store>/apps/<slug> a 301 and /get/<store>/<slug> a 302. Also locked: none of it ships before the Cloudflare repoint. Those collection pages are the first real reader of this file, and they cannot be built before that repoint."
+    }
+  ],
+
+  "slots": [
+    {
+      "store": "Apple_App_Store",
+      "target": "iOS",
+      "type": "Apps",
+      "publicDir": "Nikatru_iOS_Apps_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Apple_App_Store",
+      "target": "iOS",
+      "type": "Games",
+      "publicDir": "Nikatru_iOS_Games_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Apple_App_Store",
+      "target": "macOS",
+      "type": "Apps",
+      "publicDir": "Nikatru_macOS_Apps_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Apple_App_Store",
+      "target": "macOS",
+      "type": "Games",
+      "publicDir": "Nikatru_macOS_Games_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Chrome_Web_Store",
+      "target": "Chrome",
+      "type": "Extensions",
+      "publicDir": "Nikatru_Chrome_Extensions_Public",
+      "state": "shell-claimed",
+      "backing": {
+        "product": "fullshot",
+        "filed": false
+      },
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Edge_Add_ons",
+      "target": "Edge",
+      "type": "Extensions",
+      "publicDir": "Nikatru_Edge_Extensions_Public",
+      "state": "shell-claimed",
+      "backing": {
+        "product": "fullshot",
+        "filed": false
+      },
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Firefox_AMO",
+      "target": "Firefox",
+      "type": "Extensions",
+      "publicDir": "Nikatru_Firefox_Extensions_Public",
+      "state": "shell-claimed",
+      "backing": {
+        "product": "fullshot",
+        "filed": false
+      },
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Google_Play_Store",
+      "target": "Android",
+      "type": "Apps",
+      "publicDir": "Nikatru_Android_Apps_Public",
+      "state": "live",
+      "backing": {
+        "product": "subly",
+        "filed": true
+      },
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": "globalonlinedeveloper/Project_Cross_Platform_Apps"
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Google_Play_Store",
+      "target": "Android",
+      "type": "Games",
+      "publicDir": "Nikatru_Android_Games_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Linux_Store",
+      "target": "Linux",
+      "type": "Apps",
+      "publicDir": "Nikatru_Linux_Apps_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Linux_Store",
+      "target": "Linux",
+      "type": "Games",
+      "publicDir": "Nikatru_Linux_Games_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Microsoft_Store",
+      "target": "Windows",
+      "type": "Apps",
+      "publicDir": "Nikatru_Windows_Apps_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Microsoft_Store",
+      "target": "Windows",
+      "type": "Games",
+      "publicDir": "Nikatru_Windows_Games_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Nikatru_Web_Store",
+      "target": "Web",
+      "type": "Apps",
+      "publicDir": "Nikatru_Web_Apps_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    },
+    {
+      "store": "Nikatru_Web_Store",
+      "target": "Web",
+      "type": "Games",
+      "publicDir": "Nikatru_Web_Games_Public",
+      "state": "shell-empty",
+      "backing": null,
+      "repos": {
+        "public": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        },
+        "private": {
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null
+        }
+      }
+    }
+  ]
+}

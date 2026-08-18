@@ -6,6 +6,14 @@
     "url": "https://subly.nikatru.com",
     "api": "https://api.nikatru.com",
     "platforms": ["web"],
-    "status": "live"
+    "status": "live",
+    "listings": {
+      "web": "https://subly.nikatru.com",
+      "play": null,
+      "appstore": null,
+      "mac": null,
+      "microsoft": null,
+      "linux": null
+    }
   }
 ]

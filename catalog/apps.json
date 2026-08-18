@@ -5,6 +5,14 @@
     "tagline": "Track every subscription in one place",
     "url": "https://subly.nikatru.com",
     "api": "https://api.nikatru.com",
+    "listings": {
+      "web": "https://subly.nikatru.com",
+      "play": null,
+      "appstore": null,
+      "mac": null,
+      "microsoft": null,
+      "linux": null
+    },
     "platforms": ["web"],
     "status": "live"
   }

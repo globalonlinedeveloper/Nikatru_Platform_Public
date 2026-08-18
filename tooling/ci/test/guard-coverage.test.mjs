@@ -51,6 +51,50 @@ const EXCUSED = (() => {
   return [...block[1].matchAll(/'(tooling\/[^']+\.mjs)'/g)].map((m) => m[1]);
 })();
 
+/** The guards NOT_CI_RUNNABLE excuses from R2, READ OUT OF THE GUARD for the two
+ *  reasons EXCUSED is derived above — and the second one bites harder here.
+ *
+ *  1. A hardcoded copy drifts.
+ *  2. 🔴 THE NAMES ARE tooling/ci FILENAMES, AND "IS THIS GUARD NAMED ANYWHERE IN
+ *     THE SUITE?" IS HOW LIMB 1 DECIDES A GUARD HAS A NEGATIVE TEST. Typing
+ *     `'assert-github-matrix.mjs'` in this file would hand that guard a recorded
+ *     failing case it does not have, from the very file testing the mechanism
+ *     that excused it. That is the same trap the EXCUSED comment records, one
+ *     directory over, and it is worse here: the guard it would falsely cover is
+ *     the guard nothing runs.
+ *
+ *  Matched on the KEY position — a quoted name immediately followed by the entry
+ *  object — because the `why` prose names other .mjs files inside its strings. */
+const UNRUNNABLE = (() => {
+  const src = readFileSync(GUARD, 'utf8');
+  const block = src.match(/NOT_CI_RUNNABLE = new Map\(\[([\s\S]*?)\n\]\);/);
+  assert.ok(block, 'could not find NOT_CI_RUNNABLE in the guard — the fixtures cannot model it');
+  const names = [...block[1].matchAll(/\[\s*'([A-Za-z0-9._-]+\.mjs)',\s*\{/g)].map((m) => m[1]);
+  assert.ok(names.length > 0, 'NOT_CI_RUNNABLE parsed to zero entries — the fixtures would model an empty map');
+  return names;
+})();
+
+/** A fixture stand-in for a guard no runner can make pass. It REFUSES, which is
+ *  the entry's price of admission, and it carries its self-check in code rather
+ *  than in a comment — a comment mentioning the marker is exactly the
+ *  prose-satisfies-a-check pattern these guards exist to refuse, even here. */
+const UNRUNNABLE_REFUSES = [
+  '#!/usr/bin/env node',
+  "console.error('COVERAGE LOST — fixture stand-in: no subject reachable from a runner');",
+  'process.exit(2);',
+  '',
+].join('\n');
+
+/** The same stand-in with the claim FALSIFIED: it passes. An exemption saying a
+ *  runner cannot make this guard pass, over a guard that just did. */
+const UNRUNNABLE_PASSES = [
+  '#!/usr/bin/env node',
+  "if (process.env.NEVER) console.error('COVERAGE LOST — unreachable');",
+  "console.log('ok  fixture stand-in that should not have passed');",
+  'process.exit(0);',
+  '',
+].join('\n');
+
 let TMP;
 before(() => {
   TMP = mkdtempSync(join(tmpdir(), 'nikatru-gc-'));
@@ -93,6 +137,10 @@ function repo(
     /** created on disk and invoked by the workflow, but deliberately NEVER named
      *  by a test file — i.e. the shape NO_NEGATIVE_TEST_NEEDED excuses. */
     excused = [],
+    /** filenames written into tooling/ci and deliberately NEVER invoked by the
+     *  workflow — the shape NOT_CI_RUNNABLE excuses from R2. Pass the derived
+     *  UNRUNNABLE list so a real-mode fixture models the map that exists. */
+    unrunnable = [],
     mentionScripts = true,
     workflow,
     invoke,
@@ -126,6 +174,10 @@ function repo(
   for (const dep of deps) writeFileSync(join(ci, dep), readFileSync(join(CI_DIR, dep), 'utf8'));
 
   for (const [name, src] of Object.entries(all)) writeFileSync(join(ci, name), src);
+  // Written into tooling/ci but deliberately absent from `all`, so the generated
+  // workflow does not invoke them — unreached by construction, which is the
+  // whole state NOT_CI_RUNNABLE describes.
+  for (const name of unrunnable) writeFileSync(join(ci, name), UNRUNNABLE_REFUSES);
   for (const rel of [...scripts, ...excused]) {
     const abs = join(root, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -158,7 +210,7 @@ function repo(
   // itself had, so neither could see that a hollowed-out test file covers
   // nothing. Found 2026-07-27 while closing F-10.
   const covered = mentionAll
-    ? [...Object.keys(all), ...deps, ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
+    ? [...Object.keys(all), ...unrunnable, ...deps, ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
     : ['nothing-real.mjs'];
   for (let i = 0; i < testFiles; i++) {
     // commentsOnly reproduces this fixture's ORIGINAL behaviour, kept so the fix
@@ -231,7 +283,7 @@ describe('assert-guard-coverage', () => {
   test('a fully compliant tree passes', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /4 file\(s\) in tooling\/ci, all reached: 4 invoked by 1 workflow\(s\) and 0 imported/);
+    assert.match(r.stdout, /4 file\(s\) in tooling\/ci, all accounted for: 4 invoked by 1 workflow\(s\), 0 imported by one that is, and 0 recorded not CI-runnable/);
     assert.match(r.stdout, /all named in 3 test file\(s\)/);
   });
 
@@ -399,7 +451,7 @@ describe('assert-guard-coverage', () => {
         }),
       );
       assert.equal(r.status, 0, r.stderr + r.stdout);
-      assert.match(r.stdout, /5 file\(s\) in tooling\/ci, all reached: 5 invoked by 1 workflow\(s\) and 0 imported/);
+      assert.match(r.stdout, /5 file\(s\) in tooling\/ci, all accounted for: 5 invoked by 1 workflow\(s\), 0 imported by one that is, and 0 recorded not CI-runnable/);
       assert.match(r.stdout, /all named in 4 test file\(s\)/);
     });
   });
@@ -516,7 +568,7 @@ describe('assert-guard-coverage', () => {
      *  and a fixture that did not model it would fail for a reason unrelated to
      *  the behaviour under test. */
     const seeded = (opts) => {
-      const root = repo(compliant(), { real: true, excused: EXCUSED, ...opts });
+      const root = repo(compliant(), { real: true, excused: EXCUSED, unrunnable: UNRUNNABLE, ...opts });
       const seed = run(root);
       assert.equal(seed.status, 0, `fixture-mode seed failed: ${seed.stderr}`);
       gitify(root);
@@ -526,6 +578,72 @@ describe('assert-guard-coverage', () => {
     test('a git-tracked, workflow-wired fixture passes in real mode', () => {
       const r = runReal(seeded());
       assert.equal(r.status, 0, r.stderr + r.stdout);
+    });
+
+    // ── NOT_CI_RUNNABLE — R2's one exemption, and the failing cases it owes ──
+    //
+    // R2 refused an exemption list the first time it was asked, and said why:
+    // a hand-maintained list is satisfied by typing in it. The mechanism that
+    // landed instead is a CLAIM RE-RUN ON EVERY PASS — the guard is spawned with
+    // the argv a runner would have and must refuse. These four cases are the
+    // three ways that claim can be false plus the control; without them the map
+    // would be exactly the list R2 was right to refuse.
+    describe('NOT_CI_RUNNABLE is a claim re-verified, not a name trusted', () => {
+      test('the control: unreached guards that REFUSE are accounted for, and PRINTED', () => {
+        const r = runReal(seeded());
+        assert.equal(r.status, 0, r.stderr + r.stdout);
+        // Printed not hidden, with the exit code observed on THIS run — the
+        // measurement, not a repeat of the claim.
+        assert.match(r.stdout, /recorded NOT CI-RUNNABLE, printed not hidden — each claim RE-RUN just now/);
+        assert.match(r.stdout, /exited 2 on this run/);
+        assert.match(r.stdout, new RegExp(`${UNRUNNABLE.length} recorded not CI-runnable and re-verified refusing`));
+      });
+
+      test('an entry naming a file that is NOT THERE fails — judgement over nothing', () => {
+        // The stand-ins are simply not written. This is the shape that made
+        // NO_NEGATIVE_TEST_NEEDED grow a self-check: an exemption for something
+        // that is not there sits looking considered while covering nothing.
+        const r = runReal(seeded({ unrunnable: [] }));
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /NOT_CI_RUNNABLE entr/);
+        assert.match(r.stderr, /tooling\/ci no longer holds it/);
+      });
+
+      // ⚠️ THESE TWO MUTATE AFTER SEEDING, AND THAT IS NOT A TEST-HARNESS
+      // WORKAROUND — IT IS THE REAL SEQUENCE. Limbs (b) and (c) apply wherever
+      // the named file is present, fixture root or not, so a tree built already
+      // broken cannot even seed its ratchet: the guard refuses it, correctly, on
+      // the first run. Both cases are a tree that WAS compliant and then changed,
+      // which is exactly how a waiver goes stale in the first place.
+      test('an entry for a guard a workflow NOW INVOKES fails as stale', () => {
+        // The good-news case, and it must still fail: the guard is covered by
+        // being run, so the exemption standing in for that is obsolete. Derived
+        // from the same reachability graph R2 uses, so the two cannot disagree.
+        const root = seeded();
+        assert.equal(runReal(root).status, 0);
+        appendFileSync(
+          join(root, '.github', 'workflows', 'ci.yml'),
+          UNRUNNABLE.map((g) => `      - run: node tooling/ci/${g}\n`).join(''),
+        );
+        const r = runReal(root);
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /it IS reached now/);
+        assert.match(r.stderr, /Delete it/);
+      });
+
+      test('an entry whose guard EXITS 0 fails — the claim itself is false', () => {
+        // 🔴 THE CASE THE WHOLE MECHANISM EXISTS FOR. A name in a list cannot
+        // notice this; only spawning the guard can. Either it is CI-runnable now
+        // and must be wired in, or it has grown a vacuous pass — and an
+        // exemption would otherwise be hiding exactly the defect this file hunts.
+        const root = seeded();
+        assert.equal(runReal(root).status, 0);
+        for (const g of UNRUNNABLE) writeFileSync(join(root, 'tooling', 'ci', g), UNRUNNABLE_PASSES);
+        const r = runReal(root);
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /EXITED 0/);
+        assert.match(r.stderr, /vacuous pass/);
+      });
     });
 
     test('a DELETED ratchet manifest is COVERAGE LOST on the real repo', () => {

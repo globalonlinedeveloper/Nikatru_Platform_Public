@@ -2289,6 +2289,31 @@ jobs:
         run: node tooling/ci/assert-discovery-surface.mjs
       - name: Every inline palette copy still matches the token source
         run: node tooling/ci/assert-palette-consistent.mjs
+      # catalog/store-matrix.json is the primary key of the store matrix, so it
+      # joins the other catalogue guards in this job.
+      #
+      # 🔴 `--registry-only` IS LOAD-BEARING AND IS NOT A WAIVER. This guard's
+      # full subject is THIRTY DIRECTORIES under Projects/, outside this
+      # repository; a CI checkout holds one repo and never the matrix, so the
+      # anchor is genuinely unreachable here. Without the flag the guard REFUSES
+      # (exit 2) rather than passing over an absent tree — refusal is its default,
+      # and "the tree is not in this checkout" and "the path is wrong" are
+      # deliberately not answered by the same test. With the flag it checks the
+      # registry's internal consistency — the naming rule, the repo-name collision
+      # class that already bit this tree, the state vocabulary, the counts, the
+      # backing cross-references — and PRINTS, in capitals, the number of disk
+      # assertions it did not make.
+      #
+      # The flag polices itself: passing it anywhere the tree IS reachable exits 2
+      # rather than suppressing the disk limbs, so the day this job can see the
+      # matrix, this line fails loudly instead of going quiet. The tree limbs are
+      # run by hand, without the flag, from a checkout that sits in the tree.
+      #
+      # Placed at the END of this job on purpose: every `ci.yml:NNNN` citation in
+      # the private corpus below an insertion point shifts, so the insertion is put
+      # where it moves the fewest of them.
+      - name: The store matrix registry is internally consistent (tree limbs run locally)
+        run: node tooling/ci/assert-store-matrix.mjs --registry-only
 
   workspace_gate:
     name: Workspace gate (melos analyze + test)

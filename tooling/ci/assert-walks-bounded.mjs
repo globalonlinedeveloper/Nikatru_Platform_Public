@@ -34,6 +34,60 @@
 // there is no input for which this scan quietly sees less than it should.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// 2026-08-18 — WHY THERE IS A SECOND SANCTIONED ROUTE, AND WHY IT IS NEITHER AN
+// EXEMPTION LIST NOR A LOOSER `listDir`.
+//
+// On this date this guard reported six problems: assert-store-matrix.mjs,
+// assert-copy-parity.mjs and assert-github-matrix.mjs each imported AND called
+// `readdirSync` directly. The obvious repair — route all three through `listDir`
+// — WOULD HAVE TURNED THEM GREEN OVER NOTHING, and that is the whole reason this
+// section exists.
+//
+// The matrix guards' subject is not this tree. It is the WORKSPACE OF
+// REPOSITORIES around it: the thirty store-slot directories spread under
+// `Projects/`, and every one of those directories IS a separate checkout. BEING
+// A CHECKOUT IS THE PROPERTY THAT MAKES A DIRECTORY A SLOT — it is not an
+// accident of one machine. `listDir` removes exactly the entries that have a
+// `.git`; that is its entire job, and the sixty-odd walks whose subject IS this
+// tree depend on it doing so. Handed to a guard that enumerates slots, it
+// returns an empty set: no slots found, no rows left to contradict, `ok` printed
+// over nothing. That is the vacuous pass this corpus refuses, arrived at BY WAY
+// OF the fix for the opposite defect — and worse than the defect it would have
+// replaced, because the 2026-08-02 defect was at least LOUD on the machine of
+// the one person looking at it.
+//
+// So the boundary was not weakened. It was NAMED. tree-walk.mjs grew a second
+// exported primitive, `listCheckoutsAcrossWorkspace`, which returns exactly the
+// entries `listDir` hides — and nothing else, and never what is inside them. It
+// answers "which entries here are other repositories", never "what do they
+// contain": it does not recurse, it offers no option that would, and it stops at
+// each checkout's doorstep. R4 below proves that on every run rather than
+// trusting the name. Crossing the boundary is therefore something a call site
+// says OUT LOUD, in a word too long to type by accident, instead of a walk that
+// drifted into another repository without anybody deciding it should.
+//
+// The route is for the SUBJECT, not for the three filenames: of the files
+// reported that day, only those that enumerate the slot directories themselves
+// need it, and the walks that merely descend within this tree moved to `listDir`
+// and stayed there. A matrix guard written next year is inside this rule on the
+// day it lands, without being added to anything.
+//
+// TWO OTHER REPAIRS WERE REJECTED, and the reasons are the reusable part:
+//   · AN EXEMPTION LIST HERE — "assert-store-matrix.mjs may use readdirSync" —
+//     names three FILES instead of the property. It goes stale in silence, every
+//     matrix guard written after it is born outside it, and what it hands back
+//     is the UNBOUNDED primitive: an exempted file may then walk anywhere,
+//     including down INTO a checkout, with nothing left watching. The narrow
+//     function can only ever do the one narrow thing.
+//   · BENDING `listDir` to stop filtering checkouts would re-break every walk it
+//     exists for — the defect of 2026-08-02 restored in full, this time enforced
+//     by the guard written to prevent it.
+//
+// Nothing below became a warning and no file was excused: raw `readdirSync` and
+// every other enumeration primitive stay banned for everything in tooling/ci
+// except tree-walk.mjs, which is where BOTH routes are implemented.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // THE RULE
 //
 //   R1  No file in tooling/ci except tree-walk.mjs may import a directory
@@ -43,13 +97,21 @@
 //   R2  No file in tooling/ci except tree-walk.mjs may CALL one, in executable
 //       code. (R1 catches the import; R2 catches `fs.readdirSync(…)` reached
 //       through a namespace import, which R1 cannot see.)
-//   R3  A file imports `listDir` iff it calls `listDir`. A decorative import
-//       satisfies nothing, and a call with no import does not run.
-//   R4  tree-walk.mjs STILL REFUSES. Proven behaviourally on every run, against
-//       a temp fixture with a real nested checkout in it — not by reading its
+//   R3  A file imports each entry point of tree-walk.mjs iff it calls it —
+//       `listDir`, `boundedGlob` and `listCheckoutsAcrossWorkspace` alike. A
+//       decorative import satisfies nothing, and a call with no import does not
+//       run.
+//   R4  tree-walk.mjs STILL REFUSES, AND THE SECOND ROUTE STILL CROSSES NO
+//       FURTHER THAN IT CLAIMS. Proven behaviourally on every run, against a
+//       temp fixture with a real nested checkout in it — not by reading its
 //       source. A rule enforced across sixty files by a helper that had quietly
 //       stopped excluding anything would be sixty guards reporting bounded
-//       walks and none of them bounded.
+//       walks and none of them bounded; and a route this file ADMITS as
+//       legitimate is held to the same standard — that
+//       `listCheckoutsAcrossWorkspace` still returns the checkouts (or the
+//       matrix guards see no slots and pass over an empty set) and still returns
+//       ONLY them, at ONE level (or it has become the general escape hatch its
+//       own header says it is not).
 //
 // R4 is the limb that matters and the reason this file is a guard rather than a
 // lint rule: R1–R3 only say "everything goes through one door", which is worth
@@ -63,7 +125,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listDir, boundedGlob, isNestedCheckout } from './tree-walk.mjs';
+import { listDir, boundedGlob, isNestedCheckout, listCheckoutsAcrossWorkspace } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI_REL = 'tooling/ci';
@@ -81,12 +143,23 @@ const scanningRealRepo = process.argv[2] === undefined;
  *  choose to visit a nested checkout, and only the choosing is the defect. */
 const ENUMERATORS = ['readdirSync', 'opendirSync', 'globSync', 'readdir', 'opendir', 'glob'];
 
+/** The ONE listing that may cross out of the tree under test, named here because
+ *  it is quoted in the pass line: a route this guard accepts has to be visible in
+ *  the log of every run, or it is a permission granted somewhere nobody reads. */
+const CROSSING = 'listCheckoutsAcrossWorkspace';
+
 // The helper's callable entry points — one per enumeration shape a guard uses.
 // `boundedGlob` exists because a doublestar glob pattern descends through
 // whatever is on disk exactly as a `readdirSync` recursion does, with a shorter
 // spelling; check-migrations.mjs was reaching node:fs/promises directly for it,
 // and reasoning about that as a special case is how the class survives.
-const ENTRY_POINTS = ['listDir', 'boundedGlob'];
+// `CROSSING` is the 2026-08-18 addition described in the header: the guards whose
+// subject is the workspace OF repositories cannot use `listDir`, because
+// `listDir` deletes precisely their subject. It is an ENTRY POINT OF THE SAME
+// HELPER, not an exemption from it — R1 and R2 are unchanged and unconditional,
+// so a file taking this route still may not touch `readdirSync`, and R4 proves
+// the route is still the narrow one.
+const ENTRY_POINTS = ['listDir', 'boundedGlob', CROSSING];
 
 const problems = [];
 
@@ -179,6 +252,7 @@ if (tracked.length === 0) {
 
 // ── R1 + R2 + R3 ─────────────────────────────────────────────────────────────
 let importers = 0;
+let crossers = 0;
 for (const f of files) {
   const src = codeLines(readFileSync(join(CI, f), 'utf8'));
 
@@ -215,10 +289,12 @@ for (const f of files) {
   // scan has been satisfied by something that is not the thing it checks for.
   if (f === HELPER) continue;
   let usesHelper = false;
+  let crossesBoundary = false;
   for (const entry of ENTRY_POINTS) {
     const imports = new RegExp(`import\\s*\\{[^}]*\\b${entry}\\b[^}]*\\}\\s*from\\s*'\\./tree-walk\\.mjs'`).test(src);
     const calls = new RegExp(`(?:^|[^\\w$.])${entry}\\s*\\(`, 'm').test(src);
     if (imports) usesHelper = true;
+    if (imports && entry === CROSSING) crossesBoundary = true;
     if (imports !== calls) {
       problems.push(
         `${CI_REL}/${f} — imports ${entry}: ${imports}, calls ${entry}: ${calls}. ` +
@@ -235,11 +311,13 @@ for (const f of files) {
   // count. (Found by its own test: the fixture with no walking guard at all
   // passed, because the copy of this file sitting in it was importer number one.)
   if (usesHelper && f !== SELF) importers++;
+  if (crossesBoundary && f !== SELF) crossers++;
 }
 
 if (importers === 0) {
   coverageLost([
-    `not one file in ${CI_REL} — other than this guard itself — imports \`listDir\` or \`boundedGlob\` from ${HELPER}.`,
+    `not one file in ${CI_REL} — other than this guard itself — imports \`listDir\`, \`boundedGlob\` or ` +
+      `\`${CROSSING}\` from ${HELPER}.`,
     'R1 and R2 are prohibitions, and prohibitions are satisfied by a directory that enumerates nothing at',
     'all. The helper being USED by the guards is the positive half; without it this scan is either pointed',
     'at something that is not tooling/ci, or at a tooling/ci whose walks have all left through some door',
@@ -308,6 +386,47 @@ if (importers === 0) {
         'in tooling/ci while each of them still reported ok over the nothing it had left.',
       ]);
     }
+
+    // ── THE SECOND ROUTE, HELD TO THE SAME STANDARD (2026-08-18) ──────────────
+    // R1–R3 above now accept `listCheckoutsAcrossWorkspace` as a listing route.
+    // An accepted route that is never exercised is a door this file declares
+    // safe on the strength of its NAME, which is exactly the trust R4 exists to
+    // refuse for `listDir`. Both ends are failures and both are checked, against
+    // the SAME fixture the listDir proof just used:
+    //   · it returns nothing → the guards whose subject is the workspace
+    //     enumerate no store slots, find no rows to contradict, and each prints
+    //     ok over an empty set. That is the vacuous pass, reached through the
+    //     fix for the opposite defect.
+    //   · it returns ordinary directories, or it recurses → it has become the
+    //     general escape hatch its own header says it is not, and another
+    //     repository's files are being read as this tree's again.
+    // The fixture is extended first so the two cases a lazier check would miss
+    // are live: a CHECKOUT INSIDE A CHECKOUT, which must not surface from the
+    // level above it, and a `.claude` that is ITSELF a checkout — an agent
+    // worktree of THIS repository is not a peer in the workspace, it is the
+    // original defect wearing the new function's clothes.
+    mkdirSync(join(fixture, 'a-clone', 'inner-checkout', '.git'), { recursive: true });
+    writeFileSync(join(fixture, '.claude', '.git'), 'gitdir: /elsewhere\n');
+    const crossed = listCheckoutsAcrossWorkspace(fixture).sort();
+    const wantCrossed = ['a-clone', 'a-worktree'];
+    if (JSON.stringify(crossed) !== JSON.stringify(wantCrossed)) {
+      coverageLost([
+        `${HELPER}'s \`${CROSSING}\` returned [${crossed.join(', ')}], expected [${wantCrossed.join(', ')}].`,
+        'This is the route accepted above INSTEAD of raw readdirSync, for the guards whose subject is the',
+        'workspace of repositories rather than this tree. Returning LESS than this means those guards see no',
+        'store slots at all and every one of them prints ok over an empty set; returning MORE — an ordinary',
+        'directory, `.claude`, or anything from INSIDE a checkout — means the one sanctioned crossing has',
+        'widened back into the unbounded walk it was carved out of.',
+      ]);
+    }
+    // NO SEPARATE "the two listings never overlap" ASSERTION IS MADE HERE. The
+    // two equalities above already pin every entry of this fixture to exactly
+    // one side, so a complement check could not fail while they pass — and an
+    // assertion with no failing input inflates apparent coverage without adding
+    // any, which is the same reason this guard refuses to count itself among the
+    // importers. The complement is a property of `tree-walk.mjs`, and it is
+    // tested where it can actually be contradicted: entry-for-entry, on a
+    // fixture built for it, in tooling/ci/test/walks-bounded.test.mjs.
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }
@@ -325,6 +444,8 @@ if (problems.length) {
 
 console.log(
   `ok  tooling/ci walks bounded — ${files.length} guard(s) scanned, ${importers} route every directory listing ` +
-    `through ${HELPER}; none imports or calls an enumeration primitive itself; the helper was exercised against ` +
-    'a live nested checkout (.git as a file AND as a directory) and still refuses [pipeline F-10]',
+    `through ${HELPER} (${crossers} of them cross to the workspace of repositories out loud, by \`${CROSSING}\`); ` +
+    'none imports or calls an enumeration primitive itself; the helper was exercised against a live nested ' +
+    'checkout (.git as a file AND as a directory) and still refuses, and the crossing route against the same ' +
+    'fixture still returns exactly the checkouts, at one level [pipeline F-10]',
 );
