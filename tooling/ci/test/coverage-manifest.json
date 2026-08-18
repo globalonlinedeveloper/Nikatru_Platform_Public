@@ -94,6 +94,7 @@
   "release-durable.test.mjs": 71,
   "release-lane-generic.test.mjs": 33,
   "release-provenance.test.mjs": 35,
+  "render-payload.test.mjs": 48,
   "repo-posture.test.mjs": 19,
   "retention-coverage.test.mjs": 38,
   "rollup-lossless.test.mjs": 52,

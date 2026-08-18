@@ -1,0 +1,46 @@
+[
+  {
+    "slug": "subly",
+    "lede": [
+      "Subly keeps every subscription you pay for in one list, so the renewal that would have surprised you next month is a thing you already knew about.",
+      "Add each service once with its price and billing cycle. Subly works out what you spend per month and per year, shows the next payment date for each one, and reminds you before a free trial turns into a charge."
+    ],
+    "features": [
+      {
+        "title": "Renewal reminders",
+        "blurb": "You are told what renews, and when, before you are charged."
+      },
+      {
+        "title": "Budgets",
+        "blurb": "Set a budget and see where you stand against it."
+      },
+      {
+        "title": "Export your data",
+        "blurb": "Take what you entered with you, whenever you want."
+      }
+    ],
+    "checkoutOpen": false,
+    "currencies": [
+      "USD"
+    ],
+    "zeroAmount": "$0",
+    "offerings": [
+      {
+        "id": "pro_monthly",
+        "amount": "$4.99",
+        "termHeading": "Monthly",
+        "termUnit": "month",
+        "termRenews": "Renews every month until you cancel.",
+        "trialDays": 30
+      },
+      {
+        "id": "pro_yearly",
+        "amount": "$19.99",
+        "termHeading": "Yearly",
+        "termUnit": "year",
+        "termRenews": "Renews every year until you cancel.",
+        "trialDays": 30
+      }
+    ]
+  }
+]

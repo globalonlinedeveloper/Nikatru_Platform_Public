@@ -258,12 +258,22 @@ describe('§C — a drift check cannot pass by diffing the checkout against itse
   });
 
   test('removing the drift check itself is COVERAGE LOST, not a clean sweep', () => {
-    // BOTH drift lanes must go: the guard's REQUIRED_DRIFT_CHECKS asks whether
-    // ci.yml contains ANY drift check, so removing one of two proves nothing.
-    // Until 2026-08-17 there was exactly one and this line removed it; the site
-    // feed's lane made that assumption false. Derive the removal from the lanes
-    // that exist rather than naming one.
-    const root = mutant([['ci.yml', DIFF_STEP, ''], ['ci.yml', FEED_DIFF_STEP, '']]);
+    // 🔴 EVERY drift lane must go, and they are found rather than named. The
+    // guard's REQUIRED_DRIFT_CHECKS asks whether ci.yml contains ANY drift check,
+    // so leaving one behind proves nothing — the case then passes because the
+    // guard is right, not because the mutation worked.
+    //
+    // This line has now rotted TWICE by the same mechanism. It named one lane
+    // until 2026-08-17, when the site feed's lane made that wrong; it was changed
+    // to name two, and the render payload's lane made THAT wrong the next day. A
+    // list of literals in a test is a second copy of the workflow, and this file
+    // exists to catch exactly that shape one level up. So: strip every line
+    // matching the guard's own pattern, and assert the strip actually removed as
+    // many as the workflow contains.
+    const CI = readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8');
+    const laneLines = CI.split(String.fromCharCode(10)).filter((l) => l.includes('git diff --exit-code --'));
+    assert.ok(laneLines.length >= 1, 'no drift lane found in ci.yml — this case would prove nothing');
+    const root = mutant(laneLines.map((l) => ['ci.yml', l, '']));
     caught(run(root), /COVERAGE LOST[\s\S]*ci\.yml contains no `git diff --exit-code -- <path>` drift check/);
   });
 

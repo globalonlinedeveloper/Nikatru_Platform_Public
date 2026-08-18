@@ -364,7 +364,7 @@ const money = (amountMinor, code) => {
 
 /** Zero, in the same currency, without the minor units — there are none to show
  *  and `$0.00` reads as a rounding, not as free. */
-const zero = (code) => {
+export const zero = (code) => {
   const symbol = CURRENCY_SYMBOLS.get(code);
   return symbol ? `${symbol}0` : `${code} 0`;
 };
