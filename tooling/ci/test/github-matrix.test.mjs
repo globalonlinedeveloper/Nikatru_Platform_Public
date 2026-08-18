@@ -42,7 +42,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -275,6 +275,12 @@ describe('assert-github-matrix', () => {
       mkdirSync(join(base, 'catalog'), { recursive: true });
       const copy = join(base, 'tooling', 'ci', 'assert-github-matrix.mjs');
       writeFileSync(copy, readFileSync(GUARD, 'utf8'));
+      // 2026-08-18: the guard now imports `listDir` from ./tree-walk.mjs, so the planted copy needs
+      // its sibling or node fails at MODULE RESOLUTION — exit 1, before a line of the guard runs.
+      // That would have looked like this case still failing the guard while proving nothing about the
+      // anchor. Copying the helper keeps the subject under test the ANCHOR WALK, which is what this
+      // case is for. Same repair as guards-refuse-empty.test.mjs:236 and release-durable.test.mjs:100.
+      copyFileSync(join(CI_DIR, 'tree-walk.mjs'), join(base, 'tooling', 'ci', 'tree-walk.mjs'));
       writeFileSync(join(base, 'catalog', 'store-matrix.json'), readFileSync(REGISTRY, 'utf8'));
       const r = runRaw(copy, '--offline');
       assert.equal(r.status, 2, r.stdout + r.stderr);

@@ -116,12 +116,46 @@
 // · No private-tree comparison. Declared gap, printed every run.
 // · No GitHub API call. Nothing is created, renamed or deleted.
 //
+// ── HOW THIS GUARD LISTS DIRECTORIES — DECIDED 2026-08-18 ────────────────────
+// Every directory listing here goes through `listDir` from tooling/ci/tree-walk.mjs.
+// NONE goes through `listCheckoutsAcrossWorkspace`, the boundary-crossing primitive
+// added to that file on 2026-08-18. That is a decision, and it is written down here
+// because "why did the matrix guard next door need the crossing primitive and this
+// one did not" is exactly the question a later reader will get wrong by symmetry.
+//
+//   THIS GUARD NEVER ENUMERATES SLOT DIRECTORIES. IT ADDRESSES THEM. The copy set
+//   is derived from catalog/store-matrix.json (see "THE COPY SET IS DERIVED, NEVER
+//   TYPED" above) and each slot's path is COMPOSED — join(Projects, store, target,
+//   type, publicDir). No directory is ever read in order to DISCOVER which slots
+//   exist. assert-store-matrix.mjs does discover them, by walking Projects/ to
+//   depth 4, and that walk is what the crossing primitive was added for. There is
+//   no walk of that shape in this file, so there is no call here that is allowed to
+//   leave the tree, and no call here carries a leaves-the-tree comment.
+//
+//   The two listings that DO remain both ask "what is in THIS directory", of a path
+//   somebody already chose: is a resolved slot directory empty (the pre-created-shell
+//   test, absence rule (b)), and what files does a non-git copy carry (the fallback
+//   enumeration). `listDir` is the primitive for that question — tree-walk.mjs says
+//   a guard descending through containers on the way to the slots still calls it —
+//   and the ROOT of a listDir call is never itself a candidate for exclusion, so
+//   pointing it at a slot directory (which IS a checkout) still reads that slot in
+//   full. Both sites carry their own dated note below.
+//
+//   🔴 USING THE CROSSING PRIMITIVE FOR EITHER WOULD BE A DEFECT, NOT A STYLE
+//   CHOICE. `listCheckoutsAcrossWorkspace` returns ONLY the entries that are
+//   themselves checkouts. So `isNonEmptyDir(originDir)` would come back EMPTY for a
+//   perfectly good origin full of ordinary files, the resolver would call the origin
+//   a pre-created shell, and this guard would REFUSE (exit 2) over a tree that is
+//   fine — a red result with a false reason, which is how a guard stops being read.
+//   And the fallback walk cannot use it at all: it never recurses, by design.
+//
 // Exit:  0 COMPARED and clean   1 FINDINGS   2 REFUSED   3 NOT PROVEN (compared 0)
 //
 // Usage: node tooling/ci/assert-copy-parity.mjs [--verbose]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, statSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
+import { listDir } from './tree-walk.mjs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -156,7 +190,14 @@ function blobId(absPath) {
 }
 
 const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
-const isNonEmptyDir = (p) => { try { return readdirSync(p).length > 0; } catch { return false; } };
+// 2026-08-18 — IN-BOUNDS LISTING, so `listDir` and NOT `listCheckoutsAcrossWorkspace`.
+// This asks "does this directory hold anything" of a path the registry already named; it does not
+// enumerate the workspace and does not discover a single slot. The crossing primitive answers a
+// different question — "which entries here are other repositories" — which is EMPTY for an ordinary
+// source copy, so it would report every real origin as a pre-created shell and refuse over a fine
+// tree. `listDir`'s root is never itself excluded, so this still reads a slot (itself a checkout) in
+// full; only entries INSIDE it that are separate checkouts or `.claude` scratch drop out.
+const isNonEmptyDir = (p) => { try { return listDir(p).length > 0; } catch { return false; } };
 const toPosix = (p) => p.split(sep).join('/');
 
 // ── the anchor. Ported from tooling/scripts/spec-guards.mjs, unchanged in intent. ──
@@ -411,7 +452,13 @@ function walkFs(root, ignoreDirs) {
   let suppressed = 0;
   const rec = (abs, rel) => {
     let entries;
-    try { entries = readdirSync(abs, { withFileTypes: true }); } catch { return; }
+    // 2026-08-18 — IN-BOUNDS LISTING, so `listDir` and NOT `listCheckoutsAcrossWorkspace`.
+    // This descends INSIDE one already-resolved copy and reads its files, which is this guard's
+    // declared subject; it enumerates no part of the workspace, so it crosses no boundary. The
+    // crossing primitive could not serve it in any case — it never recurses, by design, and it
+    // returns only the entries that are checkouts. A nested checkout parked inside a copy is not
+    // that copy's source and `listDir` drops it, which is the behaviour this walk wants.
+    try { entries = listDir(abs, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (e.isDirectory()) {
         if (ignoreDirs.includes(e.name)) { suppressed++; continue; }

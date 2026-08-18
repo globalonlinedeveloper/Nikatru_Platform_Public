@@ -81,10 +81,23 @@
 //             Never 0. See tooling/scripts/spec-guards.mjs for what a locator
 //             that answers 0 costs.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+// 2026-08-18 · Both listings in this file come from tree-walk.mjs, and they
+// answer DIFFERENT questions on purpose:
+//   · `listDir`                        — "what is in this directory", bounded to
+//                                        the tree under test. The default, and
+//                                        what every other guard in tooling/ci uses.
+//   · `listCheckoutsAcrossWorkspace`   — "which entries here are OTHER
+//                                        REPOSITORIES". Used at ONE call site
+//                                        below, because the thirty slot
+//                                        directories this guard exists to
+//                                        enumerate are separate checkouts and
+//                                        `listDir` is built to hide precisely
+//                                        those. Each use is argued at its site.
+import { listDir, listCheckoutsAcrossWorkspace } from './tree-walk.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const ARGV = process.argv.slice(2);
@@ -243,7 +256,14 @@ const isEmptyTree = (abs) => {
   const stack = [abs];
   while (stack.length) {
     const cur = stack.pop();
-    for (const e of readdirSync(cur, { withFileTypes: true })) {
+    // ⚠️ `listDir`, NOT the crossing primitive, and the distinction is the whole
+    // point of the pair. This asks "does this directory hold a file of its own",
+    // which is a question about ONE tree's contents; the `.git` test above has
+    // already returned for a slot that is a real checkout, so anything `listDir`
+    // prunes from here is a repository parked INSIDE a shell. Its files are its
+    // own, and counting them as this shell's is exactly the substitution
+    // tree-walk.mjs exists to prevent.
+    for (const e of listDir(cur, { withFileTypes: true })) {
       if (e.isDirectory()) stack.push(join(cur, e.name));
       else return false;
     }
@@ -339,11 +359,42 @@ if (PROJECTS) {
   const walk = (abs, rel, depth) => {
     let entries;
     try {
-      entries = readdirSync(abs, { withFileTypes: true });
+      // TWO QUESTIONS, ASKED SEPARATELY AT EVERY LEVEL, AND ONLY ONE OF THEM
+      // LEAVES THE TREE. Merging them into one `readdirSync` — which is what
+      // stood here until 2026-08-18 — is what let this walk descend into
+      // Project_Web_Presence and Project_Cross_browser_Extensions and read
+      // their directories as this tree's.
+      //
+      // (a) "WHAT IS IN THIS DIRECTORY" — `listDir`, the bounded listing every
+      // walk in tooling/ci goes through. It carries the ordinary containers on
+      // the way down (<store>/<target>/<type>) AND the slot directories that are
+      // not checkouts: 28 of the 30 slots on this machine are shells with no
+      // `.git` in them yet, so a level read through the crossing primitive alone
+      // would report all 28 declared directories as missing from disk.
+      const inTree = listDir(abs, { withFileTypes: true }).map((e) => [e, false]);
+
+      // (b) 2026-08-18 · THE ONE CALL IN THIS FILE THAT CROSSES THE BOUNDARY.
+      // It is allowed to leave the tree because THE SLOTS ARE THIS GUARD'S
+      // SUBJECT and a slot that exists for real IS a separate repository —
+      // being a checkout is the property that makes a directory a slot, not an
+      // accident of this machine. `listDir` filters out precisely those, so this
+      // walk routed through it alone would not see Nikatru_Android_Apps_Public
+      // (this repo) or its private half at all, would find 28 of 30 directories,
+      // and the registry's own two rows would read as "not on disk".
+      // It crosses to the DOORSTEP ONLY: every entry it returns is NAMED and
+      // never descended into (`!isCheckout` on the recursion below), so no other
+      // repository's contents are ever read as this tree's. The question is
+      // asked at every depth rather than only at depth 3 because a slot-shaped
+      // checkout in the WRONG place — a `git clone` of a slot repo into
+      // Projects/ — is the fault check 2 exists to name, and it is invisible to
+      // `listDir` wherever it sits.
+      const acrossWorkspace = listCheckoutsAcrossWorkspace(abs, { withFileTypes: true }).map((e) => [e, true]);
+
+      entries = [...inTree, ...acrossWorkspace];
     } catch {
       return;
     }
-    for (const e of entries) {
+    for (const [e, isCheckout] of entries) {
       if (!e.isDirectory() || e.name === '.git' || e.name === 'node_modules') continue;
       const r = rel ? `${rel}/${e.name}` : e.name;
       const d = depth + 1;
@@ -351,7 +402,10 @@ if (PROJECTS) {
       else if (d !== 4 && /^Nikatru_.+_(Public|Private)$/.test(e.name)) {
         misplaced.push(`${r} (depth ${d}; slots live at depth 4)`);
       }
-      if (d < 5) walk(join(abs, e.name), r, d);
+      // A checkout is enumerated and then LEFT ALONE. Descending into one is the
+      // defect itself — its files belong to its own repository — and it is also
+      // what `listCheckoutsAcrossWorkspace` refuses to license.
+      if (d < 5 && !isCheckout) walk(join(abs, e.name), r, d);
     }
   };
   walk(PROJECTS, '', 0);

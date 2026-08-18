@@ -167,6 +167,14 @@ describe('assert-store-matrix — positive controls', () => {
     mkdirSync(base, { recursive: true });
     const guardCopy = join(base, 'assert-store-matrix.mjs');
     writeFileSync(guardCopy, readFileSync(GUARD, 'utf8'));
+    // 2026-08-18: the guard now imports `listDir` and `listCheckoutsAcrossWorkspace`
+    // from ./tree-walk.mjs, so a planted copy needs its sibling or node fails at
+    // MODULE RESOLUTION — exit 1, before a line of the guard runs. That failure
+    // wears the same clothes as a real finding while proving nothing about the
+    // registry, which is what this case is for. Same repair as
+    // github-matrix.test.mjs:283, guards-refuse-empty.test.mjs:236 and
+    // release-durable.test.mjs:100.
+    writeFileSync(join(base, 'tree-walk.mjs'), readFileSync(join(CI_DIR, 'tree-walk.mjs'), 'utf8'));
     const r = spawnSync(
       process.execPath,
       [guardCopy, '--registry-only', '--registry', join(REPO, 'catalog', 'store-matrix.json')],
@@ -221,6 +229,34 @@ describe('assert-store-matrix — positive controls', () => {
     const r = run(tree(ROWS()));
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /assert-store-matrix: ok/);
+  });
+
+  test('P4 a slot that is a REAL CHECKOUT is still enumerated', () => {
+    // 🔴 ADDED 2026-08-18 WITH THE MOVE TO tree-walk.mjs, AND IT IS THE CASE THAT
+    // KEEPS THE REPAIR FROM BEING UNDONE. Every other fixture in this file builds
+    // slot directories with no `.git` in them, so every one of them passes just as
+    // well through `listDir` — which SKIPS nested checkouts — as through
+    // `listCheckoutsAcrossWorkspace`. A live slot is a separate repository (2 of the
+    // 30 on the developer's tree are, this repo among them), so a guard routed
+    // through `listDir` alone would stop seeing exactly the slots that exist for
+    // real and report the registry's rows as "not on disk". Negative-tested by
+    // deleting the crossing call from a copy of the guard: this case then exits 1
+    // with `is not a slot directory on disk — Store_C/Gamma/Apps/...`, both halves.
+    const r = run(
+      tree(ROWS(), ({ projects }) => {
+        const d = join(projects, 'Store_C', 'Gamma', 'Apps');
+        // A worktree's `.git` is a FILE and a clone's is a DIRECTORY. Both shapes
+        // are planted, because a test for one alone passes while the other walks
+        // straight through — the same trap tree-walk.mjs names in isNestedCheckout.
+        writeFileSync(join(d, 'Nikatru_Gamma_Apps_Public', '.git'), 'gitdir: /elsewhere\n');
+        mkdirSync(join(d, 'Nikatru_Gamma_Apps_Private', '.git'), { recursive: true });
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /assert-store-matrix: ok/);
+    // and it must have counted all six directories, not four: an `ok` that lost
+    // the two checkout halves is exactly the vacuous pass this case exists for.
+    assert.match(r.out, /6 slot directories across 3 slot path\(s\)/);
   });
 });
 
@@ -429,6 +465,11 @@ describe('assert-store-matrix — the two absences are answered by two different
     mkdirSync(base, { recursive: true });
     const guardCopy = join(base, 'assert-store-matrix.mjs');
     writeFileSync(guardCopy, readFileSync(GUARD, 'utf8'));
+    // 2026-08-18: the planted copy needs ./tree-walk.mjs beside it — see P1. A
+    // module-resolution failure here would exit 1 with no `same GitHub repo name`
+    // in it, i.e. this case would fail for a reason that has nothing to do with
+    // whether --registry-only still runs the registry limb.
+    writeFileSync(join(base, 'tree-walk.mjs'), readFileSync(join(CI_DIR, 'tree-walk.mjs'), 'utf8'));
     const rows = ROWS();
     rows[1].target = 'Alpha';
     rows[1].publicDir = 'Nikatru_Alpha_Apps_Public';

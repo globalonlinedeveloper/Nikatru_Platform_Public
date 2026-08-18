@@ -66,6 +66,42 @@ const run = (guardPath) => {
   return { code: r.status, text: `${r.stdout || ''}${r.stderr || ''}` };
 };
 
+// ── THE GUARD'S LOCAL IMPORTS TRAVEL WITH IT (2026-08-18) ────────────────────
+// 🔴 A FIXTURE THAT COPIES THE GUARD AND NOT THE MODULE IT IMPORTS DOES NOT RUN
+// THE GUARD AT ALL. On 2026-08-18 assert-copy-parity.mjs stopped calling
+// `readdirSync` and started calling `listDir` from ./tree-walk.mjs. Every case
+// below copies the guard into a synthetic tree so `import.meta.url` moves with it;
+// with the module left behind, node died in the ESM loader — ERR_MODULE_NOT_FOUND,
+// exit 1, no output — and EIGHTEEN cases went red at once. The three that assert
+// `exit 1` would have gone GREEN on that loader death, which is the shape this
+// whole corpus refuses: a test passing for a reason that has nothing to do with
+// its subject.
+// So the copy is TRANSITIVE and DERIVED from the guard's own import statements —
+// not a second hardcoded `cpSync`, which would go stale the next time an import
+// is added and fail in the same silent direction. assert-guards-refuse-empty.mjs
+// builds its subject-free tree with exactly this transitive copy, and names this
+// exact failure in its own comment.
+// 🔴 IT GIVES THE GUARD NO SUBJECT. tree-walk.mjs is a directory-listing helper —
+// not a catalog, a registry or a repository — so a tree that has only it still has
+// nothing for this guard to check, and R10 below still measures a real refusal.
+const copyGuardWithLocalImports = (destCiDir) => {
+  mkdirSync(destCiDir, { recursive: true });
+  const guardCopy = join(destCiDir, 'assert-copy-parity.mjs');
+  cpSync(GUARD, guardCopy);
+  const seen = new Set();
+  const rec = (absSrc) => {
+    for (const m of readFileSync(absSrc, 'utf8').matchAll(/from\s+'\.\/([A-Za-z0-9._-]+\.mjs)'/g)) {
+      const name = m[1];
+      if (seen.has(name)) continue;
+      seen.add(name);
+      cpSync(join(CI_DIR, name), join(destCiDir, name));
+      rec(join(CI_DIR, name));
+    }
+  };
+  rec(GUARD);
+  return guardCopy;
+};
+
 // ── a synthetic workspace with the real anchor shape ────────────────────────
 // <root>/nikatru/                              the anchor's second marker
 // <root>/Projects/S/T/Y/<dir>/                 slot directories, at the real depth
@@ -92,8 +128,9 @@ function workspace({ slots, decl, originFiles, copyFiles, originIsGit = true, wr
   };
   for (const [rel, body] of Object.entries(originFiles)) put(originDir, rel, body);
 
-  // the guard lives inside the origin repo, two below its root
-  cpSync(GUARD, join(originDir, 'tooling', 'ci', 'assert-copy-parity.mjs'));
+  // the guard lives inside the origin repo, two below its root — with the local
+  // modules it imports beside it (see copyGuardWithLocalImports above)
+  copyGuardWithLocalImports(join(originDir, 'tooling', 'ci'));
 
   if (originIsGit) {
     spawnSync('git', ['-C', originDir, 'init', '-q'], { encoding: 'utf8' });
@@ -383,9 +420,10 @@ describe('assert-copy-parity — it must REFUSE rather than report on nothing (e
 
   test('the guard alone in a subject-free directory → refusal (assert-guards-refuse-empty asks exactly this)', () => {
     const bare = join(TMP, `bare${++seq}`, 'tooling', 'ci');
-    mkdirSync(bare, { recursive: true });
-    cpSync(GUARD, join(bare, 'assert-copy-parity.mjs'));
-    const { code, text } = run(join(bare, 'assert-copy-parity.mjs'));
+    // The guard plus the local modules it imports, and NOTHING else — no catalog,
+    // no registry, no repository. See copyGuardWithLocalImports above for why the
+    // modules must come and why bringing them is not bringing a subject.
+    const { code, text } = run(copyGuardWithLocalImports(bare));
     assert.equal(code, 2, text);
     assert.match(text, /COVERAGE LOST/);
   });

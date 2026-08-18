@@ -39,10 +39,19 @@
 //       3 --offline (network limb deliberately skipped, nothing about GitHub was verified)
 //       Findings dominate: --offline WITH findings exits 1, because 1 is the more actionable.
 
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+// 2026-08-18: this guard's ONLY directory listing is of tooling/ci and tooling/scripts, which are
+// directories of THIS repository, so it imports `listDir` and nothing else. It deliberately does NOT
+// import `listCheckoutsAcrossWorkspace`: that primitive is for the guards whose subject is the store
+// slots spread across the workspace, and this file never enumerates those — it derives each slot path
+// from catalog/store-matrix.json (LIMB 2, `join(PROJECTS, s.store, ...)`) and tests it with existsSync,
+// which visits a path somebody already declared rather than choosing what to visit. There is therefore
+// NO boundary-crossing call site in this file, and no dated exemption comment below, because writing
+// one would claim a crossing that does not happen — prose satisfying a rule instead of code obeying it.
+import { listDir } from './tree-walk.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const NAME = 'assert-github-matrix';
@@ -326,7 +335,18 @@ for (const [i, e] of pinsUnobservable.entries()) {
   let queriers = 0;
   for (const d of scanDirs) {
     if (!existsSync(d)) { note(`org-literal limb: ${d} is not present — NOT SCANNED`); continue; }
-    for (const f of readdirSync(d, { withFileTypes: true })) {
+    // IN-TREE LISTING — `listDir`, never the crossing primitive. `scanDirs` is built from REPO_ROOT, so
+    // every entry here is meant to be this tree's own, and the org-literal rule below is a statement
+    // about THIS repository's tooling scripts. A worktree or stray clone parked under tooling/ci would
+    // put another repository's .mjs files in range of that statement.
+    // ⚠️ HONESTLY: at THIS call site the exclusion is not currently load-bearing. The loop is one level
+    // deep and takes `f.isFile()` only, so a nested checkout — always a DIRECTORY — is dropped by that
+    // filter whether or not listDir dropped it first; the scanned count is identical either way
+    // (measured 2026-08-18: 145 scanned, 1 querier, before and after this swap). It is written as
+    // `listDir` because the rule is that no guard enumerates a directory itself, and because the day
+    // this loop learns to recurse — or to look at directory entries — is the day the property starts
+    // mattering, silently, with nobody re-deriving it.
+    for (const f of listDir(d, { withFileTypes: true })) {
       if (!f.isFile() || !f.name.endsWith('.mjs')) continue;
       const abs = join(d, f.name);
       if (abs === SELF) continue; // this file reads github.org by construction

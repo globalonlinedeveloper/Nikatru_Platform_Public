@@ -2,6 +2,14 @@
 // tree-walk.mjs — THE ONE DIRECTORY LISTING. Every guard in tooling/ci reads a
 // directory through `listDir`, and nothing in tooling/ci imports `readdirSync`.
 //
+// Since 2026-08-18 there is a SECOND named primitive,
+// `listCheckoutsAcrossWorkspace`, for the handful of guards whose subject is the
+// workspace OF repositories rather than this tree — it lists the nested
+// checkouts `listDir` exists to hide, never their contents. Its own header says
+// why, and why an exemption list would have been the wrong repair. The rule
+// below is unchanged: it states what is not part of THE TREE UNDER TEST, and
+// crossing that boundary stays a thing a call site says out loud by name.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // THE RULE, STATED ONCE HERE AND ENFORCED BY assert-walks-bounded.mjs:
 //
@@ -108,6 +116,69 @@ export function listDir(dir, options) {
     (e) => !(e.isDirectory() && (e.name === SCRATCH_DIR_NAME || isNestedCheckout(join(dir, e.name)))),
   );
   return options?.withFileTypes ? kept : kept.map((e) => e.name);
+}
+
+/** The entries in `dir` that ARE nested checkouts — the exact inverse of what
+ *  `listDir` keeps. The name is long on purpose: at a call site it has to be
+ *  unmistakable that this listing is allowed OUTSIDE the tree under test, so
+ *  that reading one is a decision somebody made rather than a walk that drifted.
+ *
+ *  ⚠️ WHY IT EXISTS. Added 2026-08-18, when assert-walks-bounded.mjs reported
+ *  assert-store-matrix.mjs, assert-copy-parity.mjs and assert-github-matrix.mjs
+ *  as three files still enumerating directories themselves. Their SUBJECT is the
+ *  thirty store-slot directories spread across the workspace, and every one of
+ *  those directories is a SEPARATE REPOSITORY — being a checkout is the property
+ *  that makes a directory a slot, not an accident of the machine. `listDir`
+ *  filters out precisely those, so routing these three through it would hand
+ *  each of them an empty set and each would print ok over nothing: the vacuous
+ *  pass this corpus refuses, reached by way of the fix for the opposite defect.
+ *  An EXEMPTION LIST was the other candidate and is worse — it names three files
+ *  instead of the property, so it goes stale in silence and every matrix guard
+ *  written after it is born outside it. Bending `listDir` was never a candidate:
+ *  the sixty-odd walks whose subject IS this tree depend on it excluding these.
+ *
+ *  🔴 WHAT IT DOES NOT LICENSE. It is not a general escape hatch, and it does
+ *  not make another repository's files readable.
+ *    · It NEVER RECURSES. It enumerates the checkouts THEMSELVES and stops at
+ *      the doorstep of each. Descending INTO one and reading its files as this
+ *      tree's is still the defect this whole file exists to prevent; nothing
+ *      here makes it acceptable, and no option is offered that would.
+ *    · It answers "which entries here are other repositories", never "what is
+ *      inside them". A guard that must descend through ordinary containers on
+ *      the way down to the slots still calls `listDir` for that descent — the
+ *      two questions stay separate at every level, and so do their blast radii.
+ *    · `.claude` is skipped here as it is in `listDir`. It is gitignored agent
+ *      scratch space, and a worktree the harness parked in it is not a peer
+ *      repository in the workspace — it is THIS repository again, which is the
+ *      original defect wearing the new function's clothes.
+ *
+ *  Same strictness as `listDir`: only `withFileTypes` is supported and anything
+ *  else THROWS rather than being silently ignored. The check is spelled out a
+ *  second time rather than factored out of `listDir`, because `listDir` is the
+ *  function every other walk in tooling/ci passes through and this addition does
+ *  not touch its body. */
+export function listCheckoutsAcrossWorkspace(dir, options) {
+  if (options !== undefined) {
+    if (options === null || typeof options !== 'object') {
+      throw new TypeError(
+        `listCheckoutsAcrossWorkspace(${dir}): options must be an object, got ${typeof options}`,
+      );
+    }
+    for (const key of Object.keys(options)) {
+      if (key !== 'withFileTypes') {
+        throw new TypeError(
+          `listCheckoutsAcrossWorkspace(${dir}): unsupported option \`${key}\`. Only \`withFileTypes\` is ` +
+            'supported; silently ignoring an option would change the caller\'s meaning with no signal. There is ' +
+            'deliberately no `recursive`: this function stops at each checkout\'s doorstep.',
+        );
+      }
+    }
+  }
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const checkouts = entries.filter(
+    (e) => e.isDirectory() && e.name !== SCRATCH_DIR_NAME && isNestedCheckout(join(dir, e.name)),
+  );
+  return options?.withFileTypes ? checkouts : checkouts.map((e) => e.name);
 }
 
 /** Does every directory on the way to `relPath` belong to the tree at `root`?

@@ -41,7 +41,14 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { listDir, boundedGlob, isNestedCheckout, withinTree, SCRATCH_DIR_NAME } from '../tree-walk.mjs';
+import {
+  listDir,
+  listCheckoutsAcrossWorkspace,
+  boundedGlob,
+  isNestedCheckout,
+  withinTree,
+  SCRATCH_DIR_NAME,
+} from '../tree-walk.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-walks-bounded.mjs');
@@ -181,6 +188,106 @@ describe('tree-walk.mjs — what is not part of the tree under test', () => {
     const got = [];
     for await (const m of boundedGlob('services/*/migrations/*.sql', { cwd: root })) got.push(m.replaceAll('\\', '/'));
     assert.deepEqual(got.sort(), ['services/db/migrations/0001.sql']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// listCheckoutsAcrossWorkspace — the SANCTIONED crossing, added 2026-08-18.
+//
+// The three matrix guards' subject is the store-slot directories spread across
+// the workspace, and each of those IS a separate repository. `listDir` filters
+// out exactly those, so the interesting failures are the two ends:
+//   · it returns nothing → the matrix guards see no slots and print ok over an
+//     empty set, which is the vacuous pass, arrived at through the fix for the
+//     opposite defect;
+//   · it returns everything, or it recurses → it has become the general escape
+//     hatch its header says it is not, and another repository's files are being
+//     read as this tree's again.
+// Both ends are tested here, and so is the complement property that keeps the
+// two primitives from ever overlapping.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('tree-walk.mjs — the workspace of repositories, crossed on purpose', () => {
+  test('exactly the nested checkouts come back — both shapes, and only those', () => {
+    const root = scratch();
+    makeWorktree(root, 'Nikatru_Android_Apps_Public'); // .git as a FILE
+    makeClone(root, 'Nikatru_Android_Apps_Private'); // .git as a DIRECTORY
+    mkdirSync(join(root, 'not-a-slot'));
+    writeFileSync(join(root, 'README.md'), '');
+    assert.deepEqual(
+      listCheckoutsAcrossWorkspace(root).sort(),
+      ['Nikatru_Android_Apps_Private', 'Nikatru_Android_Apps_Public'],
+    );
+  });
+
+  // 🔴 THE END THAT MATTERS. A directory with no `.git` is not a slot, and a
+  // listing that returned ordinary directories too would hand the matrix guards
+  // every container between Projects/ and the slots as if each were a repo.
+  test('an ordinary directory and a plain file are NOT returned', () => {
+    const root = scratch();
+    mkdirSync(join(root, 'Google_Play_Store'));
+    writeFileSync(join(root, 'notes.txt'), '');
+    assert.deepEqual(listCheckoutsAcrossWorkspace(root), []);
+  });
+
+  test('it is the exact complement of listDir, entry for entry', () => {
+    const root = scratch();
+    makeWorktree(root, 'slot-a');
+    makeClone(root, 'slot-b');
+    mkdirSync(join(root, 'container'));
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), '');
+    const kept = listDir(root).sort();
+    const crossed = listCheckoutsAcrossWorkspace(root).sort();
+    assert.deepEqual(kept, ['container', 'pnpm-workspace.yaml']);
+    assert.deepEqual(crossed, ['slot-a', 'slot-b']);
+    assert.deepEqual(kept.filter((n) => crossed.includes(n)), [], 'no entry may be in both listings');
+  });
+
+  // ⚠️ IT STOPS AT THE DOORSTEP. Enumerating the checkouts is the licence; going
+  // INSIDE one is the defect the whole file exists to prevent, so a checkout
+  // nested inside a checkout must not surface from the level above it.
+  test('it never recurses — only the checkouts at this level, named not pathed', () => {
+    const root = scratch();
+    const slot = makeClone(root, 'slot-a');
+    makeWorktree(slot, 'inner-checkout');
+    mkdirSync(join(slot, 'apps'));
+    const got = listCheckoutsAcrossWorkspace(root);
+    assert.deepEqual(got, ['slot-a']);
+    assert.ok(!got.some((n) => n.includes('/') || n.includes('\\')), 'entries are names, not paths');
+  });
+
+  // `.claude` is this repo's own agent scratch space. A worktree parked in it is
+  // not a peer repository in the workspace — it is THIS repository again, which
+  // is the original defect wearing the new function's clothes.
+  test('the scratch directory is skipped even when it is itself a checkout', () => {
+    const root = scratch();
+    makeClone(root, SCRATCH_DIR_NAME);
+    makeWorktree(root, 'slot-a');
+    assert.deepEqual(listCheckoutsAcrossWorkspace(root), ['slot-a']);
+  });
+
+  test('withFileTypes returns Dirents for the same entries', () => {
+    const root = scratch();
+    makeWorktree(root, 'slot-a');
+    mkdirSync(join(root, 'container'));
+    const entries = listCheckoutsAcrossWorkspace(root, { withFileTypes: true });
+    assert.deepEqual(entries.map((e) => e.name), ['slot-a']);
+    assert.ok(entries[0].isDirectory());
+  });
+
+  test('an unsupported option THROWS — `recursive` most of all', () => {
+    const root = scratch();
+    assert.throws(() => listCheckoutsAcrossWorkspace(root, { recursive: true }), /unsupported option/);
+    assert.throws(() => listCheckoutsAcrossWorkspace(root, { withFileTypes: true, encoding: 'utf8' }), /unsupported option/);
+    assert.throws(() => listCheckoutsAcrossWorkspace(root, 'utf8'), /must be an object/);
+  });
+
+  test('listDir is untouched by the addition — it still hides every checkout', () => {
+    const root = scratch();
+    makeWorktree(root, 'slot-a');
+    makeClone(root, 'slot-b');
+    mkdirSync(join(root, SCRATCH_DIR_NAME));
+    mkdirSync(join(root, 'services'));
+    assert.deepEqual(listDir(root).sort(), ['services']);
   });
 });
 
@@ -348,6 +455,178 @@ describe('assert-walks-bounded.mjs — the prohibition can fail', () => {
     const { status, out } = run(root);
     assert.equal(status, 1);
     assert.match(out, /boundedGlob/);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SECOND ROUTE, AS THE GUARD SEES IT (added 2026-08-18).
+//
+// assert-walks-bounded.mjs now accepts `listCheckoutsAcrossWorkspace` as a
+// listing route, because the guards whose subject is the WORKSPACE OF
+// REPOSITORIES cannot use `listDir` — `listDir` removes exactly the nested
+// checkouts that ARE their subject, so routing them through it would hand each
+// an empty set and each would print ok over nothing.
+//
+// 🔴 THE ONLY THING THAT MATTERS ABOUT THIS ALLOWANCE IS THAT IT IS NARROW, so
+// the two halves are tested as one pair and neither is allowed to stand alone:
+//   · the new route PASSES — or the allowance was never made;
+//   · raw `readdirSync` STILL FAILS, including in the very file that takes the
+//     new route — or the allowance is an exemption, and the rule got weaker in
+//     the one direction that reports clean.
+// ─────────────────────────────────────────────────────────────────────────────
+const CROSSING_GUARD = [
+  "import { listCheckoutsAcrossWorkspace } from './tree-walk.mjs';",
+  "for (const slot of listCheckoutsAcrossWorkspace('.')) void slot;",
+  '',
+].join('\n');
+
+describe('assert-walks-bounded.mjs — the sanctioned crossing is a route, not an exemption', () => {
+  test('a guard that lists the workspace by name PASSES', () => {
+    const { status, out } = run(fixtureRoot({ 'assert-matrix.mjs': CROSSING_GUARD }));
+    assert.equal(status, 0, out);
+    assert.match(out, /walks bounded/);
+  });
+
+  // The pass line has to SAY that a crossing happened. A route granted in a file
+  // nobody reads and reported in no log is a permission that has gone quiet.
+  test('the pass line counts the crossers, and the guard does not count itself', () => {
+    const withOne = run(fixtureRoot({ 'assert-matrix.mjs': CROSSING_GUARD }));
+    assert.match(withOne.out, /\(1 of them cross to the workspace of repositories/);
+    // 🔴 assert-walks-bounded.mjs imports the crossing primitive ITSELF, to run R4
+    // against it. If its own copy in the fixture were counted, this number would
+    // be >= 1 in every possible tree — the same inflation the importer count was
+    // already caught committing once.
+    const withNone = run(fixtureRoot({ 'assert-thing.mjs': OK_GUARD }));
+    assert.equal(withNone.status, 0, withNone.out);
+    assert.match(withNone.out, /\(0 of them cross to the workspace of repositories/);
+  });
+
+  // 🔴 THE RULE DID NOT GET WEAKER. This is the test the whole allowance is
+  // answerable to: taking the sanctioned route buys a file nothing at all with
+  // respect to R1/R2. If this ever passes, `listCheckoutsAcrossWorkspace` has
+  // become the exemption list it was written to avoid being.
+  test('raw readdirSync STILL FAILS in the very file that takes the new route', () => {
+    const root = fixtureRoot({
+      'assert-matrix.mjs': [
+        "import { readdirSync } from 'node:fs';",
+        "import { listCheckoutsAcrossWorkspace } from './tree-walk.mjs';",
+        "for (const slot of listCheckoutsAcrossWorkspace('.')) void readdirSync(slot);",
+        '',
+      ].join('\n'),
+    });
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /assert-matrix\.mjs imports `readdirSync` from node:fs/);
+    assert.match(out, /assert-matrix\.mjs calls `readdirSync\(`/);
+  });
+
+  test('raw readdirSync STILL FAILS through a namespace import alongside the new route', () => {
+    const root = fixtureRoot({
+      'assert-matrix.mjs': [
+        "import * as fs from 'node:fs';",
+        "import { listCheckoutsAcrossWorkspace } from './tree-walk.mjs';",
+        "for (const slot of listCheckoutsAcrossWorkspace('.')) void fs.readdirSync(slot);",
+        '',
+      ].join('\n'),
+    });
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /assert-matrix\.mjs calls `readdirSync\(`/);
+  });
+
+  // R3 reaches the new entry point too, in both directions. A decorative import
+  // of the crossing primitive would read, to anyone auditing this rule, as a
+  // guard that enumerates the workspace deliberately — while enumerating nothing.
+  test('R3 — importing the crossing primitive and never calling it fails', () => {
+    const root = fixtureRoot({
+      'assert-thing.mjs': OK_GUARD,
+      'assert-bad.mjs': "import { listCheckoutsAcrossWorkspace } from './tree-walk.mjs';\nvoid 0;\n",
+    });
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /imports listCheckoutsAcrossWorkspace: true, calls listCheckoutsAcrossWorkspace: false/);
+  });
+
+  test('R3 — calling the crossing primitive with no import fails', () => {
+    const root = fixtureRoot({
+      'assert-thing.mjs': OK_GUARD,
+      'assert-bad.mjs': "for (const s of listCheckoutsAcrossWorkspace('.')) void s;\n",
+    });
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /imports listCheckoutsAcrossWorkspace: false, calls listCheckoutsAcrossWorkspace: true/);
+  });
+
+  // 🔴 R4 FOR THE SECOND DOOR. R1–R3 only say "the crossing has a name"; that is
+  // worth nothing if the named function has quietly become an ordinary walk, or
+  // has quietly become nothing. Both ends are mutated in the fixture's own copy
+  // of the helper, which is the only way to prove these limbs can fail at all.
+  test('R4 — a crossing primitive that has stopped returning the checkouts is caught', () => {
+    // The vacuous end. Every matrix guard would enumerate zero store slots, find
+    // no row to contradict, and print ok — the exact pass this route exists to
+    // prevent, arrived at through the route itself.
+    const root = fixtureRoot({ 'assert-matrix.mjs': CROSSING_GUARD });
+    const helper = join(root, 'tooling', 'ci', 'tree-walk.mjs');
+    const src = readFileSync(helper, 'utf8');
+    writeFileSync(
+      helper,
+      src.replace(
+        'export function listCheckoutsAcrossWorkspace(dir, options) {',
+        'export function listCheckoutsAcrossWorkspace(dir, options) {\n  if (dir) return [];',
+      ),
+    );
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /listCheckoutsAcrossWorkspace` returned \[\]/);
+  });
+
+  test('R4 — a crossing primitive that returns ORDINARY directories too is caught', () => {
+    // The other end: the crossing has widened into the walk it was carved out
+    // of, and the matrix guards start treating every container between
+    // Projects/ and the slots as if it were a repository.
+    const root = fixtureRoot({ 'assert-matrix.mjs': CROSSING_GUARD });
+    const helper = join(root, 'tooling', 'ci', 'tree-walk.mjs');
+    const src = readFileSync(helper, 'utf8');
+    const mutated = src.replace(
+      "e.isDirectory() && e.name !== SCRATCH_DIR_NAME && isNestedCheckout(join(dir, e.name)),",
+      "e.isDirectory() && e.name !== SCRATCH_DIR_NAME,",
+    );
+    assert.notEqual(mutated, src, 'the filter this test mutates must still exist in tree-walk.mjs');
+    writeFileSync(helper, mutated);
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /listCheckoutsAcrossWorkspace` returned \[[^\]]*ordinary/);
+  });
+
+  test('R4 — a crossing primitive that has started RECURSING is caught', () => {
+    // It stops at each checkout's doorstep or it is the original defect again:
+    // a checkout nested inside a checkout must not surface from the level above.
+    const root = fixtureRoot({ 'assert-matrix.mjs': CROSSING_GUARD });
+    const helper = join(root, 'tooling', 'ci', 'tree-walk.mjs');
+    const src = readFileSync(helper, 'utf8');
+    const recursing = [
+      'export function listCheckoutsAcrossWorkspace(dir, options) {',
+      '  if (dir && !options) {',
+      '    const acc = [];',
+      '    const rec = (d, rel) => {',
+      '      for (const e of readdirSync(d, { withFileTypes: true })) {',
+      '        if (!e.isDirectory() || e.name === SCRATCH_DIR_NAME) continue;',
+      '        const r = rel ? `${rel}/${e.name}` : e.name;',
+      '        if (isNestedCheckout(join(d, e.name))) { acc.push(r); rec(join(d, e.name), r); }',
+      '      }',
+      '    };',
+      '    rec(dir, \'\');',
+      '    return acc.sort();',
+      '  }',
+    ].join('\n');
+    writeFileSync(helper, src.replace('export function listCheckoutsAcrossWorkspace(dir, options) {', recursing));
+    const { status, out } = run(root);
+    assert.equal(status, 1);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /inner-checkout/);
   });
 });
 
