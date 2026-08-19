@@ -130,7 +130,17 @@ const runRaw = (guardPath, ...argv) =>
 function buildAnchor(root) {
   mkdirSync(root, { recursive: true });
   const pins = reg.github?.renamePins?.observable ?? [];
-  assert.ok(pins.length > 0, 'the registry declares no observable rename pins — buildAnchor would be vacuous');
+  // ZERO observable pins became a legitimate state on 2026-08-19, when the only one this
+  // workspace ever had (storefront-upstreams) was deleted with Nikatru_Storefront_Public.
+  // An empty mechanism is still not allowed to be SILENT: if there are no pins the registry
+  // must say why, in the same file, or this is a fixture builder quietly modelling nothing.
+  if (pins.length === 0) {
+    const declared = reg.github?.renamePins?.observableEmpty20260819;
+    assert.ok(
+      typeof declared === 'string' && declared.length > 40,
+      'the registry declares no observable rename pins AND gives no reason — an empty mechanism must be declared, not silent',
+    );
+  }
   // Every boundRemote the registry declares, so the report counts real subjects
   // rather than printing "0 of 0" over an array invented to be empty.
   const rows = [];

@@ -71,26 +71,17 @@
         "repo": "coursera",
         "why": "Not part of the store matrix. Declared by NAME ONLY.",
         "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined."
+      },
+      {
+        "repo": "Nikatru_Platform_Private",
+        "why": "The private knowledge corpus, renamed 2026-08-19. NOT any row`s boundRemote because the local checkout has NO git remote at all, by design — so the repo exists ahead of the tree and is filed here rather than bound.",
+        "measured": "2026-08-19: exists in globalonlinedeveloper, PRIVATE, from read-only `gh repo list`."
       }
     ],
     "renamePins": {
       "note": "Things OUTSIDE this repository that pin a GitHub repo BY NAME. This block exists because a rename is the one matrix operation whose blast radius is not visible from inside the repo being renamed. assert-github-matrix.mjs prints every entry below whenever a row's intended repo name differs from the name GitHub currently has - and it prints the unobservable ones EVERY time, because the pin whose state cannot be read is the one most likely to be forgotten.",
       "whyNotAFailure": "A rename can only be performed by the owner, in the GitHub UI or with a write-scoped API call this repository deliberately does not make. A build that stays red until the owner does owner-work teaches everybody that red is negotiable, and this corpus has already written that lesson down. So a pending rename PRINTS on every run and does not change the exit code.",
-      "observable": [
-        {
-          "id": "storefront-upstreams",
-          "kind": "json-file",
-          "repoDir": "Nikatru_Storefront_Public",
-          "path": "catalog/upstreams.json",
-          "matchField": "repo",
-          "shape": "top-level array of entries; each entry's `repo` is an owner/name string",
-          "byteComparedBy": "Nikatru_Storefront_Public/tooling/ci/assert-vendor-current.mjs (repointed 2026-08-19 - the directory is addressed by NAME here, and the name changed with the rest; the file was confirmed present at that path, 19,225 bytes. The sibling `repoDir` field above had already been repointed and this one had not, which is the usual shape of a half-finished sweep)",
-          "why": "read-catalogues.mjs builds https://raw.githubusercontent.com/${repo}/${ref}/${path} from that string and assert-vendor-current BYTE-COMPARES the fetched blob against the vendored copy. Its own measured trap: raw answers 404 identically (14 bytes) for a missing path, and A BYTE MISMATCH IS NEVER RETRIED. Repoint upstreams.json BEFORE any rename, never after. 2026-08-19: `repoDir` was changed from Project_Web_Presence to Nikatru_Storefront_Public because the WORKING COPY moved to the top of Projects/; the GitHub repo behind it was still globalonlinedeveloper/Project_Web_Presence at the time of that reading. 🔴 SUPERSEDED THE SAME DAY, 2026-08-19 afternoon: it WAS renamed to Nikatru_Storefront_Public (see counts.renames and outOfMatrix[Nikatru_Storefront_Public].measured, both in this file). The sentence is kept in its dated form and corrected here rather than rewritten, but read the correction: a reader who stops at the original clause will believe a rename did not happen that did. Also new on 2026-08-19: this file now pins TWO of this registry's bound remotes, not one - Project_Cross_Platform_Apps (apps, apps-landing) and Project_Cross_browser_Extensions (extensions), the latter because the Chrome slot became `live` and bound it. The count per rename is still never typed here; the guard opens the file.",
-          "countedNotTyped": "assert-github-matrix.mjs OPENS this file and counts the entries that name the old repo. The number is never written down here - a typed count is a second copy of a fact that will one day disagree with the first.",
-          "renameRedirectCaveat": "Measured 2026-08-18 with a throwaway repo: raw.githubusercontent.com DOES follow a GitHub repo rename - a file created AFTER the rename served under the OLD name with 200 and an empty redirect_url. That is not a licence to skip this step: GitHub frees the old name on rename, so the redirect dies the moment anything re-claims it.",
-          "measured20260819After": "THE REPOINT HAPPENED, AND IT HAPPENED IN THE RIGHT ORDER. Nikatru_Storefront_Public/catalog/upstreams.json was opened and read on 2026-08-19 after the renames: all three entries (apps, apps-landing, extensions) pin the NEW names - two at globalonlinedeveloper/Nikatru_Android_Apps_Public and one at globalonlinedeveloper/Nikatru_Chrome_Extensions_Public. ZERO entries pin any old name, so the count assert-github-matrix.mjs would get by opening this file is 0 - and it will not be asked for it at all, because that report only runs on a row whose boundRemote name differs from its intended name and no row is in that state any more. This entry STAYS. It is not a record of a rename that is over; it is the standing declaration of what pins these repo names from outside, and the next rename is the run it has to be correct for."
-        }
-      ],
+      "observable": [],
       "unobservable": [
         {
           "id": "cloudflare-pages",
@@ -100,7 +91,8 @@
           "measured20260819After": "🔴 NO LONGER A RISK. A MEASURED, OUTSTANDING OWNER ACTION, AND THE ONE THING THE RENAME LEFT BROKEN-BUT-WORKING. Both Pages projects still read repo_name=Project_Cross_Platform_Apps and repo_id=1304047609 - a name that NO LONGER EXISTS in the org - and both nikatru.com and rajasekarselvam.com still return 200, because the binding resolves by repository ID and GitHub still answers for the renamed repo under its old id. That is a redirect holding a production site up, not a correct configuration. GitHub frees the old NAME on rename, so anything that re-claims `globalonlinedeveloper/Project_Cross_Platform_Apps` inherits a live Pages binding.",
           "provenNotAssumed20260819": "🔴 CLOUDFLARE CANNOT BE REPOINTED BY API. THIS IS MEASURED, NOT INFERRED, AND IT REVERSES THE DIRECTION OF THIS ENTRY. A PATCH of the Pages project source.config returned `success: true`, and a fresh GET immediately afterwards showed the values UNCHANGED. The token is not the problem, and that was tested separately: a different, harmless PATCH against the same project returned HTTP 200 and TOOK EFFECT, so the credential does hold write scope. Cloudflare simply accepts and silently ignores a change to a Pages project's Git source. So this entry no longer says only 'nothing here can OBSERVE the binding' - it now also says NOTHING HERE CAN CHANGE IT, and, worse for anyone automating it, an attempt REPORTS SUCCESS. Repointing both Pages projects onto the new repository names is an OWNER ACTION in the Cloudflare dashboard, it is the last item the rename left outstanding, and a script that tries it and checks only the response body will report the job done."
         }
-      ]
+      ],
+      "observableEmpty20260819": "ZERO observable pins, and that is a measured fact rather than an omission. The only one this workspace ever had was `storefront-upstreams` — Nikatru_Storefront_Public/catalog/upstreams.json, which byte-compared raw.githubusercontent.com blobs and therefore pinned bound-remote names from OUTSIDE git. That repository was DELETED on 2026-08-19 after the one-repo/one-pipeline lock. Searched afterwards for a replacement: no JSON array in this repository pins a repo name (checked every tracked *.json). The 9 packages/*/pubspec.yaml `repository:` URLs DO pin the name and were repointed with the rename, but they are YAML and this mechanism reads JSON arrays, so they are not expressible here. The remaining pin is the Cloudflare Pages binding, which is declared under `unobservable` and resolves by repo_id — which is why all four renames left both domains returning 200."
     },
     "supersededOutOfMatrix": {
       "note": "Lifted out-of-matrix declarations, kept whole. github.outOfMatrix must name only repos the org ACTUALLY HOLDS - assert-github-matrix.mjs fails on a line naming a repo that is not there, in the same direction and for the same reason it fails on an orphan. So a rename forces the line to be deleted. Deleting it silently would destroy the argument the line was carrying, and the argument is the whole reason the list is expensive to add to. They are moved here instead. 🔴 NOTHING READS THIS BLOCK AND NOTHING SHOULD: it is not an accounting surface, and a repo listed ONLY here is an ORPHAN by github.accountingRule.",
@@ -125,7 +117,8 @@
     "directoryRule": "Nikatru_<target>_<type>_<Public|Private>. Holds for all 30 directories measured on 2026-08-18, which is why `publicDir` is CHECKED against it rather than derived from it. It is stored per row because it is what is literally on disk, and disk is the authority on existence.",
     "repoNameRule": "PROPOSED: the GitHub repo name equals the directory name. NOT SETTLED - STORE-MATRIX-PLAN.md section 5.5 is open and only the owner closes it. Answering 'no, repo names stay short' deletes the single most dangerous item in that plan (the rename in section 2.2) at zero cost, so this file records the proposal and does not act on it.",
     "consequenceIfSettledYes": "Renaming globalonlinedeveloper/Project_Cross_Platform_Apps. That string is pinned in two places outside git that nothing in any repo can observe: the Cloudflare Pages bindings for nikatru.com and rajasekarselvam.com, and Project_Web_Presence/catalog/upstreams.json, which byte-compares raw.githubusercontent.com blobs with no retry. Measured 2026-08-18 with a throwaway repo: raw.githubusercontent.com DOES follow a rename - a file created AFTER the rename served under the OLD name with 200 and an empty redirect_url. The caveat is the whole caveat: GitHub frees the old name, so the redirect dies the moment anything re-claims it. Whether a Cloudflare Pages Git binding survives a rename is STILL NOT MEASURED and must not be assumed. 2026-08-19: settling this 'yes' is now THREE renames, not one - Project_Cross_Platform_Apps, Project_Cross_browser_Extensions and Project_Cross_browser_Extensions_Private - because the extension pair moved into the Chrome slot and is bound to it. Two of the three are pinned by name in Nikatru_Storefront_Public/catalog/upstreams.json, which the guard counts by opening the file.",
-    "settled20260819": "ANSWERED YES, BY THE OWNER, IN THE ONLY WAY IT COULD BE: they performed the renames. `repoNameRule` above is left standing as the PROPOSAL it was, because rewriting a proposal into a decision after the fact erases the fact that it was ever open and that acting on it was somebody's call and not this file's. All 30 slot repo names now equal their directory names, measured. The three renames `consequenceIfSettledYes` predicted were actually FIVE - it counted the two Cross_browser repos and Project_Cross_Platform_Apps, and did not count Project_Cross_Platform_Apps_Private (never a bound remote, only a backup, and whose rename is the escalation now recorded in collisions[latent-backup-remote-name]) or Project_Web_Presence (not a slot at all). An under-count in a blast-radius estimate is the direction that costs; it is left uncorrected above and named here."
+    "settled20260819": "ANSWERED YES, BY THE OWNER, IN THE ONLY WAY IT COULD BE: they performed the renames. `repoNameRule` above is left standing as the PROPOSAL it was, because rewriting a proposal into a decision after the fact erases the fact that it was ever open and that acting on it was somebody's call and not this file's. All 30 slot repo names now equal their directory names, measured. The three renames `consequenceIfSettledYes` predicted were actually FIVE - it counted the two Cross_browser repos and Project_Cross_Platform_Apps, and did not count Project_Cross_Platform_Apps_Private (never a bound remote, only a backup, and whose rename is the escalation now recorded in collisions[latent-backup-remote-name]) or Project_Web_Presence (not a slot at all). An under-count in a blast-radius estimate is the direction that costs; it is left uncorrected above and named here.",
+    "repoNameDivergence20260819": "THE REPO NAME AND THE DIRECTORY NAME DELIBERATELY DIVERGE since 2026-08-19. The owner renamed all four repos to Nikatru_Platform_{Public,Private} and Nikatru_Extensions_{Public,Private}: the old names each described ONE store while the repos serve many — Nikatru_Android_Apps_Public holds the iOS, Web, Windows, macOS and Linux source plus both site trees, the Workers and the guard suite, and Nikatru_Chrome_Extensions_Public builds Chrome, Edge AND Firefox from one source (tool.json: targets.chromium.stores=[chrome,edge] plus a firefox overlay). The DIRECTORIES keep their template-derived names because naming.directoryRule derives them from <target>_<type> and assert-store-matrix.mjs parses that template out of this file. settled20260819 said all repo names equalled their directory names; that is no longer true, and this line is the correction rather than a rewrite of it."
   },
   "stateVocabulary": {
     "note": "Closed vocabulary, exactly one value per slot. Every value below has at least one member today - a state nothing is in is a state nobody maintains. Adding a value requires a row that needs it. RETIRED 2026-08-19: values `shell-claimed` and `shell-empty` were removed the day the 13 intent-only rows were dropped, because this vocabulary is closed and every value must have a member. Re-add a value together with the row that needs it, never ahead of it.",
@@ -142,13 +135,14 @@
     "live": 2,
     "shell-claimed": 0,
     "shell-empty": 0,
-    "intendedReposExistingOnGitHub": 4,
+    "intendedReposExistingOnGitHub": 0,
     "loudest": "ALL 30 INTENDED REPO NAMES NOW EXIST, and the previous reading of this field - kept verbatim in `loudestSuperseded` - said the exact opposite hours earlier. What is loud NOW is the gap that the naming success opens up. (1) TWENTY-SIX OF THE THIRTY ARE EMPTY NAMES: a repo existing is not a product existing, and 26 slot directories still hold 0 files. A count of 30 read without the state column reads as a portfolio and is a set of claimed names. (2) THE BACKUP-REPO COLLISION IS NO LONGER LATENT-BY-NAME. See collisions[latent-backup-remote-name]: the repo that carries the WRONG SHAPE is now called Nikatru_Android_Apps_Private, which is precisely the name this registry intends for that slot's private half. It looks right. It is not bound, and it must not be bound before STORE-MATRIX-PLAN.md 5.4 is answered. (3) CLOUDFLARE STILL POINTS AT A NAME THAT NO LONGER EXISTS - both Pages projects read repo_name=Project_Cross_Platform_Apps and are serving only because GitHub still resolves the rename by repository id. See github.renamePins.unobservable[cloudflare-pages].",
     "discrepancyOnRecord": "The task that commissioned this file carried '12 of 15 slots have no product'. Re-measured here the number is 11, under the rule in `backing.rule`. The three extension slots are backed by a product that exists (FullShot) and simply is not filed into them, so they are shell-claimed rather than empty: 11 + 3 + 1 = 15. Recorded rather than reconciled. An inherited number that does not reproduce is a finding, and writing the counting rule down beside it means the disagreement can be settled by arguing about the rule instead of by re-typing the number.",
     "previouslyAlso": "2026-08-19, EARLIER THE SAME DAY (the reading this edit supersedes): slots 15, directories 30, live 2, shell-claimed 2, shell-empty 11, intendedReposExistingOnGitHub 0. Kept beside the current numbers for the same reason `previously` is: these fields MUST track the rows, so the only way a count can also be a record is for the superseded one to stay visible. Two supersessions on one date is not a mistake in the dating - the owner performed five renames and created twenty-six repositories between the two readings.",
     "whatMovedOn20260819Later": "THE MATRIX WAS BUILT ON GITHUB. Between the morning reading and this one the owner claimed every intended name: all 30 slot repos now exist, and the five repositories that had been carrying the old names were RENAMED into the scheme (Project_Cross_Platform_Apps -> Nikatru_Android_Apps_Public, Project_Cross_Platform_Apps_Private -> Nikatru_Android_Apps_Private, Project_Cross_browser_Extensions -> Nikatru_Chrome_Extensions_Public, Project_Cross_browser_Extensions_Private -> Nikatru_Chrome_Extensions_Private, Project_Web_Presence -> Nikatru_Storefront_Public). NO ROW CHANGED STATE and no row was added: slots is still 15, live still 2, shell-claimed still 2, shell-empty still 11. What moved is intendedReposExistingOnGitHub, 0 -> 30. 🔴 EDGE AND FIREFOX WERE DELIBERATELY NOT PROMOTED. Their repos exist, but they hold a README and nothing else, and `live` is defined by stateVocabulary as the SLOT'S OWN DIRECTORIES holding a real source tree - which on disk is still 0 files and 0 directories for both halves of both. Promoting them on the strength of a repo existing would hand assert-copy-parity.mjs two more empty trees to compare, and it would then report a clean comparison of nothing.",
     "loudestSuperseded": "ZERO of the 30 intended repo names exist on GitHub. The one live slot is bound to a repo of a DIFFERENT name (Project_Cross_Platform_Apps) and its private half has no remote at all. On GitHub, the matrix is entirely unbuilt. 2026-08-19 - STILL ZERO, and now louder: there are TWO live slots and THREE bound remotes, and every one of them is bound to a repo whose name is not the name this registry intends. Not one intended name has been claimed. The org gained a repository since 2026-08-18 (Rajasekar_Site_Public) and it is not a slot name either.",
-    "slotsDeclared": 2
+    "slotsDeclared": 2,
+    "intendedReposNote20260819": "ZERO is correct, not alarming: `intended` means the template-derived name, and all four were renamed away. The live repos are named in boundRemote (three) and github.outOfMatrix (the corpus, which has no remote)."
   },
   "backing": {
     "rule": "A slot is BACKED when a real source tree exists TODAY that this slot's product would be built from - either sitting in the slot (filed: true) or sitting elsewhere under Projects/ with this slot as its declared destination (filed: false). CAPABILITY IS NOT BACKING: apps/subly carries all six Flutter platform targets, so the Flutter tree COULD fill twelve slots, but a tree that could be copied somewhere is not a product that is there. Counting capability instead of existence is exactly how fourteen empty directories start reading as a portfolio.",
@@ -348,14 +342,16 @@
       },
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": "globalonlinedeveloper/Nikatru_Chrome_Extensions_Public"
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": "globalonlinedeveloper/Nikatru_Extensions_Public",
+          "renamedAway20260819": "2026-08-19: the repo of this TEMPLATE-DERIVED name was RENAMED by the owner and no longer exists. The DIRECTORY keeps the template name; the live repo is named in boundRemote. See naming.repoNameDivergence20260819."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": "globalonlinedeveloper/Nikatru_Chrome_Extensions_Private"
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": "globalonlinedeveloper/Nikatru_Extensions_Private",
+          "renamedAway20260819": "2026-08-19: the repo of this TEMPLATE-DERIVED name was RENAMED by the owner and no longer exists. The DIRECTORY keeps the template name; the live repo is named in boundRemote. See naming.repoNameDivergence20260819."
         }
       }
     },
@@ -371,14 +367,16 @@
       },
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": "globalonlinedeveloper/Nikatru_Android_Apps_Public"
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": "globalonlinedeveloper/Nikatru_Platform_Public",
+          "renamedAway20260819": "2026-08-19: the repo of this TEMPLATE-DERIVED name was RENAMED by the owner and no longer exists. The DIRECTORY keeps the template name; the live repo is named in boundRemote. See naming.repoNameDivergence20260819."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "renamedAway20260819": "2026-08-19: the repo of this TEMPLATE-DERIVED name was RENAMED by the owner and no longer exists. The DIRECTORY keeps the template name; the live repo is named in boundRemote. See naming.repoNameDivergence20260819."
         }
       }
     }
