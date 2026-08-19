@@ -221,7 +221,10 @@ git push origin subly-v1.0.0
 
 That is the whole release. Nothing else is typed by hand: the tag is the trigger, the
 workflow does the rest, and the Release appears at
-`https://github.com/globalonlinedeveloper/Project_Cross_Platform_Apps/releases/tag/subly-v1.0.0`.
+`https://github.com/globalonlinedeveloper/Nikatru_Android_Apps_Public/releases/tag/subly-v1.0.0`.
+*(Repointed 2026-08-19 — the repo was `Project_Cross_Platform_Apps` until the renames landed. The
+old URL still resolves through GitHub's rename redirect, which is exactly why it is not left
+standing: a rename FREES the old name, so the redirect dies the moment anything re-claims it.)*
 
 **Bump `1.0.0` to whatever `apps/subly/pubspec.yaml` declares** — the workflow derives its
 build name from pubspec, and a tag that disagrees with it is two release lines.

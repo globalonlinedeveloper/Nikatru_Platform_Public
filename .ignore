@@ -93,7 +93,18 @@
 #   directory it names is no longer under this root at all.
 #
 # ✅ SO THE FIX IS AGAIN AN INVOCATION, NOT A RULE — SEARCH BOTH ROOTS BY NAME:
-#      rg "<pattern>" . ../Project_Cross_Platform_Apps_Private/
+#      rg "<pattern>" . ../Nikatru_Android_Apps_Private/
+# 🔴 THE LINE ABOVE WAS REPOINTED 2026-08-19 — IT READ `../Project_Cross_Platform_Apps_Private/`,
+#    AND IT HAD GONE STALE IN THE ONE WAY THIS FILE CANNOT SURVIVE. That directory does not exist
+#    under any root any more: the sibling was renamed with the other four on 2026-08-19. And per
+#    the ⚠️ note below, `rg` over a MISSPELLED root fails LOUDLY (os error 2, EXIT 2) — so this one
+#    would at least have shouted. That is the good case, and it is luck, not design: the same file
+#    records that an EMPTY root exits 0 in silence. A remedy invocation carrying a dead path is the
+#    same defect as the inert negations this file deleted — it looks like it re-enabled search.
+#    ⚠️ AND THE DEPTH CHANGED TOO, WHICH `..` HAPPENS TO SURVIVE: this repo moved to
+#    `Projects/Google_Play_Store/Android/Apps/`, and the corpus moved WITH it as its sibling. `..`
+#    counts nothing — a sibling is a sibling at any depth — so only the NAME needed the edit. That
+#    is the whole argument for addressing by relationship rather than by level count.
 #    Anything that greps only this repo for a PRIVATE-corpus fact — PROJECT_STATE,
 #    a runbook, a requirement, an ADR, a session note — is asking the wrong tree and
 #    will get a clean, confident, wrong "no matches". That now makes THREE corpora
@@ -112,6 +123,11 @@
 #    A MISSPELLED root fails loudly; an EMPTY one does not. After the move, confirm
 #    the sibling actually answers — `rg -l PROJECT_STATE ../Project_Cross_Platform_Apps_Private/`
 #    must return files, not zero — before trusting any sweep that names it.
+#    ✅ THE MOVE LANDED AND THE CHECK WAS RUN, 2026-08-19. The 2026-08-18 paragraph above is left
+#    exactly as written — it is a dated measurement of the mid-move window and renumbering it
+#    would falsify the record. Re-run under the CURRENT name, the sibling answers:
+#      rg -l PROJECT_STATE ../Nikatru_Android_Apps_Private/   -> files, EXIT 0
+#    So the "empty destination exits 0 in silence" hazard is discharged for this corpus.
 #    UNTIL the move lands, the corpus is still here and reachable by NAMING IT, which
 #    defeats `.gitignore` exactly as the `.claude/scripts/` case below does:
 #      rg "<pattern>" . Private/        # measured 2026-08-18: 64 files, EXIT 0

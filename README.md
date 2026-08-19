@@ -1,4 +1,10 @@
-# Project_Cross_Platform_Apps
+# Nikatru_Android_Apps_Public
+
+<!-- Repointed 2026-08-19: this heading read `Project_Cross_Platform_Apps`, which is the name the
+     GitHub repo and this directory both carried until the owner renamed all five that day. The
+     heading is the first thing a reader matches against the URL they arrived from, so a stale one
+     reads as "wrong repo". Verify a name with `gh repo list`, never with
+     `gh api repos/<owner>/<name>` — GitHub follows rename redirects and the old name still 200s. -->
 
 The NIKATRU app factory: one Flutter chassis, one Cloudflare Workers backend pattern, and the CI
 that stamps, gates and ships apps from them to six platforms.
