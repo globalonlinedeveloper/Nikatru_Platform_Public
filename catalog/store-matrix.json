@@ -121,36 +121,6 @@
     },
     "deletionRecord20260819": "The 26 empty placeholder slot repos and the two site repos (Nikatru_Storefront_Public, Rajasekar_Site_Public) were DELETED from the org on 2026-08-19 after the owner locked one-repo/one-pipeline. Measured immediately after: `gh repo list` returns 13 repos, of which 4 are Nikatru_* and all four carry real source. Both live domains still returned HTTP 200 because both Cloudflare Pages projects build from Nikatru_Android_Apps_Public (repo_id 1304047609) and always did — the split was staged and never cut over, so deleting the staged repos changed nothing on the wire. The local working copies were NOT deleted and the app repo still holds all 61 files under sites/."
   },
-  "infrastructure": {
-    "what": "Repositories that live in this tree and are NOT store products. A slot is a Store x Target x Type cell - a thing SHIPPED TO a storefront. Neither entry below is one, and neither is missing a row: each is here because forcing it into `slots` would state something false about it. Added 2026-08-19, when the storefront moved to the top of Projects/ under a Nikatru_*_Public name and the personal site was split into its own repo, and the two of them became visible to a checker that had until then had nothing to be wrong about.",
-    "whyTheStorefrontIsNotASlot": "A SHOP IS NOT A PRODUCT IN ITS OWN SHOP. Nikatru_Web_Store/Web/Apps, read by the tree's own pattern, means 'products shipped to a web store'; filing the storefront there makes the store a product of itself, and hands the rename rules of the matrix to the very repository that holds the pinned owner/repo strings the matrix would be renaming. It is also the CONSUMER of every catalogue here - it reads apps.json and extensions.json out of the slots - and a consumer filed as one of the things it consumes is a cycle, not a row. This was already recorded as a deliberate absence in backing.products[storefront] and github.outOfMatrix; what is new on 2026-08-19 is only that the directory now has a slot-SHAPED name, so the absence needed somewhere to be declared rather than merely argued.",
-    "whyThePersonalSiteIsNotASlot": "A PERSONAL CV SITE IS NOT A NIKATRU PRODUCT AT ALL. rajasekarselvam.com is one person's site, split out of the storefront into globalonlinedeveloper/Rajasekar_Site_Public on or before 2026-08-19. There is no store it is submitted to, no target it is built for and no type it is an instance of, so every one of the three fields a row is keyed on would have to be invented to make it fit. It is not an app awaiting a store; it is not the same KIND of thing as the rows around it.",
-    "notAnAccountingSurface": "🔴 THIS BLOCK DOES NOT ACCOUNT FOR A REPO ON GITHUB. github.accountingRule still names exactly three ways a repo in the org is accounted for - an intended slot name, a boundRemote, or a github.outOfMatrix line - and both repos below carry an outOfMatrix line for exactly that reason. assert-store-matrix.mjs FAILS on an entry here whose `repo` has no outOfMatrix line, so the two blocks cannot each assume the other declared it. This block's subject is the DIRECTORY; outOfMatrix's subject is the REPOSITORY.",
-    "whatItBuysTheChecker": "assert-store-matrix.mjs names any Nikatru_*_{Public,Private} directory found OUTSIDE the depth-4 <store>/<target>/<type>/<name> shape, because 'put it one level up and the checker stops seeing it' is exactly how a slot gets created behind the registry's back. Nikatru_Storefront_Public is such a directory and is NOT such a slot. The exemption is BY EXACT PATH and it is two-directional: a declared directory that is not on disk FAILS, so a line here cannot outlive the thing it describes. A bare skip-list would have bought silence instead.",
-    "measuredBy": "2026-08-19, direct enumeration. Origins read from each working copy's .git/config rather than by running git in it - Projects/Rajasekar_Site_Public was being published by another job at the time and was not to be touched, and reading a file is the one way to ask without writing an index.",
-    "repos": [
-      {
-        "id": "storefront",
-        "dir": "Nikatru_Storefront_Public",
-        "why": "The storefront working DIRECTORY at Projects/ depth 1 — slot-shaped by name, not a slot. Declared so the out-of-shape check exempts it BY DECLARATION rather than skipping it.",
-        "measured": "2026-08-19 EVENING: the GitHub repo of this name was DELETED after the owner locked one-repo/one-pipeline. The local DIRECTORY remains with its working copy, which is why the row stays — infrastructure declares DIRECTORIES THAT EXIST, not remotes. Its origin now points at a repo that is gone. Nothing depends on it: both Cloudflare Pages projects build from Nikatru_Android_Apps_Public (repo_id 1304047609) and always did, the app repo still holds all 61 files under sites/, and both domains returned HTTP 200 immediately after the deletion. Its CUTOVER-RUNBOOK.md (972 lines) was preserved to the corpus at notes/ARCHIVED-CUTOVER-RUNBOOK-2026-08-19.md BEFORE the delete.",
-        "repoWas": "Project_Web_Presence through 2026-08-19 morning, then Nikatru_Storefront_Public, then deleted the same evening. Kept because 'what the repo used to be called' is the question a stale URL's 404 asks.",
-        "remoteDeleted": true,
-        "repoDeleted20260819": "Nikatru_Storefront_Public"
-      },
-      {
-        "id": "personal-site",
-        "dir": "Rajasekar_Site_Public",
-        "why": "The personal CV site directory. Its name is not slot-shaped so it never triggered the out-of-shape check; declared anyway, because a non-store directory invisible to the registry is one nobody will notice becoming one.",
-        "measured": "2026-08-19 EVENING: GitHub repo DELETED in the same batch. Local directory remains. rajasekarselvam.com returned 200 immediately after, because that Pages project builds from Nikatru_Android_Apps_Public/sites/rajasekarselvam, which was never touched — P8 has held all session.",
-        "remoteDeleted": true,
-        "repoDeleted20260819": "Rajasekar_Site_Public"
-      }
-    ],
-    "notMeasured": "Projects/Project_Web_Presence.reverted-attempt - 4,824 files, a git checkout with NO remote configured - is deliberately NOT declared here. It is neither a slot nor infrastructure; its name is not slot-shaped, so no checker asks about it, and declaring a directory whose purpose this work did not establish would put a guess in a registry. Recorded as an observation, not a row.",
-    "reconciledOn20260819": "RE-READ against the org after the renames landed, and the argument below is UNCHANGED by them - which is the point of having written it as an argument rather than as a name. A shop is still not a product in its own shop, and a personal CV site is still not a Nikatru product at all, whatever either repository is now called. What DID change is one field: the storefront entry's `repo` was Project_Web_Presence and is now Nikatru_Storefront_Public, because GitHub renamed it and this field records what GitHub calls the repo, not what the plan hoped to call it. 🔴 THE STOREFRONT NAME IS NOW SLOT-SHAPED IN BOTH PLACES AT ONCE - directory AND repository - so the exemption in `whatItBuysTheChecker` is doing more work than it was on the day it was added, not less: without it, Nikatru_Storefront_Public at depth 1 reads to assert-store-matrix.mjs as a slot hiding out of shape, and the fact that a matching repo now exists in the org would make that misreading look corroborated. Neither repo gained a store, a target or a type by being renamed, so neither gained a row.",
-    "deleted20260819": "Nikatru_Storefront_Public and Rajasekar_Site_Public were DELETED from the org on 2026-08-19 after the one-repo/one-pipeline lock. Their local working copies still exist on disk and the app repo still holds all 61 files under sites/, so nothing was lost; both live domains kept returning 200 because both Pages projects always built from Nikatru_Android_Apps_Public. These rows are removed rather than marked absent because infrastructure declares DIRECTORIES THAT EXIST, not intent."
-  },
   "naming": {
     "directoryRule": "Nikatru_<target>_<type>_<Public|Private>. Holds for all 30 directories measured on 2026-08-18, which is why `publicDir` is CHECKED against it rather than derived from it. It is stored per row because it is what is literally on disk, and disk is the authority on existence.",
     "repoNameRule": "PROPOSED: the GitHub repo name equals the directory name. NOT SETTLED - STORE-MATRIX-PLAN.md section 5.5 is open and only the owner closes it. Answering 'no, repo names stay short' deletes the single most dangerous item in that plan (the rename in section 2.2) at zero cost, so this file records the proposal and does not act on it.",
@@ -158,10 +128,8 @@
     "settled20260819": "ANSWERED YES, BY THE OWNER, IN THE ONLY WAY IT COULD BE: they performed the renames. `repoNameRule` above is left standing as the PROPOSAL it was, because rewriting a proposal into a decision after the fact erases the fact that it was ever open and that acting on it was somebody's call and not this file's. All 30 slot repo names now equal their directory names, measured. The three renames `consequenceIfSettledYes` predicted were actually FIVE - it counted the two Cross_browser repos and Project_Cross_Platform_Apps, and did not count Project_Cross_Platform_Apps_Private (never a bound remote, only a backup, and whose rename is the escalation now recorded in collisions[latent-backup-remote-name]) or Project_Web_Presence (not a slot at all). An under-count in a blast-radius estimate is the direction that costs; it is left uncorrected above and named here."
   },
   "stateVocabulary": {
-    "note": "Closed vocabulary, exactly one value per slot. Every value below has at least one member today - a state nothing is in is a state nobody maintains. Adding a value requires a row that needs it.",
+    "note": "Closed vocabulary, exactly one value per slot. Every value below has at least one member today - a state nothing is in is a state nobody maintains. Adding a value requires a row that needs it. RETIRED 2026-08-19: values `shell-claimed` and `shell-empty` were removed the day the 13 intent-only rows were dropped, because this vocabulary is closed and every value must have a member. Re-add a value together with the row that needs it, never ahead of it.",
     "live": "The slot's own directories hold a real source tree: non-empty, with git history. There is a product here now.",
-    "shell-claimed": "The directory pair exists and BOTH halves are empty - 0 files, no .git, no remote, no history - but a real product exists elsewhere in the tree for which this slot is the declared destination. An empty pre-created shell with something to put in it.",
-    "shell-empty": "The directory pair exists and both halves are empty, and NO product exists anywhere that belongs here. Nothing to copy, nothing to build, nothing to ship. This is the 'no product behind it at all' case, and it is the majority of the matrix.",
     "derivedFrom": "state is recomputable: non-empty dirs => live; empty dirs and backing != null => shell-claimed; empty dirs and backing == null => shell-empty. It is stored anyway because it is the field a reader actually wants. assert-store-matrix.mjs recomputes it from the disk and from `backing` and fails on disagreement - that check is the only reason storing it is not simply a second copy of a fact."
   },
   "counts": {
@@ -169,17 +137,18 @@
     "previously": "2026-08-18: slots 15, directories 30, live 1, shell-claimed 3, shell-empty 11, intendedReposExistingOnGitHub 0. Kept beside the current numbers rather than overwritten - these fields MUST track the rows (the guard fails when they drift), so the only way a count can also be a record is for the superseded one to stay visible.",
     "whatMovedOn20260819": "The extension pair moved INTO Chrome_Web_Store/Chrome/Extensions, so that slot went shell-claimed -> live: live 1 -> 2, shell-claimed 3 -> 2. Edge and Firefox did NOT move and stay shell-claimed, still backed by fullshot, still awaiting their copies. shell-empty is untouched at 11 and so is the slot count: NOTHING WAS ADDED TO THE MATRIX, one row changed state. The storefront and the personal site are not in these numbers at all - see the `infrastructure` block for why counting them here would be the tidy answer and the false one.",
     "note": "Stated so a reader can recount rather than believe. assert-store-matrix.mjs recomputes every number here from `slots` and fails if one drifts - they are a summary OF the rows, never an independent claim beside them.",
-    "slots": 15,
-    "directories": 30,
+    "slots": 2,
+    "directories": 4,
     "live": 2,
-    "shell-claimed": 2,
-    "shell-empty": 11,
+    "shell-claimed": 0,
+    "shell-empty": 0,
     "intendedReposExistingOnGitHub": 4,
     "loudest": "ALL 30 INTENDED REPO NAMES NOW EXIST, and the previous reading of this field - kept verbatim in `loudestSuperseded` - said the exact opposite hours earlier. What is loud NOW is the gap that the naming success opens up. (1) TWENTY-SIX OF THE THIRTY ARE EMPTY NAMES: a repo existing is not a product existing, and 26 slot directories still hold 0 files. A count of 30 read without the state column reads as a portfolio and is a set of claimed names. (2) THE BACKUP-REPO COLLISION IS NO LONGER LATENT-BY-NAME. See collisions[latent-backup-remote-name]: the repo that carries the WRONG SHAPE is now called Nikatru_Android_Apps_Private, which is precisely the name this registry intends for that slot's private half. It looks right. It is not bound, and it must not be bound before STORE-MATRIX-PLAN.md 5.4 is answered. (3) CLOUDFLARE STILL POINTS AT A NAME THAT NO LONGER EXISTS - both Pages projects read repo_name=Project_Cross_Platform_Apps and are serving only because GitHub still resolves the rename by repository id. See github.renamePins.unobservable[cloudflare-pages].",
     "discrepancyOnRecord": "The task that commissioned this file carried '12 of 15 slots have no product'. Re-measured here the number is 11, under the rule in `backing.rule`. The three extension slots are backed by a product that exists (FullShot) and simply is not filed into them, so they are shell-claimed rather than empty: 11 + 3 + 1 = 15. Recorded rather than reconciled. An inherited number that does not reproduce is a finding, and writing the counting rule down beside it means the disagreement can be settled by arguing about the rule instead of by re-typing the number.",
     "previouslyAlso": "2026-08-19, EARLIER THE SAME DAY (the reading this edit supersedes): slots 15, directories 30, live 2, shell-claimed 2, shell-empty 11, intendedReposExistingOnGitHub 0. Kept beside the current numbers for the same reason `previously` is: these fields MUST track the rows, so the only way a count can also be a record is for the superseded one to stay visible. Two supersessions on one date is not a mistake in the dating - the owner performed five renames and created twenty-six repositories between the two readings.",
     "whatMovedOn20260819Later": "THE MATRIX WAS BUILT ON GITHUB. Between the morning reading and this one the owner claimed every intended name: all 30 slot repos now exist, and the five repositories that had been carrying the old names were RENAMED into the scheme (Project_Cross_Platform_Apps -> Nikatru_Android_Apps_Public, Project_Cross_Platform_Apps_Private -> Nikatru_Android_Apps_Private, Project_Cross_browser_Extensions -> Nikatru_Chrome_Extensions_Public, Project_Cross_browser_Extensions_Private -> Nikatru_Chrome_Extensions_Private, Project_Web_Presence -> Nikatru_Storefront_Public). NO ROW CHANGED STATE and no row was added: slots is still 15, live still 2, shell-claimed still 2, shell-empty still 11. What moved is intendedReposExistingOnGitHub, 0 -> 30. 🔴 EDGE AND FIREFOX WERE DELIBERATELY NOT PROMOTED. Their repos exist, but they hold a README and nothing else, and `live` is defined by stateVocabulary as the SLOT'S OWN DIRECTORIES holding a real source tree - which on disk is still 0 files and 0 directories for both halves of both. Promoting them on the strength of a repo existing would hand assert-copy-parity.mjs two more empty trees to compare, and it would then report a clean comparison of nothing.",
-    "loudestSuperseded": "ZERO of the 30 intended repo names exist on GitHub. The one live slot is bound to a repo of a DIFFERENT name (Project_Cross_Platform_Apps) and its private half has no remote at all. On GitHub, the matrix is entirely unbuilt. 2026-08-19 - STILL ZERO, and now louder: there are TWO live slots and THREE bound remotes, and every one of them is bound to a repo whose name is not the name this registry intends. Not one intended name has been claimed. The org gained a repository since 2026-08-18 (Rajasekar_Site_Public) and it is not a slot name either."
+    "loudestSuperseded": "ZERO of the 30 intended repo names exist on GitHub. The one live slot is bound to a repo of a DIFFERENT name (Project_Cross_Platform_Apps) and its private half has no remote at all. On GitHub, the matrix is entirely unbuilt. 2026-08-19 - STILL ZERO, and now louder: there are TWO live slots and THREE bound remotes, and every one of them is bound to a repo whose name is not the name this registry intends. Not one intended name has been claimed. The org gained a repository since 2026-08-18 (Rajasekar_Site_Public) and it is not a slot name either.",
+    "slotsDeclared": 2
   },
   "backing": {
     "rule": "A slot is BACKED when a real source tree exists TODAY that this slot's product would be built from - either sitting in the slot (filed: true) or sitting elsewhere under Projects/ with this slot as its declared destination (filed: false). CAPABILITY IS NOT BACKING: apps/subly carries all six Flutter platform targets, so the Flutter tree COULD fill twelve slots, but a tree that could be copied somewhere is not a product that is there. Counting capability instead of existence is exactly how fourteen empty directories start reading as a portfolio.",
@@ -205,11 +174,15 @@
         "sourceDirsWere": "2026-08-18: Projects/Project_Cross_browser_Extensions and Projects/Project_Cross_browser_Extensions_Private, outside the store tree entirely. 2026-08-19 the pair MOVED into the Chrome slot, keeping its git history and its two origins. Recorded because 'where the source used to be' is the question a stale script's error message asks.",
         "declaredBy": "Chrome_Web_Store/Chrome/Extensions/Nikatru_Chrome_Extensions_Public/catalog/extensions.json - one row, slug fullshot, platforms ['chrome','edge','firefox'], all three `listings` null, status preview. The catalogue moved WITH the tree; its contents were not re-read by the 2026-08-19 registry work and this line still describes the 2026-08-18 reading of it.",
         "claimsSlots": [
+          "Chrome_Web_Store/Chrome/Extensions"
+        ],
+        "note": "ONE repo pair claims THREE slots, and it sits outside the store tree entirely. Whether it splits into three or stays one is STORE-MATRIX-PLAN.md section 5.2 and it is OPEN. What makes getting it wrong expensive: the AMO gecko.id in identity.json is fixed permanently at first signing, and the existing fatal check compares two files WITHIN one repo - a three-way split puts three copies of that one fact in three trees with nothing checking across them. 2026-08-19 - THE FIRST HALF OF THAT SENTENCE IS NO LONGER TRUE AND THE SECOND HALF IS UNCHANGED: the pair now sits INSIDE the store tree, in the Chrome slot, so Chrome is `filed: true` while Edge and Firefox remain `filed: false` and `shell-claimed`. One repo pair still claims three slots. Section 5.2 is STILL OPEN, and the move did not answer it - it made Chrome the de facto home without deciding whether the other two get copies or repos of their own, which is exactly the question. The gecko.id hazard is untouched: the moment a copy lands in Firefox_AMO, that one permanent fact exists in two trees.",
+        "claimsSlotsWas20260819": [
           "Chrome_Web_Store/Chrome/Extensions",
           "Edge_Add_ons/Edge/Extensions",
           "Firefox_AMO/Firefox/Extensions"
         ],
-        "note": "ONE repo pair claims THREE slots, and it sits outside the store tree entirely. Whether it splits into three or stays one is STORE-MATRIX-PLAN.md section 5.2 and it is OPEN. What makes getting it wrong expensive: the AMO gecko.id in identity.json is fixed permanently at first signing, and the existing fatal check compares two files WITHIN one repo - a three-way split puts three copies of that one fact in three trees with nothing checking across them. 2026-08-19 - THE FIRST HALF OF THAT SENTENCE IS NO LONGER TRUE AND THE SECOND HALF IS UNCHANGED: the pair now sits INSIDE the store tree, in the Chrome slot, so Chrome is `filed: true` while Edge and Firefox remain `filed: false` and `shell-claimed`. One repo pair still claims three slots. Section 5.2 is STILL OPEN, and the move did not answer it - it made Chrome the de facto home without deciding whether the other two get copies or repos of their own, which is exactly the question. The gecko.id hazard is untouched: the moment a copy lands in Firefox_AMO, that one permanent fact exists in two trees."
+        "claimsSlotsNote": "Edge_Add_ons/Edge/Extensions and Firefox_AMO/Firefox/Extensions were dropped with their rows on 2026-08-19. FullShot still INTENDS both stores — that intent belongs in tooling/channel-register.json and is unaffected. This field names rows in THIS file, so it may only name rows that exist."
       },
       {
         "product": "storefront",
@@ -364,94 +337,6 @@
   ],
   "slots": [
     {
-      "store": "Apple_App_Store",
-      "target": "iOS",
-      "type": "Apps",
-      "publicDir": "Nikatru_iOS_Apps_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Apple_App_Store",
-      "target": "iOS",
-      "type": "Games",
-      "publicDir": "Nikatru_iOS_Games_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Apple_App_Store",
-      "target": "macOS",
-      "type": "Apps",
-      "publicDir": "Nikatru_macOS_Apps_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Apple_App_Store",
-      "target": "macOS",
-      "type": "Games",
-      "publicDir": "Nikatru_macOS_Games_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
       "store": "Chrome_Web_Store",
       "target": "Chrome",
       "type": "Extensions",
@@ -471,56 +356,6 @@
           "existsOnGitHub": true,
           "visibility": "PRIVATE",
           "boundRemote": "globalonlinedeveloper/Nikatru_Chrome_Extensions_Private"
-        }
-      }
-    },
-    {
-      "store": "Edge_Add_ons",
-      "target": "Edge",
-      "type": "Extensions",
-      "publicDir": "Nikatru_Edge_Extensions_Public",
-      "state": "shell-claimed",
-      "backing": {
-        "product": "fullshot",
-        "filed": false
-      },
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Firefox_AMO",
-      "target": "Firefox",
-      "type": "Extensions",
-      "publicDir": "Nikatru_Firefox_Extensions_Public",
-      "state": "shell-claimed",
-      "backing": {
-        "product": "fullshot",
-        "filed": false
-      },
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -546,160 +381,7 @@
           "boundRemote": null
         }
       }
-    },
-    {
-      "store": "Google_Play_Store",
-      "target": "Android",
-      "type": "Games",
-      "publicDir": "Nikatru_Android_Games_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Linux_Store",
-      "target": "Linux",
-      "type": "Apps",
-      "publicDir": "Nikatru_Linux_Apps_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Linux_Store",
-      "target": "Linux",
-      "type": "Games",
-      "publicDir": "Nikatru_Linux_Games_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Microsoft_Store",
-      "target": "Windows",
-      "type": "Apps",
-      "publicDir": "Nikatru_Windows_Apps_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Microsoft_Store",
-      "target": "Windows",
-      "type": "Games",
-      "publicDir": "Nikatru_Windows_Games_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Nikatru_Web_Store",
-      "target": "Web",
-      "type": "Apps",
-      "publicDir": "Nikatru_Web_Apps_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
-    },
-    {
-      "store": "Nikatru_Web_Store",
-      "target": "Web",
-      "type": "Games",
-      "publicDir": "Nikatru_Web_Games_Public",
-      "state": "shell-empty",
-      "backing": null,
-      "repos": {
-        "public": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        },
-        "private": {
-          "existsOnGitHub": false,
-          "visibility": null,
-          "boundRemote": null,
-          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
-        }
-      }
     }
-  ]
+  ],
+  "reducedTo20260819": "REDUCED on 2026-08-19 evening, after the owner locked one-repo/one-pipeline and deleted the 26 placeholder repos AND their 26 empty local directories. This file now describes ONLY what exists: 2 slots, both carrying real source. The 13 intent-only rows were removed because this registry describes DIRECTORIES ON DISK and none of them had one — a row naming a directory that is not there is the same defect as a guard with no subject. INTENT IS NOT LOST: the per-store facts a pipeline actually needs (artifact format, toolchain, signing key kind, signing secret names, submission script, submission workflow, listing path) live in tooling/channel-register.json, which still declares android-play, ios-appstore, macos-appstore, windows-store and linux-snap. resolve-slot.mjs reads the store facts from THERE and never from here. Adding a store back means adding a slot row when the directory is created, not re-deriving anything. Dropped rows: Apple_App_Store/iOS/Apps, Apple_App_Store/iOS/Games, Apple_App_Store/macOS/Apps, Apple_App_Store/macOS/Games, Edge_Add_ons/Edge/Extensions, Firefox_AMO/Firefox/Extensions, Google_Play_Store/Android/Games, Linux_Store/Linux/Apps, Linux_Store/Linux/Games, Microsoft_Store/Windows/Apps, Microsoft_Store/Windows/Games, Nikatru_Web_Store/Web/Apps, Nikatru_Web_Store/Web/Games. The `infrastructure` block was removed entirely: it existed to exempt Nikatru_Storefront_Public and Rajasekar_Site_Public, and both directories were deleted the same evening after being preserved as git bundles in .bundles/."
 }
