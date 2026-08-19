@@ -291,6 +291,7 @@ const expectedDirs = new Set();
  *  case-insensitive, so `Nikatru_iOS_Apps_Public` and `nikatru_ios_apps_public`
  *  are the same repo. Keyed lowercase for exactly that reason. */
 const repoNames = new Map();
+const nameExemptions = [];
 let diskAssertionsSkipped = 0;
 
 for (const s of reg.slots) {
@@ -303,9 +304,28 @@ for (const s of reg.slots) {
     continue;
   }
 
-  // 3a. the rule, substituted.
+  // 3a. the rule, substituted — unless the row DECLARES why it does not follow it.
+  //
+  // 🔴 THE EXEMPTION IS A DECLARATION, NOT A BYPASS, and the difference is that it is
+  // PRINTED. A row may set `dirNameExempt` to a non-empty reason; the template check is
+  // then skipped for that row and the reason is read out in the summary, so a directory
+  // that does not follow the rule is visible on every run rather than absent from it.
+  // A present-but-empty reason is NOT an exemption — it is a finding, because "skip this
+  // check" with nothing said is how a naming rule quietly stops being one.
+  //
+  // Why this exists: on 2026-08-19 the owner renamed the repositories to names describing
+  // what they HOLD rather than one store they ship to. Those names are not derivable from
+  // <target>_<type> — Nikatru_Platform_Public is not a function of target=Android,
+  // type=Apps — so without this the rule would force every DIRECTORY to go on contradicting
+  // its own repository. The rule still governs every row that does not opt out, and the
+  // opt-out costs a sentence that appears in the output.
   const wantPublic = fromTemplate(s, 'Public');
-  if (s.publicDir !== wantPublic) {
+  const exemptReason = typeof s.dirNameExempt === 'string' ? s.dirNameExempt.trim() : '';
+  if (s.dirNameExempt !== undefined && exemptReason.length < 20) {
+    fail(`${p}: dirNameExempt is present but says nothing (${JSON.stringify(s.dirNameExempt)}). An exemption with no reason is a silenced check, not a declaration.`);
+  } else if (exemptReason) {
+    nameExemptions.push(`${p}: publicDir "${s.publicDir}" does NOT follow naming.directoryRule (which derives "${wantPublic}") — EXEMPT BY DECLARATION: ${exemptReason}`);
+  } else if (s.publicDir !== wantPublic) {
     fail(`${p}: publicDir "${s.publicDir}" breaks naming.directoryRule — the rule derives "${wantPublic}"`);
   }
   const bySwap = privateDirOf(s);
@@ -623,6 +643,10 @@ if (PROJECTS) {
   console.log('tree limb: NOT RUN — --registry-only was DECLARED, so the store tree was never opened.');
   console.log(`           ${diskAssertionsSkipped} disk assertion(s) over ${reg.slots.length} row(s) were NOT made, nor the`);
   console.log('           both-directions check, nor the on-disk floor. This run verified the REGISTRY only.');
+}
+if (nameExemptions.length) {
+  console.log(`naming.directoryRule: ${nameExemptions.length} row(s) EXEMPT BY DECLARATION, printed not hidden:`);
+  for (const line of nameExemptions) console.log(`    ${line}`);
 }
 console.log(`checked ${reg.slots.length} slot row(s) · ${expectedDirs.size} declared directories · ${repoNames.size} distinct intended repo names`);
 console.log(
