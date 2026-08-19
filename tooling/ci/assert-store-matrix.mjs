@@ -30,6 +30,19 @@
 //   5. EVERY `state` IS IN THE DOCUMENTED VOCABULARY, and the vocabulary is read
 //      OUT OF THE REGISTRY rather than re-typed here — a second copy of the
 //      vocabulary drifts in the one direction that reports clean.
+//   7. INFRASTRUCTURE IS DECLARED, NOT SKIPPED. Some directories in this tree
+//      carry a slot-SHAPED name and are not slots — the storefront is
+//      Nikatru_Storefront_Public and sits at depth 1. Check 2 below would name it
+//      as a slot hiding out of shape, and it is right to, so the only honest
+//      answer is a DECLARATION: catalog/store-matrix.json's `infrastructure` block
+//      names each such directory, says in prose why it is not a slot, and this
+//      guard exempts it BY EXACT PATH. The exemption is two-directional — a
+//      declared directory that is NOT on disk FAILS — because an exemption that
+//      cannot go stale is the only kind that stays worth having. A bare skip-list
+//      keyed on the name would have bought silence; this buys an argument someone
+//      has to defend. The block is OPTIONAL: a registry without it exempts
+//      nothing, which is exactly the behaviour every fixture in
+//      tooling/ci/test/store-matrix.test.mjs relies on.
 //   6. A FLOOR. 🔴 THE FLOOR IS THE POINT, NOT A DETAIL. `slots: []` is valid
 //      JSON, satisfies every per-row assertion vacuously, and would print `ok`
 //      over a registry that declares nothing. So: zero rows REFUSES, and fewer
@@ -342,12 +355,71 @@ for (const [v, n] of seenVocab) {
   if (n === 0) fail(`state vocabulary value "${v}" has no member — a state nothing is in is a state nobody maintains`);
 }
 
+// ── 7. infrastructure: the directories that are NOT slots, declared ───────────
+// 🔴 THIS IS AN EXEMPTION LIST AND IT IS WRITTEN TO BE EXPENSIVE. Every entry
+// must say what it is and why, must name a directory that is REALLY THERE, and
+// must not be double-declared against the GitHub accounting. Read
+// catalog/store-matrix.json's own `infrastructure` block for the argument; this
+// code only enforces that the argument was made.
+//
+// ABSENT IS FINE, MALFORMED IS NOT. A registry with no `infrastructure` key
+// exempts nothing and reports nothing — the state every fixture in
+// tooling/ci/test/store-matrix.test.mjs is in. A key that is PRESENT and
+// unreadable is a finding rather than a silent skip: a declaration surface
+// nobody can parse exempts nothing while looking like it exempts something.
+const infraDirs = new Map(); // relative dir under Projects/ -> id
+if (reg.infrastructure !== undefined) {
+  const INFRA = reg.infrastructure;
+  if (!INFRA || typeof INFRA !== 'object' || !Array.isArray(INFRA.repos)) {
+    fail('infrastructure is present but has no `repos` ARRAY — a declaration surface that cannot be read exempts nothing while looking like it exempts something');
+  } else if (INFRA.repos.length === 0) {
+    fail('infrastructure.repos is EMPTY — a heading with nothing under it. Delete the key, or declare the directory it was added for');
+  } else {
+    for (const [i, e] of INFRA.repos.entries()) {
+      const at = `infrastructure.repos[${i}]`;
+      for (const k of ['id', 'dir', 'why', 'measured']) {
+        if (typeof e?.[k] !== 'string' || !e[k].trim()) {
+          fail(`${at}: \`${k}\` is missing or empty — an entry that does not say what it is for is a place to silence findings rather than a declaration`);
+        }
+      }
+      if (typeof e?.dir !== 'string' || !e.dir.trim()) continue;
+      if (e.dir.includes('/') || e.dir.includes('\\')) {
+        fail(`${at}: dir "${e.dir}" is a PATH. This key describes directories sitting directly under Projects/; anything nested is either a slot or something this block does not describe, and exempting a path would let one line cover a whole subtree`);
+        continue;
+      }
+      if (infraDirs.has(e.dir)) fail(`${at}: "${e.dir}" is declared twice`);
+      else infraDirs.set(e.dir, typeof e.id === 'string' ? e.id : at);
+
+      // github.accountingRule says EXACTLY ONE. This block is not one of the
+      // three surfaces it names, so a repo behind an infrastructure directory
+      // still needs its own outOfMatrix line — without one it reads as an ORPHAN
+      // to assert-github-matrix.mjs, and "the other block declared it" is how
+      // both blocks end up declaring nothing.
+      const repo = e.repo ?? null;
+      if (repo !== null) {
+        if (typeof repo !== 'string' || !repo.trim()) {
+          fail(`${at} (${e.dir}): \`repo\` is ${JSON.stringify(e.repo)} — must be null, or the repo name as GitHub spells it`);
+        } else {
+          const declared = (reg.github?.outOfMatrix ?? []).some((o) => o?.repo === repo);
+          if (!declared) {
+            fail(`${at} (${e.dir}): repo "${repo}" has NO github.outOfMatrix line. infrastructure is not an accounting surface — assert-github-matrix.mjs would report this repo as an ORPHAN, and one line in github.outOfMatrix fixes it`);
+          }
+          if (repoNames.has(repo.toLowerCase())) {
+            fail(`${at} (${e.dir}): repo "${repo}" is ALSO the intended repo name of ${repoNames.get(repo.toLowerCase())} — a directory cannot be declared out of the matrix and be a slot's repo at the same time`);
+          }
+        }
+      }
+    }
+  }
+}
+
 // ── 2. the other direction, and 6. the floor ──────────────────────────────────
 let onDisk = null;
 const onDiskSlotPaths = new Set();
 if (PROJECTS) {
   onDisk = new Set();
   const misplaced = [];
+  const infraExempted = new Set();
   // Slot directories live at EXACTLY depth 4 under Projects/ —
   // <store>/<target>/<type>/<name>. The depth is not an optimisation, it is the
   // shape: a slot-shaped directory anywhere else is reported BY NAME rather than
@@ -400,7 +472,13 @@ if (PROJECTS) {
       const d = depth + 1;
       if (d === 4 && /_(Public|Private)$/.test(e.name)) onDisk.add(r);
       else if (d !== 4 && /^Nikatru_.+_(Public|Private)$/.test(e.name)) {
-        misplaced.push(`${r} (depth ${d}; slots live at depth 4)`);
+        // EXACT PATH, not name. `infrastructure` declares "Nikatru_Storefront_Public"
+        // as a directory sitting directly under Projects/; a directory of the SAME
+        // NAME appearing three levels down is a different fact and is still named.
+        // Matching on the name alone would let one declaration cover every copy of
+        // it anywhere in the tree, which is the failure this whole check exists for.
+        if (infraDirs.has(r)) infraExempted.add(r);
+        else misplaced.push(`${r} (depth ${d}; slots live at depth 4)`);
       }
       // A checkout is enumerated and then LEFT ALONE. Descending into one is the
       // defect itself — its files belong to its own repository — and it is also
@@ -440,6 +518,19 @@ if (PROJECTS) {
   for (const d of onDisk) if (!expectedDirs.has(d)) fail(`slot directory on disk with NO ROW in the registry — ${d}`);
   for (const d of expectedDirs) if (!onDisk.has(d)) fail(`registry row names a directory that is not a slot directory on disk — ${d}`);
   for (const m of misplaced) fail(`slot-shaped directory OUTSIDE the <store>/<target>/<type>/<name> shape — ${m}`);
+
+  // THE OTHER DIRECTION OF THE EXEMPTION, and it is the half that keeps it
+  // honest: a declared infrastructure directory that is NOT on disk is a line
+  // outliving the thing it describes, and a stale exemption is indistinguishable
+  // from a deliberate one until it is silently covering something new.
+  for (const [dir, id] of infraDirs) {
+    if (!existsSync(join(PROJECTS, dir))) {
+      fail(`infrastructure declares "${dir}" (${id}) and it is NOT on disk under ${PROJECTS} — an exemption for a directory that is gone`);
+    }
+  }
+  if (infraExempted.size) {
+    console.log(`infrastructure: ${infraExempted.size} slot-SHAPED director(ies) exempted BY DECLARATION, not skipped — ${[...infraExempted].join(', ')}`);
+  }
 
   // 6. THE FLOOR, measured against the disk rather than against itself, so a
   // registry that silently empties fails instead of passing over nothing.
@@ -534,6 +625,11 @@ if (PROJECTS) {
   console.log('           both-directions check, nor the on-disk floor. This run verified the REGISTRY only.');
 }
 console.log(`checked ${reg.slots.length} slot row(s) · ${expectedDirs.size} declared directories · ${repoNames.size} distinct intended repo names`);
+console.log(
+  infraDirs.size
+    ? `infrastructure: ${infraDirs.size} declared non-slot director(ies) — ${[...infraDirs.keys()].join(', ')}. These are NOT slots and are NOT counted as any.`
+    : 'infrastructure: no block declared, so NOTHING was exempted from the out-of-shape check this run.',
+);
 
 if (findings.length) {
   console.error(`\nassert-store-matrix: ${findings.length} finding(s)`);
