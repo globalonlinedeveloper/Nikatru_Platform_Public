@@ -389,6 +389,14 @@ if (!anchor) {
 
 // ── the origin slot ─────────────────────────────────────────────────────────
 const key = (s) => `${s.store}/${s.target}/${s.type}`;
+// 🔴 WHERE A SLOT'S DIRECTORY LIVES IS DECLARED, NOT ASSUMED. A row that carries a
+// `flatDir` reason puts its directories at the top of Projects/ instead of under
+// <store>/<target>/<type>/. Both forms resolve through this one function, so the copy
+// check cannot silently look in the wrong place and report "no copies" — which is the
+// shape of every empty-set false green this guard exists to refuse.
+const slotIsFlat = (s) => typeof s.flatDir === 'string' && s.flatDir.trim().length >= 20;
+const slotDirAbs = (root, s) =>
+  slotIsFlat(s) ? join(root, s.publicDir) : join(root, s.store, s.target, s.type, s.publicDir);
 const ORIGIN_KEY = `${decl.origin.store}/${decl.origin.target}/${decl.origin.type}`;
 const originSlot = reg.slots.find((s) => key(s) === ORIGIN_KEY);
 if (!originSlot) {
@@ -527,7 +535,7 @@ function walkFs(root, ignoreDirs) {
 }
 
 const originDir = PROJECTS
-  ? join(PROJECTS, originSlot.store, originSlot.target, originSlot.type, originSlot.publicDir)
+  ? slotDirAbs(PROJECTS, originSlot)
   : REPO;                                 // single-checkout: this repo IS whatever it is
 const MARKERS = decl.copyMarkers.anyOf || [];
 
@@ -644,7 +652,7 @@ const unreachable = [];
 
 for (const slot of copySlots) {
   const k = key(slot);
-  const dir = PROJECTS ? join(PROJECTS, slot.store, slot.target, slot.type, slot.publicDir) : null;
+  const dir = PROJECTS ? slotDirAbs(PROJECTS, slot) : null;
 
   if (!dir) {
     // Absence rule (a): this checkout cannot reach siblings at all. Printed, not silent.

@@ -219,8 +219,15 @@ const fail = (m) => findings.push(m);
 // ── derivations. ONE definition each, used everywhere below. ──────────────────
 const pathOf = (s) => `${s.store}/${s.target}/${s.type}`;
 const privateDirOf = (s) => s.publicDir.replace(/_Public$/, '_Private');
-const publicPathOf = (s) => `${pathOf(s)}/${s.publicDir}`;
-const privatePathOf = (s) => `${pathOf(s)}/${privateDirOf(s)}`;
+// 🔴 THE SLOT ID AND THE DIRECTORY PATH ARE NOT THE SAME THING, and separating them is
+// what lets a repository sit at the top of Projects/ without pretending to be a store.
+// `pathOf` stays <store>/<target>/<type> — it is the row IDENTITY, printed in every
+// finding, and it does not move. What moves is where the directory LIVES: a row that
+// declares `flatDir` with a reason puts its two directories directly under Projects/.
+// Declared, not inferred, and printed in the summary like every other exemption here.
+const isFlat = (s) => typeof s.flatDir === 'string' && s.flatDir.trim().length >= 20;
+const publicPathOf = (s) => (isFlat(s) ? s.publicDir : `${pathOf(s)}/${s.publicDir}`);
+const privatePathOf = (s) => (isFlat(s) ? privateDirOf(s) : `${pathOf(s)}/${privateDirOf(s)}`);
 
 // The naming template is READ OUT OF THE REGISTRY, never re-typed here. Typing
 // `Nikatru_<target>_<type>_Public` into this file would be a second declaration of
@@ -292,6 +299,25 @@ const expectedDirs = new Set();
  *  are the same repo. Keyed lowercase for exactly that reason. */
 const repoNames = new Map();
 const nameExemptions = [];
+const flatExemptions = [];
+// Every directory a flat row owns, and which row owns it. Built BEFORE the walk so the
+// walk can tell a declared flat slot directory from a stray one with the same shape.
+const flatDirs = new Set();
+const flatDirOwner = new Map();
+for (const s of reg.slots) {
+  if (!isFlat(s)) continue;
+  flatDirs.add(s.publicDir);
+  flatDirs.add(privateDirOf(s));
+  flatDirOwner.set(s.publicDir, pathOf(s));
+  flatDirOwner.set(privateDirOf(s), pathOf(s));
+  flatExemptions.push(`${pathOf(s)}: directories sit at the TOP of Projects/ (${s.publicDir}, ${privateDirOf(s)}) rather than at <store>/<target>/<type>/ — EXEMPT BY DECLARATION: ${s.flatDir.trim()}`);
+}
+// A flatDir that is present but says nothing is a silenced check, not a declaration.
+for (const s of reg.slots) {
+  if (s.flatDir !== undefined && !(typeof s.flatDir === 'string' && s.flatDir.trim().length >= 20)) {
+    fail(`${pathOf(s)}: flatDir is present but says nothing (${JSON.stringify(s.flatDir)}). An exemption with no reason is a silenced check, not a declaration.`);
+  }
+}
 let diskAssertionsSkipped = 0;
 
 for (const s of reg.slots) {
@@ -491,6 +517,10 @@ if (PROJECTS) {
       const r = rel ? `${rel}/${e.name}` : e.name;
       const d = depth + 1;
       if (d === 4 && /_(Public|Private)$/.test(e.name)) onDisk.add(r);
+      // A DECLARED flat slot directory at depth 1 is a slot directory, not a stray. It is
+      // recognised by being in `flatDirs`, which is built from the rows that declared
+      // `flatDir` — so an undeclared Nikatru_*_Public at depth 1 is still named below.
+      else if (d === 1 && flatDirs.has(r)) onDisk.add(r);
       else if (d !== 4 && /^Nikatru_.+_(Public|Private)$/.test(e.name)) {
         // EXACT PATH, not name. `infrastructure` declares "Nikatru_Storefront_Public"
         // as a directory sitting directly under Projects/; a directory of the SAME
@@ -518,9 +548,13 @@ if (PROJECTS) {
   const halves = new Map();
   for (const d of onDisk) {
     const parts = d.split('/');
-    const sp = parts.slice(0, 3).join('/');
+    // A nested directory is grouped by its first three segments, which ARE the slot id.
+    // A flat one has no such segments, so it is grouped by the row that declared it —
+    // looked up rather than parsed out, because the path no longer carries the identity.
+    const sp = parts.length >= 4 ? parts.slice(0, 3).join('/') : (flatDirOwner.get(d) ?? d);
+    const leaf = parts[parts.length - 1];
     const e = halves.get(sp) ?? { pub: [], priv: [] };
-    (parts[3].endsWith('_Public') ? e.pub : e.priv).push(parts[3]);
+    (leaf.endsWith('_Public') ? e.pub : e.priv).push(leaf);
     halves.set(sp, e);
     onDiskSlotPaths.add(sp);
   }
@@ -643,6 +677,10 @@ if (PROJECTS) {
   console.log('tree limb: NOT RUN — --registry-only was DECLARED, so the store tree was never opened.');
   console.log(`           ${diskAssertionsSkipped} disk assertion(s) over ${reg.slots.length} row(s) were NOT made, nor the`);
   console.log('           both-directions check, nor the on-disk floor. This run verified the REGISTRY only.');
+}
+if (flatExemptions.length) {
+  console.log(`slot directory placement: ${flatExemptions.length} row(s) FLAT BY DECLARATION, printed not hidden:`);
+  for (const line of flatExemptions) console.log(`    ${line}`);
 }
 if (nameExemptions.length) {
   console.log(`naming.directoryRule: ${nameExemptions.length} row(s) EXEMPT BY DECLARATION, printed not hidden:`);
