@@ -407,13 +407,67 @@ if (originSlot.state !== 'live') {
 }
 
 // ── DERIVE the copy set. Never typed. ───────────────────────────────────────
+// 🔴 `state: "live"` IS NOT THE COPY SET. It was only ever INDISTINGUISHABLE from
+// it. Until 2026-08-19 exactly one slot was `live`, so "there is a real tree here"
+// (what stateVocabulary actually defines) and "this carries a copy of the origin"
+// (what this guard needs) named the same single row, and the difference could not
+// be seen. On 2026-08-19 a SECOND and DIFFERENT product — fullshot, the extension
+// pair — moved into Chrome_Web_Store/Chrome/Extensions and reached `live` in its
+// own right. The state-only derivation then called a Chrome extension a copy of a
+// Flutter app, failed to find the Flutter copy markers in it, and REFUSED (exit 2,
+// measured and recorded in store-matrix.json → openDecisions before this fix). A
+// guard that goes red over a CORRECT registry is a guard somebody switches off.
+//
+// So the copy set is: the origin's OWN PRODUCT, `live`, minus the origin itself.
+// That is the first of the three ways out named in that openDecisions entry.
+// The row-level `backing.product` is the cheap end of backing.products[].claimsSlots
+// — assert-store-matrix.mjs already FAILS when the two disagree in either direction
+// (a claim naming no row, a row claimed by nobody), so reading the row here reads
+// the same declaration without re-implementing the join.
+//
+// 🔴 NOTHING IS DROPPED SILENTLY. A live slot belonging to another product is
+// printed BY NAME with the product that owns it — a narrowing nobody is told about
+// is how a smaller scan starts reading as a clean result. And a live slot with no
+// `backing` at all is a REFUSAL, not an exclusion: the registry cannot say whose
+// copy it is, and guessing "not ours" is the direction that hides a divergence.
 const liveSlots = reg.slots.filter((s) => s.state === 'live');
-const copySlots = liveSlots.filter((s) => key(s) !== ORIGIN_KEY);
+const otherLive = liveSlots.filter((s) => key(s) !== ORIGIN_KEY);
+
+const ORIGIN_PRODUCT = originSlot.backing?.product ?? null;
+if (!ORIGIN_PRODUCT) {
+  refuse([
+    `the origin slot \`${ORIGIN_KEY}\` is \`live\` but declares no \`backing.product\` in catalog/store-matrix.json.`,
+    'The copy set is "every live slot carrying the product THIS ORIGIN holds". With that',
+    'product unnamed, the set cannot be derived at all, and the only alternatives are to',
+    'compare against every live slot (which compares a Chrome extension against a Flutter app)',
+    'or against none (which reports parity forever). Refusing rather than picking one.',
+  ]);
+}
+const unattributed = otherLive.filter((s) => !s.backing?.product);
+if (unattributed.length) {
+  refuse([
+    `${unattributed.length} slot(s) are marked \`live\` but declare no \`backing.product\`: ${unattributed.map(key).join(' , ')}`,
+    'A live slot with no product cannot be classified as a copy of this origin or as something',
+    'else, and the guard will not guess. Guessing "not a copy" is the direction that would let a',
+    'real, diverged copy of this origin drop out of the comparison without a word.',
+    'Fix the row: every live slot names the product its tree holds.',
+  ]);
+}
+
+const copySlots = otherLive.filter((s) => s.backing.product === ORIGIN_PRODUCT);
+const otherProduct = otherLive.filter((s) => s.backing.product !== ORIGIN_PRODUCT);
 
 say('');
-say(`  registry: ${reg.slots.length} slot(s) declared · ${liveSlots.length} marked \`live\` (= carrying a source copy)`);
-say(`  origin:   ${ORIGIN_KEY}  →  ${originSlot.publicDir}`);
-say(`  copies:   ${copySlots.length} — derived from store-matrix.json \`state\`, never listed in copy-origins.json`);
+say(`  registry: ${reg.slots.length} slot(s) declared · ${liveSlots.length} marked \`live\` (= holding a real source tree, of ANY product)`);
+say(`  origin:   ${ORIGIN_KEY}  →  ${originSlot.publicDir}   (product \`${ORIGIN_PRODUCT}\`)`);
+say(`  copies:   ${copySlots.length} — the \`live\` slots whose \`backing.product\` is \`${ORIGIN_PRODUCT}\`, minus the origin.`);
+say(`            DERIVED from store-matrix.json, never listed in copy-origins.json. \`state\` alone is NOT`);
+say(`            the copy set — see the header: a second product reaching \`live\` breaks that equivalence.`);
+if (otherProduct.length) {
+  say(`  excluded: ${otherProduct.length} \`live\` slot(s) carrying a DIFFERENT product — not copies of this origin, named so the`);
+  say(`            narrowing is visible rather than assumed:`);
+  for (const s of otherProduct) say(`              ${key(s)} — product \`${s.backing.product}\``);
+}
 say(`  limb:     LOCAL (all copies on disk). No network limb exists — see copy-origins.json → notInScope.network.`);
 say(`  private:  NOT COMPARED. Declared gap — see copy-origins.json → notInScope.privateTrees.`);
 
@@ -729,13 +783,15 @@ if (comparisonsPerformed === 0) {
   console.error(`  none of it is evidence that any two copies agree, because there was no second copy.`);
   console.error('');
   if (copySlots.length === 0) {
-    console.error(`  WHY: catalog/store-matrix.json marks ${liveSlots.length} slot(s) \`live\` and ${liveSlots.length === 1 ? 'the only one is the origin itself' : 'none besides the origin'}.`);
-    console.error(`       A parity check over one copy has nothing to compare against. That is the honest`);
-    console.error(`       state of the matrix today (1 live, 14 shells) — it is not a defect in this guard,`);
-    console.error(`       and it is not a clean bill of health either.`);
+    console.error(`  WHY: catalog/store-matrix.json marks ${liveSlots.length} slot(s) \`live\`, and ${otherProduct.length === 0 ? 'the only one is the origin itself' : `the ${otherProduct.length} besides the origin carry a DIFFERENT product (${otherProduct.map((s) => `${key(s)} → ${s.backing.product}`).join(' , ')})`}.`);
+    console.error(`       No slot besides the origin carries product \`${ORIGIN_PRODUCT}\`, so there is no second COPY —`);
+    console.error(`       a live slot holding some other product is not one. A parity check over one copy has`);
+    console.error(`       nothing to compare against. That is the honest state of the matrix today — it is not a`);
+    console.error(`       defect in this guard, and it is not a clean bill of health either.`);
     console.error('');
     console.error(`  WHAT WOULD MAKE THIS MEANINGFUL: a second slot reaching \`state: "live"\` in`);
-    console.error(`       catalog/store-matrix.json with a real source copy on disk. STORE-MATRIX-PLAN.md`);
+    console.error(`       catalog/store-matrix.json CARRYING PRODUCT \`${ORIGIN_PRODUCT}\`, with a real source copy`);
+    console.error(`       on disk. Another product going live does not count and never did. STORE-MATRIX-PLAN.md`);
     console.error(`       Step 7 says to build ONE slot end to end and prove this guard sees two copies`);
     console.error(`       and passes, then prove it FAILS when they diverge — before slot two exists.`);
   } else if (unreachable.length) {
