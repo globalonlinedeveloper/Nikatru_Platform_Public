@@ -1620,7 +1620,7 @@ export function evaluate(reg, tree, nowMs) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GH_API = 'https://api.github.com';
-const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
 const PROBE_TIMEOUT_MS = 15_000;
 // 🔴 SEPARATE, AND MUCH LARGER, THAN THE NETWORK ONE — measured, not guessed. A
 // COLD `powershell` start plus the ScheduledTasks module autoload exceeded 15 s

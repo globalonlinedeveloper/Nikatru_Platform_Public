@@ -118,7 +118,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'e2e.yml';
 const BRANCH = 'main';
 const MAX_AGE_DAYS = 3;
-const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
 
 /** The work the run must still be doing, or its green tick means nothing.
  *

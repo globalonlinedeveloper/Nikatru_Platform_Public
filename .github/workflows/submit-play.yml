@@ -66,12 +66,21 @@ name: Google Play submission path
 #    environments/{environment_name}", parameters wait_timer, prevent_self_review,
 #    reviewers[{type,id}], deployment_branch_policy.
 #
+#   🔴 REPOINTED 2026-08-19 — the three `gh api repos/…` lines below named
+#   `Project_Cross_Platform_Apps`, which the owner renamed to
+#   `Nikatru_Android_Apps_Public` that day. These are commands somebody TYPES, so a
+#   stale name here is not prose. They would still have appeared to work: GitHub
+#   follows rename redirects, so `gh api repos/<owner>/<old-name>/…` answers 200 —
+#   which is exactly why the old name must not be left standing. A rename FREES the
+#   old name, and a `--method PUT` against a name someone else has re-claimed writes
+#   an environment with a required reviewer into a stranger's repository.
+#
 #   # 1 · the reviewer's NUMERIC id — the API takes ids, never logins.
 #   gh api users/globalonlinedeveloper --jq '.id'      # → 55662283 (read 2026-08-09)
 #
 #   # 2 · create the environment WITH the required reviewer, in one call.
 #   gh api --method PUT \
-#     repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish \
+#     repos/globalonlinedeveloper/Nikatru_Android_Apps_Public/environments/store-publish \
 #     --input - <<'JSON'
 #   {
 #     "wait_timer": 0,
@@ -84,13 +93,13 @@ name: Google Play submission path
 #   # 3 · restrict which branch may reach the gate at all (the custom policy
 #   #     declared above is inert until a pattern is added).
 #   gh api --method POST \
-#     repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish/deployment-branch-policies \
+#     repos/globalonlinedeveloper/Nikatru_Android_Apps_Public/environments/store-publish/deployment-branch-policies \
 #     -f name='main'
 #
 #   # 4 · prove it took. This is the EXACT read PG-5 makes, so a non-empty
 #   #     `reviewers` here is a submit job that can pass, and `[]` is one that
 #   #     cannot.
-#   gh api repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish \
+#   gh api repos/globalonlinedeveloper/Nikatru_Android_Apps_Public/environments/store-publish \
 #     --jq '.protection_rules'
 #
 # ⚠️ `prevent_self_review` IS DELIBERATELY false, AND THE HONEST REASON MATTERS.

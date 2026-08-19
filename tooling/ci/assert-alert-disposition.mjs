@@ -169,7 +169,7 @@ import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const REGISTER_REL = 'tooling/ops/register.json';
 const GH_API = 'https://api.github.com';
-const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
 const PROBE_TIMEOUT_MS = 15_000;
 const ISSUE_PAGE_SIZE = 100;
 const ISSUE_PAGE_CAP = 5;
