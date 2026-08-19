@@ -474,7 +474,44 @@
               "exact colour edge to edge. The guard decodes each frame and looks for that band, with the",
               "colour read live from the design-system token file rather than pinned, and it self-tests the",
               "detector on every run so the limb cannot go dark while this directory is still empty."
-            ]
+            ],
+            "deviceTypeCoverage": {
+              "_why": [
+                "🔴 PLAY'S MINIMUM IS NOT A COUNT OF FILES, IT IS A COUNT OF DEVICE TYPES, AND THIS TREE HAD",
+                "ONLY EVER COUNTED FILES. `minCount: 2` above is satisfied by four phone screenshots, which is",
+                "exactly what apps/subly/store/android-play/screenshots/ holds — 4 files, every one 1080x1920,",
+                "zero tablet and zero Chromebook. Measured 2026-08-20 by reading the four IHDR chunks. Every",
+                "other listing asset PASSES, so this is the single most likely cause of a first-submission",
+                "bounce, and nothing in the repository could see it: assert-listing-assets.mjs asks how many,",
+                "how big and what colour type, and there is no question it can ask a PNG that answers WHICH",
+                "DEVICE TYPE Play will file it under. The console files a screenshot by the SLOT it was",
+                "uploaded to, not by its pixels.",
+                "",
+                "So the device type is declared HERE, as a directory per type, and the guard counts the",
+                "directories that carry pixels. That is the only form of the question a repository can",
+                "answer at all.",
+                "",
+                "⚠️ NO PER-TYPE DIMENSIONS ARE RECORDED, DELIBERATELY. `_unverified` below says to add a",
+                "form-factor row in the same increment that adds the form factor, with the page re-fetched,",
+                "and that rule is kept. A tablet pixel rule written today would be a limit with no artefact",
+                "to apply it to, and this repository has already rejected its own fixture at 129 characters",
+                "against a made-up '120 or fewer'. `sets` records WHERE a type's screenshots live and",
+                "nothing else; adding tablet-7 is one line here plus a directory, and its dimensions arrive",
+                "in that same increment.",
+                "",
+                "THE PRINT/FAIL SPLIT IS THE ONE assert-listing-assets.mjs ALREADY USES. android-play is",
+                "`served: false`, so on the shared lane a shortfall PRINTS. On the submission lane it is",
+                "FATAL, because that is the moment the gap stops being a gap and becomes a rejected upload."
+              ],
+              "minDistinctTypes": 2,
+              "source": "https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04, re-read 2026-08-20) — Screenshots, Requirements, verbatim: \"You must provide a minimum of two screenshots across different device types to publish your store listing\"",
+              "sets": {
+                "phone": {
+                  "dir": "screenshots",
+                  "_why": "The same directory `screenshots.dir` names, and the guard asserts the two agree rather than trusting either: two declarations of where the phone set lives is one more than can stay correct."
+                }
+              }
+            }
           },
           "_unverified": [
             "MAX FILE SIZE FOR A PHONE SCREENSHOT — the page states a maximum only for the app icon (1024KB)",
@@ -482,10 +519,18 @@
             "none is enforced and none is written down. The widely-repeated '8MB' figure is the XR number",
             "wearing a phone's clothes.",
             "",
-            "WHETHER PHONE SCREENSHOTS ALONE SATISFY THE MINIMUM. The requirement reads 'a minimum of two",
-            "screenshots ACROSS DIFFERENT DEVICE TYPES', which does not say whether two phone screenshots",
-            "and no tablet ones clear it. The strict reading is enforced (>= 2 in the phone set), because",
-            "the loose one can only accept a listing Play might refuse.",
+            "🔴 RESOLVED 2026-08-20, AND THE RESOLUTION IS THE STRICTER READING — kept here rather than",
+            "deleted, because the reasoning that WAS recorded turned out to be the wrong way round. This",
+            "entry used to read: the requirement 'does not say whether two phone screenshots and no tablet",
+            "ones clear it', so 'the strict reading is enforced (>= 2 in the phone set)'. That is not the",
+            "strict reading. It is the reading under which four phone screenshots satisfy a sentence whose",
+            "subject is DEVICE TYPES, and it is the reading under which this listing passed every check for",
+            "weeks while carrying zero tablet and zero Chromebook shots. '>= 2 in the phone set' is a floor",
+            "on the phone set; it is not a reading of 'across different device types' at all.",
+            "The strict reading — at least two DISTINCT device types must carry screenshots — is now the",
+            "enforced one, in `deviceTypeCoverage` above, on exactly the principle the old entry invoked",
+            "and then applied backwards: of two readings, take the one that cannot accept a listing Play",
+            "might refuse. `minCount: 2` is unchanged and still enforced; it answers a different question.",
             "",
             "TABLET / CHROMEBOOK / WEAR / TV / AUTOMOTIVE / XR SETS. The page states requirements for each,",
             "but this app declares none of those form factors, so no expectation is recorded for them. Add",

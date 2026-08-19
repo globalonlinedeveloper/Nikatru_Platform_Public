@@ -247,6 +247,26 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-signed.mjs
           apps/subly/build/app/outputs/bundle/release/app-release.aab
+      # ── THE LISTING GATE THAT IS ONLY FATAL HERE ───────────────────────────
+      # 🔴 THE LIKELIEST FIRST-SUBMISSION BOUNCE IN THIS REPOSITORY, and every
+      # other listing check is green. Play wants "a minimum of two screenshots
+      # across different device types"; the set is four phone screenshots.
+      # ci.yml runs this same guard plain, where it prints; here it runs with
+      # --for-submission, where it refuses. It is placed BEFORE the dry run so
+      # the refusal names the listing rather than arriving as a Play API error.
+      - name: The Play screenshot set spans enough device types
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission
+      # ── THE PLAY STORE GATE, ON THE BUNDLE THAT WOULD BE UPLOADED ──────────
+      # PG-4 requires assert-artifact-signed.mjs to run BEFORE the submit step;
+      # it requires ORDER, not adjacency, so this sits between them without
+      # disturbing that. The signature answers "who signed this?"; this answers
+      # "will Play take it?" — a 64-bit LOAD segment under 16 KB is refused at
+      # upload, and this is the last point before the upload where the answer is
+      # a fact about bytes rather than a claim about configuration.
+      - name: Every native library is aligned for a 16 KB memory page
+        run: >
+          node tooling/ci/assert-elf-page-alignment.mjs
+          apps/subly/build/app/outputs/bundle/release/app-release.aab
       # ⚠️ PLAY_SERVICE_ACCOUNT_JSON is a PRIVATE KEY. The script parses it to
       # check its shape and never prints any part of it, including in the
       # failure messages for a malformed value. In `--dry-run` its absence is a
@@ -333,6 +353,20 @@ jobs:
       - name: The .aab must be signed by the upload key, not the debug key
         run: >
           node tooling/ci/assert-artifact-signed.mjs
+          apps/subly/build/app/outputs/bundle/release/app-release.aab
+      # The listing gate again, for the same reason the alignment gate below is
+      # repeated: this job is the one that uploads, and a gate that ran in a
+      # different job proved something about a different run of the checkout.
+      - name: The Play screenshot set spans enough device types
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission
+      # The same store gate as the dry-run job, on the bundle this job is about
+      # to hand to Play. It is repeated rather than inherited because the two
+      # jobs build their own bundles: the dry run proved a bundle passed, not
+      # that THIS bundle does, and a gate that grades a different artifact from
+      # the one being uploaded is the "green means ran" failure with extra steps.
+      - name: Every native library is aligned for a 16 KB memory page
+        run: >
+          node tooling/ci/assert-elf-page-alignment.mjs
           apps/subly/build/app/outputs/bundle/release/app-release.aab
       # ⚠️ THE DISPATCH INPUTS REACH THE SCRIPT AS ENVIRONMENT VARIABLES, NEVER
       # INTERPOLATED INTO THE SHELL. `${{ inputs.track }}` written inside a `run:`

@@ -456,6 +456,25 @@
       }
     },
     {
+      "id": "play-16kb-page-size",
+      "requirement": "K-13",
+      "duty": "Every shared library shipped inside an artifact uploaded to Google Play must have its ELF LOAD segments aligned to at least 16 KB, so the app runs on 64-bit devices whose kernel is configured with 16 KB memory pages. This is Play's own distribution policy, not a statute; like every other row in this family it bites at UPLOAD, and the only symptom is the release being refused.",
+      "status": "implemented",
+      "artefact": "tooling/ci/assert-elf-page-alignment.mjs",
+      "trigger": "🔴 NOTHING IN THIS TREE HAD EVER LOOKED INSIDE A `.so`. Measured 2026-08-20: `readelf`, `llvm-readelf`, `objdump`, `zipalign`, `p_align` and `max-page-size` returned ZERO hits across every workflow, guard, Gradle file and script. The alignment is decided by the NDK and the linker flags Flutter's own Gradle plugin passes, so it is not a value anybody in this repository writes down — which is exactly why nothing noticed it: there is no line to review. It changes underneath the app when the toolchain moves, with no diff, no Gradle error and no failing test, the same shape as the unpinned `targetSdk` above. tooling/ci/assert-elf-page-alignment.mjs reads `enforced.loadSegmentAlignAtLeast` from THIS row and parses the ELF program headers of every `lib/*/*.so` inside the built artifact.",
+      "verification": "primary-source",
+      "enforced": {
+        "_why": "The number lives HERE, beside its citation, and nowhere else — the same reason `targetSdkAtLeast` does. 16384 is 2**14, which is the form the cited page states it in; the guard converts once and prints both, so a reader comparing the page to the output never has to do the arithmetic themselves.",
+        "loadSegmentAlignAtLeast": 16384,
+        "inForceFrom": "2027-02-01"
+      },
+      "source": {
+        "url": "https://developer.android.com/guide/practices/page-sizes",
+        "fetched": "2026-08-20",
+        "quote": "all apps targeting Android 15 (API level 35) and higher must support 16 KB memory page sizes on 64-bit devices on Google Play. Starting February 1, 2027, if your app updates don't support 16 KB memory page sizes, you won't be able to release these updates. · 16 KB devices require the shared libraries' ELF segments to be aligned properly using 16 KB ELF alignment in order for your app to run. · Check the output lines to ensure that the load segments don't have values less than 2**14."
+      }
+    },
+    {
       "id": "apple-toolchain-floor",
       "requirement": "K-13",
       "duty": "Apps uploaded to App Store Connect must be built with a minimum Xcode version.",

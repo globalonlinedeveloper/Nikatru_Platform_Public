@@ -899,6 +899,21 @@ jobs:
       - name: The Play listing graphics exist, are the sourced size, and say where they came from
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-listing-assets.mjs
+      # ── AND THE ONE QUESTION THE STEP ABOVE CANNOT ASK A PNG ────────────────
+      # Google's minimum is "two screenshots ACROSS DIFFERENT DEVICE TYPES", and
+      # the console files a screenshot by the SLOT it was uploaded to — so no
+      # property of the bytes decides it. The device type is declared in
+      # tooling/channel-register.json and counted here.
+      #
+      # Run WITHOUT --for-submission on this lane on purpose. android-play is
+      # `served: false`, so today's shortfall — four phone screenshots, zero
+      # tablet, zero Chromebook — PRINTS with its citation and CI stays green.
+      # .github/workflows/submit-play.yml runs the same guard WITH the flag,
+      # where the same fact is fatal. That is the whole per-environment split:
+      # one guard, one set of numbers, and the lane decides what a gap costs.
+      - name: The Play screenshot set spans enough device types
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-play-device-coverage.mjs
       # The two Play Console artefacts that are NOT listing copy: the Data safety
       # form and the IARC content-rating questionnaire. Both are SWORN
       # DECLARATIONS ABOUT WHAT THE CODE DOES, and until 2026-08-04 neither had
