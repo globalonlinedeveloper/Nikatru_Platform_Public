@@ -147,7 +147,7 @@ const WORKFLOW_REL = `${WORKFLOW_DIR}/${WORKFLOW}`;
 const REGISTER_REL = 'tooling/channel-register.json';
 const BRANCH = 'main';
 const MAX_AGE_DAYS = 14;
-const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
 
 /** A full commit id. Abbreviations are refused rather than resolved: the API
  *  always returns 40 hex, so a short one means the field was written by

@@ -135,7 +135,7 @@ const CEILING_EPSILON_USD = 0.01;
 // Before it, no credential PRINTS and exits 0. After it, no credential is exit 2.
 const BUDGET_READ_DEADLINE = Date.parse('2026-09-08T00:00:00Z');
 
-const DEFAULT_REPO = 'globalonlinedeveloper/Project_Cross_Platform_Apps';
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
 const PRODUCT = 'actions';
 
 const EXIT_OK = 0;
