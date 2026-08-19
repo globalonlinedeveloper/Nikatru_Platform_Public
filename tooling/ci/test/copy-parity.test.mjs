@@ -144,7 +144,20 @@ function workspace({ slots, decl, originFiles, copyFiles, originIsGit = true, wr
   // today, so leaving them out of the index here matches the tree rather than
   // dodging it.
   mkdirSync(join(originDir, 'catalog'), { recursive: true });
-  writeFileSync(join(originDir, 'catalog', 'store-matrix.json'), JSON.stringify({ slots }, null, 2));
+  // 🔴 EVERY LIVE ROW CARRIES A `backing.product`, BECAUSE THE REAL REGISTRY DOES.
+  // Added 2026-08-19 with the copy-set fix. The guard no longer treats `state: "live"`
+  // as the copy set — it takes the live rows whose product is the ORIGIN's product —
+  // so a fixture whose rows name no product would make the guard REFUSE, and every
+  // case below would then measure the harness instead of its subject. The default
+  // gives every live row the SAME product, which reproduces exactly the semantics
+  // these cases were written against: here, live still means "a copy of the origin".
+  // A case that wants the other shape (a live slot holding a DIFFERENT product, which
+  // is what broke the guard on the real tree) sets `backing` on the row itself.
+  const rowsForRegistry = slots.map((s) => ({
+    ...s,
+    backing: s.backing !== undefined ? s.backing : (s.state === 'live' ? { product: 'origin-product', filed: true } : null),
+  }));
+  writeFileSync(join(originDir, 'catalog', 'store-matrix.json'), JSON.stringify({ slots: rowsForRegistry }, null, 2));
   if (writeDecl) writeFileSync(join(originDir, 'catalog', 'copy-origins.json'), JSON.stringify(decl, null, 2));
 
   for (const [slotKey, files] of Object.entries(copyFiles || {})) {
@@ -198,7 +211,19 @@ describe('assert-copy-parity — the positive control, against the REAL reposito
     const originKey = `${decl.origin.store}/${decl.origin.target}/${decl.origin.type}`;
     // DERIVED, never typed. See the header: a re-typed count is a suite that goes
     // red over correct work and gets deleted rather than repaired.
-    const copies = reg.slots.filter((s) => s.state === 'live' && `${s.store}/${s.target}/${s.type}` !== originKey);
+    // 🔴 AND THE DERIVATION IS `live` AND SAME PRODUCT, NOT `live` ALONE (2026-08-19).
+    // `state` alone was this suite's model of the copy set until a SECOND, DIFFERENT
+    // product (fullshot) reached `live` in its own slot. On that day `live` stopped
+    // meaning "carries a copy of the origin", this control computed 1 copy, the guard
+    // correctly found 0 and reported NOT PROVEN, and the case went red over a correct
+    // registry AND a correct guard — the exact failure the header warns a typed count
+    // causes, arriving instead through a derivation that had gone stale. The model has
+    // to track the guard's definition of a copy, not just the registry's row count.
+    const originProduct = reg.slots.find((s) => `${s.store}/${s.target}/${s.type}` === originKey)?.backing?.product ?? null;
+    assert.ok(originProduct, 'the origin row must declare backing.product — the copy set is derived from it');
+    const copies = reg.slots.filter((s) => s.state === 'live'
+      && `${s.store}/${s.target}/${s.type}` !== originKey
+      && s.backing?.product === originProduct);
     const { code, text } = run(GUARD);
 
     if (copies.length === 0) {
@@ -372,6 +397,64 @@ describe('assert-copy-parity — the two absence rules must never collapse into 
     assert.equal(code, 2, text);
     assert.match(text, /copy markers/);
     assert.doesNotMatch(text, /exists but is EMPTY/, 'the empty-shell and wrong-directory diagnoses must stay distinguishable');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 A THIRD ABSENCE, WHICH THE FIRST TWO CANNOT EXPRESS: A SLOT THAT WAS NEVER
+// A COPY. Added 2026-08-19, reproducing a REAL-TREE finding rather than inventing
+// one. On that day the extension pair (product `fullshot`) moved into
+// Chrome_Web_Store/Chrome/Extensions and that row went shell-claimed -> live. The
+// guard derived its copy set from `state: "live"` alone, so it went looking for a
+// Flutter copy inside a Chrome extension, found none of pubspec.yaml / package.json
+// / manifest.json, and REFUSED with exit 2 — absence rule (b), "a WRONG PATH".
+// It was not a wrong path. It was a slot that had never been a copy, and rule (b)
+// has no way to say that. The three cases below are the difference:
+//   · a different product live  -> EXCLUDED by name, and the verdict is NOT PROVEN (3)
+//   · the same product live     -> compared, exit 0 (this is the control that stops
+//                                  the fix from becoming "exclude everything")
+//   · a live row with NO product-> REFUSAL (2), because unclassifiable is not absent
+// Without the middle case, a guard that excluded every slot would pass the other two.
+describe('assert-copy-parity — a `live` slot carrying a DIFFERENT product is not a copy', () => {
+  test('🔴 the real 2026-08-19 shape: another product goes live → EXCLUDED by name, NOT PROVEN, never a refusal', () => {
+    const slots = SLOTS();
+    slots[1].backing = { product: 'some-other-product', filed: true };   // live, but not ours
+    const w = workspace({ slots, decl: DECL(), originFiles: ORIGIN_FILES(), copyFiles: { [COPY_KEY]: { 'notes.txt': 'hello\n' } } });
+    const { code, text } = run(w.guard);
+    assert.equal(code, 3, text);
+    assert.match(text, /NOT PROVEN/);
+    assert.doesNotMatch(text, /COVERAGE LOST/, 'a slot that was never a copy is not a wrong path — collapsing the two is the defect this case exists for');
+    assert.match(text, /excluded/, 'a narrowing nobody is told about is how a smaller scan starts reading as a clean result');
+    assert.match(text, /Google_Play_Store\/Android\/Games/, 'the excluded slot must be named');
+    assert.match(text, /some-other-product/, 'and so must the product that owns it');
+  });
+
+  test('the SAME product live is still compared → exit 0. Without this, "exclude everything" would pass the case above.', () => {
+    const slots = SLOTS();
+    slots[1].backing = { product: 'origin-product', filed: true };       // the origin's product
+    const w = workspace({ slots, decl: DECL(), originFiles: ORIGIN_FILES(), copyFiles: { [COPY_KEY]: COPY_FILES() } });
+    const { code, text } = run(w.guard);
+    assert.equal(code, 0, text);
+    assert.match(text, /shared path-pair\(s\) hashed across 1 copy\(ies\)/);
+  });
+
+  test('a `live` row naming NO product → REFUSAL, because unclassifiable is not the same as excluded', () => {
+    const slots = SLOTS();
+    slots[1].backing = null;                                             // live, product unstated
+    const w = workspace({ slots, decl: DECL(), originFiles: ORIGIN_FILES(), copyFiles: { [COPY_KEY]: COPY_FILES() } });
+    const { code, text } = run(w.guard);
+    assert.equal(code, 2, text);
+    assert.match(text, /no \`backing\.product\`/);
+    assert.doesNotMatch(text, /^assert-copy-parity: ok/m, 'guessing "not a copy" here is how a diverged copy drops out of the comparison in silence');
+  });
+
+  test('the ORIGIN row naming no product → REFUSAL. The copy set is derived FROM it, so it cannot be absent.', () => {
+    const slots = SLOTS();
+    slots[0].backing = null;                                             // the origin itself
+    const w = workspace({ slots, decl: DECL(), originFiles: ORIGIN_FILES(), copyFiles: { [COPY_KEY]: COPY_FILES() } });
+    const { code, text } = run(w.guard);
+    assert.equal(code, 2, text);
+    assert.match(text, /no \`backing\.product\`/);
   });
 });
 

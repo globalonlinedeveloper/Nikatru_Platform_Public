@@ -29,7 +29,7 @@
   "consent-withdrawal-surface.test.mjs": 38,
   "content-pipeline.test.mjs": 45,
   "content-qa-checks.test.mjs": 7,
-  "copy-parity.test.mjs": 23,
+  "copy-parity.test.mjs": 27,
   "cors-allowlist.test.mjs": 16,
   "d1-bindings.test.mjs": 7,
   "d1-sql-inventory.test.mjs": 47,
