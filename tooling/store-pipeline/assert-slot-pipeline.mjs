@@ -137,10 +137,15 @@ for (const [id, seam] of Object.entries(SIGNING_SEAMS)) {
  *  with the reason it is absent rather than broken. Every entry must really
  *  derive zero candidate channels, and every target that derives zero must be
  *  here — checked both ways below. */
+/* REMOVED 2026-08-20: the `Edge` and `Firefox` entries. Their slot rows were dropped when the
+ * per-slot-repo plan was abandoned, so both-directions coverage failed on them -- an entry here
+ * must name a target some slot really has. Neither fact was lost: Edge as a second submission
+ * target of the one FullShot extension is declared in Nikatru_Extensions_Public/Extension/
+ * Full_Screen_Shot/tool.json (`chromium.stores: [chrome, edge]`), and the AMO gecko.id being
+ * PERMANENT at first signing is recorded in that repo`s README.md, RELEASING.md,
+ * pull_request_template.md and COMPLIANCE-CHECKLIST.md, and in the corpus STORE-MATRIX-PLAN.md. */
 const UNCOVERED_TARGETS = {
   Chrome: 'The Chrome Web Store extension lives in the Nikatru_Chrome_Extensions_{Public,Private} repository pair. CORRECTED 2026-08-19: this used to read "outside the store tree entirely" and that is no longer true — the pair now sits INSIDE the store tree at Projects/Chrome_Web_Store/Chrome/Extensions/Nikatru_Chrome_Extensions_{Public,Private}, moved and renamed by the Store x Platform x Type reorg (REPOINTED 2026-08-19 EVENING: this parenthesis read "the GitHub repos kept their old names" and that stopped being true hours later - all five repos were renamed on GitHub too, so directory name and remote name AGREE again. Verified with `gh repo list`; `gh api repos/<owner>/<old-name>` returns 200 via the rename redirect and is a false positive). It is still outside THIS repository, which is what makes the target uncovered here, and tooling/channel-register.json has never described a browser-extension channel. catalog/store-matrix.json backing.products[fullshot] records the slot as shell-claimed for exactly this reason: the product exists and is not filed here. Whether one repo becomes three is STORE-MATRIX-PLAN.md section 5.2 and it is OPEN.',
-  Edge: 'Same product, same repository pair, same open decision. Edge Add-ons is a second submission target of the one FullShot extension.',
-  Firefox: 'Same product and same open decision, plus the one that makes guessing expensive: the AMO gecko.id in identity.json is fixed PERMANENTLY at first signing. No lane is invented for this target, and that restraint is the point.',
 };
 
 const targets = [...new Set(matrix.slots.map((s) => s.target))];
